@@ -60,8 +60,8 @@ checks (need `qpdf`) and ink-coverage (needs `gs`) probe for a tool, and warn if
 it's missing:
 
 ```text
-warn  Tool "gs" not found — skipping: pdf.print.ink-coverage
-warn  Tool "qpdf" not found — skipping: pdf.print.pdfx-markers, pdf.print.pdfx-metadata
+warn  Tool "gs" not found; skipping: pdf.print.ink-coverage
+warn  Tool "qpdf" not found; skipping: pdf.print.pdfx-markers, pdf.print.pdfx-metadata
 ```
 
 Checks that don't need the missing tool still run normally.

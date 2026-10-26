@@ -2,13 +2,13 @@
 
 @section .lede
 
-Gutterpress converts markdown files into professional print PDFs. It is designed for books, manuals, rulebooks, and any print-first document — using a native Chromium print engine for rendering.
+Gutterpress converts markdown files into professional print PDFs. It is designed for books, manuals, rulebooks, and any print-first document --- using a native Chromium print engine for rendering.
 
 @end-section
 
 ## Installation
 
-Download the latest release for your platform from GitHub Releases. Gutterpress ships as a self-contained desktop app and standalone CLI binaries — no Node, no Bun, or `node_modules` required. The [installation guide](https://github.com/dimm-city/gutterpress/blob/main/docs/installing.md) lists the supported architectures, Homebrew and Scoop commands, checksums, and unsigned-app first-run steps.
+Download the latest release for your platform from GitHub Releases. Gutterpress ships as a self-contained desktop app and standalone CLI binaries --- no Node, no Bun, or `node_modules` required. The [installation guide](https://github.com/dimm-city/gutterpress/blob/main/docs/installing.md) lists the supported architectures, Homebrew and Scoop commands, checksums, and unsigned-app first-run steps.
 
 ```bash
 # Verify the install
@@ -23,7 +23,7 @@ bun packages/cli/src/cli.ts --version
 
 ## Create Your First Project
 
-The fastest way to start is the built-in scaffolder — it generates a working
+The fastest way to start is the built-in scaffolder --- it generates a working
 project (manifest, a starter chapter, an editable stylesheet, and local
 version history) in one command, so you never have to
 hand-write a manifest just to get going:
@@ -32,39 +32,39 @@ hand-write a manifest just to get going:
 gutterpress new "My Book" --preset dtrpg
 ```
 
-The `--preset` names what the book is *designed for* — it sets the page size
+The `--preset` names what the book is *designed for* --- it sets the page size
 and print rules the project starts with, and it is required:
 
-- `dtrpg` — DriveThruRPG print-on-demand: the 8.5×11in book's file size, trim plus a 0.125in bleed on the top, bottom and outer edges (621×810pt = 8.625×11.25in), print-ready checks on by default
-- `book` — a neutral 6×9in trade book, no print-service rules
-- `custom` — you supply the trim: add `--page-width` and `--page-height` (points; 72pt = 1in)
+- `dtrpg` --- DriveThruRPG print-on-demand: the 8.5×11in book's file size, trim plus a 0.125in bleed on the top, bottom and outer edges (621×810pt = 8.625×11.25in), print-ready checks on by default
+- `book` --- a neutral 6×9in trade book, no print-service rules
+- `custom` --- you supply the trim: add `--page-width` and `--page-height` (points; 72pt = 1in)
 
 The command also records *where* you'll publish (the manifest's `targets:`
-list — see Chapter 6): the preset's default (`dtrpg` validates for
+list --- see Chapter 6): the preset's default (`dtrpg` validates for
 DriveThruRPG; `book`/`custom` for nothing), or your own choice via
 `--targets dtrpg,itch` / `--targets none`. If a chosen destination needs
 qpdf or Ghostscript and they aren't installed, the command tells you up
 front that a print-compliant PDF can't be built or verified until they are
-— you can install them later (Chapter 7) or opt out with `--targets none`.
+--- you can install them later (Chapter 7) or opt out with `--targets none`.
 
 This creates a `my-book/` folder in the current directory:
 
 ```
 my-book/
 ├── manifest.yaml       # Pre-filled with your title and author
-├── chapter-01.md       # A starter chapter — replace with your content
+├── chapter-01.md       # A starter chapter -- replace with your content
 ├── styles/
-│   └── book.css        # Your own stylesheet — ready to edit
+│   └── book.css        # Your own stylesheet -- ready to edit
 └── assets/             # Images, fonts, diagrams go here
 ```
 
-A new book has no look. Add one when you want it — a built-in look
-(`gutterpress ext add clean-book my-book --look`) or one from npm — and it is
+A new book has no look. Add one when you want it --- a built-in look
+(`gutterpress ext add clean-book my-book --look`) or one from npm --- and it is
 listed under `extensions:` in the manifest, with `styles/book.css` as your own
 layer on top of it. Chapter 4 covers looks; Chapter 5 covers the
 `extensions:` list itself.
 
-It also runs `git init` and records a "Created project" snapshot by default —
+It also runs `git init` and records a "Created project" snapshot by default ---
 local version history with no credentials and no remote required. Pass
 `--no-git` to skip that.
 
@@ -94,15 +94,15 @@ gutterpress preview ./my-book
 gutterpress build ./my-book --out my-book.pdf
 ```
 
-The `preview` command starts a local server — by default at
-`http://localhost:3579` (override with `--port`) — and reloads when any
+The `preview` command starts a local server --- by default at
+`http://localhost:3579` (override with `--port`) --- and reloads when any
 source file changes; the terminal always prints the actual URL on startup,
 so that's the source of truth if you've changed the port. The `build`
 command produces a PDF in a `dist/` directory next to your project.
 
 ### Which Browser to Preview In
 
-Gutterpress supports Chrome, Edge, and other Chromium-based browsers — and nothing else. Firefox and Safari are not supported: the PDF always renders in Chromium, so a preview in another engine measures text differently and places page breaks the PDF will not reproduce. The desktop app previews in its own bundled Chromium, so it always matches; if you preview from the CLI, open the URL it prints in a Chromium-based browser. Either way, embed your fonts with `@font-face` instead of relying on system fonts, so the preview measures the same fonts the PDF prints.
+Gutterpress supports Chrome, Edge, and other Chromium-based browsers --- and nothing else. Firefox and Safari are not supported: the PDF always renders in Chromium, so a preview in another engine measures text differently and places page breaks the PDF will not reproduce. The desktop app previews in its own bundled Chromium, so it always matches; if you preview from the CLI, open the URL it prints in a Chromium-based browser. Either way, embed your fonts with `@font-face` instead of relying on system fonts, so the preview measures the same fonts the PDF prints.
 
 ### Print Overlays {#print-overlays}
 
@@ -132,11 +132,11 @@ With **Safe area: text** or **Safe area: art** on, anything that strays from its
 **The legend.** A small legend in the bottom-right corner of the preview stays put as you scroll and zoom. It has a row for each layer that is on, with its colour and its sizes in inches, where the numbers come from, and what the safe area layers found:
 
 ```
-Bleed 0.125in — top, bottom, outside; none at the binding
-Safe area: text — 0.5in, every edge
-Safe area: art — 0.25in top, bottom, outside; 0.5in at the binding
-Page margins — your stylesheet's @page margins
-from DriveThruRPG — Quick Specifications for Print Books
+Bleed 0.125in -- top, bottom, outside; none at the binding
+Safe area: text -- 0.5in, every edge
+Safe area: art -- 0.25in top, bottom, outside; 0.5in at the binding
+Page margins -- your stylesheet's @page margins
+from DriveThruRPG -- Quick Specifications for Print Books
 3 text outside the safe area · 1 art outside · 2 in the bleed band
 ```
 
@@ -147,13 +147,13 @@ To switch the overlays on:
 - **Desktop app:** the **print overlays** button at the top right of the preview (next to the zoom menu) switches the overlays on and off, in Read and in Edit. The small arrow beside it opens a menu with a tick box and a colour swatch for each layer. A number on the button counts what the safe area layers found, and hovering shows a one-line summary. The app remembers your choices.
 - **`gutterpress preview`:** press **Alt+M** in the browser to show all four layers, and **Alt+M** again to hide them (the legend's last line says so). There is no layer menu in the browser: you get all four, in the default colours.
 
-To change the colours or how bold the lines are, use the desktop app's **Settings → App → Preview**: **Print overlay strength** (Subtle, Normal, Strong) and one colour each for **Bleed**, **Safe area: text**, **Safe area: art** and **Page margins**. These are app settings; there is nothing to add to your book's CSS. `gutterpress preview` always uses the default colours and the Normal strength.
+To change the colours or how bold the lines are, use the desktop app's **Settings &rarr; App &rarr; Preview**: **Print overlay strength** (Subtle, Normal, Strong) and one colour each for **Bleed**, **Safe area: text**, **Safe area: art** and **Page margins**. These are app settings; there is nothing to add to your book's CSS. `gutterpress preview` always uses the default colours and the Normal strength.
 
 **The numbers come from your project's print settings, never from your book's styles.** They are `page.bleed`, `page.safe` and `page.artSafe` in `manifest.yaml`, or your preset's values when you set none ([DriveThruRPG Requirements](#dtrpg-requirements) and [Bleed and Safe Area Settings](#bleed-safe-settings) below list them). Only the Page margins layer reads your stylesheet, because it shows your `@page` margins; moving your margins never moves the printer's lines. No stylesheet or plugin can hide, move or restyle the overlays: they are drawn above the whole preview, apart from the book. If the project sets no bleed or no safe area, that part is not drawn and the legend says which setting to add.
 
 ## Project Structure
 
-A Gutterpress project is a directory with a `manifest.yaml` file and one or more markdown source files — the same shape `gutterpress new` just created for you, grown out with more chapters:
+A Gutterpress project is a directory with a `manifest.yaml` file and one or more markdown source files --- the same shape `gutterpress new` just created for you, grown out with more chapters:
 
 ```
 my-book/
@@ -163,16 +163,16 @@ my-book/
 ├── 03-chapter-three.md
 ├── assets/                # Images, fonts, diagrams
 │   └── cover.jpg
-├── extensions/            # Looks and plugins added with `gutterpress ext add` (Chapters 4–5)
+├── extensions/            # Looks and plugins added with `gutterpress ext add` (Chapters 4--5)
 └── styles/                # Custom CSS (optional)
     └── custom.css
 ```
 
-Files are processed in the order listed in `manifest.yaml`. If no order is specified, they are processed alphabetically — which is why numeric prefixes (`01-`, `02-`) are the standard convention.
+Files are processed in the order listed in `manifest.yaml`. If no order is specified, they are processed alphabetically --- which is why numeric prefixes (`01-`, `02-`) are the standard convention.
 
 ## Reference: Manifest Configuration
 
-You don't need to hand-write `manifest.yaml` — `gutterpress new` already
+You don't need to hand-write `manifest.yaml` --- `gutterpress new` already
 generated one for you, pre-filled with your title and author. This section
 is a reference for editing it directly (changing page size, adding
 stylesheets, reordering chapters) or for authors who prefer to build a
@@ -207,7 +207,7 @@ page:
   height: 648
   tolerance: 0.5
 
-# Extensions — a look, plugins — in load order. Your `styles:` always load
+# Extensions -- a look, plugins -- in load order. Your `styles:` always load
 # after every extension (Chapters 4 and 5).
 extensions:
   - "./extensions/clean-book"
@@ -223,7 +223,7 @@ source:
     - "02-chapter-two.md"
 ```
 
-Plugins are optional and most projects don't need any — see Chapter 5, *Plugins*, for the `extensions:` manifest list (looks and plugins share it) and the bundled, no-install-required features.
+Plugins are optional and most projects don't need any --- see Chapter 5, *Plugins*, for the `extensions:` manifest list (looks and plugins share it) and the bundled, no-install-required features.
 
 ### Page Size Reference
 
@@ -241,7 +241,7 @@ Common book trim sizes in points (72pt = 1 inch):
 
 @end-section
 
-Your book prints at the manifest's `page.width` × `page.height` — your preset's size unless you set them — and that is also the size the finished PDF is checked against. A stylesheet that sets its own plain `@page { size }` (one with no page name and no `:first`/`:left`) wins over the manifest, so if you write one, keep the two matching.
+Your book prints at the manifest's `page.width` × `page.height` --- your preset's size unless you set them --- and that is also the size the finished PDF is checked against. A stylesheet that sets its own plain `@page { size }` (one with no page name and no `:first`/`:left`) wins over the manifest, so if you write one, keep the two matching.
 
 ### DriveThruRPG Requirements {#dtrpg-requirements}
 
@@ -289,7 +289,7 @@ page:
   artSafe: 18   # art at least 0.25in from the outside edges
 ```
 
-A book whose inner margin is wider than the printer's minimum says so with `page.gutter`, in the manifest and not in the stylesheet. With this, the binding lines sit 0.75in from the trim, and the legend says "Safe area: text — 0.5in; 0.75in at the binding":
+A book whose inner margin is wider than the printer's minimum says so with `page.gutter`, in the manifest and not in the stylesheet. With this, the binding lines sit 0.75in from the trim, and the legend says "Safe area: text --- 0.5in; 0.75in at the binding":
 
 ```yaml
 page:
@@ -321,12 +321,12 @@ my-book/
     └── custom.css
 ```
 
-This layout is a suggestion, not a requirement — put images and fonts
+This layout is a suggestion, not a requirement --- put images and fonts
 wherever makes sense for your project. An image referenced from markdown or
 HTML just needs to live somewhere inside the project folder; a font (or
 image) referenced from CSS resolves relative to that CSS file, wherever it
 lives, and Gutterpress embeds it into the book automatically. See
-[Chapter 4 — Font Loading](#font-loading).
+[Chapter 4 --- Font Loading](#font-loading).
 
 ### Naming Conventions
 
@@ -339,6 +339,6 @@ lives, and Gutterpress embeds it into the book automatically. See
 
 With your project set up, the following chapters cover how to write content, control layout, add visual elements, and prepare for print.
 
-> **Chapter 2** covers the full markdown syntax and layout directives — `@page`, `@section`, `@column-break`, and more.
+> **Chapter 2** covers the full markdown syntax and layout directives --- `@page`, `@section`, `@column-break`, and more.
 
 > **Chapter 6** covers the validation system that checks your project for print compliance before and after the PDF build.

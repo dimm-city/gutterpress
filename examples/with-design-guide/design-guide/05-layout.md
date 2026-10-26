@@ -19,13 +19,13 @@ Add `@column-break` to force content to the right column.
 
 @columns 2
 
-**Column flow** — text runs from the bottom of the left column to the top of the right column automatically, based on the available column height.
+**Column flow** --- text runs from the bottom of the left column to the top of the right column automatically, based on the available column height.
 
-**Column break** — add `@column-break` on its own line anywhere inside the run to push subsequent content to the right column unconditionally.
+**Column break** --- add `@column-break` on its own line anywhere inside the run to push subsequent content to the right column unconditionally.
 
-**Page breaks** — a two-column block breaks across pages normally. Add `.no-break` to the marker (`@columns 2 .no-break`) to keep the entire block on one page.
+**Page breaks** --- a two-column block breaks across pages normally. Add `.no-break` to the marker (`@columns 2 .no-break`) to keep the entire block on one page.
 
-**Headings inside** — H3 and H4 headings work inside two-column blocks. H1 and H2 span the full width because they carry a border-bottom that doesn't respect column boundaries.
+**Headings inside** --- H3 and H4 headings work inside two-column blocks. H1 and H2 span the full width because they carry a border-bottom that doesn't respect column boundaries.
 
 @end-columns
 
@@ -57,7 +57,7 @@ Zeta · sixth entry. Three columns suit dense, short-form reference content.
 
 Float an image alongside body text using `.img-float-right` or `.img-float-left`. The image occupies 44% of the column width; text wraps around it.
 
-**Syntax** — apply via markdown-it-attrs: `![alt](src){.img-float-right}`
+**Syntax** --- apply via markdown-it-attrs: `![alt](src){.img-float-right}`
 
 <div class="example">
 <div style="overflow: hidden; padding: 0.2em 0;">
@@ -77,7 +77,7 @@ Body paragraph flows alongside the image...
 
 `.img-float-right`/`.img-float-left` are **this guide's own** project-layer
 classes (44% width, defined in `guide.css`). Core Gutterpress also ships an
-always-available `gp-*` vocabulary that needs no project CSS at all — a
+always-available `gp-*` vocabulary that needs no project CSS at all --- a
 position word plus optional size and spacing words that compose:
 
 <div class="example">
@@ -85,7 +85,7 @@ position word plus optional size and spacing words that compose:
   <div style="float: right; width: 30%; margin: 0 0 1em 1em; background: var(--color-tint); border: var(--border-thin); height: 60pt; display: flex; align-items: center; justify-content: center;">
     <span style="font-family: var(--font-display); font-size: var(--fs-small); color: var(--color-ink-faint);">.gp-right .gp-size-30</span>
   </div>
-  <p>A 30%-width right float via <code>{.gp-right .gp-size-30}</code> — no stylesheet required. Sizes (<code>.gp-size-10</code> to <code>.gp-size-90</code>) and wrap spacing (<code>.gp-tight/.gp-loose</code>) compose with either float, and <code>.gp-center</code>/<code>.gp-full</code>/<code>.gp-bleed</code> cover the no-wrap layouts.</p>
+  <p>A 30%-width right float via <code>{.gp-right .gp-size-30}</code> &mdash; no stylesheet required. Sizes (<code>.gp-size-10</code> to <code>.gp-size-90</code>) and wrap spacing (<code>.gp-tight/.gp-loose</code>) compose with either float, and <code>.gp-center</code>/<code>.gp-full</code>/<code>.gp-bleed</code> cover the no-wrap layouts.</p>
   <p style="clear: both;">Inside an <code>@page</code> block, <code>{.gp-pin .gp-bottom .gp-right}</code> pins an image to the page corner instead of flowing. See the User Guide's Chapter 3 for the full vocabulary.</p>
 </div>
 </div>
@@ -109,14 +109,14 @@ Wrap images in a `<figure>` element for proper captioning. The `figcaption` rend
   <div style="background: var(--color-tint); border: var(--border-thin); height: 100pt; display: flex; align-items: center; justify-content: center; margin-bottom: 0.4em;">
     <span style="font-family: var(--font-display); font-size: var(--fs-small); color: var(--color-ink-faint);">Figure image placeholder</span>
   </div>
-  <figcaption>Figure 1.1 — A descriptive caption explains what the figure shows and why it matters. Captions are set at 9pt in --color-ink-muted.</figcaption>
+  <figcaption>Figure 1.1 &mdash; A descriptive caption explains what the figure shows and why it matters. Captions are set at 9pt in --color-ink-muted.</figcaption>
 </figure>
 </div>
 
 ```html
 <figure>
   ![Image](path.png)
-  <figcaption>Figure N — Caption text.</figcaption>
+  <figcaption>Figure N &mdash; Caption text.</figcaption>
 </figure>
 ```
 
@@ -130,7 +130,7 @@ Wrap images in a `<figure>` element for proper captioning. The `figcaption` rend
 | `.break-before` | Start block on a new page |
 | `.keep-next` | Keep block on the same page as the next element |
 
-**Applied via `@section`** — wrap any block in a section with the class:
+**Applied via `@section`** --- wrap any block in a section with the class:
 
 ```markdown
 @section .no-break
@@ -138,7 +138,7 @@ Content that must not split across a page break.
 @end-section
 ```
 
-**Applied via heading attribute** — force a new page before a specific heading:
+**Applied via heading attribute** --- force a new page before a specific heading:
 
 ```markdown
 ## New Section {.break-before}
@@ -151,18 +151,18 @@ Content that must not split across a page break.
 <table class="token-table">
 <thead><tr><th>Class / Syntax</th><th>Applied via</th><th>Effect</th></tr></thead>
 <tbody>
-<tr><td>@columns 2</td><td>@columns 2 … @end-columns</td><td>Two equal CSS columns with column rule</td></tr>
-<tr><td>@columns 3</td><td>@columns 3 … @end-columns</td><td>Three narrow columns for dense lists</td></tr>
+<tr><td>@columns 2</td><td>@columns 2 &hellip; @end-columns</td><td>Two equal CSS columns with column rule</td></tr>
+<tr><td>@columns 3</td><td>@columns 3 &hellip; @end-columns</td><td>Three narrow columns for dense lists</td></tr>
 <tr><td>.img-float-right</td><td>![alt](src){.img-float-right}</td><td>Float image right, 44% width, text wraps</td></tr>
 <tr><td>.img-float-left</td><td>![alt](src){.img-float-left}</td><td>Float image left, 44% width, text wraps</td></tr>
 <tr><td>.gp-left / .gp-right / .gp-center / .gp-full / .gp-bleed</td><td>![alt](src){.gp-right}</td><td>Core image positions (no project CSS needed)</td></tr>
-<tr><td>.gp-size-10 … .gp-size-90</td><td>![alt](src){.gp-right .gp-size-30}</td><td>Core image sizes — 10% to 90% of the column, in 10% steps</td></tr>
+<tr><td>.gp-size-10 &hellip; .gp-size-90</td><td>![alt](src){.gp-right .gp-size-30}</td><td>Core image sizes &mdash; 10% to 90% of the column, in 10% steps</td></tr>
 <tr><td>.gp-shape</td><td>![alt](src){.gp-right .gp-shape}</td><td>Wrap text to a floated image's alpha silhouette</td></tr>
 <tr><td>.gp-pin (+ .gp-top/.gp-bottom/.gp-left/.gp-right)</td><td>![alt](src){.gp-pin .gp-bottom}</td><td>Pin an image to its @page container instead of flowing, on the printer's art-safe line of its edges</td></tr>
 <tr><td>.no-break</td><td>@section .no-break</td><td>Prevent block from splitting across pages</td></tr>
 <tr><td>.break-before</td><td>## Heading {.break-before}</td><td>Force new page before this element</td></tr>
 <tr><td>.keep-next</td><td>@section .keep-next</td><td>Keep block on same page as next element</td></tr>
-<tr><td>.lede</td><td>&lt;div class="lede"&gt;…&lt;/div&gt;</td><td>13pt italic intro paragraph after H1</td></tr>
+<tr><td>.lede</td><td>&lt;div class="lede"&gt;&hellip;&lt;/div&gt;</td><td>13pt italic intro paragraph after H1</td></tr>
 <tr><td>@column-break</td><td>Inside @columns</td><td>Force remaining content to next column</td></tr>
 </tbody>
 </table>

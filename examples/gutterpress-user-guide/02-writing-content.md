@@ -2,7 +2,7 @@
 
 @section .lede
 
-Gutterpress renders standard GitHub-flavored markdown to print-quality HTML. This chapter covers headings, text, tables, and the `@`-prefixed layout markers that control how content flows across pages — and calls out, wherever it matters, which behaviors are core Gutterpress and which come from this guide's own `guide.css`.
+Gutterpress renders standard GitHub-flavored markdown to print-quality HTML. This chapter covers headings, text, tables, and the `@`-prefixed layout markers that control how content flows across pages --- and calls out, wherever it matters, which behaviors are core Gutterpress and which come from this guide's own `guide.css`.
 
 @end-section
 
@@ -11,23 +11,23 @@ Gutterpress renders standard GitHub-flavored markdown to print-quality HTML. Thi
 Six heading levels map to standard HTML:
 
 ```markdown
-# H1 — Chapter Title
+# H1 --- Chapter Title
 
-## H2 — Major Section
+## H2 --- Major Section
 
-### H3 — Subsection
+### H3 --- Subsection
 
-#### H4 — Minor Heading
+#### H4 --- Minor Heading
 
-##### H5 — Small Heading
+##### H5 --- Small Heading
 
-###### H6 — Tiny Heading
+###### H6 --- Tiny Heading
 ```
 
-Core Gutterpress renders these as plain `<h1>`–`<h6>` — nothing more. **A new page on every H1, a running header, and the big chapter numeral are this guide's own theme (`guide.css`), not core:**
+Core Gutterpress renders these as plain `<h1>`--`<h6>` --- nothing more. **A new page on every H1, a running header, and the big chapter numeral are this guide's own theme (`guide.css`), not core:**
 
 ```css
-/* guide.css — a project theme, NOT core Gutterpress */
+/* guide.css -- a project theme, NOT core Gutterpress */
 h1 {
   break-before: page;              /* starts a new page on every H1 */
   page: chapter;
@@ -38,14 +38,14 @@ h1 { string-set: chapter-title content(); }        /* feeds the running header *
 h1::before { content: counter(chapter, decimal-leading-zero); /* ...the numeral... */ }
 ```
 
-A brand-new Gutterpress project has none of this — headings are inert HTML until your own CSS (or a bundled theme, see [Chapter 4](#ch-styling)) styles them. If you want core, marker-driven pagination instead of an H1-triggered break, use `@chapter` / `@page` / `@page-break` — see [Layout Directives](#layout-directives) below.
+A brand-new Gutterpress project has none of this --- headings are inert HTML until your own CSS (or a bundled theme, see [Chapter 4](#ch-styling)) styles them. If you want core, marker-driven pagination instead of an H1-triggered break, use `@chapter` / `@page` / `@page-break` --- see [Layout Directives](#layout-directives) below.
 
 ### Heading rules
 
-- Use **H1 for chapter titles only** — one per file is a strong convention, but core Gutterpress does not enforce or special-case it.
-- Use H2–H3 for main sections. H4–H6 sparingly.
+- Use **H1 for chapter titles only** --- one per file is a strong convention, but core Gutterpress does not enforce or special-case it.
+- Use H2--H3 for main sections. H4--H6 sparingly.
 - Keep headings under 60 characters.
-- Never skip heading levels (H1 → H3 without H2).
+- Never skip heading levels (H1 &rarr; H3 without H2).
 
 ## Text Formatting
 
@@ -89,14 +89,14 @@ Use ordered lists for sequential steps. Use unordered lists for non-ordered item
 > And have multiple paragraphs.
 ```
 
-Core Gutterpress emits a plain `<blockquote>`. The left border and tinted background you see rendered in this guide come from `guide.css` — bring your own `blockquote` rule (or a bundled theme) to get that look in your own project.
+Core Gutterpress emits a plain `<blockquote>`. The left border and tinted background you see rendered in this guide come from `guide.css` --- bring your own `blockquote` rule (or a bundled theme) to get that look in your own project.
 
 ## Math {#math}
 
 Turn on the bundled **Math** feature (`gutterpress-math` under `extensions:`,
-or **Project settings → Features** in the desktop; see
+or **Project settings &rarr; Features** in the desktop; see
 [Chapter 5](#ch-plugins)) and write LaTeX math the way every LaTeX author
-already does: `$…$` inside a line, `$$…$$` on lines of its own.
+already does: `$...$` inside a line, `$$...$$` on lines of its own.
 
 ```markdown
 The loss $\mathcal{L}(\theta)$ is minimised with step size $\eta_t$.
@@ -110,7 +110,7 @@ $$
 MathJax typesets each formula as a drawing of its own glyphs, so the PDF
 needs no math font on the computer that builds it and no stylesheet or font
 files in your project, and the preview paginates exactly like the PDF. The
-usual LaTeX packages are there — `aligned`, `cases` and matrix environments,
+usual LaTeX packages are there --- `aligned`, `cases` and matrix environments,
 `\mathbb`, `\operatorname`, `\tag`, `\newcommand`, and the rest of
 MathJax's set.
 
@@ -134,22 +134,22 @@ Alignment:
 | Text   | Text   |    42 |
 ```
 
-GFM tables render as standard `<table><thead>…</thead><tbody>…</tbody></table>` — that's markdown-it's built-in table support, not a Gutterpress addition. Because the header row is real `<thead>` markup, Chromium can repeat it when a table is forced to break across a page — standard CSS table fragmentation, independent of any stylesheet.
+GFM tables render as standard `<table><thead>...</thead><tbody>...</tbody></table>` --- that's markdown-it's built-in table support, not a Gutterpress addition. Because the header row is real `<thead>` markup, Chromium can repeat it when a table is forced to break across a page --- standard CSS table fragmentation, independent of any stylesheet.
 
 Alternating row shading and keeping a whole table on one page (`table { break-inside: avoid; }`) are **this guide's `guide.css`**, not core. A bare Gutterpress project renders plain, unshaded tables that may break anywhere; add your own `break-inside: avoid` rule to a table or an explicitly classed `@section` when it must stay together.
 
 The alignment row becomes a plain `data-align="left|center|right"` attribute on each cell, not an inline style, so your stylesheet can change one column's alignment without `!important`: `td[data-align="right"] { text-align: center; }`.
 
 A `|` separates cells, so a cell that needs one in plain text writes it as
-`\|`. Inside a code span or a formula a `|` is just that character — the
+`\|`. Inside a code span or a formula a `|` is just that character --- the
 cell is not split. A row with more cells than the header is reported in
 Problems rather than having its extra cells silently dropped.
 
-Keep tables simple — 5 to 7 columns maximum. Align numbers right, text left.
+Keep tables simple --- 5 to 7 columns maximum. Align numbers right, text left.
 
 ## Markdown Attributes
 
-Add CSS classes, IDs, and attributes to any element using `markdown-it-attrs` syntax (bundled — no install step needed):
+Add CSS classes, IDs, and attributes to any element using `markdown-it-attrs` syntax (bundled --- no install step needed):
 
 ```markdown
 # Chapter Title {#custom-id .special-class}
@@ -161,7 +161,7 @@ Paragraph with custom styling. {.highlight}
 [Link text](page.html){.download}
 ```
 
-`.gp-center` and `.gp-size-50` above come from core Gutterpress's built-in `gp-*` image vocabulary — position, size, and spacing classes that compose — see [Chapter 3, Common image classes](#common-image-classes) for the full set.
+`.gp-center` and `.gp-size-50` above come from core Gutterpress's built-in `gp-*` image vocabulary --- position, size, and spacing classes that compose --- see [Chapter 3, Common image classes](#common-image-classes) for the full set.
 
 ### Cross-References
 
@@ -173,11 +173,11 @@ Content here...
 Later, reference it: [See Chapter One](#chapter-one)
 ```
 
-Headings do **not** get an automatic id from their text — core Gutterpress has no heading-slug step. Give a heading an explicit id with `{#custom-id}` (via `markdown-it-attrs`) before linking to it with `#custom-id`.
+Headings do **not** get an automatic id from their text --- core Gutterpress has no heading-slug step. Give a heading an explicit id with `{#custom-id}` (via `markdown-it-attrs`) before linking to it with `#custom-id`.
 
 ## Layout Directives {#layout-directives}
 
-Layout directives are `@`-prefixed markers that control how content flows across pages. They are built into Gutterpress — this is core behavior, present in every project regardless of theme.
+Layout directives are `@`-prefixed markers that control how content flows across pages. They are built into Gutterpress --- this is core behavior, present in every project regardless of theme.
 
 ### Quick syntax reference
 
@@ -199,7 +199,7 @@ Layout directives are `@`-prefixed markers that control how content flows across
 ### Writing about a marker without triggering it
 
 A marker is **any line whose first character is `@` followed by one of the
-words above** — including a line your paragraph happened to wrap onto. Write a
+words above** --- including a line your paragraph happened to wrap onto. Write a
 sentence about the `@page` marker and your editor may reflow it so `@page`
 lands at the start of a line, and Gutterpress will split your page there.
 
@@ -215,12 +215,12 @@ A pinned image sets itself against the
 ```
 
 Both render the text `@page` and leave your page alone. If you ever see a page
-break you did not ask for, look for a line that begins with `@` — Gutterpress
+break you did not ask for, look for a line that begins with `@` --- Gutterpress
 warns about most of these, and the warning names the escape.
 
-### @chapter — chapter wrapper (with automatic chapter-opener)
+### @chapter --- chapter wrapper (with automatic chapter-opener)
 
-`@chapter` is the flagship layout marker. It wraps everything until the next `@chapter` (or end of file) in `<div class="chapter">`. When given a bare label, it also auto-injects a **chapter-opener** element into the first `@page` inside it — the only element Gutterpress generates on your behalf:
+`@chapter` is the flagship layout marker. It wraps everything until the next `@chapter` (or end of file) in `<div class="chapter">`. When given a bare label, it also auto-injects a **chapter-opener** element into the first `@page` inside it --- the only element Gutterpress generates on your behalf:
 
 ```markdown
 @chapter C.01 #ch-bestiary
@@ -245,14 +245,14 @@ Renders:
 ```
 
 - The bare label (`C.01`) becomes `data-chapter-label` on the chapter **and** on every `@page` inside it, so CSS can reach it from the page where the content actually lives (the engine may split the chapter wrapper itself into an empty leading sheet).
-- `.chapter-opener` is a plain, unstyled `<div>` — style it yourself as a badge, a big numeral, a rule, or a full opener layout. It's injected once per chapter, on the first `@page` only.
+- `.chapter-opener` is a plain, unstyled `<div>` --- style it yourself as a badge, a big numeral, a rule, or a full opener layout. It's injected once per chapter, on the first `@page` only.
 - `#id` / `.class` work like on any other marker: `@chapter #ch-bestiary .bestiary`.
-- No bare label means no `.chapter-opener` — there's no label to show.
-- A plugin can declare **chapter variants** (see [Page, chapter and section variants](#plugin-location-variants)). If the bare word is one of them (`@chapter rules`), it is the variant — its class lands on the chapter and there is no label. Any other word is still the label. To have both, write the variant as a class: `@chapter C.01 .dc-chapter-rules`.
+- No bare label means no `.chapter-opener` --- there's no label to show.
+- A plugin can declare **chapter variants** (see [Page, chapter and section variants](#plugin-location-variants)). If the bare word is one of them (`@chapter rules`), it is the variant --- its class lands on the chapter and there is no label. Any other word is still the label. To have both, write the variant as a class: `@chapter C.01 .dc-chapter-rules`.
 
-### @page — start a new page
+### @page --- start a new page
 
-Starts a new page. A **single** bare word names the page; `.class` shorthand (or `class=a,b`) adds CSS classes — these are two different things:
+Starts a new page. A **single** bare word names the page; `.class` shorthand (or `class=a,b`) adds CSS classes --- these are two different things:
 
 ```markdown
 @page
@@ -264,16 +264,16 @@ Starts a new page. A **single** bare word names the page; `.class` shorthand (or
 @page intro .cover
 ```
 
-- `@page` → `<div class="page">`
-- `@page intro` (one bare word) → `<div class="page" data-page="intro">` — target it with `[data-page="intro"]`, not `.intro`.
-- `@page .cover .sidebar` (or `@page class=cover,sidebar`) → `<div class="page cover sidebar">`.
-- `@page intro .cover` (name + shorthand) → `<div class="page cover" data-page="intro">`.
+- `@page` &rarr; `<div class="page">`
+- `@page intro` (one bare word) &rarr; `<div class="page" data-page="intro">` --- target it with `[data-page="intro"]`, not `.intro`.
+- `@page .cover .sidebar` (or `@page class=cover,sidebar`) &rarr; `<div class="page cover sidebar">`.
+- `@page intro .cover` (name + shorthand) &rarr; `<div class="page cover" data-page="intro">`.
 
 Marker classes may also use markdown-it-attrs braces. For example,
 `@page {.cover .sidebar}` is equivalent to `@page .cover .sidebar`, and
 `@section {.sidebar}` is equivalent to `@section .sidebar`.
 
-**Two or more bare words with no `.class`/`class=` are all treated as classes, with no name at all** — `@page cover sidebar` renders `<div class="page cover sidebar">`, no `data-page`. For predictable results, always use `.class` shorthand (or `class=...`) when you want a class, and reserve a single bare word for the page's name.
+**Two or more bare words with no `.class`/`class=` are all treated as classes, with no name at all** --- `@page cover sidebar` renders `<div class="page cover sidebar">`, no `data-page`. For predictable results, always use `.class` shorthand (or `class=...`) when you want a class, and reserve a single bare word for the page's name.
 
 #### Page variants
 
@@ -281,7 +281,7 @@ Some page names are **variants**: the word also adds a class, so the page can be
 
 | Marker | Class added | What it does |
 |--------|-------------|--------------|
-| `@page blank` | `gp-page-blank` | A page with empty margin boxes — no running head, no folio drawn. The page still counts in the page numbering, and its content is untouched. |
+| `@page blank` | `gp-page-blank` | A page with empty margin boxes --- no running head, no folio drawn. The page still counts in the page numbering, and its content is untouched. |
 | `@page full-bleed` | `gp-page-full-bleed` | A page with zero margin, so its content box is the whole sheet. Running heads and folios are cleared on it too. |
 
 ```markdown
@@ -290,11 +290,11 @@ Some page names are **variants**: the word also adds a class, so the page can be
 ![Map of the city](map.jpg)
 ```
 
-renders `<div class="page gp-page-full-bleed" data-page="full-bleed">`. A theme or plugin can declare more (`@page chapter-start`, `@page intro`) — see [Page, chapter and section variants](#plugin-location-variants) — and then style them by location: `.page.dc-page-chapter-start .section { … }`. `data-page` is still emitted, any other single word is still just a free page name, and a raw class (`@page .dc-page-chapter-start`) works the same as the variant word. If you mistype a variant (`@page chapter-strat`), Problems tells you what you probably meant.
+renders `<div class="page gp-page-full-bleed" data-page="full-bleed">`. A theme or plugin can declare more (`@page chapter-start`, `@page intro`) --- see [Page, chapter and section variants](#plugin-location-variants) --- and then style them by location: `.page.dc-page-chapter-start .section { ... }`. `data-page` is still emitted, any other single word is still just a free page name, and a raw class (`@page .dc-page-chapter-start`) works the same as the variant word. If you mistype a variant (`@page chapter-strat`), Problems tells you what you probably meant.
 
-If your own CSS gives every `.page` a `page:` name, that rule is yours and wins over a variant's — name pages with `data-page` selectors instead.
+If your own CSS gives every `.page` a `page:` name, that rule is yours and wins over a variant's --- name pages with `data-page` selectors instead.
 
-### @page-break — hard break
+### @page-break --- hard break
 
 Forces a page break without creating a `<div class="page">` wrapper. Use when you want a break inside flowing content without a new named page:
 
@@ -306,7 +306,7 @@ Content above.
 Content below, on a new page.
 ```
 
-Renders `<div class="gp-page-break" aria-hidden="true"></div>` between the two paragraphs — a plain marker element, not a page container. Like the other markers it keeps a `#id` (`@page-break #part-two`), which is what a link or a page-number reference lands on.
+Renders `<div class="gp-page-break" aria-hidden="true"></div>` between the two paragraphs --- a plain marker element, not a page container. Like the other markers it keeps a `#id` (`@page-break #part-two`), which is what a link or a page-number reference lands on.
 
 ### @section and @end-section
 
@@ -333,11 +333,11 @@ than forcing a break:
 Continues on the same page as the section above.
 ```
 
-`@section` emits `<div class="section">` — plain `.section`, never `.region`.
+`@section` emits `<div class="section">` --- plain `.section`, never `.region`.
 
 A plugin can declare **section variants** (`@section card`): the word also adds the variant's class, `data-section` is still emitted, and any other word stays a free section name. See [Page, chapter and section variants](#plugin-location-variants).
 
-### @continue — split a named section without losing its identity
+### @continue --- split a named section without losing its identity
 
 `@continue` closes the **currently open** `@section` and immediately reopens a new one with the same name and attributes, plus an extra `gp-continued` class. Use it when a named block has to spill past a break but you still want to style the overflow (e.g. a "(continued)" label) without repeating its heading:
 
@@ -366,7 +366,7 @@ Renders:
 
 An `id` names one element, so the continuation does **not** repeat the section's `#id`; it keeps everything else, including its `data-name` (see [Targeting one block from your stylesheet](#targeting-one-block)). Style only the first piece with `:not(.gp-continued)`.
 
-`@continue` used with no open `@section` is dropped with a warning — it does not resurrect a section already closed by `@end-section`.
+`@continue` used with no open `@section` is dropped with a warning --- it does not resurrect a section already closed by `@end-section`.
 
 ### @columns, @column-break and @spread
 
@@ -461,12 +461,12 @@ Two more generic classes, useful anywhere:
 ### Paragraphs
 
 - One idea per paragraph
-- Break long paragraphs at 6–8 sentences
+- Break long paragraphs at 6--8 sentences
 - Use blank lines between paragraphs
 - Avoid single-sentence paragraphs
 
 ### Print Optimization
 
-- Do not use `<br>` tags for spacing — use paragraph breaks and CSS margins
-- Core Gutterpress never inserts a page break on its own — every break in a bare project comes from an explicit `@chapter` / `@page` / `@page-break` marker, or from a theme's own CSS (like this guide's H1 rule). Use `@page` when you need a named page, an id, or a forced break mid-flow.
+- Do not use `<br>` tags for spacing --- use paragraph breaks and CSS margins
+- Core Gutterpress never inserts a page break on its own --- every break in a bare project comes from an explicit `@chapter` / `@page` / `@page-break` marker, or from a theme's own CSS (like this guide's H1 rule). Use `@page` when you need a named page, an id, or a forced break mid-flow.
 - Test font embedding in your final PDF before submitting to a printer

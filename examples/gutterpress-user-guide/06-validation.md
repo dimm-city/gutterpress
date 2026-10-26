@@ -2,7 +2,7 @@
 
 @section .lede
 
-Gutterpress's validation system checks your project for print compliance at two points in the pipeline — before the PDF build and after. This chapter covers the 40 built-in checks, CLI usage, and production workflow recommendations.
+Gutterpress's validation system checks your project for print compliance at two points in the pipeline --- before the PDF build and after. This chapter covers the 40 built-in checks, CLI usage, and production workflow recommendations.
 
 @end-section
 
@@ -10,35 +10,35 @@ Gutterpress's validation system checks your project for print compliance at two 
 
 The validation system runs checks at two phases:
 
-- **Pre-build** — Source, asset, and some heuristic checks run before PDF generation
-- **Post-build** — PDF structural, print compliance, and quality checks run after PDF generation
+- **Pre-build** --- Source, asset, and some heuristic checks run before PDF generation
+- **Post-build** --- PDF structural, print compliance, and quality checks run after PDF generation
 
 When using `gutterpress build`, validation is automatically integrated into the
 pipeline:
 
 ```
-validate:pre-build → convert → assets → build → validate:post-build
+validate:pre-build -> convert -> assets -> build -> validate:post-build
 ```
 
 The CSS print-safety check (remote URLs, rasterizing effects, and
 page-containment risks) runs once, inside `validate:pre-build`, as the
-`source.stylelint` check — standalone, `gutterpress validate my-book --only
+`source.stylelint` check --- standalone, `gutterpress validate my-book --only
 source.stylelint` runs just that check.
 There is no separate lint phase; `--skip-lint` disables that one check
 without skipping the rest of pre-build validation.
 
-The final `validate:post-build` phase runs for `--format pdfx` only — a plain
+The final `validate:post-build` phase runs for `--format pdfx` only --- a plain
 `--format pdf` build stops after the build step. Everything before it runs for
 both formats.
 
 ## Publish Targets
 
 Where you *publish* is a separate decision from how your book is *designed*
-(the `preset:` — see Chapter 1). A **target** is a destination's validation
+(the `preset:` --- see Chapter 1). A **target** is a destination's validation
 policy: what its platform demands of the finished PDF. Targets never change
-how the book renders — only what the validator checks.
+how the book renders --- only what the validator checks.
 
-- `dtrpg` — DriveThruRPG print-on-demand: PDF/X markers and metadata,
+- `dtrpg` --- DriveThruRPG print-on-demand: PDF/X markers and metadata,
   CMYK/Grayscale art, the 240% ink limit, embedded fonts, a page count
   that fits the signature, text kept at least 0.5in inside the trim and
   pictures 0.25in, or run to the page's edge (the safe-margins check, from
@@ -47,7 +47,7 @@ how the book renders — only what the validator checks.
   [Chapter 1](#print-overlays)). It also
   warns when text at 24pt and under is printed in a dark four-colour mix,
   black or a dark colour, since small four-colour text can look fuzzy.
-- `itch` — itch.io digital release: a well-formed PDF with embedded fonts;
+- `itch` --- itch.io digital release: a well-formed PDF with embedded fonts;
   print-only rules (PDF/X, ink limits, CMYK-only art) don't apply.
 
 List them in your manifest to validate every destination in one run:
@@ -61,19 +61,19 @@ targets:
 The report labels each destination's findings (`[dtrpg]`, `[itch]`), so one
 source can be checked for print and digital at the same time. Projects
 created with `gutterpress new` or the desktop app always carry an explicit
-`targets:` list — you choose the destinations at creation time (and can
+`targets:` list --- you choose the destinations at creation time (and can
 uncheck them all, recorded as `targets: []`). In the desktop app you can
-change them whenever you like under **Project settings → Details →
+change them whenever you like under **Project settings &rarr; Details &rarr;
 Publish targets**. In a hand-written manifest
 with no `targets:` line, the preset's default applies (the `dtrpg` preset
 validates for DriveThruRPG; `book` and `custom` validate for no
 destination). An explicit empty list (`targets: []`) opts out entirely.
-Your own manifest settings always win over a target's policy — a target
+Your own manifest settings always win over a target's policy --- a target
 only fills in what you haven't set.
 
 The `dtrpg` target's checks need qpdf and Ghostscript installed (Chapter
 7). With the target selected but the tools missing, validation reports the
-required checks as errors rather than silently skipping them — that's
+required checks as errors rather than silently skipping them --- that's
 deliberate: "validated for DriveThruRPG" must mean the checks actually ran.
 If you're not ready to install them, set `targets: []` until you are. The
 `itch` target needs no external tools.
@@ -160,7 +160,7 @@ gutterpress validate --pdf dist/my-book/my-book-pdf.pdf --format json
 ### Fixing markdown automatically
 
 Validation is read-only unless you pass `--fix`, which rewrites the markdown
-in place using markdownlint's own auto-fixes — trailing spaces, multiple blank
+in place using markdownlint's own auto-fixes --- trailing spaces, multiple blank
 lines, blank-line placement, list markers and indentation, hard tabs, emphasis
 style, and so on:
 
@@ -173,7 +173,7 @@ mechanically is still reported, and the other source checks (broken links, alt
 text, layout markers, CSS print-safety) are never touched. The rules come from
 the same `.markdownlint.*` config the check uses; with no config file, `--fix`
 says so and changes nothing. A file with uncommitted changes is rewritten too
-— you get a notice, not a refusal.
+--- you get a notice, not a refusal.
 
 ## Check Categories
 
@@ -185,7 +185,7 @@ Examples: broken internal links, missing alt text, oversized source images, mark
 
 The CSS check also tells you when the live preview cannot follow a break in your stylesheet. The preview reads your forced breaks (`break-before`/`break-after: page`, `left`, `right`) and `page:` assignments from the CSS text, so one written with `var()`, inside a nested rule, right after a nested rule, or with the old `page-break-before: always` spelling is honoured by the PDF but missing from the preview, and the two page counts drift apart. Rule id `printsafe/preview-cannot-follow`; write the keyword in a flat rule, or silence it like any other rule below.
 
-The character check finds characters that usually arrive by pasting from a chat model, a word processor or a web page: em and en dashes, curly and look-alike quote marks, the ellipsis character, bullets, arrows, emoji, and invisible ones such as zero-width spaces, non-breaking spaces and control characters. Each finding has its line and column and says what to type instead. Dashes, curly quotes and the ellipsis character are info, since they print correctly; the rest are warnings, since they can change what prints. Plain typing already prints proper typography, so the fix does not change the page: `---` prints an em dash, `--` an en dash, `...` an ellipsis, and straight quotes print curly. A character you do want can be written as an HTML entity (`&nbsp;`, `&rarr;`), which the check leaves alone. In the desktop editor each one is outlined where it sits, and the invisible ones show as a placeholder symbol. The editor also marks every line the Problems list reports; the **Highlight problems in the editor** setting (Settings, Editor tab) turns those marks and the outlines off. Rule id `source.characters`; silence it like any other rule below.
+The character check finds characters that usually arrive by pasting from a chat model, a word processor or a web page: em and en dashes, curly and look-alike quote marks, the ellipsis character, bullets, arrows, emoji, and invisible ones such as zero-width spaces, non-breaking spaces and control characters. Each finding has its line and column and says what to type instead. Dashes, curly quotes and the ellipsis character are info, since they print correctly; the rest are warnings, since they can change what prints. Plain typing already prints proper typography, so the fix does not change the page: `---` prints an em dash, `--` an en dash, `...` an ellipsis, and straight quotes print curly. The one curly character the check lets through is an apostrophe that starts a word (’90s), which a typed `'` cannot make. A character you do want can be written as an HTML entity (`&nbsp;`, `&rarr;`), which the check leaves alone. In the desktop editor each one is outlined where it sits, and the invisible ones show as a placeholder symbol. The editor also marks every line the Problems list reports; the **Highlight problems in the editor** setting (Settings, Editor tab) turns those marks and the outlines off. Rule id `source.characters`; silence it like any other rule below.
 
 ### PDF checks (post-build)
 
@@ -229,7 +229,7 @@ gutterpress validate --pdf dist/my-book/my-book-pdfx.pdf --target dtrpg
 
 ### Asset checks (pre-build)
 
-Run on image and font files anywhere in your project folder — there's no `assets` convention to follow (see Chapter 3) — plus the directories any shared stylesheets pull assets from.
+Run on image and font files anywhere in your project folder --- there's no `assets` convention to follow (see Chapter 3) --- plus the directories any shared stylesheets pull assets from.
 
 Examples: image resolution below 300 DPI, unsupported color profiles, missing font files.
 
@@ -251,7 +251,7 @@ validate:
   checks:
     pdf.structure.qpdf: false
     source.accessibility.alt-text: false
-    # A PDF cannot open a relative link such as [spec](docs/spec.md) — the
+    # A PDF cannot open a relative link such as [spec](docs/spec.md) -- the
     # build drops its href before print and `source.links.dangling` warns
     # about each one. Switch it off for a book published only as HTML.
     source.links.dangling: false
@@ -261,12 +261,12 @@ validate:
     htmlhint: false
     markdownlint: false
 
-# Ink-coverage / TAC threshold — this is a TOP-LEVEL manifest key, not
+# Ink-coverage / TAC threshold -- this is a TOP-LEVEL manifest key, not
 # nested under `validate:`. There is no `validate.thresholds` key; unknown
 # keys are silently ignored, so a threshold nested under `validate:` has no
 # effect at all.
 ink:
-  maxTac: 240        # max total area coverage %; the dtrpg preset's default —
+  maxTac: 240        # max total area coverage %; the dtrpg preset's default --
                      # book (this guide's preset) defaults to 400 instead
   tacTolerance: 0.5  # allowed overage before a page is flagged, default 0.5
 ```
@@ -276,7 +276,7 @@ ink:
 Some warnings are known false alarms for a particular book. Turn them off
 without disabling the whole check, either for the whole book or for one spot.
 
-**Whole book** — set a rule's level under the top-level `lint.rules` key.
+**Whole book** --- set a rule's level under the top-level `lint.rules` key.
 `off` silences it; `warn` or `error` changes its severity:
 
 ```yaml
@@ -287,13 +287,13 @@ lint:
     source.accessibility.heading-order: off
 ```
 
-The rule id is the one shown in the warning: `printsafe/…` for CSS print-safety
+The rule id is the one shown in the warning: `printsafe/...` for CSS print-safety
 rules (`printsafe/no-risky-print-effects`, `printsafe/page-containment`,
 `printsafe/preview-cannot-follow`, `printsafe/no-remote-urls`), or the check id for the rest (for example
 `source.accessibility.heading-order`). An id that matches no rule is ignored,
-so a typo has no effect — check the spelling against the warning text.
+so a typo has no effect --- check the spelling against the warning text.
 
-**One spot** — put a `gutterpress-disable-next-line` comment on the line
+**One spot** --- put a `gutterpress-disable-next-line` comment on the line
 directly above it. List several rules with commas, and add a reason after
 `--`:
 
@@ -317,12 +317,12 @@ Most checks run in-process and never need an external tool. Only a few still
 probe for a system tool and warn if it is missing:
 
 ```
-warn  Tool "qpdf" not found — skipping: pdf.print.pdfx-markers, pdf.print.pdfx-metadata
-warn  Tool "gs" not found — skipping: pdf.print.ink-coverage
+warn  Tool "qpdf" not found; skipping: pdf.print.pdfx-markers, pdf.print.pdfx-metadata
+warn  Tool "gs" not found; skipping: pdf.print.ink-coverage
 ```
 
-Everything else — page size, safe margins, fonts, images/DPI, bookmarks, links, page labels,
-text density, color space, alpha, markdown/HTML linting — runs with no system
+Everything else --- page size, safe margins, fonts, images/DPI, bookmarks, links, page labels,
+text density, color space, alpha, markdown/HTML linting --- runs with no system
 dependency, so you can validate immediately on any machine.
 
 ## File Organization Best Practices
@@ -371,7 +371,7 @@ Keep the preview open in Chrome and edit source files. The browser reloads autom
 gutterpress validate --input ./my-book
 ```
 
-Fix any pre-build issues — missing alt text, broken links, oversized assets — before building.
+Fix any pre-build issues --- missing alt text, broken links, oversized assets --- before building.
 
 ### 3. Build and validate PDF
 
@@ -411,7 +411,7 @@ Before final print submission:
 
 ### Blank pages
 
-Caused by excess `@page` markers. Audit your source files for unnecessary page breaks — bare `@page` between short adjacent sections is the most common culprit.
+Caused by excess `@page` markers. Audit your source files for unnecessary page breaks --- bare `@page` between short adjacent sections is the most common culprit.
 
 Blank pages at the very end of a `dtrpg` book are expected: the build pads the
 book to a multiple of 4 pages and keeps the last page empty for DriveThruRPG's
@@ -425,11 +425,11 @@ The preview shows the same pages the PDF gets.
 
 - Don't force breaks unnecessarily
 - Don't use `<br>` tags for vertical spacing
-- Don't rely on specific pagination — let flow happen naturally and use `@section` to prevent unwanted breaks
+- Don't rely on specific pagination --- let flow happen naturally and use `@section` to prevent unwanted breaks
 
 ### Font issues
 
-- A missing font is a build error naming the file — check the `url(...)` path
+- A missing font is a build error naming the file --- check the `url(...)` path
   in your CSS is correct and relative to that CSS file
 - Test on a clean machine to catch fonts that only happen to be installed locally
 

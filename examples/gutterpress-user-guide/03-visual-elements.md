@@ -2,7 +2,7 @@
 
 @section .lede
 
-Callouts highlight critical information. Images bring pages to life. This chapter covers both — from basic syntax to full-bleed artwork and print-safe image requirements.
+Callouts highlight critical information. Images bring pages to life. This chapter covers both --- from basic syntax to full-bleed artwork and print-safe image requirements.
 
 @end-section
 
@@ -10,7 +10,7 @@ Callouts highlight critical information. Images bring pages to life. This chapte
 
 Callouts draw attention to important information. Gutterpress ships GitHub's
 alert syntax as the bundled **Callouts** feature (`gutterpress-gfm-alerts`,
-issue #237) — turn it on from the recommended-features list. It is off by
+issue #237) --- turn it on from the recommended-features list. It is off by
 default, so a book that never asked for callouts keeps rendering `> [!NOTE]`
 exactly as it always did: a plain blockquote whose first line is the marker.
 
@@ -30,13 +30,13 @@ Five types, the GitHub set, matched case-insensitively:
 > Cautions, important considerations, potential issues.
 
 > [!CAUTION]
-> Critical warnings — data loss, irreversible actions.
+> Critical warnings --- data loss, irreversible actions.
 ```
 
 The marker goes **alone on its own line**; the body follows on the next
-line(s). Each renders as unbranded structure in core's own vocabulary — a
+line(s). Each renders as unbranded structure in core's own vocabulary --- a
 `.gp-alert` box carrying `.gp-alert-<type>`, with a `.gp-alert-title`
-paragraph holding the label — so any theme can restyle it, and an unthemed
+paragraph holding the label --- so any theme can restyle it, and an unthemed
 book still prints a legible rule and label.
 
 Anything that is not one of those five (`[!DANGER]`, `[!INFO]`, a typo) does
@@ -46,7 +46,7 @@ layered on top of `.gp-alert`, not from core.
 
 ### Titles and multi-paragraph callouts
 
-The marker line carries **only** the marker — `> [!WARNING] Read this` is
+The marker line carries **only** the marker --- `> [!WARNING] Read this` is
 not recognised. Put a title in the body instead, and prefix every
 continuation line with `>`:
 
@@ -64,7 +64,7 @@ continuation line with `>`:
 
 @section
 
-Use at most 2–3 callouts per page — overuse reduces impact. Match the type to the severity:
+Use at most 2--3 callouts per page --- overuse reduces impact. Match the type to the severity:
 
 | Type | Use for |
 |------|---------|
@@ -89,10 +89,10 @@ author-overridable `--gp-alert-<type>-color` custom property.
 ![Image with title](assets/diagram.png "Caption text")
 ```
 
-Always provide meaningful alt text. For purely decorative images, use empty alt text — leave the brackets empty: `![]`.
+Always provide meaningful alt text. For purely decorative images, use empty alt text --- leave the brackets empty: `![]`.
 
 **Where images live:** put the image file inside your project folder and
-reference it with a path relative to the manifest — Gutterpress copies exactly
+reference it with a path relative to the manifest --- Gutterpress copies exactly
 the images your markdown (or CSS) references, keeping your own folder
 structure in the output. There's no directory to declare. A reference that
 points outside the project (`../shared/logo.png`) fails the build with a
@@ -100,7 +100,7 @@ message telling you to copy the file in instead.
 
 ### Image sizing
 
-Use `markdown-it-attrs` (bundled — no install step needed) for precise sizing:
+Use `markdown-it-attrs` (bundled --- no install step needed) for precise sizing:
 
 ```markdown
 ![Portrait](assets/portrait.jpg){width="300px"}
@@ -111,10 +111,10 @@ Use `markdown-it-attrs` (bundled — no install step needed) for precise sizing:
 ### Common image classes {#common-image-classes}
 
 Core Gutterpress ships a small, composable `gp-*` vocabulary for placing
-images — plain CSS rules in `GUTTERPRESS_CSS`, always present, no plugin or theme
+images --- plain CSS rules in `GUTTERPRESS_CSS`, always present, no plugin or theme
 required. `markdown-it-attrs` (also bundled) is what lets you attach
 `{.gp-right}` and friends to an image. Pick one **position** word, and
-optionally add a **size**, a **spacing**, and a **shape** word — the
+optionally add a **size**, a **spacing**, and a **shape** word --- the
 classes compose:
 
 ```markdown
@@ -136,8 +136,8 @@ the page is simply where it appears in your markdown):
 | `.gp-right` | Floats right with clearance margins, capped at 50% width |
 | `.gp-center` | Centers a block-level image (`display: block; margin: 0 auto`) |
 | `.gp-full` | Fills the page's content width (`width: 100%`) |
-| `.gp-bleed` | Own page, edge-to-edge — see [Full-bleed artwork](#full-bleed-artwork) |
-| `.gp-pin` | Pins to a spot on the page instead of flowing — see [Pinned images](#pinned-images) |
+| `.gp-bleed` | Own page, edge-to-edge --- see [Full-bleed artwork](#full-bleed-artwork) |
+| `.gp-pin` | Pins to a spot on the page instead of flowing --- see [Pinned images](#pinned-images) |
 | `.gp-flush` | With `.gp-pin` + an edge: runs to the paper's edge, past the printer's safe area (Problems notes it) |
 
 **Sizes** (work with any position, including `.gp-pin`; an explicit size
@@ -155,7 +155,7 @@ overrides the floats' 50% cap; for the full width use `.gp-full`):
 | `.gp-size-80` | 80% |
 | `.gp-size-90` | 90% |
 
-**Spacing** (how much room a float leaves for the text wrapping around it —
+**Spacing** (how much room a float leaves for the text wrapping around it ---
 no class means the normal 1em):
 
 | Class | Clearance |
@@ -166,11 +166,11 @@ no class means the normal 1em):
 Under the hood the presets set the `--gp-gap` custom property, so a
 stylesheet can also tune the clearance directly (`img { --gp-gap: 0.75em }`).
 
-> **Migrating from the old class names?** The pre-vocabulary utilities —
-> `.center`, `.float-left`, `.float-right`, `.full-width`, `.full-bleed` —
+> **Migrating from the old class names?** The pre-vocabulary utilities ---
+> `.center`, `.float-left`, `.float-right`, `.full-width`, `.full-bleed` ---
 > were **removed** when the `gp-*` vocabulary shipped. Rename them in your
-> markdown (`.center` → `.gp-center`, `.float-left` → `.gp-left`,
-> `.float-right` → `.gp-right`, `.full-width` → `.gp-full`, `.full-bleed` →
+> markdown (`.center` &rarr; `.gp-center`, `.float-left` &rarr; `.gp-left`,
+> `.float-right` &rarr; `.gp-right`, `.full-width` &rarr; `.gp-full`, `.full-bleed` &rarr;
 > `.gp-bleed`); the desktop editor's image menu rewrites the old name for
 > you when you edit an image's position. See
 > `docs/migrations/2026-08-gp-image-classes.md`.
@@ -178,7 +178,7 @@ stylesheet can also tune the clearance directly (`img { --gp-gap: 0.75em }`).
 ### Shaped text wrap {#shaped-text-wrap}
 
 `.gp-shape` makes wrapping text follow a floated image's actual visible
-silhouette instead of its rectangular box — for cut-out art with a
+silhouette instead of its rectangular box --- for cut-out art with a
 transparent background (PNG or SVG with an alpha channel):
 
 ```markdown
@@ -201,7 +201,7 @@ knowing:
 ### Pinned images {#pinned-images}
 
 `.gp-pin` takes an image out of the text flow entirely and pins it to a spot
-on the page — centered by default, or against an edge with `.gp-top`,
+on the page --- centered by default, or against an edge with `.gp-top`,
 `.gp-bottom`, `.gp-left`, and `.gp-right` (the same position words the
 floats use):
 
@@ -219,7 +219,7 @@ One horizontal word + one vertical word gives nine positions; sizes compose
 the same way they do in flow.
 
 **A pinned image never moves your text.** Your words keep the page's own
-margins, line for line and page for page, wherever the image is pinned — the
+margins, line for line and page for page, wherever the image is pinned --- the
 page lays out exactly as it would without the image.
 
 **An edge pin sits on the printer's safe line for art.** `.gp-bottom` puts the
@@ -235,7 +235,7 @@ Two rules keep pinning predictable:
 
 - **A pinned image must live inside an `@page` (or `@spread`) block.** The
   pin is anchored to that container. Outside one there is nothing on the
-  page to anchor to — the image would resolve against the whole document
+  page to anchor to --- the image would resolve against the whole document
   and can print on a completely different sheet, so the build and preview
   warn (`pin_outside_page`) when you do it.
 - **The pin anchors to the nearest enclosing frame.** Normally that is the
@@ -245,11 +245,11 @@ Two rules keep pinning predictable:
   and fragments across several sheets: there `.gp-bottom` means the bottom
   of that whole block, not of each sheet.
 - **A styled block between the image and the page can become the frame
-  instead — on purpose.** If your theme positions something closer than the
+  instead --- on purpose.** If your theme positions something closer than the
   page (a card, a callout, a component shell), the pin anchors to *that*,
   which is how you pin art to a card rather than to the sheet. It also means
   an image pinned **inside** an `@section` (or any such block) will sit at
-  the corner of that block, not the page corner — which looks like the pin
+  the corner of that block, not the page corner --- which looks like the pin
   "not reaching the page". If you want the sheet, author the image outside
   the block, as page furniture:
 
@@ -261,11 +261,11 @@ Two rules keep pinning predictable:
   ![Colophon mark](assets/mark.png){.gp-pin .gp-bottom .gp-right .gp-size-30}
   ```
 
-  Only a pin with **no** enclosing frame at all is an error — that is the
+  Only a pin with **no** enclosing frame at all is an error --- that is the
   `pin_outside_page` warning above.
 
 Under the hood, Gutterpress frees that one page's margin on the edges a pin
-uses — the only way anything reaches past the margin — gives your text the
+uses --- the only way anything reaches past the margin --- gives your text the
 margin back, and takes care of what freeing it would otherwise cost you:
 
 - **Your page numbers and running heads keep printing.** A margin box lives
@@ -297,7 +297,7 @@ cut off: `gutterpress validate` and the desktop app's Problems panel add a note
 `.gp-flush`. Keep it for art that is meant to bleed off the page, and paint the
 art so that losing that strip does not matter.
 
-`.gp-flush` works with any edge, including corners — `{.gp-pin .gp-bottom
+`.gp-flush` works with any edge, including corners --- `{.gp-pin .gp-bottom
 .gp-right .gp-flush}` puts the art in the bottom-right corner of the paper. A
 centred pin touches no edge, so the class does nothing there. In the desktop
 app it is the **"Run to the paper's edge (ignores the safe area)"** checkbox
@@ -319,9 +319,9 @@ settings, the same as for [full-bleed artwork](#full-bleed-artwork).
 
 `.gp-bleed` produces the edge-to-edge result this way:
 - **Forces a page break before the image** (`break-before: page`).
-- **It assigns the image's page to a core-owned named page** (`@page gp-full-bleed`) with zero left/right margins, so the page's own content box already is the sheet — no negative margin needed.
+- **It assigns the image's page to a core-owned named page** (`@page gp-full-bleed`) with zero left/right margins, so the page's own content box already is the sheet --- no negative margin needed.
 
-It does **not**: cancel the top/bottom margins, remove headers or footers, or add printer bleed overage past the trim edge. The running head and folio move onto the trim line on the bleed page itself (margin boxes are positioned by the page's own margins, which are zero here) — if you need to keep them, suppress the ones that would land on the trim edge with a small override targeting `@page gp-full-bleed` (e.g. `@top-center { content: none }`); see the native engine styling guide. If you need true bleed — content that extends past the trim line for a print shop to cut through — design the artwork to the bled dimensions and add that overage via your PDF export/preflight settings; see [Bleed for full-page images](#bleed-for-full-page-images) below.
+It does **not**: cancel the top/bottom margins, remove headers or footers, or add printer bleed overage past the trim edge. The running head and folio move onto the trim line on the bleed page itself (margin boxes are positioned by the page's own margins, which are zero here) --- if you need to keep them, suppress the ones that would land on the trim edge with a small override targeting `@page gp-full-bleed` (e.g. `@top-center { content: none }`); see the native engine styling guide. If you need true bleed --- content that extends past the trim line for a print shop to cut through --- design the artwork to the bled dimensions and add that overage via your PDF export/preflight settings; see [Bleed for full-page images](#bleed-for-full-page-images) below.
 
 ### Image galleries
 
@@ -341,7 +341,7 @@ guide's `.figure` class is the opt-in keep-together treatment:
 
 Wrap the image and its caption in `@section .figure` so they stay together on
 one page, and tag the caption paragraph with the `.figcaption` class (via
-`markdown-it-attrs`, always available — see Chapter 5):
+`markdown-it-attrs`, always available --- see Chapter 5):
 
 ```markdown
 @section .figure
@@ -361,7 +361,7 @@ Figure 1: System architecture overview {.figcaption}
 
 | Use | Minimum DPI | Recommended |
 |-----|------------:|------------:|
-| Body illustrations | 300 | 300–600 |
+| Body illustrations | 300 | 300--600 |
 | Line art / diagrams | 600 | 600+ |
 | Full-bleed artwork | 300 | 300 |
 
@@ -371,13 +371,13 @@ To calculate pixel dimensions: **print width (inches) × DPI = pixel width**. An
 
 ### File formats
 
-- **JPEG** — photographs (quality 80–90%)
-- **PNG** — graphics with transparency
-- **SVG** — logos and diagrams (scales perfectly)
+- **JPEG** --- photographs (quality 80--90%)
+- **PNG** --- graphics with transparency
+- **SVG** --- logos and diagrams (scales perfectly)
 
 ### Color space
 
-Use **RGB** color space. Ghostscript handles CMYK conversion automatically during the PDF/X pipeline — you do not need to pre-convert images to CMYK.
+Use **RGB** color space. Ghostscript handles CMYK conversion automatically during the PDF/X pipeline --- you do not need to pre-convert images to CMYK.
 
 ### Pre-sizing images
 

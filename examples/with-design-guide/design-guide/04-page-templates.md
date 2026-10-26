@@ -12,13 +12,13 @@ Physical dimensions for the print output. These values are declared in `manifest
 
 | Dimension | Value | Notes |
 |-----------|-------|-------|
-| Trim size | 8.5 × 11 in | US Letter — change in `manifest.yaml` |
+| Trim size | 8.5 × 11 in | US Letter --- change in `manifest.yaml` |
 | Top margin | 0.875 in | Increased to 2.5in on chapter opener pages |
 | Bottom margin | 1 in | Folio sits in this space |
-| Inner margin (gutter) | 0.75 in | Left on recto, right on verso — binding side |
+| Inner margin (gutter) | 0.75 in | Left on recto, right on verso --- binding side |
 | Outer margin | 1 in | Right on recto, left on verso |
 | Bleed | 0.125 in | Extend backgrounds to the page edge; keep text 0.125in inside the trim |
-| Safe area | Trim − 0.125in | Keep all critical content inside this boundary |
+| Safe area | Trim - 0.125in | Keep all critical content inside this boundary |
 
 **Bleed** is the extra area beyond the trim edge that backgrounds and images must extend into, so trimming variation doesn't leave a white sliver. **Safe area** is the inset boundary inside which all text, logos, and critical art must remain.
 
@@ -34,9 +34,9 @@ The default page is active for all content that doesn't use a named `@page` dire
 - **Running header**: chapter title, centered in upper margin, 8pt uppercase
 - **Folio**: page number, outside bottom corner (left on verso, right on recto)
 
-No markdown directive is needed — every paragraph is on the default page unless you explicitly switch.
+No markdown directive is needed --- every paragraph is on the default page unless you explicitly switch.
 
-**CSS** — `@page { … }` and `@page :left / :right { … }` in `guide.css § 2`.
+**CSS** --- `@page { ... }` and `@page :left / :right { ... }` in `guide.css § 2`.
 
 ---
 
@@ -48,7 +48,7 @@ Chapter titles automatically switch to the `chapter` named page via the `page: c
 - **No running header** (the chapter title *is* the header)
 - **Folio**: page number, outside bottom corner
 
-**Directive** — `@page chapter` in markdown only sets `data-page="chapter"` on the page wrapper; this stylesheet defines no `[data-page="chapter"]` rule, so the marker does **not** by itself bind that wrapper to the `@page chapter` CSS rule above. Inserting it before non-`h1` content forces a page break, but onto a page with the *default* margins and running header still printing. The chapter opener's 2.5in top margin and suppressed header come entirely from `h1 { break-before: page; page: chapter; }`, which fires automatically on every chapter title — so in practice `@page chapter` is rarely needed.
+**Directive** --- `@page chapter` in markdown only sets `data-page="chapter"` on the page wrapper; this stylesheet defines no `[data-page="chapter"]` rule, so the marker does **not** by itself bind that wrapper to the `@page chapter` CSS rule above. Inserting it before non-`h1` content forces a page break, but onto a page with the *default* margins and running header still printing. The chapter opener's 2.5in top margin and suppressed header come entirely from `h1 { break-before: page; page: chapter; }`, which fires automatically on every chapter title --- so in practice `@page chapter` is rarely needed.
 
 ```markdown
 @page chapter
@@ -58,7 +58,7 @@ Chapter titles automatically switch to the `chapter` named page via the `page: c
 Opening paragraph of the chapter...
 ```
 
-**Decorative chapter number** — add a `.chapter-num` div above the H1 for a large decorative counter:
+**Decorative chapter number** --- add a `.chapter-num` div above the H1 for a large decorative counter:
 
 ```markdown
 <div class="chapter-num">01</div>
@@ -81,7 +81,7 @@ Opening paragraph of the chapter...
 
 The cover page uses zero margins and sets the background to `--color-accent`. It is typically the first page of the document.
 
-**Directive** — wrap the cover HTML in a `<div class="cover-page">`. The CSS sets `page: cover` on that class.
+**Directive** --- wrap the cover HTML in a `<div class="cover-page">`. The CSS sets `page: cover` on that class.
 
 ```html
 <div class="cover-page">
@@ -107,7 +107,7 @@ The cover page uses zero margins and sets the background to `--color-accent`. It
 
 The full-bleed page strips all margins and header/footer chrome. Use it for full-page images, maps, diagrams, or decorative interstitials.
 
-**Directive** — set `page: full-bleed` on any block element. Typically wrapped in a `@page full-bleed` directive:
+**Directive** --- set `page: full-bleed` on any block element. Typically wrapped in a `@page full-bleed` directive:
 
 ```markdown
 @page full-bleed
@@ -142,7 +142,7 @@ And placed in the margin via:
 }
 ```
 
-**To customize** — change the `content:` value in the margin box. You can use `string()`, `counter()`, or any combination. See the [CSS Generated Content for Paged Media margin box specification](https://www.w3.org/TR/css-gcpm-3/#margin-boxes) for the full reference.
+**To customize** --- change the `content:` value in the margin box. You can use `string()`, `counter()`, or any combination. See the [CSS Generated Content for Paged Media margin box specification](https://www.w3.org/TR/css-gcpm-3/#margin-boxes) for the full reference.
 
 ---
 
@@ -155,7 +155,7 @@ And placed in the margin via:
 | Cover | `@page cover` | `.cover-page` class | 0 | None |
 | Full-bleed | `@page full-bleed` | `page: full-bleed` | 0 | None |
 
-To add a new template, define a new `@page name { … }` rule in `guide.css § 2`, then set `page: name` on the appropriate block element in CSS or as an inline style in the markdown.
+To add a new template, define a new `@page name { ... }` rule in `guide.css § 2`, then set `page: name` on the appropriate block element in CSS or as an inline style in the markdown.
 
 ---
 
@@ -165,21 +165,21 @@ Named page types beyond the four defaults. Add these to `@page` rules in `styles
 
 | Template | CSS class | `page:` value | Top margin | Chrome |
 |----------|-----------|--------------|------------|--------|
-| Default | — | `@page` | 0.875 in | Running header + folio |
+| Default | --- | `@page` | 0.875 in | Running header + folio |
 | Chapter opener | `.chapter-opener` | `chapter` | 2.5 in | Folio only |
 | Cover | `.cover-page` | `cover` | 0 | None |
 | Full-bleed | `page: full-bleed` | `full-bleed` | 0 | None |
 | Front matter | `.front-matter` | `front-matter` | 0.875 in | None (footers suppressed) |
 | Colophon | `.colophon` | `colophon` | 0.875 in | None |
-| Blank | `@page :blank` | `:blank` | — | None (auto-inserted) |
+| Blank | `@page :blank` | `:blank` | --- | None (auto-inserted) |
 
-Define new named pages in `styles/guide.css § 2 PAGE SETUP` following the existing `@page chapter { … }` pattern.
+Define new named pages in `styles/guide.css § 2 PAGE SETUP` following the existing `@page chapter { ... }` pattern.
 
 ---
 
 ## Facing-Page Spread Layout
 
-Use `@spread` to group content into a logical two-page spread — the left and right pages are authored as a unit and the engine keeps them paired.
+Use `@spread` to group content into a logical two-page spread --- the left and right pages are authored as a unit and the engine keeps them paired.
 
 ```markdown
 @spread #sp-intro .intro-spread
@@ -193,7 +193,7 @@ Left page content goes here. Use `@columns 2` for columns within a page.
 Right page content goes here. Both pages render side-by-side in the preview.
 ```
 
-The `@spread` marker emits `<div class="spread">`. The `@page` markers inside it emit `<div class="page">` children. There is no dedicated "close spread" marker — a spread stays open until the next `@spread`, the next `@chapter`, or the end of the file, whichever comes first. Start a new `@chapter` (or `@spread`) when you're ready to leave two-page-spread mode. CSS targets the spread with `.spread.intro-spread` and individual pages with `.spread .page.left-page`.
+The `@spread` marker emits `<div class="spread">`. The `@page` markers inside it emit `<div class="page">` children. There is no dedicated "close spread" marker --- a spread stays open until the next `@spread`, the next `@chapter`, or the end of the file, whichever comes first. Start a new `@chapter` (or `@spread`) when you're ready to leave two-page-spread mode. CSS targets the spread with `.spread.intro-spread` and individual pages with `.spread .page.left-page`.
 
 ---
 
@@ -209,4 +209,4 @@ See the [Typography chapter](#ch-typography) for body text specifications.
 [CLI Reference](#ch-cli)
 ```
 
-The `#ch-*` IDs are set by the `@chapter #id` marker at the top of each source file. In the PDF preview, these render as clickable hyperlinks. In a printed PDF, the `a[href]::after` CSS rule in `guide.css` prints the URL fragment in parentheses — suppress this for internal links with `a[href^="#"]::after { content: none; }` (already set in the stylesheet).
+The `#ch-*` IDs are set by the `@chapter #id` marker at the top of each source file. In the PDF preview, these render as clickable hyperlinks. In a printed PDF, the `a[href]::after` CSS rule in `guide.css` prints the URL fragment in parentheses --- suppress this for internal links with `a[href^="#"]::after { content: none; }` (already set in the stylesheet).

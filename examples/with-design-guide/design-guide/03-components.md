@@ -10,12 +10,12 @@
 
 Use for supplementary information that expands on the body text but isn't required reading. Default callout type.
 
-**Syntax** — `@section .callout-note` … `@end-section`
+**Syntax** --- `@section .callout-note` ... `@end-section`
 
 <div class="example">
 <div class="callout-note">
 <span class="callout-label">Note</span>
-This is a note callout. Use it for tips, clarifications, or extra context that supports the body paragraph above. Keep notes to two or three sentences — longer content belongs in a sidebar or an appendix.
+This is a note callout. Use it for tips, clarifications, or extra context that supports the body paragraph above. Keep notes to two or three sentences &mdash; longer content belongs in a sidebar or an appendix.
 </div>
 </div>
 
@@ -32,7 +32,7 @@ Your note text here.
 
 Use for information the reader must act on before proceeding. The altered color draws the eye before the reader moves past.
 
-**Syntax** — `@section .callout-warning` … `@end-section`
+**Syntax** --- `@section .callout-warning` ... `@end-section`
 
 <div class="example">
 <div class="callout-warning">
@@ -52,9 +52,9 @@ Your warning text here.
 
 ## Callout: Tip
 
-Use for positive guidance — best practices, shortcuts, or "nice to know" improvements. Green accent signals a safe, optional action.
+Use for positive guidance --- best practices, shortcuts, or "nice to know" improvements. Green accent signals a safe, optional action.
 
-**Syntax** — `@section .callout-tip` … `@end-section`
+**Syntax** --- `@section .callout-tip` ... `@end-section`
 
 <div class="example">
 <div class="callout-tip">
@@ -74,14 +74,14 @@ Your tip text here.
 
 ## Sidebar
 
-A floated aside for supplementary reference material. Sidebars run 38% width, float right, and allow body text to wrap alongside. Keep them to 60–120 words.
+A floated aside for supplementary reference material. Sidebars run 38% width, float right, and allow body text to wrap alongside. Keep them to 60--120 words.
 
-**Syntax** — `@section .sidebar` … `@end-section`
+**Syntax** --- `@section .sidebar` ... `@end-section`
 
 <div class="example">
 <div class="sidebar">
 
-**Design note.** This sidebar uses `.sidebar` from `guide.css`. In production you'd replace this placeholder text with a genuine aside — a worked example, a historical note, or a cross-reference — that rewards the reader who pauses but doesn't interrupt those who don't.
+**Design note.** This sidebar uses `.sidebar` from `guide.css`. In production you'd replace this placeholder text with a genuine aside --- a worked example, a historical note, or a cross-reference --- that rewards the reader who pauses but doesn't interrupt those who don't.
 
 </div>
 
@@ -91,7 +91,7 @@ Body text flows alongside the sidebar, demonstrating the float behavior. The sid
 
 ```markdown
 @section .sidebar
-**Sidebar heading.** Sidebar body text (60–120 words).
+**Sidebar heading.** Sidebar body text (60--120 words).
 @end-section
 
 Body paragraph that flows alongside the sidebar.
@@ -101,14 +101,14 @@ Body paragraph that flows alongside the sidebar.
 
 ## Pull Quote
 
-A large-format excerpt from the body text, set off with accent rules above and below. Use sparingly — one per chapter at most.
+A large-format excerpt from the body text, set off with accent rules above and below. Use sparingly --- one per chapter at most.
 
-**Syntax** — `@section .pull-quote` … `@end-section`
+**Syntax** --- `@section .pull-quote` ... `@end-section`
 
 <div class="example">
 <div class="pull-quote">
 <p>The measure of good design is whether the reader notices the design at all.</p>
-<span class="attribution">— Design Guide, Chapter 2</span>
+<span class="attribution">&mdash; Design Guide, Chapter 2</span>
 </div>
 </div>
 
@@ -116,7 +116,7 @@ A large-format excerpt from the body text, set off with accent rules above and b
 @section .pull-quote
 The measure of good design is whether the reader notices the design at all.
 
-<span class="attribution">— Source, Chapter N</span>
+<span class="attribution">&mdash; Source, Chapter N</span>
 @end-section
 ```
 
@@ -126,7 +126,7 @@ The measure of good design is whether the reader notices the design at all.
 
 A key/value data panel for reference material: product specs, character stats, API parameters, recipe ingredient lists. Stays on one page.
 
-**Syntax** — Raw HTML, since standard markdown renders HTML blocks as-is. Wrap in `@section .no-break` only if it needs to stay off a page break.
+**Syntax** --- Raw HTML, since standard markdown renders HTML blocks as-is. Wrap in `@section .no-break` only if it needs to stay off a page break.
 
 <div class="example">
 <div class="spec-block">
@@ -155,20 +155,20 @@ A key/value data panel for reference material: product specs, character stats, A
 
 For epigraphs, pull citations, and extended external quotations. Styled with an accent-alt left border and italic body text.
 
-**Syntax** — Standard markdown `>` blockquote.
+**Syntax** --- Standard markdown `>` blockquote.
 
 <div class="example">
 
 > The best way to predict the future is to design it.
 >
-> — Buckminster Fuller
+> --- Buckminster Fuller
 
 </div>
 
 ```markdown
 > Quote text goes here.
 >
-> — Attribution
+> --- Attribution
 ```
 
 ---
@@ -183,8 +183,8 @@ Full-width tables with a colored header, alternating row fills, and text set at 
 |---------|---------|-------------|
 | `preview` | port 3579 | Live preview server with hot reload |
 | `build` | pdf | Renders to HTML, PDF, or PDF/X |
-| `validate` | — | Pre/post-build print compliance checks |
-| `doctor` | — | Check system tools (Chromium, Ghostscript, qpdf) |
+| `validate` | --- | Pre/post-build print compliance checks |
+| `doctor` | --- | Check system tools (Chromium, Ghostscript, qpdf) |
 
 </div>
 
@@ -200,7 +200,7 @@ Full-width tables with a colored header, alternating row fills, and text set at 
 
 Dense reference content benefits from a two-column layout. Use `@columns 2` to trigger the CSS columns property.
 
-**Syntax** — `@columns 2` … `@column-break` … `@end-columns`
+**Syntax** --- `@columns 2` ... `@column-break` ... `@end-columns`
 
 <div class="example">
 
@@ -210,7 +210,7 @@ The two-column layout divides the content area into two equal columns with a hai
 
 Use two-column layout for glossaries, index-style reference lists, comparison tables that don't fit in a single-column table, and any content where the parallel structure benefits from visual alignment.
 
-Avoid using two-column for narrative prose — it creates a choppy reading experience and complicates page breaks. Save it for genuinely list-like or reference content.
+Avoid using two-column for narrative prose --- it creates a choppy reading experience and complicates page breaks. Save it for genuinely list-like or reference content.
 
 Add `@column-break` on its own line anywhere inside the run to force subsequent content into the right column early.
 
@@ -234,9 +234,9 @@ right column regardless of left column height.
 
 ## Numbered Steps
 
-A zero-padded ordered list for sequential procedures — character creation, workflow steps, setup instructions. Each step is prevented from splitting across a page break.
+A zero-padded ordered list for sequential procedures --- character creation, workflow steps, setup instructions. Each step is prevented from splitting across a page break.
 
-**Syntax** — `<ol class="steps">` with `<li>` children. The CSS counter handles numbering automatically; do not add numbers in the HTML.
+**Syntax** --- `<ol class="steps">` with `<li>` children. The CSS counter handles numbering automatically; do not add numbers in the HTML.
 
 <div class="example">
 <ol class="steps">
@@ -244,15 +244,15 @@ A zero-padded ordered list for sequential procedures — character creation, wor
 <li>Set your accent color. Change <code>--color-accent</code> to your primary brand hue.</li>
 <li>Run <code>gutterpress preview design-guide</code> to see all changes live in the browser.</li>
 <li>Delete any component chapter you don't use. Keep the guide focused on what your book ships.</li>
-<li>Commit both the guide and the book stylesheet together — they share the same CSS file.</li>
+<li>Commit both the guide and the book stylesheet together &mdash; they share the same CSS file.</li>
 </ol>
 </div>
 
 ```html
 <ol class="steps">
-  <li>First step — the CSS counter adds the number automatically.</li>
-  <li>Second step — each item avoids splitting across a page break.</li>
-  <li>Third step — no need to number items in the HTML source.</li>
+  <li>First step -- the CSS counter adds the number automatically.</li>
+  <li>Second step -- each item avoids splitting across a page break.</li>
+  <li>Third step -- no need to number items in the HTML source.</li>
 </ol>
 ```
 
@@ -262,7 +262,7 @@ A zero-padded ordered list for sequential procedures — character creation, wor
 
 A definition list for rules terms, jargon, and key concepts. Use at the end of a chapter or as a standalone reference section.
 
-**Syntax** — `<div class="glossary">` containing `<div class="glossary-term">` / `<div class="glossary-def">` pairs.
+**Syntax** --- `<div class="glossary">` containing `<div class="glossary-term">` / `<div class="glossary-def">` pairs.
 
 <div class="example">
 <div class="glossary">
@@ -290,14 +290,14 @@ A definition list for rules terms, jargon, and key concepts. Use at the end of a
 
 The callout component is designed to be extended. Because `@section` accepts any CSS class name, adding a project-specific callout type (for example, a "Game Master Note" callout) needs no plugin or registration step:
 
-**Step 1 — Add tokens to `§ 1 BRAND TOKENS` in `styles/guide.css`:**
+**Step 1 --- Add tokens to `§ 1 BRAND TOKENS` in `styles/guide.css`:**
 
 ```css
 --color-tint-gm:  #f0f0ff;   /* GM note fill  */
 --border-gm:      3pt solid #5050c0;
 ```
 
-**Step 2 — Add CSS rules to `§ 8 YOUR BOOK LAYER`:**
+**Step 2 --- Add CSS rules to `§ 8 YOUR BOOK LAYER`:**
 
 ```css
 .callout-gm {
@@ -307,7 +307,7 @@ The callout component is designed to be extended. Because `@section` accepts any
 .callout-gm .callout-label { color: #5050c0; }
 ```
 
-**Step 3 — Use in markdown:**
+**Step 3 --- Use in markdown:**
 
 ```markdown
 @section .callout-gm
@@ -316,4 +316,4 @@ This note is only for the GM. Players should not read past this point.
 @end-section
 ```
 
-The same pattern works for any class name — `.callout-lore`, `.callout-safety`, `.callout-example`, etc.
+The same pattern works for any class name --- `.callout-lore`, `.callout-safety`, `.callout-example`, etc.

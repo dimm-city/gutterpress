@@ -56,6 +56,12 @@ This project follows [Semantic Versioning](https://semver.org/).
   advice to type a straight quote was right all along. A right single quote
   that starts a word (’90s, ’tis) is no longer reported: a typed ' there
   prints straight, so there was nothing to type instead.
+- **The shipped example books and starter templates type what the character
+  check asks for.** Their sources had 430 em and en dashes, ellipses and curly
+  quotes typed as the characters themselves; they are now the plain spellings
+  (`---`, `--`, `...`, `"`, `'`), which print the same. Opening one of them
+  no longer starts with hundreds of findings. The validation example's
+  README is documentation, not a page, and is no longer built into its book.
 - **A `|` inside a code span or a formula stays in its table cell.** GFM
   splits a row at every `|` before reading what is between them, so a pipe in
   code or math split the cell and the cells past the header's count vanished.

@@ -1,7 +1,7 @@
 # {{TITLE}}
 
 A zine is short, personal, and made to be photocopied and shared. This page is
-your opening spread — keep it punchy.
+your opening spread --- keep it punchy.
 
 Write a few lines that set the tone. A zine does not need to explain itself; it
 just needs a voice.

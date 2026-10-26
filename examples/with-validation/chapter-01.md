@@ -52,6 +52,6 @@ gutterpress validate --pdf dist/validation-example/validation-example-pdf.pdf --
 gutterpress validate --input . --skip source.stylelint
 ```
 
-> **Note:** Almost all validation runs in-process — no tools to install. Only the PDF/X
+> **Note:** Almost all validation runs in-process --- no tools to install. Only the PDF/X
 > checks need `qpdf` and ink-coverage needs Ghostscript (`gs`); install those, or
 > use the Docker image, only when producing PDF/X.
