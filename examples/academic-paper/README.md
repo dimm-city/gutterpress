@@ -2,20 +2,26 @@
 
 A complete journal-style research article, written in Markdown with LaTeX
 mathematics and built into an 8-page, US Letter PDF. There is no HTML in the
-source, and the only CSS is one short stylesheet of plain rules. Copy this folder
-to start your own paper.
+source and no stylesheet of its own: the look is Gutterpress's built-in
+`academic` look, and math is Gutterpress's bundled Math feature. Copy this
+folder to start your own paper, or start one from the `paper` template:
+
+```bash
+gutterpress new "My Paper" --template paper --preset book
+```
 
 The paper is real: its numbers and its figure are genuine, and the 30-line
 program printed in it (Listing 1) reproduces every result.
 
 ## What's included
 
-- `manifest.yaml`: US Letter page size, the two source files, the stylesheet,
-  and the two extensions that add superscripts and math
+- `manifest.yaml`: the language, US Letter page size, the two source files,
+  and the three extensions: superscripts, math, and the look
 - `paper.md`: the article, from the title block to the acknowledgments
 - `references.md`: the numbered bibliography
 - `figures/convergence.svg`: the figure, an SVG drawn with matplotlib
-- `styles/paper.css`: the journal look
+- `extensions/academic/`: the built-in look, copied in by
+  `gutterpress ext add academic --look` so it is this paper's own file
 
 ## Build
 
@@ -23,9 +29,9 @@ program printed in it (Listing 1) reproduces every result.
 gutterpress build examples/academic-paper
 ```
 
-The first build downloads the pinned math plugin into `plugins/npm/` (which is
-git-ignored); later builds work offline. Use `gutterpress preview
-examples/academic-paper` to write with a live, paginated preview.
+Nothing is downloaded: every extension the paper uses ships inside
+Gutterpress. Use `gutterpress preview examples/academic-paper` to write with a
+live, paginated preview.
 
 ## How the article is written
 
@@ -59,34 +65,32 @@ One line in `manifest.yaml`:
 
 ```yaml
 extensions:
-  - markdown-it-mathjax3@4.3.2
+  - gutterpress-math
 ```
 
-[markdown-it-mathjax3](https://www.npmjs.com/package/markdown-it-mathjax3) is
-an existing markdown-it plugin that typesets `$…$` and `$$…$$` with MathJax. It
-understands the LaTeX you already write: `aligned`, `cases` and matrix
-environments, `\operatorname`, `\mathbb`, `\tag` and so on. It is the best fit
-for print because it writes each formula as an SVG drawing:
+That is the bundled **Math** feature (in the desktop, Project settings →
+Features → Math): `$…$` in a line and `$$…$$` on lines of their own, typeset by
+MathJax, the engine arXiv and Wikipedia print with. It understands the LaTeX
+you already write: `aligned`, `cases` and matrix environments,
+`\operatorname`, `\mathbb`, `\tag`, `\newcommand` and the rest of MathJax's
+set.
 
-- **No fonts and no CSS.** The formulas carry their own glyphs, so the PDF looks
-  the same on every computer and needs no math font installed.
-- **The same in preview and PDF.** The math is drawn when the Markdown is
-  rendered, so the live preview paginates exactly like the printed PDF.
-
-It is pinned to version 4.3.2 because version 5 depends on a native addon,
-which Gutterpress does not install. To add it to another book, run
-`gutterpress ext add markdown-it-mathjax3@4.3.2 <book>`.
-
-KaTeX plugins such as `@vscode/markdown-it-katex` also work. KaTeX's normal
-output needs its stylesheet and about 20 font files copied into your project.
-Its MathML-only output needs neither, but then depends on a math font being
-installed where the PDF is built, and without one the formulas print poorly.
+It writes each formula as a drawing of its own glyphs, so the PDF needs no
+math font on the computer that builds it, no stylesheet and no font files in
+the project, and prints the same everywhere; and the formula is drawn when the
+Markdown is rendered, so the live preview paginates exactly like the PDF. A
+dollar sign that opens no formula is a dollar sign: `$5 and $10` prints as
+typed. A formula MathJax cannot typeset prints in red and is reported in
+Problems with its line and what is wrong.
 
 ## Styling
 
-`styles/paper.css` follows LaTeX's `article` class: a serif text face,
-justified and hyphenated text, 1 in margins and a centered page number. Change the
-look by editing the tokens at the top, using the names the built-in looks use:
+`extensions/academic/theme.css` is the built-in `academic` look, in the spirit
+of LaTeX's `article` class: a serif text face, justified and hyphenated text,
+1 in margins and a centered page number, with the title block, abstract,
+figures, tables, notes and references styled by the `@section` each sits in.
+Change the look by editing the tokens at the top of that file, the same names
+every built-in look uses:
 
 ```css
 :root {
@@ -98,13 +102,12 @@ look by editing the tokens at the top, using the names the built-in looks use:
 ```
 
 The page size is set in `manifest.yaml` (`page.width` and `page.height`, in
-points). For A4, use `595` × `842`.
+points). For A4, use `595` × `842`. The `language` there sets the quotation
+marks straight quotes print as and the hyphenation rules.
 
 ## Tips
 
-- Typographic replacements are on, so `--` prints as an en dash and `---` as an
-  em dash (write page ranges as `pp. 307--357`, as in LaTeX). They also turn
-  `(c)` into ©. Write `\(c)` when you mean the letter.
-- `$` starts math. Write a literal dollar sign as `\$`.
-- Inside a table, `|` separates cells, even inside math. Write `\lvert x \rvert`
-  for an absolute value in a table.
+- `--` prints as an en dash and `---` as an em dash, so write page ranges as
+  `pp. 307--357`, as in LaTeX.
+- A `|` inside a formula or a code span stays in its table cell; one in plain
+  cell text separates cells, so write it as `\|`.

@@ -2,9 +2,11 @@ title: "When Does Romberg Integration Help?"
 authors:
   - "Ada Quill"
   - "Rowan Tate"
+language: en
 
 # A neutral preset with the trim set below: US Letter, 8.5 × 11 in.
-preset: custom
+# For A4, set width 595 and height 842.
+preset: book
 page:
   width: 612
   height: 792
@@ -14,13 +16,11 @@ source:
     - paper.md
     - references.md
 
-styles:
-  - styles/paper.css
-
 extensions:
-  # Superscripts for author/affiliation marks: Quill^1^ (bundled, nothing to install).
+  # Superscripts for author and affiliation marks: Quill^1^.
   - markdown-it-sup
-  # LaTeX math: $inline$ and $$display$$, typeset by MathJax as vector paths, so
-  # the PDF needs no math fonts and no extra CSS. Pinned to 4.x: version 5
-  # depends on a native addon, which Gutterpress does not install.
-  - markdown-it-mathjax3@4.3.2
+  # LaTeX math, $…$ and $$…$$, typeset by MathJax. Bundled: nothing to install.
+  - gutterpress-math
+  # The built-in academic look, copied here by `gutterpress ext add academic --look`
+  # so it is this paper's own, editable file.
+  - ./extensions/academic

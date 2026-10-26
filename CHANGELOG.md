@@ -5,6 +5,54 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Math is a bundled feature (#425).** `gutterpress-math`, listed under
+  `extensions:` or switched on under Project settings → Features → Math, typesets
+  `$…$` in a line and `$$…$$` on lines of their own with MathJax. Each formula is
+  written as a drawing of its own glyphs, so a PDF needs no math font, no
+  stylesheet and no font files in the project, and the preview paginates like
+  the PDF. The `$` grammar is Pandoc's, so `$5 and $10` stays prose. A formula
+  MathJax cannot typeset prints in red and is reported in Problems with its
+  line and the reason (`math_error`). Nothing is downloaded: the feature ships
+  inside Gutterpress like Callouts does.
+- **An `academic` built-in look and a `paper` starter template.** The look is
+  a journal article in the spirit of LaTeX's `article` class (serif, justified
+  and hyphenated, ruled tables, notes and references set smaller), with the
+  title block, abstract, figures, tables and references styled by the
+  `@section` each sits in. `gutterpress new … --template paper` starts a paper
+  with the look, math and superscripts already listed. A template that lists a
+  built-in look as `./extensions/<id>` now has it copied in when the book is
+  created.
+- **A `language` manifest field** (a BCP 47 tag such as `en`, `de-CH` or
+  `pt-BR`; default `en`). It is the `lang` of the built HTML, which is what
+  hyphenation follows (every book hyphenated as English before), and the
+  quotation marks straight quotes print as follow it: „…“ in German, «…» in
+  French, Spanish, Italian and Russian, and so on.
+- **An example paper**, `examples/academic-paper`: a complete, genuine
+  research article with numbered equations, a theorem and proof, a figure,
+  tables, a listing, footnotes and linked references, from Markdown alone.
+
+### Changed
+
+- **Plain typing makes only the typography Gutterpress promises.** `---`,
+  `--`, `...` and straight quotes still print as an em dash, an en dash, an
+  ellipsis and curly quotes, exactly as the character check says. Nothing else
+  is rewritten any more: markdown-it's `typographer` option had also been
+  turning `(c)`, `(r)` and `(tm)` into ©, ® and ™, `+-` into ±, and collapsing
+  runs of `..`, `??`, `!!` and `,,`, conversions nothing documented and that
+  broke every list labelled (a), (b), (c). A symbol you want is typed as
+  itself. The desktop's selection-formatting menu, which had to reverse those
+  conversions to find selected text in the source, no longer refuses any
+  selection containing a comma or an ellipsis.
+- **A `|` inside a code span or a formula stays in its table cell.** GFM
+  splits a row at every `|` before reading what is between them, so a pipe in
+  code or math split the cell and the cells past the header's count vanished.
+  Gutterpress's own table rule now treats a code span, and a formula when the
+  Math feature is on, as one piece; `\|` still escapes a pipe in plain cell
+  text. A row that still has more cells than the header is reported in
+  Problems (`table_extra_cells`) instead of silently losing them.
+
 ## [0.11.22] - 2026-10-23
 
 ### Added
