@@ -4,8 +4,8 @@
  * Two kinds of template share one shape ({@link TemplateInfo}):
  *
  *   - BUILT-IN: shipped as embedded assets (`assets/templates/<id>/`), baked into
- *     the CLI binary via `embedded-assets.ts`. There are three: book, zine,
- *     technical. Listing them is metadata-only (no fs scan needed).
+ *     the CLI binary via `embedded-assets.ts`: book, zine, technical and
+ *     paper. Listing them is metadata-only (no fs scan needed).
  *
  *   - CUSTOM: saved by the author from an existing project ("Save as template")
  *     or imported from a folder. They live under a host-chosen `templatesRoot`
@@ -26,6 +26,7 @@ import { isPathSpecifier } from "./extension-specifier.ts";
 import type { Document } from "yaml";
 
 import type { ProjectTemplateId } from "./project-scaffold.ts";
+import type { BuiltInStyleSetId } from "./extension-manager.ts";
 import { getAssetPath } from "./embedded-assets.ts";
 import { MANIFEST_FILENAMES } from "./manifest.ts";
 import { loadManifestDoc, writeManifestDoc, scalarString } from "./manifest-doc.ts";
@@ -90,9 +91,10 @@ async function readTemplateChoices(
   }
 }
 
-const BUILT_IN_META: Record<
+/** `look`: the built-in look a new book from the template starts with. */
+export const BUILT_IN_META: Record<
   ProjectTemplateId,
-  { label: string; description: string }
+  { label: string; description: string; look?: BuiltInStyleSetId }
 > = {
   book: {
     label: "Book",
@@ -109,6 +111,7 @@ const BUILT_IN_META: Record<
   paper: {
     label: "Academic paper",
     description: "A journal-style article with LaTeX math, numbered equations, figures, tables, notes and references.",
+    look: "academic",
   },
 };
 

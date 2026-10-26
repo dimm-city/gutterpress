@@ -35,13 +35,8 @@ import { PRESET_IDS, PRESETS, type PresetId } from "./presets.ts";
 import { isPositivePoints, writePageBounds, type CustomPageOptions } from "./page-size.ts";
 import { TARGETS, TARGET_IDS } from "./targets.ts";
 import { ensureProjectGitignore } from "./project-gitignore.ts";
-import {
-  BUILT_IN_STYLE_SET_IDS,
-  copyBuiltInStyleSet,
-  entryUse,
-  type BuiltInStyleSetId,
-} from "./extension-manager.ts";
-import { isSeq } from "yaml";
+import { addBuiltInStyleSet } from "./extension-manager.ts";
+import { BUILT_IN_META } from "./project-templates.ts";
 import { slugify } from "./slug.ts";
 
 /**
@@ -51,24 +46,6 @@ import { slugify } from "./slug.ts";
  * give non-technical authors a head start for common formats (#29).
  */
 export type ProjectTemplateId = "book" | "zine" | "technical" | "paper";
-
-/**
- * A template's manifest may list a built-in look as `./extensions/<id>`
- * (the paper template lists `academic`). Copy each one in, as
- * `gutterpress ext add <id> --look` would, so the entry resolves.
- */
-async function copyListedBuiltInLooks(projectDir: string): Promise<void> {
-  const { doc } = await loadManifestDoc(projectDir);
-  const list = doc.get("extensions", true);
-  if (!isSeq(list)) return;
-  for (const item of list.items) {
-    const match = /^\.\/extensions\/([a-z0-9-]+)$/.exec(entryUse(item) ?? "");
-    const id = match?.[1];
-    if (id && (BUILT_IN_STYLE_SET_IDS as readonly string[]).includes(id)) {
-      await copyBuiltInStyleSet(projectDir, id as BuiltInStyleSetId);
-    }
-  }
-}
 
 function starterOverridesCss(): string {
   return `/**
@@ -392,8 +369,9 @@ export async function scaffoldProject(
       await copyFile(tplManifest, path.join(projectDir, MANIFEST_FILENAMES[0]));
       await copyFile(tplChapter, path.join(projectDir, "chapter-01.md"));
       // styles/book.css is the project's OWN stylesheet. A look is separate:
-      // the one the template lists is copied in below, or the author adds
-      // one (`gutterpress ext add … --look`, or from npm).
+      // a template that names one in BUILT_IN_META gets it added below, as
+      // `gutterpress ext add … --look` adds one; otherwise the author does
+      // (that command, or a look from npm).
       await mkdir(path.join(projectDir, "styles"), { recursive: true });
       await writeFile(path.join(projectDir, "styles", "book.css"), starterOverridesCss(), "utf8");
     }
@@ -433,7 +411,8 @@ export async function scaffoldProject(
   let openFile = path.join(projectDir, "chapter-01.md");
   try {
     await fillTemplateFile(manifestPath, substitutions);
-    await copyListedBuiltInLooks(projectDir);
+    const look = customTemplateDir ? undefined : BUILT_IN_META[template].look;
+    if (look) await addBuiltInStyleSet(projectDir, look);
     if (preset) {
       // Overwrite the template's placeholder `preset:` with the author's
       // choice (and their trim, for `custom` or an explicit override) via the

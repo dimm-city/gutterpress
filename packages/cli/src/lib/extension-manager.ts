@@ -229,7 +229,7 @@ function withMutationLock<T>(projectDir: string, mutation: () => Promise<T>): Pr
 // ── Manifest entries ─────────────────────────────────────────────────────────
 
 /** The specifier of one `extensions:` item — the scalar, or a map's `use`. */
-export function entryUse(item: unknown): string | null {
+function entryUse(item: unknown): string | null {
   if (isScalar(item)) return typeof item.value === "string" ? item.value.trim() : null;
   if (isMap(item)) {
     const u = item.get("use");
@@ -1066,18 +1066,14 @@ export async function addBuiltInStyleSet(
     throw new Error(`Unknown built-in look "${id}" (one of: ${BUILT_IN_STYLE_SET_IDS.join(", ")}).`);
   }
   return withMutationLock(projectDir, async () => {
-    await copyBuiltInStyleSet(projectDir, id as BuiltInStyleSetId);
+    const dest = path.join(projectDir, EXTENSIONS_DIR, id);
+    if (!existsSync(dest)) {
+      const src = path.join(await getAssetsDir(), "themes", id);
+      await mkdir(path.dirname(dest), { recursive: true });
+      await cp(src, dest, { recursive: true });
+    }
     return addExtensionUnlocked(projectDir, `./${EXTENSIONS_DIR}/${id}`, {});
   });
-}
-
-/** The copy half of {@link addBuiltInStyleSet}: `extensions/<id>/`, if not there yet. */
-export async function copyBuiltInStyleSet(projectDir: string, id: BuiltInStyleSetId): Promise<void> {
-  const dest = path.join(projectDir, EXTENSIONS_DIR, id);
-  if (existsSync(dest)) return;
-  const src = path.join(await getAssetsDir(), "themes", id);
-  await mkdir(path.dirname(dest), { recursive: true });
-  await cp(src, dest, { recursive: true });
 }
 
 // ── Validate / read ──────────────────────────────────────────────────────────
