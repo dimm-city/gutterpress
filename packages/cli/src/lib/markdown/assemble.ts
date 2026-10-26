@@ -2,8 +2,8 @@
  * Pure (node-free) book-HTML assembly.
  *
  * §1/§8: imports ONLY the pure render core (`renderer.ts`,
- * Gutterpress's marker parser (`markers.js`), and `chapter-id.ts`) — NO
- * `node:*`, NO `fs`/`path`. The
+ * Gutterpress's marker parser (`markers.js`), `chapter-id.ts` and the string
+ * helper `slug.ts`) — NO `node:*`, NO `fs`/`path`. The
  * caller injects an async `readText(relPath)` so the SAME assembly runs:
  *   - on the CLI / preview server with a `node:fs/promises`-backed reader
  *     (see `renderChapters` in `./index.ts`); and
@@ -27,6 +27,7 @@ import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { TWO_VERSIONS_CSS } from "./two-versions.ts";
 import { TABLE_ALIGN_CSS } from "./table-align";
 import { canonicalChapterId } from "./chapter-id";
+import { slugify } from "../slug";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
 import { collectHtmlImageRefs, type ImageRefEnv } from "./images";
 import { lastPageMode, type PrintPadding } from "../../engine/shared/synthesis.ts";
@@ -280,7 +281,18 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     // internal env and discard it the instant this call returned. Passing our
     // own env is what makes the marker parser's author-mistake diagnostics
     // observable to a caller.
-    const env: { layoutWarnings?: LayoutWarning[]; sourceChapter?: string } & ImageRefEnv = {};
+    const env: ImageRefEnv & {
+      layoutWarnings?: LayoutWarning[];
+      sourceChapter?: string;
+      /**
+       * markdown-it-footnote numbers each render from 1 and names its ids
+       * after the number (`fn1`, `fnref1`), so two files with notes would
+       * share every id and a backlink could land in the other file. With a
+       * `docId` it prefixes them (`fn-<docId>-1`); the chapter id, slugified
+       * so it is legal in an HTML id and a URL fragment, keeps them apart.
+       */
+      docId: string;
+    } = { docId: slugify(chapterId) };
     if (opts.annotateSourceChapters) env.sourceChapter = chapterId;
     // Always use the public render path: standard markdown-it plugins may
     // legitimately wrap md.render(), and preview/build must both observe it.

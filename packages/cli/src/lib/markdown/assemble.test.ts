@@ -94,6 +94,41 @@ test("chapter metadata preserves plugins that wrap md.render", async () => {
   expect(html).toMatch(/<h1[^>]*data-chapter-src="chapter.md"/);
 });
 
+test("footnotes in two files get their own ids, and each reference links to its own file's note", async () => {
+  const files: Record<string, string> = {
+    "chapters/01.md": "# One\n\nFirst.[^a]\n\n[^a]: Note one.\n",
+    "chapters/02.md": "# Two\n\nSecond.[^b]\n\n[^b]: Note two.\n",
+  };
+  const html = await assembleBookHtml({
+    files: Object.keys(files),
+    readText: (rel) => Promise.resolve(files[rel]!),
+  });
+  // Each file renders on its own and numbers its notes from 1, so the ids
+  // carry the file: never `fn1` twice in one book.
+  expect(html.match(/<li id="fn[^"]*"/g)).toEqual([
+    '<li id="fn-chapters-01-md-1"',
+    '<li id="fn-chapters-02-md-1"',
+  ]);
+  expect(html).toContain('<a href="#fn-chapters-01-md-1" id="fnref-chapters-01-md-1">');
+  expect(html).toContain('<a href="#fn-chapters-02-md-1" id="fnref-chapters-02-md-1">');
+  expect(html).toContain('<a href="#fnref-chapters-01-md-1" class="footnote-backref">');
+  expect(html).toContain('<a href="#fnref-chapters-02-md-1" class="footnote-backref">');
+  // No id is used twice, and every in-book link lands on one.
+  const ids = [...html.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]);
+  expect(new Set(ids).size).toBe(ids.length);
+  for (const [, href] of html.matchAll(/ href="#([^"]+)"/g)) expect(ids).toContain(href);
+});
+
+test("a single file's footnote links still resolve", async () => {
+  const html = await assembleBookHtml({
+    files: ["paper.md"],
+    readText: () => Promise.resolve("Text.[^1]\n\n[^1]: The note.\n"),
+  });
+  expect(html).toContain('<li id="fn-paper-md-1"');
+  expect(html).toContain('<a href="#fn-paper-md-1" id="fnref-paper-md-1">');
+  expect(html).toContain('<a href="#fnref-paper-md-1" class="footnote-backref">');
+});
+
 test("assembleBookHtml throws on empty file list", async () => {
   await expect(
     assembleBookHtml({ files: [], readText: () => Promise.resolve("") }),

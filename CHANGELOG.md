@@ -35,6 +35,11 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **A footnote links to its own note in a book of several files.** Each file
+  numbers its notes from 1, and the links behind the numbers were named after
+  the number alone, so in a book with notes in two files a note's return arrow,
+  or a tap on a number, could land in the other file. The links now carry the
+  file's name too; the numbers an author sees are unchanged.
 - **Plain typing makes only the typography Gutterpress promises.** `---`,
   `--`, `...` and straight quotes still print as an em dash, an en dash, an
   ellipsis and curly quotes, exactly as the character check says. Nothing else
