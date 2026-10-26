@@ -29,25 +29,29 @@
  * to "couldn't locate this text — disable the item", never a guessed edit.
  */
 
-/** Reverse map of the typography the renderer makes from plain typing,
- *  keyed one raw Unicode character at a time (each key below is exactly one
- *  character, so there is no overlap/ordering ambiguity between entries).
- *
- *  Sourced from the two rules this project's renderer runs
- *  (`packages/cli/src/lib/markdown/renderer.ts`): Gutterpress's own
- *  `gp_typography` (`typography.ts` — `---`, `--`, `...`) and markdown-it's
- *  `smartquotes` with the default `quotes: "“”‘’"`. Every one is exactly
- *  one-to-one, so reversing it is deterministic. There is NO NBSP rule in
- *  either — do not add one. */
+/** Reverse map of the typography Gutterpress's own `gp_typography` rule
+ *  (`packages/cli/src/lib/markdown/typography.ts`) makes from plain typing,
+ *  keyed one raw Unicode character at a time. Every one is exactly
+ *  one-to-one, so reversing it is deterministic. Quotation marks are not
+ *  here: see {@link QUOTES}. */
 const TYPOGRAPHER_REVERSE: ReadonlyArray<readonly [string, string]> = [
   ["—", "---"], // — em dash
   ["–", "--"], // – en dash
   ["…", "..."], // … ellipsis
-  ["“", '"'], // “
-  ["”", '"'], // ”
-  ["‘", "'"], // ‘
-  ["’", "'"], // ’ (also the mid-word apostrophe substitution)
 ];
+
+/** Every quotation mark the renderer can print — any language's outer or
+ *  inner pair (markdown-it's `smartquotes`, with the `quotes` the book's
+ *  `language` selects) — and the two straight quotes an author types. All
+ *  of them fold to ONE character on both sides of the search, because which
+ *  straight quote a printed one came from depends on the language (« is a
+ *  typed `"` in French and a typed `'` in Polish) and the search must not
+ *  need to know. French prints a no-break space just inside its guillemets
+ *  (`«\u00a0mot\u00a0»`); that space is dropped with the mark. A no-break
+ *  space anywhere else passes through unchanged. */
+const QUOTES: ReadonlySet<string> = new Set(['"', "'", "“", "”", "„", "‘", "’", "‚", "«", "»", "‹", "›"]);
+const QUOTE = '"';
+const NBSP = "\u00a0";
 
 const TYPOGRAPHER_LOOKUP = new Map(TYPOGRAPHER_REVERSE);
 
@@ -97,6 +101,18 @@ export function normalizeForSearch(
 
   while (i < n) {
     const ch = raw[i]!;
+
+    if (QUOTES.has(ch)) {
+      normalized += QUOTE;
+      indexMap.push(i);
+      i += 1;
+      if (raw[i] === NBSP) i += 1;
+      continue;
+    }
+    if (ch === NBSP && QUOTES.has(raw[i + 1] ?? "")) {
+      i += 1;
+      continue;
+    }
 
     const typo = TYPOGRAPHER_LOOKUP.get(ch);
     if (typo !== undefined) {

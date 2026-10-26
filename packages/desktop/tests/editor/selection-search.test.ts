@@ -78,10 +78,6 @@ describe("normalizeForSearch — typography reverse map (every rule)", () => {
     ["em dash: --- -> —", "—", "---"],
     ["en dash: -- -> –", "–", "--"],
     ["ellipsis: ... -> …", "…", "..."],
-    ["left double quote: “", "“", '"'],
-    ["right double quote: ”", "”", '"'],
-    ["left single quote: ‘", "‘", "'"],
-    ["right single quote / apostrophe: ’", "’", "'"],
   ];
 
   for (const [label, glyph, ascii] of cases) {
@@ -96,13 +92,46 @@ describe("normalizeForSearch — typography reverse map (every rule)", () => {
     const raw = "She said “wait—really… fine” then it’s © 2026, (c) literal.";
     const r = normalizeForSearch(raw, { stripDelimiters: false });
     expect(r.normalized).toBe(
-      'She said "wait---really... fine" then it\'s © 2026, (c) literal.',
+      'She said "wait---really... fine" then it"s © 2026, (c) literal.',
     );
     assertValidIndexMap(raw, r);
   });
 
+  test("every quotation mark, straight or printed in any language, folds to one character on both sides", () => {
+    // What the author typed, and what the renderer prints for it in
+    // English, German, French (with its no-break spaces) and Polish inner
+    // quotes (« from a typed ' there, from a typed " in French).
+    const typed = 'She said "it\'s fine", then \'no\'.';
+    const rendered = [
+      "She said “it’s fine”, then ‘no’.",
+      "She said „it’s fine“, then ‚no‘.",
+      "She said «\u00a0it’s fine\u00a0», then ‹\u00a0no\u00a0›.",
+      "She said „it’s fine”, then «no».",
+    ];
+    const want = normalizeForSearch(typed, { stripDelimiters: false }).normalized;
+    expect(want).toBe('She said "it"s fine", then "no".');
+    for (const raw of rendered) {
+      const r = normalizeForSearch(raw, { stripDelimiters: false });
+      expect(r.normalized).toBe(want);
+      assertValidIndexMap(raw, r);
+    }
+  });
+
+  test("German and French selections are located in the source", () => {
+    expect(locateSelectionInSource('sagte "Hallo" zu mir', "sagte „Hallo“ zu mir")).toEqual({
+      start: 0,
+      end: 20,
+      matchedText: 'sagte "Hallo" zu mir',
+    });
+    expect(locateSelectionInSource('dit "Bonjour" à moi', "dit «\u00a0Bonjour\u00a0» à moi")).toEqual({
+      start: 0,
+      end: 19,
+      matchedText: 'dit "Bonjour" à moi',
+    });
+  });
+
   test("does NOT introduce an NBSP rule — a literal U+00A0 passes through unchanged, not collapsed", () => {
-    // Neither typography rule the renderer runs makes an NBSP. U+00A0
+    // Only a quotation mark's own no-break space (French) is dropped. U+00A0
     // is also not part of THIS module's `[ \t\r\n]` whitespace-collapse
     // definition, so a literal NBSP is copied through verbatim, distinct
     // from an ordinary space.
