@@ -28,84 +28,47 @@ jobs:
   # ── 1. Gate ────────────────────────────────────────────────────────────────
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
     steps:
-      # Test the branch the release is dispatched from (default branch for a
-      # stable release, or a release/* branch for a prerelease).
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.ref_name }}
-
-      # CI (ci.yml) runs this same `bun --filter '*' test` on every push to the
-      # default and release/* branches. When a completed, successful CI run
-      # exists for the exact commit being released, the tests are not repeated
-      # here; the release-tooling check at the end still runs (CI has no
-      # equivalent). A commit CI never saw, or saw red, is gated as before.
-      - name: Look for a green CI run on this commit
+      - name: Look for a complete green CI run on this commit
         id: ci
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.sha }}
         run: |
-          n=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$SHA&status=success&per_page=1" --jq '.workflow_runs | length')
-          if [ "$n" -gt 0 ]; then
-            echo "CI is green on $SHA — not repeating the test run."
-            echo "passed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No green CI run for $SHA — running the tests here."
-            echo "passed=false" >> "$GITHUB_OUTPUT"
+          run_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SHA&event=push&status=success&per_page=1" --jq '.workflow_runs[0].id // empty')
+          passed=false
+          if [ -n "$run_id" ]; then
+            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100" --jq '[.jobs[] | select(.conclusion == "success" and (.name == "Test" or .name == "Checks")) | .steps[]? | select((.name == "Run all workspace tests" or .name == "Run tests") and .conclusion == "success")] | length')
+            if [ "$n" -gt 0 ]; then passed=true; fi
           fi
+          echo "passed=$passed" >> "$GITHUB_OUTPUT"
+          echo "Full workspace tests already passed on $SHA: $passed"
 
-      # Ghostscript rasterises PDFs for the pixel-diff suites, INCLUDING
-      # page-background-chromium-bug.canary.test.ts — the expiry trigger that
-      # goes red the day Chromium fixes the @page background bug so we delete
-      # the workaround instead of entrenching it. Without it those suites
-      # silently skip while reporting green; ci-preconditions.test.ts fails
-      # the run when Ghostscript is missing, because a skipped removal trigger
-      # and a passing one look identical in CI output. Do not remove this step
-      # without removing that guard's reason for existing.
-      - if: steps.ci.outputs.passed != 'true'
-        name: Install PDF tooling (Ghostscript, qpdf)
+      # Partial CI success cannot authorize a release. The full suite needs
+      # real Chrome, Ghostscript and qpdf; its precondition tests enforce this.
+      - name: Install PDF tools from cache
+        if: steps.ci.outputs.passed != 'true'
         uses: ./.github/actions/pdf-tools
-      - name: Setup Bun (cached)
-        uses: ./.github/actions/bun
-
-      # Pinned like ci.yml's six install steps (#286) and the two build jobs
-      # below: this job is the gate that authorises a release, so it must test
-      # the tree bun.lock describes, not whatever resolves on the day. The
-      # `version` job's plain install further down is the deliberate exception,
-      # and says so in place.
+      - uses: ./.github/actions/bun
+        if: steps.ci.outputs.passed != 'true'
       - name: Install dependencies
+        if: steps.ci.outputs.passed != 'true'
         run: bun install --frozen-lockfile
-
-      # NO Chromium pin here, and NO CHROMIUM_PATH override — the engine
-      # resolves the runner image's google-chrome-stable, exactly as ci.yml
-      # does. A pin would make the release gate reproducible (the 151
-      # incident, engine/shared/cdp.ts above REQUIRED_MILESTONE: a Chromium
-      # milestone changed Paged Media behaviour with NO error and every
-      # cross-reference silently vanished), but #194's Chrome for Testing pin
-      # broke every render test the moment it took effect. A pin that lands
-      # again must be >= REQUIRED_MILESTONE, have every changed measurement
-      # treated as a finding, and be proven by a prerelease dispatch first —
-      # release.yml is workflow_dispatch-only, so no PR run will catch a bad
-      # pin for you.
-
-      - if: steps.ci.outputs.passed != 'true'
-        name: Build package dist
-        run: bun run build
+      - name: Build package dist
+        if: steps.ci.outputs.passed != 'true'
         working-directory: packages/cli
-
-      # No GUTTERPRESS_CHROMIUM_ARGS here, to match ci.yml exactly: the
-      # runner-image google-chrome-stable needs no sandbox flag. A Chrome for
-      # Testing pin WILL need --no-sandbox (it ships no SUID sandbox helper and
-      # aborts with "FATAL: No usable sandbox!" under this runner's AppArmor
-      # policy, c4be60e) — add the flag only alongside such a pin, never
-      # speculatively.
-      - if: steps.ci.outputs.passed != 'true'
-        name: Run tests
+        run: bun run build
+      - name: Run all workspace tests
+        if: steps.ci.outputs.passed != 'true'
         run: bun --filter '*' test
-
       - name: Check release distribution tooling and metadata
         run: |
           node tools/prepare-release-assets.test.mjs
@@ -122,7 +85,7 @@ jobs:
   version:
     name: Bump Version
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write
@@ -268,23 +231,11 @@ jobs:
   # user whose channel resolves to it, so there is no mode that skips them.
 
   build-cli:
-    name: CLI / ${{ matrix.artifact }}
+    name: CLI binaries
     needs: version
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: bun-linux-x64
-            artifact: gutterpress-cli-linux-x64
-          - target: bun-linux-arm64
-            artifact: gutterpress-cli-linux-arm64
-          - target: bun-darwin-x64
-            artifact: gutterpress-cli-macos-x64
-          - target: bun-darwin-arm64
-            artifact: gutterpress-cli-macos-arm64
-          - target: bun-windows-x64
-            artifact: gutterpress-cli-windows-x64.exe
-    runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
@@ -296,26 +247,33 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build standalone binary
+      - name: Build standalone binaries with one dependency install
         working-directory: packages/cli
-        run: bun build src/cli.ts --compile --target=${{ matrix.target }} --outfile=../../${{ matrix.artifact }}
+        run: |
+          for spec in \
+            bun-linux-x64:gutterpress-cli-linux-x64 \
+            bun-linux-arm64:gutterpress-cli-linux-arm64 \
+            bun-darwin-x64:gutterpress-cli-macos-x64 \
+            bun-darwin-arm64:gutterpress-cli-macos-arm64 \
+            bun-windows-x64:gutterpress-cli-windows-x64.exe; do
+            bun build src/cli.ts --compile --target="${spec%%:*}" --outfile="../../${spec#*:}"
+          done
 
       # Smoke test: fail fast if the compiled binary can't even run. Only
       # feasible for linux-x64 since this job runs on ubuntu-latest and can't
       # execute the other targets' binaries.
       - name: Smoke test binary
-        if: ${{ matrix.target == 'bun-linux-x64' }}
         run: |
           set -euo pipefail
-          chmod +x "${{ matrix.artifact }}"
-          "./${{ matrix.artifact }}" --version
+          chmod +x "gutterpress-cli-linux-x64"
+          "./gutterpress-cli-linux-x64" --version
           # Exercise the embedded-assets extraction path — CLAUDE.md flags it
           # as the fragile part of `bun build --compile`, and --version alone
           # never touches it. `new` scaffolds from an embedded template,
           # so a broken extraction fails here instead of shipping. `--dir` is the
           # (existing) parent save location; the project lands in a slug subdir.
           mkdir -p /tmp/gutterpress-smoke
-          "./${{ matrix.artifact }}" new "Smoke Test Book" --dir /tmp/gutterpress-smoke --preset book --no-git
+          "./gutterpress-cli-linux-x64" new "Smoke Test Book" --dir /tmp/gutterpress-smoke --preset book --no-git
           echo "Scaffolded files:"
           find /tmp/gutterpress-smoke -maxdepth 3 -type f | sort
           # A scaffolded project must contain at least one markdown file and a
@@ -325,26 +283,28 @@ jobs:
           test -n "$(find /tmp/gutterpress-smoke -name 'manifest.yaml' -print -quit)"
           # Exercise the compiled binary's registry installer and direct-entry
           # loader with a real plugin that imports a runtime dependency.
-          "./${{ matrix.artifact }}" ext add markdown-it-highlightjs@4.3.0 /tmp/gutterpress-smoke/smoke-test-book
+          "./gutterpress-cli-linux-x64" ext add markdown-it-highlightjs@4.3.0 /tmp/gutterpress-smoke/smoke-test-book
           test -f /tmp/gutterpress-smoke/smoke-test-book/plugins/npm/markdown-it-highlightjs/4.3.0/node_modules/markdown-it-highlightjs/node_modules/highlight.js/package.json
           # Cover the two npm archive/module shapes that have broken the
           # compiled installer in practice: @types' legacy tar root and a
           # package whose markdown-it plugin is a named export.
-          "./${{ matrix.artifact }}" ext add markdown-it-anchor@9.2.1 /tmp/gutterpress-smoke/smoke-test-book
-          "./${{ matrix.artifact }}" ext add markdown-it-emoji@3.0.0 /tmp/gutterpress-smoke/smoke-test-book --export full
-          "./${{ matrix.artifact }}" build /tmp/gutterpress-smoke/smoke-test-book --format html
+          "./gutterpress-cli-linux-x64" ext add markdown-it-anchor@9.2.1 /tmp/gutterpress-smoke/smoke-test-book
+          "./gutterpress-cli-linux-x64" ext add markdown-it-emoji@3.0.0 /tmp/gutterpress-smoke/smoke-test-book --export full
+          "./gutterpress-cli-linux-x64" build /tmp/gutterpress-smoke/smoke-test-book --format html
 
-      - name: Upload binary
+      - name: Upload CLI binaries
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
+          name: gutterpress-cli-binaries
+          path: gutterpress-cli-*
           if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
 
   build-desktop-linux:
     name: Gutterpress desktop / Linux AppImage
     needs: version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
@@ -374,6 +334,8 @@ jobs:
             packages/desktop/dist/*.blockmap
             packages/desktop/dist/latest-linux.yml
           if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
 
   build-desktop-windows:
     name: Gutterpress desktop / Windows installer + zip
@@ -389,16 +351,6 @@ jobs:
           ref: ${{ needs.version.outputs.sha }}
 
       - uses: ./.github/actions/bun
-
-      # electron-builder downloads Electron, NSIS and the winCodeSign tools on
-      # every run — the slowest part of the slowest job. Keep them between
-      # runs, keyed on the desktop manifest (which pins the Electron version).
-      - uses: actions/cache@v5
-        with:
-          path: |
-            ~/AppData/Local/electron/Cache
-            ~/AppData/Local/electron-builder/Cache
-          key: electron-win-${{ hashFiles('packages/desktop/package.json') }}
 
       # See build-desktop-linux — one packaging path, every
       # platform, release and debug workflows alike.
@@ -419,6 +371,8 @@ jobs:
             packages/desktop/dist/*.blockmap
             packages/desktop/dist/latest.yml
           if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
 
   build-desktop-mac:
     name: Gutterpress desktop / macOS DMG
@@ -449,6 +403,8 @@ jobs:
           name: gutterpress-desktop-mac
           path: packages/desktop/dist/*.dmg
           if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
 
   # ── 4. Publish to npm (skippable) ─────────────────────────────────────────
   publish-npm:
@@ -461,7 +417,7 @@ jobs:
     needs:
       [version, build-cli, build-desktop-linux, build-desktop-windows, build-desktop-mac]
     if: ${{ !inputs.skip_npm_publish }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -553,7 +509,7 @@ jobs:
        needs.build-desktop-windows.result == 'success' &&
        needs.build-desktop-mac.result == 'success' &&
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write

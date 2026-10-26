@@ -3,7 +3,6 @@ name: CI
 on:
   push:
     branches: [main, develop, "release/**"]
-    # Skip prose docs, but keep Markdown used as rendering input covered.
     paths: &ci-paths
       - "**"
       - "!*.md"
@@ -11,120 +10,143 @@ on:
       - "!packages/*/*.md"
       - "!packages/*/docs/**"
       - "!packaging/*.md"
-      - "!website/*.md"
+      - "!website/**"
       - "docs/fixtures/**"
   pull_request:
     branches: [main, develop, "release/**"]
     paths: *ci-paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    # Same ceiling as release.yml's Test job. A normal run takes ~3 min; without a
-    # limit, a test that stalls holds the runner for GitHub's 6-hour default.
-    timeout-minutes: 10
+  scope:
+    name: Select gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      cli: ${{ steps.scope.outputs.cli }}
+      desktop: ${{ steps.scope.outputs.desktop }}
+      plugin: ${{ steps.scope.outputs.plugin }}
+      tooling: ${{ steps.scope.outputs.tooling }}
+      render: ${{ steps.scope.outputs.render }}
+      preview: ${{ steps.scope.outputs.preview }}
+      behaviour: ${{ steps.scope.outputs.behaviour }}
+      audit: ${{ steps.scope.outputs.audit }}
     steps:
       - uses: actions/checkout@v5
+      - run: node --test tools/ci-scope.test.mjs
+      - id: scope
+        run: node tools/ci-scope.mjs
 
-      # The PDF/X tests self-skip when their external tool is absent
-      # (ghostscript.integration.test.ts uses `ghostscript ? test : test.skip`),
-      # so without these the suite reports green while never exercising real
-      # PDF/X color conversion at all.
-      #
-      # Ghostscript has a SECOND dependent, and it is the one with no second
-      # chance: page-background-chromium-bug.canary.test.ts, the expiry trigger
-      # for the `@page { background: url() }` preload shim (#152; the agreed
-      # fix is recorded in PR #186). It needs Chromium AND Ghostscript, and
-      # self-skips on either. A skipped canary is a green CI that has stopped
-      # watching for the day Chromium fixes #152 — the shim then entrenches
-      # silently, the exact risk that test's header names. So this job must
-      # always leave SOME
-      # Chromium and SOME Ghostscript resolvable. Removing either tool entirely
-      # means deleting that test and its shim in the same change. (The one
-      # Chromium is the runner image's, at /usr/bin/google-chrome-stable — see
-      # the CHROMIUM_PATH step below.)
-      - name: Install PDF tooling (Ghostscript, qpdf)
-        uses: ./.github/actions/pdf-tools
-
-      - name: Setup Bun (cached)
-        uses: ./.github/actions/bun
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      # NO `browser-actions/setup-chrome` step, on purpose — do not re-add one.
-      # Its ~150MB Chrome for Testing download would go unused: this step pins
-      # CHROMIUM_PATH to the runner IMAGE's Chrome
-      # (/usr/bin/google-chrome-stable), and the one resolver
-      # (lib/chromium.ts's SYSTEM_PATHS, which the one launcher
-      # engine/shared/cdp.ts's launchChromium uses) checks that env var before
-      # any other candidate. setup-chrome's binary is named `chrome`, so it is
-      # not reachable via the PATH probe either — that runs only once every
-      # fixed path misses.
-      #
-      # `chrome-version: stable` pins nothing, so the action buys no
-      # reproducibility the runner image doesn't already give — it only makes
-      # the version LOOK controlled. If a SPECIFIC Chromium is ever needed
-      # (e.g. to hold the engine's REQUIRED_MILESTONE floor in cdp.ts), add it
-      # with an EXACT version and delete this override — one or the other,
-      # never both, or the pin is a no-op.
-      - name: Point Gutterpress at the runner's system Chrome
+  checks:
+    name: Checks
+    needs: scope
+    if: >-
+      needs.scope.outputs.cli == 'true' || needs.scope.outputs.desktop == 'true' ||
+      needs.scope.outputs.plugin == 'true' || needs.scope.outputs.tooling == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check release tooling
+        if: needs.scope.outputs.tooling == 'true'
         run: |
-          echo "CHROMIUM_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
+          node tools/prepare-release-assets.test.mjs
+          node tools/update-package-managers.test.mjs
+          node tools/update-package-managers.mjs --check
 
-      # The desktop suite imports gutterpress by name (resolves to its built
-      # dist/), so build the package first — same prerequisite as release.yml.
-      - name: Build package dist
-        run: bun run build
+      - uses: ./.github/actions/bun
+        if: needs.scope.outputs.cli == 'true' || needs.scope.outputs.desktop == 'true' || needs.scope.outputs.plugin == 'true'
+      - name: Install dependencies once
+        if: needs.scope.outputs.cli == 'true' || needs.scope.outputs.desktop == 'true' || needs.scope.outputs.plugin == 'true'
+        run: bun install --frozen-lockfile
+      - name: Build CLI and library once
+        if: needs.scope.outputs.cli == 'true' || needs.scope.outputs.desktop == 'true'
         working-directory: packages/cli
+        run: bun run build
+      - name: Type check CLI
+        if: needs.scope.outputs.cli == 'true'
+        working-directory: packages/cli
+        run: bun run typecheck
+      - name: Build and check desktop
+        if: needs.scope.outputs.desktop == 'true'
+        working-directory: packages/desktop
+        run: |
+          node_modules/.bin/vite build
+          bun run electron:build
+          node ../../tools/check-render-purity.test.mjs
+          node ../../tools/check-render-purity.mjs build/client --strict
+          bun run check
+          bun run typecheck
 
-      # THE SAME COMMAND release.yml's Test job runs, on purpose. These two
-      # gates drifted three times in one release cycle and every drift shipped
-      # a failure to the later, slower gate: the Ghostscript gap and the cdp
-      # launch timeout both failed RELEASE dispatches after ci was green,
-      # because ci ran `--filter gutterpress` while release ran `--filter '*'`.
-      # One command, run at PR time, means anything that would fail the
-      # release gate fails here first. It covers the desktop suite too, so
-      # there is no separate desktop test job to drift.
-      - name: Run tests
+      - name: Install PDF tools from cache
+        if: needs.scope.outputs.cli == 'true'
+        uses: ./.github/actions/pdf-tools
+      - name: Use the runner's Chrome
+        if: needs.scope.outputs.cli == 'true' || needs.scope.outputs.preview == 'true'
+        run: echo "CHROMIUM_PATH=$(command -v google-chrome-stable)" >> "$GITHUB_ENV"
+      # Release reuse requires this exact step to succeed, not just a green
+      # workflow in which an unrelated package or a docs change was checked.
+      - name: Run all workspace tests
+        if: needs.scope.outputs.cli == 'true' && needs.scope.outputs.desktop == 'true' && needs.scope.outputs.plugin == 'true'
         run: bun --filter '*' test
-
-      - name: Test Open Design plugin contract
+      - name: Run CLI tests
+        if: needs.scope.outputs.cli == 'true' && !(needs.scope.outputs.desktop == 'true' && needs.scope.outputs.plugin == 'true')
+        working-directory: packages/cli
+        run: bun test
+      - name: Run desktop tests
+        if: needs.scope.outputs.desktop == 'true' && !(needs.scope.outputs.cli == 'true' && needs.scope.outputs.plugin == 'true')
+        working-directory: packages/desktop
+        run: bun run test
+      - name: Run plugin tests
+        if: needs.scope.outputs.plugin == 'true' && !(needs.scope.outputs.cli == 'true' && needs.scope.outputs.desktop == 'true')
         working-directory: packages/open-design-plugin
         run: bun test
-
-      # Preview<->print parity is the invariant this project treats as most
-      # important.
       - name: Preview/print parity gate
+        if: needs.scope.outputs.render == 'true'
         working-directory: packages/cli
         run: bun scripts/native-parity-gate.ts
+      - name: Preview smoke with the runner's Chrome
+        if: needs.scope.outputs.preview == 'true'
+        timeout-minutes: 5
+        working-directory: packages/cli
+        run: node_modules/.bin/playwright test -c tests/compat/playwright.config.ts
+        env:
+          DEBUG: pw:webserver
+      - name: Drive the desktop app
+        if: needs.scope.outputs.behaviour == 'true'
+        timeout-minutes: 5
+        working-directory: packages/desktop
+        run: |
+          command -v xvfb-run
+          xvfb-run -a node tests/integration/problems-last-hop.pw.mjs out/main/main.js
+          xvfb-run -a node tests/integration/app-lifecycle-log.pw.mjs out/main/main.js
+          xvfb-run -a node tests/integration/editor-opens-with-content.pw.mjs
+          xvfb-run -a node tests/integration/editor-toggle-loads-module.pw.mjs
+          xvfb-run -a node tests/integration/panel-reopen-on-failed-open.pw.mjs
+          xvfb-run -a node tests/integration/problems-panel.pw.mjs
+          xvfb-run -a node tests/integration/block-properties.pw.mjs
+          xvfb-run -a node tests/integration/editor-dropdown-sync.pw.mjs out/main/main.js
+          xvfb-run -a node tests/integration/preview-zoom-wheel.pw.mjs out/main/main.js
 
-  # Enforces "core is a no-op for the un-migrated book" (0.10.6 milestone,
-  # gutterpress#252) by building the SAME fixture sources with the base
-  # branch's CLI and the PR's CLI in one job (one Chromium) and comparing the
-  # two PDFs page-for-page. A report captured on a different Chromium/runner
-  # drifts by fractions of a point and produces false diffs — a same-job pair
-  # never does (see docs/render-parity-gate.md).
-  #
-  # `pull_request` only: this needs a base commit to diff against, and a push
-  # to main/develop/release/** has no "before" side.
-  #
-  # dc-op-manual (the real field guide this milestone is about) is private
-  # and ungated here — see docs/render-parity-gate.md's "same-job A/B
-  # rationale" section. This job is the public floor: the two example books
-  # shipped in this repo, gated on every PR. The real book's own CI
-  # (dc-op-manual) runs the same tool against its own baselines.
+  security-audit:
+    needs: scope
+    if: needs.scope.outputs.audit == 'true'
+    uses: ./.github/workflows/security-audit.yml
+
   render-parity:
     name: Render parity (public fixtures)
-    runs-on: ubuntu-latest
+    needs: scope
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && needs.scope.outputs.render == 'true'
     steps:
-      # Base into its own `base/` checkout so the head checkout's own working
-      # tree — the `examples/` sources BOTH CLIs render below — never moves
-      # under a later step. Only the CLI differs between the two builds; the
-      # fixture content does not, which is what isolates a core-only change.
       - name: Checkout PR head
         uses: actions/checkout@v5
 
@@ -144,10 +166,6 @@ jobs:
         run: bun install --frozen-lockfile
         working-directory: base
 
-      # NOTE: never use `bun --cwd <pkg> run <script>` — on Bun 1.3.x that
-      # form prints `bun run` usage and EXITS 0 without running the script
-      # (see the Build job's own note below in this file). `working-directory`
-      # + `bun run <script>` is the robust form.
       - name: Build head CLI
         working-directory: packages/cli
         run: bun run build
@@ -156,17 +174,10 @@ jobs:
         working-directory: base/packages/cli
         run: bun run build
 
-      # Same step, same reasoning as the Test job above: pin CHROMIUM_PATH to
-      # the runner image's Chrome so both builds below render with the
-      # IDENTICAL Chromium.
       - name: Point Gutterpress at the runner's system Chrome
         run: |
           echo "CHROMIUM_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
 
-      # Plain `--format pdf` (never pdfx here — the gate reads nothing from
-      # PDF/X, and pdfx needs Ghostscript + an ICC profile this job has no use
-      # for). Both CLIs render the HEAD checkout's own fixture sources, so a
-      # PDF diff below can only come from the CLI itself, not from the content.
       - name: Build public fixtures with base + head CLI
         run: |
           set -e
@@ -179,14 +190,9 @@ jobs:
             node packages/cli/dist/cli.js build "$fixture" --format pdf --out "/tmp/render-parity/head/$slug.pdf"
           done
 
-      # --raster (#295) also compares every page as pixels, so a colour change
-      # that moves no text run still fails; it needs poppler's pdftoppm.
-      - name: Install pdftoppm for the raster compare
-        run: sudo apt-get update -q && sudo apt-get install -y -q poppler-utils
+      - name: Install PDF tools from cache
+        uses: ./.github/actions/pdf-tools
 
-      # Runs every fixture even if an earlier one fails, so one PR gets the
-      # full picture instead of stopping at the first offender; the job still
-      # fails overall on any unwaived diff.
       - name: Compare base vs head render for each fixture
         working-directory: packages/cli
         run: |
@@ -209,117 +215,5 @@ jobs:
           name: render-parity-public-fixtures
           path: /tmp/render-parity
           if-no-files-found: warn
-
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Check release distribution tooling and metadata
-        run: |
-          node tools/prepare-release-assets.test.mjs
-          node tools/update-package-managers.test.mjs
-          node tools/update-package-managers.mjs --check
-
-      - name: Setup Bun (cached)
-        uses: ./.github/actions/bun
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Build CLI npm bundle
-        working-directory: packages/cli
-        run: bun run build
-
-      # NOTE: never use `bun --cwd <pkg> run <script>` in workflows — on Bun
-      # 1.3.x that form prints `bun run` usage and EXITS 0 without running the
-      # script, so the step passes while doing nothing.
-      # `working-directory` + `bun run <script>` is the robust form.
-      - name: Build desktop (static SPA + Electron main)
-        working-directory: packages/desktop
-        run: |
-          bun run build
-          bun run electron:build
-
-      # Self-test for the guardrail script itself (dependency-free by design):
-      # if a refactor breaks its detection regexes, this must fail loudly
-      # rather than letting the real gate below pass vacuously.
-      - name: Check renderer purity self-test
-        run: node tools/check-render-purity.test.mjs
-
-      # §8 renderer-purity guardrail: fail if host/node code leaked into the
-      # built desktop CLIENT SPA bundle. Scope is build/client/ ONLY —
-      # build/server/ (the compiled host routes) is host Node code by design
-      # (§8). --strict: the build step above just ran, so an absent
-      # build/client means the build silently did nothing — that must FAIL,
-      # not pass vacuously.
-      - name: Check renderer purity (CLAUDE.md §8)
-        run: node tools/check-render-purity.mjs packages/desktop/build/client --strict
-
-
-  type-check:
-    name: Type Check
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Setup Bun (cached)
-        uses: ./.github/actions/bun
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      # NOTE: `working-directory` + `bun run <script>`, never
-      # `bun --cwd <pkg> run <script>` — on Bun 1.3.x the latter prints usage
-      # and exits 0 WITHOUT running the script, so the job would be a silent
-      # no-op that always passes.
-      #
-      # svelte-check and the electron tsc resolve gutterpress's types
-      # to packages/cli/dist/*.d.ts (gitignored), so build the CLI dist first —
-      # same prerequisite as the Test job.
-      - name: Build package dist (types for the desktop checks)
-        working-directory: packages/cli
-        run: bun run build:library
-
-      - name: Run TypeScript compiler (CLI)
-        working-directory: packages/cli
-        run: bun run typecheck
-
-      - name: Run TypeScript compiler (desktop SPA)
-        working-directory: packages/desktop
-        run: bun run check
-
-      # `check` above is svelte-check (SPA only); the Electron main/preload TS
-      # needs its own `typecheck` run, or a type error in electron/main.ts
-      # merges green.
-      - name: Run TypeScript compiler (desktop Electron main/preload)
-        working-directory: packages/desktop
-        run: bun run typecheck
-
-  security-audit:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Setup Bun (cached)
-        uses: ./.github/actions/bun
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      # BLOCKING (#287): a new advisory fails the build. The usual fix is a
-      # same-major bump, or a same-major `overrides` entry in the root
-      # package.json for a transitive dep; if an advisory has no fixed release
-      # and only reaches build tooling, accept it explicitly with
-      # `bun audit --ignore <GHSA-id>` and a comment saying why — never by
-      # making this step non-blocking.
-      - name: Audit dependencies
-        # GHSA-hp3w-g68c-fv3c (sprintf-js <=1.1.3, moderate DoS): no patched
-        # release exists; it is reached only through electron / electron-builder
-        # build tooling. Drop the ignore once sprintf-js ships a fix.
-        run: bun audit --ignore=GHSA-hp3w-g68c-fv3c
+          retention-days: 3
+          compression-level: 0

@@ -34,8 +34,8 @@ Staged books land under `/tmp/gutterpress-parity/<fixture>/` (override with
 `<name>`). The registered fixtures are the two example books, the three
 `with-design-guide` manifests, and the minimal repro books under
 `docs/fixtures/`, each of which pins a divergence the gate once caught — or,
-for `exact-fit-boundary`, the outcome below. CI runs the whole list
-(`.github/workflows/ci.yml`).
+for `exact-fit-boundary`, the outcome below. CI runs the whole list when the
+rendering gate is selected; see [CI policy](./ci.md).
 
 ## The three outcomes
 

@@ -25,6 +25,19 @@ runs:
     - uses: actions/setup-node@v5
       with:
         node-version: 22
+    - name: Cache Electron and packaging tools
+      uses: actions/cache@v5
+      with:
+        path: |
+          ~/.cache/electron
+          ~/.cache/electron-builder
+          ~/Library/Caches/electron
+          ~/Library/Caches/electron-builder
+          ~/AppData/Local/electron/Cache
+          ~/AppData/Local/electron-builder/Cache
+        key: electron-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/desktop/package.json') }}
+        restore-keys: |
+          electron-${{ runner.os }}-${{ runner.arch }}-
     - name: Install workspace deps
       shell: bash
       run: bun install --frozen-lockfile

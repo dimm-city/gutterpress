@@ -36,7 +36,10 @@ interface RenderResult {
 }
 
 async function renderPreview(url: string): Promise<RenderResult> {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    executablePath: process.env.CHROMIUM_PATH,
+  });
   try {
     const page = await browser.newPage();
     const consoleErrors: string[] = [];

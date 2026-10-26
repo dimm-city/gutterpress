@@ -7,8 +7,13 @@ name: Gutterpress desktop debug build (Windows)
 on:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
+    timeout-minutes: 15
     name: Build desktop Windows installer + zip
     runs-on: windows-latest
     permissions:

@@ -193,6 +193,9 @@ Follow these conventions (not auto-enforced, but expected in review):
 
 ## Testing
 
+See [CI policy](./docs/ci.md) for gate selection, local workflow validation,
+and controls for limiting runner usage.
+
 ### Test Structure
 
 Most tests are **colocated** with the source file they cover, as
@@ -290,9 +293,8 @@ CI gates on vulnerabilities, but nothing opens dependency-update PRs
 automatically:
 
 1. **Automated Vulnerability Scanning**
-   - `ci.yml`'s `security-audit` job runs `bun audit` on every push and pull
-     request, and it is BLOCKING (#287): the baseline was burned down to zero
-     in 0.11.11, so a new advisory fails the build.
+   - Dependency changes trigger the blocking audit described in [CI policy](./docs/ci.md).
+     A weekly audit also detects newly published advisories.
    - No `.github/dependabot.yml` — there are no automated dependency-update PRs
    - CI verifies `bun.lock` integrity only through `--frozen-lockfile`, which
      every `ci.yml` install now uses (see Lock File Management below); there
@@ -344,10 +346,8 @@ automatically:
    - **Always commit** `bun.lock` with dependency changes
    - **Never manually edit** the lock file
    - **`--frozen-lockfile`** fails the install if `bun.lock` is out of sync
-     with `package.json`. Since #286 every install in the main CI workflow
-     (`ci.yml`) uses it — all six install steps, across its five jobs — as do
-     GitHub Pages (`pages.yml`) and `release.yml`'s `test`, `build-cli` and
-     `publish-npm` jobs. One `release.yml` job still installs plain:
+     with `package.json`. CI and release builds use frozen installs.
+     One `release.yml` job still installs plain:
      `version`, which regenerates the lockfile after bumping the
      `package.json` versions
    - **Resolve conflicts** by running `bun install` after merging
@@ -377,9 +377,7 @@ The CI/CD pipeline's security measures today:
   workflows — see Lock File Management above for the one `release.yml` job
   that still installs plain
 - **Minimal permissions**: GitHub Actions use least-privilege principle
-- **Dependency audits**: `ci.yml`'s `security-audit` job runs `bun audit` on
-  every push and pull request and fails the build on any advisory (see
-  Automated Vulnerability Scanning above)
+- **Dependency audits**: see Automated Vulnerability Scanning above.
 
 ## Submitting Changes
 

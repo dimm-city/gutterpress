@@ -1,0 +1,26 @@
+name: Security audit
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/bun
+      - name: Audit the lockfile
+        # No install is needed. This unpatched advisory only reaches build
+        # tooling; remove the exception once sprintf-js has a patched release.
+        run: bun audit --ignore=GHSA-hp3w-g68c-fv3c

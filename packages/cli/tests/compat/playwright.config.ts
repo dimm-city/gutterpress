@@ -4,7 +4,7 @@
  * Run from packages/cli:
  *   node_modules/.bin/playwright test -c tests/compat/playwright.config.ts
  *
- * Chromium must be installed first:
+ * CI reuses the runner's Chrome via CHROMIUM_PATH. For local bundled Chromium:
  *   node_modules/.bin/playwright install --with-deps chromium
  *
  * The spec launches chromium itself, so this config defines no browser
