@@ -2,7 +2,6 @@ import { test, expect, describe } from "bun:test";
 import {
   normalizeForSearch,
   findUniqueRange,
-  hasAmbiguousTypography,
   hasBacktickOrLinkSyntax,
   touchesStructuralSyntax,
   hasSameDelimiter,
@@ -14,11 +13,11 @@ import {
  * selection-search.ts (inline-editing plan §4.6, PR 4) — rendered-text →
  * markdown-source matching for the selection-formatting menu row.
  *
- * The typographer reverse-map fixtures below are derived directly from
- * reading `markdown-it@14.3.0`'s `lib/rules_core/replacements.mjs` and
- * `lib/rules_core/smartquotes.mjs` against this project's renderer options
- * (`html:true, linkify:true, typographer:true`, default `quotes:"“”‘’"` —
- * see `packages/cli/src/lib/markdown/renderer.ts`).
+ * The typography reverse-map fixtures below mirror the two rules the
+ * renderer runs: Gutterpress's own `gp_typography`
+ * (`packages/cli/src/lib/markdown/typography.ts`) and markdown-it's
+ * `smartquotes` with the default `quotes:"“”‘’"` — see
+ * `packages/cli/src/lib/markdown/renderer.ts`.
  */
 
 // ── indexMap round-trip helper ──────────────────────────────────────────────
@@ -74,14 +73,11 @@ describe("normalizeForSearch — whitespace collapse", () => {
 
 // ── normalizeForSearch — typographer reverse map ───────────────────────────
 
-describe("normalizeForSearch — typographer reverse map (every rule)", () => {
+describe("normalizeForSearch — typography reverse map (every rule)", () => {
   const cases: Array<[string, string, string]> = [
-    ["copyright: (c) -> ©", "©", "(c)"],
-    ["trademark: (tm) -> ™", "™", "(tm)"],
-    ["registered: (r) -> ®", "®", "(r)"],
-    ["plus-minus: +- -> ±", "±", "+-"],
     ["em dash: --- -> —", "—", "---"],
     ["en dash: -- -> –", "–", "--"],
+    ["ellipsis: ... -> …", "…", "..."],
     ["left double quote: “", "“", '"'],
     ["right double quote: ”", "”", '"'],
     ["left single quote: ‘", "‘", "'"],
@@ -97,18 +93,16 @@ describe("normalizeForSearch — typographer reverse map (every rule)", () => {
   }
 
   test("reverses inside a full sentence, preserving surrounding text", () => {
-    const raw = "She said “wait—really” then it’s fine © 2026 (r) not (c) literal.";
+    const raw = "She said “wait—really… fine” then it’s © 2026, (c) literal.";
     const r = normalizeForSearch(raw, { stripDelimiters: false });
     expect(r.normalized).toBe(
-      'She said "wait---really" then it\'s fine (c) 2026 (r) not (c) literal.',
+      'She said "wait---really... fine" then it\'s © 2026, (c) literal.',
     );
     assertValidIndexMap(raw, r);
   });
 
   test("does NOT introduce an NBSP rule — a literal U+00A0 passes through unchanged, not collapsed", () => {
-    // The plan explicitly calls out that no NBSP substitution exists in this
-    // markdown-it configuration (verified by reading replacements.mjs and
-    // smartquotes.mjs directly — neither file mentions NBSP at all). U+00A0
+    // Neither typography rule the renderer runs makes an NBSP. U+00A0
     // is also not part of THIS module's `[ \t\r\n]` whitespace-collapse
     // definition, so a literal NBSP is copied through verbatim, distinct
     // from an ordinary space.
@@ -228,46 +222,6 @@ describe("findUniqueRange", () => {
     const range = findUniqueRange("a bold word", haystack);
     expect(range).toEqual([0, raw.length]);
     expect(raw.slice(range![0], range![1])).toBe("a **bold** word");
-  });
-});
-
-// ── hasAmbiguousTypography ──────────────────────────────────────────────────
-
-describe("hasAmbiguousTypography — collapsed punctuation runs (one-to-many, unreversible)", () => {
-  test("ellipsis character is ambiguous", () => {
-    expect(hasAmbiguousTypography("wait… really")).toBe(true);
-  });
-
-  test("downgraded ellipsis after ? is ambiguous", () => {
-    expect(hasAmbiguousTypography("really?..")).toBe(true);
-  });
-
-  test("downgraded ellipsis after ! is ambiguous", () => {
-    expect(hasAmbiguousTypography("really!..")).toBe(true);
-  });
-
-  test("collapsed !!! is ambiguous", () => {
-    expect(hasAmbiguousTypography("stop!!! now")).toBe(true);
-  });
-
-  test("collapsed ??? is ambiguous", () => {
-    expect(hasAmbiguousTypography("what??? now")).toBe(true);
-  });
-
-  test("a comma is ambiguous (collapsed ,, -> , is one-to-many)", () => {
-    expect(hasAmbiguousTypography("apples, oranges")).toBe(true);
-  });
-
-  test("ordinary text with none of these is not ambiguous", () => {
-    expect(hasAmbiguousTypography("a plain phrase with one. period")).toBe(false);
-  });
-
-  test("a single '?' or '!' alone is not ambiguous", () => {
-    expect(hasAmbiguousTypography("really? yes! sure")).toBe(false);
-  });
-
-  test("a single '.' (not part of a 2+ run) is not ambiguous", () => {
-    expect(hasAmbiguousTypography("end of sentence.")).toBe(false);
   });
 });
 
@@ -409,8 +363,12 @@ describe("locateSelectionInSource", () => {
     expect(locateSelectionInSource("anything", "")).toBeNull();
   });
 
-  test("returns null when the needle contains ambiguous collapsed punctuation", () => {
-    expect(locateSelectionInSource("wait... really", "wait… really")).toBeNull();
+  test("finds a rendered ellipsis as the three dots the author typed", () => {
+    expect(locateSelectionInSource("wait... really", "wait… really")).toEqual({
+      start: 0,
+      end: 14,
+      matchedText: "wait... really",
+    });
   });
 
   test("returns null for zero matches", () => {

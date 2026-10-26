@@ -241,6 +241,7 @@ support. Custom plugins from the manifest are applied at creation time via
 // Creates a new MarkdownIt instance with all built-in plugins
 function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
   const md = new MarkdownIt({ html: true, linkify: true, typographer: true });
+  md.use(gpTypography); // ---, -- and ... only (typography.ts); replaces markdown-it's `replacements`
 
   md.use(markdownItAttrs);
   md.use(markdownItFootnote);
@@ -599,7 +600,7 @@ Everything a book loads beyond core — markdown-it plugins, looks
 it is; there is no `path:`/`name:` wrapper and no `priority`:
 
 1. a **bundled** name (`BUNDLED_EXTENSIONS`: `markdown-it-mark`, `-sub`,
-   `-sup`, `-abbr`, `gutterpress-gfm-alerts`) resolves to the copy compiled
+   `-sup`, `-abbr`, `gutterpress-gfm-alerts`, `gutterpress-math`) resolves to the copy compiled
    into Gutterpress — no install, no network; bundled names shadow npm and
    cannot be pinned;
 2. `./x`, `../x`, `/x` or a Windows drive path is a **path** relative to the

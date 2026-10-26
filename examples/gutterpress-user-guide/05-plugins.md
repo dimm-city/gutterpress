@@ -28,7 +28,7 @@ extensions:
 
 | Written as | Resolves to |
 |------------|-------------|
-| One of the five bundled names — `markdown-it-mark`, `markdown-it-sub`, `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts` | The copy compiled into Gutterpress. No install, no network; a bundled name shadows any npm package of the same name and cannot be pinned (`markdown-it-mark@3.0.0` is an error). |
+| One of the six bundled names — `markdown-it-mark`, `markdown-it-sub`, `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts`, `gutterpress-math` | The copy compiled into Gutterpress. No install, no network; a bundled name shadows any npm package of the same name and cannot be pinned (`markdown-it-mark@3.0.0` is an error). |
 | Starts with `./`, `../`, `/`, or a Windows drive (`C:\`) | A path relative to the manifest: a folder holding a `package.json`, or a bare `.js` markdown-it plugin file. Referenced in place — never copied. |
 | Anything else | An npm package name. `name@version` pins it; `gutterpress ext add` installs the package and writes the pin for you. |
 
@@ -799,7 +799,7 @@ These run automatically before any extension and do not need to be declared in t
 
 ## Bundled Features
 
-These five are **not** loaded by default, but they ship inside the binary —
+These six are **not** loaded by default, but they ship inside the binary —
 listing one by name in `extensions:` resolves instantly, with no npm install
 and no network access, unlike arbitrary third-party plugins:
 
@@ -812,6 +812,7 @@ and no network access, unlike arbitrary third-party plugins:
 | `markdown-it-sup` | `29^th^` → `29<sup>th</sup>` | `x^2^` |
 | `markdown-it-abbr` | `*[HTML]: definition` → `<abbr>` tooltips | `*[W3C]: World Wide Web Consortium` |
 | `gutterpress-gfm-alerts` | GitHub-style `> [!NOTE]` / `[!TIP]` / `[!IMPORTANT]` / `[!WARNING]` / `[!CAUTION]` callout boxes | `> [!TIP]` |
+| `gutterpress-math` | LaTeX math, `$…$` in a line and `$$…$$` on its own lines, typeset by MathJax — see [Chapter 2, Math](#math) | `$E = mc^2$` |
 
 @end-section
 

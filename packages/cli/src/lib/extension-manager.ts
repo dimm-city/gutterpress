@@ -181,10 +181,16 @@ export const RECOMMENDED_EXTENSIONS: RecommendedExtension[] = [
     label: "Callouts",
     description: "Turn a quote into a boxed note: start it with `> [!NOTE]` (or `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`).",
   },
+  {
+    // Gutterpress's own code too (math.ts) — see BUILTIN_OPTIONAL_PLUGINS.
+    use: "gutterpress-math",
+    label: "Math",
+    description: "Write LaTeX math between dollar signs: `$E = mc^2$` in a line, or `$$` … `$$` on lines of their own.",
+  },
 ];
 
 /** The built-in looks shipped as embedded assets (ids are folder names). */
-export const BUILT_IN_STYLE_SET_IDS = ["clean-book", "zine", "technical-doc"] as const;
+export const BUILT_IN_STYLE_SET_IDS = ["clean-book", "zine", "technical-doc", "academic"] as const;
 export type BuiltInStyleSetId = (typeof BUILT_IN_STYLE_SET_IDS)[number];
 
 /** A built-in look, as listed for the desktop's Look view. */
@@ -223,7 +229,7 @@ function withMutationLock<T>(projectDir: string, mutation: () => Promise<T>): Pr
 // ── Manifest entries ─────────────────────────────────────────────────────────
 
 /** The specifier of one `extensions:` item — the scalar, or a map's `use`. */
-function entryUse(item: unknown): string | null {
+export function entryUse(item: unknown): string | null {
   if (isScalar(item)) return typeof item.value === "string" ? item.value.trim() : null;
   if (isMap(item)) {
     const u = item.get("use");
@@ -1060,14 +1066,18 @@ export async function addBuiltInStyleSet(
     throw new Error(`Unknown built-in look "${id}" (one of: ${BUILT_IN_STYLE_SET_IDS.join(", ")}).`);
   }
   return withMutationLock(projectDir, async () => {
-    const dest = path.join(projectDir, EXTENSIONS_DIR, id);
-    if (!existsSync(dest)) {
-      const src = path.join(await getAssetsDir(), "themes", id);
-      await mkdir(path.dirname(dest), { recursive: true });
-      await cp(src, dest, { recursive: true });
-    }
+    await copyBuiltInStyleSet(projectDir, id as BuiltInStyleSetId);
     return addExtensionUnlocked(projectDir, `./${EXTENSIONS_DIR}/${id}`, {});
   });
+}
+
+/** The copy half of {@link addBuiltInStyleSet}: `extensions/<id>/`, if not there yet. */
+export async function copyBuiltInStyleSet(projectDir: string, id: BuiltInStyleSetId): Promise<void> {
+  const dest = path.join(projectDir, EXTENSIONS_DIR, id);
+  if (existsSync(dest)) return;
+  const src = path.join(await getAssetsDir(), "themes", id);
+  await mkdir(path.dirname(dest), { recursive: true });
+  await cp(src, dest, { recursive: true });
 }
 
 // ── Validate / read ──────────────────────────────────────────────────────────

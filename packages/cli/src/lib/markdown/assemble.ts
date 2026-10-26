@@ -100,6 +100,8 @@ export const PAGE_BACKGROUND_FIXED_MILESTONE = 152;
 export interface AssembleBookHtmlOptions {
   /** Ordered list of project-root-relative `.md` files to concatenate. */
   files: string[];
+  /** The book's BCP 47 language tag (manifest `language`); `en` when absent. */
+  language?: string;
   /** Async reader the assembler uses to fetch each file's contents. */
   readText: ReadText;
   /**
@@ -251,7 +253,7 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     throw new Error("No markdown files to render");
   }
 
-  const md = createMarkdownRenderer(opts.plugins);
+  const md = createMarkdownRenderer(opts.plugins, { language: opts.language });
 
   // Build source files concatenate directly into the body. Incremental preview
   // adds one file-level wrapper so each source can be page-isolated. @chapter is
@@ -349,7 +351,7 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     (lastPage ? ` data-gp-last-page="${lastPage}"` : "");
 
   return `<!DOCTYPE html>
-<html lang="en"${printAttrs}>
+<html lang="${opts.language ?? "en"}"${printAttrs}>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">${opts.printArea ? `\n  ${printAreaMeta(opts.printArea)}` : ""}

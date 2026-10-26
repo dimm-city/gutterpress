@@ -1434,7 +1434,7 @@ describe("selection formatting (plan §4.6, PR 4)", () => {
     expect(bold.enabled).toBe(false);
   });
 
-  test("collapsed-punctuation needle (ellipsis) disables every format item", async () => {
+  test("a rendered ellipsis is found as the three dots the author typed, so formatting stays enabled", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] = "wait... really\n";
     h.client.emit({
@@ -1446,10 +1446,7 @@ describe("selection formatting (plan §4.6, PR 4)", () => {
     });
     await flush();
     const bold = h.ctrl.items.find((i) => i.id === "format-bold")!;
-    expect(bold.enabled).toBe(false);
-    expect(bold.disabledReason).toBe(
-      "Couldn't locate this text uniquely in the source — open the editor",
-    );
+    expect(bold.enabled).toBe(true);
   });
 
   test("a selection spanning INTO a code span (matched text includes a backtick) disables ALL format items", async () => {

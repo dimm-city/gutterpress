@@ -10,7 +10,7 @@ import { UsageError } from "./cli-args";
  * Every preset value is overridable from the manifest, leaf by leaf
  * (resolveConfig's mergeShape; precedence cli > manifest > target > preset).
  */
-export interface VendorPreset extends Omit<ResolvedConfig, "title" | "authors" | "preset" | "targets" | "page"> {
+export interface VendorPreset extends Omit<ResolvedConfig, "title" | "authors" | "language" | "preset" | "targets" | "page"> {
   /** This preset's id: what the manifest's `preset:` names and a resolved config reports. */
   id: PresetId;
   /**

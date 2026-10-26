@@ -564,3 +564,15 @@ describe("loadManifestWithPath explicit-path behavior (finding #12)", () => {
     expect([...MANIFEST_FILENAMES]).toEqual(["manifest.yaml"]);
   });
 });
+
+describe("language", () => {
+  test("defaults to en and accepts a BCP 47 tag", () => {
+    expect(resolveConfig({}, { preset: "book" }).language).toBe("en");
+    expect(resolveConfig({}, { preset: "book", language: "de-CH" }).language).toBe("de-CH");
+  });
+
+  test("rejects anything that is not a language tag", () => {
+    expect(() => resolveConfig({}, { preset: "book", language: "German" })).toThrow(/must be a language tag/);
+    expect(() => resolveConfig({}, { preset: "book", language: 12 as unknown as string })).toThrow(/must be a language tag/);
+  });
+});

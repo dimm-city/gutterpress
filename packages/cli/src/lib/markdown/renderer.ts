@@ -22,7 +22,9 @@ import markdownItFootnote from "markdown-it-footnote";
 import gutterpressMarkers, { buildDeclaredMarkerRegistry } from "./markers.js";
 import gpPinScope from "./gp-pin-scope.js";
 import { gpBlockNames } from "./block-names";
+import { gpTable } from "./table";
 import { gpTableAlign } from "./table-align";
+import { gpTypography, quotesFor } from "./typography";
 import gpTwoVersions from "./two-versions.ts";
 import markdownItSourceMap from "markdown-it-source-map";
 import markdownItDeflist from "markdown-it-deflist";
@@ -38,6 +40,7 @@ import markdownItAbbr from "markdown-it-abbr";
 // Gutterpress's own bundled feature (#237), not a wrapped third-party
 // package — see gfm-alerts.ts's header for the full design rationale.
 import gfmAlerts from "./gfm-alerts";
+import gpMath from "./math";
 import { registerImageRule } from "./images";
 import { sourceRangeRule } from "./source-range";
 import { registerInlineSourceMetadata } from "./inline-source";
@@ -345,6 +348,8 @@ export const BUILTIN_OPTIONAL_PLUGINS: Record<string, GutterpressPlugin> = {
   "markdown-it-sup": unwrapPlugin(markdownItSup) as GutterpressPlugin,
   "markdown-it-abbr": unwrapPlugin(markdownItAbbr) as GutterpressPlugin,
   "gutterpress-gfm-alerts": gfmAlerts,
+  // Gutterpress's own code too (math.ts): LaTeX math typeset by MathJax.
+  "gutterpress-math": gpMath,
 };
 
 /**
@@ -395,12 +400,21 @@ export const BUILTIN_OPTIONAL_PLUGINS: Record<string, GutterpressPlugin> = {
  *
  * @param customPlugins - Optional array of custom plugins to load
  */
-export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
+export function createMarkdownRenderer(
+  customPlugins?: LoadedPlugin[],
+  options?: { language?: string },
+): MarkdownIt {
   const md = new MarkdownIt({
     html: true,
     linkify: true,
+    // Curly quotes (markdown-it's `smartquotes`), in the book's language's
+    // style. The option also switches on its `replacements` rule, which
+    // gpTypography replaces with the three conversions Gutterpress actually
+    // promises — see typography.ts.
     typographer: true,
+    quotes: quotesFor(options?.language),
   });
+  md.use(gpTypography);
 
   // Some of these third-party plugins ship as `exports.default = fn`
   // (webpack-style CJS with `__esModule: true`). Bun's runtime auto-unwraps
@@ -425,6 +439,8 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   // `data-name` on blocks, headings and (in the image rule below) images. After
   // markdown-it-attrs so `{name=…}` is in place, before any plugin's own rules.
   md.use(gpBlockNames);
+  // GFM tables whose cells keep a `|` inside a code span (table.ts).
+  md.use(gpTable);
   // Column alignment as `data-align` (styled by MARKER_CSS), not an inline style.
   md.use(gpTableAlign);
   // A passage a sync left with two versions renders as two labelled boxes

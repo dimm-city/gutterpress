@@ -91,6 +91,35 @@ Use ordered lists for sequential steps. Use unordered lists for non-ordered item
 
 Core Gutterpress emits a plain `<blockquote>`. The left border and tinted background you see rendered in this guide come from `guide.css` — bring your own `blockquote` rule (or a bundled theme) to get that look in your own project.
 
+## Math {#math}
+
+Turn on the bundled **Math** feature (`gutterpress-math` under `extensions:`,
+or **Project settings → Features** in the desktop; see
+[Chapter 5](#ch-plugins)) and write LaTeX math the way every LaTeX author
+already does: `$…$` inside a line, `$$…$$` on lines of its own.
+
+```markdown
+The loss $\mathcal{L}(\theta)$ is minimised with step size $\eta_t$.
+
+$$
+\hat{\theta} = \operatorname*{arg\,min}_{\theta} \frac{1}{n} \sum_{i=1}^{n} \ell(f_\theta(x_i), y_i)
+\tag{1}
+$$
+```
+
+MathJax typesets each formula as a drawing of its own glyphs, so the PDF
+needs no math font on the computer that builds it and no stylesheet or font
+files in your project, and the preview paginates exactly like the PDF. The
+usual LaTeX packages are there — `aligned`, `cases` and matrix environments,
+`\mathbb`, `\operatorname`, `\tag`, `\newcommand`, and the rest of
+MathJax's set.
+
+A dollar sign that does not open a formula is a dollar sign: `$5 and $10`
+prints as typed, because a formula never opens before a space or closes
+before a digit. A formula MathJax cannot typeset prints in red and is
+reported in Problems with its line and what is wrong, so a missing brace
+never goes unnoticed.
+
 ## Tables
 
 ```markdown
@@ -110,6 +139,11 @@ GFM tables render as standard `<table><thead>…</thead><tbody>…</tbody></tabl
 Alternating row shading and keeping a whole table on one page (`table { break-inside: avoid; }`) are **this guide's `guide.css`**, not core. A bare Gutterpress project renders plain, unshaded tables that may break anywhere; add your own `break-inside: avoid` rule to a table or an explicitly classed `@section` when it must stay together.
 
 The alignment row becomes a plain `data-align="left|center|right"` attribute on each cell, not an inline style, so your stylesheet can change one column's alignment without `!important`: `td[data-align="right"] { text-align: center; }`.
+
+A `|` separates cells, so a cell that needs one in plain text writes it as
+`\|`. Inside a code span or a formula a `|` is just that character — the
+cell is not split. A row with more cells than the header is reported in
+Problems rather than having its extra cells silently dropped.
 
 Keep tables simple — 5 to 7 columns maximum. Align numbers right, text left.
 

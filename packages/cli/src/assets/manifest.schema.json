@@ -11,6 +11,13 @@
       "default": "Document",
       "examples": ["My Book Title", "Technical Documentation", "Game Module"]
     },
+    "language": {
+      "type": "string",
+      "description": "The book's language as a BCP 47 tag. It is the lang of the built HTML, which hyphenation follows, and sets the quotation marks straight quotes print as.",
+      "default": "en",
+      "pattern": "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$",
+      "examples": ["en", "de", "de-CH", "fr", "pt-BR"]
+    },
     "authors": {
       "type": "array",
       "description": "List of document authors.",

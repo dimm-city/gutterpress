@@ -95,6 +95,12 @@ interface PublishSettings {
 export interface GutterpressManifest {
   title?: string;
   authors?: string[];
+  /**
+   * The book's language as a BCP 47 tag (`en`, `de-CH`, `pt-BR`); default
+   * `en`. It is the `lang` of the built HTML, which is what hyphenation
+   * follows, and the typographer sets quotation marks by it.
+   */
+  language?: string;
   publish?: PublishSettings;
   /** How the book is designed (ADR 0008). The registry in lib/presets.ts is authoritative. */
   preset?: "dtrpg" | "book" | "custom";
@@ -322,6 +328,8 @@ export interface PrintSpec {
 export interface ResolvedConfig {
   title: string;
   authors: string[];
+  /** BCP 47 language tag; `en` when the manifest sets none. */
+  language: string;
   /** The id of the preset this book resolved against (`dtrpg`, `book`, `custom`). */
   preset: string;
   /** The printer spec that preset follows, when it follows one: how a host credits the numbers it draws. */
