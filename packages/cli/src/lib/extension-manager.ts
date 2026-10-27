@@ -714,6 +714,7 @@ async function vendorNpmExtension(
         `${error instanceof Error ? error.message : String(error)}`,
     );
   });
+  warnings.push(...(await retireLegacyCopies(projectDir, installed.name)));
   try {
     const { negated } = await ensureProjectGitignore(projectDir);
     if (negated.includes("extensions/npm/")) {
@@ -730,6 +731,30 @@ async function vendorNpmExtension(
     );
   }
   return { name: installed.name, version: installed.version, use, warnings };
+}
+
+/**
+ * Once a package is vendored under `extensions/npm/`, the copies a book
+ * vendored before 0.11.23 kept under `plugins/npm/<name>/` are dead weight —
+ * every version of them, since the current tree now holds what the manifest
+ * pins — so they go, and `plugins/npm/` and `plugins/` go too once nothing
+ * else is left in them (#436). Returns a warning, never throws: the install
+ * itself succeeded.
+ */
+async function retireLegacyCopies(projectDir: string, name: string): Promise<string[]> {
+  // The roots list the current tree first, then the older book's.
+  const legacyPackageDir = path.dirname(vendoredNpmPluginRoots(projectDir, name, "0.0.0")[1]!);
+  const legacyNpmDir = path.dirname(legacyPackageDir);
+  try {
+    await rm(legacyPackageDir, { recursive: true, force: true });
+    await removeEmptyDirs([path.dirname(legacyNpmDir), legacyNpmDir]);
+  } catch (error) {
+    return [
+      `The extension was installed, but the copy an older version of Gutterpress kept under plugins/npm/ ` +
+        `could not be removed: ${error instanceof Error ? error.message : String(error)}`,
+    ];
+  }
+  return [];
 }
 
 /** The exact versions of `name` that an enabled manifest entry pins. */
