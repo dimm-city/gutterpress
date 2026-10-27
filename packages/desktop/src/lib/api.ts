@@ -189,6 +189,8 @@ export interface TemplateInfo {
   preset?: string;
   /** The `targets:` this template's manifest declares, if any. */
   targets?: string[];
+  /** The `page:` size (points) a `custom`-preset template is designed for, if any. */
+  page?: { width: number; height: number };
 }
 
 /** {@link TemplateInfo} plus what save-as-template did with out-of-book refs. */

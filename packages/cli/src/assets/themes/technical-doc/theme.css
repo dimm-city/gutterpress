@@ -1,6 +1,7 @@
 /* =============================================================================
    Technical Document — gutterpress built-in theme (theme.css)
    Clean sans-serif manual look with clear hierarchy. Change the :root tokens from the book's own stylesheet.
+   The page SIZE comes from the manifest (Setup > Details), so it is deliberately not set here.
    ============================================================================= */
 
 :root {
@@ -8,6 +9,7 @@
   --color-ink-muted:  #5a5f66;   /* captions, secondary text  */
   --color-accent:     #0b5fff;   /* headings, links           */
   --color-paper:      #ffffff;   /* page background           */
+  /* @label Note and code background */
   --color-tint:       #f3f5f9;   /* code / note fill          */
   --color-rule:       #d6dae0;   /* borders, rules            */
 
@@ -20,11 +22,13 @@
   --fs-h2: 1.45rem;
   --fs-h3: 1.15rem;
   --leading:  1.5;
+
+  --page-margin-top-bottom: 0.9in;   /* page margins */
+  --page-margin-sides:      1in;
 }
 
 @page {
-  size: 8.5in 11in;
-  margin: 0.9in 1in;
+  margin: var(--page-margin-top-bottom) var(--page-margin-sides);
 }
 
 body {

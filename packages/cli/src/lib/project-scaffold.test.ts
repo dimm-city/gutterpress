@@ -71,11 +71,11 @@ test("scaffoldProject (no git) creates a valid project tree", async () => {
     // assets/ dir exists.
     expect((await stat(path.join(result.projectDir, "assets"))).isDirectory()).toBe(true);
 
-    // No look is applied: the author adds one. styles/book.css is the
-    // project's own (empty) stylesheet and the only thing in the cascade.
-    expect(manifest).not.toContain("extensions:");
+    // The template lists its look by name: nothing is copied into the book
+    // folder, and styles/book.css is the project's own (empty) stylesheet.
+    expect(manifest).toContain("extensions:\n  - clean-book");
     expect(existsSync(path.join(result.projectDir, EXTENSIONS_DIR))).toBe(false);
-    expect(await listProjectExtensions(result.projectDir)).toEqual([]);
+    expect((await listProjectExtensions(result.projectDir)).map((e) => e.use)).toEqual(["clean-book"]);
     const bookCss = await readFile(path.join(result.projectDir, "styles", "book.css"), "utf8");
     expect(bookCss).not.toContain("--color-ink");
     expect(bookCss).not.toContain("--color-accent");
@@ -89,20 +89,56 @@ test("scaffoldProject (no git) creates a valid project tree", async () => {
   }
 });
 
-test("scaffoldProject applies no look for any template", async () => {
+test("every built-in template lists its look by name and copies nothing", async () => {
   const parent = await tmpParent();
   try {
-    for (const template of ["book", "zine", "technical"] as const) {
+    const looks = { book: "clean-book", zine: "zine", technical: "technical-doc", paper: "academic" } as const;
+    for (const template of ["book", "zine", "technical", "paper"] as const) {
       const result = await scaffoldProject({
-        name: `No Look ${template}`,
+        name: `Look ${template}`,
         parentDir: parent,
         template,
-        preset: "book",
         versionHistory: "none",
       });
       expect(existsSync(path.join(result.projectDir, EXTENSIONS_DIR))).toBe(false);
-      expect(await listProjectExtensions(result.projectDir)).toEqual([]);
+      const uses = (await listProjectExtensions(result.projectDir)).map((e) => e.use);
+      expect(uses).toContain(looks[template]);
     }
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("a chosen preset replaces the template's own page size", async () => {
+  const parent = await tmpParent();
+  try {
+    // The zine template is designed for Digest (preset: custom + page:); a
+    // writer who picks Trade book on top of it gets 6 x 9 in, not Digest.
+    const result = await scaffoldProject({
+      name: "Zine As Book",
+      parentDir: parent,
+      template: "zine",
+      preset: "book",
+      versionHistory: "none",
+    });
+    const manifest = await readFile(result.manifestPath, "utf8");
+    expect(manifest).toContain("preset: book");
+    expect(manifest).not.toMatch(/^\s+width:/m);
+    expect(manifest).not.toMatch(/^\s+height:/m);
+    const resolved = resolveConfig({}, await loadManifest(result.projectDir));
+    expect(resolved.page.width).toBe(432);
+    expect(resolved.page.height).toBe(648);
+
+    // Left alone, the template's own size stands.
+    const kept = await scaffoldProject({
+      name: "Zine As Zine",
+      parentDir: parent,
+      template: "zine",
+      versionHistory: "none",
+    });
+    const keptResolved = resolveConfig({}, await loadManifest(kept.projectDir));
+    expect(keptResolved.page.width).toBe(396);
+    expect(keptResolved.page.height).toBe(612);
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
@@ -683,11 +719,11 @@ test("adoptFolder appends dist/ to an existing .gitignore without overwriting it
 test("scaffoldProject lists the bundled look the paper template names, copying nothing", async () => {
   const parent = await tmpParent();
   try {
+    // No preset passed: the template's own (custom, US Letter) stands.
     const result = await scaffoldProject({
       name: "A Paper",
       parentDir: parent,
       template: "paper",
-      preset: "book",
       versionHistory: "none",
     });
     expect(existsSync(path.join(result.projectDir, EXTENSIONS_DIR))).toBe(false);

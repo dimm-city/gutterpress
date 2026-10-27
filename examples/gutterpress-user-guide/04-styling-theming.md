@@ -133,10 +133,11 @@ For one book, the fastest approach is three sections in `styles/book.css`:
   --color-accent: #7b2f8a;   /* headings, links */
   --font-body:    "Garamond", serif;
   --fs-body:      11.5pt;
-}
 
-/* 2. Override page geometry */
-@page { size: 6in 9in; margin: 0.75in; }
+  /* 2. Page margins (the bundled looks read these two) */
+  --page-margin-top-bottom: 0.75in;
+  --page-margin-sides:      0.75in;
+}
 
 /* 3. Add component rules */
 .my-special-block {
@@ -145,6 +146,9 @@ For one book, the fastest approach is three sections in `styles/book.css`:
   padding: 0.5em 0.8em;
 }
 ```
+
+The page size is not set in CSS: it comes from the manifest (`preset:` or
+`page:`), which the app edits under Setup > Details.
 
 To reuse a look across books, make it a folder: a `theme.css` plus a
 `package.json` declaring it, which is all a one-sheet look is. `gutterpress

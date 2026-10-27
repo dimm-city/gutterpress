@@ -94,7 +94,7 @@ export function writePageBounds(doc: Document, page: CustomPageOptions): void {
 }
 
 /** Remove the bounds a preset owns and nothing else; a `page:` left empty goes too. */
-function deletePageBounds(doc: Document): void {
+export function deletePageBounds(doc: Document): void {
   const block = doc.get("page", true);
   if (!isMap(block)) {
     doc.delete("page");

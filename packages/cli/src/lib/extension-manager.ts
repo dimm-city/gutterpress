@@ -1039,10 +1039,14 @@ export async function validateProjectExtensions(
 
 /**
  * Read an extension's stylesheets, concatenated in cascade order, for a
- * preview thumbnail (the renderer never touches fs). Read-only, so
- * concatenation is fine even though it would not be for an editable surface.
+ * preview thumbnail (the renderer never touches fs). A bundled look answers
+ * whether or not the manifest lists it, so a book can show what a look is
+ * before adding it. Read-only, so concatenation is fine even though it would
+ * not be for an editable surface.
  */
 export async function readExtensionCss(projectDir: string, use: string): Promise<string> {
+  const direct = bundledExtension(use)?.css;
+  if (direct !== undefined) return direct;
   const entry = await describeExtension(projectDir, use);
   if (!entry) throw new Error(`Extension "${use}" is not in the manifest.`);
   const bundledCss = entry.kind === "bundled" ? bundledExtension(entry.name)?.css : undefined;

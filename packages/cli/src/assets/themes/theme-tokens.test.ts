@@ -35,6 +35,8 @@ const REQUIRED = [
   "--fs-h2",
   "--fs-h3",
   "--leading",
+  "--page-margin-top-bottom",
+  "--page-margin-sides",
 ];
 
 const themeNames = readdirSync(THEMES_DIR, { withFileTypes: true })
@@ -59,6 +61,16 @@ describe("built-in theme tokens", () => {
   test.each(themeNames)("%s drives body text from --fs-body", (name) => {
     const css = readFileSync(join(THEMES_DIR, name, "theme.css"), "utf8");
     expect(css).toMatch(/font-size:\s*var\(--fs-body\)/);
+  });
+
+  // The page margins are Design-tab settings: every theme's `@page` reads the
+  // two margin tokens, so an override in the book's own stylesheet moves them.
+  // The page SIZE is the manifest's alone, so no theme sets one.
+  test.each(themeNames)("%s reads its @page margins from the two margin tokens and sets no size", (name) => {
+    const css = readFileSync(join(THEMES_DIR, name, "theme.css"), "utf8");
+    const page = /@page\s*\{([^}]*)/.exec(css)?.[1] ?? "";
+    expect(page).toMatch(/margin:\s*var\(--page-margin-top-bottom\)\s+var\(--page-margin-sides\)\s*;/);
+    expect(page).not.toMatch(/(?<![\w-])size\s*:/);
   });
 
   test("the user guide teaches only tokens the themes provide", () => {

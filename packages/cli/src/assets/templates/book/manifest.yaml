@@ -6,4 +6,6 @@ source:
     - chapter-01.md
 styles:
   - styles/book.css
+extensions:
+  - clean-book
 preset: book

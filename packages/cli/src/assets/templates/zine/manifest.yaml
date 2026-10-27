@@ -6,4 +6,10 @@ source:
     - chapter-01.md
 styles:
   - styles/book.css
-preset: book
+extensions:
+  - zine
+# Digest (5.5 x 8.5 in), in points.
+page:
+  width: 396
+  height: 612
+preset: custom

@@ -16,4 +16,4 @@ extensions:
   - gutterpress-math
   # The built-in academic look. Style over it from styles/book.css.
   - academic
-preset: book
+preset: custom

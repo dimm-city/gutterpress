@@ -23,10 +23,13 @@
   --fs-h2: 1.2em;
   --fs-h3: 1em;
   --leading:  1.38;
+
+  --page-margin-top-bottom: 1in;   /* page margins */
+  --page-margin-sides:      1in;
 }
 
 @page {
-  margin: 1in;
+  margin: var(--page-margin-top-bottom) var(--page-margin-sides);
   @bottom-center { content: counter(page); font-family: var(--font-body); font-size: 9pt; }
 }
 

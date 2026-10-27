@@ -32,7 +32,7 @@ import { getAssetPath } from "./embedded-assets.ts";
 import { MANIFEST_FILENAMES } from "./manifest.ts";
 import { loadManifestDoc, writeManifestDoc } from "./manifest-doc.ts";
 import { PRESET_IDS, PRESETS, type PresetId } from "./presets.ts";
-import { isPositivePoints, writePageBounds, type CustomPageOptions } from "./page-size.ts";
+import { deletePageBounds, isPositivePoints, writePageBounds, type CustomPageOptions } from "./page-size.ts";
 import { TARGETS, TARGET_IDS } from "./targets.ts";
 import { ensureProjectGitignore } from "./project-gitignore.ts";
 import { slugify } from "./slug.ts";
@@ -47,13 +47,13 @@ export type ProjectTemplateId = "book" | "zine" | "technical" | "paper";
 
 function starterOverridesCss(): string {
   return `/**
- * Your book's own styles.
+ * Your book's own styles. Rules here win over your look's.
  *
- * This file loads AFTER every extension, so any rule you add here overrides
- * a look's defaults. A new book has no look until its template or you add
- * one:
- *   gutterpress ext add academic <book>    (a built-in look)
- *   gutterpress ext add <package> <book>   (a look from npm)
+ * In the app you rarely need this file: Setup > Looks & features adds a
+ * look, and Setup > Design changes its fonts, colors, sizes and margins
+ * (those changes are saved here as :root custom properties).
+ *
+ * From the command line: gutterpress ext add clean-book <book>
  */
 `;
 }
@@ -406,6 +406,8 @@ export async function scaffoldProject(
       if (preset) {
         doc.set("preset", preset);
         doc.set("targets", doc.createNode(targets ?? []));
+        // A template's own `page:` size must not shadow the chosen preset's.
+        if (preset !== "custom") deletePageBounds(doc);
       }
       if (options.customPage) writePageBounds(doc, options.customPage);
       await writeManifestDoc(file, doc);
