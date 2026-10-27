@@ -95,12 +95,10 @@ export interface CreateProjectOptions {
    */
   templateDir?: string;
   /**
-   * Which vendor preset the new book is designed for (ADR 0008). REQUIRED
-   * when scaffolding a built-in template — creation flows make the author
-   * choose; the resolveConfig dtrpg fallback exists for hand-written
-   * manifests, not for tooling. Written into the generated manifest as an
-   * explicit `preset:` line. Ignored with `templateDir`: a saved template's
-   * manifest carries its preset as part of the captured design.
+   * Which preset the new book is designed for (ADR 0008), written into the
+   * generated manifest as an explicit `preset:` line. Optional: left out, the
+   * template's own `preset:` stands (every starter carries one, and a saved
+   * template's manifest carries its preset as part of the captured design).
    */
   preset?: PresetId;
   /**
@@ -197,19 +195,16 @@ export function escapeYamlScalar(value: string): string {
 const DEFAULT_AUTHOR = "Anonymous";
 
 /**
- * Validate the preset + page inputs for a built-in-template scaffold
- * (ADR 0008). Returns the validated preset; throws `preset-required` /
- * `custom-page-required` with author-actionable messages.
+ * Validate an explicitly chosen preset + page inputs (ADR 0008). Returns the
+ * validated preset; throws `preset-required` for an unknown id and
+ * `custom-page-required` for a custom preset without a trim, with
+ * author-actionable messages.
  */
-function requirePreset(
-  preset: PresetId | undefined,
-  customPage: CustomPageOptions | undefined,
-): PresetId {
-  if (!preset || !(PRESET_IDS as readonly string[]).includes(preset)) {
-    const got = preset ? ` (got "${preset}")` : "";
+function requirePreset(preset: PresetId, customPage: CustomPageOptions | undefined): PresetId {
+  if (!(PRESET_IDS as readonly string[]).includes(preset)) {
     throw new CreateProjectErrorImpl(
       "preset-required",
-      `A preset is required to create a book${got}. Choose one of: ${PRESET_IDS.join(", ")}.`,
+      `Unknown preset "${preset}". Choose one of: ${PRESET_IDS.join(", ")}.`,
     );
   }
 
@@ -325,20 +320,13 @@ export async function scaffoldProject(
   const template = options.template ?? "book";
   const customTemplateDir = options.templateDir;
 
-  // ADR 0008: creating a book from a built-in template REQUIRES choosing a
-  // preset (and a trim size when it's `custom`) — validated before anything
-  // touches disk. The publish targets are resolved alongside it, so the
-  // manifest always records both choices explicitly.
-  //
-  // A saved custom template supplies its OWN preset/targets (its captured
-  // design), so they are optional there: pass them to override — the wizard
-  // pre-fills its pickers from the template and sends back whatever is shown,
-  // so leaving them alone reproduces the template exactly — or omit them to
-  // keep the template's manifest untouched.
+  // ADR 0008: a chosen preset (and a trim size when it's `custom`) is
+  // validated before anything touches disk, and the publish targets are
+  // resolved alongside it, so the manifest records both choices explicitly.
+  // Left out, the template's own `preset:` stands: every starter carries one,
+  // and a saved template's manifest carries its captured design.
   const preset =
-    customTemplateDir && options.preset === undefined
-      ? undefined
-      : requirePreset(options.preset, options.customPage);
+    options.preset === undefined ? undefined : requirePreset(options.preset, options.customPage);
   const targets = preset ? resolveScaffoldTargets(options.targets, preset) : undefined;
 
   // 1. COPY the template files to the target.

@@ -161,12 +161,11 @@ describe("resolveActiveStyles (the one resolver the renderer + editor share)", (
     expect(await resolveActiveStyles(dir, ["themes/x/theme.css"])).toEqual(["themes/x/theme.css"]);
   });
 
-  test("no manifest → prefers styles/book.css, then css/print.css, then css/index.css", async () => {
+  test("no manifest → styles/book.css, else the first discovered .css by name", async () => {
     const dir = projectDir();
+    write(dir, "css/print.css", "");
     write(dir, "css/index.css", "");
     expect(await resolveActiveStyles(dir, [])).toEqual(["css/index.css"]);
-    write(dir, "css/print.css", "");
-    expect(await resolveActiveStyles(dir, [])).toEqual(["css/print.css"]);
     write(dir, "styles/book.css", "");
     expect(await resolveActiveStyles(dir, [])).toEqual(["styles/book.css"]);
   });

@@ -1,5 +1,5 @@
 /**
- * Extension scaffolding (#245 + #233) — `gutterpress new --kind plugin|theme`.
+ * Extension scaffolding (#245 + #233) — `gutterpress new --kind plugin|look`.
  *
  * The sibling of `project-scaffold.ts`: that module creates a BOOK, this one
  * creates an EXTENSION — the other kind of thing an author makes. Same shape
@@ -16,14 +16,14 @@
  *
  *   plugin — markdown behaviour + component CSS + snippets + a runnable test
  *            harness. Loaded by a book through `extensions: - ./<folder>`.
- *   theme  — the layered CSS architecture from #233 (tokens / base /
+ *   look   — the layered CSS architecture from #233 (tokens / base /
  *            components / page-templates / page-rules / book), each file
  *            carrying its OWNS / MUST NOT CONTAIN contract header. Loaded by
  *            a book through `gutterpress ext add <folder>`.
  *
  * Both emit a standard `package.json` and nothing more: this module CONSUMES
  * that format, it does not extend it. There is no `kind:` field — a plugin is
- * "an extension with markdown" (its `main`), a theme is "an extension with
+ * "an extension with markdown" (its `main`), a look is "an extension with
  * only styles" (its `gutterpress.styles`), and the manifest says so by what it
  * declares rather than by a label.
  *
@@ -43,10 +43,10 @@ import { slugify } from "./slug.ts";
 import type { CreateProjectError, CreateProjectErrorCode } from "./project-scaffold.ts";
 
 /** Which starter package to create. */
-export type ExtensionKind = "plugin" | "theme";
+export type ExtensionKind = "plugin" | "look";
 
 /** The kinds `--kind` accepts, for CLI help text and pickers. */
-export const EXTENSION_KINDS = ["plugin", "theme"] as const satisfies readonly ExtensionKind[];
+export const EXTENSION_KINDS = ["plugin", "look"] as const satisfies readonly ExtensionKind[];
 
 /**
  * The class/property prefix a scaffolded extension is FORBIDDEN to take.
@@ -73,7 +73,7 @@ const TEMPLATE_FILES: Record<ExtensionKind, ReadonlyArray<readonly [string, stri
     ["test/expected.html", "test/expected.html"],
     ["test/plugin.test.js.tpl", "test/plugin.test.js"],
   ],
-  theme: [
+  look: [
     ["package.json", "package.json"],
     ["README.md", "README.md"],
     ["components.yaml", "components.yaml"],
@@ -90,13 +90,13 @@ const TEMPLATE_FILES: Record<ExtensionKind, ReadonlyArray<readonly [string, stri
 /** The file each kind is most useful to open first. */
 const OPEN_FILE: Record<ExtensionKind, string> = {
   plugin: "plugin.js",
-  theme: "styles/tokens.css",
+  look: "styles/tokens.css",
 };
 
 /** One-line description written into a scaffold that supplies none. */
 const DEFAULT_DESCRIPTION: Record<ExtensionKind, string> = {
   plugin: "A Gutterpress plugin.",
-  theme: "A Gutterpress theme.",
+  look: "A Gutterpress look.",
 };
 
 const DEFAULT_AUTHOR = "Anonymous";
@@ -196,7 +196,7 @@ function escapeJsonScalar(value: string): string {
 }
 
 /**
- * Create a plugin or theme starter package.
+ * Create a plugin or look starter package.
  *
  * Resolves with a {@link ScaffoldExtensionResult}; throws a
  * {@link CreateProjectError} (the SAME error type `scaffoldProject` throws, so
@@ -206,7 +206,7 @@ export async function scaffoldExtension(
   options: ScaffoldExtensionOptions,
 ): Promise<ScaffoldExtensionResult> {
   const kind = options.kind;
-  if (kind !== "plugin" && kind !== "theme") {
+  if (kind !== "plugin" && kind !== "look") {
     throw new ExtensionScaffoldError(
       "invalid-name",
       `Unknown extension kind "${String(kind)}". Choose one of: ${EXTENSION_KINDS.join(", ")}.`,

@@ -259,10 +259,10 @@ describe("scaffoldExtension --kind plugin", () => {
 
 // ── Theme-specific: the #233 layered stack ─────────────────────────────────
 
-describe("scaffoldExtension --kind theme", () => {
+describe("scaffoldExtension --kind look", () => {
   test("declares the six layered sheets in cascade order, plus the token surface", async () => {
     const parent = await tmpParent();
-    const result = await scaffoldExtension({ name: "House Style", kind: "theme", parentDir: parent });
+    const result = await scaffoldExtension({ name: "House Style", kind: "look", parentDir: parent });
     const meta = await readExtensionMeta(result.extensionDir);
 
     expect(extensionStyleList(meta)).toEqual([
@@ -282,7 +282,7 @@ describe("scaffoldExtension --kind theme", () => {
     // #233's actual ask: the rules from contextual-cascade-principle.md moved
     // INTO the files so they travel with the code.
     const parent = await tmpParent();
-    const result = await scaffoldExtension({ name: "House Style", kind: "theme", parentDir: parent });
+    const result = await scaffoldExtension({ name: "House Style", kind: "look", parentDir: parent });
     const meta = await readExtensionMeta(result.extensionDir);
 
     for (const rel of extensionStyleList(meta)) {
@@ -294,7 +294,7 @@ describe("scaffoldExtension --kind theme", () => {
 
   test("declares the layer order once and puts every sheet inside its layer", async () => {
     const parent = await tmpParent();
-    const result = await scaffoldExtension({ name: "House Style", kind: "theme", parentDir: parent });
+    const result = await scaffoldExtension({ name: "House Style", kind: "look", parentDir: parent });
     const read = (rel: string) => readFile(path.join(result.extensionDir, rel), "utf8");
 
     // The order statement lives in the FIRST sheet, because a layer's position
@@ -326,7 +326,7 @@ describe("scaffoldExtension --kind theme", () => {
     // trim with no error. The built-in looks that choose a trim declare it
     // (academic leaves the trim to the manifest's `page`); so does this one.
     const parent = await tmpParent();
-    const result = await scaffoldExtension({ name: "House Style", kind: "theme", parentDir: parent });
+    const result = await scaffoldExtension({ name: "House Style", kind: "look", parentDir: parent });
     const pageRules = await readFile(
       path.join(result.extensionDir, "styles", "page-rules.css"),
       "utf8",
@@ -338,7 +338,7 @@ describe("scaffoldExtension --kind theme", () => {
     const parent = await tmpParent();
     const result = await scaffoldExtension({
       name: "House Style",
-      kind: "theme",
+      kind: "look",
       parentDir: parent,
       prefix: "hs",
     });

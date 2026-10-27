@@ -35,6 +35,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **`gutterpress new` no longer insists on `--preset`.** Every starter
+  template carries a preset, so leaving the flag out keeps the template's;
+  the flag overrides it. `--kind theme` is `--kind look`, the word the rest of
+  Gutterpress uses, and the help no longer calls a preset a "vendor preset".
+- **A stylesheet is `styles/book.css` or whatever `styles:` lists.** The four
+  legacy names (`css/print.css`, `css/index.css`, `css/style.css`,
+  `css/main.css`) are no longer looked for by name; a project that has only
+  such a file still gets it, because the first `.css` found under the project
+  root, `styles/` or `css/` is used when nothing is listed.
 - **Downloaded npm extensions live under `extensions/npm/`**, beside the
   looks and components a book imports, instead of `plugins/npm/`. New books
   ignore `extensions/npm/` in their `.gitignore`; a book vendored earlier

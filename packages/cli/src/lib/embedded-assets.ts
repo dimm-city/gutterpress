@@ -79,16 +79,16 @@ import tplPluginFixture from "../assets/extension-templates/plugin/test/fixture.
 import tplPluginExpected from "../assets/extension-templates/plugin/test/expected.html" with { type: "file" };
 import tplPluginTest from "../assets/extension-templates/plugin/test/plugin.test.js.tpl" with { type: "file" };
 
-import tplThemePackageJson from "../assets/extension-templates/theme/package.json" with { type: "file" };
-import tplThemeReadme from "../assets/extension-templates/theme/README.md" with { type: "file" };
-import tplThemeCatalog from "../assets/extension-templates/theme/components.yaml" with { type: "file" };
-import tplThemeSnippet from "../assets/extension-templates/theme/snippets/callout.md" with { type: "file" };
-import tplThemeTokensCss from "../assets/extension-templates/theme/styles/tokens.css" with { type: "file" };
-import tplThemeBaseCss from "../assets/extension-templates/theme/styles/base.css" with { type: "file" };
-import tplThemeComponentsCss from "../assets/extension-templates/theme/styles/components.css" with { type: "file" };
-import tplThemePageTemplatesCss from "../assets/extension-templates/theme/styles/page-templates.css" with { type: "file" };
-import tplThemePageRulesCss from "../assets/extension-templates/theme/styles/page-rules.css" with { type: "file" };
-import tplThemeBookCss from "../assets/extension-templates/theme/styles/book.css" with { type: "file" };
+import tplThemePackageJson from "../assets/extension-templates/look/package.json" with { type: "file" };
+import tplThemeReadme from "../assets/extension-templates/look/README.md" with { type: "file" };
+import tplThemeCatalog from "../assets/extension-templates/look/components.yaml" with { type: "file" };
+import tplThemeSnippet from "../assets/extension-templates/look/snippets/callout.md" with { type: "file" };
+import tplThemeTokensCss from "../assets/extension-templates/look/styles/tokens.css" with { type: "file" };
+import tplThemeBaseCss from "../assets/extension-templates/look/styles/base.css" with { type: "file" };
+import tplThemeComponentsCss from "../assets/extension-templates/look/styles/components.css" with { type: "file" };
+import tplThemePageTemplatesCss from "../assets/extension-templates/look/styles/page-templates.css" with { type: "file" };
+import tplThemePageRulesCss from "../assets/extension-templates/look/styles/page-rules.css" with { type: "file" };
+import tplThemeBookCss from "../assets/extension-templates/look/styles/book.css" with { type: "file" };
 
 // Built-in looks (#32, #276). Each = theme.css + package.json, baked in so the
 // look list (compiled binary + desktop) reads from one embedded source.
@@ -127,16 +127,16 @@ const EMBEDDED_ASSETS: Record<string, string> = {
   "extension-templates/plugin/test/fixture.md":         abs(filePath(tplPluginFixture)),
   "extension-templates/plugin/test/expected.html":      abs(filePath(tplPluginExpected)),
   "extension-templates/plugin/test/plugin.test.js.tpl": abs(filePath(tplPluginTest)),
-  "extension-templates/theme/package.json":             abs(filePath(tplThemePackageJson)),
-  "extension-templates/theme/README.md":                abs(filePath(tplThemeReadme)),
-  "extension-templates/theme/components.yaml":          abs(filePath(tplThemeCatalog)),
-  "extension-templates/theme/snippets/callout.md":      abs(filePath(tplThemeSnippet)),
-  "extension-templates/theme/styles/tokens.css":        abs(filePath(tplThemeTokensCss)),
-  "extension-templates/theme/styles/base.css":          abs(filePath(tplThemeBaseCss)),
-  "extension-templates/theme/styles/components.css":    abs(filePath(tplThemeComponentsCss)),
-  "extension-templates/theme/styles/page-templates.css": abs(filePath(tplThemePageTemplatesCss)),
-  "extension-templates/theme/styles/page-rules.css":    abs(filePath(tplThemePageRulesCss)),
-  "extension-templates/theme/styles/book.css":          abs(filePath(tplThemeBookCss)),
+  "extension-templates/look/package.json":             abs(filePath(tplThemePackageJson)),
+  "extension-templates/look/README.md":                abs(filePath(tplThemeReadme)),
+  "extension-templates/look/components.yaml":          abs(filePath(tplThemeCatalog)),
+  "extension-templates/look/snippets/callout.md":      abs(filePath(tplThemeSnippet)),
+  "extension-templates/look/styles/tokens.css":        abs(filePath(tplThemeTokensCss)),
+  "extension-templates/look/styles/base.css":          abs(filePath(tplThemeBaseCss)),
+  "extension-templates/look/styles/components.css":    abs(filePath(tplThemeComponentsCss)),
+  "extension-templates/look/styles/page-templates.css": abs(filePath(tplThemePageTemplatesCss)),
+  "extension-templates/look/styles/page-rules.css":    abs(filePath(tplThemePageRulesCss)),
+  "extension-templates/look/styles/book.css":          abs(filePath(tplThemeBookCss)),
 };
 
 let extractPromise: Promise<string> | null = null;

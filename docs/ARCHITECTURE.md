@@ -97,7 +97,7 @@ packages/cli/src/
 │   ├── manifest.ts         # Manifest loading + config resolution
 │   ├── extension-manager.ts # The `extensions:` list: list/add/remove/toggle/reorder
 │   ├── extension-import.ts # .zip / .css / URL look import → extensions/<id>/
-│   ├── presets.ts          # Vendor presets (DTRPG)
+│   ├── presets.ts          # Presets (dtrpg, book, custom)
 │   ├── pdf-parse.ts        # PDF parsing utilities
 │   ├── ghostscript.ts      # PDF/X CMYK conversion
 │   ├── chromium.ts         # Chromium executable resolution
@@ -203,7 +203,7 @@ Precedence order (highest to lowest):
 
 1. **CLI arguments** (highest priority)
 2. **manifest.yaml** (project configuration)
-3. **Vendor preset defaults** (fallback, e.g. DTRPG)
+3. **Preset defaults** (fallback, e.g. dtrpg)
 
 ```typescript
 // resolveConfig merges CLI overrides > manifest > preset defaults

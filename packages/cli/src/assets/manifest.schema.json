@@ -44,7 +44,7 @@
     },
     "styles": {
       "type": "array",
-      "description": "Project-relative CSS files to <link> into the rendered book, applied in order. If omitted, Gutterpress discovers one: styles/book.css (what `gutterpress new` scaffolds), else four legacy names kept only for pre-existing projects — css/print.css, css/index.css, css/style.css, css/main.css — else the first discovered .css, else none. New projects should set this explicitly or use styles/book.css.",
+      "description": "Project-relative CSS files to <link> into the rendered book, applied in order. If omitted, Gutterpress discovers one: styles/book.css (what `gutterpress new` scaffolds), else the first .css file found in the project root, styles/ or css/, else none. New projects should set this explicitly or use styles/book.css.",
       "items": {
         "type": "string",
         "minLength": 1,
@@ -207,17 +207,17 @@
     },
     "page": {
       "type": "object",
-      "description": "Expected page geometry, in POINTS. VALIDATION BOUNDS ONLY — these values do NOT set the trim size. The real PDF page size comes from the CSS `@page` rule in your stylesheet; these numbers are only what the `pdf.print.page-size` check compares the produced PDF against. Set them to the trim size you expect so a CSS mistake gets caught — and note that a bleed-inclusive @page size will legitimately differ from the trim size recorded here.",
+      "description": "Page geometry, in POINTS (1in = 72pt): the trim size the book prints at. The build writes it as the default `@page { size }` unless a stylesheet's own plain `@page` rule sets a size, in which case that rule wins, and the `pdf.print.page-size` check compares the produced PDF against these numbers either way. A bleed-inclusive @page size legitimately differs from the trim recorded here.",
       "properties": {
         "width": {
           "type": "number",
-          "description": "Expected page width in points (1in = 72pt). Validation bound only — the CSS @page rule sets the real width. Preset defaults: dtrpg 621, book 432 (6in).",
+          "description": "Page width in points (1in = 72pt): the trim the book prints at unless a stylesheet's plain @page rule sets its own, and what validation compares against. Preset defaults: dtrpg 621, book 432 (6in).",
           "exclusiveMinimum": 0,
           "examples": [612, 621, 432]
         },
         "height": {
           "type": "number",
-          "description": "Expected page height in points (1in = 72pt). Validation bound only — the CSS @page rule sets the real height. Preset defaults: dtrpg 810, book 648 (9in).",
+          "description": "Page height in points (1in = 72pt): the trim the book prints at unless a stylesheet's plain @page rule sets its own, and what validation compares against. Preset defaults: dtrpg 810, book 648 (9in).",
           "exclusiveMinimum": 0,
           "examples": [792, 810, 648]
         },

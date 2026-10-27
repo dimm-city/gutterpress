@@ -183,22 +183,34 @@ test("scaffoldProject rejects an unusable name", async () => {
 });
 
 // ---------------------------------------------------------------------------
-// ADR 0008 — creating a book requires choosing a preset; `custom` requires a
-// trim size; the choice is written into the generated manifest explicitly.
+// ADR 0008 — a chosen preset is validated; left out, the template's own
+// stands; `custom` requires a trim size; the choice is written into the
+// generated manifest explicitly.
 // ---------------------------------------------------------------------------
 
-test("scaffoldProject without a preset refuses with code preset-required", async () => {
+test("scaffoldProject without a preset keeps the template's own", async () => {
+  const parent = await tmpParent();
+  try {
+    const result = await scaffoldProject({ name: "No Preset", parentDir: parent, versionHistory: "none" });
+    expect(await readFile(result.manifestPath, "utf8")).toContain("preset: book");
+    const config = resolveConfig({}, await loadManifest(result.projectDir));
+    expect(config.preset).toBe("book");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject with an unknown preset refuses with code preset-required", async () => {
   const parent = await tmpParent();
   try {
     let err: CreateProjectError | undefined;
     try {
-      await scaffoldProject({ name: "No Preset", parentDir: parent, versionHistory: "none" });
+      await scaffoldProject({ name: "No Preset", parentDir: parent, preset: "nope" as never, versionHistory: "none" });
     } catch (e) {
       err = e as CreateProjectError;
     }
     expect(err?.code).toBe("preset-required");
     expect(err?.message).toContain("dtrpg, book, custom");
-    // Nothing was created.
     expect(existsSync(path.join(parent, "no-preset"))).toBe(false);
   } finally {
     await rm(parent, { recursive: true, force: true });

@@ -17,7 +17,7 @@ Gutterpress ships four built-in looks, embedded in the CLI binary and library:
 | `technical-doc` | Clean sans-serif manual look with clear hierarchy, code styling, and tidy tables. |
 | `academic` | A journal-article look: serif text, justified and hyphenated, ruled tables, notes and references set smaller. The `paper` starter template uses it. |
 
-A look (a *theme*, in older docs and in `gutterpress new --kind theme`) is an
+A look (a *theme*, in older docs and in `gutterpress new --kind look`) is an
 **extension**: a folder holding a stylesheet --- `theme.css` --- plus a small
 metadata file, listed in the manifest's `extensions:` list alongside any
 plugins ([Chapter 5](#ch-plugins) covers that list in full).
@@ -145,7 +145,7 @@ For one book, the fastest approach is three sections in `styles/book.css`:
 
 To reuse a look across books, make it a folder: a `theme.css` plus a
 `package.json` declaring it, which is all a one-sheet look is. `gutterpress
-new "House Style" --kind theme` scaffolds a layered six-sheet one; either way
+new "House Style" --kind look` scaffolds a layered six-sheet one; either way
 `gutterpress ext add ./house-style <book>` lists it, referenced in place.
 
 ### Looks with more than one stylesheet
