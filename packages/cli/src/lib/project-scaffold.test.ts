@@ -183,22 +183,51 @@ test("scaffoldProject rejects an unusable name", async () => {
 });
 
 // ---------------------------------------------------------------------------
-// ADR 0008 — creating a book requires choosing a preset; `custom` requires a
-// trim size; the choice is written into the generated manifest explicitly.
+// ADR 0008 — a chosen preset is validated; left out, the template's own
+// stands; `custom` requires a trim size; the choice is written into the
+// generated manifest explicitly.
 // ---------------------------------------------------------------------------
 
-test("scaffoldProject without a preset refuses with code preset-required", async () => {
+test("scaffoldProject without a preset keeps the template's own", async () => {
+  const parent = await tmpParent();
+  try {
+    const result = await scaffoldProject({ name: "No Preset", parentDir: parent, versionHistory: "none" });
+    expect(await readFile(result.manifestPath, "utf8")).toContain("preset: book");
+    const config = resolveConfig({}, await loadManifest(result.projectDir));
+    expect(config.preset).toBe("book");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject without a preset still writes a trim the author gave", async () => {
+  const parent = await tmpParent();
+  try {
+    const result = await scaffoldProject({
+      name: "Trim Only",
+      parentDir: parent,
+      customPage: { width: 500, height: 700 },
+      versionHistory: "none",
+    });
+    const config = resolveConfig({}, await loadManifest(result.projectDir));
+    expect(config.preset).toBe("book");
+    expect([config.page.width, config.page.height]).toEqual([500, 700]);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject with an unknown preset refuses with code preset-required", async () => {
   const parent = await tmpParent();
   try {
     let err: CreateProjectError | undefined;
     try {
-      await scaffoldProject({ name: "No Preset", parentDir: parent, versionHistory: "none" });
+      await scaffoldProject({ name: "No Preset", parentDir: parent, preset: "nope" as never, versionHistory: "none" });
     } catch (e) {
       err = e as CreateProjectError;
     }
     expect(err?.code).toBe("preset-required");
     expect(err?.message).toContain("dtrpg, book, custom");
-    // Nothing was created.
     expect(existsSync(path.join(parent, "no-preset"))).toBe(false);
   } finally {
     await rm(parent, { recursive: true, force: true });
@@ -565,7 +594,7 @@ test("adoptFolder: never overwrites an existing styles/book.css", async () => {
 // incompressible PDF on every build until GitHub's 100MB limit rejects it.
 // ---------------------------------------------------------------------------
 
-test("scaffoldProject writes a .gitignore excluding dist/ and plugins/npm/", async () => {
+test("scaffoldProject writes a .gitignore excluding dist/ and extensions/npm/", async () => {
   const parent = await tmpParent();
   try {
     const result = await scaffoldProject({
@@ -576,7 +605,7 @@ test("scaffoldProject writes a .gitignore excluding dist/ and plugins/npm/", asy
     });
     const gitignore = await readFile(path.join(result.projectDir, ".gitignore"), "utf8");
     expect(gitignore).toContain("dist/");
-    expect(gitignore).toContain("plugins/npm/");
+    expect(gitignore).toContain("extensions/npm/");
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
@@ -606,13 +635,13 @@ test("scaffoldProject appends dist/ to a custom template's .gitignore without cl
   }
 });
 
-test("scaffoldProject leaves a custom template's .gitignore untouched when it already ignores dist/ and plugins/npm/", async () => {
+test("scaffoldProject leaves a custom template's .gitignore untouched when it already ignores dist/ and extensions/npm/", async () => {
   const templateDir = await mkdtemp(path.join(tmpdir(), "gutterpress-tpl-gitignore-has-dist-"));
   const parent = await tmpParent();
   try {
     await writeFile(path.join(templateDir, "manifest.yaml"), "title: \"{{TITLE}}\"\n", "utf8");
     await writeFile(path.join(templateDir, "chapter-01.md"), "# {{TITLE}}\n", "utf8");
-    const original = "# my ignores\ndist/\nplugins/npm/\n";
+    const original = "# my ignores\ndist/\nextensions/npm/\n";
     await writeFile(path.join(templateDir, ".gitignore"), original, "utf8");
 
     const result = await scaffoldProject({
@@ -636,7 +665,7 @@ test("adoptFolder writes a .gitignore excluding dist/ when the folder has none",
   await adoptFolder({ dir, versionHistory: "none" });
   const gitignore = await readFile(path.join(dir, ".gitignore"), "utf8");
   expect(gitignore).toContain("dist/");
-  expect(gitignore).toContain("plugins/npm/");
+  expect(gitignore).toContain("extensions/npm/");
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -651,7 +680,7 @@ test("adoptFolder appends dist/ to an existing .gitignore without overwriting it
   await rm(dir, { recursive: true, force: true });
 });
 
-test("scaffoldProject adds the built-in look a template names (paper → academic)", async () => {
+test("scaffoldProject lists the bundled look the paper template names, copying nothing", async () => {
   const parent = await tmpParent();
   try {
     const result = await scaffoldProject({
@@ -661,10 +690,11 @@ test("scaffoldProject adds the built-in look a template names (paper → academi
       preset: "book",
       versionHistory: "none",
     });
-    expect(existsSync(path.join(result.projectDir, EXTENSIONS_DIR, "academic", "theme.css"))).toBe(true);
+    expect(existsSync(path.join(result.projectDir, EXTENSIONS_DIR))).toBe(false);
     const entries = await listProjectExtensions(result.projectDir);
-    expect(entries.map((e) => e.use)).toEqual(["markdown-it-sup", "gutterpress-math", "./extensions/academic"]);
+    expect(entries.map((e) => e.use)).toEqual(["markdown-it-sup", "gutterpress-math", "academic"]);
     expect(entries.every((e) => e.enabled)).toBe(true);
+    expect(entries[2]).toMatchObject({ kind: "bundled", label: "Academic", carries: { styles: true, markdown: false } });
     // Added through the comment-preserving manifest writer.
     expect(await readFile(result.manifestPath, "utf8")).toContain("# A paper prints on US Letter");
     const config = resolveConfig({}, await loadManifest(result.projectDir));

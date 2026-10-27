@@ -38,19 +38,9 @@ implicit discovery.
 
 ## Stylesheets
 
-`styles:` is the explicit contract. When it is omitted, Gutterpress picks the first
-of these that exists:
-
-```text
-styles/book.css
-css/print.css
-css/index.css
-css/style.css
-css/main.css
-```
-
-then the first `.css` it discovers (project root, `styles/`, `css/`,
-alphabetically), then nothing at all. The same resolver
+`styles:` is the explicit contract. When it is omitted, Gutterpress uses
+`styles/book.css` if it exists, then the first `.css` it discovers (project
+root, `styles/`, `css/`, alphabetically), then nothing at all. The same resolver
 serves the renderer, the linter, and the desktop CSS editor, so what is edited
 is always what is rendered.
 

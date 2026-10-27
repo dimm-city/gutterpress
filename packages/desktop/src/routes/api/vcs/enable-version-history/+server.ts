@@ -15,7 +15,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
     const lib = await loadLib();
     const source = await lib.detectProjectSource(body.projectDir);
     // The first version commits everything now: keep build output (dist/) and
-    // downloaded extensions (plugins/npm/) out of it, exactly like new-book
+    // downloaded extensions (extensions/npm/) out of it, exactly like new-book
     // setup and "Set up as a book" do.
     await lib.ensureProjectGitignore(body.projectDir);
     await lib.providerFor(source).initVersionHistory({

@@ -127,8 +127,7 @@ export type {
   ExtensionCarries,
   ProjectExtensionEntry,
   ExtensionValidationResult,
-  RecommendedExtension,
-  BuiltInStyleSet,
+  BundledExtensionInfo,
   ExtensionImportResult,
   ExtensionImportWarning,
   NpmExtensionMatch,
@@ -155,8 +154,7 @@ import type {
   DiscoveredProject,
   ProjectExtensionEntry,
   ExtensionValidationResult,
-  RecommendedExtension,
-  BuiltInStyleSet,
+  BundledExtensionInfo,
   ExtensionImportResult,
   ExtensionSearchResult,
   ExtensionUpdatesResult,
@@ -644,8 +642,8 @@ export const api = {
     /** Load-test every configured extension; reports ok/error per entry. */
     validate: (projectDir: string) =>
       post<ExtensionValidationResult[]>('/api/extension/validate', { projectDir }),
-    /** The bundled markdown features an author can turn on with no install (static). */
-    recommended: () => get<RecommendedExtension[]>('/api/extension/recommended'),
+    /** The bundled extensions (markdown features and looks) an author can turn on with no install (static). */
+    bundled: () => get<BundledExtensionInfo[]>('/api/extension/bundled'),
     /** Search npm for extensions (#246), on demand. A network/parse failure is data (`ok: false`), never a thrown error. */
     search: (query: string) => post<ExtensionSearchResult>('/api/extension/search', { query }),
     /** Each pinned npm extension against npm's latest (the newest of any kind with `includePrerelease`), on demand (the Features tab, never project load). A network failure is data (`ok: false`). */
@@ -653,12 +651,7 @@ export const api = {
       post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir, includePrerelease }),
     /** Every published version of one npm package, newest first, pre-releases included (the version picker's list). On demand; a network failure is data (`ok: false`). */
     versions: (name: string) => post<ExtensionVersionsResult>('/api/extension/versions', { name }),
-    /** The built-in looks (static metadata). */
-    listBuiltIn: () => get<BuiltInStyleSet[]>('/api/extension/built-in'),
-    /** Copy a built-in look into `extensions/<id>/` and add it as `./extensions/<id>`. */
-    addBuiltIn: (projectDir: string, id: string) =>
-      post<ProjectExtensionEntry>('/api/extension/add-built-in', { projectDir, id }),
-    /** A configured extension's stylesheets, concatenated, for a sample thumbnail (entries with a folder only). */
+    /** A configured extension's stylesheets, concatenated, for a sample thumbnail (a bundled look's inlined css, or the entry's folder). */
     readCss: (projectDir: string, use: string) =>
       post<string>('/api/extension/read-css', { projectDir, use }),
     /** Native picker for a `.zip` package or bare `.css`, imported into `extensions/<id>/` (#106). Null when cancelled. */

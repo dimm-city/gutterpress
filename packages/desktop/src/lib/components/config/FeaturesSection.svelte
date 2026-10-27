@@ -256,7 +256,7 @@
       <input class="input export-input" type="text" aria-label="named plugin export (optional)" placeholder="export (optional)" bind:value={controller.npmExport} onkeydown={(e) => { if (e.key === "Enter") controller.addNpm(); }} />
       <button class="primary small app-btn-primary" onclick={controller.addNpm} disabled={controller.busy !== null}>{controller.busy !== null && controller.busy === controller.npmName.trim() ? "Installing..." : "Install"}</button>
     </div>
-    <p class="hint">Downloads from npm, verifies the registry hash, stores the package under <code>plugins/npm</code>, and pins the exact version in the manifest. For packages such as <code>markdown-it-emoji</code> that expose named plugin functions, enter the export name (for example <code>full</code>). Package install scripts are never run.</p>
+    <p class="hint">Downloads from npm, verifies the registry hash, stores the package under <code>extensions/npm</code>, and pins the exact version in the manifest. For packages such as <code>markdown-it-emoji</code> that expose named plugin functions, enter the export name (for example <code>full</code>). Package install scripts are never run.</p>
     <p class="hint">Only install packages you trust. Features and their dependencies run with the app's full filesystem and network privileges.</p>
     <button class="ghost small full" onclick={controller.addLocal} disabled={controller.busy !== null}>
       <Icon name="folder" size={14} /> Add a plugin file or folder...

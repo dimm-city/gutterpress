@@ -150,7 +150,7 @@ rules in `SKILL.md` remain workflow policy and must still be reviewed.
 
 ```text
 book.html            dist/**            other generated output
-plugins/npm/**       .od-skills/**      .git/**
+extensions/npm/**    .od-skills/**      .git/**
 files outside the imported repository root
 ```
 

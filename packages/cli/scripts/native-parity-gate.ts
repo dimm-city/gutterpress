@@ -187,7 +187,7 @@ const DEFAULT_FIXTURES = [
   // The paper (#425): display and inline math as SVG, ruled tables, and a
   // look loaded as an extension — its `@page` and every rule inside
   // `@layer ext.academic` — so the two renderers are held to the same pages
-  // for a book styled the way `gutterpress ext add … --look` styles one.
+  // for a book styled by a bundled look listed in `extensions:`.
   join(REPO, "examples", "academic-paper"),
   // The exact-fit boundary fixture (committed): the #268 boundary as a slice
   // of the user guide's styling chapter on the rules of its stylesheet that

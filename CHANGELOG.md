@@ -23,9 +23,7 @@ This project follows [Semantic Versioning](https://semver.org/).
   and hyphenated, ruled tables, notes and references set smaller), with the
   title block, abstract, figures, tables and references styled by the
   `@section` each sits in. `gutterpress new … --template paper` starts a paper
-  with the look, math and superscripts already listed; creating the paper adds
-  the look as `gutterpress ext add academic --look` would, so it is the
-  author's own editable file.
+  with the look, math and superscripts already listed.
 - **A `language` manifest field** (a BCP 47 tag such as `en`, `de-CH` or
   `pt-BR`; default `en`). It is the `lang` of the built HTML, which is what
   hyphenation follows (every book hyphenated as English before), and the
@@ -37,6 +35,28 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **`gutterpress new` no longer insists on `--preset`.** Every starter
+  template carries a preset, so leaving the flag out keeps the template's;
+  the flag overrides it. `--kind theme` is `--kind look`, the word the rest of
+  Gutterpress uses, and the help no longer calls a preset a "vendor preset".
+- **A stylesheet is `styles/book.css` or whatever `styles:` lists.** The four
+  legacy names (`css/print.css`, `css/index.css`, `css/style.css`,
+  `css/main.css`) are no longer looked for by name; a project that has only
+  such a file still gets it, because the first `.css` found under the project
+  root, `styles/` or `css/` is used when nothing is listed.
+- **Downloaded npm extensions live under `extensions/npm/`**, beside the
+  looks and components a book imports, instead of `plugins/npm/`. New books
+  ignore `extensions/npm/` in their `.gitignore`; a book vendored earlier
+  keeps working from `plugins/npm/` until its next `ext add` or `ext update`.
+- **The built-in looks are bundled extensions, listed by name.** `clean-book`,
+  `zine`, `technical-doc` and `academic` join the bundled names: `gutterpress
+  ext add academic` (or Use in the Look view) writes `- academic` to the
+  manifest and copies nothing, the way `gutterpress-math` already worked. The
+  look's stylesheet is compiled into Gutterpress and loads like a plugin's own
+  CSS; a book styles over it from its own `styles:` sheets, which load after
+  every extension. `ext add --look` and the `extensions/<id>` copy are gone; a book
+  that still carries such a copy keeps working as the path extension it is.
+  Several looks may be listed at once, later ones winning ties, as before.
 - **A footnote links to its own note in a book of several files.** Each file
   numbers its notes from 1, and the links behind the numbers were named after
   the number alone, so in a book with notes in two files a note's return arrow,

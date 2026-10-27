@@ -1,12 +1,13 @@
 import { defineCommand } from "citty";
 import { resolve } from "node:path";
 import {
+  loadManifest,
+  resolveConfig,
   scaffoldProject,
   scaffoldExtension,
   BUILT_IN_TEMPLATE_IDS,
   EXTENSION_KINDS,
   PRESET_IDS,
-  PRESETS,
   TARGETS,
   TARGET_IDS,
 } from "../index.ts";
@@ -26,7 +27,7 @@ import { isToolAvailable } from "../lib/tool-probe.ts";
 import { resolveGhostscript } from "../lib/ghostscript.ts";
 
 /**
- * `gutterpress new` — scaffold a new book, plugin or theme from an embedded
+ * `gutterpress new` — scaffold a new book, plugin or look from an embedded
  * starter template.
  *
  * A thin front-end over the shared lib (CLAUDE.md §7: one implementation, two
@@ -34,11 +35,11 @@ import { resolveGhostscript } from "../lib/ghostscript.ts";
  *
  *   book (default) → `scaffoldProject`   (#25, the same call the desktop
  *                                         wizard makes)
- *   plugin | theme → `scaffoldExtension` (#245 / #233)
+ *   plugin | look → `scaffoldExtension` (#245 / #233)
  *
  *   gutterpress new "My First Book" --preset dtrpg --author "Jane" --dir ~/Books [--no-git]
  *   gutterpress new "Field Notes" --kind plugin --prefix fn-
- *   gutterpress new "House Style" --kind theme
+ *   gutterpress new "House Style" --kind look
  *
  * WHY ONE COMMAND AND NOT THREE. All three create a new folder from an
  * embedded template with the same never-overwrite contract, the same error
@@ -65,15 +66,15 @@ export const newArgs = {
   prefix: {
     type: "string",
     description:
-      "Class/custom-property prefix an extension claims (default: its slug, e.g. \"field-notes-\"); --kind plugin|theme only",
+      "Class/custom-property prefix an extension claims (default: its slug, e.g. \"field-notes-\"); --kind plugin|look only",
   },
   description: {
     type: "string",
-    description: "One-line description recorded in the extension's metadata; --kind plugin|theme only",
+    description: "One-line description recorded in the extension's metadata; --kind plugin|look only",
   },
   preset: {
     type: "string",
-    description: `Vendor preset the book is designed for: ${PRESET_IDS.join(", ")} (required; custom also needs --page-width/--page-height)`,
+    description: `Preset the book is designed for: ${PRESET_IDS.join(", ")} (default: the template's; custom also needs --page-width/--page-height)`,
   },
   author: {
     type: "string",
@@ -189,7 +190,7 @@ function optionalString(value: unknown): string | undefined {
 }
 
 /**
- * `--kind plugin|theme`: create an extension starter package and print how to
+ * `--kind plugin|look`: create an extension starter package and print how to
  * use it. Split out of `run()` so the book path reads exactly as it did.
  */
 async function runExtensionScaffold(
@@ -252,7 +253,7 @@ async function runExtensionScaffold(
 export default defineCommand({
   meta: {
     name: "new",
-    description: "Create a new Gutterpress book, plugin or theme from a starter template",
+    description: "Create a new Gutterpress book, plugin or look from a starter template",
   },
   args: newArgs,
   async run({ args, rawArgs }) {
@@ -300,17 +301,14 @@ export default defineCommand({
       template = args.template as ProjectTemplateId;
     }
 
-    // ADR 0008: creating a book requires choosing the preset it's designed
-    // for. Validated here for a first-class CLI message; scaffoldProject
-    // enforces the same rule for every caller.
+    // ADR 0008: a chosen preset is validated here for a first-class CLI
+    // message; left out, the template's own `preset:` stands.
     const preset = typeof args.preset === "string" && args.preset ? args.preset : undefined;
-    if (!preset || !(PRESET_IDS as readonly string[]).includes(preset)) {
+    if (preset && !(PRESET_IDS as readonly string[]).includes(preset)) {
       console.error(
-        preset
-          ? `Unknown preset "${preset}". Choose one of: ${PRESET_IDS.join(", ")}.`
-          : `A preset is required: --preset <${PRESET_IDS.join("|")}>. ` +
-              `Use "dtrpg" for DriveThruRPG print-on-demand, "book" for a neutral 6x9in trade book, ` +
-              `or "custom" with --page-width/--page-height (points; 72pt = 1in).`,
+        `Unknown preset "${preset}". Choose one of: ${PRESET_IDS.join(", ")}. ` +
+          `"dtrpg" is DriveThruRPG print-on-demand, "book" a neutral 6x9in trade book, ` +
+          `"custom" takes --page-width/--page-height (points; 72pt = 1in).`,
       );
       process.exit(EXIT_CODES.USAGE);
     }
@@ -354,17 +352,20 @@ export default defineCommand({
         parentDir,
         folderName: typeof args.folder === "string" && args.folder ? args.folder : undefined,
         template,
-        preset: preset as PresetId,
+        preset: preset as PresetId | undefined,
         targets,
         customPage,
         versionHistory: args.git === false ? "none" : "local-git",
       });
 
-      const effectiveTargets = targets ?? [...PRESETS[preset as PresetId].defaultTargets];
+      // What the new manifest actually says, whichever of the flag, the
+      // template or the preset's default supplied each value.
+      const written = resolveConfig({}, await loadManifest(result.projectDir));
 
       console.log(`Created book: ${result.projectDir}`);
       console.log(`  manifest: ${result.manifestPath}`);
-      console.log(`  publish targets: ${effectiveTargets.length > 0 ? effectiveTargets.join(", ") : "none"}`);
+      console.log(`  preset: ${written.preset}`);
+      console.log(`  publish targets: ${written.targets.length > 0 ? written.targets.join(", ") : "none"}`);
       console.log(`  start writing in: ${result.openFile}`);
       if (result.versionHistory === "local-git") {
         console.log("  version history: enabled (local snapshots)");
@@ -379,7 +380,7 @@ export default defineCommand({
       // author chose it knowingly — but a compliant file can't be produced
       // or verified until the tools are installed.
       const neededTools = [
-        ...new Set(effectiveTargets.flatMap((id) => TARGETS[id]?.requiredTools ?? [])),
+        ...new Set(written.targets.flatMap((id) => TARGETS[id]?.requiredTools ?? [])),
       ];
       const missingTools: string[] = [];
       for (const tool of neededTools) {

@@ -17,19 +17,18 @@ Gutterpress ships four built-in looks, embedded in the CLI binary and library:
 | `technical-doc` | Clean sans-serif manual look with clear hierarchy, code styling, and tidy tables. |
 | `academic` | A journal-article look: serif text, justified and hyphenated, ruled tables, notes and references set smaller. The `paper` starter template uses it. |
 
-A look (a *theme*, in older docs and in `gutterpress new --kind theme`) is an
+A look (a *theme*, in older docs and in `gutterpress new --kind look`) is an
 **extension**: a folder holding a stylesheet --- `theme.css` --- plus a small
 metadata file, listed in the manifest's `extensions:` list alongside any
 plugins ([Chapter 5](#ch-plugins) covers that list in full).
 
-Adding a built-in look **copies** it into your project at `extensions/<id>/`,
-so the book owns editable files rather than a hidden dependency on whichever
-Gutterpress version happens to be installed, and adds `./extensions/<id>` to
-the list:
+A built-in look is bundled with Gutterpress: adding one lists its name,
+installs nothing, and copies nothing. Your own `styles/book.css` loads after
+it, so that is where you change what the look decides.
 
 ```sh
-gutterpress ext add clean-book ./my-book --look   # copy the built-in look in and list it
-gutterpress ext list ./my-book                    # every extension, in load (= cascade) order
+gutterpress ext add clean-book ./my-book   # list the built-in look
+gutterpress ext list ./my-book             # every extension, in load (= cascade) order
 ```
 
 A new book has no look until you add one this way. After adding
@@ -37,23 +36,23 @@ A new book has no look until you add one this way. After adding
 
 ```yaml
 extensions:
-  - ./extensions/clean-book   # The look: extensions/clean-book/theme.css
+  - clean-book                # The look, bundled with Gutterpress
 styles:
   - styles/book.css           # Your own overrides, loaded after every extension
 ```
 
 `styles/book.css` starts as a comment block explaining this split. It is the
 project's own layer: everything under `styles:` loads after every extension,
-so a rule you write there overrides the look at equal specificity. Edit
-`extensions/clean-book/theme.css` directly when you want to change the look
-itself --- it is your copy.
+so a rule you write there overrides the look at equal specificity. Change the
+look's decisions --- its tokens, its rules --- from `styles/book.css`; nothing
+is copied into the book.
 
 ### Adding and switching looks
 
 Any of these adds a look to the list:
 
 ```sh
-gutterpress ext add zine ./my-book --look                     # another built-in (copied to extensions/zine/)
+gutterpress ext add zine ./my-book                            # another built-in look, by name
 gutterpress ext add ./house-style ./my-book                   # a folder you already have -- referenced in place, never copied
 gutterpress ext add ./parchment.zip ./my-book                 # a packaged look -> extensions/parchment/
 gutterpress ext add ./parchment.css ./my-book                 # a single stylesheet -> extensions/parchment/
@@ -69,9 +68,9 @@ Two looks listed at once both load, and the later one wins ties --- so
 switching is adding the new look, then disabling or removing the old one:
 
 ```sh
-gutterpress ext add zine ./my-book --look
-gutterpress ext disable ./extensions/clean-book ./my-book   # keep it around, stop loading it
-gutterpress ext remove ./extensions/clean-book ./my-book    # or drop the entry (the folder stays yours)
+gutterpress ext add zine ./my-book
+gutterpress ext disable clean-book ./my-book   # keep it listed, stop loading it
+gutterpress ext remove clean-book ./my-book    # or drop the entry
 ```
 
 The desktop app's **Project settings &rarr; Look** view is the same list: add a
@@ -146,7 +145,7 @@ For one book, the fastest approach is three sections in `styles/book.css`:
 
 To reuse a look across books, make it a folder: a `theme.css` plus a
 `package.json` declaring it, which is all a one-sheet look is. `gutterpress
-new "House Style" --kind theme` scaffolds a layered six-sheet one; either way
+new "House Style" --kind look` scaffolds a layered six-sheet one; either way
 `gutterpress ext add ./house-style <book>` lists it, referenced in place.
 
 ### Looks with more than one stylesheet

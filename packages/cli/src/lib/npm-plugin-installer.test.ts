@@ -2,7 +2,7 @@
  * The npm extension installer (`gutterpress ext add` / the desktop's
  * `addExtension`), end to end through `addExtension`: registry resolution to
  * an exact version, SRI integrity verification, safe extraction, vendoring the
- * complete nested dependency tree under `plugins/npm/`, the atomic manifest
+ * complete nested dependency tree under `extensions/npm/`, the atomic manifest
  * pin, and the loader reading that tree back through Node's own module
  * resolution. The registry is a fixture `fetch`; nothing here touches the
  * network.
@@ -322,7 +322,7 @@ describe("npm plugin installation", () => {
     expect(await loadedMarker(dir, name, version, "__npmPluginLoaded")).toBe(true);
   });
 
-  test("keeps downloaded extensions out of the book's version history: appends plugins/npm/ to .gitignore", async () => {
+  test("keeps downloaded extensions out of the book's version history: appends extensions/npm/ to .gitignore", async () => {
     const dir = await projectDir();
     await writeFile(path.join(dir, ".gitignore"), "*.log", "utf8");
     const name = "markdown-it-ignore-fixture";
@@ -330,16 +330,16 @@ describe("npm plugin installation", () => {
 
     const result = await addNpmPlugin(dir, name, { fetch: fixture.fetch });
 
-    expect(await readFile(path.join(dir, ".gitignore"), "utf8")).toBe("*.log\ndist/\nplugins/npm/\n");
+    expect(await readFile(path.join(dir, ".gitignore"), "utf8")).toBe("*.log\ndist/\nextensions/npm/\n");
     expect(result.warnings ?? []).toEqual([]);
     // A second install finds both covered and writes nothing more.
     await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: fixture.fetch });
-    expect(await readFile(path.join(dir, ".gitignore"), "utf8")).toBe("*.log\ndist/\nplugins/npm/\n");
+    expect(await readFile(path.join(dir, ".gitignore"), "utf8")).toBe("*.log\ndist/\nextensions/npm/\n");
   });
 
-  test("an author's own re-include of plugins/npm/ is respected, and the install warns about it", async () => {
+  test("an author's own re-include of extensions/npm/ is respected, and the install warns about it", async () => {
     const dir = await projectDir();
-    const original = "dist/\n!**/plugins/npm/**\n";
+    const original = "dist/\n!**/extensions/npm/**\n";
     await writeFile(path.join(dir, ".gitignore"), original, "utf8");
     const name = "markdown-it-negated-fixture";
     const fixture = registryFixture(name, "1.0.0", packageEntries(name, "1.0.0"));
@@ -348,7 +348,7 @@ describe("npm plugin installation", () => {
 
     expect(await readFile(path.join(dir, ".gitignore"), "utf8")).toBe(original);
     expect(result).toMatchObject({ use: `${name}@1.0.0` });
-    expect(result.warnings?.some((w) => /re-includes plugins\/npm\/.*shouldn't/.test(w))).toBe(true);
+    expect(result.warnings?.some((w) => /re-includes extensions\/npm\/.*shouldn't/.test(w))).toBe(true);
   });
 
   test("GUTTERPRESS_NPM_REGISTRY: a package vendored from a private mirror installs and loads", async () => {
@@ -391,27 +391,27 @@ describe("npm plugin installation", () => {
     expect(existsSync(vendoredNpmPluginRoot(dir, name, version))).toBe(false);
     expect(await listProjectPlugins(dir)).toEqual([]);
     // Nothing of the failed attempt is left: not its staging folder, and not
-    // the empty plugins/npm/<name>/ folders it created.
-    expect(existsSync(path.join(dir, "plugins"))).toBe(false);
+    // the empty extensions/npm/<name>/ folders it created.
+    expect(existsSync(path.join(dir, "extensions"))).toBe(false);
   });
 
   test("a failed install removes only the folders it created, and nothing that was already there", async () => {
     const name = "markdown-it-cleanup-fixture";
     const failing = registryFixture(name, "1.0.0", packageEntries(name, "1.0.0"), { badIntegrity: true });
 
-    // A local plugin already lives in plugins/: it and plugins/ stay, plugins/npm/ goes.
+    // A local extension already lives in extensions/: it and extensions/ stay, extensions/npm/ goes.
     const withLocal = await projectDir();
-    await mkdir(path.join(withLocal, "plugins"), { recursive: true });
-    await writeFile(path.join(withLocal, "plugins", "local.js"), "export default () => {};\n", "utf8");
+    await mkdir(path.join(withLocal, "extensions"), { recursive: true });
+    await writeFile(path.join(withLocal, "extensions", "local.js"), "export default () => {};\n", "utf8");
     await expect(addNpmPlugin(withLocal, name, { fetch: failing.fetch })).rejects.toThrow(/integrity/i);
-    expect(await readdir(path.join(withLocal, "plugins"))).toEqual(["local.js"]);
+    expect(await readdir(path.join(withLocal, "extensions"))).toEqual(["local.js"]);
 
-    // Another package's copy already lives in plugins/npm/: it stays, this package's folder goes.
+    // Another package's copy already lives in extensions/npm/: it stays, this package's folder goes.
     const withOther = await projectDir();
     const other = "markdown-it-cleanup-other";
     await addNpmPlugin(withOther, other, { fetch: registryFixture(other, "2.0.0", packageEntries(other, "2.0.0")).fetch });
     await expect(addNpmPlugin(withOther, name, { fetch: failing.fetch })).rejects.toThrow(/integrity/i);
-    expect(await readdir(path.join(withOther, "plugins", "npm"))).toEqual([other]);
+    expect(await readdir(path.join(withOther, "extensions", "npm"))).toEqual([other]);
 
     // A failure to even reach the registry cleans up the same way.
     const offline = await projectDir();
@@ -419,7 +419,7 @@ describe("npm plugin installation", () => {
       throw new Error("ENOTFOUND");
     }) as unknown as typeof globalThis.fetch;
     await expect(addNpmPlugin(offline, name, { fetch: dead })).rejects.toThrow();
-    expect(existsSync(path.join(offline, "plugins"))).toBe(false);
+    expect(existsSync(path.join(offline, "extensions"))).toBe(false);
   });
 
   test("an install that downloads fine but will not load is rolled back without leaving its folders", async () => {
@@ -431,7 +431,7 @@ describe("npm plugin installation", () => {
 
     await expect(addNpmPlugin(dir, name, { fetch: fixture.fetch })).rejects.toThrow(/not a loadable markdown-it plugin/i);
 
-    expect(existsSync(path.join(dir, "plugins"))).toBe(false);
+    expect(existsSync(path.join(dir, "extensions"))).toBe(false);
   });
 
   test("removing the only extension also removes its now-empty package folder", async () => {
@@ -441,7 +441,7 @@ describe("npm plugin installation", () => {
 
     await removeExtension(dir, `${name}@1.0.0`);
 
-    expect(await readdir(path.join(dir, "plugins", "npm"))).toEqual([]);
+    expect(await readdir(path.join(dir, "extensions", "npm"))).toEqual([]);
   });
 
   test("rejects path traversal and links and cleans staging", async () => {
@@ -1684,7 +1684,7 @@ describe("restorePinnedExtensions", () => {
 
   test("a missing copy is downloaded at exactly the pinned version, and the manifest is untouched", async () => {
     const { dir, fixture, manifest } = await pinnedBook();
-    await rm(path.join(dir, "plugins"), { recursive: true });
+    await rm(path.join(dir, "extensions"), { recursive: true });
     const events: RestoreProgress[] = [];
 
     const result = await restorePinnedExtensions(dir, {
@@ -1729,7 +1729,7 @@ describe("restorePinnedExtensions", () => {
     ]);
     const dir = await projectDir();
     await addNpmPlugin(dir, `${exportName}@1.0.0`, { fetch: fixture.fetch, exportName: "full" });
-    await rm(path.join(dir, "plugins"), { recursive: true });
+    await rm(path.join(dir, "extensions"), { recursive: true });
 
     expect(await restorePinnedExtensions(dir, { fetch: fixture.fetch })).toMatchObject({
       installed: [`${exportName}@1.0.0`],
@@ -1739,7 +1739,7 @@ describe("restorePinnedExtensions", () => {
 
   test("offline: a missing copy is reported as needing the internet, leaves no partial copy, and changes nothing", async () => {
     const { dir, manifest } = await pinnedBook();
-    await rm(path.join(dir, "plugins"), { recursive: true });
+    await rm(path.join(dir, "extensions"), { recursive: true });
     const offline = (async () => {
       throw new TypeError("fetch failed: ECONNREFUSED");
     }) as unknown as typeof globalThis.fetch;
@@ -1754,8 +1754,8 @@ describe("restorePinnedExtensions", () => {
     expect(sentence).toContain(`${name}@1.0.0 (pinned in manifest.yaml)`);
     expect(sentence).toContain("Connect to the internet");
     expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(false);
-    // No empty plugins/npm/<name>/ folder either: a failed first open leaves the book as it was.
-    expect(existsSync(path.join(dir, "plugins"))).toBe(false);
+    // No empty extensions/npm/<name>/ folder either: a failed first open leaves the book as it was.
+    expect(existsSync(path.join(dir, "extensions"))).toBe(false);
     expect(await readFile(path.join(dir, "manifest.yaml"), "utf8")).toBe(manifest);
   });
 
@@ -1796,7 +1796,7 @@ describe("restorePinnedExtensions", () => {
 
   test("offline with a copy missing fails a build fast with one 'install while online' error", async () => {
     const { dir } = await pinnedBook();
-    await rm(path.join(dir, "plugins"), { recursive: true });
+    await rm(path.join(dir, "extensions"), { recursive: true });
     const fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async () => {
       throw new TypeError("fetch failed");
     }) as never);
@@ -1823,7 +1823,7 @@ describe("restorePinnedExtensions", () => {
 
   test("an integrity mismatch is a failure, never an install", async () => {
     const { dir } = await pinnedBook();
-    await rm(path.join(dir, "plugins"), { recursive: true });
+    await rm(path.join(dir, "extensions"), { recursive: true });
     const bad = registryFixture(name, "1.0.0", packageEntries(name, "1.0.0"), { badIntegrity: true });
 
     const result = await restorePinnedExtensions(dir, { fetch: bad.fetch });
@@ -1865,7 +1865,7 @@ describe("restorePinnedExtensions", () => {
       failed: [],
       warnings: [],
     });
-    expect(existsSync(path.join(dir, "plugins"))).toBe(false);
+    expect(existsSync(path.join(dir, "extensions"))).toBe(false);
   });
 
   test("no manifest, no extensions list, or an unreadable manifest restores nothing", async () => {
@@ -1880,7 +1880,7 @@ describe("restorePinnedExtensions", () => {
   test("an explicit manifest file restores into that file's folder", async () => {
     const { dir, fixture } = await pinnedBook();
     await rename(path.join(dir, "manifest.yaml"), path.join(dir, "book.yaml"));
-    await rm(path.join(dir, "plugins"), { recursive: true });
+    await rm(path.join(dir, "extensions"), { recursive: true });
 
     const result = await restorePinnedExtensions(dir, { fetch: fixture.fetch, manifestPath: path.join(dir, "book.yaml") });
 
@@ -1890,7 +1890,7 @@ describe("restorePinnedExtensions", () => {
 
   test("concurrent restores of one book share a single download", async () => {
     const { dir, fixture } = await pinnedBook();
-    await rm(path.join(dir, "plugins"), { recursive: true });
+    await rm(path.join(dir, "extensions"), { recursive: true });
 
     const [a, b] = await Promise.all([
       restorePinnedExtensions(dir, { fetch: fixture.fetch }),
@@ -1904,17 +1904,17 @@ describe("restorePinnedExtensions", () => {
 
   test("restoring keeps the downloaded copy out of git, like any install", async () => {
     const { dir, fixture } = await pinnedBook();
-    await rm(path.join(dir, "plugins"), { recursive: true });
+    await rm(path.join(dir, "extensions"), { recursive: true });
     await rm(path.join(dir, ".gitignore"));
 
     await restorePinnedExtensions(dir, { fetch: fixture.fetch });
 
-    expect(await readFile(path.join(dir, ".gitignore"), "utf8")).toContain("plugins/npm/");
+    expect(await readFile(path.join(dir, ".gitignore"), "utf8")).toContain("extensions/npm/");
   });
 
   test("restoreForCommand reports each downloaded package on stderr, and nothing on stdout or when everything is present", async () => {
     const { dir, fixture } = await pinnedBook();
-    await rm(path.join(dir, "plugins"), { recursive: true });
+    await rm(path.join(dir, "extensions"), { recursive: true });
     const stderr: string[] = [];
     const stdout: string[] = [];
     const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(fixture.fetch as never);
@@ -1962,8 +1962,8 @@ describe("restorePinnedExtensions", () => {
       const fixture = registryGraphFixture([{ name, version: "1.0.0" }, { name: other, version: "3.0.0" }]);
       const dir = await projectDir();
       await addNpmPlugin(dir, `${other}@3.0.0`, { fetch: fixture.fetch });
-      await mkdir(path.join(dir, "plugins", "npm", name, "9.9.9"), { recursive: true });
-      await mkdir(path.join(dir, "plugins", "npm", name, "notes"), { recursive: true });
+      await mkdir(path.join(dir, "extensions", "npm", name, "9.9.9"), { recursive: true });
+      await mkdir(path.join(dir, "extensions", "npm", name, "notes"), { recursive: true });
       await writeFile(path.join(dir, "manifest.yaml"), manifestOf(`${other}@3.0.0`, `${name}@1.0.0`), "utf8");
 
       await restorePinnedExtensions(dir, { fetch: fixture.fetch });
@@ -2026,7 +2026,7 @@ describe("restorePinnedExtensions", () => {
 
   test("two restores of one copy that race through different spellings of the path download it once", async () => {
     const { dir, fixture } = await pinnedBook();
-    await rm(path.join(dir, "plugins"), { recursive: true });
+    await rm(path.join(dir, "extensions"), { recursive: true });
 
     // Not the in-flight share (same key): the mutation lock alone must stop the second download.
     await Promise.all([
@@ -2044,7 +2044,7 @@ describe("the shared seams restore before they load plugins", () => {
     const fixture = registryGraphFixture([{ name, version: "1.0.0" }]);
     const dir = await projectDir();
     await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: fixture.fetch });
-    await rm(path.join(dir, "plugins"), { recursive: true });
+    await rm(path.join(dir, "extensions"), { recursive: true });
     await writeFile(path.join(dir, "chapter.md"), "# Hi\n", "utf8");
     fixture.calls.length = 0;
     return { dir, fixture };
@@ -2127,7 +2127,7 @@ describe("the shared seams restore before they load plugins", () => {
     // The next render finds the copy and stays offline.
     await withFetch(noNetworkFetch, render);
     // A copy that goes missing later (a pin changed by Get latest, a deleted folder) comes back on the next render.
-    await rm(path.join(dir, "plugins"), { recursive: true });
+    await rm(path.join(dir, "extensions"), { recursive: true });
     await withFetch(fixture.fetch, render);
     expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(true);
   });
@@ -2195,7 +2195,7 @@ describe("publishing plugins (experimental, #381)", () => {
     const dir = await projectDir();
     const fixture = registryGraphFixture([publisher]);
     await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: fixture.fetch });
-    await rm(path.join(dir, "plugins"), { recursive: true });
+    await rm(path.join(dir, "extensions"), { recursive: true });
 
     expect(await restorePinnedExtensions(dir, { fetch: fixture.fetch })).toMatchObject({
       installed: [`${name}@1.0.0`],

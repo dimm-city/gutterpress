@@ -108,7 +108,7 @@ gutterpress ext add my-extension@1.3.0 field-guide
 ```
 
 `ext add` vendors the new version and re-pins the entry in place. It leaves
-the old version's folder under `plugins/npm/my-extension/`; delete it
+the old version's folder under `extensions/npm/my-extension/`; delete it
 yourself.
 
 ## How a working copy differs from the published package
@@ -131,7 +131,7 @@ The cascade layer is the same either way: `ext.<name>`, from the `name` in
 
 ## Don't edit the vendored copy
 
-Editing files under `plugins/npm/` is not a shortcut. That tree is
+Editing files under `extensions/npm/` is not a shortcut. That tree is
 Gutterpress's own downloaded copy of a published version: the next
 `gutterpress ext add` of the same version replaces it wholesale, and anyone
 else who installs the pin gets the published bytes, not your edits. Point the

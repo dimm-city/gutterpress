@@ -117,8 +117,8 @@ directly.
   Markdown rendering behavior genuinely must change.
 - **Managed** — installed by `gutterpress ext add <pkg>@<version> <book>`, which
   integrity-checks and vendors the exact dependency graph beneath the book's
-  `plugins/npm/` tree, then pins `name@version` in the
+  `extensions/npm/` tree, then pins `name@version` in the
   manifest's `extensions:` list.
 
-`plugins/npm/**` is machine-owned. Never edit it, move it, or share it between
+`extensions/npm/**` is machine-owned. Never edit it, move it, or share it between
 books. Commit it — a team relying on reproducible offline builds needs it.

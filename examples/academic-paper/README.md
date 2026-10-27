@@ -21,8 +21,6 @@ program printed in it (Listing 1) reproduces every result.
 - `references.md`: the numbered bibliography
 - `figures/convergence.svg`: the figure, an SVG drawn with matplotlib
 - `figures/convergence.py`: the matplotlib script that draws it
-- `extensions/academic/`: the built-in look, copied in by
-  `gutterpress ext add academic --look` so it is this paper's own file
 
 ## Build
 
@@ -86,12 +84,14 @@ Problems with its line and what is wrong.
 
 ## Styling
 
-`extensions/academic/theme.css` is the built-in `academic` look, in the spirit
-of LaTeX's `article` class: a serif text face, justified and hyphenated text,
-1 in margins and a centered page number, with the title block, abstract,
-figures, tables, notes and references styled by the `@section` each sits in.
-Change the look by editing the tokens at the top of that file, the same names
-every built-in look uses:
+`academic` is a built-in look, in the spirit of LaTeX's `article` class: a
+serif text face, justified and hyphenated text, 1 in margins and a centered
+page number, with the title block, abstract, figures, tables, notes and
+references styled by the `@section` each sits in. It is listed by name in
+`manifest.yaml`, nothing is copied into the project. To change it, add a
+stylesheet of your own under `styles:` and set the tokens there; your sheet
+loads after every extension, so it wins. The names are the same every
+built-in look uses:
 
 ```css
 :root {

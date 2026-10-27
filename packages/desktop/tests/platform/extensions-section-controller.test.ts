@@ -3,8 +3,7 @@ import { ExtensionsSectionController, FEATURES_TABS } from "../../src/lib/routes
 import type {
   ProjectExtensionEntry,
   ExtensionValidationResult,
-  RecommendedExtension,
-  BuiltInStyleSet,
+  BundledExtensionInfo,
   ExtensionImportResult,
   NpmExtensionMatch,
   ExtensionSearchResult,
@@ -45,10 +44,11 @@ const FEATURE = entry({ use: "markdown-it-mark", kind: "bundled", label: "Highli
 const BOTH = entry({ use: "../shared/house", label: "House", carries: { markdown: true, styles: true, snippets: true, components: false }, dir: "/shared/house", styles: ["theme.css"] });
 const BROKEN = entry({ use: "./missing", label: "missing", warnings: ["Not found: /proj/missing"] });
 
-const REC_MARK: RecommendedExtension = { use: "markdown-it-mark", label: "Highlight", description: "d" };
-const REC_SUB: RecommendedExtension = { use: "markdown-it-sub", label: "Subscript", description: "d" };
-const BUILTIN_CLEAN: BuiltInStyleSet = { id: "clean-book", name: "Clean Book", description: "d" };
-const BUILTIN_ZINE: BuiltInStyleSet = { id: "zine", name: "Zine", description: "d" };
+const REC_MARK: BundledExtensionInfo = { use: "markdown-it-mark", label: "Highlight", description: "d", look: false };
+const REC_SUB: BundledExtensionInfo = { use: "markdown-it-sub", label: "Subscript", description: "d", look: false };
+const BUILTIN_CLEAN: BundledExtensionInfo = { use: "clean-book", label: "Clean Book", description: "d", look: true };
+const BUILTIN_ZINE: BundledExtensionInfo = { use: "zine", label: "Zine", description: "d", look: true };
+const BUNDLED = [REC_MARK, REC_SUB, BUILTIN_CLEAN, BUILTIN_ZINE];
 
 const FOUND_DC: NpmExtensionMatch = {
   name: "dimm-city-components",
@@ -70,8 +70,7 @@ interface Harness {
   ctrl: ExtensionsSectionController;
   projectDir: string | null;
   entries: ProjectExtensionEntry[];
-  recommended: RecommendedExtension[];
-  builtIns: BuiltInStyleSet[];
+  bundled: BundledExtensionInfo[];
   validation: ExtensionValidationResult[];
   /** Every host call, in order — `list` included, so "did it reload" is observable. */
   calls: Array<{ name: string; args: unknown[] }>;
@@ -95,8 +94,7 @@ function make(
   over: Partial<{
     noProject: boolean;
     entries: ProjectExtensionEntry[];
-    recommended: RecommendedExtension[];
-    builtIns: BuiltInStyleSet[];
+    bundled: BundledExtensionInfo[];
     searchResult: ExtensionSearchResult;
     updatesResult: ExtensionUpdatesResult;
     published: Record<string, string[]>;
@@ -110,8 +108,7 @@ function make(
     afterLookChange,
     projectDir: over.noProject ? null : "/proj",
     entries: over.entries ?? [LOOK_A, FEATURE],
-    recommended: over.recommended ?? [REC_MARK, REC_SUB],
-    builtIns: over.builtIns ?? [BUILTIN_CLEAN, BUILTIN_ZINE],
+    bundled: over.bundled ?? BUNDLED,
     validation: [],
     calls: [],
     failValidate: false,
@@ -135,8 +132,7 @@ function make(
       record("list");
       return Promise.resolve(h.entries);
     },
-    recommended: () => Promise.resolve(h.recommended),
-    listBuiltIn: () => Promise.resolve(h.builtIns),
+    bundled: () => Promise.resolve(h.bundled),
     search: (query) => {
       record("search", query);
       return Promise.resolve(h.searchResult);
@@ -167,11 +163,13 @@ function make(
       record("add", dir, specifier, exportName);
       if (h.failAdd) return Promise.reject(new Error("add failed"));
       if (h.cancelAdd) return Promise.resolve(null);
+      // A bundled look (by name) carries styles and has no folder, as the lib describes it; anything else here is a markdown plugin.
+      const look = h.bundled.some((b) => b.look && b.use === specifier);
       const added = entry({
         use: specifier,
-        kind: specifier.startsWith("./") ? "path" : "npm",
+        kind: specifier.startsWith("./") ? "path" : look ? "bundled" : "npm",
         label: specifier,
-        carries: MARKDOWN,
+        carries: look ? STYLES : MARKDOWN,
         ...(exportName ? { export: exportName } : {}),
         ...(h.addWarnings.length ? { warnings: h.addWarnings } : {}),
       });
@@ -188,12 +186,6 @@ function make(
       record("addLocal", dir);
       if (h.addLocalResult) h.entries = [...h.entries, h.addLocalResult];
       return Promise.resolve(h.addLocalResult);
-    },
-    addBuiltIn: (dir, id) => {
-      record("addBuiltIn", dir, id);
-      const added = entry({ use: `./extensions/${id}`, label: id, carries: STYLES, dir: `/proj/extensions/${id}`, styles: ["theme.css"] });
-      h.entries = [...h.entries, added];
-      return Promise.resolve(added);
     },
     remove: (dir, use) => {
       record("remove", dir, use);
@@ -240,7 +232,7 @@ const named = (h: Harness, n: string) => h.calls.filter((c) => c.name === n);
 test("initial public rune state matches the panel defaults", () => {
   const { ctrl } = make();
   expect(ctrl.entries).toEqual([]);
-  expect(ctrl.recommended).toEqual([]);
+  expect(ctrl.bundled).toEqual([]);
   expect(ctrl.builtIns).toEqual([]);
   expect(ctrl.validation).toEqual({});
   expect(ctrl.validating).toBe(false);
@@ -261,11 +253,12 @@ test("initial public rune state matches the panel defaults", () => {
   expect(ctrl.availableSearch).toEqual([]);
 });
 
-test("loadExtensions populates the list, the recommended + built-in catalogs, and the validation map keyed by use", async () => {
+test("loadExtensions populates the list, the bundled catalog (features and looks apart), and the validation map keyed by use", async () => {
   const h = make();
   await h.ctrl.loadExtensions();
   expect(h.ctrl.entries).toEqual([LOOK_A, FEATURE]);
-  expect(h.ctrl.recommended).toEqual([REC_MARK, REC_SUB]);
+  expect(h.ctrl.bundled).toEqual(BUNDLED);
+  expect(h.ctrl.availableRecommended).toEqual([REC_SUB]);
   expect(h.ctrl.builtIns).toEqual([BUILTIN_CLEAN, BUILTIN_ZINE]);
   expect(h.ctrl.validation["markdown-it-mark"]).toEqual({ use: "markdown-it-mark", kind: "bundled", enabled: true, ok: true });
   expect(h.ctrl.validating).toBe(false);
@@ -602,14 +595,14 @@ test("addLocal: a cancelled picker changes nothing; a picked look announces itse
   expect(h.afterLookChange.calls.length).toBe(1);
 });
 
-test("useBuiltIn copies the look in, marks it added, announces it, and refreshes Styles+Design", async () => {
+test("useBuiltIn adds the look by name, marks it added, announces it, and refreshes Styles+Design", async () => {
   const h = make({ entries: [] });
   await h.ctrl.loadExtensions();
   expect(h.ctrl.isBuiltInAdded("zine")).toBe(false);
   await h.ctrl.useBuiltIn("zine");
-  expect(named(h, "addBuiltIn").map((c) => c.args)).toEqual([["/proj", "zine"]]);
+  expect(named(h, "add").map((c) => c.args)).toEqual([["/proj", "zine", undefined]]);
   expect(h.ctrl.isBuiltInAdded("zine")).toBe(true);
-  expect(h.ctrl.looks.map((e) => e.use)).toEqual(["./extensions/zine"]);
+  expect(h.ctrl.looks.map((e) => e.use)).toEqual(["zine"]);
   expect(h.onLookAdded.calls).toEqual([["zine"]]);
   expect(h.afterLookChange.calls.length).toBe(1);
   expect(h.ctrl.busy).toBeNull();

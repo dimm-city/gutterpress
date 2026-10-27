@@ -16,7 +16,7 @@
  *   - `remote/sync` runs a CREDENTIALED push/pull against any repo
  *   - `publish/run` uploads a file to a configured provider
  *   - `extension/remove` `rm -rf`s an npm entry's vendored subtree
- *   - `extension/add-built-in` / `style/set-active` / `manifest/set-fields`
+ *   - `extension/add` / `style/set-active` / `manifest/set-fields`
  *     / `extension/set-enabled` rewrite any `manifest.yaml`
  *   - `extension/validate` dynamic-`import()`s whatever JS the target
  *     directory's manifest names — an execute primitive
@@ -63,7 +63,6 @@ import { POST as extensionRemove } from "../../src/routes/api/extension/remove/+
 import { POST as extensionSetEnabled } from "../../src/routes/api/extension/set-enabled/+server";
 import { POST as extensionReorder } from "../../src/routes/api/extension/reorder/+server";
 import { POST as extensionValidate } from "../../src/routes/api/extension/validate/+server";
-import { POST as extensionAddBuiltIn } from "../../src/routes/api/extension/add-built-in/+server";
 import { POST as extensionReadCss } from "../../src/routes/api/extension/read-css/+server";
 import { POST as extensionImportFromFile } from "../../src/routes/api/extension/import-from-file/+server";
 import { POST as extensionImportFromUrl } from "../../src/routes/api/extension/import-from-url/+server";
@@ -116,7 +115,6 @@ const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) =
   { name: "extension/set-enabled", handler: extensionSetEnabled as RouteHandler, body: (d) => ({ projectDir: d, use: "some-extension", enabled: true }) },
   { name: "extension/reorder", handler: extensionReorder as RouteHandler, body: (d) => ({ projectDir: d, order: ["some-extension"] }) },
   { name: "extension/validate", handler: extensionValidate as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "extension/add-built-in", handler: extensionAddBuiltIn as RouteHandler, body: (d) => ({ projectDir: d, id: "clean-book" }) },
   { name: "extension/read-css", handler: extensionReadCss as RouteHandler, body: (d) => ({ projectDir: d, use: "some-extension" }) },
   { name: "extension/import-from-file", handler: extensionImportFromFile as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "extension/import-from-url", handler: extensionImportFromUrl as RouteHandler, body: (d) => ({ projectDir: d, url: "https://example.test/theme.css" }) },

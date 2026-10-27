@@ -3,9 +3,7 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 
 import {
-  addBuiltInStyleSet,
   addExtension,
-  BUILT_IN_STYLE_SET_IDS,
   checkExtensionUpdates,
   importExtensionFromFile,
   importExtensionFromUrl,
@@ -76,19 +74,13 @@ export const extAddArgs = {
   source: {
     type: "positional",
     description:
-      "What to add: an npm package (name or name@version), a bundled feature (markdown-it-mark, …), a folder or plugin file path, a .zip or .css file, or an http(s) URL",
+      "What to add: an npm package (name or name@version), a bundled name (a feature like markdown-it-mark or a look like academic), a folder or plugin file path, a .zip or .css file, or an http(s) URL",
     required: true,
   },
   dir: dirArg,
   export: {
     type: "string",
     description: "Named module export to use as the plugin function (npm and path extensions only)",
-    required: false,
-  },
-  look: {
-    type: "boolean",
-    description:
-      "Treat SOURCE as a built-in look id (clean-book, zine, technical-doc, academic): copy it into extensions/ and add it",
     required: false,
   },
 } as const;
@@ -171,10 +163,10 @@ function printAdded(entry: ProjectExtensionEntry, projectDir: string, warnings: 
   if (entry.kind === "npm") {
     console.log(`Installed ${entry.use}`);
     console.log(`  project: ${projectDir}`);
-    console.log("  vendored under: plugins/npm");
+    console.log("  vendored under: extensions/npm");
     console.log("  manifest: exact version pinned");
   } else if (entry.kind === "bundled") {
-    console.log(`Enabled bundled feature ${entry.use}`);
+    console.log(`Enabled bundled ${entry.carries.styles && !entry.carries.markdown ? "look" : "feature"} ${entry.use}`);
     console.log(`  project: ${projectDir}`);
   } else {
     console.log(`Added ${entry.use}  (${carriesLabel(entry)})`);
@@ -222,7 +214,7 @@ const add = defineCommand({
   meta: {
     name: "add",
     description:
-      "Add an extension: an npm package, a bundled feature, a folder or plugin file, a .zip/.css file, or a URL",
+      "Add an extension: an npm package, a bundled name (a feature or a look), a folder or plugin file, a .zip/.css file, or a URL",
   },
   args: extAddArgs,
   async run({ args, rawArgs }) {
@@ -243,12 +235,7 @@ const add = defineCommand({
       if (typeof args.export === "string" && !exportName) {
         throw new UsageError("gutterpress ext add: --export requires a non-empty name");
       }
-      if (args.look && !(BUILT_IN_STYLE_SET_IDS as readonly string[]).includes(source)) {
-        throw new UsageError(
-          `gutterpress ext add --look: unknown built-in look "${source}" (one of: ${BUILT_IN_STYLE_SET_IDS.join(", ")})`,
-        );
-      }
-      if (!args.look && !isUrl && !existing) {
+      if (!isUrl && !existing) {
         // A bundled/npm specifier — or a path that is not there: either way
         // a usage error, not a pipeline failure.
         try {
@@ -267,11 +254,6 @@ const add = defineCommand({
     }
 
     try {
-      if (args.look) {
-        const entry = await addBuiltInStyleSet(projectDir, source);
-        printAdded(entry, projectDir);
-        return;
-      }
       if (isUrl) {
         const { entry, warnings } = await importExtensionFromUrl(projectDir, source);
         printAdded(entry, projectDir, warnings.map((w) => w.message));
@@ -461,7 +443,7 @@ const update = defineCommand({
       }
       for (const u of updated) console.log(`Updated ${u.name}  ${u.from} -> ${u.to}`);
       console.log(`  project: ${projectDir}`);
-      console.log("  vendored under: plugins/npm (previous version removed)");
+      console.log("  vendored under: extensions/npm (previous version removed)");
       console.log("  manifest: exact version re-pinned");
     } catch (error) {
       failPipeline("Could not update extensions", error);

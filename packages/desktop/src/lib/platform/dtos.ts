@@ -186,19 +186,14 @@ export interface ExtensionValidationResult {
   error?: string;
 }
 
-/** A bundled markdown feature the author can turn on — "Add" writes `use`. */
-export interface RecommendedExtension {
+/** A bundled extension (compiled into Gutterpress) the author can turn on — "Add" writes `use`. */
+export interface BundledExtensionInfo {
   use: string;
-  /** Short plain-language feature name (the row title). */
+  /** Short plain-language name (the row title). */
   label: string;
   description: string;
-}
-
-/** A built-in look (embedded assets); `id` is its folder name under `extensions/` once used. */
-export interface BuiltInStyleSet {
-  id: string;
-  name: string;
-  description: string;
+  /** A look (styles only), as opposed to a markdown feature. */
+  look: boolean;
 }
 
 /** A non-fatal issue surfaced after a successful `.zip`/`.css`/URL import (#106). */

@@ -439,7 +439,7 @@ describe("executeValidation markdown/css file-set resolvers", () => {
     const dir = await makeDir("gutterpress-vexec-css-active-only-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
-      // Conventional active stylesheet (style-resolver.ts FALLBACK_PRIORITY).
+      // The conventional stylesheet (style-resolver.ts: `styles/book.css` when nothing is listed).
       await mkdir(path.join(dir, "styles"), { recursive: true });
       await writeFile(path.join(dir, "styles", "book.css"), "body { color: red; }", "utf-8");
       // An unreferenced theme sitting alongside it must NOT be validated —

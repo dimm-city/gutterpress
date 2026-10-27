@@ -172,9 +172,9 @@ When typing property names, you'll see:
 ```yaml
 title: "My Book"
 # Type 'p' and you'll see:
-#   - page (object) - Expected page geometry, in points (validation bounds)
+#   - page (object) - Page geometry, in points (the trim, unless a stylesheet's @page sets one)
 #   - pdfx (object) - PDF/X conversion settings
-#   - preset (string) - Vendor preset supplying every other default
+#   - preset (string) - Preset supplying every other default
 #   - publish (object) - Publish provider settings
 ```
 
@@ -232,7 +232,7 @@ language: de
 ```
 
 #### `preset` (string)
-Vendor preset supplying the defaults for every other section — page geometry, ink limits, PDF/X settings, validation checks. One of `dtrpg`, `book`, or `custom` (you supply `page.width` and `page.height` yourself). Omitting it defaults to `dtrpg` and logs a warning, so set it explicitly.
+Preset supplying the defaults for every other section — page geometry, ink limits, PDF/X settings, validation checks. One of `dtrpg`, `book`, or `custom` (you supply `page.width` and `page.height` yourself). Omitting it defaults to `dtrpg` and logs a warning, so set it explicitly.
 
 ```yaml
 preset: book
@@ -248,7 +248,7 @@ targets:
 ```
 
 #### `styles` (array of strings)
-CSS files to link into the rendered book, applied in order, relative to the manifest directory. If omitted, Gutterpress discovers one: `styles/book.css` (what `gutterpress new` scaffolds), then four **legacy** names kept only so pre-existing projects keep working — `css/print.css`, `css/index.css`, `css/style.css`, `css/main.css` — then the first `.css` it finds, then none. New projects should set `styles:` explicitly or use `styles/book.css`; the `css/*.css` fallback names are not a recommended convention.
+CSS files to link into the rendered book, applied in order, relative to the manifest directory. If omitted, Gutterpress discovers one: `styles/book.css` (what `gutterpress new` scaffolds), then the first `.css` it finds in the project root, `styles/` or `css/`, then none. New projects should set `styles:` explicitly or use `styles/book.css`; the `css/*.css` fallback names are not a recommended convention.
 
 ```yaml
 styles:
@@ -258,9 +258,9 @@ styles:
 #### `extensions` (array)
 Extensions, in load order: markdown-it plugins, looks (stylesheets), component libraries — anything from npm or a folder. Each entry is a specifier string, and its form says what it is:
 
-- a **bundled feature name** — `markdown-it-mark`, `markdown-it-sub`, `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts`, `gutterpress-math` — resolves to the copy compiled into Gutterpress (nothing to install, works offline; a bundled name shadows npm and cannot be pinned);
+- a **bundled name** — a markdown feature (`markdown-it-mark`, `markdown-it-sub`, `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts`, `gutterpress-math`) or a built-in look (`clean-book`, `zine`, `technical-doc`, `academic`) — resolves to the copy compiled into Gutterpress (nothing to install, works offline; a bundled name shadows npm and cannot be pinned);
 - a **path** starting with `./` or `../` (or `/`, or a Windows drive letter), relative to this file — a folder holding a `package.json`, or a bare `.js` markdown-it plugin file — referenced in place, never copied;
-- anything else is an **npm package name**, optionally pinned as `name@version`. `gutterpress ext add <name>` installs it: it vendors the runtime dependency tree under `plugins/npm/` and writes the exact pin back; builds resolve pinned entries there without network access. The downloaded copy is gitignored, so a fresh clone has only the pin: `build`, `validate`, `preview` and the desktop's book-open download a missing pinned version first.
+- anything else is an **npm package name**, optionally pinned as `name@version`. `gutterpress ext add <name>` installs it: it vendors the runtime dependency tree under `extensions/npm/` and writes the exact pin back; builds resolve pinned entries there without network access. The downloaded copy is gitignored, so a fresh clone has only the pin: `build`, `validate`, `preview` and the desktop's book-open download a missing pinned version first.
 
 A later entry loads later: its markdown runs after earlier entries' and its CSS wins ties. The project's own `styles` always load after every extension. There is no `priority` (reorder the list instead) and no `path`/`name` wrapper keys — a manifest that still carries `plugins:` fails with a message that prints its entries rewritten as `extensions:`.
 
@@ -414,7 +414,7 @@ source:
     - "chapters/02-installation.md"
     - "appendix/glossary.md"
 
-# Validation bounds only — the CSS @page rule sets the real trim size.
+# The trim the book prints at, unless a stylesheet's plain @page rule sets its own size.
 page:
   width: 432
   height: 648

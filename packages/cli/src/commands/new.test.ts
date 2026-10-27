@@ -138,17 +138,13 @@ describe("new command — arg mapping onto scaffoldProject", () => {
   });
 });
 
-describe("new command — preset requirement (ADR 0008)", () => {
-  test("a missing --preset errors (exit 2) before scaffoldProject is called", async () => {
-    stubExit();
-    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+describe("new command — preset choice (ADR 0008)", () => {
+  test("a missing --preset is fine: the template's own preset stands", async () => {
     stubScaffold(async () => fakeResult());
 
-    await expect(
-      runCommand(newCommand, { rawArgs: ["My Book"] })
-    ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.USAGE}\\)`));
-    expect(scaffoldSpy).not.toHaveBeenCalled();
-    expect(String(consoleErrorSpy?.mock.calls[0]?.[0])).toContain("--preset");
+    await runCommand(newCommand, { rawArgs: ["My Book"] });
+    expect(scaffoldSpy).toHaveBeenCalledTimes(1);
+    expect(scaffoldSpy.mock.calls[0]?.[0]).toMatchObject({ name: "My Book", preset: undefined });
   });
 
   test("an unknown --preset errors (exit 2) naming the choices", async () => {
@@ -381,7 +377,7 @@ afterEach(() => {
 });
 
 describe("new command — --kind dispatch", () => {
-  test.each(["plugin", "theme"] as const)(
+  test.each(["plugin", "look"] as const)(
     "--kind %s calls scaffoldExtension, not scaffoldProject, and needs no --preset",
     async (kind) => {
       consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
@@ -436,7 +432,7 @@ describe("new command — --kind dispatch", () => {
     await expect(
       runCommand(newCommand, { rawArgs: ["X", "--kind", "widget"] })
     ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.USAGE}\\)`));
-    expect(String(consoleErrorSpy?.mock.calls[0]?.[0])).toContain("book, plugin, theme");
+    expect(String(consoleErrorSpy?.mock.calls[0]?.[0])).toContain("book, plugin, look");
     expect(scaffoldSpy).not.toHaveBeenCalled();
     expect(extensionSpy).not.toHaveBeenCalled();
   });
@@ -499,7 +495,7 @@ describe("new command — --kind dispatch", () => {
     });
 
     await expect(
-      runCommand(newCommand, { rawArgs: ["X", "--kind", "theme"] })
+      runCommand(newCommand, { rawArgs: ["X", "--kind", "look"] })
     ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.USAGE}\\)`));
   });
 
@@ -511,7 +507,7 @@ describe("new command — --kind dispatch", () => {
     });
 
     await expect(
-      runCommand(newCommand, { rawArgs: ["X", "--kind", "theme"] })
+      runCommand(newCommand, { rawArgs: ["X", "--kind", "look"] })
     ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.PIPELINE}\\)`));
   });
 });

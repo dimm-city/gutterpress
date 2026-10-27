@@ -17,14 +17,12 @@
  *
  * Adding is one verb with four ways to NAME the extension, which differ only
  * in what the host does with the name:
- *   - `addNpm` / `addRecommended` — a bundled feature name (written as-is)
- *     or an npm specifier (downloaded, verified, vendored, pinned — behind
- *     the native trust gate, so a null result means "the author cancelled");
+ *   - `addNpm` / `addRecommended` / `useBuiltIn` — a bundled name (a feature
+ *     or a look, written as-is; nothing is copied) or an npm specifier
+ *     (downloaded, verified, vendored, pinned — behind the native trust gate,
+ *     so a null result means "the author cancelled");
  *   - `addLocal` — a folder or plugin file from the native picker,
  *     referenced in place, never copied;
- *   - `useBuiltIn` — a built-in look, the one thing that IS copied (into
- *     `extensions/<id>/`, so the look becomes the author's own editable
- *     files), then referenced as `./extensions/<id>`;
  *   - `importFile` / `importUrl` — a `.zip`, `.css`, or URL package the host
  *     validates and lands in `extensions/<id>/` (#106);
  *   - `addSearched` — an npm search result (#246), added by the exact same
@@ -35,7 +33,7 @@
  * registry search for packages tagged `gutterpress` or `markdown-it-plugin`,
  * run over the network only when the Features view's Search tab is first
  * shown (never at project load) and whenever the author types a query. A fetch/parse failure surfaces as `search.message` — one line,
- * never an error toast — and never blocks `entries`/`recommended`/`builtIns`.
+ * never an error toast — and never blocks `entries`/`bundled`.
  *
  * Versions: every npm row has a picker over that package's published versions
  * (`loadVersions`, on demand, cached for the session; `versionChoices` filters
@@ -62,8 +60,7 @@
 import type {
   ProjectExtensionEntry,
   ExtensionValidationResult,
-  RecommendedExtension,
-  BuiltInStyleSet,
+  BundledExtensionInfo,
   ExtensionImportResult,
   NpmExtensionMatch,
   ExtensionSearchResult,
@@ -84,8 +81,8 @@ export interface ExtensionsSectionDeps {
   projectDir: () => string | null;
   /** Every configured extension, in manifest (= cascade) order. */
   list: (projectDir: string) => Promise<ProjectExtensionEntry[]>;
-  recommended: () => Promise<RecommendedExtension[]>;
-  listBuiltIn: () => Promise<BuiltInStyleSet[]>;
+  /** The bundled extensions (markdown features and looks), static. */
+  bundled: () => Promise<BundledExtensionInfo[]>;
   /** Search npm for extensions (#246). A fetch/parse failure comes back as `{ ok: false }` data, never a rejection. */
   search: (query: string) => Promise<ExtensionSearchResult>;
   /** Each pinned npm entry against npm's latest (or newest of any kind). Same data-not-rejection contract as `search`. */
@@ -104,8 +101,6 @@ export interface ExtensionsSectionDeps {
   ) => Promise<ProjectExtensionEntry | null>;
   /** Native folder/file picker; referenced in place. Null when cancelled. */
   addLocal: (projectDir: string) => Promise<ProjectExtensionEntry | null>;
-  /** Copy a built-in look into `extensions/<id>/` and add it. */
-  addBuiltIn: (projectDir: string, id: string) => Promise<ProjectExtensionEntry>;
   remove: (projectDir: string, use: string) => Promise<unknown>;
   setEnabled: (projectDir: string, use: string, enabled: boolean) => Promise<unknown>;
   /** Rewrite the whole list order; must name every `use` exactly once. */
@@ -150,8 +145,7 @@ export class ExtensionsSectionController {
   // ── Public rune state (read by both views; mutated only via methods) ────────
   /** The manifest's `extensions:` list in cascade order — the ONE model. */
   entries = $state<ProjectExtensionEntry[]>([]);
-  recommended = $state<RecommendedExtension[]>([]);
-  builtIns = $state<BuiltInStyleSet[]>([]);
+  bundled = $state<BundledExtensionInfo[]>([]);
   /**
    * npm search (#246) — the "Find more on npm" list beyond the bundled/
    * built-in set. Run ON DEMAND the first time the Features view's Search tab
@@ -239,9 +233,13 @@ export class ExtensionsSectionController {
   get features(): ProjectExtensionEntry[] {
     return this.entries.filter((e) => e.carries.markdown || !e.carries.styles);
   }
-  /** Bundled features not yet in the list — the "Turn on" rows. */
-  get availableRecommended(): RecommendedExtension[] {
-    return this.recommended.filter((r) => !this.entries.some((e) => e.use === r.use));
+  /** Bundled markdown features not yet in the list — the "Turn on" rows. */
+  get availableRecommended(): BundledExtensionInfo[] {
+    return this.bundled.filter((r) => !r.look && !this.entries.some((e) => e.use === r.use));
+  }
+  /** The bundled looks — the Look view's grid. */
+  get builtIns(): BundledExtensionInfo[] {
+    return this.bundled.filter((b) => b.look);
   }
   /** npm results not already in the list — the "Find more on npm" rows. An
    *  installed npm entry's `use` is `name@version`, so the comparison is by
@@ -251,8 +249,9 @@ export class ExtensionsSectionController {
       (m) => !this.entries.some((e) => e.kind === "npm" ? e.name === m.name : e.use === m.name),
     );
   }
-  /** True when the built-in look `id` is already in the list as `./extensions/<id>`. */
-  isBuiltInAdded = (id: string): boolean => addedBuiltInIds(this.entries).has(id);
+  /** True when the bundled look `id` is already in the list, by name or as an older copy at `./extensions/<id>`. */
+  isBuiltInAdded = (id: string): boolean =>
+    this.entries.some((e) => e.use === id) || addedBuiltInIds(this.entries).has(id);
   /** The newer version npm has for an entry, or null (not npm, not checked, or current). */
   updateFor = (entry: ProjectExtensionEntry): string | null => {
     if (entry.kind !== "npm") return null;
@@ -276,17 +275,12 @@ export class ExtensionsSectionController {
     if (!projectDir) return;
     this.error = null;
     try {
-      const [entries, recs, builtIns] = await Promise.all([
-        this.deps.list(projectDir),
-        this.deps.recommended(),
-        this.deps.listBuiltIn(),
-      ]);
+      const [entries, bundled] = await Promise.all([this.deps.list(projectDir), this.deps.bundled()]);
       this.entries = entries;
-      this.recommended = recs;
-      this.builtIns = builtIns;
+      this.bundled = bundled;
       // Thumbnails lazy-load in the background (non-fatal if they fail).
       void Promise.all(
-        entries.filter((e) => e.carries.styles && e.dir).map((e) => this.loadThumb(e)),
+        entries.filter((e) => e.carries.styles).map((e) => this.loadThumb(e)),
       );
       await this.validateExtensions();
     } catch (e) {
@@ -559,7 +553,7 @@ export class ExtensionsSectionController {
   };
 
   /** Turn on a bundled feature — writes its name, nothing to install. */
-  addRecommended = async (rec: RecommendedExtension): Promise<void> => {
+  addRecommended = async (rec: BundledExtensionInfo): Promise<void> => {
     const added = await this.mutate(rec.use, (dir) => this.deps.add(dir, rec.use), carriesStyles);
     if (added) this.announceAdded(added);
   };
@@ -577,9 +571,9 @@ export class ExtensionsSectionController {
     if (added) this.confirmAdded(added);
   };
 
-  /** Copy a built-in look into the project and add it. */
+  /** Add a bundled look by name. */
   useBuiltIn = async (id: string): Promise<void> => {
-    const added = await this.mutate(id, (dir) => this.deps.addBuiltIn(dir, id), () => true);
+    const added = await this.mutate(id, (dir) => this.deps.add(dir, id), () => true);
     if (added) this.announceAdded(added);
   };
 

@@ -21,6 +21,6 @@ extensions:
   - markdown-it-sup
   # LaTeX math, $…$ and $$…$$, typeset by MathJax. Bundled: nothing to install.
   - gutterpress-math
-  # The built-in academic look, copied here by `gutterpress ext add academic --look`
-  # so it is this paper's own, editable file.
-  - ./extensions/academic
+  # The built-in academic look. Bundled: nothing to install. Style over it
+  # from a stylesheet of your own listed under `styles:`.
+  - academic

@@ -159,8 +159,7 @@
   const extensions = new ExtensionsSectionController({
     projectDir: projectDirAccessor,
     list: (dir) => api.extension.list(dir),
-    recommended: () => api.extension.recommended(),
-    listBuiltIn: () => api.extension.listBuiltIn(),
+    bundled: () => api.extension.bundled(),
     search: (query) => api.extension.search(query),
     outdated: (dir, includePrerelease) => api.extension.outdated(dir, includePrerelease),
     versions: (name) => api.extension.versions(name),
@@ -169,7 +168,6 @@
     validate: (dir) => api.extension.validate(dir),
     add: (dir, specifier, exportName) => api.extension.add(dir, specifier, exportName),
     addLocal: (dir) => api.extension.addLocal(dir),
-    addBuiltIn: (dir, id) => api.extension.addBuiltIn(dir, id),
     remove: (dir, use) => api.extension.remove(dir, use),
     setEnabled: (dir, use, enabled) => api.extension.setEnabled(dir, use, enabled),
     reorder: (dir, order) => api.extension.reorder(dir, order),

@@ -340,7 +340,7 @@ explicit step. `addExtension` in `extension-manager.ts` (used by the desktop
 routes and `gutterpress ext add`) resolves the public npm registry to an exact
 version graph, verifies every tarball against the registry's SRI hash, safely
 vendors a complete nested dependency tree under the project's
-`plugins/npm/<name>/<version>/` (a plain npm `node_modules` layout),
+`extensions/npm/<name>/<version>/` (a plain npm `node_modules` layout),
 load-tests it, and only then atomically records the pinned specifier
 `name@<exact version>` in the manifest's `extensions:` list (the object form's
 `export:` explicitly selects a named plugin function for packages without a
@@ -350,7 +350,7 @@ selectors are intentionally unsupported.
 
 **Downloaded copies are not part of a book's git history** (ruled by the
 product owner, 0.11.16). `ensureProjectGitignore` (`project-gitignore.ts`)
-puts `plugins/npm/` next to `dist/` in every new/adopted project's
+puts `extensions/npm/` next to `dist/` in every new/adopted project's
 `.gitignore`, and the install path appends it to an existing book's, append-only
 (an author's own `!` re-include is respected and surfaces as an install
 warning). The file lives in the PROJECT folder, which is what the desktop's
@@ -396,12 +396,12 @@ and loads only that extension. Built-in providers never load plugins or touch
 the network.
 
 **One pruning rule:** once a package's pinned version is installed — by `ext
-add`/`update` or a restore — every other `plugins/npm/<name>/<version>/`
+add`/`update` or a restore — every other `extensions/npm/<name>/<version>/`
 folder of THAT package is deleted (`pruneStaleVersions`), except a version an
 enabled manifest entry still pins; other packages, `.install-*` staging and
 non-version folders are never touched. A failed install removes the folders it
-created (`plugins/`, `plugins/npm/`, `plugins/npm/<name>/`) while still empty,
-and nothing else. `project-gitignore.ts` decides "is `plugins/npm/` covered or
+created (`extensions/`, `extensions/npm/`, `extensions/npm/<name>/`) while still empty,
+and nothing else. `project-gitignore.ts` decides "is `extensions/npm/` covered or
 re-included?" with the `ignore` package (gitignore's own matcher, the one
 isomorphic-git uses), not a hand-rolled one. An exact pinned
 version restored on open shows no trust prompt — the author chose it when they

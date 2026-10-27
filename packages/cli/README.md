@@ -143,19 +143,19 @@ source.
 
 ### `gutterpress new`
 
-Scaffold a new book, plugin or theme from an embedded starter template — the fastest way to start (see [Quick start](#quick-start)).
+Scaffold a new book, plugin or look from an embedded starter template — the fastest way to start (see [Quick start](#quick-start)).
 
-`--kind book` is the default. Every new book picks the vendor preset it's designed for: `dtrpg` (DriveThruRPG print-on-demand), `book` (neutral 6x9in trade book), or `custom` (you supply the trim size in points).
+`--kind book` is the default. Every new book has the preset it's designed for, the template's unless you choose: `dtrpg` (DriveThruRPG print-on-demand), `book` (neutral 6x9in trade book), or `custom` (you supply the trim size in points).
 
-`--kind plugin` and `--kind theme` scaffold an **extension package** instead — a folder with a `package.json` a book can load. The plugin starter carries a declarative marker table, a hand-written markdown-it rule, component CSS and a `bun test` fixture suite; the theme starter carries the six-file layered CSS architecture (tokens / base / components / page-templates / page-rules / book), each sheet opening with its own OWNS / MUST NOT CONTAIN contract header. Both include a README explaining which conventions are load-bearing. An extension needs no preset, trim size or publish target, so the book-only flags below are rejected rather than ignored when `--kind` names one — and `--prefix`/`--description` are likewise rejected for a book.
+`--kind plugin` and `--kind look` scaffold an **extension package** instead — a folder with a `package.json` a book can load. The plugin starter carries a declarative marker table, a hand-written markdown-it rule, component CSS and a `bun test` fixture suite; the look starter carries the six-file layered CSS architecture (tokens / base / components / page-templates / page-rules / book), each sheet opening with its own OWNS / MUST NOT CONTAIN contract header. Both include a README explaining which conventions are load-bearing. An extension needs no preset, trim size or publish target, so the book-only flags below are rejected rather than ignored when `--kind` names one — and `--prefix`/`--description` are likewise rejected for a book.
 
 ```sh
 gutterpress new <name> [--kind <id>] [options]
 
-  --kind <id>              What to create: book (default), plugin, theme
-  --prefix <str>           Class/custom-property prefix an extension claims (default: its slug, e.g. "field-notes-"); --kind plugin|theme only
-  --description <text>     One-line description recorded in the extension's metadata; --kind plugin|theme only
-  --preset <id>            Vendor preset the book is designed for: dtrpg, book, custom (required for a book)
+  --kind <id>              What to create: book (default), plugin, look
+  --prefix <str>           Class/custom-property prefix an extension claims (default: its slug, e.g. "field-notes-"); --kind plugin|look only
+  --description <text>     One-line description recorded in the extension's metadata; --kind plugin|look only
+  --preset <id>            Preset the book is designed for: dtrpg, book, custom (default: the template's)
   --author <name>          Author name to record in the project
   --dir <path>             Parent directory to create the project in (default: current directory)
   --folder <name>          Folder name to create (default: a slug of the project name)
@@ -392,32 +392,32 @@ Add an extension. What `SOURCE` is decides what happens:
 
 - an **npm package** (`name` or `name@version`) is downloaded straight from
   the registry along with its runtime dependencies, hash-verified, vendored
-  into the project under `plugins/npm/`, load-tested, and written back pinned
+  into the project under `extensions/npm/`, load-tested, and written back pinned
   as `name@<exact version>`. This does not invoke npm, Bun, Node.js tooling,
   or package install scripts;
-- a **bundled feature** (`markdown-it-mark`, `markdown-it-sub`,
-  `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts`,
-  `gutterpress-math`) is simply listed — nothing to install, works offline;
+- a **bundled name** — a markdown feature (`markdown-it-mark`,
+  `markdown-it-sub`, `markdown-it-sup`, `markdown-it-abbr`,
+  `gutterpress-gfm-alerts`, `gutterpress-math`) or a built-in look
+  (`clean-book`, `zine`, `technical-doc`, `academic`) — is simply listed:
+  nothing to install, works offline;
 - a **folder or plugin-file path** is load-tested and listed as a
   manifest-relative path, referenced in place — never copied;
 - a **`.zip` or `.css` file**, or an **http(s) URL**, is validated (every
   declared sheet must exist and parse; print-safety findings are warnings)
-  and landed in `extensions/<id>/`, then listed as `./extensions/<id>`;
-- with `--look`, `SOURCE` is a built-in look id, copied into
-  `extensions/<id>/` as the author's own editable files and listed.
+  and landed in `extensions/<id>/`, then listed as `./extensions/<id>`.
 
 Adding something already listed re-pins or updates that entry instead of
 adding a second one.
 
-An npm install also makes sure the book's `.gitignore` ignores `plugins/npm/`
-(append-only; an author's own `!plugins/npm/` re-include is respected and the
+An npm install also makes sure the book's `.gitignore` ignores `extensions/npm/`
+(append-only; an author's own `!extensions/npm/` re-include is respected and the
 install warns that downloaded extensions shouldn't be committed). The manifest
 pin is what travels with the book; the downloaded copy does not.
 
 ##### Restoring pinned extensions
 
 A fresh clone has `manifest.yaml`'s `name@version` pins but not the downloaded
-copies under `plugins/npm/`. `build`, `validate`, `preflight` and `preview`
+copies under `extensions/npm/`. `build`, `validate`, `preflight` and `preview`
 download any missing (or incomplete) pinned version before they load plugins —
 exactly the pinned version, through the same registry-resolved, hash-verified,
 load-tested install as `ext add`, without touching the manifest. Builds and
@@ -429,7 +429,7 @@ paths and bundled features are never touched. The plugin loader itself stays
 offline. The desktop app does the same when it opens a book.
 
 Once a package's pinned version is installed (by `ext add` or a restore), its
-other downloaded versions under `plugins/npm/<name>/` are deleted — a cache
+other downloaded versions under `extensions/npm/<name>/` are deleted — a cache
 that a pulled pin or branch switch would otherwise leave to pile up — except a
 version another enabled manifest entry still pins. A failed install removes the
 folders it created and nothing else.
@@ -438,7 +438,6 @@ folders it created and nothing else.
 gutterpress ext add <source> [dir] [options]
 
   --export <name>    Named module export to use as the plugin function (npm and path extensions only)
-  --look             Treat SOURCE as a built-in look id (clean-book, zine, technical-doc, academic): copy it into extensions/ and add it
 ```
 
 ```sh
@@ -447,7 +446,7 @@ gutterpress ext add markdown-it-highlightjs@4.3.0 ./my-book
 gutterpress ext add markdown-it-emoji@3.0.0 ./my-book --export full
 gutterpress ext add markdown-it-mark ./my-book
 gutterpress ext add ./plugins/field-notes ./my-book
-gutterpress ext add zine ./my-book --look
+gutterpress ext add zine ./my-book
 gutterpress ext add ./parchment.zip ./my-book
 gutterpress ext add https://example.com/looks/cool/ ./my-book
 ```
@@ -456,7 +455,7 @@ gutterpress ext add https://example.com/looks/cool/ ./my-book
 
 Remove an extension from the manifest, by the specifier as written there (for
 an npm package the bare name is enough). An npm extension's vendored copy
-under `plugins/npm/` is deleted too; a path extension's folder is yours and is
+under `extensions/npm/` is deleted too; a path extension's folder is yours and is
 never touched.
 
 ```sh
@@ -558,7 +557,7 @@ An extension folder (or npm package) describes itself in its **`package.json`** 
 
 Order is load order: a later entry's markdown runs after earlier entries' (and sees their output) and its CSS wins ties — each extension's stylesheets are wrapped in their own cascade layer (`@layer ext.<name>`), declared in list order, so this holds however an extension writes its CSS; the project's own `styles:` stay unlayered and load after every extension, beating all of them at any specificity. There is no `priority` and no `path:`/`name:` wrapper — a manifest still carrying `plugins:` fails with a message that prints the same entries rewritten as `extensions:`. The `engine:` and `engineStyles:` keys are gone too (there is one engine; move any `engineStyles` entries to the end of `styles:`).
 
-Pinned npm packages and their runtime dependencies live under `plugins/npm/`
+Pinned npm packages and their runtime dependencies live under `extensions/npm/`
 as a plain nested `node_modules` tree, which Node's own module resolution loads.
 The pin travels with the project; the downloaded copy is gitignored, and
 `build`, `validate`, `preflight` and `preview` download a missing pinned version first

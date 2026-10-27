@@ -1,6 +1,6 @@
 /* =============================================================================
    Zine — gutterpress built-in theme (theme.css)
-   High-contrast, punchy, photocopier-friendly. Customize the tokens in :root.
+   High-contrast, punchy, photocopier-friendly. Change the :root tokens from the book's own stylesheet.
    ============================================================================= */
 
 :root {

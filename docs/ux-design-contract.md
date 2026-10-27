@@ -751,10 +751,10 @@ Shipped: a grid of the built-in looks plus the styles-carrying entries of the
 project's `extensions:` list, with per-card **rendered thumbnail previews**,
 Add / Remove / enable-disable / reorder, and add **from folder, ZIP, CSS file
 or URL** (`extension-import.ts`, reached through server routes). **Adding a
-built-in look copies it into the project (`extensions/<id>/`) as a
-user-owned, editable folder** listed as `./extensions/<id>`, and the grid
-dedupes the built-in card once a project copy exists — this *is* the
-"duplicate & edit" model; do not add a second one. A folder the author
+built-in look lists it by name** (`clean-book`): it is a bundled extension,
+nothing is copied, and the author styles over it from the book's own
+stylesheet. The grid dedupes the card once the look is listed (by name, or as
+a copy at `./extensions/<id>` left by an older version). A folder the author
 already has is referenced in place, never copied. Look tokens are surfaced
 through the DesignSection editor.
 
