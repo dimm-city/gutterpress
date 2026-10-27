@@ -304,36 +304,13 @@ export interface ProjectConfigFields {
   targets?: string[];
 }
 
-/** Page margins in points (mirrors the lib's `PageMargin`); `inside` is the binding edge. */
-export interface PageMargins {
-  top: number;
-  bottom: number;
-  inside: number;
-  outside: number;
-}
-
 /**
- * A book's page geometry as recorded (mirrors the lib's `PageSetup`): the
- * manifest's preset + bounds, which are the size the book prints at and is
- * checked against, and the margins it prints with. Points (72pt = 1in).
+ * A book's page geometry as the lib records it — the manifest's preset +
+ * bounds (the size it prints at and is checked against) and the margins it
+ * prints with, in points — and what the author picks. Type-only imports erase
+ * at build time, so the SPA still never value-imports the lib (§8).
  */
-export interface PageSetup {
-  /** null when the manifest names a preset the app doesn't know. */
-  preset: 'dtrpg' | 'book' | 'custom' | null;
-  bounds: { width: number; height: number; tolerance: number } | null;
-  margins: PageMargins;
-  /** Where the margins come from: the manifest (the author's own), a stylesheet (a look's design) or the 1in default. */
-  marginsFrom: 'manifest' | 'stylesheet' | 'default';
-}
-
-/** What the author picks (mirrors the lib's `PageSizeChoice`). */
-export interface PageSizeChoice {
-  preset: 'dtrpg' | 'book' | 'custom';
-  /** Required for `custom`; the other presets own their size. */
-  page?: { width: number; height: number };
-  /** Written to the manifest's `page.margin` when given; otherwise the recorded margins stay. */
-  margins?: PageMargins;
-}
+export type { PageMargin, PageSetup, PageSizeChoice } from 'gutterpress';
 
 export interface DirEntry {
   name: string;

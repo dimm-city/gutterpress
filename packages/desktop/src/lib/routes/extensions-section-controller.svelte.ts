@@ -260,10 +260,11 @@ export class ExtensionsSectionController {
       // Thumbnails lazy-load in the background (non-fatal if they fail): every
       // listed row that carries styles, and every bundled look — so a look
       // shows what it looks like before it is added, too.
-      void Promise.all([
-        ...entries.filter((e) => e.carries.styles).map((e) => this.loadThumb(e.use)),
-        ...bundled.filter((b) => b.look).map((b) => this.loadThumb(b.use)),
+      const wanted = new Set([
+        ...entries.filter((e) => e.carries.styles).map((e) => e.use),
+        ...bundled.filter((b) => b.look).map((b) => b.use),
       ]);
+      void Promise.all([...wanted].map((use) => this.loadThumb(use)));
       await this.validateExtensions();
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e);

@@ -1045,11 +1045,16 @@ export async function readExtensionCss(projectDir: string, use: string): Promise
   if (direct !== undefined) return direct;
   const entry = await describeExtension(projectDir, use);
   if (!entry) throw new Error(`Extension "${use}" is not in the manifest.`);
-  if (!entry.dir) throw new Error(`Extension "${use}" has no stylesheets to preview.`);
+  return readEntryCss(entry);
+}
+
+/** The same, for an entry already described (`listProjectExtensions`), so a caller with the list in hand reads each once. */
+export async function readEntryCss(entry: Pick<ProjectExtensionEntry, "use" | "dir">): Promise<string> {
+  const direct = bundledExtension(entry.use)?.css;
+  if (direct !== undefined) return direct;
+  if (!entry.dir) throw new Error(`Extension "${entry.use}" has no stylesheets to preview.`);
   const meta = await readExtensionMeta(entry.dir);
-  const sheets = resolveExtension(entry.dir, meta, `Extension "${use}"`).styles ?? [];
-  if (sheets.length === 0) throw new Error(`Extension "${use}" declares no stylesheets.`);
-  const parts: string[] = [];
-  for (const sheet of sheets) parts.push(await readFile(sheet, "utf8"));
-  return parts.join("\n\n");
+  const sheets = resolveExtension(entry.dir, meta, `Extension "${entry.use}"`).styles ?? [];
+  if (sheets.length === 0) throw new Error(`Extension "${entry.use}" declares no stylesheets.`);
+  return (await Promise.all(sheets.map((sheet) => readFile(sheet, "utf8")))).join("\n\n");
 }

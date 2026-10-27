@@ -32,7 +32,7 @@ import { loadManifestDoc, writeManifestDoc, scalarString } from "./manifest-doc.
 import { collectStyleDependencies, escapesProjectRoot } from "./asset-inline.ts";
 import { toPosixPath } from "./plugin-vendor.ts";
 import { slugify, prettify } from "./slug.ts";
-import { isPositivePoints } from "./page-size.ts";
+import { numberAt } from "./page-size.ts";
 
 /** The built-in templates shipped as embedded assets. */
 export const BUILT_IN_TEMPLATE_IDS = [
@@ -92,9 +92,9 @@ async function readTemplateChoices(
         .map((i) => scalarString(i))
         .filter((s): s is string => s !== null);
     }
-    const width = doc.getIn(["page", "width"]);
-    const height = doc.getIn(["page", "height"]);
-    if (isPositivePoints(width) && isPositivePoints(height)) out.page = { width, height };
+    const width = numberAt(doc, ["page", "width"]);
+    const height = numberAt(doc, ["page", "height"]);
+    if (width !== undefined && height !== undefined) out.page = { width, height };
     return out;
   } catch {
     return {};

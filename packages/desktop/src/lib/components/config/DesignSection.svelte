@@ -234,7 +234,4 @@
   .unit { font-size: 11px; color: var(--app-text-muted); }
   /* The icon-only undo button's box: 12px icon + 5px padding + 1px border a side. */
   .undo-slot { flex: 0 0 24px; height: 24px; }
-  .save-status { font-size: 11px; }
-  .save-status.saving { color: var(--app-text-muted); }
-  .save-status.saved { color: var(--app-success-text); }
 </style>

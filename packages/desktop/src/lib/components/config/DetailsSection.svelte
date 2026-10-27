@@ -243,7 +243,7 @@
         <div
           class="size-fields"
           oninput={controller.touchPage}
-          onchange={() => controller.flushPendingSave({ page: true })}
+          onchange={() => controller.flushPendingSave()}
         >
           <PageSizeFields
             idPrefix="details"
@@ -271,7 +271,7 @@
         role="group"
         aria-label="Page margins in inches"
         oninput={controller.touchMargins}
-        onchange={() => controller.flushPendingSave({ margins: true })}
+        onchange={() => controller.flushPendingSave()}
       >
         {#each MARGIN_EDGES as edge (edge)}
           <label class="margin-field" for={`details-margin-${edge}`}>
@@ -344,9 +344,6 @@
   .target-desc { font-size: 11px; color: var(--app-text-muted); line-height: 1.35; }
   .tool-note { margin: 4px 0 0; font-size: 11px; line-height: 1.45; color: var(--app-warning-text); }
 
-  .save-status { font-size: 11px; }
-  .save-status.saving { color: var(--app-text-muted); }
-  .save-status.saved { color: var(--app-success-text); }
   .size-fields { display: flex; flex-direction: column; gap: 4px; }
   .margin-fields { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
   .margin-field { display: flex; flex-direction: column; gap: 4px; }

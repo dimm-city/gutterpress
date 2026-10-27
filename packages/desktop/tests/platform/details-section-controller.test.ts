@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { DetailsSectionController } from "../../src/lib/routes/details-section-controller.svelte";
-import type { PageMargins, PageSetup, PageSizeChoice, ProjectConfigFields } from "../../src/lib/api";
+import type { PageMargin, PageSetup, PageSizeChoice, ProjectConfigFields } from "../../src/lib/api";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests (same shim as design-section-controller.test.ts).
@@ -19,9 +19,9 @@ const spy = (): ((...a: unknown[]) => void) & Spy => {
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
 /** The book template's margins (clean-book's old values), recorded in the manifest. */
-const BOOK_MARGINS: PageMargins = { top: 61.2, bottom: 61.2, inside: 54, outside: 54 };
+const BOOK_MARGINS: PageMargin = { top: 61.2, bottom: 61.2, inside: 54, outside: 54 };
 /** The engine's 1in, for a book that sets none and whose stylesheets set none. */
-const INCH: PageMargins = { top: 72, bottom: 72, inside: 72, outside: 72 };
+const INCH: PageMargin = { top: 72, bottom: 72, inside: 72, outside: 72 };
 
 const BOOK_SETUP: PageSetup = {
   preset: "book",
@@ -458,7 +458,7 @@ test("a margin typed in inches is recorded in points with the current preset, on
   expect(h.ctrl.marginDrafts).toEqual({ top: "1", bottom: "1", inside: "1", outside: "1" });
   h.ctrl.marginDrafts.inside = "1.25";
   h.ctrl.touchMargins();
-  await h.ctrl.flushPendingSave({ margins: true });
+  await (h.ctrl.touchMargins(), h.ctrl.flushPendingSave());
   expect(h.pageWrites).toEqual([{ preset: "book", margins: { top: 72, bottom: 72, inside: 90, outside: 72 } }]);
   expect(h.writeCalls).toEqual([]);
   expect(h.ctrl.pageSetup?.marginsFrom).toBe("manifest");
@@ -466,7 +466,7 @@ test("a margin typed in inches is recorded in points with the current preset, on
   expect(h.ctrl.detailsSaveStatus).toBe("saved");
   // Retyping the recorded value is not a change.
   h.ctrl.marginDrafts.inside = "1.25";
-  await h.ctrl.flushPendingSave({ margins: true });
+  await (h.ctrl.touchMargins(), h.ctrl.flushPendingSave());
   expect(h.pageWrites).toHaveLength(1);
 });
 
@@ -479,14 +479,14 @@ test("a custom size and the margins travel together; an incomplete margin holds 
   h.ctrl.marginDrafts.top = "";
   h.ctrl.touchMargins();
   h.ctrl.titleDraft = "Renamed";
-  await h.ctrl.flushPendingSave({ margins: true });
+  await (h.ctrl.touchMargins(), h.ctrl.flushPendingSave());
   expect(h.ctrl.marginsIncomplete).toBe(true);
   expect(h.ctrl.detailsError).toBeNull();
   expect(h.writeCalls.map((w) => w.updates)).toEqual([{ title: "Renamed" }]);
   expect(h.pageWrites).toEqual([]);
   h.ctrl.marginDrafts.top = "0.5";
   h.ctrl.sizeChoice = "a4";
-  await h.ctrl.flushPendingSave({ page: true });
+  await (h.ctrl.touchPage(), h.ctrl.flushPendingSave());
   expect(h.pageWrites).toEqual([
     { preset: "custom", page: { width: 595, height: 842 }, margins: { ...BOOK_MARGINS, top: 36 } },
   ]);
@@ -498,11 +498,11 @@ test("a negative or non-numeric margin counts as incomplete, never as zero", asy
   await h.ctrl.loadDetails();
   h.ctrl.marginDrafts.outside = "-1";
   h.ctrl.touchMargins();
-  await h.ctrl.flushPendingSave({ margins: true });
+  await (h.ctrl.touchMargins(), h.ctrl.flushPendingSave());
   expect(h.ctrl.marginsIncomplete).toBe(true);
   expect(h.pageWrites).toEqual([]);
   h.ctrl.marginDrafts.outside = "0";
-  await h.ctrl.flushPendingSave({ margins: true });
+  await (h.ctrl.touchMargins(), h.ctrl.flushPendingSave());
   expect(h.pageWrites).toEqual([{ preset: "book", margins: { ...BOOK_MARGINS, outside: 0 } }]);
 });
 
@@ -523,7 +523,7 @@ test("a failed margin write keeps the typed margins pending, and the next flush 
   h.failNextPageWrite = true;
   h.ctrl.marginDrafts.top = "1";
   h.ctrl.touchMargins();
-  expect(await h.ctrl.flushPendingSave({ margins: true })).toBe(false);
+  expect(await (h.ctrl.touchMargins(), h.ctrl.flushPendingSave())).toBe(false);
   expect(h.ctrl.detailsError).toContain("read-only folder");
   expect(h.ctrl.marginDrafts.top).toBe("1");
   expect(h.ctrl.pageSetup?.margins).toEqual(BOOK_MARGINS);
@@ -543,11 +543,11 @@ test("a custom size is sent in points, from a named size or typed inches, when i
   // Trade (the recorded 6 x 9 in) under the custom preset is a preset change only.
   expect(h.pageWrites).toEqual([{ preset: "custom", page: { width: 432, height: 648 } }]);
   h.ctrl.sizeChoice = "a4";
-  await h.ctrl.flushPendingSave({ page: true });
+  await (h.ctrl.touchPage(), h.ctrl.flushPendingSave());
   h.ctrl.sizeChoice = "custom";
   h.ctrl.widthIn = "7.25";
   h.ctrl.heightIn = "10";
-  await h.ctrl.flushPendingSave({ page: true });
+  await (h.ctrl.touchPage(), h.ctrl.flushPendingSave());
   expect(h.pageWrites.slice(1)).toEqual([
     { preset: "custom", page: { width: 595, height: 842 } },
     { preset: "custom", page: { width: 522, height: 720 } },
@@ -564,14 +564,14 @@ test("an incomplete custom size saves the other fields and skips the page write 
   h.ctrl.widthIn = "";
   h.ctrl.heightIn = "9";
   h.ctrl.titleDraft = "Renamed";
-  await h.ctrl.flushPendingSave({ page: true });
+  await (h.ctrl.touchPage(), h.ctrl.flushPendingSave());
   expect(h.ctrl.pageIncomplete).toBe(true);
   expect(h.ctrl.detailsError).toBeNull();
   expect(h.writeCalls.map((w) => w.updates)).toEqual([{ title: "Renamed" }]);
   expect(h.pageWrites).toEqual([]);
   // Filling in the width completes it; the pending page write happens now.
   h.ctrl.widthIn = "7";
-  await h.ctrl.flushPendingSave({ page: true });
+  await (h.ctrl.touchPage(), h.ctrl.flushPendingSave());
   expect(h.pageWrites).toEqual([{ preset: "custom", page: { width: 504, height: 648 } }]);
 });
 
@@ -602,7 +602,7 @@ test("a size typed while the previous size is being written stays as typed, and 
   h.holdPageWrite = new Promise<void>((r) => (release = r));
   h.ctrl.sizeChoice = "custom";
   h.ctrl.widthIn = "7";
-  const widthCommit = h.ctrl.flushPendingSave({ page: true }); // Tab out of Width: its `change`
+  const widthCommit = (h.ctrl.touchPage(), h.ctrl.flushPendingSave()); // Tab out of Width: its `change`
   await settle();
   h.ctrl.heightIn = "9"; // typed into Height before that write returns
   h.ctrl.touchPage();

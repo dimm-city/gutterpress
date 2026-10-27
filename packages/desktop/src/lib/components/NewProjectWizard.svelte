@@ -6,7 +6,7 @@
   import { dialogBehavior, guardedClose, FOCUSABLE } from "#lib/dialog.ts";
   import { useSettings } from "#lib/settings.svelte.ts";
   import PageSizeFields from "#lib/components/PageSizeFields.svelte";
-  import { PRESET_CHOICES, trimPoints, sizeChoiceFor, pointsToInches, type PresetChoice } from "#lib/page-size-choices.ts";
+  import { PRESET_CHOICES, type PresetChoice, sizeDraftsFor, trimPoints } from "#lib/page-size-choices.ts";
   import {
     PUBLISH_TARGET_CHOICES,
     PRINT_TOOL_IDS,
@@ -160,15 +160,7 @@
       preset === "dtrpg" || preset === "book" || preset === "custom" ? preset : null;
     // A custom-size template says which size it is designed for; the size
     // fields show it so the writer sees (and can change) the real choice.
-    if (preset === "custom" && tpl?.page) {
-      sizeChoice = sizeChoiceFor(tpl.page.width, tpl.page.height);
-      widthIn = pointsToInches(tpl.page.width);
-      heightIn = pointsToInches(tpl.page.height);
-    } else {
-      sizeChoice = "letter";
-      widthIn = "";
-      heightIn = "";
-    }
+    ({ sizeChoice, widthIn, heightIn } = sizeDraftsFor(preset === "custom" ? tpl?.page : null));
     templateTargets = tpl?.targets ?? null;
     targetsTouched = false;
     checkedTargets = [];

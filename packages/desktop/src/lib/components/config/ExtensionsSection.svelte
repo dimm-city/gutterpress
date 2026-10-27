@@ -44,9 +44,12 @@
 
   let { controller }: { controller: ExtensionsSectionController } = $props();
 
+  // An npm entry is what the update controls are for.
+  const hasNpm = $derived(controller.entries.some((e) => e.kind === "npm"));
+
   onMount(() => {
     controller.showAddTab(controller.addTab);
-    if (controller.updates.status === "idle" && controller.entries.some((e) => e.kind === "npm")) {
+    if (controller.updates.status === "idle" && hasNpm) {
       void controller.checkUpdates();
     }
   });
@@ -119,7 +122,7 @@
     <!-- Developer-shaped controls only when they have something to act on:
          npm updates need an npm entry; a load re-check needs a list. -->
     <span class="head-actions">
-      {#if controller.entries.some((e) => e.kind === "npm")}
+      {#if hasNpm}
         <button class="ghost small" onclick={() => controller.checkUpdates()} disabled={controller.updates.status === "loading"} title="Ask npm whether a newer version of any installed package exists">
           <Icon name="refresh-cw" size={13} /> {controller.updates.status === "loading" ? "Checking npm…" : "Check for updates"}
         </button>
@@ -148,7 +151,7 @@
     </div>
   {/if}
   <p class="hint">Looks and features apply from top to bottom: a lower one wins where they disagree, and your changes on the Design tab always win.</p>
-  {#if controller.entries.some((e) => e.kind === "npm")}
+  {#if hasNpm}
     <div class="prerelease-row">
       <span id="prerelease-label">Include pre-release versions</span>
       <button class="toggle" class:on={controller.includePrerelease} role="switch" aria-checked={controller.includePrerelease} aria-labelledby="prerelease-label" title="Also offer alpha, beta and release-candidate versions in the version lists, and count them as updates" onclick={() => controller.setIncludePrerelease(!controller.includePrerelease)}>

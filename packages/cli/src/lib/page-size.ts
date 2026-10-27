@@ -32,19 +32,18 @@ import path from "node:path";
 import { isMap } from "yaml";
 import type { Document } from "yaml";
 import { UsageError } from "./cli-args.ts";
-import { readExtensionCss } from "./extension-manager.ts";
-import { loadManifest, resolveConfig } from "./manifest.ts";
+import { listProjectExtensions, readEntryCss } from "./extension-manager.ts";
+import { MARGIN_EDGES, validatePageMargin } from "./manifest.ts";
 import { loadManifestDoc, writeManifestDoc } from "./manifest-doc.ts";
 import { PRESET_IDS, PRESETS, type PresetId } from "./presets.ts";
 import { resolveActiveStyles } from "./style-resolver.ts";
-import { extract, resolvePage } from "../engine/shared/gcpm-extract.ts";
-import { DEFAULT_PAGE_MARGIN_PT, formatPageSize, isPositivePoints } from "../engine/shared/print-area.ts";
+import { DEFAULT_PAGE_MARGIN_PT, extract, resolvePage } from "../engine/shared/gcpm-extract.ts";
+import { isNonNegativePoints, isPositivePoints, round3 } from "../engine/shared/print-area.ts";
 import type { PageMargin } from "../schema/manifest.types.ts";
 
-// The point check and the `size` spelling are shared with the assembly's
-// `@page` rule (engine/shared/print-area.ts), so there is one definition of
-// each; re-exported for this module's callers.
-export { formatPageSize, isPositivePoints };
+// The point check is the assembly's (engine/shared/print-area.ts); re-exported
+// for the scaffold, which writes the same bounds.
+export { isPositivePoints };
 export type { PageMargin };
 
 /** Page bounds written to the manifest's `page:` block (points; 72pt = 1in). */
@@ -84,12 +83,6 @@ export interface PageSetup {
   marginsFrom: "manifest" | "stylesheet" | "default";
 }
 
-/** The margin the assembly writes when nothing sets one (print-area.ts). */
-const DEFAULT_MARGIN_PT = DEFAULT_PAGE_MARGIN_PT;
-/** Round to 3dp so 0.6in reads back as 43.2, not 43.199999999999996. */
-const round3 = (n: number): number => Math.round(n * 1000) / 1000;
-const MARGIN_EDGES = ["top", "bottom", "inside", "outside"] as const;
-
 /**
  * Write the manifest's `page:` bounds. `tolerance` defaults to whatever the
  * block already carries, so re-sizing a book never silently resets a
@@ -126,14 +119,10 @@ function ensurePageMap(doc: Document): void {
   if (!isMap(doc.get("page", true))) doc.set("page", doc.createNode({}));
 }
 
-function numberAt(doc: Document, keyPath: string[]): number | undefined {
+/** A positive point value at `keyPath` in the manifest, or undefined. */
+export function numberAt(doc: Document, keyPath: string[]): number | undefined {
   const v = doc.getIn(keyPath);
   return isPositivePoints(v) ? v : undefined;
-}
-
-/** A margin value: finite points, 0 allowed (a full-bleed edge). */
-function isMarginPoints(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
 /** The size (points) a choice means: `custom` brings its own, the others are the preset's. */
@@ -156,72 +145,10 @@ export function pageSizeForChoice(choice: PageSizeChoice): PageSizePoints {
   return { width: base.width, height: base.height };
 }
 
-/** The margins a choice records, checked against the size they must fit; undefined when it records none. */
-function marginsForChoice(choice: PageSizeChoice, size: PageSizePoints): PageMargin | undefined {
-  const m = choice.margins;
-  if (m === undefined) return undefined;
-  if (!MARGIN_EDGES.every((edge) => isMarginPoints(m[edge]))) {
-    throw new UsageError(
-      "Page margins need a top, bottom, inside and outside value in points (72pt = 1in), each 0 or more.",
-    );
-  }
-  if (m.inside + m.outside >= size.width || m.top + m.bottom >= size.height) {
-    throw new UsageError(
-      `These margins leave no room for text on a ${formatPageSize(size)} page.`,
-    );
-  }
-  return { top: m.top, bottom: m.bottom, inside: m.inside, outside: m.outside };
-}
-
 // ── Project ────────────────────────────────────────────────────────────────
 
-/** Active stylesheets that exist on disk, as absolute paths (a shared sheet counts: it prints). */
-async function activeStylesheets(projectDir: string): Promise<string[]> {
-  const rels = await resolveActiveStyles(projectDir).catch(() => [] as string[]);
-  return rels.map((rel) => path.resolve(projectDir, rel)).filter((abs) => existsSync(abs));
-}
-
-/**
- * The margins the book's stylesheets give its pages — every enabled
- * extension's CSS, then the book's own, read with the engine's `@page`
- * reader for a right-hand page, so `inside` is its left edge. Best-effort:
- * an extension that cannot be read, or CSS the reader rejects, counts as
- * setting nothing.
- */
-async function stylesheetMargins(projectDir: string): Promise<Pick<PageSetup, "margins" | "marginsFrom">> {
-  const fallback: Pick<PageSetup, "margins" | "marginsFrom"> = {
-    margins: { top: DEFAULT_MARGIN_PT, bottom: DEFAULT_MARGIN_PT, inside: DEFAULT_MARGIN_PT, outside: DEFAULT_MARGIN_PT },
-    marginsFrom: "default",
-  };
-  const parts: string[] = [];
-  try {
-    const config = resolveConfig({}, await loadManifest(projectDir));
-    for (const ext of config.extensions) {
-      parts.push(await readExtensionCss(projectDir, ext.use).catch(() => ""));
-    }
-  } catch {
-    // A manifest the resolver rejects still has stylesheets worth reading.
-  }
-  for (const file of await activeStylesheets(projectDir)) {
-    parts.push(await readFile(file, "utf8").catch(() => ""));
-  }
-  try {
-    const page = resolvePage(extract(parts.join("\n\n")), { pseudos: ["right"] });
-    const declared = Object.keys(page.decls).some((prop) => prop === "margin" || prop.startsWith("margin-"));
-    if (!declared) return fallback;
-    const m = page.geometry.margin;
-    return {
-      margins: { top: round3(m.top), bottom: round3(m.bottom), inside: round3(m.left), outside: round3(m.right) },
-      marginsFrom: "stylesheet",
-    };
-  } catch {
-    return fallback;
-  }
-}
-
-/** Read a book's page geometry back from its manifest (and, for margins it does not set, its stylesheets). */
-export async function readPageSetup(projectDir: string): Promise<PageSetup> {
-  const { doc } = await loadManifestDoc(projectDir);
+/** What the manifest alone says: preset, bounds, and `page.margin` when it is complete. */
+function manifestGeometry(doc: Document): Pick<PageSetup, "preset" | "bounds"> & { margins?: PageMargin } {
   const declared = doc.get("preset");
   const preset: PresetId | null =
     declared === undefined || declared === null
@@ -237,11 +164,63 @@ export async function readPageSetup(projectDir: string): Promise<PageSetup> {
   const bounds = width !== undefined && height !== undefined ? { width, height, tolerance } : null;
 
   const at = (edge: (typeof MARGIN_EDGES)[number]) => doc.getIn(["page", "margin", edge]);
-  if (MARGIN_EDGES.every((edge) => isMarginPoints(at(edge)))) {
-    const margins = { top: at("top"), bottom: at("bottom"), inside: at("inside"), outside: at("outside") } as PageMargin;
-    return { preset, bounds, margins, marginsFrom: "manifest" };
+  const margins = MARGIN_EDGES.every((edge) => isNonNegativePoints(at(edge)))
+    ? ({ top: at("top"), bottom: at("bottom"), inside: at("inside"), outside: at("outside") } as PageMargin)
+    : undefined;
+  return { preset, bounds, ...(margins ? { margins } : {}) };
+}
+
+/**
+ * The margins the book's stylesheets give its pages — every enabled
+ * extension's CSS, then the book's own, read with the engine's `@page`
+ * reader for a right-hand page, so `inside` is its left edge. Best-effort:
+ * an extension that cannot be read, or CSS the reader rejects, counts as
+ * setting nothing.
+ */
+async function stylesheetMargins(
+  projectDir: string,
+  manifestStyles: string[] | undefined,
+): Promise<Pick<PageSetup, "margins" | "marginsFrom">> {
+  const d = DEFAULT_PAGE_MARGIN_PT;
+  const fallback: Pick<PageSetup, "margins" | "marginsFrom"> = {
+    margins: { top: d, bottom: d, inside: d, outside: d },
+    marginsFrom: "default",
+  };
+  const [entries, rels] = await Promise.all([
+    listProjectExtensions(projectDir).catch(() => []),
+    resolveActiveStyles(projectDir, manifestStyles).catch(() => [] as string[]),
+  ]);
+  const sheets = rels.map((rel) => path.resolve(projectDir, rel)).filter((abs) => existsSync(abs));
+  const parts = await Promise.all([
+    ...entries.filter((e) => e.enabled && e.carries.styles).map((e) => readEntryCss(e).catch(() => "")),
+    ...sheets.map((file) => readFile(file, "utf8").catch(() => "")),
+  ]);
+  try {
+    const page = resolvePage(extract(parts.join("\n\n")), { pseudos: ["right"] });
+    const declared = Object.keys(page.decls).some((prop) => prop === "margin" || prop.startsWith("margin-"));
+    if (!declared) return fallback;
+    const m = page.geometry.margin;
+    return {
+      margins: { top: round3(m.top), bottom: round3(m.bottom), inside: round3(m.left), outside: round3(m.right) },
+      marginsFrom: "stylesheet",
+    };
+  } catch {
+    return fallback;
   }
-  return { preset, bounds, ...(await stylesheetMargins(projectDir)) };
+}
+
+/** The setup a manifest document describes, reading the stylesheets only for margins it does not set. */
+async function setupOf(projectDir: string, doc: Document): Promise<PageSetup> {
+  const { margins, ...geometry } = manifestGeometry(doc);
+  if (margins) return { ...geometry, margins, marginsFrom: "manifest" };
+  const styles = doc.toJS()?.styles;
+  return { ...geometry, ...(await stylesheetMargins(projectDir, Array.isArray(styles) ? styles : undefined)) };
+}
+
+/** Read a book's page geometry back from its manifest (and, for margins it does not set, its stylesheets). */
+export async function readPageSetup(projectDir: string): Promise<PageSetup> {
+  const { doc } = await loadManifestDoc(projectDir);
+  return setupOf(projectDir, doc);
 }
 
 /**
@@ -257,7 +236,7 @@ export async function setPageSetup(
   choice: PageSizeChoice,
 ): Promise<PageSetup> {
   const size = pageSizeForChoice(choice);
-  const margins = marginsForChoice(choice, size);
+  const margins = choice.margins === undefined ? undefined : validatePageMargin(choice.margins, size);
 
   const { doc, file } = await loadManifestDoc(projectDir);
   doc.set("preset", choice.preset);
@@ -265,5 +244,5 @@ export async function setPageSetup(
   else deletePageBounds(doc);
   if (margins) writePageMargin(doc, margins);
   await writeManifestDoc(file, doc);
-  return readPageSetup(projectDir);
+  return setupOf(projectDir, doc);
 }

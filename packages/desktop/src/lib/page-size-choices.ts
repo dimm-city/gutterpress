@@ -52,6 +52,16 @@ export const COMMON_SIZES: CommonSize[] = [
 const round3 = (n: number): number => Math.round(n * 1000) / 1000;
 
 /**
+ * Typed inches -> points, or null while the text is not a length (empty, not
+ * a number, negative). Zero is a length: a margin can be none.
+ */
+export function inchesToPoints(text: string): number | null {
+  if (text.trim() === "") return null;
+  const n = Number(text);
+  return Number.isFinite(n) && n >= 0 ? round3(n * PT_PER_INCH) : null;
+}
+
+/**
  * The trim in points a size dropdown + typed inches mean, or null while the
  * typed inches are incomplete. A named size wins over the inches fields.
  */
@@ -62,10 +72,22 @@ export function trimPoints(
 ): { width: number; height: number } | null {
   const named = COMMON_SIZES.find((s) => s.id === sizeChoice)?.points;
   if (named) return named;
-  const w = Number(widthIn);
-  const h = Number(heightIn);
-  if (!(Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0)) return null;
-  return { width: round3(w * PT_PER_INCH), height: round3(h * PT_PER_INCH) };
+  const width = inchesToPoints(widthIn);
+  const height = inchesToPoints(heightIn);
+  if (!width || !height) return null;
+  return { width, height };
+}
+
+/** The size drafts (dropdown row + typed inches) for a recorded trim, or the blank defaults for none. */
+export function sizeDraftsFor(
+  points: { width: number; height: number } | null | undefined,
+): { sizeChoice: string; widthIn: string; heightIn: string } {
+  if (!points) return { sizeChoice: "letter", widthIn: "", heightIn: "" };
+  return {
+    sizeChoice: sizeChoiceFor(points.width, points.height),
+    widthIn: pointsToInches(points.width),
+    heightIn: pointsToInches(points.height),
+  };
 }
 
 /** Points -> an inches string for a number input (`612` -> `"8.5"`). */

@@ -35,11 +35,11 @@
  * imports.
  */
 
-import type { PageMargins, PageSetup, PageSizeChoice, ProjectConfigFields } from "#lib/api.ts";
+import type { PageMargin, PageSetup, PageSizeChoice, ProjectConfigFields } from "#lib/api.ts";
 import {
-  PT_PER_INCH,
+  inchesToPoints,
   pointsToInches,
-  sizeChoiceFor,
+  sizeDraftsFor,
   trimPoints,
   type PresetChoice,
 } from "#lib/page-size-choices.ts";
@@ -85,17 +85,7 @@ const sameList = (a: readonly string[], b: readonly string[]): boolean =>
 export const MARGIN_EDGES = ["top", "bottom", "inside", "outside"] as const;
 export type MarginEdge = (typeof MARGIN_EDGES)[number];
 
-/** Round to 3dp so 0.85in lands as 61.2pt, not 61.199999999999996. */
-const round3 = (n: number): number => Math.round(n * 1000) / 1000;
-
-/** Typed inches -> points, or null while the text is not a margin (empty, not a number, negative). */
-function marginPoints(inches: string): number | null {
-  if (inches.trim() === "") return null;
-  const n = Number(inches);
-  return Number.isFinite(n) && n >= 0 ? round3(n * PT_PER_INCH) : null;
-}
-
-const sameMargins = (a: PageMargins, b: PageMargins): boolean =>
+const sameMargins = (a: PageMargin, b: PageMargin): boolean =>
   MARGIN_EDGES.every((edge) => Math.abs(a[edge] - b[edge]) < 0.01);
 
 export class DetailsSectionController {
@@ -219,10 +209,7 @@ export class DetailsSectionController {
   private applyPageSetup(setup: PageSetup): void {
     this.pageSetup = setup;
     this.presetDraft = setup.preset;
-    const b = setup.bounds;
-    this.sizeChoice = b ? sizeChoiceFor(b.width, b.height) : "letter";
-    this.widthIn = b ? pointsToInches(b.width) : "";
-    this.heightIn = b ? pointsToInches(b.height) : "";
+    ({ sizeChoice: this.sizeChoice, widthIn: this.widthIn, heightIn: this.heightIn } = sizeDraftsFor(setup.bounds));
     for (const edge of MARGIN_EDGES) this.marginDrafts[edge] = pointsToInches(setup.margins[edge]);
   }
 
@@ -240,14 +227,14 @@ export class DetailsSectionController {
   }
 
   /** The typed margins in points, or null while any edge is empty or not a margin. */
-  get marginsChoice(): PageMargins | null {
-    const out: Partial<PageMargins> = {};
+  get marginsChoice(): PageMargin | null {
+    const out: Partial<PageMargin> = {};
     for (const edge of MARGIN_EDGES) {
-      const pt = marginPoints(this.marginDrafts[edge]);
+      const pt = inchesToPoints(this.marginDrafts[edge]);
       if (pt === null) return null;
       out[edge] = pt;
     }
-    return out as PageMargins;
+    return out as PageMargin;
   }
 
   /** True when a margin was edited but the four edges are not all filled in. */
@@ -279,7 +266,8 @@ export class DetailsSectionController {
   setPreset = (preset: PresetChoice): void => {
     this.presetDraft = preset;
     if (!this.targetsExplicit) this.targetsDraft = defaultTargetsFor(preset);
-    void this.flushPendingSave({ page: true });
+    this.pageTouched = true;
+    void this.flushPendingSave();
   };
 
   /** A size field was typed in: the size is the author's to write from now on,
@@ -332,16 +320,13 @@ export class DetailsSectionController {
 
   // ── Save ──────────────────────────────────────────────────────────────────
   /**
-   * Write whatever differs from the manifest as last read. `page: true` marks
-   * the page-size controls as touched and `margins: true` the margin fields,
-   * so the page geometry is written too when it changed. Chained after any
-   * in-flight commit, so two flushes never interleave and the later one sees
-   * the earlier one's result. Resolves to false when the write failed (the
-   * drafts are kept), true otherwise.
+   * Write whatever differs from the manifest as last read, the page geometry
+   * included once its controls were touched. Chained after any in-flight
+   * commit, so two flushes never interleave and the later one sees the
+   * earlier one's result. Resolves to false when the write failed (the drafts
+   * are kept), true otherwise.
    */
-  flushPendingSave = (opts?: { page?: boolean; margins?: boolean }): Promise<boolean> => {
-    if (opts?.page) this.pageTouched = true;
-    if (opts?.margins) this.marginsTouched = true;
+  flushPendingSave = (): Promise<boolean> => {
     this.saveChain = this.saveChain.then(() => this.commitChanges());
     return this.saveChain;
   };
@@ -382,14 +367,12 @@ export class DetailsSectionController {
     // Margins ride along only once the author touched them; until then the
     // manifest's stay as they are (or stay absent, leaving the stylesheets').
     const margins = this.marginsTouched ? this.marginsChoice : null;
+    // `pageDirty` is already false for an incomplete size (no choice) and
+    // for margins nobody touched; the flags keep an untouched book from
+    // writing what its drafts merely default to.
     const touched = { page: this.pageTouched, margins: this.marginsTouched };
     const writePage =
-      (touched.page || touched.margins) &&
-      !!choice &&
-      this.pageDirty &&
-      !this.pageIncomplete &&
-      !this.marginsIncomplete &&
-      !!this.deps.writePageSetup;
+      (touched.page || touched.margins) && this.pageDirty && !this.marginsIncomplete && !!this.deps.writePageSetup;
     const hasUpdates = Object.keys(updates).length > 0;
     if (!hasUpdates && !writePage) return true;
     // Consumed by this write (an incomplete size or margin stays pending); a

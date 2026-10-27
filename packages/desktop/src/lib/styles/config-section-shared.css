@@ -97,3 +97,9 @@
 :global(.config-panel .toggle.on .knob) { transform: translateX(15px); }
 :global(.config-panel .toggle:focus-visible) { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
 :global(.config-panel .toggle:disabled) { opacity: 0.5; cursor: progress; }
+
+/* The "Saving… / Changes saved" badge of a section that saves as you go
+   (Details, Design): a live region that exists before its text changes. */
+:global(.config-panel .save-status) { font-size: 11px; }
+:global(.config-panel .save-status.saving) { color: var(--app-text-muted); }
+:global(.config-panel .save-status.saved) { color: var(--app-success-text); }

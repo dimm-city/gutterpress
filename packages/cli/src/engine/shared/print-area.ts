@@ -61,23 +61,18 @@ export interface PrintAreaSource {
   spec?: { label: string; url: string };
 }
 
-/**
- * The margin a book prints with when nothing sets one — no `page.margin` in
- * the manifest and no `@page` margin in any stylesheet. The assembly writes
- * it as a plain `@page { margin }` ahead of every stylesheet, so a look's or
- * the book's own margin still wins; without it Chromium would print with its
- * own default (about 0.4in) while the engine's `@page` reader assumes 1in,
- * and the preview and the PDF would paginate differently.
- */
-export const DEFAULT_PAGE_MARGIN_PT = 72;
-
 /** A usable point value: finite and positive (a page dimension, an inset). */
 export function isPositivePoints(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
+/** A margin value: finite and 0 or more (a full-bleed edge has no margin). */
+export function isNonNegativePoints(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
 /** Round to 3dp so 8.27in doesn't print as 8.270000000000001in. */
-const round3 = (n: number) => Math.round(n * 1000) / 1000;
+export const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /** CSS length for a point value: inches when exact to 3dp (612 -> 8.5in), else points. */
 export function cssLength(pt: number): string {
@@ -86,10 +81,9 @@ export function cssLength(pt: number): string {
 }
 
 /**
- * The `size` value written for a page — `8.5in 11in`, `595pt 842pt` — by
- * everything that writes one: Book setup (lib/page-size.ts) into the
- * book's stylesheet, and the assembly's manifest default
- * (lib/markdown/assemble.ts), so one size has one spelling.
+ * The `size` value written for a page — `8.5in 11in`, `595pt 842pt` — by the
+ * assembly's `@page` rule (lib/markdown/assemble.ts), the one place a size is
+ * written, so one size has one spelling.
  */
 export function formatPageSize(page: { width: number; height: number }): string {
   return `${cssLength(page.width)} ${cssLength(page.height)}`;

@@ -29,13 +29,13 @@ import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
 import { collectHtmlImageRefs, type ImageRefEnv } from "./images";
 import { lastPageMode, type PrintPadding } from "../../engine/shared/synthesis.ts";
 import {
-  DEFAULT_PAGE_MARGIN_PT,
   cssLength,
   formatPageSize,
   isPositivePoints,
   printAreaMeta,
   type PrintAreaSource,
 } from "../../engine/shared/print-area.ts";
+import { DEFAULT_PAGE_MARGIN_PT } from "../../engine/shared/gcpm-extract.ts";
 
 /** Reader injected by the host: resolve a project-root-relative file → its text. */
 export type ReadText = (relPath: string) => Promise<string>;

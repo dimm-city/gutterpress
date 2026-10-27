@@ -3,7 +3,8 @@ import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { formatPageSize, pageSizeForChoice, readPageSetup, setPageSetup } from "./page-size.ts";
+import { pageSizeForChoice, readPageSetup, setPageSetup } from "./page-size.ts";
+import { formatPageSize } from "../engine/shared/print-area.ts";
 import { scaffoldProject } from "./project-scaffold.ts";
 import { loadManifest, resolveConfig } from "./manifest.ts";
 
@@ -238,7 +239,7 @@ test("setPageSetup changes nothing when the choice is invalid", async () => {
     await expect(setPageSetup(dir, { preset: "custom" })).rejects.toThrow(/custom page size/);
     await expect(
       setPageSetup(dir, { preset: "book", margins: { top: -1, bottom: 72, inside: 72, outside: 72 } }),
-    ).rejects.toThrow(/0 or more/);
+    ).rejects.toThrow(/all four edges/);
     await expect(
       setPageSetup(dir, { preset: "book", margins: { top: 72, bottom: 72, inside: 216, outside: 216 } }),
     ).rejects.toThrow(/no room for text/);
