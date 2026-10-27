@@ -21,7 +21,7 @@
     onSetUpBackup,
   }: {
     onClose?: () => void;
-    /** The open project dir (Connections tab: adding a publishing key verifies
+    /** The open project dir (Accounts tab: adding a publishing key verifies
      *  against the platform, and some checks read the project's settings;
      *  the Saving tab's online-backup switch uses it to check canSync). */
     projectDir?: string | null;
@@ -450,10 +450,12 @@
              for a project that can sync — canSyncLoading/canSync are read
              once on mount from diagnoseProjectRemote (no live re-check while
              this view stays open, matching ConnectionsSettings/
-             ProjectConnectionsSection); a local-only project or the start
-             screen (projectDir === null) gets one status line instead of a
-             switch that would do nothing. Disabled when previous versions is
-             off: a backup with nothing to push is not a backup. -->
+             ProjectConnectionsSection); a local-only project gets one status
+             line and the way to Book setup > Backup instead of a switch that
+             would do nothing; the start screen (projectDir === null) has no
+             book to set up, so it gets the status line alone. Disabled when
+             previous versions is off: a backup with nothing to push is not a
+             backup. -->
         {#if canSyncLoading}
           <div class="row"><span class="row-hint">Checking this book's online status…</span></div>
         {:else if canSync}
@@ -482,13 +484,15 @@
               }}
             />
           </div>
-        {:else}
+        {:else if projectDir}
           <div class="row">
             <span class="row-hint">Not backed up online.</span>
             {#if onSetUpBackup}
               <button class="action" onclick={onSetUpBackup}>Set up online backup…</button>
             {/if}
           </div>
+        {:else}
+          <div class="row"><span class="row-hint">Open a book to set up its online backup.</span></div>
         {/if}
         <!-- Copy switching (#273): which copy (git branch) the project is on,
              and a way to switch to another. Copies that exist only online are

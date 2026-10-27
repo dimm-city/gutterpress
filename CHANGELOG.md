@@ -116,9 +116,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   size) and "Check the finished PDF against a print service's rules?";
   Details calls its lists **Chapters** and **Check the PDF against**. **Create
   book** is never greyed out for want of a folder: pressing it asks for one.
-  The toolbar, the page and the docs all say **Book setup**, the status-bar
-  gear says **Settings**, and the book's online copy lives on a **Backup** tab
-  (**Settings > Saving** links there for a book that is not backed up yet).
+  The toolbar, the page, the docs and the preview's missing-extension notice
+  all say **Book setup**, the status-bar gear says **Settings**, and the
+  book's online copy lives on a **Backup** tab (**Settings > Saving** links
+  there for a book that is not backed up yet).
   The **Create a new book** card shows for a Reader too; creating a book
   switches you to Author. Help gains a step on setting up and styling a book.
 - **A footnote links to its own note in a book of several files.** Each file

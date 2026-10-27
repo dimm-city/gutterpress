@@ -298,14 +298,14 @@ async function loadNpmPackage(
   if (!looksLikeJsFilename && (!version || !isExactNpmVersion(version))) {
     throw new Error(
       `Extension "${packageName}${version ? `@${version}` : ""}" is not pinned to an exact version, so it can't be ` +
-        `downloaded automatically. Run \`gutterpress ext add ${packageName}\` (or use Book settings > ` +
-        `Features in the desktop app) to download it and pin its version in your manifest.`
+        `downloaded automatically. Run \`gutterpress ext add ${packageName}\` (or use Book setup > ` +
+        `Looks & features > Advanced in the desktop app) to download it and pin its version in your manifest.`
     );
   }
 
   throw new Error(
     `Extension "${packageName}" not found. Install it with ` +
-      `\`gutterpress ext add ${version ? `${packageName}@${version}` : packageName}\` (or Book settings > Features > Advanced in the desktop app),\n` +
+      `\`gutterpress ext add ${version ? `${packageName}@${version}` : packageName}\` (or Book setup > Looks & features > Advanced in the desktop app),\n` +
       `or reference a local file under \`extensions:\`:\n` +
       `  extensions:\n` +
       `    - ${suggestedPath}`

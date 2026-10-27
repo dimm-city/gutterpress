@@ -378,7 +378,8 @@
     if (!parentDir) {
       await chooseLocation();
       if (!parentDir) {
-        error = "Choose a folder to save your book in.";
+        // A dialog that failed has already said why; only a dismissed one needs the prompt.
+        if (!error) error = "Choose a folder to save your book in.";
         return;
       }
     }

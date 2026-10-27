@@ -43,6 +43,7 @@ import { defaultTargetsFor } from "#lib/publish-targets.ts";
 import {
   buildSourceList,
   moveEntry,
+  naturalOrder,
   setIncluded,
   toManifestFiles,
   type SourceFileEntry,
@@ -121,6 +122,10 @@ export class DetailsSectionController {
   private targetsExplicit = false;
   /** True when a page-size control was touched since the last page write. */
   private pageTouched = false;
+  /** The book `fields` and the drafts belong to. A commit is bound to it:
+   *  the unmount flush can run after the host has moved to another book,
+   *  and drafts diffed against THIS book's fields must never land there. */
+  private loadedDir: string | null = null;
   private saveChain: Promise<void> = Promise.resolve();
   private readonly deps: DetailsSectionDeps;
 
@@ -142,6 +147,7 @@ export class DetailsSectionController {
           .catch(() => ({ ok: false, files: [] as string[] })),
       ]);
       this.fields = f;
+      this.loadedDir = projectDir;
       this.titleDraft = f.title ?? "";
       this.authorsDraft = f.authors ?? [];
       await this.loadPageSetup(projectDir);
@@ -283,23 +289,26 @@ export class DetailsSectionController {
 
   private async commitChanges(): Promise<void> {
     const projectDir = this.deps.projectDir();
-    if (!projectDir) return;
+    if (!projectDir || projectDir !== this.loadedDir) return;
     const updates: ProjectConfigFields = {};
     const title = this.titleDraft.trim();
     if (title !== (this.fields.title ?? "")) updates.title = title;
     const authors = this.authorsDraft.map((a) => a.trim()).filter((a) => a.length > 0);
     if (!sameList(authors, this.fields.authors ?? [])) updates.authors = authors;
+    // Compare what the two sides MEAN, not how they are spelled: an explicit
+    // list that equals natural order (every scaffolded book lists its one
+    // chapter) and the absent-list default name the same chapters, so an
+    // untouched flush must not rewrite one as the other.
     const included = this.sourceFiles.filter((e) => e.included).map((e) => e.path);
-    // Only a successful scan may collapse to the "all files" null sentinel —
-    // without the true universe that collapse could silently widen the book.
-    const src = this.scanOk
-      ? toManifestFiles(this.sourceFiles, this.allMarkdownFiles)
-      : included.length > 0
-        ? included
-        : null;
-    const recorded = this.fields.sourceFiles ?? null;
-    if ((src === null) !== (recorded === null) || (src && recorded && !sameList(src, recorded))) {
-      updates.sourceFiles = src;
+    const recorded = this.fields.sourceFiles ?? naturalOrder(this.allMarkdownFiles);
+    if (!sameList(included, recorded)) {
+      // Only a successful scan may collapse to the "all files" null sentinel —
+      // without the true universe that collapse could silently widen the book.
+      updates.sourceFiles = this.scanOk
+        ? toManifestFiles(this.sourceFiles, this.allMarkdownFiles)
+        : included.length > 0
+          ? included
+          : null;
     }
     // Written only once explicit, empty included: `targets: []` is the
     // explicit "no destination policies" opt-out, not an omission. A manifest

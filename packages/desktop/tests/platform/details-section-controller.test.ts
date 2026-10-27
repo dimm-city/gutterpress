@@ -229,6 +229,24 @@ test("an unchanged flush writes nothing and leaves the badge idle", async () => 
   expect(h.ctrl.detailsSaveStatus).toBe("idle");
 });
 
+test("an untouched flush never rewrites an explicit chapter list that equals natural order (every scaffolded book)", async () => {
+  const h = make({ fields: { title: "My Book", sourceFiles: ["a.md", "b.md", "c.md"] } });
+  await h.ctrl.loadDetails();
+  await h.ctrl.flushPendingSave();
+  expect(h.writeCalls).toEqual([]);
+  expect(h.ctrl.detailsSaveStatus).toBe("idle");
+});
+
+test("a flush after the host moved to another book writes nothing there", async () => {
+  const h = make();
+  await h.ctrl.loadDetails();
+  h.ctrl.titleDraft = "Typed into book A";
+  h.projectDir = "/other-book";
+  await h.ctrl.flushPendingSave();
+  expect(h.writeCalls).toEqual([]);
+  expect(h.ctrl.detailsSaveStatus).toBe("idle");
+});
+
 test("a chapter reorder is persisted at once as an explicit ordered list; the all-files default is the null sentinel", async () => {
   const h = make({ fields: {} });
   await h.ctrl.loadDetails();

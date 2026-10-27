@@ -237,7 +237,7 @@ function defaultPageSizeCss(css: string, page: PrintAreaSource | undefined): str
   } catch {
     return null;
   }
-  // The same spelling Book settings writes into a stylesheet: one size, one form.
+  // The same spelling Book setup writes into a stylesheet: one size, one form.
   return `@page { size: ${formatPageSize(page)}; }`;
 }
 

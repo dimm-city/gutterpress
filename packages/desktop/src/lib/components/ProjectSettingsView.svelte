@@ -304,8 +304,8 @@
       {/if}
 
       {#if activeTab === "design"}
-        <!-- Design tokens → stylesheet list. The stylesheet list is a plain
-             always-visible section - book settings has no collapsible
+        <!-- Fonts, colors & sizes → stylesheet list. The stylesheet list is a plain
+             always-visible section - Book setup has no collapsible
              sections. -->
         <section class="block look-style">
           <h3>Design</h3>

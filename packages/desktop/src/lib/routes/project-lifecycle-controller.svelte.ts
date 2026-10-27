@@ -445,7 +445,7 @@ export class ProjectLifecycleController {
   /**
    * Say what opening the book downloaded, through the toast every other
    * ambient notice uses. A failed download is not an open failure: the book
-   * opens and the Extensions tab's "Needs install" row is the way to retry.
+   * opens and the Looks & features tab's "Needs install" row is the way to retry.
    */
   private announceRestore(restore: ProjectLifecycleRestore | undefined): void {
     if (!restore) return;

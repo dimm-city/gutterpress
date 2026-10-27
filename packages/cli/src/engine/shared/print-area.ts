@@ -75,7 +75,7 @@ function cssLength(pt: number): string {
 
 /**
  * The `size` value written for a page — `8.5in 11in`, `595pt 842pt` — by
- * everything that writes one: Book settings (lib/page-size.ts) into the
+ * everything that writes one: Book setup (lib/page-size.ts) into the
  * book's stylesheet, and the assembly's manifest default
  * (lib/markdown/assemble.ts), so one size has one spelling.
  */

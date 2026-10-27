@@ -85,9 +85,10 @@
      list row and on a Built in row. Until the CSS arrives, or when there is
      none to show, a non-blank placeholder. -->
 {#snippet thumb(use: string, label: string)}
+  {@const src = thumbOf(use)}
   <div class="thumb">
-    {#if thumbOf(use)}
-      <iframe title={`Preview of ${label}`} srcdoc={thumbOf(use)} sandbox="allow-same-origin" loading="lazy"></iframe>
+    {#if src}
+      <iframe title={`Preview of ${label}`} srcdoc={src} sandbox="allow-same-origin" loading="lazy"></iframe>
     {:else}
       <div class="thumb-placeholder" role="img" aria-label={`Sample preview for ${label}`}>
         <span class="fallback-title">Aa</span>

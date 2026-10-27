@@ -1,5 +1,5 @@
 /**
- * source-files.ts — pure model for the project-settings "Source files" list
+ * source-files.ts — pure model for the Book setup "Chapters" list
  * (the drag-and-drop include/exclude editor).
  *
  * The manifest's `sourceFiles` field is EITHER null/absent ("include every

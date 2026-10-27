@@ -3,7 +3,7 @@
    * ProjectConnectionsSection — Book setup → Backup.
    *
    * The open project's connection details: how the folder is set up, its
-   * online repository address, branch, whether a server credential is saved,
+   * online repository address, whether a server credential is saved,
    * plus the explicit-click-only Test Remote Access probe. Accounts are
    * global (Settings → Accounts), but THIS surface is about one project, so it lives with the
    * rest of the project's settings. Credential management stays in

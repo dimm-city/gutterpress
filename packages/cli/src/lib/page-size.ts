@@ -1,6 +1,6 @@
 /**
  * A book's page size — the ONE place that knows how the size is recorded, for
- * both the new-book wizard (via `scaffoldProject`) and Book settings (#357).
+ * both the new-book wizard (via `scaffoldProject`) and Book setup (#357).
  *
  * A book's page size lives in two places that must agree:
  *

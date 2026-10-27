@@ -9,12 +9,16 @@
 
   let {
     idPrefix,
+    label = "Page size",
     sizeChoice = $bindable(),
     widthIn = $bindable(),
     heightIn = $bindable(),
   }: {
     /** Prefix for the control ids (two instances never share an id). */
     idPrefix: string;
+    /** The select's label; Book setup, whose field is already headed "Page
+     *  size", passes "Size" so the words are not read twice. */
+    label?: string;
     sizeChoice: string;
     widthIn: string;
     heightIn: string;
@@ -22,7 +26,7 @@
 </script>
 
 <label class="size-field" for="{idPrefix}-page-size">
-  <span>Page size</span>
+  <span>{label}</span>
   <select id="{idPrefix}-page-size" bind:value={sizeChoice}>
     {#each COMMON_SIZES as size (size.id)}
       <option value={size.id}>{size.label}</option>

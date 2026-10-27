@@ -275,7 +275,7 @@ export interface ClassCatalogEntry {
 }
 
 /** Static publish-provider metadata (no project needed) — used by the
- *  Settings → Connections tab to classify + label stored credentials. */
+ *  Settings → Accounts tab to classify + label stored credentials. */
 export interface PublishProviderStaticInfo {
   id: string;
   label: string;
@@ -609,7 +609,7 @@ export const api = {
    * styles, a feature is one that carries markdown, a component library
    * carries both — every one is a `use` specifier in the manifest's
    * `extensions:` list, and `list` returns them all in cascade order. The
-   * desktop's Extensions tab shows that list with this one verb set; `use` is
+   * desktop's Looks & features tab shows that list with this one verb set; `use` is
    * the stable ref every mutating call takes.
    */
   extension: {
@@ -648,7 +648,7 @@ export const api = {
     bundled: () => get<BundledExtensionInfo[]>('/api/extension/bundled'),
     /** Search npm for extensions (#246), on demand. A network/parse failure is data (`ok: false`), never a thrown error. */
     search: (query: string) => post<ExtensionSearchResult>('/api/extension/search', { query }),
-    /** Each pinned npm extension against npm's latest (the newest of any kind with `includePrerelease`), on demand (the Extensions tab, never project load). A network failure is data (`ok: false`). */
+    /** Each pinned npm extension against npm's latest (the newest of any kind with `includePrerelease`), on demand (the Looks & features tab, never project load). A network failure is data (`ok: false`). */
     outdated: (projectDir: string, includePrerelease = false) =>
       post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir, includePrerelease }),
     /** Every published version of one npm package, newest first, pre-releases included (the version picker's list). On demand; a network failure is data (`ok: false`). */

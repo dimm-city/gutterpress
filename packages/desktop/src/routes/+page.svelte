@@ -1102,8 +1102,8 @@
     snippetPickerRef?.show();
   }
 
-  // ── Book settings view ──────────────────────────────────────────────────
-  // Book settings open in the shared AppView layer, like every task screen:
+  // ── Book setup view ────────────────────────────────────────────────────
+  // Book setup opens in the shared AppView layer, like every task screen:
   // the workspace underneath is inert until the writer closes them (X or
   // Esc) — a sidebar tab or docked panel squeezes manifest editing, theme
   // browsing and plugin management into a strip. Activity is the only alternate
@@ -1111,7 +1111,7 @@
   let editorView = $state<"editor" | "activity">("editor");
   let projectSettingsOpen = $state(false);
 
-  /** One button → the whole book settings view (manifest details, look &
+  /** One button → the whole Book setup view (details, looks & features,
    *  style, plugins), covering the workspace. */
   function openProjectConfig(): void {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
@@ -2887,7 +2887,7 @@
   // The single-column (narrow) layout switches the one visible pane between the
   // editor and the preview. `editorPaneOpen` is the visible source of truth;
   // the persisted paneMode is only consulted after the editor was explicitly
-  // opened. Project styling lives in the Book settings view, not a tab.
+  // opened. Project styling lives in the Book setup view, not a tab.
   //
   // Single source of truth: whether the shared editor is on a CSS file is
   // derived SOLELY from the open file's extension (`openFileIsCss`) — no
@@ -3040,8 +3040,8 @@
   <title>{lifecycle.docTitle ? `${lifecycle.docTitle} — Gutterpress` : "Gutterpress"}</title>
 </svelte:head>
 
-<!-- inert while the start screen or Book settings is up: the workspace keeps
-      rendering (a stylesheet written from Book settings re-renders the preview
+<!-- inert while the start screen or Book setup is up: the workspace keeps
+      rendering (a stylesheet written from Book setup re-renders the preview
       live) but never accepts interaction underneath the layer. -->
 <div class="app-root" inert={landingVisible || projectSettingsOpen || publishOpen} use:activity.track={activityStages}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
@@ -3600,7 +3600,7 @@
   onCloseBook={() => lifecycle.stopPreview()}
 />
 {#if projectSettingsOpen}
-  <!-- Book settings (manifest), in the shared AppView layer. Mounted fresh per
+  <!-- Book setup (manifest), in the shared AppView layer. Mounted fresh per
        open; a project switch closes it (lifecycle resetExtras), so no stale
        section state can outlive its project. No {#key} wrapper: Svelte 5
        transitions are local, and a key block between the {#if} and the view

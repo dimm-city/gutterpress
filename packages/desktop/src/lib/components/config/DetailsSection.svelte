@@ -92,8 +92,14 @@
   <div class="block-head">
     <h3>Details</h3>
     <div class="row">
-      {#if controller.detailsSaveStatus === "saving"}<span class="save-status saving" aria-live="polite">Saving…</span>
-      {:else if controller.detailsSaveStatus === "saved"}<span class="save-status saved" aria-live="polite">Changes saved</span>{/if}
+      <!-- Always in the DOM with its text swapped: a live region announces a
+           change to its content, not its own arrival (WCAG 2.2 SC 4.1.3). -->
+      <span
+        class="save-status"
+        class:saving={controller.detailsSaveStatus === "saving"}
+        class:saved={controller.detailsSaveStatus === "saved"}
+        aria-live="polite"
+      >{controller.detailsSaveStatus === "saving" ? "Saving…" : controller.detailsSaveStatus === "saved" ? "Changes saved" : ""}</span>
       {#if onSaveAsTemplate}
         <button
           class="ghost small"
@@ -227,6 +233,7 @@
         <div class="size-fields" onchange={() => controller.flushPendingSave({ page: true })}>
           <PageSizeFields
             idPrefix="details"
+            label="Size"
             bind:sizeChoice={controller.sizeChoice}
             bind:widthIn={controller.widthIn}
             bind:heightIn={controller.heightIn}

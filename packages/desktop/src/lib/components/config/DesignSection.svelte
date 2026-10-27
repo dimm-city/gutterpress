@@ -38,10 +38,10 @@
     onChooseLook?: () => void;
   } = $props();
 
-  /** "your look (Clean book)" / "your looks (Clean book, House)" for the hint. */
-  const lookPhrase = $derived(
-    `your ${controller.lookLabels.length > 1 ? "looks" : "look"} (${controller.lookLabels.join(", ")})`,
-  );
+  /** "look (Clean book)" / "looks (Clean book, House)" — the hint and the
+   *  empty state each put their own "your" / "Your" in front. */
+  const lookWord = $derived(controller.lookLabels.length > 1 ? "looks" : "look");
+  const lookNames = $derived(controller.lookLabels.join(", "));
 
   /** The curated dropdown's selected option: the matching preset value, or
    * the "custom" sentinel when the current value isn't one of the presets
@@ -56,8 +56,14 @@
   <div class="block-head">
     <h4 class="tokens-title">Fonts, colors &amp; sizes</h4>
     <div class="row">
-      {#if controller.designSaveStatus === "saving"}<span class="save-status saving" aria-live="polite">Saving…</span>
-      {:else if controller.designSaveStatus === "saved"}<span class="save-status saved" aria-live="polite">Changes saved</span>{/if}
+      <!-- Always in the DOM with its text swapped: a live region announces a
+           change to its content, not its own arrival (WCAG 2.2 SC 4.1.3). -->
+      <span
+        class="save-status"
+        class:saving={controller.designSaveStatus === "saving"}
+        class:saved={controller.designSaveStatus === "saved"}
+        aria-live="polite"
+      >{controller.designSaveStatus === "saving" ? "Saving…" : controller.designSaveStatus === "saved" ? "Changes saved" : ""}</span>
       {#if controller.anyDirty}
         <button class="ghost small" onclick={controller.revertAllTokens} title="Revert all changes">Revert</button>
       {/if}
@@ -79,12 +85,12 @@
         {@render editRaw()}
       </div>
     {:else}
-      <p class="muted">{lookPhrase.replace(/^y/, "Y")} and {controller.cssName} don't expose any settings yet. Use “Edit the stylesheet” to add <code>:root</code> custom properties.</p>
+      <p class="muted">Your {lookWord} ({lookNames}) and {controller.cssName} don't expose any settings yet. Use “Edit the stylesheet” to add <code>:root</code> custom properties.</p>
       {@render editRaw()}
     {/if}
   {:else}
     {#if controller.lookLabels.length > 0}
-      <p class="hint">Settings from {lookPhrase} and your own stylesheet ({controller.cssName}). Changes are saved to the stylesheet as you go and show in the preview when you close this panel.</p>
+      <p class="hint">Settings from your {lookWord} ({lookNames}) and your own stylesheet ({controller.cssName}). Changes are saved to the stylesheet as you go and show in the preview when you close this panel.</p>
     {:else}
       <p class="hint">Settings from your own stylesheet ({controller.cssName}). Changes are saved as you go and show in the preview when you close this panel.</p>
     {/if}
@@ -181,6 +187,10 @@
         <button class="ghost icononly" onclick={() => controller.resetToken(t)} title={`Use the look's value (${controller.lookValue(t)})`} aria-label={`Use the look's value for ${t.label} (${controller.lookValue(t)})`}>
           <Icon name="refresh-cw" size={12} />
         </button>
+      {:else}
+        <!-- The control's slot stays reserved, so the inputs of rows with
+             and without the undo control end on the same edge. -->
+        <span class="undo-slot" aria-hidden="true"></span>
       {/if}
     </div>
   </div>
@@ -222,6 +232,8 @@
   .control.size { gap: 4px; }
   .control.size input[type="number"] { width: 64px; padding: 5px 6px; background: var(--app-surface-sunken); border: 1px solid var(--app-border); color: var(--app-text-secondary); border-radius: 4px; font-size: 12px; }
   .unit { font-size: 11px; color: var(--app-text-muted); }
+  /* The icon-only undo button's box: 12px icon + 5px padding + 1px border a side. */
+  .undo-slot { flex: 0 0 24px; height: 24px; }
   .save-status { font-size: 11px; }
   .save-status.saving { color: var(--app-text-muted); }
   .save-status.saved { color: var(--app-success-text); }

@@ -7,8 +7,8 @@ description: Open Book setup to change the title, authors, chapters and page siz
 
 Click **Setup** (the wrench) in the toolbar to open **Book setup**. Its tabs are **Details**,
 **Looks & features**, **Design** and **Backup**. Close it with the X or Esc. Every tab saves as you
-go: there is no Save button, and **Changes saved** appears beside the heading when a change has
-been written.
+go: there is no Save button. **Details** and **Design** show **Changes saved** beside their heading
+when a change has been written; **Looks & features** and **Backup** apply each change at once.
 
 ## Title, authors and chapters
 
