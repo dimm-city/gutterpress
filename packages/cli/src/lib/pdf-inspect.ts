@@ -642,6 +642,108 @@ export async function unsplittableTextReasons(
   return reasons;
 }
 
+const FILL_PAINT_OPS = opSet(["fill", "eoFill", "fillStroke", "eoFillStroke", "closeFillStroke", "closeEOFillStroke"]);
+const STROKE_PAINT_OPS = opSet(["stroke", "closeStroke", "fillStroke", "eoFillStroke", "closeFillStroke", "closeEOFillStroke"]);
+
+/** A box in device points: x0, y0, x1, y1. */
+type Box = [number, number, number, number];
+
+/** Thinner than this in either direction, once clipped, a paint is a sliver. A CSS pixel is 0.75pt. */
+const SLIVER_PT = 0.25;
+
+/**
+ * Of `pages` (1-based), those on which a shading pattern paints a visible
+ * area: a path filled with a `/Pattern` fill colour, or a `sh`, whose box is
+ * at least {@link SLIVER_PT} wide and tall once the clip in force is applied.
+ * Text shown in a shading pattern, a stroke with one, and a `sh` under an
+ * unbounded clip are not sized here and count as visible.
+ *
+ * The one thing this excludes (#438): a box that starts exactly on a page
+ * break and whose ink overflow (a `box-shadow` blur, an `outline`) reaches
+ * above its top edge. Chromium paints it into the PREVIOUS page as well — the
+ * whole background, clipped to that page's content box — so a repeating or
+ * conic gradient on such a box also sits, as a sliver, in the resources and
+ * content of the page before it. Its clipped area is empty in exact
+ * arithmetic (under 0.01pt when the page's content height is not a whole
+ * pixel); a RIP under the any-part-of-pixel rule renders one device row of it.
+ * Measured on the ghostscript.flatten fixture with its 1in margins: page 3's
+ * content fills page 4's 636x56px gradient box at y = 738pt, the clip's own
+ * bottom edge, and a 300dpi raster of page 3 has exactly one non-white row.
+ *
+ * Walks PDF.js's operator list as {@link unsplittableTextReasons} does, with
+ * the CTM and the clip's bounding box tracked per save/restore (a form
+ * XObject is an implicit save/restore under its `/Matrix`, inside its
+ * `/BBox`). PDF.js reports `W`/`W*` as a `clip`/`eoClip` op ahead of the
+ * path it applies to, and every path as `constructPath` with its painting
+ * operator and its bounding box.
+ */
+export async function pagesWithVisibleShadingPaints(
+  pdfBytes: Uint8Array,
+  pages: number[]
+): Promise<number[]> {
+  const box = (b: ArrayLike<number>, m: number[]): Box => {
+    const xs: number[] = [];
+    const ys: number[] = [];
+    const corners: Array<[number, number]> = [[b[0]!, b[1]!], [b[2]!, b[1]!], [b[2]!, b[3]!], [b[0]!, b[3]!]];
+    for (const [x, y] of corners) {
+      xs.push(m[0]! * x + m[2]! * y + m[4]!);
+      ys.push(m[1]! * x + m[3]! * y + m[5]!);
+    }
+    return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  };
+  const intersect = (a: Box | null, b: Box): Box =>
+    a ? [Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.min(a[2], b[2]), Math.min(a[3], b[3])] : b;
+  const visible = (b: Box | null) => !b || (b[2] - b[0] >= SLIVER_PT && b[3] - b[1] >= SLIVER_PT);
+
+  const doc = await getDocumentProxy(new Uint8Array(pdfBytes));
+  const out: number[] = [];
+  try {
+    for (const i of pages) {
+      const ops = await (await doc.getPage(i)).getOperatorList();
+      let ctm = [1, 0, 0, 1, 0, 0];
+      let clip: Box | null = null; // null: unbounded
+      let fillShading = false;
+      let strokeShading = false;
+      let pendingClip = false;
+      const stack: Array<[number[], Box | null, boolean, boolean]> = [];
+      let found = false;
+      for (let j = 0; j < ops.fnArray.length && !found; j++) {
+        const fn = ops.fnArray[j]!;
+        const args = ops.argsArray[j] as unknown[];
+        if (fn === OPS.save) stack.push([ctm, clip, fillShading, strokeShading]);
+        else if (fn === OPS.restore || fn === OPS.paintFormXObjectEnd) {
+          const saved = stack.pop();
+          if (saved) [ctm, clip, fillShading, strokeShading] = saved;
+        } else if (fn === OPS.transform) ctm = multiply(ctm, args as number[]);
+        else if (fn === OPS.paintFormXObjectBegin) {
+          stack.push([ctm, clip, fillShading, strokeShading]);
+          if (Array.isArray(args[0])) ctm = multiply(ctm, args[0] as number[]);
+          if (Array.isArray(args[1])) clip = intersect(clip, box(args[1] as number[], ctm));
+        } else if (fn === OPS.setFillColorN) fillShading = args[0] === "Shading";
+        else if (fn === OPS.setStrokeColorN) strokeShading = args[0] === "Shading";
+        else if (FILL_COLOR_OPS.has(fn)) fillShading = false;
+        else if (STROKE_COLOR_OPS.has(fn)) strokeShading = false;
+        else if (fn === OPS.clip || fn === OPS.eoClip) pendingClip = true;
+        else if (fn === OPS.constructPath) {
+          const paintOp = args[0] as number;
+          const bounds = args[2] ? box(args[2] as ArrayLike<number>, ctm) : null;
+          if (fillShading && FILL_PAINT_OPS.has(paintOp) && bounds) found = visible(intersect(clip, bounds));
+          if (strokeShading && STROKE_PAINT_OPS.has(paintOp)) found = true;
+          if (pendingClip) {
+            clip = bounds ? intersect(clip, bounds) : [0, 0, 0, 0];
+            pendingClip = false;
+          }
+        } else if (fn === OPS.shadingFill) found = visible(clip);
+        else if (SHOW_TEXT_OPS.has(fn) && fillShading) found = true;
+      }
+      if (found) out.push(i);
+    }
+  } finally {
+    await doc.destroy();
+  }
+  return out;
+}
+
 /**
  * Await an image XObject's pixel dimensions (requires PDF.js to decode it).
  * Bounded by a timeout so a slow/broken image can't hang validation.

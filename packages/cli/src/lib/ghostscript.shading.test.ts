@@ -36,6 +36,29 @@ testIf("findPostScriptShadingPages names exactly the pages with repeating/conic 
   }
 });
 
+// #438: a box that opens a page, with ink overflow above its top edge (here a
+// box-shadow blur), is painted by Chromium into the previous page as well —
+// its whole background, clipped to that page's content box, so the previous
+// page carries the gradient as a sliver of no area. Only the page the box is
+// on is reported. The sheet is the dtrpg trim with 1in margins (the build's
+// default), a content height of a whole number of pixels, which is where the
+// sliver appears; the first page is short on purpose.
+testIf("findPostScriptShadingPages ignores the sliver of a gradient box that opens the next page", async () => {
+  const browser = await launchChromium();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(
+      `<style>@page{size:621pt 810pt;margin:1in} section{break-after:page}
+.vibe{padding:16px;box-shadow:0 8px 16px rgba(0,0,0,.4);background:repeating-linear-gradient(35deg,#ffc 0 8pt,#3ce 8pt 16pt)}</style>
+<section><p>short</p></section><section><div class="vibe">Vibe</div></section>`
+    );
+    const pdf = await page.printToPDF({ printBackground: true, preferCSSPageSize: true });
+    expect(await findPostScriptShadingPages(pdf)).toEqual([2]);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("findPostScriptShadingPages returns no pages for bytes that are not a PDF", async () => {
   expect(await findPostScriptShadingPages(Buffer.from("not a pdf at all"))).toEqual([]);
 });
