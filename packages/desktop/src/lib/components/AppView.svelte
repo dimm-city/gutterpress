@@ -104,7 +104,7 @@
     background: var(--app-bg);
     overflow-y: auto;
     /* Keep the scrollbar's space reserved so switching between a short and a
-       long tab (e.g. Features → Search) doesn't shift the centred page. */
+       long tab (e.g. Connections → Extensions) doesn't shift the centred page. */
     scrollbar-gutter: stable;
     display: flex;
     justify-content: center;

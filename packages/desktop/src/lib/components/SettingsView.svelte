@@ -227,7 +227,7 @@
   >
       <!-- App appearance (light/dark chrome) --------------------------------
            Qualified as "App appearance" so it can't be confused with the
-           book's print look ("Look & style" in Book settings). -->
+           book's print look (Extensions and Design in Book settings). -->
       {#if activeTab === "app"}
       <!-- Reader or author: the one switch that decides how much of the app
            shows. Reader is the default; the choice is remembered. -->

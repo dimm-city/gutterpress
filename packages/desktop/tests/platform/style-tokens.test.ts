@@ -136,6 +136,55 @@ test("updateRootToken appends a :root block when the stylesheet has none", () =>
   expect(parseStyleTokens(out).some((t) => t.name === "--a" && t.value === "#abcdef")).toBe(true);
 });
 
+// The target is an author's own stylesheet, so only `:root` declarations are
+// tokens: a scoped rule, a comment, or a longer name that ends in the same
+// letters is the author's and is left exactly as written.
+test("updateRootToken leaves a scoped declaration alone and sets the token in :root", () => {
+  const css = ":root {\n  --leading: 1.5;\n}\n.cover { --color-paper: black; }\n";
+  expect(updateRootToken(css, "--color-paper", "#fafafa")).toBe(
+    ":root {\n  --color-paper: #fafafa;\n  --leading: 1.5;\n}\n.cover { --color-paper: black; }\n",
+  );
+});
+
+test("updateRootToken leaves a commented-out declaration alone and adds the token to :root", () => {
+  const css = "/* --color-accent: #c00; */\n:root {\n  /* --color-accent: #c00; */\n}\n";
+  expect(updateRootToken(css, "--color-accent", "#00f")).toBe(
+    "/* --color-accent: #c00; */\n:root {\n  --color-accent: #00f;\n  /* --color-accent: #c00; */\n}\n",
+  );
+});
+
+test("updateRootToken matches the name whole: --my--color-accent is not --color-accent", () => {
+  const css = ":root {\n  --my--color-accent: red;\n  --color-accent-2: blue;\n}\n";
+  expect(updateRootToken(css, "--color-accent", "#00f")).toBe(
+    ":root {\n  --color-accent: #00f;\n  --my--color-accent: red;\n  --color-accent-2: blue;\n}\n",
+  );
+});
+
+test("updateRootToken replaces every :root declaration of the token, keeping its spacing", () => {
+  const css = ":root {\n  --a:1;\n}\n@media print {\n  :root { --a: 2; }\n}\n";
+  expect(updateRootToken(css, "--a", "3")).toBe(":root {\n  --a:3;\n}\n@media print {\n  :root { --a: 3; }\n}\n");
+});
+
+test("updateRootToken with null removes the :root declaration and its line, and nothing else", () => {
+  const css = "/* --a: 0; */\n:root {\n  --b: 2;\n  --a: 1;\n}\n.x { --a: 9; }\n";
+  expect(updateRootToken(css, "--a", null)).toBe("/* --a: 0; */\n:root {\n  --b: 2;\n}\n.x { --a: 9; }\n");
+  // Nothing to remove: the sheet comes back unchanged, and no :root is added.
+  expect(updateRootToken(".x { --a: 9; }\n", "--a", null)).toBe(".x { --a: 9; }\n");
+});
+
+test("adding a token and removing it again gives back the sheet byte for byte", () => {
+  for (const css of [
+    "/* mine */\n",
+    "",
+    ":root {\n  --b: 2;\n}\n",
+    ":root { --b: 2; }\n",
+  ]) {
+    const added = updateRootToken(css, "--a", "#abcdef");
+    expect(added).not.toBe(css);
+    expect(updateRootToken(added, "--a", null)).toBe(css);
+  }
+});
+
 // ── Token annotations (issue #244) ──────────────────────────────────────────
 //
 // Theme authors curate what the guided Design panel shows with `@group` /

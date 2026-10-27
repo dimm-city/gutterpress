@@ -6,13 +6,14 @@ description: Turn on the built-in formatting extras, find and install plugins fr
 # Add plugins and formatting extras
 
 Plugins add new markdown to your book: highlights, callouts, footnote styles, a game's components
-and more. Open **Setup → Features**. Its tabs are **Installed & built-in**, **Search** and
-**Advanced**.
+and more. Open **Setup → Extensions**. The list at the top is everything your book uses, looks
+and plugins together, each with a badge for what it adds (**Markdown**, **Styles**, **Snippets**,
+**Components**). Under it, **Add** has three tabs: **Built in**, **Search** and **Advanced**.
 
 ## Turn on a formatting extra
 
-Six extras are built in, with nothing to download. Under **Formatting extras** on the
-**Installed & built-in** tab, click **Turn on** next to one, and it works straight away:
+Six extras are built in, with nothing to download. On the **Built in** tab, click **Add** next to
+one, and it works straight away:
 
 | Extra | Type |
 | --- | --- |
@@ -23,7 +24,7 @@ Six extras are built in, with nothing to download. Under **Formatting extras** o
 | Callouts | `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]` |
 | Math | `$E = mc^2$` in a line, or `$$` ... `$$` on lines of their own |
 
-![Features, Installed & built-in: the formatting extras, each with Turn on](images/features-installed.jpg)
+![Extensions, Built in: a feature and a look in the list, and the formatting extras, each with Add](images/book-settings-extensions.jpg)
 
 ## Find and install a plugin
 
@@ -32,28 +33,28 @@ Six extras are built in, with nothing to download. Under **Formatting extras** o
 2. Type what you are looking for (for example `footnote` or `callout`) and click **Search**.
 3. Click **Add** on the one you want.
 
-![Features, Search: results from npm for "footnote", each with Add](images/features-search.jpg)
+![Extensions, Search: results from npm for "footnote", each with Add](images/extensions-search.jpg)
 
-Gutterpress downloads it, checks it, keeps a copy inside your book, and lists it under
-**Installed & built-in**. Your book then builds from that copy, even offline. You can also browse
-the same search on the [Find plugins](https://gutterpress.dimm.city/plugins/) page.
+Gutterpress downloads it, checks it, keeps a copy inside your book, and adds it to the list. Your
+book then builds from that copy, even offline. You can also browse the same search on the
+[Find plugins](https://gutterpress.dimm.city/plugins/) page.
 
 If you know the package's name, open **Advanced**, type it under **Install from npm** (with a
 version if you want one, such as `markdown-it-highlightjs@4.3.0`) and click **Install**.
-**Add a plugin file or folder...** adds a plugin you have on your computer.
+**Add a folder or plugin file...** adds a plugin you have on your computer.
 
 ## Choose a version and stay up to date
 
-Each installed plugin on **Installed & built-in** has a **Version** menu; pick a version to
-switch to it. If the new version fails to download or load, your book keeps the old one.
+Each installed plugin in the list has a **Version** menu; pick a version to switch to it. If the
+new version fails to download or load, your book keeps the old one.
 
 - **Check for updates** asks npm for newer versions. A plugin with one shows the new version and
   an **Update** button.
 - **Include pre-release versions** adds alpha, beta and release-candidate versions to the menus
   and the update check. It is off by default and applies to every book.
 - **Install** (or **Reinstall**) appears when a plugin's copy is missing or won't load.
-- Each plugin can be turned off, or removed with the trash icon, which deletes its downloaded
-  copy.
+- Each plugin can be turned off, moved up or down (a plugin lower in the list runs after the ones
+  above it), or removed with the trash icon, which deletes its downloaded copy.
 
 The [plugins chapter](https://gutterpress.dimm.city/docs/plugins/) covers ordering plugins and
 writing your own.

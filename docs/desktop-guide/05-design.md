@@ -6,7 +6,7 @@ description: Open Book settings to change the title, authors, chapter order and 
 # Change your book's design
 
 Click **Setup** (the wrench) in the toolbar to open **Book settings**. Its tabs are **Details**,
-**Look**, **Features** and **Connections**. Close it with the X or Esc.
+**Extensions**, **Design** and **Connections**. Close it with the X or Esc.
 
 ## Title, authors and chapter order
 
@@ -28,27 +28,32 @@ new books from.
 
 ## Choose a look
 
-A *look* is a complete design for a book. On the **Look** tab, under **Built-in looks**, click
-**Use** on **Clean book**, **Technical doc**, **Zine** or **Academic**. Looks you have added are
-listed under **Look**, where each can be turned off, moved up or down, or removed.
+A *look* is a complete design for a book. Looks are extensions, listed with your plugins on the
+**Extensions** tab. Under **Add**, on the **Built in** tab, click **Add** next to **Clean book**,
+**Technical doc**, **Zine** or **Academic**. Each look you have added is a row in the list, with a
+small preview, where it can be turned off, moved up or down, or removed. Looks lower in the list
+win where they disagree.
 
-To use a look from elsewhere, choose **Import a look (.zip/.css)...**, **Add from folder...**, or
-paste a URL into the URL field and click **Import**. [Find plugins](https://gutterpress.dimm.city/plugins/)
-lists looks and other extensions on npm.
+To use a look from elsewhere, open **Advanced** under **Add** and choose **Import a .zip or
+.css...** or **Add a folder or plugin file...**, or paste a URL into the URL field and click
+**Import**. [Find plugins](https://gutterpress.dimm.city/plugins/) lists looks and other extensions
+on npm.
 
-![Book settings, Look tab: built-in looks and design tokens](images/book-settings-look.jpg)
+![Book settings, Extensions tab: a feature and a look in the list, and the built-in extras to add](images/book-settings-extensions.jpg)
 
 ## Fine-tune fonts, colours and sizes
 
-Under **Design tokens** on the Look tab, the settings your look offers are grouped into **Fonts**,
+The **Design** tab shows the settings of every look you have switched on, grouped into **Fonts**,
 **Colors**, **Sizes & numbers** and **Other**. Change a value and the preview follows; Gutterpress
-saves the change for you. **Revert** puts a value back; **Edit raw CSS** opens the stylesheet the
-values are written to.
+saves the change to your book's own stylesheet (`styles/book.css` unless you chose another), never
+to the look itself. **Revert** puts a value back; **Edit raw CSS** opens that stylesheet.
+
+![Book settings, Design tab: design tokens grouped into fonts and colours](images/book-settings-design.jpg)
 
 ## Edit stylesheets
 
-Under **Stylesheets**, each of the book's stylesheets can be turned on or off, and **Edit** opens
-it in the editor. The [styling chapter](https://gutterpress.dimm.city/docs/styling-theming/)
+Under **Stylesheets** on the **Design** tab, each of the book's stylesheets can be turned on or
+off, and **Edit** opens it in the editor. The [styling chapter](https://gutterpress.dimm.city/docs/styling-theming/)
 covers what a stylesheet can do.
 
 ## Change the page size

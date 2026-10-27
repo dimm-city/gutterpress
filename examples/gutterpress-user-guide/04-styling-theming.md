@@ -73,10 +73,13 @@ gutterpress ext disable clean-book ./my-book   # keep it listed, stop loading it
 gutterpress ext remove clean-book ./my-book    # or drop the entry
 ```
 
-The desktop app's **Project settings &rarr; Look** view is the same list: add a
-look, drag entries into a new order, switch one off, or remove it. There is no
-separate apply or revert step --- a look is just an entry, and the snapshot
-history versions the manifest change like any other edit.
+The desktop app's **Project settings &rarr; Extensions** tab is the same list,
+looks and features together: add a look, move entries up or down, switch one
+off, or remove it. There is no separate apply or revert step --- a look is
+just an entry, and the snapshot history versions the manifest change like any
+other edit. The **Design** tab beside it shows the tokens of every look you
+have switched on and saves your changes to `styles/book.css`; the looks
+themselves are never edited.
 
 Bundled looks define the full token set (see below) so you only need to
 override the tokens you want to change. This guide's own project (the one
@@ -116,9 +119,9 @@ whichever look you started from:
 
 The values above are `clean-book`'s; each look ships its own. A look may add
 tokens of its own beyond this set --- `technical-doc`, for example, adds
-`--color-tint` for its code and note fills. Open `extensions/<id>/theme.css`
-in your project to see everything a given look exposes; the `:root` block at
-the top is the whole vocabulary.
+`--color-tint` for its code and note fills. The desktop app's **Design** tab
+lists every token the looks you use expose; for a look folder, the `:root`
+blocks of its stylesheets are the whole vocabulary.
 
 ### Creating a custom look
 
@@ -151,8 +154,8 @@ new "House Style" --kind look` scaffolds a layered six-sheet one; either way
 ### Looks with more than one stylesheet
 
 A look folder is not limited to one `theme.css`. Its `package.json` --- the same
-standard file npm already wants --- declares an ordered list of sheets and which
-sheet holds the tokens the Design panel edits, under one `"gutterpress"` key:
+standard file npm already wants --- declares an ordered list of sheets under one
+`"gutterpress"` key:
 
 ```json
 {
@@ -172,10 +175,14 @@ load in that order at the look's position in `extensions:` --- one entry,
 however many files --- and a sheet that must win over the others simply goes
 last in the list. Disabling or removing the entry removes them all. A look
 declares its sheets: there is no implicit `theme.css`, so `gutterpress.styles`
-is the one field a look cannot leave out. `tokensFile` defaults to the first
-entry in `styles`. The file need not be called `theme.css` at all; a `.zip` or
-URL import still needs one to find the package root, and an import writes the
-package.json for you when the package has none.
+is the one field a look cannot leave out. A sheet need not be called
+`theme.css` at all; a `.zip` or URL import still needs one to find the package
+root, and an import writes the package.json for you when the package has none.
+
+The desktop app's **Design** tab reads the `:root` custom properties of every
+enabled look's stylesheets plus your book's own sheet, and writes your edits to
+the book's sheet. `tokensFile`, which names the sheet holding a look's tokens,
+is optional package metadata the desktop app no longer reads.
 
 The other fields are npm's own `name`, `description` and `author`, plus
 `gutterpress.preview` (an image, relative to the folder) and --- for a look that

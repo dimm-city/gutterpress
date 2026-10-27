@@ -33,8 +33,7 @@
    * ── CRUD (issue #38) ───────────────────────────────────────────────────────
    * Row/context actions: New folder (root toolbar + per-folder-row "New
    * folder here"), New chapter (root toolbar ONLY — see below), Rename,
-   * Delete. Delete uses the same two-step inline "armed" confirm as
-   * LookSection's theme Remove. Create/rename use a small
+   * Delete. Delete uses a two-step inline "armed" confirm. Create/rename use a small
    * inline text input in place of the row's name, not a separate modal.
    * A resting row shows only its name: the row buttons appear while the row is
    * hovered or has focus inside it (#313), while the delete confirm and the
@@ -352,8 +351,7 @@
     }
   }
 
-  // ── Delete (two-step inline confirm — same pattern as LookSection's
-  // theme Remove) ────────────────────────────────────────────────────────────
+  // ── Delete (two-step inline confirm) ───────────────────────────────────────
   // A delete is undoable (#313): api/fs/delete sets the item aside, and the
   // toast's Undo moves it back. Only the latest delete is held, so the armed
   // confirm stays the first guard.
@@ -851,7 +849,7 @@
     outline-offset: 1px;
   }
 
-  /* ── Inline delete confirm (mirrors LookSection's theme Remove) ─── */
+  /* ── Inline delete confirm ─── */
   .row-confirm-msg {
     flex: 1 1 auto;
     min-width: 0;

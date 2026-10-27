@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ExtensionsSectionController, FEATURES_TABS } from "../../src/lib/routes/extensions-section-controller.svelte";
+import { ExtensionsSectionController, ADD_TABS } from "../../src/lib/routes/extensions-section-controller.svelte";
 import type {
   ProjectExtensionEntry,
   ExtensionValidationResult,
@@ -10,7 +10,7 @@ import type {
   ExtensionUpdatesResult,
   ExtensionVersionsResult,
 } from "../../src/lib/platform/dtos";
-import { sampleSrcdoc, hoverPreviewSrcdoc } from "../../src/lib/components/config/config-helpers";
+import { sampleSrcdoc, hoverPreviewSrcdoc, carriedKinds } from "../../src/lib/components/config/config-helpers";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests (same shim as design-section-controller.test.ts).
@@ -36,12 +36,15 @@ function entry(over: Partial<ProjectExtensionEntry> & { use: string }): ProjectE
   return { kind: "path", name: over.use, enabled: true, label: over.use, carries: NONE, ...over };
 }
 
-// ONE list, several shapes: two looks the author owns, a bundled feature, a
-// component library that carries both, and a missing folder carrying nothing.
-const LOOK_A = entry({ use: "./extensions/clean-book", label: "Clean Book", carries: STYLES, dir: "/proj/extensions/clean-book", styles: ["theme.css"] });
-const LOOK_B = entry({ use: "./extensions/zine", label: "Zine", carries: STYLES, dir: "/proj/extensions/zine", styles: ["theme.css"] });
+// ONE list, several shapes: two looks the author owns on disk (the first an
+// older version's copy of the built-in clean-book), a bundled feature, a
+// bundled look, a component library that carries both, and a missing folder
+// carrying nothing.
+const LOOK_A = entry({ use: "./extensions/clean-book", label: "Clean Book", carries: STYLES, dir: "/proj/extensions/clean-book" });
+const LOOK_B = entry({ use: "./extensions/zine", label: "Zine", carries: STYLES, dir: "/proj/extensions/zine" });
 const FEATURE = entry({ use: "markdown-it-mark", kind: "bundled", label: "Highlight", carries: MARKDOWN });
-const BOTH = entry({ use: "../shared/house", label: "House", carries: { markdown: true, styles: true, snippets: true, components: false }, dir: "/shared/house", styles: ["theme.css"] });
+const BUNDLED_LOOK = entry({ use: "academic", kind: "bundled", label: "Academic", carries: STYLES });
+const BOTH = entry({ use: "../shared/house", label: "House", carries: { markdown: true, styles: true, snippets: true, components: false }, dir: "/shared/house" });
 const BROKEN = entry({ use: "./missing", label: "missing", warnings: ["Not found: /proj/missing"] });
 
 const REC_MARK: BundledExtensionInfo = { use: "markdown-it-mark", label: "Highlight", description: "d", look: false };
@@ -227,13 +230,13 @@ function make(
 
 const named = (h: Harness, n: string) => h.calls.filter((c) => c.name === n);
 
-// ── Load: ONE list, two views ─────────────────────────────────────────────────
+// ── Load: ONE list ────────────────────────────────────────────────────────────
 
 test("initial public rune state matches the panel defaults", () => {
   const { ctrl } = make();
   expect(ctrl.entries).toEqual([]);
   expect(ctrl.bundled).toEqual([]);
-  expect(ctrl.builtIns).toEqual([]);
+  expect(ctrl.availableBundled).toEqual([]);
   expect(ctrl.validation).toEqual({});
   expect(ctrl.validating).toBe(false);
   expect(ctrl.error).toBeNull();
@@ -246,33 +249,30 @@ test("initial public rune state matches the panel defaults", () => {
   expect(ctrl.thumbs).toEqual({});
   expect(ctrl.hoverUse).toBeNull();
   expect(ctrl.hoverPreview).toBeNull();
-  expect(ctrl.looks).toEqual([]);
-  expect(ctrl.features).toEqual([]);
   expect(ctrl.search).toEqual({ status: "idle", query: "", matches: [], total: 0, message: null });
   expect(ctrl.searchQuery).toBe("");
   expect(ctrl.availableSearch).toEqual([]);
 });
 
-test("loadExtensions populates the list, the bundled catalog (features and looks apart), and the validation map keyed by use", async () => {
+test("loadExtensions populates the list, the bundled catalog, and the validation map keyed by use", async () => {
   const h = make();
   await h.ctrl.loadExtensions();
   expect(h.ctrl.entries).toEqual([LOOK_A, FEATURE]);
   expect(h.ctrl.bundled).toEqual(BUNDLED);
-  expect(h.ctrl.availableRecommended).toEqual([REC_SUB]);
-  expect(h.ctrl.builtIns).toEqual([BUILTIN_CLEAN, BUILTIN_ZINE]);
   expect(h.ctrl.validation["markdown-it-mark"]).toEqual({ use: "markdown-it-mark", kind: "bundled", enabled: true, ok: true });
   expect(h.ctrl.validating).toBe(false);
   expect(h.ctrl.error).toBeNull();
 });
 
-test("loadExtensions lazy-loads a sample thumbnail for looks with a folder only", async () => {
-  const h = make({ entries: [LOOK_A, FEATURE, BROKEN] });
+test("loadExtensions lazy-loads a sample thumbnail for the rows that carry styles — a bundled look's too", async () => {
+  const h = make({ entries: [LOOK_A, FEATURE, BROKEN, BUNDLED_LOOK] });
   await h.ctrl.loadExtensions();
   await flush();
   expect(h.ctrl.thumbs[LOOK_A.use]).toBe(sampleSrcdoc(":root { --x: 1; }"));
+  expect(h.ctrl.thumbs[BUNDLED_LOOK.use]).toBe(sampleSrcdoc(":root { --x: 1; }"));
   expect(h.ctrl.thumbs[FEATURE.use]).toBeUndefined();
   expect(h.ctrl.thumbs[BROKEN.use]).toBeUndefined();
-  expect(named(h, "readCss").map((c) => c.args[1])).toEqual([LOOK_A.use]);
+  expect(named(h, "readCss").map((c) => c.args[1])).toEqual([LOOK_A.use, BUNDLED_LOOK.use]);
 });
 
 test("loadExtensions no-ops without a project dir", async () => {
@@ -291,25 +291,36 @@ test("a failed validate surfaces error via loadExtensions' awaited validateExten
   expect(h.ctrl.validating).toBe(false);
 });
 
-test("looks and features are two views over the one list; an extension carrying both is in both", async () => {
+test("the list is every manifest entry in cascade order, each with a badge per kind it carries", async () => {
   const h = make({ entries: [LOOK_A, FEATURE, BOTH, BROKEN] });
   await h.ctrl.loadExtensions();
-  expect(h.ctrl.looks.map((e) => e.use)).toEqual([LOOK_A.use, BOTH.use]);
-  // An entry carrying nothing recognizable lands in Features so it is never invisible.
-  expect(h.ctrl.features.map((e) => e.use)).toEqual([FEATURE.use, BOTH.use, BROKEN.use]);
+  expect(h.ctrl.entries.map((e) => [e.use, carriedKinds(e)])).toEqual([
+    [LOOK_A.use, ["Styles"]],
+    [FEATURE.use, ["Markdown"]],
+    [BOTH.use, ["Markdown", "Styles", "Snippets"]],
+    // An entry carrying nothing recognizable is still a row, so it is never invisible or un-removable.
+    [BROKEN.use, []],
+  ]);
 });
 
-test("availableRecommended hides bundled features already in the list", async () => {
-  const h = make();
+test("availableBundled offers the bundled features AND looks not yet in the list", async () => {
+  const h = make({ entries: [FEATURE] });
   await h.ctrl.loadExtensions();
-  expect(h.ctrl.availableRecommended).toEqual([REC_SUB]);
+  expect(h.ctrl.availableBundled).toEqual([REC_SUB, BUILTIN_CLEAN, BUILTIN_ZINE]);
 });
 
-test("isBuiltInAdded reflects a ./extensions/<id> entry", async () => {
-  const h = make();
+test("availableBundled also hides a look the book still has as an older ./extensions/<id> copy", async () => {
+  const h = make(); // LOOK_A is ./extensions/clean-book
   await h.ctrl.loadExtensions();
-  expect(h.ctrl.isBuiltInAdded("clean-book")).toBe(true);
-  expect(h.ctrl.isBuiltInAdded("zine")).toBe(false);
+  expect(h.ctrl.availableBundled).toEqual([REC_SUB, BUILTIN_ZINE]);
+});
+
+test("an ./extensions/<id> folder only hides a bundled LOOK of that name, never a feature", async () => {
+  // e.g. a .zip import whose id happens to match a bundled feature's name.
+  const imported = entry({ use: "./extensions/markdown-it-sub", carries: STYLES, dir: "/proj/extensions/markdown-it-sub" });
+  const h = make({ entries: [imported] });
+  await h.ctrl.loadExtensions();
+  expect(h.ctrl.availableBundled).toEqual(BUNDLED);
 });
 
 // ── Search: npm (#246) ──────────────────────────────────────────────────────
@@ -367,84 +378,70 @@ test("availableSearch hides packages already configured, matching an npm entry b
   expect(h.ctrl.availableSearch).toEqual([FOUND_OTHER]);
 });
 
-// ── Features tabs ────────────────────────────────────────────────────────────
+// ── Add tabs ─────────────────────────────────────────────────────────────────
 
-test("the Features tabs are Installed & built-in, Search, Advanced — in that order", () => {
-  expect(FEATURES_TABS.map((t) => t.label)).toEqual(["Installed & built-in", "Search", "Advanced"]);
+test("the Add tabs are Built in, Search, Advanced — in that order", () => {
+  expect(ADD_TABS.map((t) => t.label)).toEqual(["Built in", "Search", "Advanced"]);
 });
 
 test("the npm search runs the first time the Search tab is shown — not before, not for other tabs", async () => {
   const h = make();
-  h.ctrl.showFeaturesTab("installed");
-  h.ctrl.showFeaturesTab("advanced");
+  h.ctrl.showAddTab("built-in");
+  h.ctrl.showAddTab("advanced");
   await flush();
   expect(named(h, "search")).toEqual([]);
   expect(h.ctrl.search.status).toBe("idle");
 
-  h.ctrl.showFeaturesTab("search");
+  h.ctrl.showAddTab("search");
   await flush();
   expect(named(h, "search").map((c) => c.args)).toEqual([[""]]);
   expect(h.ctrl.search.status).toBe("ready");
 
   // Showing it again (a tab round trip) reuses the result instead of asking npm again.
-  h.ctrl.showFeaturesTab("installed");
-  h.ctrl.showFeaturesTab("search");
+  h.ctrl.showAddTab("built-in");
+  h.ctrl.showAddTab("search");
   await flush();
   expect(named(h, "search").length).toBe(1);
 });
 
 test("a remembered Search tab searches when a fresh controller mounts onto it, and the tab outlives the controller", async () => {
   const first = make();
-  first.ctrl.showFeaturesTab("search");
+  first.ctrl.showAddTab("search");
   await flush();
 
   // ProjectSettingsView builds a new controller per open: the selection carries over,
   // the (per-controller) search state does not — so the view's mount call must search.
   const second = make();
-  expect(second.ctrl.featuresTab).toBe("search");
+  expect(second.ctrl.addTab).toBe("search");
   expect(second.ctrl.search.status).toBe("idle");
-  second.ctrl.showFeaturesTab(second.ctrl.featuresTab);
+  second.ctrl.showAddTab(second.ctrl.addTab);
   await flush();
   expect(named(second, "search").length).toBe(1);
 
-  second.ctrl.showFeaturesTab("installed"); // leave module state as a restart would find it
-  expect(make().ctrl.featuresTab).toBe("installed");
+  second.ctrl.showAddTab("built-in"); // leave module state as a restart would find it
+  expect(make().ctrl.addTab).toBe("built-in");
 });
 
-test("showFeaturesTab does not re-search while the first search is still in flight", async () => {
+test("showAddTab does not re-search while the first search is still in flight", async () => {
   const h = make();
-  h.ctrl.showFeaturesTab("search");
-  h.ctrl.showFeaturesTab("installed");
-  h.ctrl.showFeaturesTab("search");
+  h.ctrl.showAddTab("search");
+  h.ctrl.showAddTab("built-in");
+  h.ctrl.showAddTab("search");
   await flush();
   expect(named(h, "search").length).toBe(1);
-  h.ctrl.showFeaturesTab("installed");
+  h.ctrl.showAddTab("built-in");
 });
 
-test("an add from Search stays on its tab and says where the row went", async () => {
+test("an add from Search stays on its tab; the new row joins the one list above it", async () => {
   const h = make();
-  h.ctrl.showFeaturesTab("search");
+  h.ctrl.showAddTab("search");
   await flush();
   await h.ctrl.addSearched(FOUND_DC);
-  expect(h.ctrl.featuresTab).toBe("search");
-  expect(h.ctrl.notice).toBe("Added dimm-city-components — find it under Installed & built-in.");
-  expect(h.ctrl.features.some((e) => e.use === "dimm-city-components")).toBe(true);
-  expect(h.ctrl.availableSearch.some((m) => m.name === "dimm-city-components")).toBe(false);
-  h.ctrl.showFeaturesTab("installed");
-});
-
-test("install by name confirms too, and keeps an installer warning after the confirmation", async () => {
-  const h = make({ entries: [] });
-  h.addWarnings = ["Registry provided legacy SHA-1 integrity."];
-  h.ctrl.npmName = "old-plugin";
-  await h.ctrl.addNpm();
-  expect(h.ctrl.notice).toBe("Added old-plugin — find it under Installed & built-in. Registry provided legacy SHA-1 integrity.");
-});
-
-test("turning on a Formatting extra (Installed tab) adds no confirmation — the row appears right there", async () => {
-  const h = make({ entries: [] });
-  await h.ctrl.addRecommended(REC_MARK);
+  expect(h.ctrl.addTab).toBe("search");
   expect(h.ctrl.notice).toBeNull();
+  expect(h.ctrl.entries.at(-1)?.use).toBe("dimm-city-components");
+  expect(h.ctrl.availableSearch.some((m) => m.name === "dimm-city-components")).toBe(false);
+  h.ctrl.showAddTab("built-in");
 });
 
 test("addSearched adds by the package name and reloads the list", async () => {
@@ -497,20 +494,28 @@ test("remove is a single click: drops the entry, reloads, refreshes for a look o
   expect(h.afterLookChange.calls.length).toBe(1);
 });
 
-test("move sends the FULL order with the entry past its neighbour in that view", async () => {
+test("move sends the FULL order with the entry past its neighbour in the list", async () => {
   const h = make({ entries: [LOOK_A, FEATURE, LOOK_B] });
   await h.ctrl.loadExtensions();
-  await h.ctrl.move(LOOK_B, -1, "looks");
-  expect(named(h, "reorder").map((c) => c.args[1])).toEqual([[LOOK_B.use, LOOK_A.use, FEATURE.use]]);
-  expect(h.ctrl.looks.map((e) => e.use)).toEqual([LOOK_B.use, LOOK_A.use]);
+  await h.ctrl.move(LOOK_B, -1);
+  expect(named(h, "reorder").map((c) => c.args[1])).toEqual([[LOOK_A.use, LOOK_B.use, FEATURE.use]]);
+  expect(h.ctrl.entries.map((e) => e.use)).toEqual([LOOK_A.use, LOOK_B.use, FEATURE.use]);
   expect(h.afterLookChange.calls.length).toBe(1);
 });
 
-test("move at the edge of the view is a no-op — no host call", async () => {
+test("moving a markdown-only feature reorders without refreshing Styles+Design", async () => {
+  const h = make({ entries: [LOOK_A, FEATURE] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.move(FEATURE, -1);
+  expect(named(h, "reorder").map((c) => c.args[1])).toEqual([[FEATURE.use, LOOK_A.use]]);
+  expect(h.afterLookChange.calls.length).toBe(0);
+});
+
+test("move at the edge of the list is a no-op — no host call", async () => {
   const h = make({ entries: [LOOK_A, FEATURE, LOOK_B] });
   await h.ctrl.loadExtensions();
-  await h.ctrl.move(LOOK_A, -1, "looks");
-  await h.ctrl.move(LOOK_B, 1, "looks");
+  await h.ctrl.move(LOOK_A, -1);
+  await h.ctrl.move(LOOK_B, 1);
   expect(named(h, "reorder")).toEqual([]);
 });
 
@@ -525,7 +530,7 @@ test("a failed verb surfaces error, does not refresh, and clears busy", async ()
   expect(h.ctrl.busy).toBeNull();
 });
 
-// ── Add, four ways to name the extension ──────────────────────────────────────
+// ── Add: several ways to name the extension ───────────────────────────────────
 
 test("addNpm rejects a blank name without calling the host", async () => {
   const h = make();
@@ -574,11 +579,13 @@ test("a non-fatal installer warning is surfaced as a notice after a successful a
   expect(h.ctrl.notice).toContain("legacy SHA-1");
 });
 
-test("addRecommended writes the bundled name", async () => {
+test("addBundled writes a bundled feature's name and takes it off the Add list, with no Styles+Design refresh", async () => {
   const h = make({ entries: [] });
-  await h.ctrl.addRecommended(REC_SUB);
+  await h.ctrl.addBundled(REC_SUB);
   expect(named(h, "add").map((c) => c.args)).toEqual([["/proj", "markdown-it-sub", undefined]]);
-  expect(h.ctrl.availableRecommended.map((r) => r.use)).toEqual(["markdown-it-mark"]);
+  expect(h.ctrl.availableBundled.map((r) => r.use)).toEqual(["markdown-it-mark", "clean-book", "zine"]);
+  expect(h.onLookAdded.calls.length).toBe(0);
+  expect(h.afterLookChange.calls.length).toBe(0);
 });
 
 test("addLocal: a cancelled picker changes nothing; a picked look announces itself and refreshes", async () => {
@@ -589,20 +596,18 @@ test("addLocal: a cancelled picker changes nothing; a picked look announces itse
 
   h.addLocalResult = BOTH;
   await h.ctrl.addLocal();
-  expect(h.ctrl.looks).toEqual([BOTH]);
-  expect(h.ctrl.features).toEqual([BOTH]);
+  expect(h.ctrl.entries).toEqual([BOTH]);
   expect(h.onLookAdded.calls).toEqual([["House"]]);
   expect(h.afterLookChange.calls.length).toBe(1);
 });
 
-test("useBuiltIn adds the look by name, marks it added, announces it, and refreshes Styles+Design", async () => {
+test("addBundled adds a look by name through the same path, announces it, and refreshes Styles+Design", async () => {
   const h = make({ entries: [] });
   await h.ctrl.loadExtensions();
-  expect(h.ctrl.isBuiltInAdded("zine")).toBe(false);
-  await h.ctrl.useBuiltIn("zine");
+  await h.ctrl.addBundled(BUILTIN_ZINE);
   expect(named(h, "add").map((c) => c.args)).toEqual([["/proj", "zine", undefined]]);
-  expect(h.ctrl.isBuiltInAdded("zine")).toBe(true);
-  expect(h.ctrl.looks.map((e) => e.use)).toEqual(["zine"]);
+  expect(h.ctrl.availableBundled.some((b) => b.use === "zine")).toBe(false);
+  expect(h.ctrl.entries.map((e) => e.use)).toEqual(["zine"]);
   expect(h.onLookAdded.calls).toEqual([["zine"]]);
   expect(h.afterLookChange.calls.length).toBe(1);
   expect(h.ctrl.busy).toBeNull();
@@ -621,7 +626,7 @@ test("importFile surfaces the host warnings, announces the look, and reloads on 
   };
   await h.ctrl.importFile();
   expect(h.ctrl.importWarnings).toEqual(["Remote URL is not allowed", "No package.json found"]);
-  expect(h.ctrl.looks).toEqual([LOOK_B]);
+  expect(h.ctrl.entries).toEqual([LOOK_B]);
   expect(h.onLookAdded.calls).toEqual([["Zine"]]);
   expect(h.afterLookChange.calls.length).toBe(1);
   expect(h.ctrl.error).toBeNull();
@@ -650,7 +655,7 @@ test("importUrl trims, imports, clears the draft, surfaces warnings, and reloads
   expect(named(h, "importFromUrl").map((c) => c.args)).toEqual([["/proj", "https://example.com/theme.css"]]);
   expect(h.ctrl.url).toBe("");
   expect(h.ctrl.importWarnings).toEqual(["No package.json found"]);
-  expect(h.ctrl.looks).toEqual([LOOK_B]);
+  expect(h.ctrl.entries).toEqual([LOOK_B]);
   expect(h.ctrl.error).toBeNull();
 });
 
@@ -666,7 +671,14 @@ test("showHoverPreview renders the fixed 2-page spread with the look's CSS", asy
   expect(h.ctrl.hoverPreview).toBeNull();
 });
 
-test("showHoverPreview has nothing to render for an entry without a folder", async () => {
+test("showHoverPreview renders a bundled look, which has no folder, from its inlined CSS", async () => {
+  const h = make();
+  await h.ctrl.showHoverPreview(BUNDLED_LOOK);
+  expect(h.ctrl.hoverPreview).toBe(hoverPreviewSrcdoc(":root { --x: 1; }"));
+  expect(named(h, "readCss").map((c) => c.args[1])).toEqual([BUNDLED_LOOK.use]);
+});
+
+test("showHoverPreview has nothing to render for an entry that carries no styles", async () => {
   const h = make();
   await h.ctrl.showHoverPreview(FEATURE);
   expect(h.ctrl.hoverUse).toBeNull();

@@ -1,9 +1,8 @@
 <script lang="ts">
   /**
-   * Stylesheet-list sub-section of the merged "Look & style" section (see
-   * LookSection's header comment for the merge rationale). This is the THIRD
-   * pane ProjectSettingsView composes under one "Look & style" heading — the
-   * raw monospace-path checkbox list a writer almost never needs, which the
+   * Stylesheet-list sub-section of the Design tab. This is the SECOND pane
+   * ProjectSettingsView composes under the "Design" heading — the raw
+   * monospace-path checkbox list a writer almost never needs, which the
    * parent places last, under a small "Stylesheets" heading. No section
    * wrapper or `<h3>` of its own. All state and `api.style.*` /
    * `api.project.listStyles` calls live in `StylesSectionController` (passed
@@ -27,12 +26,12 @@
 </script>
 
 <div class="look-subsection styles-subsection">
-  <p class="hint">Turn individual stylesheets on or off. Most writers never need this — a look manages its own stylesheets automatically.</p>
+  <p class="hint">Turn your book's own stylesheets on or off. Most writers never need this — a look's stylesheets come with it and are switched on the Extensions tab.</p>
   {#if controller.stylesError}
     <p class="error" role="alert">{controller.stylesError}</p>
   {/if}
   {#if controller.styles.length === 0}
-    <p class="muted">No stylesheets found. Use a look above to add one.</p>
+    <p class="muted">No stylesheets found. A <code>.css</code> file in the book's folder (for example <code>styles/book.css</code>) shows here.</p>
   {:else}
     <ul class="style-list">
       {#each controller.styles as s (s.path)}

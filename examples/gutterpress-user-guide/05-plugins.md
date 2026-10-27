@@ -71,7 +71,7 @@ The list is read top to bottom, and its order means two things at once:
 - **Markdown registration.** A later entry's plugin is registered with markdown-it after the earlier ones, so it runs later during parsing and sees the tokens earlier plugins produced. If plugin B needs plugin A's output, list A first.
 - **The cascade.** Each extension's stylesheets are wrapped in a cascade layer of their own (`@layer ext.<name>`), declared in list order, so a later entry wins ties whatever its CSS looks like. Your own `styles:` stay unlayered and load after every extension, so a rule in your own stylesheet beats any extension rule at any specificity.
 
-Underneath all of it, core's built-in plugins (below) always run first, and core's own CSS sits in two cascade layers declared before every extension's. To change who wins, move the entry: `gutterpress ext list` prints the list in this order, and the desktop's Look and Features views let you drag entries into a new order.
+Underneath all of it, core's built-in plugins (below) always run first, and core's own CSS sits in two cascade layers declared before every extension's. To change who wins, move the entry: `gutterpress ext list` prints the list in this order, and the desktop's **Extensions** tab moves entries up or down.
 
 ## Managing Extensions from the Terminal
 
@@ -106,15 +106,15 @@ Publishing one is `npm publish` with `"gutterpress"` in your package's
 needs no Gutterpress keyword at all: the ecosystem's own `markdown-it-plugin`
 tag already finds it, and it works here unchanged.
 
-The desktop app shows the same list under **Project settings &rarr; Features** (the entries that carry markdown) and **Project settings &rarr; Look** (the entries that carry styles) --- two views over one list, with the same add, enable/disable, reorder and remove actions.
+The desktop app shows the same list under **Project settings &rarr; Extensions**: one row per entry, in order, each with a badge for what it carries (Markdown, Styles, Snippets, Components) and the same enable/disable, reorder and remove actions.
 
 ## Installing npm Plugins
 
-Install an npm plugin from the desktop app under **Project settings &rarr; Features**, or with the standalone CLI. Features has three tabs:
+Install an npm plugin from the desktop app under **Project settings &rarr; Extensions**, or with the standalone CLI. Under the list of what your book already uses (with each package's **Version** menu and **Update** button), the **Add** area has three tabs:
 
-- **Installed & built-in** --- everything your book already uses (with each package's **Version** menu and **Update** button), and the built-in formatting extras you can turn on.
-- **Search** --- packages on npm tagged `gutterpress` or `markdown-it-plugin`. The list loads the first time you open the tab, so it never slows opening a book; type a word and press Enter to narrow it, then **Add** a package. The new entry is listed under **Installed & built-in**.
-- **Advanced** --- **Install from npm** by package name (add `@version` for an exact version, and an export name for packages with named plugin functions), and **Add a plugin file or folder...** to use one from disk where it is.
+- **Built in** --- the built-in formatting extras and looks, each with **Add**.
+- **Search** --- packages on npm tagged `gutterpress` or `markdown-it-plugin`. The list loads the first time you open the tab, so it never slows opening a book; type a word and press Enter to narrow it, then **Add** a package. The new entry joins the list above.
+- **Advanced** --- **Install from npm** by package name (add `@version` for an exact version, and an export name for packages with named plugin functions), **Add a folder or plugin file...** to use one from disk where it is, and the `.zip`, `.css` and URL importers.
 
 The CLI equivalent:
 
@@ -186,7 +186,7 @@ files --- and it does not need you to do anything:
   error says the extensions are not installed yet and to connect to the
   internet; the book still opens without them. If a download fails for another
   reason, a warning says which one and why. Either way the extension's row
-  under **Project settings &rarr; Features** reads **Needs install**, and its
+  under **Project settings &rarr; Extensions** reads **Needs install**, and its
   **Install** button tries again.
   The preview checks again every time it redraws the book, so a pin that
   changes while the book is open (you edit `manifest.yaml`, **Get latest**
@@ -252,10 +252,9 @@ with `ext add` and a restore do the same). Commit the manifest; the new download
 stays out of git, and a clone fetches it from the new pin. To move to a specific version instead of the latest, or to go back,
 run `ext add name@x.y.z`.
 
-The desktop app does the same under **Project settings &rarr; Features**: opening
+The desktop app does the same under **Project settings &rarr; Extensions**: opening
 the tab checks npm once, an entry with a newer version shows it with an
-**Update** button on the **Installed & built-in** tab, and *Check for updates*
-re-checks.
+**Update** button, and *Check for updates* re-checks.
 
 Every npm package there also has a **Version** menu listing its published
 versions, newest first. Choosing one is `ext add name@version`: Gutterpress
@@ -823,7 +822,7 @@ extensions:
   - gutterpress-gfm-alerts
 ```
 
-**Project settings &rarr; Features** in the desktop writes exactly this entry.
+**Project settings &rarr; Extensions** in the desktop writes exactly this entry.
 
 > **Callouts are bundled:** `gutterpress-gfm-alerts` (the **Callouts** feature
 > in the desktop) renders each `> [!NOTE]`-style alert as a `.gp-alert` box
@@ -837,7 +836,7 @@ extensions:
 
 ## Error Handling
 
-Gutterpress **fails the build** on extension errors --- a final PDF must never silently omit formatting you configured. The live preview is the one exception: an extension that cannot load is skipped with a loud warning (and a "Needs install" state in the desktop's Features view) so one broken entry does not blank the whole preview.
+Gutterpress **fails the build** on extension errors --- a final PDF must never silently omit formatting you configured. The live preview is the one exception: an extension that cannot load is skipped with a loud warning (and a "Needs install" state in the desktop's Extensions tab) so one broken entry does not blank the whole preview.
 
 @section
 
@@ -849,7 +848,7 @@ Gutterpress **fails the build** on extension errors --- a final PDF must never s
 | `"plugins/x.js" looks like a path; write it as "./plugins/x.js"` | A path must start with `./`, `../` or `/`; anything else is read as an npm name. |
 | `"markdown-it-mark" is bundled with Gutterpress ... drop "@3.0.0"` | Bundled names always resolve to the built-in copy and cannot be pinned. |
 | `Plugin file not found: ...` | Check the path (relative to `manifest.yaml`) and that the file exists |
-| `` Extension "foo" not found. Install it with `gutterpress ext add foo` `` | Run that, or add it from Project settings &rarr; Features. A pinned entry whose copy is missing is downloaded automatically by `build`, `validate`, `preflight`, `preview` and when the desktop opens the book. An entry with no exact version (`foo`, `foo@^1`, `foo@latest`) is never downloaded for you and reads "is not pinned to an exact version": `ext add` downloads it and pins it |
+| `` Extension "foo" not found. Install it with `gutterpress ext add foo` `` | Run that, or add it from Project settings &rarr; Extensions. A pinned entry whose copy is missing is downloaded automatically by `build`, `validate`, `preflight`, `preview` and when the desktop opens the book. An entry with no exact version (`foo`, `foo@^1`, `foo@latest`) is never downloaded for you and reads "is not pinned to an exact version": `ext add` downloads it and pins it |
 | `Plugin "foo" does not export a valid plugin function` | Ensure the default export is a function, or select its named function with `export:` |
 | `Plugin "foo" does not export a plugin function named "bar"` | Fix the `export:` name to one the package really exports |
 

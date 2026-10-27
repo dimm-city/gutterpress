@@ -1,11 +1,10 @@
 /**
- * Pure, presentation-only helpers for the Extensions surface (the Look and
- * Features views) and its controller.
+ * Pure, presentation-only helpers for the Extensions tab and its controller.
  *
  * Browser-safe strings/derivations with no host coupling — only `import type`
  * from `#lib/platform/dtos.ts`, so this module stays PWA-clean (§8). Kept out of
- * the controller so bun can unit-test them without the `$state` shim, and out
- * of the components so both views share one implementation.
+ * the controller and the component so bun can unit-test them without the
+ * `$state` shim.
  */
 
 import type {
@@ -94,6 +93,22 @@ export function extensionSourceLabel(entry: ProjectExtensionEntry): string {
 }
 
 /**
+ * The badge per kind of thing an extension carries, in a fixed order — the
+ * one list shows a look, a feature and a component library side by side, and
+ * these say which is which.
+ */
+export function carriedKinds(entry: ProjectExtensionEntry): string[] {
+  const c = entry.carries;
+  return [
+    ...(c.markdown ? ["Markdown"] : []),
+    ...(c.styles ? ["Styles"] : []),
+    ...(c.snippets ? ["Snippets"] : []),
+    ...(c.components ? ["Components"] : []),
+    ...(c.publish ? ["Publish destination"] : []),
+  ];
+}
+
+/**
  * Split a feature description on its backtick spans — the lib writes "what to
  * type" that way ("Subscript text with `H~2~O`.") — so the template can set
  * those spans in code type instead of showing the raw backticks.
@@ -106,28 +121,41 @@ export function describeSegments(description: string): Array<{ text: string; cod
 }
 
 /**
+ * The ids of the built-in looks a book still carries as COPIES: a path entry
+ * at `./extensions/<id>`, the folder older Gutterpress versions copied a
+ * built-in look into. A bundled look is listed by its bare name today, but a
+ * book with such a copy must not be offered the same look a second time.
+ */
+export function addedBuiltInIds(entries: ProjectExtensionEntry[]): Set<string> {
+  const ids = new Set<string>();
+  for (const e of entries) {
+    if (e.kind !== "path") continue;
+    const m = e.use
+      .trim()
+      .replace(/\\/g, "/")
+      .replace(/\/+$/, "")
+      .match(/^\.\/extensions\/([^/]+)$/);
+    if (m) ids.add(m[1]!);
+  }
+  return ids;
+}
+
+/**
  * The full `use` order after moving `entry` one slot up (`delta` -1) or down
- * (+1) WITHIN `view` — a filtered projection of `entries`, such as the looks.
- * The Look and Features views each show a subset of the one list, so "move
- * up" means "past my neighbour in this view", expressed as the complete
- * order (every entry of `entries` exactly once) the lib's `reorderExtensions`
- * insists on. Entries outside the view keep their relative places. Returns
- * null when the move is impossible: `entry` is not in the view, or is already
- * at the edge it would move past.
+ * (+1) — the complete order (every entry exactly once) the lib's
+ * `reorderExtensions` insists on. Returns null when the move is impossible:
+ * `entry` is not in the list, or is already at the edge it would move past.
  */
 export function orderAfterMove(
   entries: ProjectExtensionEntry[],
-  view: ProjectExtensionEntry[],
   entry: ProjectExtensionEntry,
   delta: -1 | 1,
 ): string[] | null {
-  const at = view.findIndex((e) => e.use === entry.use);
-  const neighbour = at < 0 ? undefined : view[at + delta];
-  if (!neighbour) return null;
-  const order = entries.map((e) => e.use).filter((u) => u !== entry.use);
-  const slot = order.indexOf(neighbour.use);
-  if (slot < 0) return null;
-  order.splice(delta < 0 ? slot : slot + 1, 0, entry.use);
+  const order = entries.map((e) => e.use);
+  const at = order.indexOf(entry.use);
+  const to = at + delta;
+  if (at < 0 || to < 0 || to >= order.length) return null;
+  [order[at], order[to]] = [order[to]!, order[at]!];
   return order;
 }
 
@@ -147,7 +175,7 @@ export interface ExtensionStatus {
 const NEEDS_INSTALL_RE = /^not (installed|pinned)\b/i;
 
 /**
- * Status text/icon for one configured feature row. Pure over its inputs —
+ * Status text/icon for one configured extension row. Pure over its inputs —
  * the entry's own warnings, the current validation map (keyed by `use`), and
  * the in-flight flag.
  *

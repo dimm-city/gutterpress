@@ -3,10 +3,11 @@ import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 // A configured extension's stylesheets, concatenated in cascade order, for
-// the Look view's sample thumbnail. A bundled look answers from its inlined
-// css; otherwise the folder is resolved from the MANIFEST entry `use` names
-// (never from a client-supplied path), and an entry with no folder
-// (uninstalled, missing) throws — the view shows a fallback.
+// the Extensions tab's sample thumbnail and the Design tab's token list. A
+// bundled look answers from its inlined css; otherwise the folder is resolved
+// from the MANIFEST entry `use` names (never from a client-supplied path), and
+// an entry with no folder (uninstalled, missing) throws — the caller shows a
+// fallback.
 export const POST: RequestHandler = defineRoute<{ projectDir: string; use: string }>({
   validate: async (raw) => {
     const body = raw as { projectDir?: string; use?: string };
