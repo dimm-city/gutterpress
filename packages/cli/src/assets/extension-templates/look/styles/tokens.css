@@ -18,6 +18,13 @@
  *     waiting to happen.
  *   - Anything a specific book needs. Book-specific values go in book.css.
  *
+ * WHAT THE DESIGN TAB SHOWS is curated with comments. Right above one
+ * declaration: `@label Accent color` (its plain-words name), `@group Paper`
+ * (its heading), `@internal` (not shown). Right above a `:root` selector:
+ * `@group` or `@internal` for the whole block, which a declaration's own
+ * comment overrides. One `@internal` line above a block of component
+ * defaults keeps them off the tab.
+ *
  * LOADS FIRST, and therefore declares the layer order for the whole stack.
  * ======================================================================== */
 

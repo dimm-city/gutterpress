@@ -26,7 +26,14 @@
  * Each directive applies to the NEXT declaration only (one-shot, not a
  * sticky section header) and is consumed the moment that declaration is
  * reached — an unannotated declaration a few lines later starts from a clean
- * slate. Multiple directives can share one comment (`@label X @group Y`) or
+ * slate. A block has defaults too (#435): `@group` and `@internal` in a
+ * comment placed directly BEFORE the `:root` selector (outside the block)
+ * apply to every declaration in the block that carries no directive of its
+ * own, so one comment reading "@internal" above `:root` hides a sheet of
+ * component defaults and one reading "@group Paper" groups a palette sheet;
+ * a declaration's own `@group`, `@label` or `@internal` still wins for that
+ * declaration (its own `@group` or `@label` shows it even inside an
+ * `@internal` block). Multiple directives can share one comment (`@label X @group Y`) or
  * be spread across consecutive comments; either way they fold onto the same
  * next declaration. A comment that isn't one of the three directives is
  * plain prose and is ignored (it neither contributes nor clears pending
@@ -266,7 +273,6 @@ function foldAnnotationComment(pending: PendingAnnotation, commentBody: string):
  */
 export function parseStyleTokens(cssText: string): StyleToken[] {
   const out: StyleToken[] = [];
-  const rootRe = /:root\s*\{([^}]*)\}/g;
   // Alternates block comments with declarations, in source order, instead of
   // matching declarations alone — so an annotation comment can be folded onto
   // the declaration immediately following it. Branch is told apart by the
@@ -274,26 +280,95 @@ export function parseStyleTokens(cssText: string): StyleToken[] {
   // capture group for undefined, which TypeScript's regex typings don't
   // track per-alternative.
   const scanRe = /\/\*([\s\S]*?)\*\/|(--[\w-]+)\s*:\s*([^;]+);/g;
-  let m: RegExpExecArray | null;
-  while ((m = rootRe.exec(cssText)) !== null) {
+  for (const block of rootBlocks(cssText)) {
+    // The block's defaults (#435): `@group` / `@internal` in the comments
+    // directly before its `:root` selector. `pending` is the one-shot
+    // annotation for the next declaration.
+    const defaults: PendingAnnotation = {};
+    for (const comment of block.leading) foldAnnotationComment(defaults, comment);
     let pending: PendingAnnotation = {};
-    for (const d of m[1].matchAll(scanRe)) {
+    for (const d of cssText.slice(block.bodyStart, block.bodyEnd).matchAll(scanRe)) {
       if (d[0].startsWith("/*")) {
         foldAnnotationComment(pending, d[1] ?? "");
         continue;
       }
       // A declaration: consume (and reset) whatever annotation is pending —
       // one-shot, so it never carries over to the declaration after this one.
-      const annotation = pending;
+      const own = pending;
       pending = {};
-      if (annotation.internal) continue;
+      const annotated = own.group !== undefined || own.label !== undefined;
+      if (own.internal || (defaults.internal && !annotated)) continue;
       const token = makeStyleToken(d[2]!, d[3]!.trim());
-      if (annotation.label) token.label = annotation.label;
-      if (annotation.group) token.group = annotation.group;
+      if (own.label !== undefined) token.label = own.label;
+      const group = own.group ?? defaults.group;
+      if (group !== undefined) token.group = group;
       out.push(token);
     }
   }
   return out;
+}
+
+/**
+ * One `:root` block: where `:root` starts, its body, the index just past its
+ * closing brace, and the bodies of the comments directly before the selector
+ * (the block's annotation defaults, #435).
+ */
+interface RootBlock {
+  open: number;
+  bodyStart: number;
+  bodyEnd: number;
+  end: number;
+  leading: string[];
+}
+
+/**
+ * Every `:root` block of a stylesheet, found by a scan that skips comments:
+ * a `}` (or a `:root {`) inside a comment neither ends nor opens a block
+ * (#433), so a block whose leading comment shows `#x { --a: b; }` yields all
+ * of its declarations and none of the comment's. A block with no closing
+ * brace is not a block.
+ */
+function rootBlocks(cssText: string): RootBlock[] {
+  const blocks: RootBlock[] = [];
+  const openRe = /:root\s*\{/y;
+  // The comments seen since the last non-blank, non-comment text: the ones
+  // directly before a `:root` selector are its block's.
+  let leading: string[] = [];
+  let i = 0;
+  while (i < cssText.length) {
+    if (cssText.startsWith("/*", i)) {
+      const close = cssText.indexOf("*/", i + 2);
+      leading.push(cssText.slice(i + 2, close === -1 ? cssText.length : close));
+      i = close === -1 ? cssText.length : close + 2;
+      continue;
+    }
+    if (/\s/.test(cssText[i]!)) {
+      i++;
+      continue;
+    }
+    openRe.lastIndex = i;
+    const open = openRe.exec(cssText);
+    if (!open) {
+      leading = [];
+      i++;
+      continue;
+    }
+    const bodyStart = i + open[0].length;
+    let j = bodyStart;
+    while (j < cssText.length && cssText[j] !== "}") {
+      if (cssText.startsWith("/*", j)) {
+        const close = cssText.indexOf("*/", j + 2);
+        j = close === -1 ? cssText.length : close + 2;
+      } else {
+        j++;
+      }
+    }
+    if (j >= cssText.length) break;
+    blocks.push({ open: i, bodyStart, bodyEnd: j, end: j + 1, leading });
+    leading = [];
+    i = j + 1;
+  }
+  return blocks;
 }
 
 /**
@@ -331,15 +406,26 @@ const ROOT_ITEM_RE = /\/\*[\s\S]*?\*\/|(\n?[ \t]*)(?<![\w-])(--[\w-]+)(\s*:\s*)[
  */
 export function updateRootToken(cssText: string, name: string, value: string | null): string {
   let declared = false;
-  const out = cssText.replace(/(:root\s*\{)([^}]*)\}(\n?)/g, (block, open: string, body: string, end: string) => {
+  let out = "";
+  let last = 0;
+  for (const block of rootBlocks(cssText)) {
+    const body = cssText.slice(block.bodyStart, block.bodyEnd);
+    // The block's closing brace takes the line break after it, so a block
+    // that empties goes with its line.
+    const end = cssText[block.end] === "\n" ? block.end + 1 : block.end;
     const next = body.replace(ROOT_ITEM_RE, (item, indent?: string, prop?: string, colon?: string) => {
       if (prop !== name) return item;
       declared = true;
       return value === null ? "" : `${indent}${prop}${colon}${value};`;
     });
-    if (next === body) return block;
-    return value === null && next.trim() === "" ? "" : `${open}${next}}${end}`;
-  });
+    out += cssText.slice(last, block.open);
+    if (next === body) out += cssText.slice(block.open, end);
+    else if (!(value === null && next.trim() === "")) {
+      out += `${cssText.slice(block.open, block.bodyStart)}${next}}${cssText.slice(block.end, end)}`;
+    }
+    last = end;
+  }
+  out += cssText.slice(last);
   if (declared || value === null) return out;
   if (/:root\s*\{/.test(cssText)) {
     return cssText.replace(/:root\s*\{/, (open) => `${open}\n  ${name}: ${value};`);

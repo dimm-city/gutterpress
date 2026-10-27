@@ -277,6 +277,87 @@ test("annotations only affect the declaration immediately following them, not th
   expect(tokens.find((t) => t.name === "--color-secondary")!.group).toBeUndefined();
 });
 
+// ── Block-level defaults (#435) ───────────────────────────────────────────────
+
+test("@internal directly before the :root selector hides the whole block, except declarations annotated themselves", () => {
+  const css = [
+    "/* Component defaults: override them on a context selector, not here. */",
+    "/* @internal */",
+    ":root {",
+    "  --dc-tab-shape: 2pt;",
+    "  --dc-tab-ink: #333;",
+    "  /* @label Section accent */",
+    "  --dc-section-accent: var(--rust);",
+    "  /* @group Paper */",
+    "  --dc-paper: #fffdf7;",
+    "  /* @internal */",
+    "  --dc-paper-edge: 1px;",
+    "}",
+    ":root {",
+    "  --other: 1;",
+    "}",
+  ].join("\n");
+  const tokens = parseStyleTokens(css);
+  expect(tokens.map((t) => [t.name, t.group ?? null, t.label])).toEqual([
+    ["--dc-section-accent", null, "Section accent"],
+    ["--dc-paper", "Paper", "Dc paper"],
+    ["--other", null, "Other"],
+  ]);
+});
+
+test("@group directly before the :root selector groups the block; a declaration's own @group or @internal still wins", () => {
+  const css = [
+    "/* @group Paper */",
+    ":root {",
+    "  --paper: #fff;",
+    "  --paper-edge: #eee;",
+    "  /* @group Ink */",
+    "  --ink: #000;",
+    "  --ink-faint: #666;",
+    "  /* @internal */",
+    "  --ink-cache: 0;",
+    "}",
+  ].join("\n");
+  expect(parseStyleTokens(css).map((t) => [t.name, t.group])).toEqual([
+    ["--paper", "Paper"],
+    ["--paper-edge", "Paper"],
+    ["--ink", "Ink"],
+    ["--ink-faint", "Paper"],
+  ]);
+});
+
+test("a comment before :root counts only when nothing but whitespace or comments separates them; @label there is ignored", () => {
+  const apart = "/* @internal */\nh1 { color: red }\n:root {\n  --a: 1;\n}";
+  expect(parseStyleTokens(apart).map((t) => t.name)).toEqual(["--a"]);
+  const label = "/* @label Nope @group Colors */\n\n/* prose */\n:root {\n  --paper: #fff;\n}";
+  expect(parseStyleTokens(label).map((t) => [t.name, t.label, t.group])).toEqual([["--paper", "Paper", "Colors"]]);
+});
+
+// ── Braces inside comments (#433) ─────────────────────────────────────────────
+
+test("a } inside a :root block's comment neither ends the block nor yields a token", () => {
+  const css = [
+    ":root {",
+    "  /* Override per chapter: `#chapter-03 { --dc-section-accent: var(--rust); }` */",
+    "  --dc-section-accent: var(--brand-magenta);",
+    "  --dc-tab-shape: 2pt;",
+    "}",
+    "/* :root { --not-a-token: 1; } */",
+    "h1 { --scoped: 2; }",
+  ].join("\n");
+  const tokens = parseStyleTokens(css);
+  expect(tokens.map((t) => [t.name, t.value])).toEqual([
+    ["--dc-section-accent", "var(--brand-magenta)"],
+    ["--dc-tab-shape", "2pt"],
+  ]);
+  // The writer finds the same block: the real declaration changes, the comment's does not.
+  const edited = updateRootToken(css, "--dc-section-accent", "var(--teal)");
+  expect(edited).toContain("`#chapter-03 { --dc-section-accent: var(--rust); }`");
+  expect(edited).toContain("--dc-section-accent: var(--teal);");
+  expect(edited).not.toContain("var(--brand-magenta)");
+  expect(updateRootToken(css, "--dc-tab-shape", null)).toBe(css.replace("\n  --dc-tab-shape: 2pt;", ""));
+});
+
 // ── Plain-language labels for the shared vocabulary (issue #308) ─────────────
 //
 // The name-derived default ("Color ink muted", "Fs h1") is designer jargon. The
@@ -325,6 +406,10 @@ test("a compound value is never offered as a bare number (the text control takes
   const border = makeStyleToken("--border-thin", "1pt solid var(--color-rule)");
   expect(border.kind).toBe("text");
   expect(border.number).toBeUndefined();
+  // A shadow that starts with a length (#434): writing its first length back
+  // as the whole value would drop the shadow from the book.
+  expect(makeStyleToken("--shadow-lift", "3pt 7pt 12pt -5pt var(--shadow-soft)").kind).toBe("text");
+  expect(makeStyleToken("--shadow-poster", "2pt 3pt 0 var(--shadow-ink), var(--shadow-lift)").kind).toBe("text");
   // A plain length still gets the numeric control, with and without spacing.
   expect(makeStyleToken("--fs-body", "11pt").kind).toBe("length");
   expect(makeStyleToken("--gap", " 2 rem ").kind).toBe("length");

@@ -86,7 +86,14 @@ This project follows [Semantic Versioning](https://semver.org/).
   longer left out. A look's `gutterpress.tokensFile` is no longer read, and
   `gutterpress new --kind look` no longer writes it; a package that still
   declares it loads unchanged. A book with no look switched on is pointed at
-  **Choose a look**.
+  **Choose a look**. A look curates the tab in one line: `@group` or
+  `@internal` in a comment right above a `:root` selector applies to the
+  whole block (a declaration's own comment still wins), so a sheet of
+  component defaults is hidden with one `/* @internal */`. A `}` inside a
+  comment in a `:root` block no longer ends the block early, which hid every
+  token after it and showed a value read out of the comment; a shadow such as
+  `3pt 7pt 12pt -5pt var(--shadow-soft)` is edited as text, never as the
+  single number that would have replaced it.
 - **Every new book comes with its look, and the page size and margins live
   in the manifest alone.** The Book, Zine and Technical document templates
   list `clean-book`, `zine` and `technical-doc` the way the Academic paper
