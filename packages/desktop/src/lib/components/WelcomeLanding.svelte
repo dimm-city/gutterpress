@@ -89,6 +89,7 @@
     onCheckForUpdates,
     onDismiss,
     onProjectFilesChanged,
+    onSetUpBackup,
     onCloseBook,
   }: {
     visible?: boolean;
@@ -131,6 +132,8 @@
      *  project, so the workspace behind this layer can reconcile the open
      *  editor buffer against the now-changed files on disk. */
     onProjectFilesChanged?: () => void;
+    /** Settings tab > Saving: open the book's Backup tab (the host dismisses this screen first). */
+    onSetUpBackup?: () => void;
   } = $props();
 
   // ── Tabs (Books / Settings / Help / Troubleshooting) ───────────────────
@@ -381,7 +384,6 @@
 
       <section class="quick-actions" aria-label="Quick actions">
         {#if onNewProject}
-          <!-- Absent for a reader (Settings → App): reading needs no new book. -->
           <button type="button" class="action-card" class:featured={!continueTitle && !errorTitle} onclick={onNewProject}>
             <span class="ac-icon"><Icon name="plus" size={18} /></span>
             <span class="ac-title">Create a new book</span>
@@ -427,6 +429,7 @@
           initialTab={settingsTab}
           {projectDir}
           {onProjectFilesChanged}
+          {onSetUpBackup}
         />
       </section>
       {:else if activeTab === "help"}

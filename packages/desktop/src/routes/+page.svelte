@@ -1119,15 +1119,15 @@
     projectSettingsOpen = true;
   }
 
-  // Book settings opens on Details; the save-status dialog sends writers to
-  // Connections to see how an online backup gets set up.
+  // Book setup opens on Details; the save-status dialog and Settings > Saving
+  // send writers to its Backup tab to see how an online backup gets set up.
   let projectSettingsTab = $state<"details" | "extensions" | "connections">("details");
   function openBookConnections(): void {
     openProjectConfig();
     projectSettingsTab = "connections";
   }
-  // A failed extension download's toast sends writers to Extensions, where the
-  // "Needs install" row's Install button retries it.
+  // A failed extension download's toast sends writers to Looks & features,
+  // where the "Needs install" row's Install button retries it.
   function openBookExtensions(): void {
     openProjectConfig();
     projectSettingsTab = "extensions";
@@ -1139,7 +1139,7 @@
 
   /**
    * Open one stylesheet (absolute path) in the shared editor and reveal it.
-   * Used as the "Edit raw CSS" escape hatch from the Config view's Design
+   * Used as the "Edit the stylesheet" escape hatch from Book setup's Design
    * section AND from its Styles section's per-row "Edit" button — both routes
    * flip `editorView` back to "editor" so the author lands on the file.
    */
@@ -3161,7 +3161,7 @@
       onProjectChosen={(path) => void openProjectPath(path)}
       onOpenUrl={openUrl}
       onOpenBook={() => { contextMenu.close(); void inlineEdit.endActive(true); openBookOpen = true; }}
-      onNewProject={readerMode ? undefined : () => { contextMenu.close(); void inlineEdit.endActive(true); newProjectWizardRef?.show(); }}
+      onNewProject={() => { contextMenu.close(); void inlineEdit.endActive(true); newProjectWizardRef?.show(); }}
       onSyncReconnect={onSyncReconnect}
       onPanelStateChange={persistLeftPanelPrefs}
     />
@@ -3585,7 +3585,7 @@
   onSwitchBook={(path) => void switchBook(path)}
   onOpenUrl={openUrl}
   onBrowse={() => void browseFromLanding()}
-  onNewProject={readerMode ? undefined : () => newProjectWizardRef?.show()}
+  onNewProject={() => newProjectWizardRef?.show()}
   onOpenGitHub={() => (githubOpen = true)}
   onOpenGuide={openSetupGuide}
   onWhatsNew={openReleaseNotes}
@@ -3596,6 +3596,7 @@
   onDismiss={() => dismissLanding()}
   settingsTab={landingSettingsTab}
   onProjectFilesChanged={onSnapshotRestored}
+  onSetUpBackup={() => { dismissLanding(); openBookConnections(); }}
   onCloseBook={() => lifecycle.stopPreview()}
 />
 {#if projectSettingsOpen}
@@ -3659,6 +3660,9 @@
   bind:this={newProjectWizardRef}
   onCreated={(projectDir) => {
     invalidateDiscoveredProjects(); // the new book must show up in lists now
+    // Creating a book is authoring: a reader who creates one becomes an
+    // author, so the new book opens with Edit, Setup and Publish in reach.
+    if (settings.current.workspace.role === "reader") settings.set({ workspace: { role: "author" } });
     return openProjectPath(projectDir);
   }}
   onClosed={() => {

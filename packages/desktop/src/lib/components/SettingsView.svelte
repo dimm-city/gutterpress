@@ -18,6 +18,7 @@
     embedded = false,
     idPrefix = "settings",
     onProjectFilesChanged,
+    onSetUpBackup,
   }: {
     onClose?: () => void;
     /** The open project dir (Connections tab: adding a publishing key verifies
@@ -45,6 +46,9 @@
      *  changed push stream, since the checkout's writes are ordinary disk
      *  writes to the watched folder. */
     onProjectFilesChanged?: () => void;
+    /** Open the book's Backup tab (Book setup) so an unbacked-up book can be
+     *  set up from the Saving tab's note; the host closes this surface first. */
+    onSetUpBackup?: () => void;
   } = $props();
 
   const settings = useSettings();
@@ -227,10 +231,11 @@
   >
       <!-- App appearance (light/dark chrome) --------------------------------
            Qualified as "App appearance" so it can't be confused with the
-           book's print look (Extensions and Design in Book settings). -->
+           book's print look (Looks & features and Design in Book setup). -->
       {#if activeTab === "app"}
       <!-- Reader or author: the one switch that decides how much of the app
-           shows. Reader is the default; the choice is remembered. -->
+           shows. Reader is the default; creating a book switches to Author;
+           the choice is remembered. -->
       <section class="group">
         <div class="group-head">
           <h3>How you use Gutterpress</h3>
@@ -240,7 +245,7 @@
             <input type="radio" name="set-role" value="reader" checked={s.workspace.role === "reader"} onchange={() => settings.set({ workspace: { role: "reader" } })} />
             <span class="role-text">
               <span class="role-title">Reader</span>
-              <span class="role-desc">Just the pages. Edit, Setup and Publish stay out of the way.</span>
+              <span class="role-desc">Just the pages. Edit, Setup and Publish stay out of the way. Creating a book switches you to Author.</span>
             </span>
           </label>
           <label class="role-option" class:selected={s.workspace.role === "author"}>
@@ -318,7 +323,7 @@
         <div class="row">
           <div class="row-label">
             <label for="set-overlay-strength">Print overlay strength</label>
-            <span class="row-hint">How strongly the preview's print overlays (the toolbar button) are drawn. The bleed and safe area come from your book's print settings (manifest.yaml); the page margins are your stylesheet's own.</span>
+            <span class="row-hint">How strongly the print guides (bleed, safe area, page margins) are drawn when you turn them on from the preview toolbar.</span>
           </div>
           <select
             id="set-overlay-strength"
@@ -478,7 +483,12 @@
             />
           </div>
         {:else}
-          <div class="row"><span class="row-hint">This book isn't connected to an online service yet. Connect one in Settings &gt; Accounts to back it up.</span></div>
+          <div class="row">
+            <span class="row-hint">Not backed up online.</span>
+            {#if onSetUpBackup}
+              <button class="action" onclick={onSetUpBackup}>Set up online backup…</button>
+            {/if}
+          </div>
         {/if}
         <!-- Copy switching (#273): which copy (git branch) the project is on,
              and a way to switch to another. Copies that exist only online are

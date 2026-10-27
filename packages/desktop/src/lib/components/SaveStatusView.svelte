@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * SaveStatusView — the status bar's "Where your work is kept" screen, a
-   * full task view (AppView) like Book settings and Publish.
+   * full task view (AppView) like Book setup and Publish.
    *
    * Explains, for a writer who has never heard of git, the three separate
    * things that all sound like "saved": Saving (your edits, on this computer),

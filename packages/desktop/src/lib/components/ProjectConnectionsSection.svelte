@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * ProjectConnectionsSection — Book settings → Connections.
+   * ProjectConnectionsSection — Book setup → Backup.
    *
    * The open project's connection details: how the folder is set up, its
    * online repository address, branch, whether a server credential is saved,
@@ -257,29 +257,28 @@
   }
 </script>
 
-<section class="block project-connections" aria-label="Book connections">
-  <h3>Connections</h3>
+<section class="block project-connections" aria-label="Book backup">
+  <h3>Backup</h3>
   {#if loading}
     <p class="hint">Reading this book's connection status…</p>
   {:else if !diag}
     <p class="hint muted">Could not read this folder's status.</p>
   {:else}
-    <dl class="status-grid">
-      <dt>Folder</dt>
-      <dd>{folderLabel}</dd>
-      <dt>Online repository</dt>
-      <dd class="mono">{diag.remoteUrl ?? "None"}</dd>
-      {#if diag.branch}
-        <dt>Branch</dt>
-        <dd class="mono">{diag.branch}</dd>
-      {/if}
-      {#if diag.remoteUrl}
+    <!-- The facts only once there is an online copy to describe; a book
+         without one gets the set-up guidance below instead of a grid of
+         "None". -->
+    {#if diag.remoteUrl}
+      <dl class="status-grid">
+        <dt>Folder</dt>
+        <dd>{folderLabel}</dd>
+        <dt>Online copy</dt>
+        <dd class="mono">{diag.remoteUrl}</dd>
         <dt>Address type</dt>
         <dd>{diag.remoteProtocol === "ssh" ? "SSH (git@…)" : "Web (HTTPS)"}</dd>
         <dt>Server connection</dt>
         <dd>{diag.credentialPresent ? "Saved on this computer" : "Not saved yet"}</dd>
-      {/if}
-    </dl>
+      </dl>
+    {/if}
     {#if justEnabled}
       <p class="hint guidance" role="status">Version history is on — the first version of your book is saved.</p>
     {/if}

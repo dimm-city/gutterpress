@@ -108,7 +108,7 @@
     onPublish: () => void;
     /** The Publish button element — the wizard's focus-restore target. */
     publishBtnEl?: HTMLButtonElement | undefined;
-    /** The Setup button — Book settings restores focus to it on close. */
+    /** The Setup button — Book setup restores focus to it on close. */
     projectSettingsBtnEl?: HTMLButtonElement | undefined;
     /** Why Publish is unavailable right now (rendered as quiet notes). */
     publishHints?: string[];

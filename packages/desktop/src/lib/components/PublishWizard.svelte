@@ -13,7 +13,7 @@
    * publish with no online destination is exactly a plain export, and an
    * online publish never depends on a stale build.
    *
-   * Opens in the shared AppView layer like Book settings; form controls and
+   * Opens in the shared AppView layer like Book setup; form controls and
    * the `.app-btn-*` buttons follow the rest of the app.
    *
    * No backend of its own: it drives PublishSectionController

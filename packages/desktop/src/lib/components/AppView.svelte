@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * AppView — the one full-window layer every "do this task" screen opens
-   * in: Book settings, Publish, Where your work is kept. It mirrors the start
+   * in: Book setup, Publish, Where your work is kept. It mirrors the start
    * screen's frame — the same fade, the same centred top-biased column, the
    * same close control — so moving from the workspace into any task and back
    * feels like one app. The view covers the workspace completely: the writer
