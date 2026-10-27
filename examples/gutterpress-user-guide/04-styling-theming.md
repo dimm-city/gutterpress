@@ -164,8 +164,7 @@ standard file npm already wants --- declares an ordered list of sheets under one
   "author": "Your Name",
   "keywords": ["gutterpress", "gutterpress-look"],
   "gutterpress": {
-    "styles": ["css/tokens.css", "css/core.css", "css/components.css", "css/book.css"],
-    "tokensFile": "css/tokens.css"
+    "styles": ["css/tokens.css", "css/core.css", "css/components.css", "css/book.css"]
   }
 }
 ```
@@ -178,11 +177,6 @@ declares its sheets: there is no implicit `theme.css`, so `gutterpress.styles`
 is the one field a look cannot leave out. A sheet need not be called
 `theme.css` at all; a `.zip` or URL import still needs one to find the package
 root, and an import writes the package.json for you when the package has none.
-
-The desktop app's **Design** tab reads the `:root` custom properties of every
-enabled look's stylesheets plus your book's own sheet, and writes your edits to
-the book's sheet. `tokensFile`, which names the sheet holding a look's tokens,
-is optional package metadata the desktop app no longer reads.
 
 The other fields are npm's own `name`, `description` and `author`, plus
 `gutterpress.preview` (an image, relative to the folder) and --- for a look that
@@ -376,7 +370,7 @@ Extensions load first, in `extensions:` order, then your own `styles:` in their 
 
 ```yaml
 extensions:
-  - "./extensions/clean-book"     # 1. The look (loaded first)
+  - clean-book                    # 1. The look (loaded first)
   - "./plugins/callouts"          # 2. A plugin's component CSS (wins ties over the look)
 styles:
   - "styles/variables.css"        # 3. Token overrides

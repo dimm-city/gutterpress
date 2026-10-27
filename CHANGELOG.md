@@ -75,7 +75,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   **Revert** is an undo: a value only a look sets is taken back out of your
   stylesheet, not copied into it. It used to edit only the first look kept in
   a folder, in the look's own file; a look's files are never written now, and
-  a built-in or npm look is no longer left out.
+  a built-in or npm look is no longer left out. A look's
+  `gutterpress.tokensFile` is no longer read, and `gutterpress new --kind look`
+  no longer writes it; a package that still declares it loads unchanged.
 - **A footnote links to its own note in a book of several files.** Each file
   numbers its notes from 1, and the links behind the numbers were named after
   the number alone, so in a book with notes in two files a note's return arrow,

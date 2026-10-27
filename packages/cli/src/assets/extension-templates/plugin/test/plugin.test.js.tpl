@@ -126,7 +126,6 @@ describe("loader contract", () => {
       ...(gp.styles ?? []),
       gp.components,
       gp.snippets,
-      gp.tokensFile,
     ].filter(Boolean);
 
     expect(declared.length).toBeGreaterThan(0);

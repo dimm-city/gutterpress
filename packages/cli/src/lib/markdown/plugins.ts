@@ -249,7 +249,7 @@ async function loadNpmPackage(
   // copy is an error pointing at reinstall, never a silent fall-through to
   // some other package of the same name. A pinned entry with NO vendored
   // folder falls through to the legacy lookups below and ends at the "not
-  // found — install it" error, which is what the desktop's Features tab
+  // found — install it" error, which is what the desktop's Extensions tab
   // surfaces as "Needs install".
   const installRoot = await vendoredInstallRoot(packageName, baseDir, version);
   if (installRoot) {
@@ -659,7 +659,7 @@ function staleManifestHint(dir: string): string {
  * order within that module's CSS itself, exactly as they would for two files
  * in one plain `styles` export).
  *
- * `tokensFile`/`components`/`snippets` are parsed and validated (existence +
+ * `components`/`snippets` are parsed and validated (existence +
  * containment, via `resolveExtension`) but not otherwise consumed HERE —
  * `snippets.ts`'s `listMergedSnippets` (#242) is the actual snippet-picker
  * consumer, reached through its own `declaredSnippetsFolder` (which reads

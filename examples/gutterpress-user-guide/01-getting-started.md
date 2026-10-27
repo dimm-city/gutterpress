@@ -210,7 +210,7 @@ page:
 # Extensions -- a look, plugins -- in load order. Your `styles:` always load
 # after every extension (Chapters 4 and 5).
 extensions:
-  - "./extensions/clean-book"
+  - clean-book
 
 # Stylesheets (applied in order, last wins on conflicts)
 styles:
