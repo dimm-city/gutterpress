@@ -62,12 +62,20 @@ export interface PageSizePoints {
   height: number;
 }
 
-/** What an author picks: a preset, the trim when the preset is `custom`, and the margins. */
+/** What an author picks for the size: a preset, and the trim when the preset is `custom`. */
 export interface PageSizeChoice {
   preset: PresetId;
   /** Required for `custom`; ignored for `dtrpg` / `book` (the preset owns it). */
   page?: PageSizePoints;
-  /** Written to `page.margin` when given; left out, the manifest's margins stay as they are. */
+}
+
+/**
+ * A change to a book's page geometry: the size, the margins, or both. A part
+ * left out stays as recorded, so a margin edit never rewrites the size (nor
+ * drops a preset's `page:` override) and a size change never invents margins.
+ */
+export interface PageSetupChange {
+  size?: PageSizeChoice;
   margins?: PageMargin;
 }
 
@@ -224,24 +232,30 @@ export async function readPageSetup(projectDir: string): Promise<PageSetup> {
 }
 
 /**
- * Change a book's page geometry in the manifest. Mirrors what the wizard
- * records — `dtrpg` / `book` carry their own bounds (the `page:` block's
+ * Change a book's page geometry in the manifest. The size mirrors what the
+ * wizard records — `dtrpg` / `book` carry their own bounds (the `page:` block's
  * width, height and tolerance are removed so they cannot shadow them; its
- * other keys stay), `custom` records the typed trim — and writes `page.margin`
- * when the choice carries margins. Nothing is written unless the whole choice
- * validates.
+ * other keys stay), `custom` records the typed trim. The margins go to
+ * `page.margin`, validated against the size being written, else the recorded
+ * one. Nothing is written unless the whole change validates.
  */
 export async function setPageSetup(
   projectDir: string,
-  choice: PageSizeChoice,
+  change: PageSetupChange,
 ): Promise<PageSetup> {
-  const size = pageSizeForChoice(choice);
-  const margins = choice.margins === undefined ? undefined : validatePageMargin(choice.margins, size);
-
   const { doc, file } = await loadManifestDoc(projectDir);
-  doc.set("preset", choice.preset);
-  if (choice.preset === "custom") writePageBounds(doc, size);
-  else deletePageBounds(doc);
+  const size = change.size ? pageSizeForChoice(change.size) : null;
+  let margins: PageMargin | undefined;
+  if (change.margins !== undefined) {
+    const against = size ?? manifestGeometry(doc).bounds;
+    if (!against) throw new UsageError("Choose a page size before setting margins: the manifest records none.");
+    margins = validatePageMargin(change.margins, against);
+  }
+  if (change.size && size) {
+    doc.set("preset", change.size.preset);
+    if (change.size.preset === "custom") writePageBounds(doc, size);
+    else deletePageBounds(doc);
+  }
   if (margins) writePageMargin(doc, margins);
   await writeManifestDoc(file, doc);
   return setupOf(projectDir, doc);

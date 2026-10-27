@@ -310,8 +310,8 @@ export interface ProjectConfigFields {
  * prints with, in points — and what the author picks. Type-only imports erase
  * at build time, so the SPA still never value-imports the lib (§8).
  */
-import type { PageMargin, PageSetup, PageSizeChoice } from 'gutterpress';
-export type { PageMargin, PageSetup, PageSizeChoice };
+import type { PageMargin, PageSetup, PageSetupChange, PageSizeChoice } from 'gutterpress';
+export type { PageMargin, PageSetup, PageSetupChange, PageSizeChoice };
 
 export interface DirEntry {
   name: string;
@@ -682,9 +682,9 @@ export const api = {
     /** Read the book's page geometry back from its manifest (margins it does not set: from its stylesheets). */
     read: (projectDir: string) =>
       post<PageSetup>('/api/page-size/read', { projectDir }),
-    /** Change it in the manifest: preset + bounds, and the margins when given. */
-    set: (projectDir: string, choice: PageSizeChoice) =>
-      post<PageSetup>('/api/page-size/set', { projectDir, choice }),
+    /** Change it in the manifest: the size, the margins, or both; a part left out stays as recorded. */
+    set: (projectDir: string, change: PageSetupChange) =>
+      post<PageSetup>('/api/page-size/set', { projectDir, change }),
   },
 
   style: {

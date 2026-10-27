@@ -5,7 +5,7 @@
    * (#357), so the two never offer different sizes or word them differently.
    * The choices + arithmetic live in `#lib/page-size-choices.ts`.
    */
-  import { COMMON_SIZES } from "#lib/page-size-choices.ts";
+  import { COMMON_SIZES, type InchesDraft } from "#lib/page-size-choices.ts";
 
   let {
     idPrefix,
@@ -16,8 +16,8 @@
     /** Prefix for the control ids (two instances never share an id). */
     idPrefix: string;
     sizeChoice: string;
-    widthIn: string;
-    heightIn: string;
+    widthIn: InchesDraft;
+    heightIn: InchesDraft;
   } = $props();
 </script>
 

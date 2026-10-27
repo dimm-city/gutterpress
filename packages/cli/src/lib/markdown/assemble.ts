@@ -238,15 +238,19 @@ function pageGeometryCss(page: PrintAreaSource | undefined): string | null {
 }
 
 /**
- * The margin a book prints with when the manifest sets none, written AHEAD of
- * every stylesheet so a look's or the book's own `@page` margin wins by the
- * cascade: a default, not a decision (`DEFAULT_PAGE_MARGIN_PT` says why one
- * is needed at all). `null` once the manifest has margins — `pageGeometryCss`
- * then writes them last — or when there is no page geometry to supply.
+ * The margin a book prints with when the manifest sets none: a default, not a
+ * decision (`DEFAULT_PAGE_MARGIN_PT` says why one is needed at all). Written
+ * AHEAD of every stylesheet and INSIDE the core `gp.vocab` layer, so a look's
+ * `@page` margin (in its `ext.<name>` layer, declared later) and the book's
+ * own (unlayered) both win by the cascade — in Chromium, which ranks `@page`
+ * declarations by layer, as well as in the engine's order-based reader.
+ * Unlayered, it would beat a look's margin in print while the preview took
+ * the look's. `null` once the manifest has margins — `pageGeometryCss` then
+ * writes them last — or when there is no page geometry to supply.
  */
 function defaultPageMarginCss(page: PrintAreaSource | undefined): string | null {
   if (!page || page.margin) return null;
-  return `@page { margin: ${cssLength(DEFAULT_PAGE_MARGIN_PT)}; }`;
+  return `@layer gp.vocab {\n@page { margin: ${cssLength(DEFAULT_PAGE_MARGIN_PT)}; }\n}`;
 }
 
 /**
@@ -354,17 +358,17 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     // styles DOM only core emits, exactly like the marker wrappers.
     `/* gutterpress markers */\n@layer gp.marker {\n${MARKER_CSS.trim()}\n${TWO_VERSIONS_CSS.trim()}\n}`,
     `/* gutterpress */\n@layer gp.vocab {\n${GUTTERPRESS_CSS.trim()}\n}`,
-    // The default margin (defaultPageMarginCss). Unlayered and ahead of every
-    // sheet that could set one, so its place says what it is: the default.
+    // The default margin (defaultPageMarginCss): in the core layer and ahead
+    // of every sheet that could set one, so its place says what it is.
     defaultMargin ? `/* page margins (default) */\n${defaultMargin}` : null,
     pluginCss ? `/* extension css */\n${pluginCss.trim()}` : null,
     // Unlayered, before the project CSS (equal specificity: the book's rule,
     // coming later, wins).
     `/* column alignment */\n${TABLE_ALIGN_CSS.trim()}`,
     projectCss ? `/* project css */\n${projectCss.trim()}` : null,
-    // The manifest's page geometry (pageGeometryCss). Unlayered — `@page`
-    // stays out of cascade layers — and LAST, after every sheet that could
-    // have set a size or a margin, so its place says what it is: the decision.
+    // The manifest's page geometry (pageGeometryCss). Unlayered and LAST,
+    // after every sheet that could have set a size or a margin, so its place
+    // says what it is: the decision.
     pageGeometry ? `/* page geometry (manifest) */\n${pageGeometry}` : null,
   ].filter(Boolean).join("\n\n");
 

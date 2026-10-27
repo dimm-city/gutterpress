@@ -52,12 +52,19 @@ export const COMMON_SIZES: CommonSize[] = [
 const round3 = (n: number): number => Math.round(n * 1000) / 1000;
 
 /**
- * Typed inches -> points, or null while the text is not a length (empty, not
+ * What an inches field holds: the string we set it to, the number the author
+ * typed (a number input's `bind:value` hands back a number), or null once the
+ * author emptied it.
+ */
+export type InchesDraft = string | number | null;
+
+/**
+ * Typed inches -> points, or null while the field is not a length (empty, not
  * a number, negative). Zero is a length: a margin can be none.
  */
-export function inchesToPoints(text: string): number | null {
-  if (text.trim() === "") return null;
-  const n = Number(text);
+export function inchesToPoints(draft: InchesDraft): number | null {
+  if (draft === null || String(draft).trim() === "") return null;
+  const n = Number(draft);
   return Number.isFinite(n) && n >= 0 ? round3(n * PT_PER_INCH) : null;
 }
 
@@ -67,8 +74,8 @@ export function inchesToPoints(text: string): number | null {
  */
 export function trimPoints(
   sizeChoice: string,
-  widthIn: string,
-  heightIn: string,
+  widthIn: InchesDraft,
+  heightIn: InchesDraft,
 ): { width: number; height: number } | null {
   const named = COMMON_SIZES.find((s) => s.id === sizeChoice)?.points;
   if (named) return named;

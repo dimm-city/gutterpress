@@ -35,12 +35,13 @@
  * imports.
  */
 
-import type { PageMargin, PageSetup, PageSizeChoice, ProjectConfigFields } from "#lib/api.ts";
+import type { PageMargin, PageSetup, PageSetupChange, PageSizeChoice, ProjectConfigFields } from "#lib/api.ts";
 import {
   inchesToPoints,
   pointsToInches,
   sizeDraftsFor,
   trimPoints,
+  type InchesDraft,
   type PresetChoice,
 } from "#lib/page-size-choices.ts";
 import { defaultTargetsFor } from "#lib/publish-targets.ts";
@@ -73,8 +74,8 @@ export interface DetailsSectionDeps {
   /** Read the book's page geometry from its manifest (#357). Optional: without
    *  it the section simply has no page-size or margin controls. */
   readPageSetup?: (projectDir: string) => Promise<PageSetup>;
-  /** Write the page size, and the margins when the choice carries them, to the manifest (#357). */
-  writePageSetup?: (projectDir: string, choice: PageSizeChoice) => Promise<PageSetup>;
+  /** Write the parts of the page geometry the change carries (size, margins) to the manifest (#357). */
+  writePageSetup?: (projectDir: string, change: PageSetupChange) => Promise<PageSetup>;
   /** Fired after a load/save failure (the panel wires this to a toast). */
   onError?: (message: string) => void;
 }
@@ -116,10 +117,12 @@ export class DetailsSectionController {
   presetDraft = $state<PresetChoice | null>(null);
   /** Editable size row + typed inches — meaningful for the `custom` preset. */
   sizeChoice = $state<string>("letter");
-  widthIn = $state("");
-  heightIn = $state("");
+  // The inches fields are number inputs: their `bind:value` hands back a
+  // number, or null once emptied, so the drafts hold those as well as strings.
+  widthIn = $state<InchesDraft>("");
+  heightIn = $state<InchesDraft>("");
   /** Editable margins, typed in inches, one per edge (`inside` is the binding edge). */
-  marginDrafts = $state<Record<MarginEdge, string>>({ top: "", bottom: "", inside: "", outside: "" });
+  marginDrafts = $state<Record<MarginEdge, InchesDraft>>({ top: "", bottom: "", inside: "", outside: "" });
 
   /** The markdown files found on disk at load time (toManifestFiles's
    *  "is this the all-files default?" reference). */
@@ -363,29 +366,34 @@ export class DetailsSectionController {
         updates.targets = [...this.targetsDraft];
       }
     }
-    const choice = this.pageChoice;
-    // Margins ride along only once the author touched them; until then the
-    // manifest's stay as they are (or stay absent, leaving the stylesheets').
+    // Each part of the page geometry is written only once the author touched
+    // it and it is complete; the other part stays as recorded. So a margin
+    // edit never resends the size (which would round a custom trim, or drop
+    // a preset's `page:` override), and an incomplete part stays pending
+    // without holding the other back. `pageDirty` is false while neither
+    // differs from the record.
+    const change: PageSetupChange = {};
+    const size = this.pageTouched ? this.pageChoice : null;
+    if (size) change.size = size;
     const margins = this.marginsTouched ? this.marginsChoice : null;
-    // `pageDirty` is already false for an incomplete size (no choice) and
-    // for margins nobody touched; the flags keep an untouched book from
-    // writing what its drafts merely default to.
-    const touched = { page: this.pageTouched, margins: this.marginsTouched };
-    const writePage =
-      (touched.page || touched.margins) && this.pageDirty && !this.marginsIncomplete && !!this.deps.writePageSetup;
+    if (margins) change.margins = margins;
+    const writePage = (size !== null || margins !== null) && this.pageDirty && !!this.deps.writePageSetup;
     const hasUpdates = Object.keys(updates).length > 0;
     if (!hasUpdates && !writePage) return true;
-    // Consumed by this write (an incomplete size or margin stays pending); a
-    // value typed while the write is in flight marks it again.
-    if (writePage) this.pageTouched = this.marginsTouched = false;
+    // Consumed by this write; a value typed while it is in flight marks it again.
+    if (writePage) {
+      if (size) this.pageTouched = false;
+      if (margins) this.marginsTouched = false;
+    }
     this.detailsSaveStatus = "saving";
     this.detailsError = null;
     try {
       if (hasUpdates) this.fields = await this.deps.writeManifest(projectDir, updates);
       if (writePage) {
-        const setup = await this.deps.writePageSetup!(projectDir, margins ? { ...choice!, margins } : choice!);
+        const setup = await this.deps.writePageSetup!(projectDir, change);
         // Re-base the drafts on what was written, unless the author changed
-        // them meanwhile: those stay as typed, for the next flush to write.
+        // them meanwhile (or a part is still pending): those stay as typed,
+        // for the next flush to write.
         if (this.pageTouched || this.marginsTouched) this.pageSetup = setup;
         else this.applyPageSetup(setup);
       }
@@ -393,8 +401,8 @@ export class DetailsSectionController {
       return true;
     } catch (e) {
       if (writePage) {
-        this.pageTouched ||= touched.page;
-        this.marginsTouched ||= touched.margins;
+        if (size) this.pageTouched = true;
+        if (margins) this.marginsTouched = true;
       }
       // The drafts stay as typed, so the author can retry; the error says why.
       this.detailsError = e instanceof Error ? e.message : String(e);

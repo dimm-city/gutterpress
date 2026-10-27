@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { DetailsSectionController } from "../../src/lib/routes/details-section-controller.svelte";
-import type { PageMargin, PageSetup, PageSizeChoice, ProjectConfigFields } from "../../src/lib/api";
+import type { PageMargin, PageSetup, PageSetupChange, ProjectConfigFields } from "../../src/lib/api";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests (same shim as design-section-controller.test.ts).
@@ -39,7 +39,7 @@ interface Harness {
   readCalls: number;
   listCalls: number;
   writeCalls: Array<{ dir: string; updates: ProjectConfigFields }>;
-  pageWrites: PageSizeChoice[];
+  pageWrites: PageSetupChange[];
   /** What `readPageSetup` answers (null = the fake rejects: no page-size control). */
   pageSetup: PageSetup | null;
   failNextWrite: boolean;
@@ -109,21 +109,24 @@ function make(
       if (!h.pageSetup) throw new Error("nope");
       return h.pageSetup;
     },
-    writePageSetup: async (_d, choice) => {
-      h.pageWrites.push(choice);
+    writePageSetup: async (_d, change) => {
+      h.pageWrites.push(change);
       if (h.holdPageWrite) await h.holdPageWrite;
       if (h.failNextPageWrite) {
         h.failNextPageWrite = false;
         throw new Error("read-only folder");
       }
-      const page = choice.page ?? (choice.preset === "dtrpg" ? { width: 621, height: 810 } : { width: 432, height: 648 });
-      // The lib: margins given are recorded; otherwise what was recorded stays.
+      // The lib: each part given is recorded; a part left out stays as recorded.
       const before = h.pageSetup ?? BOOK_SETUP;
+      const size = change.size;
+      const page = size
+        ? (size.page ?? (size.preset === "dtrpg" ? { width: 621, height: 810 } : { width: 432, height: 648 }))
+        : before.bounds!;
       h.pageSetup = {
-        preset: choice.preset,
+        preset: size ? size.preset : before.preset,
         bounds: { ...page, tolerance: 0.5 },
-        margins: choice.margins ?? before.margins,
-        marginsFrom: choice.margins ? "manifest" : before.marginsFrom,
+        margins: change.margins ?? before.margins,
+        marginsFrom: change.margins ? "manifest" : before.marginsFrom,
       };
       return h.pageSetup;
     },
@@ -390,7 +393,7 @@ test("changing the preset on a book with no targets: key reseeds the default tar
   await settle();
   expect(h.ctrl.targetsDraft).toEqual(["dtrpg"]);
   // The preset change wrote the page size, never the (still implicit) targets.
-  expect(h.pageWrites).toEqual([{ preset: "dtrpg" }]);
+  expect(h.pageWrites).toEqual([{ size: { preset: "dtrpg" } }]);
   expect(h.writeCalls).toEqual([]);
   h.ctrl.toggleTarget("dtrpg");
   await settle();
@@ -428,7 +431,7 @@ test("choosing another preset writes the page size once, and nothing else", asyn
   await h.ctrl.loadDetails();
   h.ctrl.setPreset("dtrpg");
   await settle();
-  expect(h.pageWrites).toEqual([{ preset: "dtrpg" }]);
+  expect(h.pageWrites).toEqual([{ size: { preset: "dtrpg" } }]);
   expect(h.writeCalls).toEqual([]);
   expect(h.ctrl.pageSetup?.preset).toBe("dtrpg");
   expect(h.ctrl.pageDirty).toBe(false);
@@ -446,20 +449,34 @@ test("a title change never writes the page geometry, and margins the author did 
   // A preset change writes the preset alone: the stylesheet's margins stay the stylesheet's.
   h.ctrl.setPreset("dtrpg");
   await settle();
-  expect(h.pageWrites).toEqual([{ preset: "dtrpg" }]);
+  expect(h.pageWrites).toEqual([{ size: { preset: "dtrpg" } }]);
   expect(h.ctrl.pageSetup?.marginsFrom).toBe("stylesheet");
 });
 
 // ── Margins ──────────────────────────────────────────────────────────────────
 
-test("a margin typed in inches is recorded in points with the current preset, once its field reports change", async () => {
+test("a margin typed in inches is recorded in points, alone — the size the author did not touch is never resent", async () => {
+  // A Letter override on the book preset (the academic-paper example), which a
+  // resent `{ preset: "book" }` would have deleted, and a trim no inches string
+  // reproduces to the point.
+  for (const bounds of [
+    { width: 612, height: 792, tolerance: 0.5 },
+    { width: 595.28, height: 841.89, tolerance: 0.5 },
+  ]) {
+    const h = make({ pageSetup: { ...BOOK_SETUP, bounds, margins: INCH, marginsFrom: "default" } });
+    await h.ctrl.loadDetails();
+    expect(h.ctrl.marginDrafts).toEqual({ top: "1", bottom: "1", inside: "1", outside: "1" });
+    h.ctrl.marginDrafts.inside = "1.25";
+    h.ctrl.touchMargins();
+    await (h.ctrl.touchMargins(), h.ctrl.flushPendingSave());
+    expect(h.pageWrites).toEqual([{ margins: { top: 72, bottom: 72, inside: 90, outside: 72 } }]);
+    expect(h.ctrl.pageSetup?.bounds).toEqual(bounds);
+  }
   const h = make({ pageSetup: { ...BOOK_SETUP, margins: INCH, marginsFrom: "default" } });
   await h.ctrl.loadDetails();
-  expect(h.ctrl.marginDrafts).toEqual({ top: "1", bottom: "1", inside: "1", outside: "1" });
   h.ctrl.marginDrafts.inside = "1.25";
-  h.ctrl.touchMargins();
   await (h.ctrl.touchMargins(), h.ctrl.flushPendingSave());
-  expect(h.pageWrites).toEqual([{ preset: "book", margins: { top: 72, bottom: 72, inside: 90, outside: 72 } }]);
+  expect(h.pageWrites).toEqual([{ margins: { top: 72, bottom: 72, inside: 90, outside: 72 } }]);
   expect(h.writeCalls).toEqual([]);
   expect(h.ctrl.pageSetup?.marginsFrom).toBe("manifest");
   expect(h.ctrl.pageDirty).toBe(false);
@@ -470,7 +487,7 @@ test("a margin typed in inches is recorded in points with the current preset, on
   expect(h.pageWrites).toHaveLength(1);
 });
 
-test("a custom size and the margins travel together; an incomplete margin holds the page write and saves the rest", async () => {
+test("a custom size and the margins travel together; an incomplete margin stays pending and saves nothing else late", async () => {
   const h = make();
   await h.ctrl.loadDetails();
   h.ctrl.setPreset("custom");
@@ -488,9 +505,48 @@ test("a custom size and the margins travel together; an incomplete margin holds 
   h.ctrl.sizeChoice = "a4";
   await (h.ctrl.touchPage(), h.ctrl.flushPendingSave());
   expect(h.pageWrites).toEqual([
-    { preset: "custom", page: { width: 595, height: 842 }, margins: { ...BOOK_MARGINS, top: 36 } },
+    { size: { preset: "custom", page: { width: 595, height: 842 } }, margins: { ...BOOK_MARGINS, top: 36 } },
   ]);
   expect(h.ctrl.marginsIncomplete).toBe(false);
+});
+
+test("a preset chosen while a margin is incomplete is written at once; the margin stays pending as typed", async () => {
+  const h = make();
+  await h.ctrl.loadDetails();
+  h.ctrl.marginDrafts.top = "";
+  h.ctrl.touchMargins();
+  h.ctrl.setPreset("dtrpg");
+  await settle();
+  expect(h.pageWrites).toEqual([{ size: { preset: "dtrpg" } }]);
+  expect(h.ctrl.pageSetup?.preset).toBe("dtrpg");
+  expect(h.ctrl.marginsIncomplete).toBe(true);
+  expect(h.ctrl.marginDrafts.top).toBe("");
+  // Closing now (a flush with nothing complete) loses nothing and errors on nothing.
+  expect(await h.ctrl.flushPendingSave()).toBe(true);
+  expect(h.pageWrites).toHaveLength(1);
+  h.ctrl.marginDrafts.top = "1";
+  await (h.ctrl.touchMargins(), h.ctrl.flushPendingSave());
+  expect(h.pageWrites[1]).toEqual({ margins: { ...BOOK_MARGINS, top: 72 } });
+  expect(h.ctrl.marginsIncomplete).toBe(false);
+});
+
+test("the number inputs bind a number, or null once emptied; the drafts read both as inches", async () => {
+  const h = make();
+  await h.ctrl.loadDetails();
+  h.ctrl.marginDrafts.top = 0.5;
+  expect(h.ctrl.marginsChoice).toEqual({ ...BOOK_MARGINS, top: 36 });
+  h.ctrl.marginDrafts.top = null;
+  expect(h.ctrl.marginsChoice).toBeNull();
+  h.ctrl.marginDrafts.top = 0;
+  expect(h.ctrl.marginsChoice).toEqual({ ...BOOK_MARGINS, top: 0 });
+  h.ctrl.setPreset("custom");
+  await settle();
+  h.ctrl.sizeChoice = "custom";
+  h.ctrl.widthIn = 7;
+  h.ctrl.heightIn = 9;
+  expect(h.ctrl.pageChoice).toEqual({ preset: "custom", page: { width: 504, height: 648 } });
+  h.ctrl.heightIn = null;
+  expect(h.ctrl.pageIncomplete).toBe(true);
 });
 
 test("a negative or non-numeric margin counts as incomplete, never as zero", async () => {
@@ -503,7 +559,7 @@ test("a negative or non-numeric margin counts as incomplete, never as zero", asy
   expect(h.pageWrites).toEqual([]);
   h.ctrl.marginDrafts.outside = "0";
   await (h.ctrl.touchMargins(), h.ctrl.flushPendingSave());
-  expect(h.pageWrites).toEqual([{ preset: "book", margins: { ...BOOK_MARGINS, outside: 0 } }]);
+  expect(h.pageWrites).toEqual([{ margins: { ...BOOK_MARGINS, outside: 0 } }]);
 });
 
 test("margins typed and not yet committed (Escape before the fields' change) are saved by the close flush", async () => {
@@ -514,7 +570,7 @@ test("margins typed and not yet committed (Escape before the fields' change) are
   h.ctrl.marginDrafts.bottom = "1";
   h.ctrl.touchMargins();
   await h.ctrl.flushPendingSave(); // close: no `change` ever fired
-  expect(h.pageWrites).toEqual([{ preset: "book", margins: { ...BOOK_MARGINS, top: 72, bottom: 72 } }]);
+  expect(h.pageWrites).toEqual([{ margins: { ...BOOK_MARGINS, top: 72, bottom: 72 } }]);
 });
 
 test("a failed margin write keeps the typed margins pending, and the next flush retries them", async () => {
@@ -541,7 +597,7 @@ test("a custom size is sent in points, from a named size or typed inches, when i
   h.ctrl.setPreset("custom");
   await settle();
   // Trade (the recorded 6 x 9 in) under the custom preset is a preset change only.
-  expect(h.pageWrites).toEqual([{ preset: "custom", page: { width: 432, height: 648 } }]);
+  expect(h.pageWrites).toEqual([{ size: { preset: "custom", page: { width: 432, height: 648 } } }]);
   h.ctrl.sizeChoice = "a4";
   await (h.ctrl.touchPage(), h.ctrl.flushPendingSave());
   h.ctrl.sizeChoice = "custom";
@@ -549,8 +605,8 @@ test("a custom size is sent in points, from a named size or typed inches, when i
   h.ctrl.heightIn = "10";
   await (h.ctrl.touchPage(), h.ctrl.flushPendingSave());
   expect(h.pageWrites.slice(1)).toEqual([
-    { preset: "custom", page: { width: 595, height: 842 } },
-    { preset: "custom", page: { width: 522, height: 720 } },
+    { size: { preset: "custom", page: { width: 595, height: 842 } } },
+    { size: { preset: "custom", page: { width: 522, height: 720 } } },
   ]);
 });
 
@@ -572,7 +628,7 @@ test("an incomplete custom size saves the other fields and skips the page write 
   // Filling in the width completes it; the pending page write happens now.
   h.ctrl.widthIn = "7";
   await (h.ctrl.touchPage(), h.ctrl.flushPendingSave());
-  expect(h.pageWrites).toEqual([{ preset: "custom", page: { width: 504, height: 648 } }]);
+  expect(h.pageWrites).toEqual([{ size: { preset: "custom", page: { width: 504, height: 648 } } }]);
 });
 
 test("a custom size typed and not yet committed (Escape before the fields' change) is saved by the close flush", async () => {
@@ -590,7 +646,7 @@ test("a custom size typed and not yet committed (Escape before the fields' chang
   h.ctrl.titleDraft = "Z2";
   await h.ctrl.flushPendingSave(); // close: no `change` ever fired
   expect(h.writeCalls.map((w) => w.updates)).toEqual([{ title: "Z2" }]);
-  expect(h.pageWrites).toEqual([{ preset: "custom", page: { width: 504, height: 648 } }]);
+  expect(h.pageWrites).toEqual([{ size: { preset: "custom", page: { width: 504, height: 648 } } }]);
 });
 
 test("a size typed while the previous size is being written stays as typed, and the close flush writes it", async () => {
@@ -612,8 +668,8 @@ test("a size typed while the previous size is being written stays as typed, and 
   h.holdPageWrite = null;
   await h.ctrl.flushPendingSave(); // Escape
   expect(h.pageWrites).toEqual([
-    { preset: "custom", page: { width: 504, height: 504 } },
-    { preset: "custom", page: { width: 504, height: 648 } },
+    { size: { preset: "custom", page: { width: 504, height: 504 } } },
+    { size: { preset: "custom", page: { width: 504, height: 648 } } },
   ]);
 });
 

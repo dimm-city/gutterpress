@@ -120,7 +120,7 @@ test("page-size routes read the geometry back, then change the manifest and leav
 
   const margins = { top: 54, bottom: 54, inside: 63, outside: 45 };
   const res = await setPageSize({
-    request: request({ projectDir, choice: { preset: "custom", page: { width: 612, height: 792 }, margins } }),
+    request: request({ projectDir, change: { size: { preset: "custom", page: { width: 612, height: 792 } }, margins } }),
   } as Parameters<typeof setPageSize>[0]);
   expect(res.status).toBe(200);
   expect(await res.json()).toEqual({
@@ -135,13 +135,15 @@ test("page-size routes read the geometry back, then change the manifest and leav
   expect(manifest).toMatch(/margin:\s+top: 54\s+bottom: 54\s+inside: 63\s+outside: 45\s/);
 });
 
-test("page-size/set rejects a missing choice and an incomplete custom size without writing", async () => {
-  await expect(
-    setPageSize({ request: request({ projectDir }) } as Parameters<typeof setPageSize>[0]),
-  ).rejects.toMatchObject({ status: 400 });
+test("page-size/set rejects an empty change and an incomplete custom size without writing", async () => {
+  for (const body of [{ projectDir }, { projectDir, change: {} }, { projectDir, change: { size: "book" } }]) {
+    await expect(
+      setPageSize({ request: request(body) } as Parameters<typeof setPageSize>[0]),
+    ).rejects.toMatchObject({ status: 400 });
+  }
   await expect(
     setPageSize({
-      request: request({ projectDir, choice: { preset: "custom" } }),
+      request: request({ projectDir, change: { size: { preset: "custom" } } }),
     } as Parameters<typeof setPageSize>[0]),
   ).rejects.toMatchObject({ status: 500 });
   expect(await readFile(path.join(projectDir, "styles", "book.css"), "utf8")).toBe("body {}");

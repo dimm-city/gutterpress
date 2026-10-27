@@ -262,7 +262,7 @@ export type { ProjectConfigFields } from "../lib/manifest-config.ts";
 
 // ── Page geometry (#357) — the manifest's size and margins, read and written there ──
 export { readPageSetup, setPageSetup } from "../lib/page-size.ts";
-export type { PageMargin, PageSetup, PageSizeChoice, PageSizePoints } from "../lib/page-size.ts";
+export type { PageMargin, PageSetup, PageSetupChange, PageSizeChoice, PageSizePoints } from "../lib/page-size.ts";
 
 export {
   providerFor,

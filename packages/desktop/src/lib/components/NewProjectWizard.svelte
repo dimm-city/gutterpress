@@ -6,7 +6,13 @@
   import { dialogBehavior, guardedClose, FOCUSABLE } from "#lib/dialog.ts";
   import { useSettings } from "#lib/settings.svelte.ts";
   import PageSizeFields from "#lib/components/PageSizeFields.svelte";
-  import { PRESET_CHOICES, type PresetChoice, sizeDraftsFor, trimPoints } from "#lib/page-size-choices.ts";
+  import {
+    type InchesDraft,
+    PRESET_CHOICES,
+    type PresetChoice,
+    sizeDraftsFor,
+    trimPoints,
+  } from "#lib/page-size-choices.ts";
   import {
     PUBLISH_TARGET_CHOICES,
     PRINT_TOOL_IDS,
@@ -60,8 +66,8 @@
   // sizes carry exact point values (A4/A5 are not round inch numbers).
   let sizeChoice = $state<string>("letter");
   // Free-form trim in INCHES — only used when sizeChoice is "custom".
-  let widthIn = $state("");
-  let heightIn = $state("");
+  let widthIn = $state<InchesDraft>("");
+  let heightIn = $state<InchesDraft>("");
 
   /** The trim in points the manifest will record, or null while incomplete. */
   const customPagePoints = $derived(trimPoints(sizeChoice, widthIn, heightIn));

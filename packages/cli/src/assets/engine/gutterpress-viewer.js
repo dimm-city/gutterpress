@@ -368,7 +368,8 @@
     mediaPrintBodies: () => mediaPrintBodies,
     extract: () => extract,
     PAGE_SIZES: () => PAGE_SIZES,
-    MARGIN_BOX_NAMES: () => MARGIN_BOX_NAMES
+    MARGIN_BOX_NAMES: () => MARGIN_BOX_NAMES,
+    DEFAULT_PAGE_MARGIN_PT: () => DEFAULT_PAGE_MARGIN_PT
   });
   var MARGIN_BOX_NAMES = [
     "top-left-corner",
@@ -923,12 +924,18 @@
     const d = parts[3] ?? b;
     return { top: a, right: b, bottom: c, left: d };
   }
+  var DEFAULT_PAGE_MARGIN_PT = 72;
   function resolvePage(model, ctx = {}) {
     const wanted = new Set(ctx.pseudos ?? []);
     const applicable = model.pageRules.filter((r) => r.name ? r.name === ctx.name : true).filter((r) => r.pseudos.every((p) => wanted.has(p))).sort((a, b) => specificity(a) - specificity(b));
     const decls = {};
     const marginBoxes = {};
-    const margin = { top: 72, right: 72, bottom: 72, left: 72 };
+    const margin = {
+      top: DEFAULT_PAGE_MARGIN_PT,
+      right: DEFAULT_PAGE_MARGIN_PT,
+      bottom: DEFAULT_PAGE_MARGIN_PT,
+      left: DEFAULT_PAGE_MARGIN_PT
+    };
     for (const rule of applicable) {
       for (const [prop, value] of Object.entries(rule.decls)) {
         if (prop === "margin")

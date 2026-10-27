@@ -205,8 +205,8 @@ test("the manifest's page size is written after the project CSS, unlayered, once
   expect(projectStyle(await assembleBookHtml({ files: ["a.md"], readText: readA, printArea: DTRPG }))).toContain(SIZE_RULE);
 });
 
-test("with no margin anywhere the 1in default is written ahead of every stylesheet, and not once the manifest has margins", async () => {
-  const DEFAULT_RULE = "/* page margins (default) */\n@page { margin: 1in; }";
+test("with no margin anywhere the 1in default is written in the core layer ahead of every stylesheet, and not once the manifest has margins", async () => {
+  const DEFAULT_RULE = "/* page margins (default) */\n@layer gp.vocab {\n@page { margin: 1in; }\n}";
   const css = projectStyle(
     await assembleBookHtml({ files: ["a.md"], readText: readA, pluginCss: "@layer ext.look;\n@layer ext.look {\nbody { color: red }\n}", projectCss: "p { margin: 0 }", printArea: DTRPG }),
   );
@@ -215,7 +215,9 @@ test("with no margin anywhere the 1in default is written ahead of every styleshe
   expect(css.indexOf(DEFAULT_RULE)).toBeLessThan(css.indexOf("/* extension css */"));
   // What Chromium prints with and what the engine's reader assumes agree.
   expect(resolvePage(extract(css)).geometry.margin).toEqual({ top: 72, right: 72, bottom: 72, left: 72 });
-  // A look's margin, later in the cascade, wins over the default.
+  // A look's margin wins over the default: later in the reader's order, and
+  // in a layer declared after gp.vocab for Chromium (an unlayered default
+  // would beat it there, and print would disagree with the preview).
   const look = projectStyle(
     await assembleBookHtml({ files: ["a.md"], readText: readA, pluginCss: "@layer ext.look;\n@layer ext.look {\n@page { margin: 0.5in }\n}", printArea: DTRPG }),
   );
