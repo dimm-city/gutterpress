@@ -115,27 +115,37 @@ gutterpress/
 ├── Problems panel                             SHIPPED  (ProblemsPanel, #28)
 ├── Publish workflow                           SHIPPED  (PublishWizard + Connections, #35; see §6 for
 │                                                        proposed deltas: preflight checklist, history)
-├── Extensions                                 SHIPPED  (Project settings "Extensions" tab --
-│                                                        ExtensionsSection: ONE list + one Add area,
-│                                                        ExtensionsSectionController, #265)
-├── Design tokens editor                       SHIPPED  (Project settings "Design" tab -- DesignSection:
-│                                                        every enabled look's :root tokens, written
-│                                                        to the book's own stylesheet)
+├── Book setup                                 SHIPPED  (ProjectSettingsView, the toolbar's Setup
+│   │                                                    button; title "Book setup"; tabs Details /
+│   │                                                    Looks & features / Design / Backup; every
+│   │                                                    tab saves as you go)
+│   ├── Details                                SHIPPED  (DetailsSection: title, authors, chapters,
+│   │                                                    page size, print checks; no Save button)
+│   ├── Looks & features (id `extensions`)     SHIPPED  (ExtensionsSection: ONE list + one Add area,
+│   │                                                    ExtensionsSectionController, #265)
+│   ├── Design                                 SHIPPED  (DesignSection: every enabled look's :root
+│   │                                                    tokens, written to the book's own stylesheet;
+│   │                                                    then the stylesheet list)
+│   └── Backup (id `connections`)              SHIPPED  (ProjectConnectionsSection: the book's online
+│                                                        copy and how to set one up)
 ├── Project source / version history / GitHub  SHIPPED  (#12–#16, the Node-native git layer; AdvancedSetupDialog,
 │                                                        GitHubDialog, sync status)
 ├── Media panel                                SHIPPED  (MediaPanel, #47)
 ├── Crash recovery                             SHIPPED  (RecoveryOverlay / CrashRecoveryDialog)
 ├── Settings                                   SHIPPED  (SettingsView, embedded in the start
 │                                                        screen's Settings tab: App / Editor /
-│                                                        Saving / Accounts)
+│                                                        Saving / Accounts; the status-bar gear and
+│                                                        Ctrl+, are both named "Settings")
 ├── Visual layout editor                       PROPOSED (#37 — milestone placeholder; sub-issues first)
 └── AI Assistant                               PROPOSED (#36)
 ```
 
 Document theming (looks, design tokens, stylesheets) and features (plugins)
-live in the **project settings view** — the Extensions tab adds looks and
-features, the Design tab fine-tunes them — not app Settings: app appearance
-and print theme are deliberately separated concepts; do not merge them back.
+live in **Book setup** — the Looks & features tab adds looks and features,
+the Design tab fine-tunes them — not app Settings: app appearance and print
+theme are deliberately separated concepts; do not merge them back. One name
+per surface: the toolbar button, the page title and the docs all say "Book
+setup"; the status-bar gear, the shortcut and the page all say "Settings".
 
 ### Navigation model
 
@@ -385,11 +395,19 @@ buttons.
   separate settings window), and **Help**. It always opens on **Projects** —
   picking or continuing a book is the screen's job. A missing name/email is
   raised by the workspace's standing identity banner, never by sending the
-  start screen to Settings → Accounts.
+  start screen to Settings → Accounts. The **Create a new book** card is
+  shown in both roles; creating a book sets the role to Author, so the new
+  book opens with Edit, Setup and Publish in the toolbar (no toast: the
+  toolbar is the confirmation).
   `NewProjectWizard`: template first (**4 built-in templates** — Book, Zine,
   Technical document, Academic paper — plus custom templates, save-as-template,
-  import-from-folder), and the chosen template seeds the book's design
-  preset and publish targets (ADR 0008), both of which stay editable.
+  import-from-folder); each template lists its look (Clean book, Zine,
+  Technical doc, Academic) and its description says so. The chosen template
+  seeds the book's page size (a `custom` template's own size shows pre-filled)
+  and publish targets (ADR 0008), all of which stay editable. Step 3 asks
+  "What size should the pages be?" (DriveThruRPG print / Trade paperback /
+  Other size) and "Check the finished PDF against a print service's rules?";
+  Create is never disabled for a missing folder — pressing it asks for one.
 - Templates come from the **shared lib scaffolding** in
   `gutterpress` (same set behind `gutterpress new`; docs/architecture-rules.md §7 "one
   implementation, two thin front-ends") — the picker is a front-end over the
@@ -422,9 +440,13 @@ buttons.
   menus at all times — hiding would contradict
   the Dev persona's "no escape hatches" pain point and would **regress
   shipped, ungated features** (#30 plugins, #32 themes).
-- The **Extensions and Design tabs are core to a good first PDF and are never
-  gated**; only power-user surfaces (the Extensions tab's Advanced importers,
-  visual layout editor #37, AI #36) get the Advanced badge.
+- The **Looks & features and Design tabs are core to a good first PDF and are
+  never gated**; only power-user surfaces (the Looks & features tab's Advanced
+  importers, visual layout editor #37, AI #36) get the Advanced badge.
+- **Every Book setup tab saves as you go; there is no Save button.** Text
+  fields commit when you leave them or press Enter; pending edits are saved
+  when you switch tabs or close the panel. A commit writes only what changed
+  (a title edit never rewrites the page size or `targets:`).
 - Settings tabs are the shipped **App / Editor / Saving / Accounts**; the
   former "Advanced" ("for developers") tab is a section on Editor, and the
   whole surface lives on the start screen's Settings tab rather than in a
@@ -448,7 +470,10 @@ From print tools, keep: page navigation for long documents; non-destructive,
 always-revertible CSS overrides; preflight before export. Avoid: tool-mode
 switching (markdown-first, not canvas-first); floating panels that lose
 position; modal dialogs for live-editable properties (page size/margins);
-exposing low-level engine concepts to non-technical users.
+exposing low-level engine concepts to non-technical users. The bundled looks
+expose their page margins as two tokens (`--page-margin-top-bottom`,
+`--page-margin-sides`, read by each look's `@page`); the Design tab edits
+them like any other setting, so margins never need a hand-written rule.
 
 **Preflight (PROPOSED — tracked in #105; engine is SHIPPED):** the panel is a desktop
 UI over the **existing check registry** (`packages/cli/src/checks/`: font
@@ -653,9 +678,9 @@ Proposed refinements (file issues):
   and badge the count above N matches.
 - "Visual Mode" toggle → belongs to #37 (see §5).
 
-### 9. Extensions (one list: looks, features, component libraries)
+### 9. Extensions (one list: looks, features, component libraries) — on screen: Looks & features
 
-**Status: SHIPPED** (project settings → **Extensions** tab →
+**Status: SHIPPED** (Book setup → **Looks & features** tab, id `extensions` →
 `ExtensionsSection`, #30; looks and features merged into one surface, #243;
 one manifest list, `extensions:`, since #265; one on-screen list since
 0.11.23, after the built-in looks became bundled extensions, #427). This
@@ -689,17 +714,21 @@ The model (binding, from docs/architecture-rules.md §5 and #265):
 
 Shipped UI (the baseline to refine, not replace): **one list** of the
 manifest's `extensions:` entries in order. Each row shows its label, where it
-comes from, a badge per kind it carries (Markdown, Styles, Snippets,
-Components, Publish destination), its load status ("Re-check" validates
-again), an enable toggle, move up/down, and remove; an npm row adds its
-version picker, Update and Install/Reinstall (the actionable missing-vendor
-state). A row that carries styles also shows a rendered thumbnail (§11).
-Below the list, one **Add** area in three tabs: *Built in* (the bundled
-features and looks, in plain language, #309), *Search* (npm, #246 — run only
-when the tab is first shown, never at project load), and *Advanced* (install
-by name, a local folder or file referenced in place, and the `.zip`/`.css`/URL
+comes from, a badge per kind it carries, in author words (Feature, Look,
+Snippets, Components, Publish destination), its load status ("Working";
+"Re-check" validates again), an enable toggle, move up/down, and remove; an
+npm row adds its version picker, Update and Install/Reinstall (the actionable
+missing-vendor state). A row that carries styles also shows a rendered
+thumbnail (§11). The developer-shaped head controls appear only with
+something to act on: "Check for updates" when an npm entry is listed,
+"Re-check" when the list is not empty. Below the list, one **Add** area in
+three tabs: *Built in* (the bundled looks first, each with its thumbnail, then
+the features, in plain language, #309), *Search* (npm, #246 — run only when
+the tab is first shown, never at project load), and *Advanced* (install by
+name, a local folder or file referenced in place, and the `.zip`/`.css`/URL
 importers, §11). There is no separate look view: a look is a row like any
-other.
+other. Adding a second look says that the lower look wins and names the one
+to turn off to use the new look on its own.
 
 Refinements (PROPOSED): link each plugin to its npm page for
 author/version/last-published metadata; surface load errors inline.
@@ -752,7 +781,7 @@ Raw rule-ID columns and rule-ID-first presentation are anti-patterns here.
 ### 11. Looks and the Design tab
 
 **Status: SHIPPED baseline** (#32; since 0.11.23 a look is a styles-carrying
-row of the one Extensions list, §9, and its tokens are edited on the
+row of the one Looks & features list, §9, and its tokens are edited on the
 **Design** tab) with PROPOSED refinements tracked in **#106**.
 
 Shipped: a look is added like any extension — a bundled name from the Add
@@ -760,10 +789,17 @@ area's *Built in* tab (`clean-book`: nothing is copied), an npm package, a
 folder referenced in place, or a **folder, ZIP, CSS file or URL** import
 (`extension-import.ts`, reached through server routes). The bundled Add rows
 hide a look once it is listed (by name, or as a copy at `./extensions/<id>`
-left by an older version). Every styles-carrying row shows a **rendered
-thumbnail preview** of its CSS.
+left by an older version). Every look row, in the list and in Add > Built in,
+shows a **rendered thumbnail** of its CSS over a fixed sample; there is no
+hover preview.
 
-**Design tab.** The guided token editor (`DesignSection`) shows the `:root`
+A bundled look never sets the page size; the manifest (Setup > Details) does,
+and `assemble.ts` writes it as `@page { size }` ahead of every stylesheet. A
+look from elsewhere that sets a size wins until the page size is changed in
+Details, which writes it to the book's stylesheet.
+
+**Design tab.** The guided token editor (`DesignSection`, heading "Fonts,
+colors & sizes") names the look(s) it is editing and shows the `:root`
 custom properties of **every enabled look** — bundled, npm or path — in
 cascade order (a later look wins a duplicate), overlaid with the book's own
 active stylesheet, which wins. Every edit is written to **that book
@@ -772,9 +808,17 @@ is updated if the sheet has one, otherwise added to its `:root` block
 (created if missing); a declaration in any other rule or in a comment is
 left alone. A token's Revert is an undo: a token the sheet did not declare
 has its declaration taken out again, so a look's value is never pinned into
-the book. A look's own files are never written; the author's stylesheet is
-the one escape hatch, and there is no eject or copy of a look. The
-stylesheet list sits under it on the same tab.
+the book. A book override of a look's token can be dropped at any time —
+also after the panel is reopened — with "Use the look's value"; the look's
+value is read from the enabled looks, never pinned. Derived labels are plain
+words (`--fs-display` → "Display size"); a look labels its own extra tokens
+with `@label`. A compound value (`1pt solid …`) is edited as text, never as a
+bare number. With no look, the tab offers "Choose a look" (opens Looks &
+features); "Edit the stylesheet" is the secondary path. The hint says the
+preview shows the changes when the panel is closed (it is hidden behind the
+full-screen panel). A look's own files are never written; the author's
+stylesheet is the one escape hatch, and there is no eject or copy of a look.
+The stylesheet list sits under it on the same tab.
 
 There is **no apply and no revert**: a look is an ordinary list entry
 (enable/disable, reorder, remove — the same verbs `gutterpress ext`
@@ -787,13 +831,13 @@ do not reintroduce a theme-specific history.
 
 Shipped refinements (#106, 0.8.0-beta.1; carried into the one-list model):
 
-- **Hover live preview** — renders the look onto a **canned sample spread
-  (2 pages) off-screen**; it never re-paginates the user's document (full
-  re-pagination cannot meet the ≤500ms gate and would storm on hover).
-  Full-document re-pagination happens only when the list actually changes
-  (add, enable/disable, reorder), with a progress state. Shipped:
-  `ExtensionsSection` renders the sample into a hover-preview iframe via
-  `hoverPreviewSrcdoc` for any styles-carrying row.
+- **Thumbnails, not a hover preview** — every look row renders its CSS over
+  a fixed sample (`sampleSrcdoc`) in a sandboxed iframe; it never
+  re-paginates the user's document. The earlier enlarged hover flyout is
+  gone: it only ever showed above 1620 px (the app window is 1400 px) and
+  promised a preview the author could not see. Full-document re-pagination
+  happens only when the list actually changes (add, enable/disable,
+  reorder), with a progress state.
 - **ZIP drag-and-drop import**, validated against the extension package
   format: `theme.css` at root + optional `assets/` + optional `package.json`
   declaring `name` and a `gutterpress` block's `styles`/`tokensFile`

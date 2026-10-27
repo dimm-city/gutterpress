@@ -59,7 +59,7 @@ Online backup keeps a copy of your book's versions on GitHub (or another Git ser
    the code shown on the GitHub page.
 2. A book that already has an online copy, such as one you opened with
    [Open from GitHub](02-books.md#open-a-book-from-github), backs up as soon as you are connected.
-   **Setup → Connections** shows its folder, online repository and branch.
+   **Setup → Backup** shows its folder and online copy.
 3. A book you started on this computer needs an online copy first. See
    [Set up online backup for a book you started here](#set-up-online-backup-for-a-book-you-started-here).
 
@@ -67,8 +67,9 @@ Online backup keeps a copy of your book's versions on GitHub (or another Git ser
 
 You need a connected GitHub account (step 1 above) and version history turned on for the book.
 
-1. Click the save indicator, then **Set up online backup…** under **Online backup**. This opens
-   **Setup → Connections**.
+1. Click the save indicator, then **Set up online backup…** under **Online backup** (the same
+   button is under **Settings → Saving** for a book that is not backed up yet). This opens
+   **Setup → Backup**.
 2. If the book is a plain folder, click **Turn on version history** first. Online backup copies the
    versions Gutterpress keeps, so it needs them.
 3. Under **Set up online backup**, choose where the copy goes:

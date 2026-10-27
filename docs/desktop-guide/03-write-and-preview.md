@@ -13,7 +13,7 @@ Across the top of the window, from the left:
 - **Edit** (Ctrl+E) puts the editor and the preview side by side;
 - **Read** shows the preview on its own, two pages at a time;
 - **Focus** hides the panels and toolbars; press Esc to bring them back;
-- **Setup** (the wrench) opens [Book settings](05-design.md);
+- **Setup** (the wrench) opens [Book setup](05-design.md);
 - **Publish** opens the [Publish](08-publish.md) view.
 
 ![Edit mode: the table of contents, the editor and the live preview side by side](images/workspace-edit.jpg)

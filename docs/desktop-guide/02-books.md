@@ -10,21 +10,24 @@ of the status bar ("Books — open the start screen") to get back to it from a b
 
 ## Create a new book
 
-Creating books is for authors: if you don't see it, [switch to Author](01-install.md#switch-to-author).
-
-1. On the Books tab, choose **Create a new book**.
+1. On the Books tab, choose **Create a new book**. (Creating a book makes you an Author: Edit,
+   Setup and Publish appear in the toolbar once it opens.)
 2. **Name & author:** type the book's name under "What's your book called?" and, if you like,
    your name.
 3. **Template:** pick a starting point — **Book** (a novel, memoir or any long-form book),
    **Zine**, **Technical document**, or **Academic paper** (a journal-style article with LaTeX
-   math) — or one of your own saved templates.
+   math) — or one of your own saved templates. Each template comes with its look (Clean book,
+   Zine, Technical doc or Academic), so the new book is styled from the first page.
 4. **Print & save:**
-   - Under **What are you designing it for?** choose **DriveThruRPG print**, **Trade book**
-     (a neutral 6×9in book), or **Custom size** and then a page size (US Letter, Trade paperback,
-     Digest, A4, A5, or your own width and height).
-   - Under **Where will you publish it?** tick DriveThruRPG and/or itch.io. You can change this
-     later.
-   - Under **Where should we save it?** click **Choose folder…**.
+   - Under **What size should the pages be?** choose **DriveThruRPG print** (US Letter),
+     **Trade paperback** (6 × 9 in), or **Other size** and then a size (US Letter, Trade
+     paperback, Digest, A4, A5, or your own width and height). The Zine and Technical document
+     templates start on their own size (Digest and US Letter).
+   - Under **Check the finished PDF against a print service's rules?** tick DriveThruRPG and/or
+     itch.io if you publish there. Other places need no check here; you choose where to send the
+     PDF when you publish.
+   - Under **Where should we save it?** click **Choose folder…** (or leave it: **Create book**
+     asks for a folder if none is chosen).
    - Leave **Keep a history of my changes** ticked. It keeps earlier versions of your book on your
      computer, with no account needed (see
      [Keep versions and back up your work](09-versions-and-backup.md)).

@@ -6,14 +6,16 @@ description: Turn on the built-in formatting extras, find and install plugins fr
 # Add plugins and formatting extras
 
 Plugins add new markdown to your book: highlights, callouts, footnote styles, a game's components
-and more. Open **Setup → Extensions**. The list at the top is everything your book uses, looks
-and plugins together, each with a badge for what it adds (**Markdown**, **Styles**, **Snippets**,
-**Components**). Under it, **Add** has three tabs: **Built in**, **Search** and **Advanced**.
+and more. Open **Setup → Looks & features**. The list at the top is everything your book uses,
+looks and features together, each with a badge for what it adds (**Look**, **Feature**,
+**Snippets**, **Components**). Under it, **Add** has three tabs: **Built in**, **Search** and
+**Advanced**.
 
 ## Turn on a formatting extra
 
-Six extras are built in, with nothing to download. On the **Built in** tab, click **Add** next to
-one, and it works straight away:
+Six extras are built in, with nothing to download. On the **Built in** tab, under **Features**,
+click **Add** next to one, and it works straight away (footnotes, tables and definition lists are
+always on):
 
 | Extra | Type |
 | --- | --- |
@@ -24,16 +26,15 @@ one, and it works straight away:
 | Callouts | `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]` |
 | Math | `$E = mc^2$` in a line, or `$$` ... `$$` on lines of their own |
 
-![Extensions, Built in: a feature and a look in the list, and the formatting extras, each with Add](images/book-settings-extensions.jpg)
+![Looks & features, Built in: a feature and a look in the list, and the formatting extras, each with Add](images/book-settings-extensions.jpg)
 
 ## Find and install a plugin
 
-1. Open the **Search** tab ("Find more on npm"). It searches npm for Gutterpress extensions and
-   markdown-it plugins.
-2. Type what you are looking for (for example `footnote` or `callout`) and click **Search**.
+1. Open the **Search** tab. It searches npm for looks and features other authors have shared.
+2. Type what you are looking for (for example `emoji` or `task lists`) and click **Search**.
 3. Click **Add** on the one you want.
 
-![Extensions, Search: results from npm for "footnote", each with Add](images/extensions-search.jpg)
+![Looks & features, Search: results from npm for "footnote", each with Add](images/extensions-search.jpg)
 
 Gutterpress downloads it, checks it, keeps a copy inside your book, and adds it to the list. Your
 book then builds from that copy, even offline. You can also browse the same search on the

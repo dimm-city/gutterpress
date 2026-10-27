@@ -50,22 +50,24 @@ This project follows [Semantic Versioning](https://semver.org/).
   keeps working from `plugins/npm/` until its next `ext add` or `ext update`.
 - **The built-in looks are bundled extensions, listed by name.** `clean-book`,
   `zine`, `technical-doc` and `academic` join the bundled names: `gutterpress
-  ext add academic` (or Add on the desktop's Extensions tab) writes `- academic` to the
+  ext add academic` (or Add on the desktop's Looks & features tab) writes `- academic` to the
   manifest and copies nothing, the way `gutterpress-math` already worked. The
   look's stylesheet is compiled into Gutterpress and loads like a plugin's own
   CSS; a book styles over it from its own `styles:` sheets, which load after
   every extension. `ext add --look` and the `extensions/<id>` copy are gone; a book
   that still carries such a copy keeps working as the path extension it is.
   Several looks may be listed at once, later ones winning ties, as before.
-- **Book settings shows one Extensions list.** The Look and Features tabs are
-  one **Extensions** tab: every `extensions:` entry in order, looks and
-  features side by side, each with a badge for what it carries (Markdown,
-  Styles, Snippets, Components), its switch, Move up and down, Remove, and an
-  npm package's version and update controls; a look keeps its preview
-  thumbnail. Below the list, one Add area: *Built in* (every bundled feature
-  and look), *Search* (npm) and *Advanced* (install by name, a folder or file
-  used in place, a `.zip`, `.css` or URL import). A failed download's notice
-  now offers **Open Extensions**.
+- **Book setup shows one Looks & features list.** The Look and Features tabs
+  are one **Looks & features** tab: every `extensions:` entry in order, looks
+  and features side by side, each with a badge for what it carries (Look,
+  Feature, Snippets, Components), its switch, Move up and down, Remove, and an
+  npm package's version and update controls; every look row shows its preview
+  thumbnail, in the list and before it is added. Below the list, one Add
+  area: *Built in* (every bundled look, then every bundled feature), *Search*
+  (npm) and *Advanced* (install by name, a folder or file used in place, a
+  `.zip`, `.css` or URL import). A failed download's notice now offers **Open
+  Looks & features**. The enlarged hover preview is gone: it showed only in a
+  window wider than the app's, and the thumbnails show the same sample.
 - **Design tokens come from every look and are saved to your stylesheet.** The
   **Design** tab (with the stylesheet list) shows the settings of every look
   that is switched on (built in, from npm or a folder) in list order, as
@@ -73,9 +75,52 @@ This project follows [Semantic Versioning](https://semver.org/).
   (`styles/book.css` unless `styles:` names another), in its `:root` block,
   which is added if missing; rules elsewhere in the sheet are left alone.
   **Revert** is an undo: a value only a look sets is taken back out of your
-  stylesheet, not copied into it. It used to edit only the first look kept in
-  a folder, in the look's own file; a look's files are never written now, and
-  a built-in or npm look is no longer left out.
+  stylesheet, not copied into it, and a value your stylesheet already set over
+  a look's can be dropped at any time with **Use the look's value**. The tab
+  names the look it edits, labels every setting in plain words (`--fs-display`
+  is "Display size"; a look names its own extras with an `@label` comment),
+  and offers the text box, not a number box, for a value such as `1pt solid`.
+  It used to edit only the first look kept in a folder, in the look's own
+  file; a look's files are never written now, and a built-in or npm look is no
+  longer left out. A book with no look yet is pointed at **Choose a look**.
+- **Every new book comes with its look, and the manifest alone sets the page
+  size.** The Book, Zine and Technical document templates list `clean-book`,
+  `zine` and `technical-doc` the way the Academic paper template already
+  listed `academic`, so a new book is styled from its first page and the
+  template picker says which look each one brings. Bundled looks no longer
+  set the page size; a 0.11.23-alpha book that lists clean-book, zine or
+  technical-doc by name now prints at its manifest size (a manifest with no
+  `preset:` means DriveThruRPG) — set the size once under Setup > Details.
+  The Zine and Technical document templates carry their size (Digest, US
+  Letter) in the manifest, and the wizard shows it pre-filled; choosing
+  another preset on top of a template replaces the template's size instead
+  of being shadowed by it (`gutterpress new --template paper --preset book`
+  used to keep US Letter).
+- **The bundled looks' page margins are Design-tab settings.** Each look reads
+  its `@page` margins from `--page-margin-top-bottom` and
+  `--page-margin-sides` (today's values unchanged), so **Top & bottom
+  margins** and **Side margins** sit under Sizes & numbers beside the font
+  sizes; the user guide's styling chapter sets them there instead of in an
+  `@page` rule.
+- **Book setup's Details tab saves as you go.** There is no Save button and no
+  "saved" toast: a choice (page size, print checks, chapter order) is written
+  at once, a title or author when you leave the field or press Enter, and
+  anything still pending when you switch tabs or close the panel. Each write
+  touches only what changed, so renaming a book no longer rewrites its
+  `targets:` or its page size; a book with no `targets:` key keeps following
+  its preset's default until a service is ticked or unticked. When the
+  stylesheet and the manifest disagree on the size, Details offers **Use this
+  size in the stylesheet too**.
+- **Plainer words in the new-book wizard and Book setup.** Step 3 asks "What
+  size should the pages be?" (DriveThruRPG print, Trade paperback, Other
+  size) and "Check the finished PDF against a print service's rules?";
+  Details calls its lists **Chapters** and **Check the PDF against**. **Create
+  book** is never greyed out for want of a folder: pressing it asks for one.
+  The toolbar, the page and the docs all say **Book setup**, the status-bar
+  gear says **Settings**, and the book's online copy lives on a **Backup** tab
+  (**Settings > Saving** links there for a book that is not backed up yet).
+  The **Create a new book** card shows for a Reader too; creating a book
+  switches you to Author. Help gains a step on setting up and styling a book.
 - **A footnote links to its own note in a book of several files.** Each file
   numbers its notes from 1, and the links behind the numbers were named after
   the number alone, so in a book with notes in two files a note's return arrow,
