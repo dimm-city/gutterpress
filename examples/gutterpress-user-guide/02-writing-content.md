@@ -142,10 +142,10 @@ The alignment row becomes a plain `data-align="left|center|right"` attribute on 
 
 A `|` separates cells, so a cell that needs one in plain text writes it as
 `\|`. Inside a code span or a formula a `|` is just that character --- the
-cell is not split. So in a table, `\|` inside a code span prints as a
-backslash and a pipe; write a bare `|` there, where GitHub needs `\|`. A
-row with more cells than the header is reported in Problems rather than
-having its extra cells silently dropped.
+cell is not split. A code span also accepts GitHub's spelling, `\|`, and
+prints it as `|`, so a table that lints clean elsewhere prints the same
+here. A row with more cells than the header is reported in Problems rather
+than having its extra cells silently dropped.
 
 Keep tables simple --- 5 to 7 columns maximum. Align numbers right, text left.
 

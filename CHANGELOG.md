@@ -170,8 +170,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   code or math split the cell and the cells past the header's count vanished.
   Gutterpress's own table rule now treats a code span, and a formula when the
   Math feature is on, as one piece; `\|` still escapes a pipe in plain cell
-  text. A row that still has more cells than the header is reported in
-  Problems (`table_extra_cells`) instead of silently losing them.
+  text and, as on GitHub, inside a code span (a table written for GitHub or
+  markdownlint prints `|`, not `\|`; the alphas printed the backslash). A
+  row that still has more cells than the header is reported in Problems
+  (`table_extra_cells`) instead of silently losing them.
 
 ## [0.11.22] - 2026-10-23
 

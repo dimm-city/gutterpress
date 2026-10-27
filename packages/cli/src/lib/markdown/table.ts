@@ -15,9 +15,11 @@ import type { LayoutWarning } from "./assemble";
  *     or a formula splits the cell, and the cells past the header's count
  *     are silently dropped. Here an inline span is opaque to the split: a
  *     code span always, and a `$…$` formula when the math feature is on
- *     (math.ts re-registers this rule with its own scanner). `\|` still
- *     escapes a pipe in plain cell text; inside a span nothing is touched,
- *     so `\|` in a formula is LaTeX's own `\|`.
+ *     (math.ts re-registers this rule with its own scanner). `\|` escapes
+ *     a pipe in plain cell text and, as on GitHub, inside a code span (the
+ *     GFM spec's "including inside other inline spans"), so a table that
+ *     lints clean for markdownlint's MD056 prints `|`, not `\|`; a formula's
+ *     text is not touched, so `\|` there is LaTeX's own `\|`.
  *   - a row with MORE cells than the header is reported
  *     (`table_extra_cells` on `env.layoutWarnings`, the channel Gutterpress's
  *     marker parser uses) instead of losing them without a word.
@@ -82,7 +84,14 @@ function splitCells(str: string, spans: SpanScanners): string[] {
       }
     } else if (!isEscaped && spans[ch]) {
       // an inline span: nothing inside it splits a cell
-      pos = spans[ch]!(str, pos, max);
+      const end = spans[ch]!(str, pos, max);
+      if (ch === 0x60 /* ` */) {
+        // a code span's `\|` is GFM's spelling of a pipe in a cell, so it
+        // renders as `|` (GitHub does the same); a formula keeps its text
+        current += str.substring(lastPos, pos) + str.substring(pos, end).replace(/\\\|/g, "|");
+        lastPos = end;
+      }
+      pos = end;
       continue;
     }
 

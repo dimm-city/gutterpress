@@ -16,6 +16,18 @@ describe("table cells", () => {
     expect(env.layoutWarnings).toBeUndefined();
   });
 
+  test("\\| inside a code span renders as |, like GitHub, and a bare | there still works (#432)", () => {
+    const env: Env = {};
+    const html = createMarkdownRenderer().render("| a | b |\n|---|---|\n| `a \\| b` | `a | b` |\n", env);
+    expect(cells(html)).toEqual(["<code>a | b</code>", "<code>a | b</code>"]);
+    expect(env.layoutWarnings).toBeUndefined();
+    // Plain text keeps escaping; an unclosed backtick before `\|` is plain text too.
+    expect(cells(createMarkdownRenderer().render("| a | b |\n|---|---|\n| x \\| y | ` z \\| w |\n", {}))).toEqual([
+      "x | y",
+      "` z | w",
+    ]);
+  });
+
   test("\\| still escapes a pipe in plain text, and an unmatched backtick is just a backtick", () => {
     const html = createMarkdownRenderer().render("| a | b |\n|---|---|\n| x \\| y | a ` b |\n", {});
     expect(cells(html)).toEqual(["x | y", "a ` b"]);
