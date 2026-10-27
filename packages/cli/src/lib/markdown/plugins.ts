@@ -249,7 +249,7 @@ async function loadNpmPackage(
   // copy is an error pointing at reinstall, never a silent fall-through to
   // some other package of the same name. A pinned entry with NO vendored
   // folder falls through to the legacy lookups below and ends at the "not
-  // found — install it" error, which is what the desktop's Extensions tab
+  // found — install it" error, which is what the desktop's Looks & features tab
   // surfaces as "Needs install".
   const installRoot = await vendoredInstallRoot(packageName, baseDir, version);
   if (installRoot) {

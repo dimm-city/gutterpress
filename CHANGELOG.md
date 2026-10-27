@@ -76,7 +76,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   (`styles/book.css` unless `styles:` names another), in its `:root` block,
   which is added if missing; rules elsewhere in the sheet are left alone.
   **Revert** is an undo: a value only a look sets is taken back out of your
-<<<<<<< HEAD
   stylesheet, not copied into it, and a value your stylesheet already set over
   a look's can be dropped at any time with **Use the look's value**. The tab
   names the look it edits, labels every setting in plain words (`--fs-display`
@@ -84,8 +83,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   and offers the text box, not a number box, for a value such as `1pt solid`.
   It used to edit only the first look kept in a folder, in the look's own
   file; a look's files are never written now, and a built-in or npm look is no
-  longer left out. A book with no look switched on is pointed at **Choose a
-  look**.
+  longer left out. A look's `gutterpress.tokensFile` is no longer read, and
+  `gutterpress new --kind look` no longer writes it; a package that still
+  declares it loads unchanged. A book with no look switched on is pointed at
+  **Choose a look**.
 - **Every new book comes with its look, and bundled looks no longer set the
   page size.** The Book, Zine and Technical document templates list
   `clean-book`, `zine` and `technical-doc` the way the Academic paper template
@@ -125,13 +126,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   there for a book that is not backed up yet).
   The **Create a new book** card shows for a Reader too; creating a book
   switches you to Author. Help gains a step on setting up and styling a book.
-=======
-  stylesheet, not copied into it. It used to edit only the first look kept in
-  a folder, in the look's own file; a look's files are never written now, and
-  a built-in or npm look is no longer left out. A look's
-  `gutterpress.tokensFile` is no longer read, and `gutterpress new --kind look`
-  no longer writes it; a package that still declares it loads unchanged.
->>>>>>> origin/release/0.11.23
 - **A footnote links to its own note in a book of several files.** Each file
   numbers its notes from 1, and the links behind the numbers were named after
   the number alone, so in a book with notes in two files a note's return arrow,
