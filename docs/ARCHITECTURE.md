@@ -675,7 +675,7 @@ A path entry that names a FOLDER is loaded through its `package.json`
 (`lib/extension-manifest.ts`): npm's own `name`, `description`, `author`,
 `keywords` and `main` (the markdown-it entry, loaded through the exact same
 plain-markdown-it contract as a bare file), plus a `gutterpress` block —
-`styles` (ordered sheets), `tokensFile`, `preview`, `snippets`, `components`,
+`styles` (ordered sheets), `preview`, `snippets`, `components`,
 and `markdown` for the one case `main` cannot express. A package maintainer
 writes no second manifest, so a plain markdown-it plugin package is a valid
 extension unchanged, and "look" and "plugin" are just what a package happens

@@ -107,14 +107,11 @@ export interface ProjectExtensionEntry {
   author?: string;
   /** Preview image path relative to the extension folder, when declared. */
   preview?: string | null;
-  /** The sheet carrying the `:root` token surface, relative to the folder,
-   *  when declared (package.json's `gutterpress.tokensFile`). */
-  tokensFile?: string;
   /** Declared stylesheets relative to the folder, in cascade order
    *  (`gutterpress.styles`). Absent when the folder declares none. */
   styles?: string[];
-  /** What the extension declares — the desktop shows styles-carrying entries
-   *  in its Look view and markdown-carrying ones in Features; one list. */
+  /** What the extension declares — the badges on the desktop's Extensions
+   *  list. */
   carries: ExtensionCarries;
   /** Absolute folder its metadata was read from. Absent for a bundled name,
    *  a bare JS file, an uninstalled npm entry, or a missing path. */
@@ -263,7 +260,6 @@ async function describeFolder(
     ...(meta.description?.trim() ? { description: meta.description.trim() } : {}),
     ...(meta.author?.trim() ? { author: meta.author.trim() } : {}),
     ...(meta.preview !== undefined ? { preview: meta.preview } : {}),
-    ...(meta.tokensFile?.trim() ? { tokensFile: meta.tokensFile.trim() } : {}),
     ...(styles.length > 0 ? { styles } : {}),
     carries: extensionCarries(meta),
     dir,
@@ -803,7 +799,7 @@ async function pruneStaleVersions(projectDir: string, name: string, keep: readon
 //
 // A book pins exact versions and builds offline; nothing here runs from the
 // loader, build or preview. Checking is ON DEMAND — `gutterpress ext outdated`,
-// `ext update`, and the desktop's Features tab when it is opened — and an
+// `ext update`, and the desktop's Extensions tab when it is opened — and an
 // update is the same `addExtension` an author would run by hand, so the new
 // version is downloaded, verified, vendored, load-tested and re-pinned in
 // place (and the old version's folder removed) exactly as `ext add` does.

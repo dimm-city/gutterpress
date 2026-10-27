@@ -6,7 +6,7 @@
  * manifest: npm's own fields are read as-is (`name`, `description`, `author`,
  * `keywords`, and `main` — the markdown-it plugin module), and everything
  * Gutterpress-specific lives under one optional `"gutterpress"` key
- * (`styles`, `markdown`, `snippets`, `components`, `tokensFile`, `preview`,
+ * (`styles`, `markdown`, `snippets`, `components`, `preview`,
  * `publish`). A plain markdown-it plugin package therefore needs nothing at
  * all to load as an extension; a look needs `gutterpress.styles`; a component
  * library needs `main` + `gutterpress.styles`; a publishing plugin
@@ -92,11 +92,6 @@ export interface ExtensionMetadata {
    * its sheets, it does not get an implicit `theme.css`.
    */
   styles?: string[];
-  /** `gutterpress.tokensFile` — which declared sheet (a path from `styles`)
-   *  carries the author-facing `:root` token surface for the Design panel's
-   *  guided editor. Purely advisory — nothing in this module enforces or
-   *  existence-checks it. */
-  tokensFile?: string;
   /**
    * `gutterpress.markdown` — an EXPLICIT markdown-it entry, relative to the
    * extension folder, for the one case npm's `main` can't express: a package
@@ -179,7 +174,6 @@ function metaFromPackageJson(raw: unknown): ExtensionMetadata {
       : {}),
     ...("preview" in gp ? { preview: str(gp.preview) ?? null } : {}),
     ...(Array.isArray(gp.styles) ? { styles: declaredList(gp.styles) } : {}),
-    ...(str(gp.tokensFile) ? { tokensFile: str(gp.tokensFile) } : {}),
     ...(str(gp.markdown) ? { markdown: str(gp.markdown) } : {}),
     ...(str(gp.components) ? { components: str(gp.components) } : {}),
     ...(str(gp.snippets) ? { snippets: str(gp.snippets) } : {}),
@@ -278,7 +272,7 @@ export function assertPublishOnly(meta: ExtensionMetadata, ref: string): void {
  * Exported (#242) for `snippets.ts`'s installed-extension snippet merge,
  * which needs this SAME single-field check but cannot use
  * {@link assertExtensionContained}: that guard throws on ANY escaping field
- * (styles/markdown/components/tokensFile too), which is correct for a
+ * (styles/markdown/components too), which is correct for a
  * write-boundary check at install/apply time but wrong for a tolerant
  * listing — an extension with a broken, unrelated `styles` entry must not
  * make its perfectly fine `snippets` folder disappear from the picker (the
@@ -314,8 +308,6 @@ export function assertSupportsThisGutterpress(meta: ExtensionMetadata, ref: stri
  * extension is self-contained by contract (apply/install copies the whole
  * folder), and an imported/vendored package is untrusted input: a `../` or
  * absolute entry would make apply/load read a file from anywhere on disk.
- * `tokensFile` is included even though it is advisory/unenforced elsewhere —
- * defense in depth against a future consumer reading it unchecked.
  *
  * A WRITE-BOUNDARY guard, not a read-path check: callers invoke this before
  * copying anything or wiring a manifest, never from a plain listing/read
@@ -339,7 +331,6 @@ export function assertExtensionContained(meta: ExtensionMetadata): void {
     ...(meta.publish && meta.main?.trim() ? [meta.main.trim()] : []),
     ...(meta.components ? [meta.components] : []),
     ...(meta.snippets ? [meta.snippets] : []),
-    ...(meta.tokensFile ? [meta.tokensFile] : []),
   ];
   for (const rel of declared) {
     if (pathEscapesFolder(rel)) {
@@ -357,17 +348,12 @@ export function assertExtensionContained(meta: ExtensionMetadata): void {
  * `styles` already resolve through, so a broken declaration (a missing file)
  * throws HERE, at load/apply time, instead of failing silently deep in the
  * render pipeline (or never, for `components`, which nothing yet reads).
- *
- * `tokensFile` is the one exception, kept as declared (relative, not
- * existence-checked) — it stays purely advisory.
  */
 export interface ResolvedExtension {
   /** Absolute path to the markdown-it entry module, when the folder has one. */
   markdown?: string;
   /** Absolute paths, in cascade order, when any are declared. */
   styles?: string[];
-  /** Declared-relative path of the `:root` token surface — advisory. */
-  tokensFile?: string;
   /** Absolute path to the component catalog file, when declared (#242). */
   components?: string;
   /** Absolute path to the snippets folder, when declared. */
@@ -405,7 +391,6 @@ export function resolveExtension(
   return {
     ...(markdown ? { markdown } : {}),
     ...(styles ? { styles } : {}),
-    ...(meta.tokensFile?.trim() ? { tokensFile: meta.tokensFile.trim() } : {}),
     ...(components ? { components } : {}),
     ...(snippets ? { snippets } : {}),
   };

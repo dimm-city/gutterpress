@@ -402,8 +402,8 @@ package format a look uses:
 read as-is: `main` is the plugin module, loaded through exactly the plain
 markdown-it contract above. Everything else sits under `"gutterpress"` ---
 `styles` lists sheets in cascade order, `snippets` names a folder of
-insertable recipes, `components` a catalog file; `preview` and `tokensFile`
-are the look-side fields ([Chapter 4](#ch-styling)). `markdown` is there for
+insertable recipes, `components` a catalog file; `preview` names a look's
+preview image ([Chapter 4](#ch-styling)). `markdown` is there for
 the one case `main` can't express: a package whose `main` is not the plugin.
 Every path is relative to the folder and must stay inside it. List the
 folder, not the `.js` file --- `./plugins/field-notes` --- and Gutterpress reads

@@ -20,7 +20,6 @@
       "styles/page-rules.css",
       "styles/book.css"
     ],
-    "tokensFile": "styles/tokens.css",
     "components": "components.yaml",
     "snippets": "snippets",
     "preview": null
