@@ -18,7 +18,10 @@
  *
  * Never overwrites: an existing file is only ever APPENDED to, an entry it
  * already covers is left alone, and an entry the author explicitly re-includes
- * (`!extensions/npm/`) is theirs to keep — it is reported, not fought.
+ * (`!extensions/npm/`) is theirs to keep — it is reported, not fought. The one
+ * line ever removed is the `plugins/npm/` a book vendored before 0.11.23
+ * carried, and only when `extensions/npm/` is added in its place (#436): the
+ * old tree is removed by the same install.
  */
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -45,6 +48,9 @@ function ignoreStatus(gitignore: string, entry: string): IgnoreStatus {
 /** Entries every book ignores, in the order they are appended. */
 export const PROJECT_GITIGNORE_ENTRIES = ["dist/", "extensions/npm/"] as const;
 
+/** The line (with its line break) an older book's `.gitignore` carried for `plugins/npm/`. */
+const LEGACY_NPM_LINE = /^\/?plugins\/npm\/?[ \t]*\r?\n?/gm;
+
 /**
  * Make sure `<projectDir>/.gitignore` ignores `dist/` and `extensions/npm/`,
  * creating the file or appending what is missing. Returns the entries the
@@ -67,8 +73,9 @@ export async function ensureProjectGitignore(projectDir: string): Promise<{ nega
     else if (status === "negated") negated.push(entry);
   }
   if (missing.length > 0) {
-    const lead = existing !== null && existing.length > 0 && !existing.endsWith("\n") ? "\n" : "";
-    await writeFile(gitignorePath, `${existing ?? ""}${lead}${missing.join("\n")}\n`, "utf8");
+    const kept = missing.includes("extensions/npm/") ? (existing ?? "").replace(LEGACY_NPM_LINE, "") : (existing ?? "");
+    const lead = kept.length > 0 && !kept.endsWith("\n") ? "\n" : "";
+    await writeFile(gitignorePath, `${kept}${lead}${missing.join("\n")}\n`, "utf8");
   }
   return { negated };
 }

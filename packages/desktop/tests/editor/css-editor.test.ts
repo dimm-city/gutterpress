@@ -37,9 +37,10 @@ afterEach(() => {
 test("languageForPath maps extensions to language modes", () => {
   expect(languageForPath("styles/print.css")).toBe("css");
   expect(languageForPath("CHAPTER.CSS")).toBe("css");
+  expect(languageForPath("manifest.yaml")).toBe("yaml");
+  expect(languageForPath("extensions/house/gutterpress.yml")).toBe("yaml");
   expect(languageForPath("intro.md")).toBe("markdown");
   expect(languageForPath("intro.markdown")).toBe("markdown");
-  expect(languageForPath("manifest.yaml")).toBe("plain");
   expect(languageForPath("notes.txt")).toBe("plain");
   expect(languageForPath(null)).toBe("plain");
 });

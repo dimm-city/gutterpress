@@ -1516,6 +1516,43 @@ describe("updates", () => {
       { name, version: "1.1.0" }, // the group's last entry is the fixture's `latest`
     ]);
 
+  /** A book vendored before 0.11.23: its copy under `plugins/npm/`, the manifest pinning it, the old ignore line. */
+  async function legacyBook(version: string): Promise<string> {
+    const dir = await projectDir();
+    const pkg = path.join(dir, "plugins", "npm", name, version, "node_modules", name);
+    await mkdir(pkg, { recursive: true });
+    await writeFile(path.join(pkg, "package.json"), JSON.stringify({ name, version, main: "index.js" }), "utf8");
+    await writeFile(path.join(pkg, "index.js"), "module.exports = function () {};\n", "utf8");
+    await writeFile(path.join(dir, "manifest.yaml"), `title: T\nextensions:\n  - ${name}@${version}\n`, "utf8");
+    await writeFile(path.join(dir, ".gitignore"), "dist/\nplugins/npm/\n", "utf8");
+    return dir;
+  }
+
+  test("re-adding the version an older book vendored under plugins/npm/ moves it to extensions/npm/ and removes the old tree (#436)", async () => {
+    const dir = await legacyBook("1.0.0");
+    const fixture = twoVersions();
+    const entry = await addNpmPlugin(dir, `${name}@1.0.0`, { fetch: fixture.fetch });
+    expect(entry.warnings).toBeUndefined();
+    expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(true);
+    expect(existsSync(path.join(dir, "plugins"))).toBe(false);
+    expect(await readFile(path.join(dir, ".gitignore"), "utf8")).toBe("dist/\nextensions/npm/\n");
+  });
+
+  test("updating from a version vendored under plugins/npm/ leaves no plugins/ folder behind (#436)", async () => {
+    const dir = await legacyBook("1.0.0");
+    const fixture = twoVersions();
+    expect(await updateExtensions(dir, { fetch: fixture.fetch })).toEqual([{ name, from: "1.0.0", to: "1.1.0" }]);
+    expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.1.0"))).toBe(true);
+    expect(existsSync(vendoredNpmPluginRoot(dir, name, "1.0.0"))).toBe(false);
+    expect(existsSync(path.join(dir, "plugins"))).toBe(false);
+    // A local plugin file keeps its folder: only an emptied plugins/ goes.
+    const other = await legacyBook("1.0.0");
+    await writeFile(path.join(other, "plugins", "mine.js"), "export default function () {}\n", "utf8");
+    await updateExtensions(other, { fetch: fixture.fetch });
+    expect(existsSync(path.join(other, "plugins", "npm"))).toBe(false);
+    expect(existsSync(path.join(other, "plugins", "mine.js"))).toBe(true);
+  });
+
   test("re-pinning to a newer version removes the old version's vendored folder", async () => {
     const dir = await projectDir();
     const fixture = twoVersions();

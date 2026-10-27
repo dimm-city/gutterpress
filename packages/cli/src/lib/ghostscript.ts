@@ -4,7 +4,7 @@ import { join, basename, resolve } from "node:path";
 import { enhancedPath, execCapture, run, spawnCapture } from "./exec";
 import { log } from "../utils/logger";
 import { findTool } from "./tool-probe";
-import type { UnsplittableReason } from "./pdf-inspect";
+import { pagesWithVisibleShadingPaints, type UnsplittableReason } from "./pdf-inspect";
 
 const WINDOWS_GHOSTSCRIPT_NAMES = ["gswin64c", "gswin32c", "gs"];
 const POSIX_GHOSTSCRIPT_NAMES = ["gs"];
@@ -199,7 +199,10 @@ export async function transparentPages(pdfBytes: Uint8Array): Promise<number[]> 
  * these shadings.
  *
  * Walks page resources (and form XObjects they draw) rather than every
- * object, so only shadings a page can actually paint are reported. Like
+ * object, so only shadings a page can actually paint are reported; of those
+ * pages, only the ones that paint a shading with a visible area (#438: a box
+ * that opens the NEXT page is also in this page's content as a sliver —
+ * `pagesWithVisibleShadingPaints`, pdf-inspect.ts). Like
  * {@link transparentPages}, it never fails a build: an unparseable PDF
  * reports no pages.
  */
@@ -254,7 +257,8 @@ export async function findPostScriptShadingPages(pdfBytes: Uint8Array): Promise<
     seen.clear();
     if (usesPostScriptShading(asDict(page.node.Resources()))) pages.push(i + 1);
   });
-  return pages;
+  if (pages.length === 0) return pages;
+  return pagesWithVisibleShadingPaints(pdfBytes, pages).catch(() => pages);
 }
 
 /**

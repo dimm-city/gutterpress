@@ -123,6 +123,16 @@ tokens of its own beyond this set --- `technical-doc`, for example, adds
 lists every token the looks you use expose; for a look folder, the `:root`
 blocks of its stylesheets are the whole vocabulary.
 
+A look curates what the tab shows with comments in its `:root` blocks. A
+comment right above one declaration applies to that declaration: `@label
+Accent color` names it in plain words, `@group Paper` lists it under a
+heading of that name, `@internal` keeps it out of the tab (the CSS is
+unchanged). A comment right above the `:root` selector applies to the whole
+block: one `/* @internal */` line hides a sheet of component defaults, one
+`/* @group Paper */` line groups a palette sheet, and a declaration's own
+comment still wins for that declaration. Braces inside a comment are just
+text; they neither end nor open a block.
+
 ### Creating a custom look
 
 For one book, the fastest approach is two sections in `styles/book.css`:

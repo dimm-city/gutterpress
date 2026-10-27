@@ -801,7 +801,13 @@ A bundled look never sets the page size or margins; the manifest (Setup >
 Details) does, and `assemble.ts` writes them as the `@page` rule after every
 stylesheet, so a look from elsewhere that sets a size is overridden (the CSS
 check reports it) and its margins hold only until the book records its own
-(`page.margin`). Details writes the manifest and nothing else.
+(`page.margin`). Details writes the manifest and nothing else. A book that
+recorded margins takes them out again with **Use the look's margins** (or
+**Use the default margins (1 in)** when no stylesheet sets any), which
+removes `page.margin`; the fields then show what the book prints with. A
+manifest that overrides a preset's size (`preset: book` plus a `page:` width
+and height) shows the preset, with a note that choosing a size here replaces
+the override.
 
 **Design tab.** The guided token editor (`DesignSection`, heading "Fonts,
 colors & sizes") names the look(s) it is editing and shows the `:root`

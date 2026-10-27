@@ -15,7 +15,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; change: Ch
     const projectDir = await requireProjectDir(body.projectDir, 'page-size/set');
     const change = body.change;
     const hasSize = typeof change?.size === 'object' && change.size !== null && typeof change.size.preset === 'string';
-    const hasMargins = typeof change?.margins === 'object' && change.margins !== null;
+    const hasMargins = typeof change?.margins === 'object'; // an object, or null to remove them
     if (!change || (!hasSize && !hasMargins)) {
       error(400, 'page-size/set requires a change with a size or margins');
     }

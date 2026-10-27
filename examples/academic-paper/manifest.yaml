@@ -4,12 +4,20 @@ authors:
   - "Rowan Tate"
 language: en
 
-# A neutral preset with the trim set below: US Letter, 8.5 × 11 in.
-# For A4, set width 595 and height 842.
-preset: book
+# US Letter, 8.5 × 11 in, with no print-service rules (the same shape the
+# Paper template writes). For A4, set width 595 and height 842. The margins
+# are in points (72 = 1 in): top, bottom, inside (the binding edge), outside.
+# Change the size and the margins under Setup > Details.
+preset: custom
 page:
   width: 612
   height: 792
+  safe: 18
+  margin:
+    top: 72
+    bottom: 72
+    inside: 72
+    outside: 72
 
 source:
   files:

@@ -34,12 +34,13 @@ import type {
  * Which CodeMirror language extension to apply to a document, chosen from the
  * active file's extension.
  */
-export type EditorLanguage = "markdown" | "css" | "plain";
+export type EditorLanguage = "markdown" | "css" | "yaml" | "plain";
 
 /**
  * Pick the editor language from a file path (extension-driven).
  *  - `.css`                 → `"css"`
  *  - `.md` / `.markdown`    → `"markdown"`
+ *  - `.yaml` / `.yml`       → `"yaml"` (the manifest)
  *  - anything else / null   → `"plain"`
  */
 export function languageForPath(path: string | null): EditorLanguage {
@@ -47,6 +48,7 @@ export function languageForPath(path: string | null): EditorLanguage {
   const lower = path.toLowerCase();
   if (lower.endsWith(".css")) return "css";
   if (lower.endsWith(".md") || lower.endsWith(".markdown")) return "markdown";
+  if (lower.endsWith(".yaml") || lower.endsWith(".yml")) return "yaml";
   return "plain";
 }
 

@@ -47,7 +47,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **Downloaded npm extensions live under `extensions/npm/`**, beside the
   looks and components a book imports, instead of `plugins/npm/`. New books
   ignore `extensions/npm/` in their `.gitignore`; a book vendored earlier
-  keeps working from `plugins/npm/` until its next `ext add` or `ext update`.
+  keeps working from `plugins/npm/` until its next `ext add` or `ext update`,
+  which moves that package to `extensions/npm/`, removes its old copies and
+  the `plugins/` folder once it is empty, and replaces the `plugins/npm/` line
+  in the book's `.gitignore` (the alphas left both behind).
 - **The built-in looks are bundled extensions, listed by name.** `clean-book`,
   `zine`, `technical-doc` and `academic` join the bundled names: `gutterpress
   ext add academic` (or Add on the desktop's Looks & features tab) writes `- academic` to the
@@ -86,7 +89,14 @@ This project follows [Semantic Versioning](https://semver.org/).
   longer left out. A look's `gutterpress.tokensFile` is no longer read, and
   `gutterpress new --kind look` no longer writes it; a package that still
   declares it loads unchanged. A book with no look switched on is pointed at
-  **Choose a look**.
+  **Choose a look**. A look curates the tab in one line: `@group` or
+  `@internal` in a comment right above a `:root` selector applies to the
+  whole block (a declaration's own comment still wins), so a sheet of
+  component defaults is hidden with one `/* @internal */`. A `}` inside a
+  comment in a `:root` block no longer ends the block early, which hid every
+  token after it and showed a value read out of the comment; a shadow such as
+  `3pt 7pt 12pt -5pt var(--shadow-soft)` is edited as text, never as the
+  single number that would have replaced it.
 - **Every new book comes with its look, and the page size and margins live
   in the manifest alone.** The Book, Zine and Technical document templates
   list `clean-book`, `zine` and `technical-doc` the way the Academic paper
@@ -116,10 +126,17 @@ This project follows [Semantic Versioning](https://semver.org/).
   you type), and type the top, bottom, inside and outside margins in inches:
   a change is recorded in the manifest at once and wins over any margin a
   look sets. A book that has not set margins yet shows the ones its
-  stylesheets give it (or the 1in default) and says so. Nothing is written to
-  a stylesheet any more, and nothing can drift: the "Use this size in the
-  stylesheet too" note is gone, and the stylesheet editor no longer offers a
-  `size` completion inside `@page`.
+  stylesheets give it (or the 1in default) and says so, and **Use the look's
+  margins** (or **Use the default margins**) takes a book's own margins out
+  again. A book whose manifest overrides its preset's size (`preset: book`
+  with a `page:` width and height) is told so, and that choosing a size here
+  replaces the override; the academic-paper example now uses the Paper
+  template's shape instead. Nothing is written to a stylesheet any more, and
+  nothing can drift: the "Use this size in the stylesheet too" note is gone,
+  and the stylesheet editor no longer offers a `size` completion inside
+  `@page`.
+- **The editor highlights `manifest.yaml`.** A `.yaml` or `.yml` file opens
+  with YAML highlighting instead of plain text.
 - **Book setup's Details tab saves as you go.** There is no Save button and no
   "saved" toast: a choice (page size, print checks, chapter order) is written
   at once, a title or author when you leave the field or press Enter, and
@@ -170,8 +187,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   code or math split the cell and the cells past the header's count vanished.
   Gutterpress's own table rule now treats a code span, and a formula when the
   Math feature is on, as one piece; `\|` still escapes a pipe in plain cell
-  text. A row that still has more cells than the header is reported in
-  Problems (`table_extra_cells`) instead of silently losing them.
+  text and, as on GitHub, inside a code span (a table written for GitHub or
+  markdownlint prints `|`, not `\|`; the alphas printed the backslash). A
+  row that still has more cells than the header is reported in Problems
+  (`table_extra_cells`) instead of silently losing them.
 
 ## [0.11.22] - 2026-10-23
 

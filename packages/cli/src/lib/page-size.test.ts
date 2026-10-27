@@ -54,11 +54,14 @@ test("readPageSetup reports the preset, the bounds and the manifest's margins", 
   ]);
   try {
     // The stylesheet's size and margin are not consulted: the manifest decides.
+    // What the stylesheet would give is reported too, for the way back.
     expect(await readPageSetup(dir)).toEqual({
       preset: "book",
       bounds: { width: 432, height: 648, tolerance: 0.5 },
       margins: { top: 61.2, bottom: 61.2, inside: 54, outside: 54 },
       marginsFrom: "manifest",
+      fallbackMarginsFrom: "stylesheet",
+      presetSizeOverridden: false,
     });
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -81,7 +84,7 @@ test("without page.margin the margins are the stylesheets' — a right-hand page
       margins: { top: 36, bottom: 36, inside: 54, outside: 54 },
       marginsFrom: "stylesheet",
     });
-    expect(await readPageSetup(none)).toMatchObject({ margins: INCH, marginsFrom: "default" });
+    expect(await readPageSetup(none)).toMatchObject({ margins: INCH, marginsFrom: "default", fallbackMarginsFrom: "default" });
   } finally {
     for (const dir of [mirrored, plain, none]) await rm(dir, { recursive: true, force: true });
   }
@@ -257,7 +260,14 @@ test("margins alone leave the size as recorded: a preset's page: override and a 
     // Validated against the recorded Letter (612pt wide), not the preset's 432.
     const margins = { top: 72, bottom: 72, inside: 220, outside: 220 };
     const setup = await setPageSetup(letterBook, { margins });
-    expect(setup).toMatchObject({ preset: "book", bounds: { width: 612, height: 792, tolerance: 0.5 }, margins, marginsFrom: "manifest" });
+    expect(setup).toMatchObject({
+      preset: "book",
+      bounds: { width: 612, height: 792, tolerance: 0.5 },
+      margins,
+      marginsFrom: "manifest",
+      presetSizeOverridden: true, // the preset's size is overridden: Details says so (#440)
+    });
+    expect((await readPageSetup(odd)).presetSizeOverridden).toBe(false); // custom has no size to override
     expect(await manifestOf(letterBook)).toMatch(
       /preset: book\s+page:\s+width: 612\s+height: 792\s+margin:\s+top: 72\s+bottom: 72\s+inside: 220\s+outside: 220\s/,
     );
@@ -267,6 +277,31 @@ test("margins alone leave the size as recorded: a preset's page: override and a 
     expect(await manifestOf(sizeless)).toBe("title: T\nstyles:\n  - styles/book.css\npreset: custom\n");
   } finally {
     for (const dir of [letterBook, odd, sizeless]) await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("margins: null removes page.margin and nothing else; the stylesheets' margins apply again (#439)", async () => {
+  const dir = await book("@page { margin: 0.5in }\n", [
+    "preset: book",
+    "page:",
+    "  safe: 18",
+    "  margin:",
+    "    top: 72",
+    "    bottom: 72",
+    "    inside: 72",
+    "    outside: 72",
+  ]);
+  const only = await book("", ["preset: book", "page:", "  margin:", "    top: 72", "    bottom: 72", "    inside: 72", "    outside: 72"]);
+  try {
+    const setup = await setPageSetup(dir, { margins: null });
+    expect(setup).toMatchObject({ margins: { top: 36, bottom: 36, inside: 36, outside: 36 }, marginsFrom: "stylesheet" });
+    expect(await manifestOf(dir)).toMatch(/page:\s+safe: 18\s*$/);
+    expect(await manifestOf(dir)).not.toContain("margin:");
+    // A page: block that held only the margins goes with them; the default is what is left.
+    expect(await setPageSetup(only, { margins: null })).toMatchObject({ margins: INCH, marginsFrom: "default" });
+    expect(await manifestOf(only)).toBe("title: T\nstyles:\n  - styles/book.css\npreset: book\n");
+  } finally {
+    for (const d of [dir, only]) await rm(d, { recursive: true, force: true });
   }
 });
 

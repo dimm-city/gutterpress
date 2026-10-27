@@ -42,6 +42,17 @@ describe("ensureProjectGitignore", () => {
     expect(await read(dir)).toBe("/dist\nextensions/npm/\n");
   });
 
+  test("an older book's plugins/npm/ line goes when extensions/npm/ takes its place, and only then (#436)", async () => {
+    const dir = await tmp();
+    await writeFile(path.join(dir, ".gitignore"), "*.log\r\ndist/\r\n/plugins/npm\r\nnotes/", "utf8");
+    await ensureProjectGitignore(dir);
+    expect(await read(dir)).toBe("*.log\r\ndist/\r\nnotes/\nextensions/npm/\n");
+    // Already covered: the file, old line included, is left alone.
+    await writeFile(path.join(dir, ".gitignore"), "dist/\nplugins/npm/\nextensions/npm/\n", "utf8");
+    await ensureProjectGitignore(dir);
+    expect(await read(dir)).toBe("dist/\nplugins/npm/\nextensions/npm/\n");
+  });
+
   test.each([
     "dist/\nextensions/npm/\n",
     "dist\r\nextensions/npm\r\n",
