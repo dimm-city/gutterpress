@@ -55,9 +55,21 @@ export interface PrintAreaSource {
   safe?: number;
   artSafe?: number;
   gutter?: number;
+  /** The margins the manifest sets (pt), written as the book's `@page` margins; absent = the stylesheets'. */
+  margin?: { top: number; bottom: number; inside: number; outside: number };
   preset?: string;
   spec?: { label: string; url: string };
 }
+
+/**
+ * The margin a book prints with when nothing sets one — no `page.margin` in
+ * the manifest and no `@page` margin in any stylesheet. The assembly writes
+ * it as a plain `@page { margin }` ahead of every stylesheet, so a look's or
+ * the book's own margin still wins; without it Chromium would print with its
+ * own default (about 0.4in) while the engine's `@page` reader assumes 1in,
+ * and the preview and the PDF would paginate differently.
+ */
+export const DEFAULT_PAGE_MARGIN_PT = 72;
 
 /** A usable point value: finite and positive (a page dimension, an inset). */
 export function isPositivePoints(value: unknown): value is number {
@@ -68,7 +80,7 @@ export function isPositivePoints(value: unknown): value is number {
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /** CSS length for a point value: inches when exact to 3dp (612 -> 8.5in), else points. */
-function cssLength(pt: number): string {
+export function cssLength(pt: number): string {
   const inches = round3(pt / 72);
   return Math.abs(inches * 72 - pt) < 1e-6 ? `${inches}in` : `${round3(pt)}pt`;
 }

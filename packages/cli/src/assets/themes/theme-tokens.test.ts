@@ -35,8 +35,6 @@ const REQUIRED = [
   "--fs-h2",
   "--fs-h3",
   "--leading",
-  "--page-margin-top-bottom",
-  "--page-margin-sides",
 ];
 
 const themeNames = readdirSync(THEMES_DIR, { withFileTypes: true })
@@ -63,15 +61,18 @@ describe("built-in theme tokens", () => {
     expect(css).toMatch(/font-size:\s*var\(--fs-body\)/);
   });
 
-  // The page margins are Design-tab settings: every theme's `@page` reads the
-  // two margin tokens, so an override in the book's own stylesheet moves them.
-  // No theme sets the page SIZE: it comes from the manifest, unless the
-  // book's own stylesheet sets one.
-  test.each(themeNames)("%s reads its @page margins from the two margin tokens and sets no size", (name) => {
+  // The page geometry is the book's, not the look's: size and margins come
+  // from the manifest (`preset:` / `page:`, which Setup > Details edits) and
+  // the templates record each look's old margins there. No theme sets a page
+  // size or a page margin, and none defines a page-margin token.
+  test.each(themeNames)("%s sets no @page size or margin and defines no page-margin token", (name) => {
     const css = readFileSync(join(THEMES_DIR, name, "theme.css"), "utf8");
-    const page = /@page\s*\{([^}]*)/.exec(css)?.[1] ?? "";
-    expect(page).toMatch(/margin:\s*var\(--page-margin-top-bottom\)\s+var\(--page-margin-sides\)\s*;/);
-    expect(page).not.toMatch(/(?<![\w-])size\s*:/);
+    for (const m of css.matchAll(/@page\b[^{]*\{([^}]*)/g)) {
+      const body = m[1]!.replace(/@[a-z-]+\s*\{[^}]*\}?/g, "");
+      expect(body, name).not.toMatch(/(?<![\w-])size\s*:/);
+      expect(body, name).not.toMatch(/(?<![\w-])margin(-[a-z]+)?\s*:/);
+    }
+    expect(css).not.toContain("--page-margin");
   });
 
   test("the user guide teaches only tokens the themes provide", () => {

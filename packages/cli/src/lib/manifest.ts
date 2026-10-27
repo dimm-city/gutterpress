@@ -346,7 +346,42 @@ function resolveCustomPage(
     safe: c.page?.safe ?? m.page?.safe,
     artSafe: c.page?.artSafe ?? m.page?.artSafe,
     gutter: c.page?.gutter ?? m.page?.gutter,
+    margin: c.page?.margin ?? m.page?.margin,
   };
+}
+
+const MARGIN_EDGES = ["top", "bottom", "inside", "outside"] as const;
+
+/**
+ * `page.margin` is all four edges or nothing: a partial block would leave the
+ * missing edges to whatever a stylesheet says, the two-places split the field
+ * exists to end. Each edge is a finite point value of 0 or more, and the four
+ * must leave room for text on the page.
+ */
+function validatePageMargin(page: ResolvedConfig["page"]): void {
+  const margin = page.margin as unknown;
+  if (margin === undefined || margin === null) return;
+  const edges =
+    isPlainObject(margin) &&
+    Object.keys(margin).every((k) => (MARGIN_EDGES as readonly string[]).includes(k)) &&
+    MARGIN_EDGES.every((e) => {
+      const v = margin[e];
+      return typeof v === "number" && Number.isFinite(v) && v >= 0;
+    });
+  if (!edges) {
+    throw new UsageError(
+      "Manifest field `page.margin` must set all four edges in points (72pt = 1in), for example\n" +
+        "  page:\n    margin:\n      top: 54\n      bottom: 54\n      inside: 54\n      outside: 54\n" +
+        `got ${JSON.stringify(margin)}.`
+    );
+  }
+  const m = page.margin!;
+  if (m.inside + m.outside >= page.width || m.top + m.bottom >= page.height) {
+    throw new UsageError(
+      `Manifest field \`page.margin\` leaves no room for text on a ${page.width} x ${page.height}pt page ` +
+        `(inside ${m.inside} + outside ${m.outside} across, top ${m.top} + bottom ${m.bottom} down).`
+    );
+  }
 }
 
 function resolveWithPreset(
@@ -468,6 +503,9 @@ function resolveWithPreset(
     .filter(({ entry }) => typeof entry === "string" || (entry as ExtensionConfig)?.enabled !== false)
     .map(({ entry, index }) => normalizeExtensionEntry(entry, index));
 
+  const page = preset.page ? mergeShape(c.page, m.page, preset.page) : resolveCustomPage(c, m);
+  validatePageMargin(page);
+
   return {
     title: c.title ?? m.title ?? "Document",
     authors: c.authors ?? m.authors ?? [],
@@ -489,7 +527,7 @@ function resolveWithPreset(
     // `print.lastPage` (blank | short-by-one) is absent from both presets: it
     // only exists when an author writes it, and then wins over reserveLastPage.
     print: mergeShape(c.print, m.print, preset.print),
-    page: preset.page ? mergeShape(c.page, m.page, preset.page) : resolveCustomPage(c, m),
+    page,
     ink: mergeShape(c.ink, m.ink, preset.ink),
     // `rules` is an open dictionary (not a fixed shape), so it merges like
     // `validate.checks`: cli over manifest, key by key.

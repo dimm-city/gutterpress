@@ -299,8 +299,6 @@ const PLAIN_LABELS: Record<string, string> = {
   "--fs-h2": "Heading 2 size",
   "--fs-h3": "Heading 3 size",
   "--leading": "Line spacing",
-  "--page-margin-top-bottom": "Top & bottom margins",
-  "--page-margin-sides": "Side margins",
 };
 
 test("the shared token vocabulary gets plain-language labels (#308)", () => {

@@ -92,6 +92,18 @@ interface PublishSettings {
   };
 }
 
+/**
+ * Page margins in points: the space between the trim and the text on each
+ * edge. `inside` is the binding edge (the left of a right-hand page, the
+ * right of a left-hand one), `outside` the other. All four together.
+ */
+export interface PageMargin {
+  top: number;
+  bottom: number;
+  inside: number;
+  outside: number;
+}
+
 export interface GutterpressManifest {
   title?: string;
   authors?: string[];
@@ -221,6 +233,15 @@ export interface GutterpressManifest {
      * and `custom` none.
      */
     gutter?: number;
+    /**
+     * Page margins (pt), the space between the trim and the text on each
+     * edge — `inside` is the binding edge, `outside` the other. Setup >
+     * Details in the app writes it. When set, the book prints with these
+     * margins and any `@page` margin in a stylesheet is overridden; left
+     * out, the stylesheets' `@page` margins apply (a look's design), else
+     * 1in. All four edges are required together.
+     */
+    margin?: PageMargin;
   };
   ink?: {
     maxTac?: number;
@@ -368,6 +389,8 @@ export interface ResolvedConfig {
     artSafe?: number;
     /** The binding edge's inset from the trim in pt, text and art alike (see the manifest field); absent = same as `safe`. */
     gutter?: number;
+    /** The margins the book prints with, in pt (see the manifest field); absent = the stylesheets' `@page` margins, else 1in. */
+    margin?: PageMargin;
   };
   ink: {
     maxTac: number;

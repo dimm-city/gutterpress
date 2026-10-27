@@ -89,6 +89,13 @@ test("scaffoldProject (no git) creates a valid project tree", async () => {
   }
 });
 
+const MARGINS = {
+  book: { top: 61.2, bottom: 61.2, inside: 54, outside: 54 },
+  zine: { top: 28.8, bottom: 28.8, inside: 28.8, outside: 28.8 },
+  technical: { top: 64.8, bottom: 64.8, inside: 72, outside: 72 },
+  paper: { top: 72, bottom: 72, inside: 72, outside: 72 },
+} as const;
+
 test("every built-in template lists its look by name, copies nothing, and keeps the 0.25 in safe area", async () => {
   const parent = await tmpParent();
   try {
@@ -106,7 +113,11 @@ test("every built-in template lists its look by name, copies nothing, and keeps 
       // `preset: custom` takes the whole page from the manifest, so the
       // Zine, Technical and Paper templates state the safe area themselves:
       // it drives the safe-margins check and the preview's safe-area guide.
-      expect(resolveConfig({}, await loadManifest(result.projectDir)).page.safe).toBe(18);
+      const page = resolveConfig({}, await loadManifest(result.projectDir)).page;
+      expect(page.safe).toBe(18);
+      // Every template records its margins in the manifest (the look's old
+      // values), where Setup > Details edits them; no look sets any.
+      expect(page.margin).toEqual(MARGINS[template]);
     }
   } finally {
     await rm(parent, { recursive: true, force: true });
@@ -132,6 +143,9 @@ test("a chosen preset replaces the template's own page size", async () => {
     const resolved = resolveConfig({}, await loadManifest(result.projectDir));
     expect(resolved.page.width).toBe(432);
     expect(resolved.page.height).toBe(648);
+    // The template's margins and safe area are not the preset's to replace.
+    expect(resolved.page.margin).toEqual(MARGINS.zine);
+    expect(resolved.page.safe).toBe(18);
 
     // Left alone, the template's own size stands.
     const kept = await scaffoldProject({
@@ -736,7 +750,7 @@ test("scaffoldProject lists the bundled look the paper template names, copying n
     expect(entries.every((e) => e.enabled)).toBe(true);
     expect(entries[2]).toMatchObject({ kind: "bundled", label: "Academic", carries: { styles: true, markdown: false } });
     // Added through the comment-preserving manifest writer.
-    expect(await readFile(result.manifestPath, "utf8")).toContain("# A paper prints on US Letter");
+    expect(await readFile(result.manifestPath, "utf8")).toContain("# Page size and margins in points");
     const config = resolveConfig({}, await loadManifest(result.projectDir));
     expect(config.language).toBe("en");
     expect([config.page.width, config.page.height]).toEqual([612, 792]);

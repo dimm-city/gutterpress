@@ -117,7 +117,7 @@ There are four layers. Each has its own colour (you can change them, below) and 
 | **Bleed** | A tinted band outside the trim, and a solid line where the page is cut | Red |
 | **Safe area: text** | The printer's safe line for text, **dashed**, with the strip between it and the trim tinted | Blue |
 | **Safe area: art** | The printer's safe line for art that does not bleed, **dotted** | Purple |
-| **Page margins** | The box your own `@page` margins leave for text, as a thin solid line. It is your book's choice, not the printer's | Green |
+| **Page margins** | The box your margins (Setup > Details, or `page.margin` in the manifest) leave for text, as a thin solid line. It is your book's choice, not the printer's | Green |
 
 @end-section
 
@@ -197,15 +197,22 @@ language: en
 # explicitly below always wins over the preset.
 preset: book
 
-# Page size (values in points: 72pt = 1in): the size your book prints at
-# and the size the built PDF is checked against. A stylesheet that sets
-# its own plain `@page { size }` wins over it, so keep the two matching.
-# Required (width and height) when `preset: custom`; optional overrides
-# otherwise.
+# Page size and margins (values in points: 72pt = 1in). The size is what
+# your book prints at and what the built PDF is checked against; the
+# margins are the space between the trim and your text, `inside` at the
+# binding edge. The manifest decides both: a `size` in a stylesheet is
+# ignored, and a stylesheet's `@page` margins apply only while `margin` is
+# left out. Width and height are required when `preset: custom`, optional
+# overrides otherwise.
 page:
   width: 432
   height: 648
   tolerance: 0.5
+  margin:
+    top: 61.2
+    bottom: 61.2
+    inside: 54
+    outside: 54
 
 # Extensions -- a look, plugins -- in load order. Your `styles:` always load
 # after every extension (Chapters 4 and 5).
@@ -241,7 +248,7 @@ Common book trim sizes in points (72pt = 1 inch):
 
 @end-section
 
-Your book prints at the manifest's `page.width` × `page.height` --- your preset's size unless you set them --- and that is also the size the finished PDF is checked against. A stylesheet that sets its own plain `@page { size }` (one with no page name and no `:first`/`:left`) wins over the manifest, so if you write one, keep the two matching.
+Your book prints at the manifest's `page.width` × `page.height` --- your preset's size unless you set them --- and that is also the size the finished PDF is checked against. The build writes it as the `@page { size }` after every stylesheet, so a `size` in a stylesheet is ignored (the CSS check tells you so). Margins work the same way: `page.margin` (`top`, `bottom`, `inside` and `outside`, in points, `inside` at the binding edge) prints your book with those margins whatever a look's stylesheet says; leave it out and the stylesheets' `@page` margins apply, else 1in. In the app, both are under Setup > Details.
 
 ### DriveThruRPG Requirements {#dtrpg-requirements}
 

@@ -17,7 +17,7 @@ arrangement of the files is the part worth keeping.
     ├── base.css              element baseline. Bare p/h2/table/code.
     ├── components.css        named components + their public tokens.
     ├── page-templates.css    .page.* layouts — arrangement WITHIN a page.
-    ├── page-rules.css        @page geometry, margin boxes, running heads.
+    ├── page-rules.css        @page margin boxes, running heads, named pages.
     └── book.css              this book's overrides. Loads last.
 ```
 
@@ -64,7 +64,7 @@ instantly: **where does this rule go?**
 | what a plain paragraph or table looks like | `base.css` |
 | a named thing an author opts into | `components.css` |
 | how one page arranges its content | `page-templates.css` |
-| margins, folios, running heads | `page-rules.css` |
+| folios, running heads, named pages | `page-rules.css` |
 | one chapter of one book | `book.css` |
 
 If a rule seems to belong in two of them, it is usually two rules.
@@ -156,23 +156,17 @@ author retypes must be found and replaced across every chapter when it
 changes. A variant expressed as a component name plus a CSS rule changes in
 one place, and chapters written afterwards get it for free.
 
-### 4. `@page { size }` is not optional, and it must match the manifest
+### 4. The page size and margins are the book's, not the look's
 
-`page-rules.css` opens by declaring the trim:
-
-```css
-@page { size: 6in 9in; }
-```
-
-That line is load-bearing in the most literal sense. With no `size:` anywhere
-in the book's CSS, Chromium falls back to US Letter and prints the whole book
-at the wrong trim, with no error — this is the one failure in the stack that
-costs money rather than time.
-
-The manifest's `preset:`/`page:` remains the source of truth: it is what
-`gutterpress validate` measures the produced PDF against, and what the publish
-targets check. The CSS line is the instruction that satisfies it. Change one,
-change the other — and let validate catch you when you forget.
+A look never declares `@page { size }` or `@page { margin }`. The book's
+manifest records both (`preset:`, `page: width / height / margin`, which the
+app edits under Setup > Details), and the build writes them as the `@page`
+rule after every stylesheet, so a `size` in a look is ignored and reported by
+the print-safety check, and a `margin` holds only until the author sets
+margins in the app. `page-rules.css` owns what IS a look's: the margin boxes
+(folios, running heads) and the named pages. Design them to sit in whatever
+margin the book gives them — a folio at `@bottom-right` needs no particular
+margin to work.
 
 ### 5. Keep the catalog honest
 

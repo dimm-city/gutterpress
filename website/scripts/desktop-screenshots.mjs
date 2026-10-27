@@ -184,6 +184,11 @@ await screen("book-settings-details", async () => {
   await click("[aria-label='Book setup']");
   await wait(1500);
 }, { crop: SETTINGS, width: 960 });
+// The lower half of Details: the page size and the margins.
+await screen("book-settings-page", async () => {
+  await page.locator("#details-margin-outside").scrollIntoViewIfNeeded();
+  await wait(600);
+}, { crop: SETTINGS, width: 960 });
 // The demo book lists no extensions, so add a built-in feature and a look:
 // the list then shows rows with their badges and a thumbnail, and Design
 // shows the look's tokens.

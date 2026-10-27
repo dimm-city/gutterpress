@@ -21,12 +21,6 @@
   --fs-h3: 1.2rem;
   --leading:  1.55;
 
-  --page-margin-top-bottom: 0.85in;   /* page margins */
-  --page-margin-sides:      0.75in;
-}
-
-@page {
-  margin: var(--page-margin-top-bottom) var(--page-margin-sides);
 }
 
 body {

@@ -133,8 +133,7 @@ export const PRINT_SAFE_FONT_STACKS: FontStackChoice[] = [
 /**
  * Plain-language labels for the shared token vocabulary every built-in look
  * defines and the user guide's styling chapter teaches (plus `--color-ink-faint`,
- * the third step of the same ink scale, and the two page-margin tokens the
- * bundled looks read). A name-derived label ("Secondary text color" would be
+ * the third step of the same ink scale). A name-derived label ("Secondary text color" would be
  * "Color ink muted") reads as designer jargon to a writer; these say what the
  * token DOES. Tokens a look adds beyond this set get `derivedTokenLabel` unless
  * the look labels them itself. Display only: the token NAMES are the CSS
@@ -156,8 +155,6 @@ export const SHARED_TOKEN_LABELS: Record<string, string> = {
   "--fs-h2": "Heading 2 size",
   "--fs-h3": "Heading 3 size",
   "--leading": "Line spacing",
-  "--page-margin-top-bottom": "Top & bottom margins",
-  "--page-margin-sides": "Side margins",
 };
 
 /** Plain words for the abbreviations token names are built from. */

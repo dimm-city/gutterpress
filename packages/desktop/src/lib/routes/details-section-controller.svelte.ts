@@ -9,11 +9,12 @@
  * unmount so nothing typed is lost (it resolves to false when the write
  * failed, so close can keep the panel open on the error). Each commit writes
  * only what differs from the manifest as last read (`fields`): a title edit
- * never rewrites `targets` or the page size. The page size (#357) is written
- * only when its own controls were touched (`pageTouched`, set as soon as a
- * size is typed) — or on the drift note's explicit request (`matchPageSize`)
- * — so the stylesheet is never rewritten as a side effect of an unrelated
- * edit.
+ * never rewrites `targets` or the page geometry. The page size and margins
+ * (#357) live in the manifest alone and are written only when their own
+ * controls were touched (`pageTouched` / `marginsTouched`, set as soon as a
+ * value is typed), so a change to them is never a side effect of an unrelated
+ * edit; margins a book does not set yet are shown as its stylesheets give them
+ * and recorded in the manifest the first time the author changes one.
  *
  * Publish targets: a manifest with no `targets:` key shows the preset's
  * default (dtrpg → DriveThruRPG) and keeps following the preset until the
@@ -34,8 +35,9 @@
  * imports.
  */
 
-import type { PageSetup, PageSizeChoice, ProjectConfigFields } from "#lib/api.ts";
+import type { PageMargins, PageSetup, PageSizeChoice, ProjectConfigFields } from "#lib/api.ts";
 import {
+  PT_PER_INCH,
   pointsToInches,
   sizeChoiceFor,
   trimPoints,
@@ -68,10 +70,10 @@ export interface DetailsSectionDeps {
   /** Which of the print tools (`qpdf`/`gs`) are missing on this computer.
    *  Best-effort: a rejection just means no tool note is shown. */
   listMissingPrintTools?: () => Promise<string[]>;
-  /** Read the book's page size from its manifest + stylesheet (#357). Optional:
-   *  without it the section simply has no page-size control. */
+  /** Read the book's page geometry from its manifest (#357). Optional: without
+   *  it the section simply has no page-size or margin controls. */
   readPageSetup?: (projectDir: string) => Promise<PageSetup>;
-  /** Write the page size to the manifest AND the stylesheet together (#357). */
+  /** Write the page size, and the margins when the choice carries them, to the manifest (#357). */
   writePageSetup?: (projectDir: string, choice: PageSizeChoice) => Promise<PageSetup>;
   /** Fired after a load/save failure (the panel wires this to a toast). */
   onError?: (message: string) => void;
@@ -79,6 +81,22 @@ export interface DetailsSectionDeps {
 
 const sameList = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((v, i) => v === b[i]);
+
+export const MARGIN_EDGES = ["top", "bottom", "inside", "outside"] as const;
+export type MarginEdge = (typeof MARGIN_EDGES)[number];
+
+/** Round to 3dp so 0.85in lands as 61.2pt, not 61.199999999999996. */
+const round3 = (n: number): number => Math.round(n * 1000) / 1000;
+
+/** Typed inches -> points, or null while the text is not a margin (empty, not a number, negative). */
+function marginPoints(inches: string): number | null {
+  if (inches.trim() === "") return null;
+  const n = Number(inches);
+  return Number.isFinite(n) && n >= 0 ? round3(n * PT_PER_INCH) : null;
+}
+
+const sameMargins = (a: PageMargins, b: PageMargins): boolean =>
+  MARGIN_EDGES.every((edge) => Math.abs(a[edge] - b[edge]) < 0.01);
 
 export class DetailsSectionController {
   // ── Public rune state (read by the template; mutated only via methods) ──────
@@ -102,7 +120,7 @@ export class DetailsSectionController {
    *  checked destination that needs them. Empty when the probe failed. */
   missingTools = $state<string[]>([]);
 
-  /** The page size as last read/saved, or null before the first read / when unavailable. */
+  /** The page geometry as last read/saved, or null before the first read / when unavailable. */
   pageSetup = $state<PageSetup | null>(null);
   /** Editable "designed for" choice (the manifest preset). */
   presetDraft = $state<PresetChoice | null>(null);
@@ -110,6 +128,8 @@ export class DetailsSectionController {
   sizeChoice = $state<string>("letter");
   widthIn = $state("");
   heightIn = $state("");
+  /** Editable margins, typed in inches, one per edge (`inside` is the binding edge). */
+  marginDrafts = $state<Record<MarginEdge, string>>({ top: "", bottom: "", inside: "", outside: "" });
 
   /** The markdown files found on disk at load time (toManifestFiles's
    *  "is this the all-files default?" reference). */
@@ -124,6 +144,9 @@ export class DetailsSectionController {
   private targetsExplicit = false;
   /** True when a page-size control was touched since the last page write. */
   private pageTouched = false;
+  /** True when a margin field was touched since the last page write: the
+   *  margins are the author's to record from then on. */
+  private marginsTouched = false;
   /** The book `fields` and the drafts belong to, set only once a load has
    *  filled every one of them. A commit is bound to it: a flush during a
    *  load (the drafts still empty) writes nothing, and the unmount flush can
@@ -158,6 +181,7 @@ export class DetailsSectionController {
       this.targetsExplicit = f.targets !== undefined;
       this.targetsDraft = f.targets ?? defaultTargetsFor(this.pageSetup?.preset ?? null);
       this.pageTouched = false;
+      this.marginsTouched = false;
       this.detailsSaveStatus = "idle";
       this.scanOk = scan.ok;
       // Failed scan: fall back to the manifest's own entries as the universe
@@ -180,8 +204,8 @@ export class DetailsSectionController {
     }
   }
 
-  // ── Page size (#357) ────────────────────────────────────────────────────────
-  /** Best-effort: a failed read just leaves the page-size control out. */
+  // ── Page size and margins (#357) ────────────────────────────────────────────
+  /** Best-effort: a failed read just leaves the page-size and margin controls out. */
   private async loadPageSetup(projectDir: string): Promise<void> {
     if (!this.deps.readPageSetup) return;
     try {
@@ -191,7 +215,7 @@ export class DetailsSectionController {
     }
   }
 
-  /** Point the drafts at what is recorded; the size starts from the current bounds. */
+  /** Point the drafts at what is recorded; the size starts from the current bounds, the margins from what the book prints with. */
   private applyPageSetup(setup: PageSetup): void {
     this.pageSetup = setup;
     this.presetDraft = setup.preset;
@@ -199,6 +223,7 @@ export class DetailsSectionController {
     this.sizeChoice = b ? sizeChoiceFor(b.width, b.height) : "letter";
     this.widthIn = b ? pointsToInches(b.width) : "";
     this.heightIn = b ? pointsToInches(b.height) : "";
+    for (const edge of MARGIN_EDGES) this.marginDrafts[edge] = pointsToInches(setup.margins[edge]);
   }
 
   /** What the drafts mean, or null while nothing is chosen / a custom trim is incomplete. */
@@ -214,10 +239,26 @@ export class DetailsSectionController {
     return this.presetDraft === "custom" && this.pageChoice === null;
   }
 
+  /** The typed margins in points, or null while any edge is empty or not a margin. */
+  get marginsChoice(): PageMargins | null {
+    const out: Partial<PageMargins> = {};
+    for (const edge of MARGIN_EDGES) {
+      const pt = marginPoints(this.marginDrafts[edge]);
+      if (pt === null) return null;
+      out[edge] = pt;
+    }
+    return out as PageMargins;
+  }
+
+  /** True when a margin was edited but the four edges are not all filled in. */
+  get marginsIncomplete(): boolean {
+    return this.marginsTouched && this.marginsChoice === null;
+  }
+
   /**
    * Whether a page write has something to do: the choice differs from what is
-   * recorded, or the stylesheet prints at a size other than the manifest's
-   * (the two halves drifted — a write puts them back in step).
+   * recorded, or the margins the author typed differ from those the book
+   * prints with.
    */
   get pageDirty(): boolean {
     const setup = this.pageSetup;
@@ -230,8 +271,8 @@ export class DetailsSectionController {
         return true;
       }
     }
-    const css = setup.css;
-    return !!css && !!b && (Math.abs(css.width - b.width) >= 0.5 || Math.abs(css.height - b.height) >= 0.5);
+    const margins = this.marginsTouched ? this.marginsChoice : null;
+    return !!margins && !sameMargins(margins, setup.margins);
   }
 
   /** Choose a preset: the targets follow it while the manifest has none of its own. */
@@ -247,8 +288,11 @@ export class DetailsSectionController {
     this.pageTouched = true;
   };
 
-  /** The drift note's action: write the recorded size to the stylesheet too. */
-  matchPageSize = (): Promise<boolean> => this.flushPendingSave({ page: true });
+  /** A margin field was typed in: the margins are the author's to record from
+   *  now on (in the manifest, over whatever a stylesheet gave), once complete. */
+  touchMargins = (): void => {
+    this.marginsTouched = true;
+  };
 
   // ── Publish-target intents (ADR 0008) ───────────────────────────────────────
   toggleTarget = (id: string): void => {
@@ -289,13 +333,15 @@ export class DetailsSectionController {
   // ── Save ──────────────────────────────────────────────────────────────────
   /**
    * Write whatever differs from the manifest as last read. `page: true` marks
-   * the page-size controls as touched, so the page size is written too when
-   * it changed. Chained after any in-flight commit, so two flushes never
-   * interleave and the later one sees the earlier one's result. Resolves to
-   * false when the write failed (the drafts are kept), true otherwise.
+   * the page-size controls as touched and `margins: true` the margin fields,
+   * so the page geometry is written too when it changed. Chained after any
+   * in-flight commit, so two flushes never interleave and the later one sees
+   * the earlier one's result. Resolves to false when the write failed (the
+   * drafts are kept), true otherwise.
    */
-  flushPendingSave = (opts?: { page?: boolean }): Promise<boolean> => {
+  flushPendingSave = (opts?: { page?: boolean; margins?: boolean }): Promise<boolean> => {
     if (opts?.page) this.pageTouched = true;
+    if (opts?.margins) this.marginsTouched = true;
     this.saveChain = this.saveChain.then(() => this.commitChanges());
     return this.saveChain;
   };
@@ -333,28 +379,40 @@ export class DetailsSectionController {
       }
     }
     const choice = this.pageChoice;
+    // Margins ride along only once the author touched them; until then the
+    // manifest's stay as they are (or stay absent, leaving the stylesheets').
+    const margins = this.marginsTouched ? this.marginsChoice : null;
+    const touched = { page: this.pageTouched, margins: this.marginsTouched };
     const writePage =
-      this.pageTouched && !!choice && this.pageDirty && !this.pageIncomplete && !!this.deps.writePageSetup;
+      (touched.page || touched.margins) &&
+      !!choice &&
+      this.pageDirty &&
+      !this.pageIncomplete &&
+      !this.marginsIncomplete &&
+      !!this.deps.writePageSetup;
     const hasUpdates = Object.keys(updates).length > 0;
     if (!hasUpdates && !writePage) return true;
-    // Consumed by this write (an incomplete size stays pending); a size typed
-    // while the write is in flight marks it again.
-    if (writePage) this.pageTouched = false;
+    // Consumed by this write (an incomplete size or margin stays pending); a
+    // value typed while the write is in flight marks it again.
+    if (writePage) this.pageTouched = this.marginsTouched = false;
     this.detailsSaveStatus = "saving";
     this.detailsError = null;
     try {
       if (hasUpdates) this.fields = await this.deps.writeManifest(projectDir, updates);
       if (writePage) {
-        const setup = await this.deps.writePageSetup!(projectDir, choice!);
+        const setup = await this.deps.writePageSetup!(projectDir, margins ? { ...choice!, margins } : choice!);
         // Re-base the drafts on what was written, unless the author changed
         // them meanwhile: those stay as typed, for the next flush to write.
-        if (this.pageTouched) this.pageSetup = setup;
+        if (this.pageTouched || this.marginsTouched) this.pageSetup = setup;
         else this.applyPageSetup(setup);
       }
       this.detailsSaveStatus = "saved";
       return true;
     } catch (e) {
-      if (writePage) this.pageTouched = true;
+      if (writePage) {
+        this.pageTouched ||= touched.page;
+        this.marginsTouched ||= touched.margins;
+      }
       // The drafts stay as typed, so the author can retry; the error says why.
       this.detailsError = e instanceof Error ? e.message : String(e);
       this.deps.onError?.(`Could not save details: ${this.detailsError}`);

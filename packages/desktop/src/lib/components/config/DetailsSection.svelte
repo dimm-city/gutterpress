@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * Details section of ProjectSettingsView — title, authors, chapters, page
-   * size, publish targets. It saves as you go: a choice commits at once; a
+   * size and margins, publish targets. It saves as you go: a choice commits at once; a
    * text field commits on `change` (blur or Enter) via
    * `controller.flushPendingSave`. All state + `api.manifest.*` calls live in
    * `DetailsSectionController` (passed as the single `controller` prop); this
@@ -14,8 +14,12 @@
    */
   import Icon from "#lib/components/Icon.svelte";
   import PageSizeFields from "#lib/components/PageSizeFields.svelte";
-  import { PRESET_CHOICES, pointsToInches } from "#lib/page-size-choices.ts";
-  import type { DetailsSectionController } from "#lib/routes/details-section-controller.svelte.ts";
+  import { PRESET_CHOICES } from "#lib/page-size-choices.ts";
+  import {
+    MARGIN_EDGES,
+    type DetailsSectionController,
+    type MarginEdge,
+  } from "#lib/routes/details-section-controller.svelte.ts";
   import {
     PUBLISH_TARGET_CHOICES,
     missingToolsForTargets,
@@ -39,20 +43,24 @@
     ),
   );
 
-  // The stylesheet and the manifest drifted apart (hand-edited `@page`, or an
-  // older book): say so, and offer to put them back in step.
-  const pageDrift = $derived.by(() => {
-    const css = controller.pageSetup?.css;
-    const bounds = controller.pageSetup?.bounds;
-    if (!css || !bounds) return null;
-    if (Math.abs(css.width - bounds.width) < 0.5 && Math.abs(css.height - bounds.height) < 0.5) {
-      return null;
+  // The margin fields, in reading order; "Inside" is the binding edge.
+  const MARGIN_LABELS: Record<MarginEdge, string> = {
+    top: "Top",
+    bottom: "Bottom",
+    inside: "Inside",
+    outside: "Outside",
+  };
+
+  // Where the margins shown come from, until the author records their own.
+  const marginsNote = $derived.by(() => {
+    switch (controller.pageSetup?.marginsFrom) {
+      case "stylesheet":
+        return "These come from a stylesheet (your look's). Change one and your margins take over.";
+      case "default":
+        return "No margins are set yet; these are the defaults. Change one to set your own.";
+      default:
+        return null;
     }
-    const inches = (w: number, h: number) => `${pointsToInches(w)} × ${pointsToInches(h)} in`;
-    return (
-      `Your stylesheet (${css.file}) prints at ${inches(css.width, css.height)}, but this book is ` +
-      `checked against ${inches(bounds.width, bounds.height)}.`
-    );
   });
 
   // ── Source-files drag-and-drop reorder (HTML5 DnD; the up/down buttons are
@@ -203,8 +211,8 @@
   </div>
   <!-- Page size (#357): the wizard's "What size should the pages be?" choices
        (shared #lib/page-size-choices), changeable after the book exists. A
-       choice writes the manifest's preset + bounds and the stylesheet's page
-       size together, as soon as it is complete. -->
+       choice writes the manifest's preset + bounds as soon as it is complete;
+       the manifest is the only place the size lives. -->
   {#if controller.pageSetup}
     <div class="field" role="radiogroup" aria-label="Page size">
       <span class="lbl">Page size</span>
@@ -248,14 +256,46 @@
           <span class="hint">Enter a width and height to save the page size.</span>
         {/if}
       {/if}
-      {#if pageDrift}
-        <p class="tool-note" role="note">
-          {pageDrift}
-          <button class="ghost small" onclick={controller.matchPageSize}>Use this size in the stylesheet too</button>
-        </p>
-      {/if}
       <span class="hint">
         The size your book prints at and the size the finished PDF is checked against.
+      </span>
+    </div>
+    <!-- Page margins: the space between the trim and the text, typed in inches
+         and recorded in the manifest (`page.margin`) over whatever a stylesheet
+         gives. `input` marks them as the author's, so closing before a field's
+         `change` (Escape) still saves them; `change` commits. -->
+    <div class="field">
+      <span class="lbl">Margins</span>
+      <div
+        class="margin-fields"
+        role="group"
+        aria-label="Page margins in inches"
+        oninput={controller.touchMargins}
+        onchange={() => controller.flushPendingSave({ margins: true })}
+      >
+        {#each MARGIN_EDGES as edge (edge)}
+          <label class="margin-field" for={`details-margin-${edge}`}>
+            <span>{MARGIN_LABELS[edge]} (in)</span>
+            <input
+              id={`details-margin-${edge}`}
+              class="input"
+              type="number"
+              min="0"
+              step="0.05"
+              bind:value={controller.marginDrafts[edge]}
+              autocomplete="off"
+            />
+          </label>
+        {/each}
+      </div>
+      {#if controller.marginsIncomplete}
+        <span class="hint">Enter all four margins to save them.</span>
+      {:else if marginsNote}
+        <span class="hint">{marginsNote}</span>
+      {/if}
+      <span class="hint">
+        The space between the edge of the page and your text. Inside is the edge at the binding.
+        Your margins win over any a look sets.
       </span>
     </div>
   {/if}
@@ -308,7 +348,10 @@
   .save-status.saving { color: var(--app-text-muted); }
   .save-status.saved { color: var(--app-success-text); }
   .size-fields { display: flex; flex-direction: column; gap: 4px; }
-  .tool-note .ghost { margin-left: 6px; vertical-align: baseline; }
+  .margin-fields { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+  .margin-field { display: flex; flex-direction: column; gap: 4px; }
+  .margin-field > span { font-size: 11px; color: var(--app-text-muted); }
+  .margin-field .input { width: 84px; }
   .authors { display: flex; flex-direction: column; gap: 4px; }
   .author-row { display: flex; gap: 4px; align-items: center; }
   .author-row .input { flex: 1; }

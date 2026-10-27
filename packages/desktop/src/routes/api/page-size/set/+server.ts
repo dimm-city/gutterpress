@@ -5,8 +5,8 @@ import type { RequestHandler } from './$types';
 type Choice = Parameters<Awaited<ReturnType<typeof loadApiLib>>['setPageSetup']>[1];
 
 /**
- * Change a book's page size: the manifest's `preset:` + `page:` bounds and the
- * stylesheet's `@page` size, written together by the lib (#357).
+ * Change a book's page geometry in the manifest: `preset:` + `page:` bounds,
+ * and `page.margin` when the choice carries margins (#357).
  */
 export const POST: RequestHandler = defineRoute<{ projectDir: string; choice: Choice }>({
   validate: async (raw) => {

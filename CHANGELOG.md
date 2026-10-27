@@ -87,34 +87,45 @@ This project follows [Semantic Versioning](https://semver.org/).
   `gutterpress new --kind look` no longer writes it; a package that still
   declares it loads unchanged. A book with no look switched on is pointed at
   **Choose a look**.
-- **Every new book comes with its look, and bundled looks no longer set the
-  page size.** The Book, Zine and Technical document templates list
-  `clean-book`, `zine` and `technical-doc` the way the Academic paper template
-  already listed `academic`, so a new book is styled from its first page and
-  the template picker says which look each one brings. A 0.11.23-alpha book
-  that lists clean-book, zine or technical-doc by name now prints at its
-  manifest size (a manifest with no
-  `preset:` means DriveThruRPG) — set the size once under Setup > Details.
-  The Zine and Technical document templates carry their size (Digest, US
-  Letter) in the manifest, and the wizard shows it pre-filled; choosing
-  another preset on top of a template replaces the template's size instead
-  of being shadowed by it (`gutterpress new --template paper --preset book`
-  used to keep US Letter).
-- **The bundled looks' page margins are Design-tab settings.** Each look reads
-  its `@page` margins from `--page-margin-top-bottom` and
-  `--page-margin-sides` (today's values unchanged), so **Top & bottom
-  margins** and **Side margins** sit under Sizes & numbers beside the font
-  sizes; the user guide's styling chapter sets them there instead of in an
-  `@page` rule.
+- **Every new book comes with its look, and the page size and margins live
+  in the manifest alone.** The Book, Zine and Technical document templates
+  list `clean-book`, `zine` and `technical-doc` the way the Academic paper
+  template already listed `academic`, so a new book is styled from its first
+  page and the template picker says which look each one brings. No bundled
+  look sets a page size or a page margin any more: the manifest's `preset:`
+  and `page:` decide the size, the new `page.margin` (`top`, `bottom`,
+  `inside`, `outside`, in points) the margins, and the build writes both as
+  the `@page` rule after every stylesheet, so a `size` in a stylesheet is
+  overridden (the CSS check reports it, `printsafe/page-size-in-stylesheet`)
+  and so is an `@page` margin once the manifest has margins. A book that sets
+  no `page.margin` keeps its stylesheets' margins, so a 0.11.22 book prints
+  as it did; every template records its look's old margins, so a new book
+  does too. A book with no margin anywhere now prints with 1in margins, which
+  the build writes ahead of every stylesheet as the default: it used to print
+  with Chromium's own default of about 0.4in while the preview assumed 1in,
+  so the two paginated differently. A 0.11.23-alpha book that lists clean-book, zine or technical-doc
+  by name now prints at its manifest size (a manifest with no `preset:` means
+  DriveThruRPG) with 1in margins — set both under Setup > Details. The Zine
+  and Technical document templates carry their size (Digest, US Letter) in
+  the manifest, and the wizard shows it pre-filled; choosing another preset
+  on top of a template replaces the template's size and keeps its margins and
+  safe area (`gutterpress new --template paper --preset book` used to keep
+  US Letter).
+- **Book setup > Details edits the page size and the margins.** Choose
+  DriveThruRPG print, Trade paperback or Other size (a common size, or one
+  you type), and type the top, bottom, inside and outside margins in inches:
+  a change is recorded in the manifest at once and wins over any margin a
+  look sets. A book that has not set margins yet shows the ones its
+  stylesheets give it (or the 1in default) and says so. Nothing is written to
+  a stylesheet any more, and nothing can drift: the "Use this size in the
+  stylesheet too" note is gone.
 - **Book setup's Details tab saves as you go.** There is no Save button and no
   "saved" toast: a choice (page size, print checks, chapter order) is written
   at once, a title or author when you leave the field or press Enter, and
   anything still pending when you switch tabs or close the panel. Each write
   touches only what changed, so renaming a book no longer rewrites its
   `targets:` or its page size; a book with no `targets:` key keeps following
-  its preset's default until a service is ticked or unticked. When the
-  stylesheet and the manifest disagree on the size, Details offers **Use this
-  size in the stylesheet too**.
+  its preset's default until a service is ticked or unticked.
 - **Plainer words in the new-book wizard and Book setup.** Step 3 asks "What
   size should the pages be?" (DriveThruRPG print, Trade paperback, Other
   size) and "Check the finished PDF against a print service's rules?";

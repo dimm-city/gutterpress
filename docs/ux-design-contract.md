@@ -120,7 +120,8 @@ gutterpress/
 │   │                                                    Looks & features / Design / Backup; every
 │   │                                                    tab saves as you go)
 │   ├── Details                                SHIPPED  (DetailsSection: title, authors, chapters,
-│   │                                                    page size, print checks; no Save button)
+│   │                                                    page size, margins, print checks; no Save
+│   │                                                    button)
 │   ├── Looks & features (id `extensions`)     SHIPPED  (ExtensionsSection: ONE list + one Add area,
 │   │                                                    ExtensionsSectionController, #265)
 │   ├── Design                                 SHIPPED  (DesignSection: every enabled look's :root
@@ -470,10 +471,11 @@ From print tools, keep: page navigation for long documents; non-destructive,
 always-revertible CSS overrides; preflight before export. Avoid: tool-mode
 switching (markdown-first, not canvas-first); floating panels that lose
 position; modal dialogs for live-editable properties (page size/margins);
-exposing low-level engine concepts to non-technical users. The bundled looks
-expose their page margins as two tokens (`--page-margin-top-bottom`,
-`--page-margin-sides`, read by each look's `@page`); the Design tab edits
-them like any other setting, so margins never need a hand-written rule.
+exposing low-level engine concepts to non-technical users. The page size and
+margins are the manifest's (`preset:`, `page:` with `width`, `height` and
+`margin`), edited on Book setup > Details in inches with no stylesheet
+involved; a look never sets either, so margins never need a hand-written
+rule.
 
 **Preflight (PROPOSED — tracked in #105; engine is SHIPPED):** the panel is a desktop
 UI over the **existing check registry** (`packages/cli/src/checks/`: font
@@ -795,10 +797,11 @@ left by an older version). Every look row, in the list and in Add > Built in,
 shows a **rendered thumbnail** of its CSS over a fixed sample; there is no
 hover preview.
 
-A bundled look never sets the page size; the manifest (Setup > Details) does,
-and `assemble.ts` writes it as `@page { size }` ahead of every stylesheet. A
-look from elsewhere that sets a size wins until the page size is changed in
-Details, which writes it to the book's stylesheet.
+A bundled look never sets the page size or margins; the manifest (Setup >
+Details) does, and `assemble.ts` writes them as the `@page` rule after every
+stylesheet, so a look from elsewhere that sets a size is overridden (the CSS
+check reports it) and its margins hold only until the book records its own
+(`page.margin`). Details writes the manifest and nothing else.
 
 **Design tab.** The guided token editor (`DesignSection`, heading "Fonts,
 colors & sizes") names the look(s) it is editing and shows the `:root`

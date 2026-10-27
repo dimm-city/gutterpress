@@ -87,7 +87,6 @@
 h1 { string-set: chapter-title content(); }
 
 @page {
-  size: 8.5in 11in;
   margin: 0.875in 0.875in 1in;
   background: #ffffff; /* --color-paper */
 

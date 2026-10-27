@@ -304,16 +304,26 @@ export interface ProjectConfigFields {
   targets?: string[];
 }
 
+/** Page margins in points (mirrors the lib's `PageMargin`); `inside` is the binding edge. */
+export interface PageMargins {
+  top: number;
+  bottom: number;
+  inside: number;
+  outside: number;
+}
+
 /**
- * A book's page size as recorded (mirrors the lib's `PageSetup`): the manifest's
- * preset + validation bounds, and what the stylesheet's plain `@page` prints at.
- * Sizes are points (72pt = 1in).
+ * A book's page geometry as recorded (mirrors the lib's `PageSetup`): the
+ * manifest's preset + bounds, which are the size the book prints at and is
+ * checked against, and the margins it prints with. Points (72pt = 1in).
  */
 export interface PageSetup {
   /** null when the manifest names a preset the app doesn't know. */
   preset: 'dtrpg' | 'book' | 'custom' | null;
   bounds: { width: number; height: number; tolerance: number } | null;
-  css: { width: number; height: number; file: string } | null;
+  margins: PageMargins;
+  /** Where the margins come from: the manifest (the author's own), a stylesheet (a look's design) or the 1in default. */
+  marginsFrom: 'manifest' | 'stylesheet' | 'default';
 }
 
 /** What the author picks (mirrors the lib's `PageSizeChoice`). */
@@ -321,6 +331,8 @@ export interface PageSizeChoice {
   preset: 'dtrpg' | 'book' | 'custom';
   /** Required for `custom`; the other presets own their size. */
   page?: { width: number; height: number };
+  /** Written to the manifest's `page.margin` when given; otherwise the recorded margins stay. */
+  margins?: PageMargins;
 }
 
 export interface DirEntry {
@@ -689,10 +701,10 @@ export const api = {
   },
 
   pageSize: {
-    /** Read the book's page size back from its manifest and stylesheet. */
+    /** Read the book's page geometry back from its manifest (margins it does not set: from its stylesheets). */
     read: (projectDir: string) =>
       post<PageSetup>('/api/page-size/read', { projectDir }),
-    /** Change it: manifest preset + bounds and the stylesheet's `@page` size, together. */
+    /** Change it in the manifest: preset + bounds, and the margins when given. */
     set: (projectDir: string, choice: PageSizeChoice) =>
       post<PageSetup>('/api/page-size/set', { projectDir, choice }),
   },

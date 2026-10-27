@@ -47,11 +47,11 @@ on npm.
 
 ![Book setup, Looks & features tab: a feature and a look in the list, and the built-in looks and features to add](images/book-settings-extensions.jpg)
 
-## Fine-tune fonts, colors, sizes and margins
+## Fine-tune fonts, colors and sizes
 
 The **Design** tab names the look it is editing and shows its settings under **Fonts, colors &
-sizes**, grouped into **Fonts**, **Colors**, **Sizes & numbers** and **Other**. The page margins
-are there too (**Top & bottom margins** and **Side margins**) for every built-in look. Change a
+sizes**, grouped into **Fonts**, **Colors**, **Sizes & numbers** and **Other**. (The page size and
+margins are on the Details tab, below.) Change a
 value and Gutterpress saves it to your book's own stylesheet (`styles/book.css` unless you chose
 another), never to the look itself; the preview shows the change when you close Book setup.
 **Revert** undoes this session's changes; the undo arrow beside a value you changed earlier offers
@@ -66,18 +66,23 @@ Under **Stylesheets** on the **Design** tab, each of the book's stylesheets can 
 off, and **Edit** opens it in the editor. The [styling chapter](https://gutterpress.dimm.city/docs/styling-theming/)
 covers what a stylesheet can do.
 
-## Change the page size
+## Change the page size and margins
 
-Page size is on the **Details** tab (see above), and you can change it at any time. Choosing a
-size updates two things together: the size your book prints at (the `@page` rule in your
-stylesheet, edited in place, with the rest of the file left exactly as it was) and the size your
-finished PDF is checked against. If your stylesheet has no page size yet, a small page rule is
-added to the end of your book's own stylesheet. If a stylesheet and the book disagree, Details
-says so and **Use this size in the stylesheet too** makes them match. The built-in looks never
-set a page size of their own, so the size you choose here is the size you get.
+The page size and the margins are on the **Details** tab (see above), and you can change them at
+any time. Both live in your book's manifest and nowhere else: the size you choose is the size your
+book prints at and the size your finished PDF is checked against, and no stylesheet is edited.
 
-Choosing **DriveThruRPG print** or **Trade paperback** uses that preset's page size and print
-checks. A book that has never chosen its print checks follows the preset (DriveThruRPG print
+Under **Page size**, choosing **DriveThruRPG print** or **Trade paperback** uses that preset's page
+size and print checks; **Other size** takes a common size (Letter, A4, Digest…) or a width and height
+you type. A book that has never chosen its print checks follows the preset (DriveThruRPG print
 checks against DriveThruRPG); once you tick or untick a service, the choice is yours.
+
+Under **Margins**, type the top, bottom, inside and outside margins in inches (inside is the edge at
+the binding). A change is saved as soon as you leave the field, and your margins win over any a
+look sets. A book that has not set its own margins yet shows the ones its look gives it, or the
+1 in default, and says so; change one and they become yours. The built-in looks set neither a page
+size nor margins, so what you choose here is what you get.
+
+![Book setup, Details tab: the page size choices and the four margin fields](images/book-settings-page.jpg)
 
 Next: [add plugins and formatting extras](06-plugins.md).

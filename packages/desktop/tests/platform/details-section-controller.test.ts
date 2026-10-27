@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { DetailsSectionController } from "../../src/lib/routes/details-section-controller.svelte";
-import type { PageSetup, PageSizeChoice, ProjectConfigFields } from "../../src/lib/api";
+import type { PageMargins, PageSetup, PageSizeChoice, ProjectConfigFields } from "../../src/lib/api";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests (same shim as design-section-controller.test.ts).
@@ -18,10 +18,16 @@ const spy = (): ((...a: unknown[]) => void) & Spy => {
 /** Flush the microtask queue so a `void flushPendingSave()` settles. */
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
+/** The book template's margins (clean-book's old values), recorded in the manifest. */
+const BOOK_MARGINS: PageMargins = { top: 61.2, bottom: 61.2, inside: 54, outside: 54 };
+/** The engine's 1in, for a book that sets none and whose stylesheets set none. */
+const INCH: PageMargins = { top: 72, bottom: 72, inside: 72, outside: 72 };
+
 const BOOK_SETUP: PageSetup = {
   preset: "book",
   bounds: { width: 432, height: 648, tolerance: 0.5 },
-  css: { width: 432, height: 648, file: "styles/book.css" },
+  margins: BOOK_MARGINS,
+  marginsFrom: "manifest",
 };
 
 interface Harness {
@@ -45,6 +51,8 @@ interface Harness {
   holdPageRead: Promise<void> | null;
   /** When set, `writePageSetup` waits for it (a page write in flight). */
   holdPageWrite: Promise<void> | null;
+  /** When set, the next `writePageSetup` rejects. */
+  failNextPageWrite: boolean;
 }
 
 function make(
@@ -67,6 +75,7 @@ function make(
     releaseWrite: null,
     holdPageRead: null,
     holdPageWrite: null,
+    failNextPageWrite: false,
   } as Harness;
   h.ctrl = new DetailsSectionController({
     projectDir: () => h.projectDir,
@@ -103,11 +112,18 @@ function make(
     writePageSetup: async (_d, choice) => {
       h.pageWrites.push(choice);
       if (h.holdPageWrite) await h.holdPageWrite;
+      if (h.failNextPageWrite) {
+        h.failNextPageWrite = false;
+        throw new Error("read-only folder");
+      }
       const page = choice.page ?? (choice.preset === "dtrpg" ? { width: 621, height: 810 } : { width: 432, height: 648 });
+      // The lib: margins given are recorded; otherwise what was recorded stays.
+      const before = h.pageSetup ?? BOOK_SETUP;
       h.pageSetup = {
         preset: choice.preset,
         bounds: { ...page, tolerance: 0.5 },
-        css: { ...page, file: "styles/book.css" },
+        margins: choice.margins ?? before.margins,
+        marginsFrom: choice.margins ? "manifest" : before.marginsFrom,
       };
       return h.pageSetup;
     },
@@ -357,7 +373,7 @@ test("toggling a target writes only { targets }, empty included", async () => {
 test("a book with no targets: key and preset dtrpg shows DriveThruRPG checked, and a title change writes no targets", async () => {
   const h = make({
     fields: { title: "T" },
-    pageSetup: { preset: "dtrpg", bounds: { width: 621, height: 810, tolerance: 0.5 }, css: null },
+    pageSetup: { preset: "dtrpg", bounds: { width: 621, height: 810, tolerance: 0.5 }, margins: INCH, marginsFrom: "default" },
   });
   await h.ctrl.loadDetails();
   expect(h.ctrl.targetsDraft).toEqual(["dtrpg"]);
@@ -389,15 +405,17 @@ test("changing the preset on a book with no targets: key reseeds the default tar
 
 // ── Page size (#357) ─────────────────────────────────────────────────────────
 
-test("loadDetails reads the page size back into the drafts", async () => {
+test("loadDetails reads the page size and the margins (in inches) back into the drafts", async () => {
   const h = make();
   await h.ctrl.loadDetails();
   expect(h.ctrl.presetDraft).toBe("book");
   expect(h.ctrl.sizeChoice).toBe("trade");
+  expect(h.ctrl.marginDrafts).toEqual({ top: "0.85", bottom: "0.85", inside: "0.75", outside: "0.75" });
   expect(h.ctrl.pageDirty).toBe(false);
+  expect(h.ctrl.marginsIncomplete).toBe(false);
 
   const odd = make({
-    pageSetup: { preset: "custom", bounds: { width: 360, height: 504, tolerance: 0.5 }, css: null },
+    pageSetup: { preset: "custom", bounds: { width: 360, height: 504, tolerance: 0.5 }, margins: INCH, marginsFrom: "default" },
   });
   await odd.ctrl.loadDetails();
   expect(odd.ctrl.presetDraft).toBe("custom");
@@ -417,17 +435,104 @@ test("choosing another preset writes the page size once, and nothing else", asyn
   expect(h.ctrl.detailsSaveStatus).toBe("saved");
 });
 
-test("a title change never writes the page size, even when the stylesheet drifted; the drift note's action does", async () => {
-  const h = make({ pageSetup: { ...BOOK_SETUP, css: { width: 612, height: 792, file: "styles/book.css" } } });
+test("a title change never writes the page geometry, and margins the author did not touch are never sent", async () => {
+  const h = make({ pageSetup: { ...BOOK_SETUP, margins: INCH, marginsFrom: "stylesheet" } });
   await h.ctrl.loadDetails();
-  expect(h.ctrl.pageDirty).toBe(true);
+  expect(h.ctrl.pageDirty).toBe(false);
   h.ctrl.titleDraft = "Renamed";
   await h.ctrl.flushPendingSave();
   expect(h.writeCalls.map((w) => w.updates)).toEqual([{ title: "Renamed" }]);
   expect(h.pageWrites).toEqual([]);
-  await h.ctrl.matchPageSize();
-  expect(h.pageWrites).toEqual([{ preset: "book" }]);
+  // A preset change writes the preset alone: the stylesheet's margins stay the stylesheet's.
+  h.ctrl.setPreset("dtrpg");
+  await settle();
+  expect(h.pageWrites).toEqual([{ preset: "dtrpg" }]);
+  expect(h.ctrl.pageSetup?.marginsFrom).toBe("stylesheet");
+});
+
+// ── Margins ──────────────────────────────────────────────────────────────────
+
+test("a margin typed in inches is recorded in points with the current preset, once its field reports change", async () => {
+  const h = make({ pageSetup: { ...BOOK_SETUP, margins: INCH, marginsFrom: "default" } });
+  await h.ctrl.loadDetails();
+  expect(h.ctrl.marginDrafts).toEqual({ top: "1", bottom: "1", inside: "1", outside: "1" });
+  h.ctrl.marginDrafts.inside = "1.25";
+  h.ctrl.touchMargins();
+  await h.ctrl.flushPendingSave({ margins: true });
+  expect(h.pageWrites).toEqual([{ preset: "book", margins: { top: 72, bottom: 72, inside: 90, outside: 72 } }]);
+  expect(h.writeCalls).toEqual([]);
+  expect(h.ctrl.pageSetup?.marginsFrom).toBe("manifest");
   expect(h.ctrl.pageDirty).toBe(false);
+  expect(h.ctrl.detailsSaveStatus).toBe("saved");
+  // Retyping the recorded value is not a change.
+  h.ctrl.marginDrafts.inside = "1.25";
+  await h.ctrl.flushPendingSave({ margins: true });
+  expect(h.pageWrites).toHaveLength(1);
+});
+
+test("a custom size and the margins travel together; an incomplete margin holds the page write and saves the rest", async () => {
+  const h = make();
+  await h.ctrl.loadDetails();
+  h.ctrl.setPreset("custom");
+  await settle();
+  h.pageWrites.length = 0;
+  h.ctrl.marginDrafts.top = "";
+  h.ctrl.touchMargins();
+  h.ctrl.titleDraft = "Renamed";
+  await h.ctrl.flushPendingSave({ margins: true });
+  expect(h.ctrl.marginsIncomplete).toBe(true);
+  expect(h.ctrl.detailsError).toBeNull();
+  expect(h.writeCalls.map((w) => w.updates)).toEqual([{ title: "Renamed" }]);
+  expect(h.pageWrites).toEqual([]);
+  h.ctrl.marginDrafts.top = "0.5";
+  h.ctrl.sizeChoice = "a4";
+  await h.ctrl.flushPendingSave({ page: true });
+  expect(h.pageWrites).toEqual([
+    { preset: "custom", page: { width: 595, height: 842 }, margins: { ...BOOK_MARGINS, top: 36 } },
+  ]);
+  expect(h.ctrl.marginsIncomplete).toBe(false);
+});
+
+test("a negative or non-numeric margin counts as incomplete, never as zero", async () => {
+  const h = make();
+  await h.ctrl.loadDetails();
+  h.ctrl.marginDrafts.outside = "-1";
+  h.ctrl.touchMargins();
+  await h.ctrl.flushPendingSave({ margins: true });
+  expect(h.ctrl.marginsIncomplete).toBe(true);
+  expect(h.pageWrites).toEqual([]);
+  h.ctrl.marginDrafts.outside = "0";
+  await h.ctrl.flushPendingSave({ margins: true });
+  expect(h.pageWrites).toEqual([{ preset: "book", margins: { ...BOOK_MARGINS, outside: 0 } }]);
+});
+
+test("margins typed and not yet committed (Escape before the fields' change) are saved by the close flush", async () => {
+  const h = make();
+  await h.ctrl.loadDetails();
+  h.ctrl.marginDrafts.top = "1";
+  h.ctrl.touchMargins();
+  h.ctrl.marginDrafts.bottom = "1";
+  h.ctrl.touchMargins();
+  await h.ctrl.flushPendingSave(); // close: no `change` ever fired
+  expect(h.pageWrites).toEqual([{ preset: "book", margins: { ...BOOK_MARGINS, top: 72, bottom: 72 } }]);
+});
+
+test("a failed margin write keeps the typed margins pending, and the next flush retries them", async () => {
+  const h = make();
+  await h.ctrl.loadDetails();
+  h.failNextPageWrite = true;
+  h.ctrl.marginDrafts.top = "1";
+  h.ctrl.touchMargins();
+  expect(await h.ctrl.flushPendingSave({ margins: true })).toBe(false);
+  expect(h.ctrl.detailsError).toContain("read-only folder");
+  expect(h.ctrl.marginDrafts.top).toBe("1");
+  expect(h.ctrl.pageSetup?.margins).toEqual(BOOK_MARGINS);
+  expect(await h.ctrl.flushPendingSave()).toBe(true);
+  expect(h.pageWrites.map((w) => w.margins)).toEqual([
+    { ...BOOK_MARGINS, top: 72 },
+    { ...BOOK_MARGINS, top: 72 },
+  ]);
+  expect(h.ctrl.detailsSaveStatus).toBe("saved");
 });
 
 test("a custom size is sent in points, from a named size or typed inches, when its fields report change", async () => {
@@ -472,7 +577,7 @@ test("an incomplete custom size saves the other fields and skips the page write 
 
 test("a custom size typed and not yet committed (Escape before the fields' change) is saved by the close flush", async () => {
   const h = make({
-    pageSetup: { preset: "custom", bounds: { width: 360, height: 504, tolerance: 0.5 }, css: null },
+    pageSetup: { preset: "custom", bounds: { width: 360, height: 504, tolerance: 0.5 }, margins: INCH, marginsFrom: "default" },
   });
   await h.ctrl.loadDetails();
   // What the view does on each keystroke: the bound value, then `input`.
@@ -490,7 +595,7 @@ test("a custom size typed and not yet committed (Escape before the fields' chang
 
 test("a size typed while the previous size is being written stays as typed, and the close flush writes it", async () => {
   const h = make({
-    pageSetup: { preset: "custom", bounds: { width: 360, height: 504, tolerance: 0.5 }, css: null },
+    pageSetup: { preset: "custom", bounds: { width: 360, height: 504, tolerance: 0.5 }, margins: INCH, marginsFrom: "default" },
   });
   await h.ctrl.loadDetails();
   let release!: () => void;

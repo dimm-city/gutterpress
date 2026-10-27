@@ -2,9 +2,16 @@
  * {{NAME}} — 5. PAGE RULES
  *
  * OWNS
- *   The CSS `@page` at-rules: the sheet's own geometry (margins), the margin
- *   boxes that carry running heads and folios, and the named-page wiring that
- *   connects a markdown `@page .name` to a CSS `@page name`.
+ *   The CSS `@page` at-rules: the margin boxes that carry running heads and
+ *   folios, and the named-page wiring that connects a markdown `@page .name`
+ *   to a CSS `@page name`.
+ *
+ *   NOT the page geometry. The trim size and the margins are the BOOK's,
+ *   recorded in its manifest (`preset:`, `page:` — Setup > Details in the
+ *   app) and written by the build after every stylesheet, so a `size` here
+ *   would be ignored (and reported) and a `margin` here would hold only
+ *   until the author sets margins in the app. Design the furniture below to
+ *   sit in whatever margin the book gives it.
  *
  *   This is standard CSS Paged Media and GCPM. Everything here is what the
  *   spec says, not something Gutterpress invented — `string-set`,
@@ -26,39 +33,9 @@
  * ======================================================================== */
 
 @layer pages {
-  /* -------------------------------------------------------------------------
-   * TRIM SIZE. This is the physical size of the printed page, and it has to
-   * be declared in CSS: with no `size:` anywhere, Chromium falls back to US
-   * Letter and prints a book at the wrong trim with no error at all. That is
-   * the single most expensive silent failure in this whole stack, which is
-   * why it is the first thing in the file.
-   *
-   * KEEP IT IN STEP WITH THE MANIFEST. The book's `preset:`/`page:` is what
-   * validation, the publish targets and the PDF/X boxes measure against, and
-   * `gutterpress validate` fails the build when the produced PDF does not
-   * match it. So the manifest is the source of truth and this line is the
-   * instruction that satisfies it — change one and change the other.
-   *
-   * 6in × 9in is the neutral trade-book size the `book` preset declares.
-   * Common alternatives: 5.5in 8.5in (digest), 8.5in 11in (US Letter),
-   * 210mm 297mm (A4).
-   *
-   * Deliberately a literal, not `var(--…)`. A custom property does resolve
-   * here, but an indirection whose failure mode is "silently prints Letter"
-   * is not worth the tidiness.
-   * ---------------------------------------------------------------------- */
-  @page {
-    size: 6in 9in;
-  }
-
-  /* Mirrored margins for a bound book: the inner edge needs the extra room,
-     and which edge is "inner" flips every page. */
+  /* The furniture of a bound book: the folio on the outer corner and the
+     running head, which swap sides with the page. */
   @page :left {
-    margin: var(--{{PREFIX}}page-margin-top)
-            var(--{{PREFIX}}page-margin-inner)
-            var(--{{PREFIX}}page-margin-bottom)
-            var(--{{PREFIX}}page-margin-outer);
-
     @bottom-left {
       content: counter(page);
       font-family: var(--{{PREFIX}}font-body);
@@ -82,11 +59,6 @@
   }
 
   @page :right {
-    margin: var(--{{PREFIX}}page-margin-top)
-            var(--{{PREFIX}}page-margin-outer)
-            var(--{{PREFIX}}page-margin-bottom)
-            var(--{{PREFIX}}page-margin-inner);
-
     @bottom-right {
       content: counter(page);
       font-family: var(--{{PREFIX}}font-body);

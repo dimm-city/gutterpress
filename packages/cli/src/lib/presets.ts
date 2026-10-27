@@ -116,6 +116,10 @@ export const DTRPG_PRESET: VendorPreset = {
     // declared so a book inherits its binding allowance visibly (#401); a
     // manifest `page.gutter` still merges over it.
     gutter: 36,
+    // No preset margins: a book's margins are its own (`page.margin`, which
+    // Setup > Details writes) or its stylesheets'. Listed so a manifest value
+    // merges in — resolveConfig only merges keys a preset has.
+    margin: undefined,
   },
   ink: {
     // SPEC: total ink coverage must not exceed 240%.
@@ -245,6 +249,8 @@ export const BOOK_PRESET: VendorPreset = {
     artSafe: undefined,
     // The binding allowance is too; listed so a manifest `page.gutter` merges in.
     gutter: undefined,
+    // No preset margins (see DTRPG_PRESET); listed so a manifest `page.margin` merges in.
+    margin: undefined,
   },
   ink: {
     maxTac: 400,

@@ -3,18 +3,12 @@ import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import {
-  formatPageSize,
-  pageSizeForChoice,
-  readPageSetup,
-  readPageSizeFromCss,
-  setPageSetup,
-  setPageSizeInCss,
-} from "./page-size.ts";
+import { formatPageSize, pageSizeForChoice, readPageSetup, setPageSetup } from "./page-size.ts";
 import { scaffoldProject } from "./project-scaffold.ts";
 import { loadManifest, resolveConfig } from "./manifest.ts";
 
 const LETTER = { width: 612, height: 792 };
+const INCH = { top: 72, bottom: 72, inside: 72, outside: 72 };
 
 async function book(css: string | null, manifest: string[] = []): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-pagesize-"));
@@ -28,25 +22,12 @@ async function book(css: string | null, manifest: string[] = []): Promise<string
   return dir;
 }
 
-// ── CSS read / format ──────────────────────────────────────────────────────
+const manifestOf = (dir: string) => readFile(path.join(dir, "manifest.yaml"), "utf8");
 
 test("formatPageSize prints inches when exact and points otherwise", () => {
   expect(formatPageSize(LETTER)).toBe("8.5in 11in");
   expect(formatPageSize({ width: 621, height: 810 })).toBe("8.625in 11.25in");
   expect(formatPageSize({ width: 595, height: 842 })).toBe("595pt 842pt");
-});
-
-test("readPageSizeFromCss reads the last plain @page size and ignores named/pseudo pages", () => {
-  const css = `
-    @page { size: A4; margin: 1in }
-    @page :first { size: 1in 1in }
-    @page cover { size: 2in 2in }
-    @page { size: 6in 9in }
-  `;
-  expect(readPageSizeFromCss(css)).toEqual({ width: 432, height: 648 });
-  expect(readPageSizeFromCss("body { color: red }")).toBeNull();
-  expect(readPageSizeFromCss("@page { margin: 1in }")).toBeNull();
-  expect(readPageSizeFromCss("@page {")).toBeNull();
 });
 
 test("pageSizeForChoice: presets own their size, custom needs a positive trim", () => {
@@ -58,203 +39,59 @@ test("pageSizeForChoice: presets own their size, custom needs a positive trim", 
   expect(() => pageSizeForChoice({ preset: "a4" as never })).toThrow(/Unknown preset/);
 });
 
-// ── CSS rewrite ────────────────────────────────────────────────────────────
+// ── Read ───────────────────────────────────────────────────────────────────
 
-test("setPageSizeInCss rewrites the size in place and keeps every other byte", () => {
-  const css =
-    "/* keep me */\r\nbody   { color: red; }\n\n@page {\n  margin: 0.5in; /* m */\n  size:   6in 9in  !important;\n}\n.x{a:b}";
-  const out = setPageSizeInCss(css, LETTER);
-  expect(out).toBe(css.replace("6in 9in", "8.5in 11in"));
-});
-
-test("setPageSizeInCss leaves the text alone when the size already matches", () => {
-  const css = "@page { size: letter; margin: 1in }\n";
-  expect(setPageSizeInCss(css, LETTER)).toBe(css);
-});
-
-test("setPageSizeInCss only changes the winning plain @page, not named or :first pages", () => {
-  const css = "@page :first { size: 1in 1in }\n@page { size: 6in 9in }\n@page cover { size: 2in 2in }\n";
-  expect(setPageSizeInCss(css, LETTER)).toBe(
-    "@page :first { size: 1in 1in }\n@page { size: 8.5in 11in }\n@page cover { size: 2in 2in }\n",
-  );
-});
-
-test("setPageSizeInCss adds a minimal @page when none sets a size", () => {
-  expect(setPageSizeInCss("", LETTER)).toBe("@page {\n  size: 8.5in 11in;\n}\n");
-  expect(setPageSizeInCss("body { margin: 0 }", LETTER)).toBe(
-    "body { margin: 0 }\n\n@page {\n  size: 8.5in 11in;\n}\n",
-  );
-  // A margin-only @page is not a size: a new rule is appended, the old stays.
-  expect(setPageSizeInCss("@page { margin: 1in }\n", LETTER)).toBe(
-    "@page { margin: 1in }\n\n@page {\n  size: 8.5in 11in;\n}\n",
-  );
-});
-
-test("setPageSizeInCss refuses CSS that does not parse", () => {
-  expect(() => setPageSizeInCss("@page { size: 6in 9in", LETTER)).toThrow();
-});
-
-// ── Project read / write ───────────────────────────────────────────────────
-
-test("setPageSetup custom updates the @page size and the manifest bounds together", async () => {
-  const css = "/* mine */\n@page { size: 6in 9in; margin: 1in }\np { color: blue }\n";
-  const dir = await book(css, ["preset: book"]);
-  try {
-    const setup = await setPageSetup(dir, { preset: "custom", page: { width: 595, height: 842 } });
-    expect(setup.preset).toBe("custom");
-    expect(setup.bounds).toEqual({ width: 595, height: 842, tolerance: 0.5 });
-    expect(setup.css).toEqual({ width: 595, height: 842, file: "styles/book.css" });
-
-    expect(await readFile(path.join(dir, "styles", "book.css"), "utf8")).toBe(
-      css.replace("6in 9in", "595pt 842pt"),
-    );
-    const manifest = await readFile(path.join(dir, "manifest.yaml"), "utf8");
-    expect(manifest).toContain("preset: custom");
-    expect(manifest).toMatch(/page:\s+width: 595\s+height: 842/);
-    // The manifest and the stylesheet resolve to the same page.
-    const config = resolveConfig({}, await loadManifest(dir));
-    expect(config.page.width).toBe(595);
-    expect(config.page.height).toBe(842);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("setPageSetup to a preset drops a custom page: block and uses the preset's size", async () => {
-  const dir = await book("@page { size: 5in 7in }\n", [
-    "preset: custom",
+test("readPageSetup reports the preset, the bounds and the manifest's margins", async () => {
+  const dir = await book("@page { size: 5.5in 8.5in; margin: 0.4in }\n", [
+    "preset: book",
     "page:",
-    "  width: 360",
-    "  height: 504",
-    "  tolerance: 2",
+    "  margin:",
+    "    top: 61.2",
+    "    bottom: 61.2",
+    "    inside: 54",
+    "    outside: 54",
   ]);
   try {
-    const setup = await setPageSetup(dir, { preset: "dtrpg" });
-    expect(setup.preset).toBe("dtrpg");
-    expect(setup.bounds).toEqual({ width: 621, height: 810, tolerance: 0.5 });
-    expect(await readFile(path.join(dir, "styles", "book.css"), "utf8")).toBe(
-      "@page { size: 8.625in 11.25in }\n",
-    );
-    const manifest = await readFile(path.join(dir, "manifest.yaml"), "utf8");
-    expect(manifest).toContain("preset: dtrpg");
-    expect(manifest).not.toContain("page:");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("setPageSetup keeps the page: block's print-area keys across a size change and a preset round trip", async () => {
-  const dir = await book("@page { size: 5in 7in }\n", [
-    "preset: custom",
-    "page:",
-    "  width: 360",
-    "  height: 504",
-    "  bleed: 9",
-    "  safe: 36",
-    "  artSafe: 18",
-    "  gutter: 54",
-  ]);
-  const manifest = () => readFile(path.join(dir, "manifest.yaml"), "utf8");
-  try {
-    // A new custom size rewrites width and height in place and nothing else.
-    await setPageSetup(dir, { preset: "custom", page: LETTER });
-    expect(await manifest()).toMatch(
-      /page:\s+width: 612\s+height: 792\s+bleed: 9\s+safe: 36\s+artSafe: 18\s+gutter: 54\s/,
-    );
-    // A preset owns the bounds: those keys go, the print area stays.
-    await setPageSetup(dir, { preset: "dtrpg" });
-    const asPreset = await manifest();
-    expect(asPreset).toMatch(/page:\s+bleed: 9\s+safe: 36\s+artSafe: 18\s+gutter: 54\s/);
-    expect(asPreset).not.toMatch(/width:|height:|tolerance:/);
-    expect((await readPageSetup(dir)).bounds).toEqual({ width: 621, height: 810, tolerance: 0.5 });
-    // Back to custom: the bounds return beside the untouched print area.
-    await setPageSetup(dir, { preset: "custom", page: LETTER });
-    expect(await manifest()).toMatch(
-      /page:\s+bleed: 9\s+safe: 36\s+artSafe: 18\s+gutter: 54\s+width: 612\s+height: 792\s/,
-    );
-    expect(resolveConfig({}, await loadManifest(dir)).page.gutter).toBe(54);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("setPageSetup treats an empty page: key as no block", async () => {
-  const dir = await book("@page { size: 6in 9in }\n", ["preset: custom", "page:"]);
-  const manifest = path.join(dir, "manifest.yaml");
-  try {
-    await setPageSetup(dir, { preset: "custom", page: LETTER });
-    expect(await readFile(manifest, "utf8")).toMatch(/page:\s+width: 612\s+height: 792\s/);
-    await writeFile(manifest, "title: T\nstyles:\n  - styles/book.css\npreset: custom\npage:\n", "utf8");
-    await setPageSetup(dir, { preset: "book" });
-    expect(await readFile(manifest, "utf8")).not.toContain("page:");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("setPageSetup keeps a hand-set tolerance and the manifest's comments", async () => {
-  const dir = await book("@page { size: 6in 9in }\n", [
-    "# keep this comment",
-    "preset: custom",
-    "page:",
-    "  width: 432",
-    "  height: 648",
-    "  tolerance: 2",
-  ]);
-  try {
-    const setup = await setPageSetup(dir, { preset: "custom", page: LETTER });
-    expect(setup.bounds).toEqual({ ...LETTER, tolerance: 2 });
-    expect(await readFile(path.join(dir, "manifest.yaml"), "utf8")).toContain("# keep this comment");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("setPageSetup adds an @page rule to the book's own stylesheet when none sets a size", async () => {
-  const dir = await book("/** Your book's own styles. */\n", ["preset: book"]);
-  try {
-    await setPageSetup(dir, { preset: "book" });
-    expect(await readFile(path.join(dir, "styles", "book.css"), "utf8")).toBe(
-      "/** Your book's own styles. */\n\n@page {\n  size: 6in 9in;\n}\n",
-    );
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("setPageSetup creates styles/book.css and lists it when the book has no stylesheet", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-pagesize-"));
-  await writeFile(path.join(dir, "manifest.yaml"), "title: T\npreset: book\n", "utf8");
-  try {
-    const setup = await setPageSetup(dir, { preset: "custom", page: LETTER });
-    expect(setup.css).toEqual({ ...LETTER, file: "styles/book.css" });
-    expect(await readFile(path.join(dir, "manifest.yaml"), "utf8")).toMatch(/styles:\s+- styles\/book\.css/);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("setPageSetup changes nothing when the choice is invalid or the CSS does not parse", async () => {
-  const bad = "@page { size: 6in 9in";
-  const dir = await book(bad, ["preset: book"]);
-  try {
-    await expect(setPageSetup(dir, { preset: "custom" })).rejects.toThrow(/custom page size/);
-    await expect(setPageSetup(dir, { preset: "dtrpg" })).rejects.toThrow(/CSS error/);
-    expect(await readFile(path.join(dir, "styles", "book.css"), "utf8")).toBe(bad);
-    expect(await readFile(path.join(dir, "manifest.yaml"), "utf8")).toContain("preset: book");
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("readPageSetup reports preset, bounds and the stylesheet size", async () => {
-  const dir = await book("@page { size: 5.5in 8.5in }\n", ["preset: book"]);
-  try {
+    // The stylesheet's size and margin are not consulted: the manifest decides.
     expect(await readPageSetup(dir)).toEqual({
       preset: "book",
       bounds: { width: 432, height: 648, tolerance: 0.5 },
-      css: { width: 396, height: 612, file: "styles/book.css" },
+      margins: { top: 61.2, bottom: 61.2, inside: 54, outside: 54 },
+      marginsFrom: "manifest",
     });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("without page.margin the margins are the stylesheets' — a right-hand page's, inside at its left — else the engine's 1in", async () => {
+  const mirrored = await book(
+    "@page { margin: 1in }\n@page :left { margin: 0.5in 0.9in 0.6in 0.7in }\n@page :right { margin: 0.5in 0.7in 0.6in 0.9in }\n",
+    ["preset: book"],
+  );
+  const plain = await book("@page { margin: 0.5in 0.75in }\n", ["preset: book"]);
+  const none = await book("body { color: red }\n", ["preset: book"]);
+  try {
+    expect(await readPageSetup(mirrored)).toMatchObject({
+      margins: { top: 36, bottom: 43.2, inside: 64.8, outside: 50.4 },
+      marginsFrom: "stylesheet",
+    });
+    expect(await readPageSetup(plain)).toMatchObject({
+      margins: { top: 36, bottom: 36, inside: 54, outside: 54 },
+      marginsFrom: "stylesheet",
+    });
+    expect(await readPageSetup(none)).toMatchObject({ margins: INCH, marginsFrom: "default" });
+  } finally {
+    for (const dir of [mirrored, plain, none]) await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a bundled look's margins are read too, and a partial page.margin does not count as the manifest's", async () => {
+  // The bundled looks set no @page margin, so a book that lists one and sets
+  // none itself prints with the default; the book's own sheet still wins.
+  const dir = await book("", ["preset: book", "extensions:", "  - clean-book", "page:", "  margin:", "    top: 10"]);
+  try {
+    expect(await readPageSetup(dir)).toMatchObject({ margins: INCH, marginsFrom: "default" });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -268,13 +105,150 @@ test("readPageSetup defaults an undeclared preset to dtrpg and flags an unknown 
     const setup = await readPageSetup(dir);
     expect(setup.preset).toBeNull();
     expect(setup.bounds).toBeNull();
-    expect(setup.css).toBeNull();
+    expect(setup.marginsFrom).toBe("default");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("a freshly scaffolded custom book reads back its size and can be resized", async () => {
+// ── Write ──────────────────────────────────────────────────────────────────
+
+test("setPageSetup custom writes the manifest bounds and never touches a stylesheet", async () => {
+  const css = "/* mine */\n@page { size: 6in 9in; margin: 1in }\np { color: blue }\n";
+  const dir = await book(css, ["preset: book"]);
+  try {
+    const setup = await setPageSetup(dir, { preset: "custom", page: { width: 595, height: 842 } });
+    expect(setup.preset).toBe("custom");
+    expect(setup.bounds).toEqual({ width: 595, height: 842, tolerance: 0.5 });
+    expect(await readFile(path.join(dir, "styles", "book.css"), "utf8")).toBe(css);
+    const manifest = await manifestOf(dir);
+    expect(manifest).toContain("preset: custom");
+    expect(manifest).toMatch(/page:\s+width: 595\s+height: 842/);
+    const config = resolveConfig({}, await loadManifest(dir));
+    expect(config.page.width).toBe(595);
+    expect(config.page.height).toBe(842);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("setPageSetup to a preset drops a custom page: block and uses the preset's size", async () => {
+  const dir = await book("", ["preset: custom", "page:", "  width: 360", "  height: 504", "  tolerance: 2"]);
+  try {
+    const setup = await setPageSetup(dir, { preset: "dtrpg" });
+    expect(setup.preset).toBe("dtrpg");
+    expect(setup.bounds).toEqual({ width: 621, height: 810, tolerance: 0.5 });
+    const manifest = await manifestOf(dir);
+    expect(manifest).toContain("preset: dtrpg");
+    expect(manifest).not.toContain("page:");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("setPageSetup writes the margins it is given, keeps them across a preset change, and leaves them alone otherwise", async () => {
+  const dir = await book("", ["preset: book"]);
+  try {
+    const withMargins = await setPageSetup(dir, {
+      preset: "book",
+      margins: { top: 61.2, bottom: 61.2, inside: 54, outside: 50 },
+    });
+    expect(withMargins).toMatchObject({
+      margins: { top: 61.2, bottom: 61.2, inside: 54, outside: 50 },
+      marginsFrom: "manifest",
+    });
+    expect(await manifestOf(dir)).toMatch(
+      /page:\s+margin:\s+top: 61\.2\s+bottom: 61\.2\s+inside: 54\s+outside: 50\s/,
+    );
+    // A preset change without margins keeps the recorded ones.
+    const asDtrpg = await setPageSetup(dir, { preset: "dtrpg" });
+    expect(asDtrpg.bounds).toEqual({ width: 621, height: 810, tolerance: 0.5 });
+    expect(asDtrpg.margins).toEqual({ top: 61.2, bottom: 61.2, inside: 54, outside: 50 });
+    // The resolved config carries them, so the assembly prints with them.
+    expect(resolveConfig({}, await loadManifest(dir)).page.margin).toEqual({
+      top: 61.2,
+      bottom: 61.2,
+      inside: 54,
+      outside: 50,
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("setPageSetup keeps the page: block's print-area keys across a size change and a preset round trip", async () => {
+  const dir = await book("", [
+    "preset: custom",
+    "page:",
+    "  width: 360",
+    "  height: 504",
+    "  bleed: 9",
+    "  safe: 36",
+    "  artSafe: 18",
+    "  gutter: 54",
+  ]);
+  try {
+    await setPageSetup(dir, { preset: "custom", page: LETTER });
+    expect(await manifestOf(dir)).toMatch(
+      /page:\s+width: 612\s+height: 792\s+bleed: 9\s+safe: 36\s+artSafe: 18\s+gutter: 54\s/,
+    );
+    await setPageSetup(dir, { preset: "dtrpg" });
+    const asPreset = await manifestOf(dir);
+    expect(asPreset).toMatch(/page:\s+bleed: 9\s+safe: 36\s+artSafe: 18\s+gutter: 54\s/);
+    expect(asPreset).not.toMatch(/width:|height:|tolerance:/);
+    expect((await readPageSetup(dir)).bounds).toEqual({ width: 621, height: 810, tolerance: 0.5 });
+    await setPageSetup(dir, { preset: "custom", page: LETTER });
+    expect(await manifestOf(dir)).toMatch(
+      /page:\s+bleed: 9\s+safe: 36\s+artSafe: 18\s+gutter: 54\s+width: 612\s+height: 792\s/,
+    );
+    expect(resolveConfig({}, await loadManifest(dir)).page.gutter).toBe(54);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("setPageSetup treats an empty page: key as no block", async () => {
+  const dir = await book("", ["preset: custom", "page:"]);
+  const manifest = path.join(dir, "manifest.yaml");
+  try {
+    await setPageSetup(dir, { preset: "custom", page: LETTER });
+    expect(await readFile(manifest, "utf8")).toMatch(/page:\s+width: 612\s+height: 792\s/);
+    await writeFile(manifest, "title: T\nstyles:\n  - styles/book.css\npreset: custom\npage:\n", "utf8");
+    await setPageSetup(dir, { preset: "book" });
+    expect(await readFile(manifest, "utf8")).not.toContain("page:");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("setPageSetup keeps a hand-set tolerance and the manifest's comments", async () => {
+  const dir = await book("", ["# keep this comment", "preset: custom", "page:", "  width: 432", "  height: 648", "  tolerance: 2"]);
+  try {
+    const setup = await setPageSetup(dir, { preset: "custom", page: LETTER });
+    expect(setup.bounds).toEqual({ ...LETTER, tolerance: 2 });
+    expect(await manifestOf(dir)).toContain("# keep this comment");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("setPageSetup changes nothing when the choice is invalid", async () => {
+  const dir = await book("", ["preset: book"]);
+  try {
+    await expect(setPageSetup(dir, { preset: "custom" })).rejects.toThrow(/custom page size/);
+    await expect(
+      setPageSetup(dir, { preset: "book", margins: { top: -1, bottom: 72, inside: 72, outside: 72 } }),
+    ).rejects.toThrow(/0 or more/);
+    await expect(
+      setPageSetup(dir, { preset: "book", margins: { top: 72, bottom: 72, inside: 216, outside: 216 } }),
+    ).rejects.toThrow(/no room for text/);
+    expect(await manifestOf(dir)).toBe("title: T\nstyles:\n  - styles/book.css\npreset: book\n");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a freshly scaffolded book reads back its template's size and margins and can be resized", async () => {
   const parent = await mkdtemp(path.join(tmpdir(), "gutterpress-pagesize-"));
   try {
     const { projectDir } = await scaffoldProject({
@@ -287,11 +261,16 @@ test("a freshly scaffolded custom book reads back its size and can be resized", 
     const fresh = await readPageSetup(projectDir);
     expect(fresh.preset).toBe("custom");
     expect(fresh.bounds).toEqual({ ...LETTER, tolerance: 0.5 });
-    expect(fresh.css).toBeNull(); // the starter stylesheet sets no size
+    // The book template's margins (clean-book's old values), from the manifest.
+    expect(fresh).toMatchObject({
+      margins: { top: 61.2, bottom: 61.2, inside: 54, outside: 54 },
+      marginsFrom: "manifest",
+    });
 
     const resized = await setPageSetup(projectDir, { preset: "book" });
     expect(resized.preset).toBe("book");
-    expect(resized.css).toEqual({ width: 432, height: 648, file: "styles/book.css" });
+    expect(resized.bounds).toEqual({ width: 432, height: 648, tolerance: 0.5 });
+    expect(resized.margins).toEqual(fresh.margins);
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
