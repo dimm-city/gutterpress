@@ -158,14 +158,7 @@ export interface ProjectExtensionEntry {
   author?: string;
   /** Preview image path relative to the extension folder, when declared. */
   preview?: string | null;
-  /** The sheet carrying the `:root` token surface (the Design panel's
-   *  target), relative to the folder, when declared. */
-  tokensFile?: string;
-  /** Declared stylesheets relative to the folder, in cascade order. Absent
-   *  when there is no folder. */
-  styles?: string[];
-  /** What it declares — a styles-carrier shows in the Look view, a
-   *  markdown-carrier in Features; one that carries both shows in both. */
+  /** What it declares — the Extensions tab shows a badge per kind. */
   carries: ExtensionCarries;
   /** Absolute folder its metadata was read from. Absent for a bundled name,
    *  a bare JS file, an uninstalled npm entry, or a missing path. */
@@ -241,7 +234,7 @@ export interface ExtensionUpdateCheck {
 
 /**
  * Result of checking npm for updates. As with search, a fetch failure is DATA
- * (`ok: false`): the Features tab shows `message` as one quiet line and the
+ * (`ok: false`): the Extensions tab shows `message` as one quiet line and the
  * list itself is never blocked by the network.
  */
 export type ExtensionUpdatesResult =

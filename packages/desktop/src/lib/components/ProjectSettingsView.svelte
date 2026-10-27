@@ -17,26 +17,22 @@
    * after mutations, mirroring SettingsView/History):
    *   1. Details     — title, authors, output filename, source files
    *                    (`api.manifest.{read,setFields}`).
-   *   2. Look        — the extensions that carry styles (`LookSection`)
-   *                    → design tokens (`DesignSection`) → the raw stylesheet
-   *                    list (`StylesSection`) under a "Stylesheets" heading.
-   *                    The section heading is "Look & style" — it covers all
-   *                    three subsections — while the tab button itself is
-   *                    shortened to "Look" to pair with "Features" (#243).
-   *   3. Features    — the extensions that carry markdown: toggle, remove,
-   *                    validate, the recommended bundled features, npm /
-   *                    local add (`FeaturesSection`).
+   *   2. Extensions  — ONE list of the manifest's `extensions:` (looks,
+   *                    features, component libraries — #265): toggle,
+   *                    reorder, remove, validate, versions, and one Add area
+   *                    (`ExtensionsSection`, `api.extension.*`).
+   *   3. Design      — the design tokens of every enabled look, edited in the
+   *                    book's own stylesheet (`DesignSection`) → the raw
+   *                    stylesheet list (`StylesSection`) under a
+   *                    "Stylesheets" heading.
    *   4. Connections — this project's sync surface (remote diagnosis +
    *                    Test Remote Access; `ProjectConnectionsSection`,
    *                    self-loading — no controller).
    *
-   * #243/#265 — Look and Features are two VIEWS over ONE `extensions:` list
-   * and one verb set, owned by the single `ExtensionsSectionController`
-   * instance (`extensions` below; `api.extension.*`). `afterLookChange`
-   * (a styles-carrying extension was added/removed/toggled/moved → reload
-   * Styles + Design) and `afterStyleChange` (a stylesheet was toggled →
-   * reload Design) are the cross-section refresh hooks; every other refresh
-   * is a section reloading its own state after its own mutation.
+   * `afterLookChange` (a styles-carrying extension was added/removed/toggled/
+   * moved → reload Styles + Design) and `afterStyleChange` (a stylesheet was
+   * toggled → reload Design) are the cross-section refresh hooks; every other
+   * refresh is a section reloading its own state after its own mutation.
    *
    * The body carries the `.config-panel` class: the sections' shared chrome
    * (`#lib/styles/config-section-shared.css`, @imported per section) scopes
@@ -55,10 +51,9 @@
   import { DesignSectionController } from "#lib/routes/design-section-controller.svelte.ts";
   import AppView from "#lib/components/AppView.svelte";
   import DetailsSection from "#lib/components/config/DetailsSection.svelte";
-  import LookSection from "#lib/components/config/LookSection.svelte";
+  import ExtensionsSection from "#lib/components/config/ExtensionsSection.svelte";
   import StylesSection from "#lib/components/config/StylesSection.svelte";
   import DesignSection from "#lib/components/config/DesignSection.svelte";
-  import FeaturesSection from "#lib/components/config/FeaturesSection.svelte";
   import ProjectConnectionsSection from "#lib/components/ProjectConnectionsSection.svelte";
   import SaveTemplateDialog from "#lib/components/SaveTemplateDialog.svelte";
   import { PRINT_TOOL_IDS } from "#lib/publish-targets.ts";
@@ -79,7 +74,7 @@
     /** The repo the open book belongs to — lets the pickers offer SHARED styles. */
     repoRoot?: string | null;
     /** Tab to open on. Read once at mount (the view is keyed per open). */
-    initialTab?: "details" | "features" | "connections";
+    initialTab?: "details" | "extensions" | "connections";
     toast?: ToastController | null;
     /** Escape hatch: open a stylesheet in the raw-CSS editor (the parent
      *  closes this view first). */
@@ -108,6 +103,7 @@
     projectDir: projectDirAccessor,
     listStyles: (dir) => api.project.listStyles(dir, repoRoot),
     listExtensions: (dir) => api.extension.list(dir),
+    readCss: (dir, use) => api.extension.readCss(dir, use),
     readFile: (path) => api.fs.readFile(path),
     writeFile: (path, content) => api.fs.writeFile(path, content),
     onError: (msg) => toast?.error?.(msg),
@@ -154,8 +150,8 @@
 
   const settings = useSettings();
 
-  // ── Extensions — ONE list, two views (#243/#265). A change to a look
-  //    refreshes Styles + Design. ─────────────────────────────────────────
+  // ── Extensions — ONE list (#265). A change to a look refreshes Styles +
+  //    Design. ─────────────────────────────────────────────────────────────
   const extensions = new ExtensionsSectionController({
     projectDir: projectDirAccessor,
     list: (dir) => api.extension.list(dir),
@@ -209,24 +205,21 @@
 
   // ── Tabs (SettingsView pattern: WAI-ARIA tabs, arrow-key navigation) ──────
   //
-  // #243/#265: "Look" and "Features" are the two author-facing views over
-  // the ONE `extensions` controller above. They stay separate TAB BUTTONS
-  // rather than nesting a second tab bar inside a single "Extensions" entry —
-  // this tab bar already gives them exactly that with no new navigation
-  // component. See `docs/ux-design-contract.md` sections 9 and 11.
-  type ProjectSettingsTab = "details" | "look" | "features" | "connections";
+  // Extensions is where a look is added; Design is where it is fine-tuned.
+  // See `docs/ux-design-contract.md` sections 9 and 11.
+  type ProjectSettingsTab = "details" | "extensions" | "design" | "connections";
   const TABS: Array<{ id: ProjectSettingsTab; label: string }> = [
     { id: "details", label: "Details" },
-    { id: "look", label: "Look" },
-    { id: "features", label: "Features" },
+    { id: "extensions", label: "Extensions" },
+    { id: "design", label: "Design" },
     { id: "connections", label: "Connections" },
   ];
   // svelte-ignore state_referenced_locally
   let activeTab = $state<ProjectSettingsTab>(initialTab);
   let tabEls = $state<Record<ProjectSettingsTab, HTMLButtonElement | undefined>>({
     details: undefined,
-    look: undefined,
-    features: undefined,
+    extensions: undefined,
+    design: undefined,
     connections: undefined,
   });
 
@@ -288,15 +281,16 @@
         <DetailsSection controller={details} onSaveAsTemplate={(el) => (templateDialogTrigger = el)} />
       {/if}
 
-      {#if activeTab === "look"}
-        <!-- The Look grid → design tokens → stylesheet list,
-             merged under one writer-shaped "Look & style" heading (the tab
-             button itself is shortened to "Look", #243 — see the header
-             comment). The stylesheet list is a plain always-visible section
-             - book settings has no collapsible sections. -->
+      {#if activeTab === "extensions"}
+        <ExtensionsSection controller={extensions} />
+      {/if}
+
+      {#if activeTab === "design"}
+        <!-- Design tokens → stylesheet list. The stylesheet list is a plain
+             always-visible section - book settings has no collapsible
+             sections. -->
         <section class="block look-style">
-          <h3>Look &amp; style</h3>
-          <LookSection controller={extensions} />
+          <h3>Design</h3>
           <DesignSection controller={design} />
           <div class="advanced">
             <h4 class="advanced-heading">Stylesheets</h4>
@@ -305,10 +299,6 @@
             </div>
           </div>
         </section>
-      {/if}
-
-      {#if activeTab === "features"}
-        <FeaturesSection controller={extensions} />
       {/if}
 
       {#if activeTab === "connections"}
@@ -367,9 +357,9 @@
   .empty { padding: 24px; text-align: center; color: var(--app-text-muted); font-size: 13px; }
   .loading { margin: 0; font-size: 13px; color: var(--app-text-muted); }
 
-  /* The merged "Look & style" section: the gap between its three panes and
-     the stylesheet sub-section chrome are owned here. `.block`/`h3` chrome
-     comes from the shared layer. */
+  /* The Design section: the gap between its two panes and the stylesheet
+     sub-section chrome are owned here. `.block`/`h3` chrome comes from the
+     shared layer. */
   .settings-body .look-style { gap: 14px; }
   .look-style :global(.look-subsection) { display: flex; flex-direction: column; gap: 8px; }
   .advanced {

@@ -91,6 +91,8 @@ function make(over: Partial<{ cssPath: string; noProject: boolean; css: string }
   h.ctrl = new DesignSectionController({
     projectDir: () => h.projectDir,
     listStyles: () => Promise.resolve(h.styles),
+    listExtensions: () => Promise.resolve([]),
+    readCss: () => Promise.reject(new Error("no extensions")),
     readFile: fs.readFile,
     writeFile: fs.writeFile,
     onError: (m) => onError(m),
@@ -286,6 +288,8 @@ test("a stylesheet switch during a token-write commit never redirects the old sh
   const ctrl = new DesignSectionController({
     projectDir: () => "/proj",
     listStyles: () => Promise.resolve(styles),
+    listExtensions: () => Promise.resolve([]),
+    readCss: () => Promise.reject(new Error("no extensions")),
     readFile,
     writeFile,
     onError: () => {},
@@ -394,103 +398,157 @@ test("a stylesheet that is entirely @internal tokens loads as empty (the panel's
   expect(h.ctrl.designError).toBeNull();
 });
 
-// ── #239/#265: the author's primary look picks the sheet the panel edits ─────
+// ── Every enabled look's tokens, written to the book's own stylesheet ────────
 //
-// The first ENABLED `kind: "path"` extension that carries styles (a look the
-// author owns on disk) names its `tokensFile` — else its first declared sheet
-// — as the Design panel's target, resolved against the look's own folder (the
-// editable style list never offers an extension's sheets: they load through
-// the rail). Everything else falls back to the first active sheet.
+// The panel shows the `:root` tokens of every ENABLED extension that carries
+// styles — bundled, npm or path alike, read through `readCss` in cascade
+// order — overlaid with the book's active stylesheet, which loads last and
+// wins. An edit lands in that book stylesheet only; a look's files are never
+// written.
 
 const STYLES_ONLY = { markdown: false, styles: true, snippets: false, components: false };
+const BOOK = "/proj/styles/book.css";
 
-function look(over: Partial<ProjectExtensionEntry> = {}): ProjectExtensionEntry {
-  return {
-    use: "./extensions/dc",
-    kind: "path",
-    name: "./extensions/dc",
-    enabled: true,
-    label: "DC",
-    styles: ["css/tokens.css", "css/identity.css"],
-    carries: STYLES_ONLY,
-    dir: "/proj/extensions/dc",
-    ...over,
-  };
+function look(over: Partial<ProjectExtensionEntry> & { use: string }): ProjectExtensionEntry {
+  return { kind: "path", name: over.use, enabled: true, label: over.use, carries: STYLES_ONLY, ...over };
 }
 
-function lookGlueController(extensions: ProjectExtensionEntry[]) {
-  const styles: ProjectStyle[] = [
-    { path: "/proj/styles/book.css", displayName: "styles/book.css", active: true },
-  ];
-  const css = new Map<string, string>([
-    ["/proj/styles/book.css", ":root { --c: 3; }\n"],
-    ["/proj/extensions/dc/css/tokens.css", ":root { --a: 1; }\n"],
-    ["/proj/extensions/dc/css/identity.css", ":root { --b: 2; }\n"],
-  ]);
-  return new DesignSectionController({
-    projectDir: () => "/proj",
-    listStyles: () => Promise.resolve(styles),
-    listExtensions: () => Promise.resolve(extensions),
-    readFile: (p) => Promise.resolve(css.get(p) ?? ""),
-    writeFile: () => Promise.resolve(undefined),
-  });
-}
+const CLEAN_BOOK = look({ use: "clean-book", kind: "bundled" });
+const HOUSE = look({ use: "./extensions/house", dir: "/proj/extensions/house" });
+const FROM_NPM = look({ use: "@acme/look@1.0.0", kind: "npm", name: "@acme/look", version: "1.0.0" });
 
-test("loadDesign edits the sheet the primary look names as tokensFile (#239)", async () => {
-  const ctrl = lookGlueController([look({ tokensFile: "css/identity.css" })]);
-  await ctrl.loadDesign();
-  expect(ctrl.cssPath).toBe("/proj/extensions/dc/css/identity.css");
-  expect(ctrl.cssName).toBe("extensions/dc/css/identity.css");
-  expect(ctrl.tokens.map((t) => t.name)).toEqual(["--b"]);
-});
-
-test("loadDesign uses the look's first declared sheet when it names no tokensFile", async () => {
-  const ctrl = lookGlueController([look({ styles: ["css/identity.css", "css/tokens.css"] })]);
-  await ctrl.loadDesign();
-  expect(ctrl.cssPath).toBe("/proj/extensions/dc/css/identity.css");
-});
-
-test("loadDesign falls back to the first active sheet when no extension is configured (#239)", async () => {
-  const ctrl = lookGlueController([]);
-  await ctrl.loadDesign();
-  expect(ctrl.cssPath).toBe("/proj/styles/book.css");
-  expect(ctrl.tokens.map((t) => t.name)).toEqual(["--c"]);
-});
-
-test("loadDesign falls back when the look's folder is missing on disk (#239)", async () => {
-  const ctrl = lookGlueController([look({ tokensFile: "css/identity.css", dir: undefined })]);
-  await ctrl.loadDesign();
-  expect(ctrl.cssPath).toBe("/proj/styles/book.css");
-});
-
-test("loadDesign skips a disabled look, a markdown-only extension, and an npm look — none is the author's to edit (#265)", async () => {
-  const ctrl = lookGlueController([
-    look({ tokensFile: "css/identity.css", enabled: false }),
-    look({ use: "markdown-it-mark", kind: "bundled", name: "markdown-it-mark", carries: { ...STYLES_ONLY, styles: false, markdown: true }, dir: undefined, styles: undefined }),
-    look({ use: "@acme/look@1.0.0", kind: "npm", name: "@acme/look", version: "1.0.0", tokensFile: "css/identity.css", dir: "/proj/extensions/npm/@acme/look/1.0.0/node_modules/@acme/look" }),
-  ]);
-  await ctrl.loadDesign();
-  expect(ctrl.cssPath).toBe("/proj/styles/book.css");
-});
-
-test("loadDesign takes the FIRST enabled path look in cascade order (#265)", async () => {
-  const ctrl = lookGlueController([
-    look({ tokensFile: "css/identity.css" }),
-    look({ use: "./extensions/second", name: "./extensions/second", tokensFile: "css/tokens.css" }),
-  ]);
-  await ctrl.loadDesign();
-  expect(ctrl.cssPath).toBe("/proj/extensions/dc/css/identity.css");
-});
-
-test("loadDesign tolerates a failing extension list — the fallback sheet still loads", async () => {
+/** A book with looks: `css` maps each look's `use` to what `readCss` returns. */
+function lookHarness(extensions: ProjectExtensionEntry[], css: Record<string, string>, bookCss: string) {
+  const fs = new FakeFs();
+  fs.files.set(BOOK, bookCss);
+  const timer = new FakeTimer();
+  const readCssCalls: string[] = [];
   const ctrl = new DesignSectionController({
     projectDir: () => "/proj",
-    listStyles: () => Promise.resolve([{ path: "/proj/styles/book.css", displayName: "styles/book.css", active: true }]),
+    listStyles: () => Promise.resolve([{ path: BOOK, displayName: "styles/book.css", active: true }]),
+    listExtensions: () => Promise.resolve(extensions),
+    readCss: (_dir, use) => {
+      readCssCalls.push(use);
+      return use in css ? Promise.resolve(css[use]!) : Promise.reject(new Error(`no stylesheets for ${use}`));
+    },
+    readFile: fs.readFile,
+    writeFile: (path, content) => {
+      // The fake host must never be asked to write anything but the book's sheet.
+      expect(path).toBe(BOOK);
+      return fs.writeFile(path, content);
+    },
+    setTimer: timer.set,
+    clearTimer: timer.clear,
+  });
+  return { ctrl, fs, timer, readCssCalls };
+}
+
+const tokenValues = (ctrl: DesignSectionController) => Object.fromEntries(ctrl.tokens.map((t) => [t.name, t.value]));
+
+test("loadDesign shows the tokens of every enabled look — bundled, npm and path — in cascade order", async () => {
+  const h = lookHarness(
+    [CLEAN_BOOK, FROM_NPM, HOUSE],
+    {
+      "clean-book": ":root { --color-accent: #2b4c7e; --fs-body: 11pt; }",
+      "@acme/look@1.0.0": ":root { --acme-rule: 1px; }",
+      "./extensions/house": ":root { --house-tint: #eee; }",
+    },
+    "/* Your book's own styles. */\n",
+  );
+  await h.ctrl.loadDesign();
+  expect(h.readCssCalls).toEqual(["clean-book", "@acme/look@1.0.0", "./extensions/house"]);
+  expect(h.ctrl.tokens.map((t) => t.name)).toEqual(["--color-accent", "--fs-body", "--acme-rule", "--house-tint"]);
+  // The panel names the sheet it writes: the book's own, never a look's.
+  expect(h.ctrl.cssPath).toBe(BOOK);
+  expect(h.ctrl.cssName).toBe("styles/book.css");
+  expect(h.ctrl.anyDirty).toBe(false);
+});
+
+test("a later look wins a duplicate token, and the book's own sheet wins over every look", async () => {
+  const h = lookHarness(
+    [CLEAN_BOOK, HOUSE],
+    {
+      "clean-book": ":root {\n  /* @group Brand */\n  --color-accent: #2b4c7e;\n  --fs-body: 11pt;\n  --leading: 1.55;\n}",
+      "./extensions/house": ":root { --color-accent: #7b2f8a; --fs-body: 12pt; }",
+    },
+    ":root {\n  --fs-body: 10.5pt;\n  --book-only: 2;\n}\n",
+  );
+  await h.ctrl.loadDesign();
+  expect(tokenValues(h.ctrl)).toEqual({
+    "--color-accent": "#7b2f8a",
+    "--fs-body": "10.5pt",
+    "--leading": "1.55",
+    "--book-only": "2",
+  });
+  // A token keeps the place and the group its first declaration gave it.
+  expect(h.ctrl.tokens.map((t) => t.name)).toEqual(["--color-accent", "--fs-body", "--leading", "--book-only"]);
+  expect(h.ctrl.customGroups.map((g) => [g.name, g.tokens.map((t) => t.name)])).toEqual([["Brand", ["--color-accent"]]]);
+});
+
+test("disabled looks and extensions that carry no styles contribute nothing", async () => {
+  const h = lookHarness(
+    [
+      { ...HOUSE, enabled: false },
+      look({ use: "markdown-it-mark", kind: "bundled", carries: { ...STYLES_ONLY, styles: false, markdown: true } }),
+      CLEAN_BOOK,
+    ],
+    { "clean-book": ":root { --color-accent: #2b4c7e; }", "./extensions/house": ":root { --house-tint: #eee; }" },
+    "",
+  );
+  await h.ctrl.loadDesign();
+  expect(h.readCssCalls).toEqual(["clean-book"]);
+  expect(h.ctrl.tokens.map((t) => t.name)).toEqual(["--color-accent"]);
+});
+
+test("a look whose CSS can't be read (a missing folder) is skipped; the rest still load", async () => {
+  const h = lookHarness([HOUSE, CLEAN_BOOK], { "clean-book": ":root { --color-accent: #2b4c7e; }" }, "");
+  await h.ctrl.loadDesign();
+  expect(h.ctrl.designError).toBeNull();
+  expect(h.ctrl.tokens.map((t) => t.name)).toEqual(["--color-accent"]);
+});
+
+test("editing a look's token adds it to the book's :root block — the look's CSS is never written", async () => {
+  const BOOK_CSS = "/* Your book's own styles. */\n:root {\n  --book-only: 2;\n}\n";
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": ":root { --color-accent: #2b4c7e; --book-only: 1; }" }, BOOK_CSS);
+  await h.ctrl.loadDesign();
+  h.ctrl.setToken(h.ctrl.colorTokens[0]!, "#7b2f8a");
+  h.timer.fire();
+  await flush();
+  expect(h.fs.writes).toBe(1);
+  expect(h.fs.files.get(BOOK)).toBe("/* Your book's own styles. */\n:root {\n  --color-accent: #7b2f8a;\n  --book-only: 2;\n}\n");
+  expect(h.ctrl.designSaveStatus).toBe("saved");
+});
+
+test("editing a token the book already declares updates that declaration in place", async () => {
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": ":root { --fs-body: 11pt; }" }, ":root {\n  --fs-body: 10.5pt;\n}\n");
+  await h.ctrl.loadDesign();
+  h.ctrl.setLength(h.ctrl.sizeTokens[0]!, "12");
+  h.timer.fire();
+  await flush();
+  expect(h.fs.files.get(BOOK)).toBe(":root {\n  --fs-body: 12pt;\n}\n");
+});
+
+test("a book sheet with no :root block gets one, after the starter comment", async () => {
+  const STARTER = "/**\n * Your book's own styles.\n */\n";
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": ":root { --color-accent: #2b4c7e; }" }, STARTER);
+  await h.ctrl.loadDesign();
+  h.ctrl.setToken(h.ctrl.colorTokens[0]!, "#112233");
+  h.timer.fire();
+  await flush();
+  expect(h.fs.files.get(BOOK)).toBe(`${STARTER}:root {\n  --color-accent: #112233;\n}\n`);
+});
+
+test("loadDesign tolerates a failing extension list — the book's own tokens still load", async () => {
+  const ctrl = new DesignSectionController({
+    projectDir: () => "/proj",
+    listStyles: () => Promise.resolve([{ path: BOOK, displayName: "styles/book.css", active: true }]),
     listExtensions: () => Promise.reject(new Error("no manifest")),
+    readCss: () => Promise.reject(new Error("unreachable")),
     readFile: () => Promise.resolve(":root { --c: 3; }\n"),
     writeFile: () => Promise.resolve(undefined),
   });
   await ctrl.loadDesign();
-  expect(ctrl.cssPath).toBe("/proj/styles/book.css");
+  expect(ctrl.cssPath).toBe(BOOK);
+  expect(ctrl.tokens.map((t) => t.name)).toEqual(["--c"]);
   expect(ctrl.designError).toBeNull();
 });

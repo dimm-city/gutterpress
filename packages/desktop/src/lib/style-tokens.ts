@@ -257,6 +257,21 @@ export function parseStyleTokens(cssText: string): StyleToken[] {
 }
 
 /**
+ * The effective `:root` tokens of several stylesheets applied in cascade
+ * order (the Design panel's view: every enabled look, then the book's own
+ * sheet). A token keeps the place, label and group of its FIRST declaration;
+ * its value (and so its kind) is the LAST one's, since a later sheet wins.
+ */
+export function cascadeStyleTokens(sheets: string[]): StyleToken[] {
+  const byName = new Map<string, StyleToken>();
+  for (const t of sheets.flatMap(parseStyleTokens)) {
+    const first = byName.get(t.name);
+    byName.set(t.name, first ? { ...t, label: first.label, group: first.group ?? t.group } : t);
+  }
+  return [...byName.values()];
+}
+
+/**
  * Set a single `:root` custom property's value. If the property already exists,
  * every declaration of it is replaced; otherwise it is inserted into the first
  * `:root` block. If the stylesheet has no `:root` block at all, one is appended

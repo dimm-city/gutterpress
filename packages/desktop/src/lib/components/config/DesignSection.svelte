@@ -1,15 +1,16 @@
 <script lang="ts">
   /**
-   * Design-tokens sub-section of the merged "Look & style" section (see
-   * LookSection's header comment for the merge rationale).
-   * The guided `:root` custom-property editor (theme-curated groups, then
-   * fonts + colors + sizes/numbers + other) is the SECOND of the three panes
-   * ProjectSettingsView composes under one "Look & style" heading, after the
-   * theme grid and before the stylesheet list. No section
-   * wrapper or `<h3>` of its own; the parent owns the outer `.block`/heading.
-   * All token state, the debounced read-modify-write token machinery, and
-   * `api.fs.*` calls live in `DesignSectionController` (passed as the single
-   * `controller` prop). `toHex` is a pure browser-only helper (§8-clean).
+   * Design-tokens sub-section of the Design tab. The guided `:root`
+   * custom-property editor (theme-curated groups, then fonts + colors +
+   * sizes/numbers + other) shows the tokens of every enabled look as the
+   * book's own stylesheet overrides them, and saves each change to that
+   * stylesheet (`controller.cssName`) — never to a look's files. It is the
+   * first of the two panes ProjectSettingsView composes under the "Design"
+   * heading, before the stylesheet list. No section wrapper or `<h3>` of its
+   * own; the parent owns the outer `.block`/heading. All token state, the
+   * debounced read-modify-write token machinery, and the host calls live in
+   * `DesignSectionController` (passed as the single `controller` prop).
+   * `toHex` is a pure browser-only helper (§8-clean).
    *
    * Token annotations (issue #244): `controller.customGroups` (theme-author
    * `@group` headings, rendered first) and the four kind-based getters
@@ -53,11 +54,12 @@
   {:else if controller.designError}
     <p class="error" role="alert">{controller.designError}</p>
   {:else if !controller.cssPath}
-    <p class="muted">No stylesheet yet. Use a look above, then fine-tune its colors and sizes here.</p>
+    <p class="muted">This book has no stylesheet of its own yet, so there is nowhere to save changes. Add one (for example <code>styles/book.css</code>) to fine-tune your looks here.</p>
   {:else if controller.tokens.length === 0}
-    <p class="muted">{controller.cssName} doesn't expose any settings yet. Use “Edit raw CSS” to add <code>:root</code> custom properties.</p>
+    <p class="muted">Your looks and {controller.cssName} don't expose any settings yet. Use “Edit raw CSS” to add <code>:root</code> custom properties.</p>
+    {@render editRaw()}
   {:else}
-    <p class="hint">Editing {controller.cssName} — changes are saved as you go and the preview updates live.</p>
+    <p class="hint">Settings from your looks and your own stylesheet. Changes are saved to {controller.cssName} as you go, and the preview updates live.</p>
     {#each controller.customGroups as g (g.name)}
       <h4 class="subhead">{g.name}</h4>
       {#each g.tokens as t (t.name)}{@render tokenRow(t)}{/each}
@@ -78,11 +80,15 @@
       <h4 class="subhead">Other</h4>
       {#each controller.otherTokens as t (t.name)}{@render tokenRow(t)}{/each}
     {/if}
-    <button class="ghost small" onclick={controller.editRawCss} title="Open the active stylesheet in the raw editor">
-      <Icon name="file-text" size={13} /> Edit raw CSS
-    </button>
+    {@render editRaw()}
   {/if}
 </div>
+
+{#snippet editRaw()}
+  <button class="ghost small" onclick={controller.editRawCss} title="Open your book's stylesheet in the raw editor">
+    <Icon name="file-text" size={13} /> Edit raw CSS
+  </button>
+{/snippet}
 
 {#snippet tokenRow(t: StyleToken)}
   <!-- One editable :root token, control chosen by `t.kind` — shared by the

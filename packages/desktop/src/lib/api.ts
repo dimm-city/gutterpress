@@ -607,8 +607,8 @@ export const api = {
    * styles, a feature is one that carries markdown, a component library
    * carries both — every one is a `use` specifier in the manifest's
    * `extensions:` list, and `list` returns them all in cascade order. The
-   * desktop's Look and Features views are two projections of that list over
-   * this one verb set; `use` is the stable ref every mutating call takes.
+   * desktop's Extensions tab shows that list with this one verb set; `use` is
+   * the stable ref every mutating call takes.
    */
   extension: {
     /** Every configured extension, in manifest (= cascade) order. */
@@ -646,12 +646,12 @@ export const api = {
     bundled: () => get<BundledExtensionInfo[]>('/api/extension/bundled'),
     /** Search npm for extensions (#246), on demand. A network/parse failure is data (`ok: false`), never a thrown error. */
     search: (query: string) => post<ExtensionSearchResult>('/api/extension/search', { query }),
-    /** Each pinned npm extension against npm's latest (the newest of any kind with `includePrerelease`), on demand (the Features tab, never project load). A network failure is data (`ok: false`). */
+    /** Each pinned npm extension against npm's latest (the newest of any kind with `includePrerelease`), on demand (the Extensions tab, never project load). A network failure is data (`ok: false`). */
     outdated: (projectDir: string, includePrerelease = false) =>
       post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir, includePrerelease }),
     /** Every published version of one npm package, newest first, pre-releases included (the version picker's list). On demand; a network failure is data (`ok: false`). */
     versions: (name: string) => post<ExtensionVersionsResult>('/api/extension/versions', { name }),
-    /** A configured extension's stylesheets, concatenated, for a sample thumbnail (a bundled look's inlined css, or the entry's folder). */
+    /** A configured extension's stylesheets, concatenated (a bundled look's inlined css, or the entry's folder) — for a sample thumbnail and the Design tab's tokens. */
     readCss: (projectDir: string, use: string) =>
       post<string>('/api/extension/read-css', { projectDir, use }),
     /** Native picker for a `.zip` package or bare `.css`, imported into `extensions/<id>/` (#106). Null when cancelled. */

@@ -172,8 +172,8 @@ export interface ProjectLifecycleDeps {
   dismissLanding: (runPendingRecoveryScan?: boolean) => void;
   /** The live toast surface, or null when unavailable. */
   toast: () => ProjectLifecycleToast | null;
-  /** Open Book settings on its Features tab (where a missing extension's Install button is). */
-  openFeatures?: () => void;
+  /** Open Book settings on its Extensions tab (where a missing extension's Install button is). */
+  openExtensions?: () => void;
   /** Clear stale problems/log-path state for the project a new open targets. */
   clearStaleProjectState: () => void;
   /**
@@ -445,7 +445,7 @@ export class ProjectLifecycleController {
   /**
    * Say what opening the book downloaded, through the toast every other
    * ambient notice uses. A failed download is not an open failure: the book
-   * opens and the Features tab's "Needs install" row is the way to retry.
+   * opens and the Extensions tab's "Needs install" row is the way to retry.
    */
   private announceRestore(restore: ProjectLifecycleRestore | undefined): void {
     if (!restore) return;
@@ -468,8 +468,8 @@ export class ProjectLifecycleController {
         : others.length === 0
           ? `Couldn't download ${first.use} (${first.message.replace(/[.\s]+$/, "")}). The book opened without it.`
           : `Couldn't download ${restore.failed.length} extensions (${uses}). The book opened without them.`;
-      const open = this.deps.openFeatures;
-      toast?.show(message, restore.offline ? "error" : "warning", 0, open ? { label: "Open Features", onClick: open } : undefined);
+      const open = this.deps.openExtensions;
+      toast?.show(message, restore.offline ? "error" : "warning", 0, open ? { label: "Open Extensions", onClick: open } : undefined);
     }
   }
 

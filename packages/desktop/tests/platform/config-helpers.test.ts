@@ -5,6 +5,7 @@ import {
   extensionStatus,
   pickerVersions,
   orderAfterMove,
+  carriedKinds,
   sampleSrcdoc,
   hoverPreviewSrcdoc,
 } from "../../src/lib/components/config/config-helpers";
@@ -76,28 +77,38 @@ test("describeSegments leaves plain text alone, drops empty pieces, and never re
   expect(describeSegments("Type `oops").map((s) => s.text).join("")).toBe("Type oops");
 });
 
-// ── orderAfterMove: a move inside one view, expressed as the full order ────
+// ── orderAfterMove: a move in the one list, expressed as the full order ────
 
 const LOOK_A = entry({ use: "./extensions/a", kind: "path", carries: { ...NONE, styles: true } });
 const FEAT = entry({ use: "markdown-it-mark" });
 const LOOK_B = entry({ use: "./extensions/b", kind: "path", carries: { ...NONE, styles: true } });
 const ALL = [LOOK_A, FEAT, LOOK_B];
-const LOOKS = [LOOK_A, LOOK_B];
 
-test("orderAfterMove moves an entry past its neighbour IN THE VIEW, keeping outsiders in place", () => {
-  expect(orderAfterMove(ALL, LOOKS, LOOK_B, -1)).toEqual(["./extensions/b", "./extensions/a", "markdown-it-mark"]);
-  expect(orderAfterMove(ALL, LOOKS, LOOK_A, 1)).toEqual(["markdown-it-mark", "./extensions/b", "./extensions/a"]);
+test("orderAfterMove swaps an entry with its neighbour, keeping the rest in place", () => {
+  expect(orderAfterMove(ALL, LOOK_B, -1)).toEqual(["./extensions/a", "./extensions/b", "markdown-it-mark"]);
+  expect(orderAfterMove(ALL, LOOK_A, 1)).toEqual(["markdown-it-mark", "./extensions/a", "./extensions/b"]);
 });
 
 test("orderAfterMove lists every configured entry exactly once (what reorderExtensions insists on)", () => {
-  const order = orderAfterMove(ALL, LOOKS, LOOK_B, -1)!;
+  const order = orderAfterMove(ALL, LOOK_B, -1)!;
   expect([...order].sort()).toEqual(ALL.map((e) => e.use).sort());
 });
 
-test("orderAfterMove returns null at the view's edge or for an entry outside the view", () => {
-  expect(orderAfterMove(ALL, LOOKS, LOOK_A, -1)).toBeNull();
-  expect(orderAfterMove(ALL, LOOKS, LOOK_B, 1)).toBeNull();
-  expect(orderAfterMove(ALL, LOOKS, FEAT, 1)).toBeNull();
+test("orderAfterMove returns null at the list's edge or for an entry not in it", () => {
+  expect(orderAfterMove(ALL, LOOK_A, -1)).toBeNull();
+  expect(orderAfterMove(ALL, LOOK_B, 1)).toBeNull();
+  expect(orderAfterMove([LOOK_A, LOOK_B], FEAT, 1)).toBeNull();
+});
+
+// ── carriedKinds: the badges on a row ──────────────────────────────────────
+
+test("carriedKinds names each kind an entry carries, in a fixed order", () => {
+  expect(carriedKinds(FEAT)).toEqual(["Markdown"]);
+  expect(carriedKinds(LOOK_A)).toEqual(["Styles"]);
+  expect(
+    carriedKinds(entry({ carries: { markdown: true, styles: true, snippets: true, components: true, publish: true } })),
+  ).toEqual(["Markdown", "Styles", "Snippets", "Components", "Publish destination"]);
+  expect(carriedKinds(entry({ carries: NONE }))).toEqual([]);
 });
 
 // ── extensionStatus: tri-state + the one warning class with an in-app fix ──

@@ -1,8 +1,9 @@
 /**
- * Pure built-in-look grid helper for LookSection.svelte.
+ * Pure "already added" helper for the Extensions tab's bundled Add rows
+ * (`ExtensionsSectionController.availableBundled`).
  *
- * Kept separate so the "already added" rule is unit-testable without a
- * Svelte component test harness. `import type` only, so this stays PWA-clean (§8).
+ * Kept separate so the rule is unit-testable on its own. `import type` only,
+ * so this stays PWA-clean (§8).
  */
 import type { ProjectExtensionEntry } from "#lib/platform/dtos.ts";
 

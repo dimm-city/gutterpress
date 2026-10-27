@@ -2,9 +2,18 @@
  * DesignSectionController — the single owner of the guided Design section's
  * state + logic (the `:root` custom-property editor).
  *
- * Centralises the active-stylesheet resolution (`cssPath` / `cssName`), the
- * parsed editable `tokens`, the load/error flags, the `designSaveStatus` badge,
- * and — the load-bearing part — the debounced, serialized, race-free token
+ * What the panel shows is the cascade the book renders with: the `:root`
+ * custom properties of every ENABLED extension that carries styles, read in
+ * list (= cascade) order through `readCss` (a bundled look's inlined CSS, or
+ * a path/npm entry's declared sheets), overlaid with the book's own active
+ * stylesheet, which loads last and wins (`cascadeStyleTokens`). What it
+ * writes is ONLY that book stylesheet (`cssPath` / `cssName` — `styles/book.css`
+ * by default): an edit updates the sheet's own declaration of the token, or
+ * adds one to its `:root` block (`applyTokenUpdates`). A look's own files are
+ * never written; the author's stylesheet is the one place a look is styled
+ * over (#427).
+ *
+ * The load-bearing part is the debounced, serialized, race-free token
  * writer: edits coalesce into `tokenPending` (keyed by name, last value wins)
  * behind ONE debounce timer; a flush reads the CSS once, folds ALL pending
  * mutations via `applyTokenUpdates`, and writes once, so two edits in the same
@@ -18,24 +27,21 @@
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
  * (§8): the reactive `projectDir` accessor, the `listStyles` /
- * `readFile` / `writeFile` host calls, the `onError` (toast) + `onEditRawCss`
- * hooks, and the debounce timer primitives. Only type-only lib-shaped imports
- * (`ProjectStyle` / `StyleToken` from the local contract) plus the pure
- * `#lib/style-tokens` string helpers — ZERO `node:*` / lib value imports.
+ * `listExtensions` / `readCss` / `readFile` / `writeFile` host calls, the
+ * `onError` (toast) + `onEditRawCss` hooks, and the debounce timer primitives.
+ * Only type-only lib-shaped imports plus the pure `#lib/style-tokens` string
+ * helpers — ZERO `node:*` / lib value imports.
  *
  * `tokens` (from `parseStyleTokens`) already excludes `@internal`-annotated
  * declarations and carries each token's optional `@group` annotation (issue
  * #244) — see that function's doc in `#lib/style-tokens.ts` for the comment
  * grammar. `customGroups` and the four kind-based getters below are what turn
- * that flat, annotated list into the sections `DesignSection.svelte` renders;
- * no host route or platform-adapter capability is needed for any of it since
- * the annotation comments live in the same CSS text `readFile` already fetches
- * and `parseStyleTokens` already parses, entirely client-side.
+ * that flat, annotated list into the sections `DesignSection.svelte` renders.
  */
 
 import type { ProjectExtensionEntry, ProjectStyle, StyleToken } from "#lib/platform/dtos.ts";
 import {
-  parseStyleTokens,
+  cascadeStyleTokens,
   applyTokenUpdates,
   type TokenUpdate,
 } from "#lib/style-tokens.ts";
@@ -45,12 +51,10 @@ export interface DesignSectionDeps {
   projectDir: () => string | null;
   /** Resolve the project's editable stylesheets (the active set + fallbacks). */
   listStyles: (projectDir: string) => Promise<ProjectStyle[]>;
-  /**
-   * The project's configured extensions in cascade order (#265). The first
-   * enabled look the author owns (a `kind: "path"` entry carrying styles)
-   * names the sheet the panel edits — see {@link tokenSheetOf}.
-   */
-  listExtensions?: (projectDir: string) => Promise<ProjectExtensionEntry[]>;
+  /** The project's configured extensions in cascade order (#265). */
+  listExtensions: (projectDir: string) => Promise<ProjectExtensionEntry[]>;
+  /** One extension's stylesheets as CSS text: a bundled look's, or a path/npm entry's declared sheets concatenated. */
+  readCss: (projectDir: string, use: string) => Promise<string>;
   /** Read a file as UTF-8 text. Path is absolute. */
   readFile: (path: string) => Promise<string>;
   /** Write UTF-8 content to a file. Path is absolute. */
@@ -66,38 +70,13 @@ export interface DesignSectionDeps {
   clearTimer?: (handle: ReturnType<typeof setTimeout>) => void;
 }
 
-/**
- * #239/#265 — the sheet the author's primary look declares as its token
- * surface. The primary look is the first ENABLED `kind: "path"` extension
- * that carries styles (a look the author owns on disk — a built-in copied
- * into `extensions/<id>/`, an import, or a folder referenced in place; a
- * bundled or npm entry is never the author's to edit). Its token sheet is the
- * declared `tokensFile`, else its first declared stylesheet, relative to its
- * folder; the display name is that folder as written in the manifest minus
- * the leading `./` (`./extensions/clean-book` → `extensions/clean-book/theme.css`).
- *
- * The sheet is NOT looked up in the editable style list: an extension's
- * sheets load through the `extensions:` rail, so the host deliberately keeps
- * them out of `listStyles` (they are not `styles:` candidates). The path is
- * the host-resolved absolute folder (`dir`) plus the declared relative sheet.
- * `null` when there is no such look, its folder is missing, or it declares no
- * sheet, in which case the caller falls back to the first active sheet.
- */
-function tokenSheetOf(extensions: ProjectExtensionEntry[]): ProjectStyle | null {
-  const look = extensions.find((e) => e.enabled && e.kind === "path" && e.carries.styles);
-  const sheet = look?.tokensFile ?? look?.styles?.[0];
-  if (!look?.dir || !sheet) return null;
-  const folder = look.use.trim().replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "");
-  return { path: `${look.dir}/${sheet}`, displayName: `${folder}/${sheet}`, active: true };
-}
-
 export class DesignSectionController {
   // ── Public rune state (read by the template; mutated only via methods) ──────
-  /** Absolute path of the stylesheet whose tokens are being edited. */
+  /** Absolute path of the book stylesheet edits are written to. */
   cssPath = $state<string | null>(null);
   /** Display name of that stylesheet. */
   cssName = $state("");
-  /** The editable `:root` custom properties in source order. */
+  /** The editable `:root` custom properties, in cascade order, with their effective values. */
   tokens = $state<StyleToken[]>([]);
   /** True while the design section's initial load is in flight. */
   designLoading = $state(false);
@@ -198,9 +177,9 @@ export class DesignSectionController {
       // `projectDir`, so it is fetched alongside the style list, not after it.
       const [list, extensions] = await Promise.all([
         this.deps.listStyles(projectDir),
-        this.deps.listExtensions?.(projectDir).catch(() => []) ?? Promise.resolve([]),
+        this.deps.listExtensions(projectDir).catch(() => []),
       ]);
-      const active = tokenSheetOf(extensions) ?? list.find((x) => x.active) ?? list[0];
+      const active = list.find((x) => x.active) ?? list[0];
       if (!active) {
         this.cssPath = null;
         this.cssName = "";
@@ -208,8 +187,15 @@ export class DesignSectionController {
       }
       this.cssPath = active.path;
       this.cssName = active.displayName;
-      const css = await this.deps.readFile(active.path);
-      this.tokens = parseStyleTokens(css);
+      // Every enabled look in cascade order, then the book's own sheet, which
+      // loads after all of them. A look whose CSS can't be read (a missing
+      // folder) contributes nothing here; the Extensions list reports it.
+      const looks = extensions.filter((e) => e.enabled && e.carries.styles);
+      const sheets = await Promise.all([
+        ...looks.map((e) => this.deps.readCss(projectDir, e.use).catch(() => "")),
+        this.deps.readFile(active.path),
+      ]);
+      this.tokens = cascadeStyleTokens(sheets);
       this.originals.clear();
       for (const t of this.tokens) this.originals.set(t.name, t.value);
       this.designSaveStatus = "idle";
