@@ -460,7 +460,7 @@ never touched.
 
 ```sh
 gutterpress ext remove markdown-it-highlightjs ./my-book
-gutterpress ext remove ./extensions/zine ./my-book
+gutterpress ext remove zine ./my-book
 ```
 
 #### `gutterpress ext enable` / `gutterpress ext disable`

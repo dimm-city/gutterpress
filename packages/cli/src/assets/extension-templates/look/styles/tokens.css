@@ -3,15 +3,15 @@
  *
  * OWNS
  *   `:root` custom properties, and nothing else. The palette, the type scale,
- *   the spacing scale, the measure. This is the file a non-technical author
- *   edits to rebrand the whole book. The desktop app's Design panel lists
- *   these tokens (with every other enabled look's) and saves an author's
- *   changes to the book's own stylesheet, never to this file.
+ *   the spacing scale, the measure. This is the file to edit to rebrand the
+ *   look. The desktop app's Design tab lists these tokens (with every other
+ *   enabled look's) and saves a book's changes to that book's own
+ *   stylesheet, never to this file.
  *
  * MUST NOT CONTAIN
  *   - Any selector other than `:root`. The moment a rule here targets `h1`,
  *     "change the brand" and "change the look of a heading" stop being
- *     separable, and the Design panel starts showing settings that do not
+ *     separable, and the Design tab starts showing settings that do not
  *     do what they say.
  *   - `var()` references to component tokens. Tokens flow one way: brand →
  *     component. A brand token that depends on a component token is a cycle

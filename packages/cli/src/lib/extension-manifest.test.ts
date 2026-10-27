@@ -88,9 +88,13 @@ describe("extension-manifest", () => {
             snippets: "snippets",
             components: "components.yaml",
             preview: "preview.png",
+            // Read by nothing since the Design tab reads every enabled look's
+            // `:root`; a package that still declares it loads with it dropped.
+            tokensFile: "../tokens.css",
           },
         }),
       );
+      expect(meta).not.toHaveProperty("tokensFile");
       expect(meta.styles).toEqual(["a.css", "b.css"]);
       expect(meta.markdown).toBe("lib/plugin.js");
       expect(meta.snippets).toBe("snippets");

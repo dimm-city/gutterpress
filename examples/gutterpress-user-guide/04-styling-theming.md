@@ -178,10 +178,6 @@ is the one field a look cannot leave out. A sheet need not be called
 `theme.css` at all; a `.zip` or URL import still needs one to find the package
 root, and an import writes the package.json for you when the package has none.
 
-The desktop app's **Design** tab reads the `:root` custom properties of every
-enabled look's stylesheets plus your book's own sheet, and writes your edits to
-the book's sheet.
-
 The other fields are npm's own `name`, `description` and `author`, plus
 `gutterpress.preview` (an image, relative to the folder) and --- for a look that
 is also a plugin or a component library --- `main`, `gutterpress.snippets` and
