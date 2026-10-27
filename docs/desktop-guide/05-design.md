@@ -80,7 +80,9 @@ checks against DriveThruRPG); once you tick or untick a service, the choice is y
 Under **Margins**, type the top, bottom, inside and outside margins in inches (inside is the edge at
 the binding). A change is saved as soon as you leave the field, and your margins win over any a
 look sets. A book that has not set its own margins yet shows the ones its look gives it, or the
-1 in default, and says so; change one and they become yours. The built-in looks set neither a page
+1 in default, and says so; change one and they become yours. To go back, press **Use the look's
+margins** (or **Use the default margins** when no look sets any): your margins are taken out of the
+manifest and the fields show what the book prints with again. The built-in looks set neither a page
 size nor margins, so what you choose here is what you get.
 
 ![Book setup, Details tab: the page size choices and the four margin fields](images/book-settings-page.jpg)

@@ -285,6 +285,15 @@ export class DetailsSectionController {
     this.marginsTouched = true;
   };
 
+  /** Set by "Use the look's margins": the next flush removes `page.margin`, and the fields follow what the book then prints with. */
+  private marginsReset = false;
+
+  useFallbackMargins = (): void => {
+    this.marginsReset = true;
+    this.marginsTouched = false;
+    void this.flushPendingSave();
+  };
+
   // ── Publish-target intents (ADR 0008) ───────────────────────────────────────
   toggleTarget = (id: string): void => {
     this.targetsDraft = this.targetsDraft.includes(id)
@@ -375,15 +384,19 @@ export class DetailsSectionController {
     const change: PageSetupChange = {};
     const size = this.pageTouched ? this.pageChoice : null;
     if (size) change.size = size;
-    const margins = this.marginsTouched ? this.marginsChoice : null;
+    const reset = this.marginsReset;
+    const margins = reset ? null : this.marginsTouched ? this.marginsChoice : null;
     if (margins) change.margins = margins;
-    const writePage = (size !== null || margins !== null) && this.pageDirty && !!this.deps.writePageSetup;
+    else if (reset) change.margins = null;
+    const writePage =
+      (size !== null || margins !== null || reset) && (this.pageDirty || reset) && !!this.deps.writePageSetup;
     const hasUpdates = Object.keys(updates).length > 0;
     if (!hasUpdates && !writePage) return true;
     // Consumed by this write; a value typed while it is in flight marks it again.
     if (writePage) {
       if (size) this.pageTouched = false;
       if (margins) this.marginsTouched = false;
+      if (reset) this.marginsReset = false;
     }
     this.detailsSaveStatus = "saving";
     this.detailsError = null;
@@ -403,6 +416,7 @@ export class DetailsSectionController {
       if (writePage) {
         if (size) this.pageTouched = true;
         if (margins) this.marginsTouched = true;
+        if (reset) this.marginsReset = true;
       }
       // The drafts stay as typed, so the author can retry; the error says why.
       this.detailsError = e instanceof Error ? e.message : String(e);

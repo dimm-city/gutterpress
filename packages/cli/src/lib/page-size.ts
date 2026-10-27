@@ -76,7 +76,8 @@ export interface PageSizeChoice {
  */
 export interface PageSetupChange {
   size?: PageSizeChoice;
-  margins?: PageMargin;
+  /** New margins, or null to remove `page.margin` so the stylesheets' (or the default) apply again. */
+  margins?: PageMargin | null;
 }
 
 /** A book's page geometry as currently recorded, read back for the settings UI. */
@@ -89,6 +90,10 @@ export interface PageSetup {
   margins: PageMargin;
   /** Where `margins` come from: the manifest's `page.margin` (the author's own), a stylesheet's `@page` (a look's design), or the engine's 1in default. */
   marginsFrom: "manifest" | "stylesheet" | "default";
+  /** What the book prints with without `page.margin`: a stylesheet's `@page` margins or the default. Equals `marginsFrom` unless the manifest sets margins. */
+  fallbackMarginsFrom: "stylesheet" | "default";
+  /** True when `preset:` is `dtrpg` or `book` and `page.width`/`height` override its size: Details shows the preset, and choosing a size there replaces the override. */
+  presetSizeOverridden: boolean;
 }
 
 /**
@@ -113,6 +118,14 @@ export function deletePageBounds(doc: Document): void {
     return;
   }
   for (const key of ["width", "height", "tolerance"]) block.delete(key);
+  if (block.items.length === 0) doc.delete("page");
+}
+
+/** Remove the manifest's `page.margin` and nothing else; a `page:` left empty goes too. */
+export function deletePageMargin(doc: Document): void {
+  const block = doc.get("page", true);
+  if (!isMap(block)) return;
+  block.delete("margin");
   if (block.items.length === 0) doc.delete("page");
 }
 
@@ -156,7 +169,9 @@ export function pageSizeForChoice(choice: PageSizeChoice): PageSizePoints {
 // ── Project ────────────────────────────────────────────────────────────────
 
 /** What the manifest alone says: preset, bounds, and `page.margin` when it is complete. */
-function manifestGeometry(doc: Document): Pick<PageSetup, "preset" | "bounds"> & { margins?: PageMargin } {
+function manifestGeometry(
+  doc: Document,
+): Pick<PageSetup, "preset" | "bounds" | "presetSizeOverridden"> & { margins?: PageMargin } {
   const declared = doc.get("preset");
   const preset: PresetId | null =
     declared === undefined || declared === null
@@ -170,12 +185,14 @@ function manifestGeometry(doc: Document): Pick<PageSetup, "preset" | "bounds"> &
   const height = numberAt(doc, ["page", "height"]) ?? base?.height;
   const tolerance = numberAt(doc, ["page", "tolerance"]) ?? base?.tolerance ?? 0.5;
   const bounds = width !== undefined && height !== undefined ? { width, height, tolerance } : null;
+  const presetSizeOverridden =
+    base !== null && (numberAt(doc, ["page", "width"]) !== undefined || numberAt(doc, ["page", "height"]) !== undefined);
 
   const at = (edge: (typeof MARGIN_EDGES)[number]) => doc.getIn(["page", "margin", edge]);
   const margins = MARGIN_EDGES.every((edge) => isNonNegativePoints(at(edge)))
     ? ({ top: at("top"), bottom: at("bottom"), inside: at("inside"), outside: at("outside") } as PageMargin)
     : undefined;
-  return { preset, bounds, ...(margins ? { margins } : {}) };
+  return { preset, bounds, presetSizeOverridden, ...(margins ? { margins } : {}) };
 }
 
 /**
@@ -188,9 +205,9 @@ function manifestGeometry(doc: Document): Pick<PageSetup, "preset" | "bounds"> &
 async function stylesheetMargins(
   projectDir: string,
   manifestStyles: string[] | undefined,
-): Promise<Pick<PageSetup, "margins" | "marginsFrom">> {
+): Promise<{ margins: PageMargin; marginsFrom: PageSetup["fallbackMarginsFrom"] }> {
   const d = DEFAULT_PAGE_MARGIN_PT;
-  const fallback: Pick<PageSetup, "margins" | "marginsFrom"> = {
+  const fallback: { margins: PageMargin; marginsFrom: PageSetup["fallbackMarginsFrom"] } = {
     margins: { top: d, bottom: d, inside: d, outside: d },
     marginsFrom: "default",
   };
@@ -210,19 +227,21 @@ async function stylesheetMargins(
     const m = page.geometry.margin;
     return {
       margins: { top: round3(m.top), bottom: round3(m.bottom), inside: round3(m.left), outside: round3(m.right) },
-      marginsFrom: "stylesheet",
+      marginsFrom: "stylesheet" as const,
     };
   } catch {
     return fallback;
   }
 }
 
-/** The setup a manifest document describes, reading the stylesheets only for margins it does not set. */
+/** The setup a manifest document describes: its margins, and what the stylesheets would give without them. */
 async function setupOf(projectDir: string, doc: Document): Promise<PageSetup> {
   const { margins, ...geometry } = manifestGeometry(doc);
-  if (margins) return { ...geometry, margins, marginsFrom: "manifest" };
   const styles = doc.toJS()?.styles;
-  return { ...geometry, ...(await stylesheetMargins(projectDir, Array.isArray(styles) ? styles : undefined)) };
+  const sheets = await stylesheetMargins(projectDir, Array.isArray(styles) ? styles : undefined);
+  return margins
+    ? { ...geometry, margins, marginsFrom: "manifest", fallbackMarginsFrom: sheets.marginsFrom }
+    : { ...geometry, ...sheets, fallbackMarginsFrom: sheets.marginsFrom };
 }
 
 /** Read a book's page geometry back from its manifest (and, for margins it does not set, its stylesheets). */
@@ -237,7 +256,8 @@ export async function readPageSetup(projectDir: string): Promise<PageSetup> {
  * width, height and tolerance are removed so they cannot shadow them; its
  * other keys stay), `custom` records the typed trim. The margins go to
  * `page.margin`, validated against the size being written, else the recorded
- * one. Nothing is written unless the whole change validates.
+ * one; `margins: null` removes `page.margin`. Nothing is written unless the
+ * whole change validates.
  */
 export async function setPageSetup(
   projectDir: string,
@@ -246,7 +266,7 @@ export async function setPageSetup(
   const { doc, file } = await loadManifestDoc(projectDir);
   const size = change.size ? pageSizeForChoice(change.size) : null;
   let margins: PageMargin | undefined;
-  if (change.margins !== undefined) {
+  if (change.margins) {
     const against = size ?? manifestGeometry(doc).bounds;
     if (!against) throw new UsageError("Choose a page size before setting margins: the manifest records none.");
     margins = validatePageMargin(change.margins, against);
@@ -257,6 +277,7 @@ export async function setPageSetup(
     else deletePageBounds(doc);
   }
   if (margins) writePageMargin(doc, margins);
+  else if (change.margins === null) deletePageMargin(doc);
   await writeManifestDoc(file, doc);
   return setupOf(projectDir, doc);
 }

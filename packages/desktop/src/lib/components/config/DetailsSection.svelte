@@ -14,7 +14,7 @@
    */
   import Icon from "#lib/components/Icon.svelte";
   import PageSizeFields from "#lib/components/PageSizeFields.svelte";
-  import { PRESET_CHOICES } from "#lib/page-size-choices.ts";
+  import { PRESET_CHOICES, pointsToInches } from "#lib/page-size-choices.ts";
   import {
     MARGIN_EDGES,
     type DetailsSectionController,
@@ -256,6 +256,12 @@
           <span class="hint">Enter a width and height to save the page size.</span>
         {/if}
       {/if}
+      {#if controller.pageSetup?.presetSizeOverridden && controller.pageSetup.bounds}
+        <span class="hint">
+          This book sets its own page size in manifest.yaml ({pointsToInches(controller.pageSetup.bounds.width)} ×
+          {pointsToInches(controller.pageSetup.bounds.height)} in) over the preset's. Choosing a size here replaces it.
+        </span>
+      {/if}
       <span class="hint">
         The size your book prints at and the size the finished PDF is checked against.
       </span>
@@ -288,6 +294,12 @@
           </label>
         {/each}
       </div>
+      {#if controller.pageSetup?.marginsFrom === "manifest"}
+        <!-- The way back: drop `page.margin`, and the fields show what the book then prints with. -->
+        <button class="ghost small" type="button" onclick={controller.useFallbackMargins}>
+          {controller.pageSetup.fallbackMarginsFrom === "stylesheet" ? "Use the look's margins" : "Use the default margins (1 in)"}
+        </button>
+      {/if}
       {#if controller.marginsIncomplete}
         <span class="hint">Enter all four margins to save them.</span>
       {:else if marginsNote}

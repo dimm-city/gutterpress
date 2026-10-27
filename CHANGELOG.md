@@ -126,10 +126,15 @@ This project follows [Semantic Versioning](https://semver.org/).
   you type), and type the top, bottom, inside and outside margins in inches:
   a change is recorded in the manifest at once and wins over any margin a
   look sets. A book that has not set margins yet shows the ones its
-  stylesheets give it (or the 1in default) and says so. Nothing is written to
-  a stylesheet any more, and nothing can drift: the "Use this size in the
-  stylesheet too" note is gone, and the stylesheet editor no longer offers a
-  `size` completion inside `@page`.
+  stylesheets give it (or the 1in default) and says so, and **Use the look's
+  margins** (or **Use the default margins**) takes a book's own margins out
+  again. A book whose manifest overrides its preset's size (`preset: book`
+  with a `page:` width and height) is told so, and that choosing a size here
+  replaces the override; the academic-paper example now uses the Paper
+  template's shape instead. Nothing is written to a stylesheet any more, and
+  nothing can drift: the "Use this size in the stylesheet too" note is gone,
+  and the stylesheet editor no longer offers a `size` completion inside
+  `@page`.
 - **The editor highlights `manifest.yaml`.** A `.yaml` or `.yml` file opens
   with YAML highlighting instead of plain text.
 - **Book setup's Details tab saves as you go.** There is no Save button and no

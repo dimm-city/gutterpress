@@ -116,6 +116,8 @@ test("page-size routes read the geometry back, then change the manifest and leav
     bounds: { width: 432, height: 648, tolerance: 0.5 },
     margins: { top: 72, bottom: 72, inside: 72, outside: 72 },
     marginsFrom: "stylesheet",
+    fallbackMarginsFrom: "stylesheet",
+    presetSizeOverridden: false,
   });
 
   const margins = { top: 54, bottom: 54, inside: 63, outside: 45 };
@@ -128,11 +130,20 @@ test("page-size routes read the geometry back, then change the manifest and leav
     bounds: { width: 612, height: 792, tolerance: 0.5 },
     margins,
     marginsFrom: "manifest",
+    fallbackMarginsFrom: "stylesheet",
+    presetSizeOverridden: false,
   });
   expect(await readFile(path.join(projectDir, "styles", "book.css"), "utf8")).toBe(css);
   const manifest = await readFile(path.join(projectDir, "manifest.yaml"), "utf8");
   expect(manifest).toContain("preset: custom");
   expect(manifest).toMatch(/margin:\s+top: 54\s+bottom: 54\s+inside: 63\s+outside: 45\s/);
+
+  // `margins: null` removes page.margin: the stylesheet's margins apply again (#439).
+  const dropped = await setPageSize({
+    request: request({ projectDir, change: { margins: null } }),
+  } as Parameters<typeof setPageSize>[0]);
+  expect(await dropped.json()).toMatchObject({ marginsFrom: "stylesheet", margins: { top: 72, inside: 72 } });
+  expect(await readFile(path.join(projectDir, "manifest.yaml"), "utf8")).not.toContain("margin:");
 });
 
 test("page-size/set rejects an empty change and an incomplete custom size without writing", async () => {

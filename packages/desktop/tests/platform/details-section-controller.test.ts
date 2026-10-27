@@ -28,6 +28,8 @@ const BOOK_SETUP: PageSetup = {
   bounds: { width: 432, height: 648, tolerance: 0.5 },
   margins: BOOK_MARGINS,
   marginsFrom: "manifest",
+  fallbackMarginsFrom: "default",
+  presetSizeOverridden: false,
 };
 
 interface Harness {
@@ -125,8 +127,11 @@ function make(
       h.pageSetup = {
         preset: size ? size.preset : before.preset,
         bounds: { ...page, tolerance: 0.5 },
-        margins: change.margins ?? before.margins,
-        marginsFrom: change.margins ? "manifest" : before.marginsFrom,
+        // null drops the manifest's margins: the fallback (the fake's is 1in) applies again.
+        margins: change.margins === null ? INCH : (change.margins ?? before.margins),
+        marginsFrom: change.margins === null ? before.fallbackMarginsFrom : change.margins ? "manifest" : before.marginsFrom,
+        fallbackMarginsFrom: before.fallbackMarginsFrom,
+        presetSizeOverridden: before.presetSizeOverridden,
       };
       return h.pageSetup;
     },
@@ -528,6 +533,28 @@ test("a preset chosen while a margin is incomplete is written at once; the margi
   await (h.ctrl.touchMargins(), h.ctrl.flushPendingSave());
   expect(h.pageWrites[1]).toEqual({ margins: { ...BOOK_MARGINS, top: 72 } });
   expect(h.ctrl.marginsIncomplete).toBe(false);
+});
+
+test("Use the look's margins drops the manifest's margins; the fields then show what the book prints with (#439)", async () => {
+  const h = make();
+  await h.ctrl.loadDetails();
+  // A margin typed but not yet saved is given up by the reset.
+  h.ctrl.marginDrafts.top = "2";
+  h.ctrl.touchMargins();
+  h.ctrl.useFallbackMargins();
+  await settle();
+  expect(h.pageWrites).toEqual([{ margins: null }]);
+  expect(h.ctrl.pageSetup?.marginsFrom).toBe("default");
+  expect(h.ctrl.marginDrafts).toEqual({ top: "1", bottom: "1", inside: "1", outside: "1" });
+  expect(h.ctrl.marginsIncomplete).toBe(false);
+  expect(h.ctrl.detailsSaveStatus).toBe("saved");
+  // A failed reset is retried by the next flush.
+  h.failNextPageWrite = true;
+  h.ctrl.useFallbackMargins();
+  await settle();
+  expect(h.ctrl.detailsError).toContain("read-only folder");
+  expect(await h.ctrl.flushPendingSave()).toBe(true);
+  expect(h.pageWrites).toEqual([{ margins: null }, { margins: null }, { margins: null }]);
 });
 
 test("the number inputs bind a number, or null once emptied; the drafts read both as inches", async () => {
