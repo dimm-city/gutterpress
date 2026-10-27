@@ -11,15 +11,16 @@
    * There is no active look and no Apply/Revert (#265). Several looks can be
    * on at once; they stack in list order (a later one wins ties) and the
    * project's own stylesheets always come last. So a configured look is a ROW
-   * in that stack — toggle, move up/down, remove — and the built-in looks are
-   * a grid of things to ADD: "Use" copies one into `extensions/<id>/` as the
-   * author's own editable files, after which the card reads "Added". A folder
-   * the author already has is referenced in place (never copied); a `.zip`,
-   * a `.css`, or a URL is unpacked into `extensions/<id>/` by the host (#106).
+   * in that stack — toggle, move up/down, remove — and the bundled looks are
+   * a grid of things to ADD: "Use" lists one by name (nothing is copied; the
+   * book styles over it from its own stylesheet), after which the card reads
+   * "Added". A folder the author already has is referenced in place (never
+   * copied); a `.zip`, a `.css`, or a URL is unpacked into `extensions/<id>/`
+   * by the host (#106).
    *
-   * Thumbnails render an entry's stylesheets (`readCss` — entries with a
-   * folder only) into a fixed sample through the same sandboxed-iframe
-   * mechanism as before; hovering a row enlarges it to a two-page spread.
+   * Thumbnails render an entry's stylesheets (`readCss`) into a fixed sample
+   * through the same sandboxed-iframe mechanism as before; hovering a row
+   * enlarges it to a two-page spread.
    */
   import Icon from "#lib/components/Icon.svelte";
   import type { ProjectExtensionEntry } from "#lib/platform/dtos.ts";
@@ -167,8 +168,8 @@
 {/if}
 
 <!-- The non-blank fallback every thumbnail slot renders until (or instead of)
-     a sample: a built-in look has no folder to read until it is used, and a
-     configured look's CSS may still be loading. -->
+     a sample: a configured look's CSS may still be loading, or the entry has
+     no stylesheet to show. -->
 {#snippet placeholder(label: string)}
   <div class="thumb-placeholder" role="img" aria-label={`Sample preview for ${label}`}>
     <span class="theme-fallback-title">Aa</span>

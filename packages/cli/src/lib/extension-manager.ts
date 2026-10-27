@@ -19,10 +19,11 @@
  *     `extensions/npm/` (`npm-plugin-installer.ts`) and written back pinned, as
  *     `name@version`.
  *
- * Nothing is copied into a project here. A bundled look is read from the
- * embedded assets exactly like an extension folder an author owns; the book
- * styles over it from its own `styles:` sheets, which load after every
- * extension. Zip and URL imports land in `extensions/` (extension-import.ts).
+ * Nothing is copied into a project here. A bundled look's stylesheet is
+ * carried as text on its row of the table in `extension-specifier.ts` and
+ * handed to the cascade the way a plugin's `css` export is; the book styles
+ * over it from its own `styles:` sheets, which load after every extension.
+ * Zip and URL imports land in `extensions/` (extension-import.ts).
  *
  * Cascade order and markdown registration order are BOTH the list order —
  * a later entry loads later and its CSS wins ties — and the project's own
@@ -32,7 +33,7 @@
  * round-trip (the same dep `manifest.ts` parses with). Host-side (node:fs);
  * the desktop reaches it through thin SvelteKit server routes.
  */
-import { cp, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
+import { readdir, readFile, rm, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { isSeq, isMap, isScalar, YAMLMap, YAMLSeq, Scalar } from "yaml";
@@ -48,6 +49,7 @@ import {
   type NpmPluginInstallOptions,
 } from "./npm-plugin-installer.ts";
 import {
+  vendoredNpmPluginRoots,
   EXTENSIONS_DIR,
   isExactNpmVersion,
   resolvePackageEntry,
@@ -289,15 +291,16 @@ async function describeEntry(projectDir: string, raw: RawEntry): Promise<Project
   }
 
   if (parsed.kind === "bundled") {
-    const bundled = bundledExtension(parsed.name);
+    // The parser only says "bundled" for a name in the same table.
+    const bundled = bundledExtension(parsed.name)!;
     return withWarnings({
       ...common,
       kind: "bundled",
       name: parsed.name,
-      label: bundled?.label ?? parsed.name,
-      ...(bundled?.description ? { description: bundled.description } : {}),
+      label: bundled.label,
+      description: bundled.description,
       // A bundled look carries its stylesheet as text; everything else bundled is markdown.
-      carries: { ...NO_CARRIES, ...(bundled?.css !== undefined ? { styles: true } : { markdown: true }) },
+      carries: { ...NO_CARRIES, ...(bundled.css !== undefined ? { styles: true } : { markdown: true }) },
     });
   }
 
@@ -501,9 +504,11 @@ export async function removeExtension(projectDir: string, use: string): Promise<
       return;
     }
     if (parsed.kind === "npm" && parsed.version) {
-      const root = vendoredNpmPluginRoot(projectDir, parsed.name, parsed.version);
-      await rm(root, { recursive: true, force: true });
-      await removeEmptyDirs([path.dirname(root)]); // the package folder, once its last version is gone
+      // Wherever the copy may live, the current folder or an older book's.
+      for (const root of vendoredNpmPluginRoots(projectDir, parsed.name, parsed.version)) {
+        await rm(root, { recursive: true, force: true });
+        await removeEmptyDirs([path.dirname(root)]); // the package folder, once its last version is gone
+      }
     }
   });
 }
@@ -762,21 +767,30 @@ async function pinnedVersionsOf(projectDir: string, name: string): Promise<strin
  * Returns a warning, never throws: the install itself succeeded.
  */
 async function pruneStaleVersions(projectDir: string, name: string, keep: readonly string[]): Promise<string[]> {
-  const parent = path.dirname(vendoredNpmPluginRoot(projectDir, name, "0.0.0"));
+  // The package folder in the current vendor tree and in an older book's.
+  const parents = vendoredNpmPluginRoots(projectDir, name, "0.0.0").map((root) => path.dirname(root));
   try {
-    for (const entry of await readdir(parent, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      let version: string;
+    for (const parent of parents) {
+      let entries;
       try {
-        version = decodeURIComponent(entry.name);
-      } catch {
-        continue;
+        entries = await readdir(parent, { withFileTypes: true });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
       }
-      if (!isExactNpmVersion(version) || keep.includes(version)) continue;
-      await rm(path.join(parent, entry.name), { recursive: true, force: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        let version: string;
+        try {
+          version = decodeURIComponent(entry.name);
+        } catch {
+          continue;
+        }
+        if (!isExactNpmVersion(version) || keep.includes(version)) continue;
+        await rm(path.join(parent, entry.name), { recursive: true, force: true });
+      }
     }
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     return [
       `The extension was installed, but a previous version's downloaded copy could not be removed: ` +
         `${error instanceof Error ? error.message : String(error)}`,

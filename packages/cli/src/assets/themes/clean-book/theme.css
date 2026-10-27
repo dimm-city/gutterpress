@@ -1,6 +1,6 @@
 /* =============================================================================
    Clean Book — gutterpress built-in theme (theme.css)
-   A calm, classic long-form book look. Customize the tokens in :root.
+   A calm, classic long-form book look. Change the :root tokens from the book's own stylesheet.
    ============================================================================= */
 
 :root {

@@ -36,16 +36,16 @@ A new book has no look until you add one this way. After adding
 
 ```yaml
 extensions:
-  - ./extensions/clean-book   # The look: extensions/clean-book/theme.css
+  - clean-book                # The look, bundled with Gutterpress
 styles:
   - styles/book.css           # Your own overrides, loaded after every extension
 ```
 
 `styles/book.css` starts as a comment block explaining this split. It is the
 project's own layer: everything under `styles:` loads after every extension,
-so a rule you write there overrides the look at equal specificity. Edit
-`extensions/clean-book/theme.css` directly when you want to change the look
-itself --- it is your copy.
+so a rule you write there overrides the look at equal specificity. Change the
+look's decisions --- its tokens, its rules --- from `styles/book.css`; nothing
+is copied into the book.
 
 ### Adding and switching looks
 

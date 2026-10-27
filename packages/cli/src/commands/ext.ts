@@ -214,7 +214,7 @@ const add = defineCommand({
   meta: {
     name: "add",
     description:
-      "Add an extension: an npm package, a bundled feature, a folder or plugin file, a .zip/.css file, or a URL",
+      "Add an extension: an npm package, a bundled name (a feature or a look), a folder or plugin file, a .zip/.css file, or a URL",
   },
   args: extAddArgs,
   async run({ args, rawArgs }) {

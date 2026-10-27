@@ -181,7 +181,6 @@ export type {
 } from "../lib/extension-manager.ts";
 export {
   BUNDLED_EXTENSIONS,
-  BUNDLED_EXTENSION_NAMES,
   bundledExtension,
   isBundledExtension,
   isPathSpecifier,

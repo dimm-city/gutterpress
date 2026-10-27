@@ -143,18 +143,18 @@ source.
 
 ### `gutterpress new`
 
-Scaffold a new book, plugin or theme from an embedded starter template — the fastest way to start (see [Quick start](#quick-start)).
+Scaffold a new book, plugin or look from an embedded starter template — the fastest way to start (see [Quick start](#quick-start)).
 
 `--kind book` is the default. Every new book has the preset it's designed for, the template's unless you choose: `dtrpg` (DriveThruRPG print-on-demand), `book` (neutral 6x9in trade book), or `custom` (you supply the trim size in points).
 
-`--kind plugin` and `--kind look` scaffold an **extension package** instead — a folder with a `package.json` a book can load. The plugin starter carries a declarative marker table, a hand-written markdown-it rule, component CSS and a `bun test` fixture suite; the theme starter carries the six-file layered CSS architecture (tokens / base / components / page-templates / page-rules / book), each sheet opening with its own OWNS / MUST NOT CONTAIN contract header. Both include a README explaining which conventions are load-bearing. An extension needs no preset, trim size or publish target, so the book-only flags below are rejected rather than ignored when `--kind` names one — and `--prefix`/`--description` are likewise rejected for a book.
+`--kind plugin` and `--kind look` scaffold an **extension package** instead — a folder with a `package.json` a book can load. The plugin starter carries a declarative marker table, a hand-written markdown-it rule, component CSS and a `bun test` fixture suite; the look starter carries the six-file layered CSS architecture (tokens / base / components / page-templates / page-rules / book), each sheet opening with its own OWNS / MUST NOT CONTAIN contract header. Both include a README explaining which conventions are load-bearing. An extension needs no preset, trim size or publish target, so the book-only flags below are rejected rather than ignored when `--kind` names one — and `--prefix`/`--description` are likewise rejected for a book.
 
 ```sh
 gutterpress new <name> [--kind <id>] [options]
 
-  --kind <id>              What to create: book (default), plugin, theme
-  --prefix <str>           Class/custom-property prefix an extension claims (default: its slug, e.g. "field-notes-"); --kind plugin|theme only
-  --description <text>     One-line description recorded in the extension's metadata; --kind plugin|theme only
+  --kind <id>              What to create: book (default), plugin, look
+  --prefix <str>           Class/custom-property prefix an extension claims (default: its slug, e.g. "field-notes-"); --kind plugin|look only
+  --description <text>     One-line description recorded in the extension's metadata; --kind plugin|look only
   --preset <id>            Preset the book is designed for: dtrpg, book, custom (default: the template's)
   --author <name>          Author name to record in the project
   --dir <path>             Parent directory to create the project in (default: current directory)

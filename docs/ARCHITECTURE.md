@@ -681,10 +681,10 @@ writes no second manifest, so a plain markdown-it plugin package is a valid
 extension unchanged, and "look" and "plugin" are just what a package happens
 to declare. The removed `gutterpress.json`/`theme.json` are not read: a folder
 still carrying one fails to load with the package.json shape spelled out.
-A built-in look is a bundled extension: its folder lives in the embedded
-assets and is read exactly like an extension folder an author owns, so
-`clean-book` in `extensions:` installs and copies nothing. The book styles
-over it from its own `styles:` sheets, which load after every extension.
+A built-in look is a bundled extension: its stylesheet is compiled into
+Gutterpress and loads like a plugin's own CSS, so `clean-book` in
+`extensions:` installs and copies nothing. The book styles over it from its
+own `styles:` sheets, which load after every extension.
 `.zip` / `.css` / URL imports are the one thing that lands a copy, in
 `extensions/<id>/`, listed as `./extensions/<id>`.
 

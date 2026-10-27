@@ -799,13 +799,13 @@ async function prepareVendorParent(
   projectDir: string,
   name: string,
 ): Promise<{ npmRoot: string; createdDirs: string[] }> {
-  const plugins = path.join(projectDir, EXTENSIONS_DIR);
-  const npm = path.join(plugins, VENDORED_NPM_DIR);
+  const extensions = path.join(projectDir, EXTENSIONS_DIR);
+  const npm = path.join(extensions, VENDORED_NPM_DIR);
   const packageParent = path.dirname(vendoredNpmPluginRoot(projectDir, name, "0.0.0"));
   await mkdir(projectDir, { recursive: true });
   const createdDirs: string[] = [];
   try {
-    for (const dir of [plugins, npm, packageParent]) {
+    for (const dir of [extensions, npm, packageParent]) {
       if (await ensureDirectory(dir)) createdDirs.push(dir);
     }
     const [realNpm, realPackageParent] = await Promise.all([

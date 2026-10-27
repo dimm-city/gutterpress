@@ -279,7 +279,7 @@ describe("extension-manager", () => {
       expect(listed.find((b) => b.use === "zine")!.label).toBe("Zine");
     });
 
-    test("a bundled look is added by name, described from the embedded folder, and copies nothing", async () => {
+    test("a bundled look is added by name, described from the bundled table, and copies nothing", async () => {
       const dir = projectDir();
       const entry = await addExtension(dir, "zine");
       expect(entry).toMatchObject({
@@ -313,12 +313,16 @@ describe("extension-manager", () => {
     const [entry] = await listProjectExtensions(dir);
     expect(entry!.warnings ?? []).toEqual([]);
     expect(entry!.dir).toBe(pkg);
+
+    // Removing the entry deletes that copy too, wherever it lives.
+    await removeExtension(dir, "markdown-it-legacy@1.0.0");
+    expect(existsSync(join(dir, "plugins", "npm", "markdown-it-legacy"))).toBe(false);
   });
 
   describe("validateProjectExtensions / readExtensionCss", () => {
     test("load-tests enabled entries only and reports the loader's error per entry", async () => {
       const dir = projectDir(
-        ["title: T", "extensions:", "  - ./ext/house", "  - use: ./plugins/off.js", "    enabled: false", "  - ./plugins/nope.js", ""].join("\n"),
+        ["title: T", "extensions:", "  - ./ext/house", "  - use: ./plugins/off.js", "    enabled: false", "  - ./plugins/nope.js", "  - zine", ""].join("\n"),
       );
       writeHouse(dir);
 
@@ -327,6 +331,7 @@ describe("extension-manager", () => {
         ["./ext/house", true, true],
         ["./plugins/off.js", false, true],
         ["./plugins/nope.js", true, false],
+        ["zine", true, true],
       ]);
       expect(results[2]!.error).toMatch(/not found/i);
     });

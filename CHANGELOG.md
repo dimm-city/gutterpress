@@ -52,9 +52,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   `zine`, `technical-doc` and `academic` join the bundled names: `gutterpress
   ext add academic` (or Use in the Look view) writes `- academic` to the
   manifest and copies nothing, the way `gutterpress-math` already worked. The
-  look is read from the embedded assets like any extension folder; a book
-  styles over it from its own `styles:` sheets, which load after every
-  extension. `ext add --look` and the `extensions/<id>` copy are gone; a book
+  look's stylesheet is compiled into Gutterpress and loads like a plugin's own
+  CSS; a book styles over it from its own `styles:` sheets, which load after
+  every extension. `ext add --look` and the `extensions/<id>` copy are gone; a book
   that still carries such a copy keeps working as the path extension it is.
   Several looks may be listed at once, later ones winning ties, as before.
 - **A footnote links to its own note in a book of several files.** Each file

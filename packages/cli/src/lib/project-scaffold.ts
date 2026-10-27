@@ -396,15 +396,17 @@ export async function scaffoldProject(
   let openFile = path.join(projectDir, "chapter-01.md");
   try {
     await fillTemplateFile(manifestPath, substitutions);
-    if (preset) {
-      // Overwrite the template's placeholder `preset:` with the author's
-      // choice (and their trim, for `custom` or an explicit override) via the
-      // comment-preserving YAML document helpers. The target list is always
-      // written — an explicit `targets: []` is the visible, editable record
-      // of "no destination policies", not an accident of omission.
+    if (preset || options.customPage) {
+      // Overwrite the template's `preset:` with the author's choice, via the
+      // comment-preserving YAML document helpers. The target list is written
+      // with it — an explicit `targets: []` is the visible, editable record
+      // of "no destination policies", not an accident of omission. A trim
+      // the author gave is written whether or not a preset was.
       const { doc, file } = await loadManifestDoc(projectDir);
-      doc.set("preset", preset);
-      doc.set("targets", doc.createNode(targets ?? []));
+      if (preset) {
+        doc.set("preset", preset);
+        doc.set("targets", doc.createNode(targets ?? []));
+      }
       if (options.customPage) writePageBounds(doc, options.customPage);
       await writeManifestDoc(file, doc);
     }

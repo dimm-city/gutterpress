@@ -3,7 +3,7 @@
    A journal-article look in the spirit of LaTeX's `article` class: a serif
    text face, justified and hyphenated text, 1in margins, a centred page
    number, and the parts of a paper styled by the @section they sit in.
-   Customize the tokens in :root. The page SIZE comes from the manifest
+   Change the :root tokens from the book's own stylesheet. The page SIZE comes from the manifest
    (`page:` — US Letter or A4), so it is deliberately not set here.
    ============================================================================= */
 

@@ -31,7 +31,7 @@ books/core-book/extensions/              this book's looks; it owns them and may
 books/core-book/styles/book.css          this book, final say in the cascade
 books/core-book/images/                  this book's prose art
 books/core-book/plugins/                 this book's rendering behavior
-books/core-book/plugins/npm/             machine-owned; never hand-edit
+books/core-book/extensions/npm/          machine-owned; never hand-edit
 ```
 
 To change something for one book without touching the shared foundation, add
@@ -65,7 +65,7 @@ for a run. It is generated state, never source, and belongs in `.gitignore`:
 design/tmp/
 ```
 
-Do **not** ignore `plugins/npm/` — a team that expects the book to build offline
+Do **not** ignore `extensions/npm/` — a team that expects the book to build offline
 on another machine needs that vendored tree committed.
 
 ## Two unrelated plugin systems
@@ -73,12 +73,12 @@ on another machine needs that vendored tree committed.
 - **Gutterpress extensions** are markdown-it modules, looks, or both, that a
   *book manifest* lists under `extensions:` — by path (`./x`, `../x`: authored,
   Git-tracked source) or as a managed npm package vendored under that book's
-  `plugins/npm/` by `gutterpress ext add`.
+  `extensions/npm/` by `gutterpress ext add`.
 - **Open Design plugins** are workflow packages a *contributor* installs into
   their own Open Design registry.
 
 Neither is a publication asset. Do not confuse the directories, and never edit
-anything under `plugins/npm/`.
+anything under `extensions/npm/`.
 
 ## Local install is a copy — reinstall after every change
 
@@ -108,7 +108,7 @@ not a supported team distribution path for this version.
 
 Commit everything needed to reproduce the publication and continue design work:
 manifests and manuscript Markdown, shared and local themes/styles/fonts/images,
-authored plugins and profiles, the managed `plugins/npm/` trees, design guidance
+authored plugins and profiles, the managed `extensions/npm/` trees, design guidance
 and decisions, team-authored Open Design packages, and companion design guides.
 
 Git will not capture Open Design conversation history, installed plugin copies,

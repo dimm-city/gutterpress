@@ -93,14 +93,20 @@ function encodePathPart(value: string): string {
   );
 }
 
-/** Root containing one pinned package's private `node_modules` tree. */
-export function vendoredNpmPluginRoot(
-  projectDir: string,
-  name: string,
-  version: string,
-  parent: string = EXTENSIONS_DIR,
-): string {
-  return path.join(projectDir, parent, VENDORED_NPM_DIR, encodePathPart(name), encodePathPart(version));
+/** Root containing one pinned package's private `node_modules` tree — where an install writes. */
+export function vendoredNpmPluginRoot(projectDir: string, name: string, version: string): string {
+  return path.join(projectDir, EXTENSIONS_DIR, VENDORED_NPM_DIR, encodePathPart(name), encodePathPart(version));
+}
+
+/**
+ * Every root a pinned package's copy may live at: the current folder first,
+ * then the one books vendored before 0.11.23 used. Resolution, removal and
+ * pruning all go through this list so they agree on where a copy can be.
+ */
+export function vendoredNpmPluginRoots(projectDir: string, name: string, version: string): string[] {
+  return [EXTENSIONS_DIR, LEGACY_PLUGINS_DIR].map((parent) =>
+    path.join(projectDir, parent, VENDORED_NPM_DIR, encodePathPart(name), encodePathPart(version)),
+  );
 }
 
 /** npm-compatible package location within a versioned vendor root. */
@@ -287,9 +293,8 @@ export async function resolveVendoredPluginInstallRoot(
   const requestedProjectRoot = path.resolve(projectDir);
   let requestedInstallRoot = "";
   let installInfo;
-  // The current folder first, then the one older books vendored into.
-  for (const parent of [EXTENSIONS_DIR, LEGACY_PLUGINS_DIR]) {
-    requestedInstallRoot = vendoredNpmPluginRoot(requestedProjectRoot, expectedName, expectedVersion, parent);
+  for (const candidate of vendoredNpmPluginRoots(requestedProjectRoot, expectedName, expectedVersion)) {
+    requestedInstallRoot = candidate;
     try {
       installInfo = await lstat(requestedInstallRoot);
       break;

@@ -200,6 +200,23 @@ test("scaffoldProject without a preset keeps the template's own", async () => {
   }
 });
 
+test("scaffoldProject without a preset still writes a trim the author gave", async () => {
+  const parent = await tmpParent();
+  try {
+    const result = await scaffoldProject({
+      name: "Trim Only",
+      parentDir: parent,
+      customPage: { width: 500, height: 700 },
+      versionHistory: "none",
+    });
+    const config = resolveConfig({}, await loadManifest(result.projectDir));
+    expect(config.preset).toBe("book");
+    expect([config.page.width, config.page.height]).toEqual([500, 700]);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test("scaffoldProject with an unknown preset refuses with code preset-required", async () => {
   const parent = await tmpParent();
   try {

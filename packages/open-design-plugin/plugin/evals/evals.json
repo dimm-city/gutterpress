@@ -40,7 +40,7 @@
       "assertions": [
         "The agent identifies top-level Markdown as implicit manuscript content",
         "No root DESIGN.md, README.md, or NOTES.md is created",
-        "Generated output and plugins/npm remain unchanged"
+        "Generated output and extensions/npm remain unchanged"
       ]
     }
   ]

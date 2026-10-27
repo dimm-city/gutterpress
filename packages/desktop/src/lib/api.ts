@@ -651,7 +651,7 @@ export const api = {
       post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir, includePrerelease }),
     /** Every published version of one npm package, newest first, pre-releases included (the version picker's list). On demand; a network failure is data (`ok: false`). */
     versions: (name: string) => post<ExtensionVersionsResult>('/api/extension/versions', { name }),
-    /** A configured extension's stylesheets, concatenated, for a sample thumbnail (entries with a folder only). */
+    /** A configured extension's stylesheets, concatenated, for a sample thumbnail (a bundled look's inlined css, or the entry's folder). */
     readCss: (projectDir: string, use: string) =>
       post<string>('/api/extension/read-css', { projectDir, use }),
     /** Native picker for a `.zip` package or bare `.css`, imported into `extensions/<id>/` (#106). Null when cancelled. */

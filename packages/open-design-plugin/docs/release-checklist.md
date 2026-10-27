@@ -90,7 +90,7 @@ od plugin doctor gutterpress-publishing --json
 - [ ] `book-only` scope does not modify shared foundations.
 - [ ] Implicit manuscript discovery never receives a new root control document.
 - [ ] No run changes `book.html`, `dist/**`, `.od-skills/**`, `.git/**`, or
-  `plugins/npm/**`.
+  `extensions/npm/**`.
 - [ ] Every watched source change is judged only after complete pagination.
 - [ ] The final response names every changed source file and its ownership.
 

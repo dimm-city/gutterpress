@@ -163,14 +163,13 @@ function make(
       record("add", dir, specifier, exportName);
       if (h.failAdd) return Promise.reject(new Error("add failed"));
       if (h.cancelAdd) return Promise.resolve(null);
-      // A bundled look (by name) is described from the embedded folder; anything else here is a markdown plugin.
+      // A bundled look (by name) carries styles and has no folder, as the lib describes it; anything else here is a markdown plugin.
       const look = h.bundled.some((b) => b.look && b.use === specifier);
       const added = entry({
         use: specifier,
         kind: specifier.startsWith("./") ? "path" : look ? "bundled" : "npm",
         label: specifier,
         carries: look ? STYLES : MARKDOWN,
-        ...(look ? { dir: `/assets/themes/${specifier}`, styles: ["theme.css"] } : {}),
         ...(exportName ? { export: exportName } : {}),
         ...(h.addWarnings.length ? { warnings: h.addWarnings } : {}),
       });

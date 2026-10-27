@@ -17,14 +17,12 @@
  *
  * Adding is one verb with four ways to NAME the extension, which differ only
  * in what the host does with the name:
- *   - `addNpm` / `addRecommended` — a bundled feature name (written as-is)
- *     or an npm specifier (downloaded, verified, vendored, pinned — behind
- *     the native trust gate, so a null result means "the author cancelled");
+ *   - `addNpm` / `addRecommended` / `useBuiltIn` — a bundled name (a feature
+ *     or a look, written as-is; nothing is copied) or an npm specifier
+ *     (downloaded, verified, vendored, pinned — behind the native trust gate,
+ *     so a null result means "the author cancelled");
  *   - `addLocal` — a folder or plugin file from the native picker,
  *     referenced in place, never copied;
- *   - `useBuiltIn` — a built-in look, the one thing that IS copied (into
- *     `extensions/<id>/`, so the look becomes the author's own editable
- *     files), then referenced as `./extensions/<id>`;
  *   - `importFile` / `importUrl` — a `.zip`, `.css`, or URL package the host
  *     validates and lands in `extensions/<id>/` (#106);
  *   - `addSearched` — an npm search result (#246), added by the exact same

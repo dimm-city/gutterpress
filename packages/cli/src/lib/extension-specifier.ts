@@ -102,8 +102,6 @@ export const BUNDLED_EXTENSIONS: readonly BundledExtension[] = [
   },
 ];
 
-export const BUNDLED_EXTENSION_NAMES: readonly string[] = BUNDLED_EXTENSIONS.map((e) => e.name);
-
 export function bundledExtension(name: string): BundledExtension | undefined {
   return BUNDLED_EXTENSIONS.find((e) => e.name === name);
 }

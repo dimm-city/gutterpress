@@ -9,6 +9,7 @@ import {
   applyPlugins,
   collectPluginCss,
   collectPluginStylePaths,
+  collectPluginStyleGroups,
   __resetPathPluginCacheForTests,
 } from "./plugins";
 import type { ResolvedExtensionConfig } from "../../schema/manifest.types";
@@ -941,6 +942,14 @@ describe("plugin loader", () => {
       expect(loaded).toHaveLength(1);
       expect(loaded[0]!.name).toBe("markdown-it-mark");
       expect(typeof loaded[0]!.plugin).toBe("function");
+    });
+
+    test("resolves a bundled look by name: inlined css, no-op plugin, its own layer", async () => {
+      const loaded = await loadPlugins([cfg({ name: "zine" })], TMP_ROOT);
+      expect(loaded).toHaveLength(1);
+      expect(loaded[0]!.css).toContain(":root");
+      expect(typeof loaded[0]!.plugin).toBe("function");
+      expect(collectPluginStyleGroups(loaded)[0]!.layer).toBe("ext.zine");
     });
 
     test("loads multiple plugins in order", async () => {
