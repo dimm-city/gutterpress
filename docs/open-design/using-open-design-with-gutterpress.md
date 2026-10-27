@@ -331,7 +331,7 @@ gutterpress ext add markdown-it-emoji@3.0.0 ./books/core-book --export full
 
 Gutterpress verifies and vendors the exact runtime graph beneath the book's `extensions/npm/` directory and writes the entry back pinned (`markdown-it-highlightjs@4.3.0`). Commit the manifest entry (the pin); the managed tree is gitignored and a fresh clone downloads exactly that version on its first build, validate, preview or open. Do not hand-edit it or move it into `shared/`.
 
-`gutterpress ext list|remove|enable|disable` cover the rest of the list from the terminal; the desktop's Look and Features views are the same list.
+`gutterpress ext list|remove|enable|disable` cover the rest of the list from the terminal; the desktop's Extensions tab is the same list.
 
 ## Use the companion design guide
 

@@ -191,8 +191,8 @@ export class PreviewOpenController {
       // render; doing it here first only lets the open show download progress
       // and a toast (the render then finds them present). The exact pinned
       // version only, no prompt (the author chose it when they pinned it). A
-      // failure never blocks the open — the preview degrades, and the Features
-      // tab's "Needs install" row stays the way in.
+      // failure never blocks the open — the preview degrades, and the
+      // Extensions tab's "Needs install" row stays the way in.
       restored = await this.restoreExtensions(lib, openedDir);
 
       const activePreview = await lib.startPreviewServer({

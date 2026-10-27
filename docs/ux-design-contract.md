@@ -658,10 +658,10 @@ Proposed refinements (file issues):
 **Status: SHIPPED** (project settings → **Extensions** tab →
 `ExtensionsSection`, #30; looks and features merged into one surface, #243;
 one manifest list, `extensions:`, since #265; one on-screen list since
-0.11.23, after the built-in looks became bundled extensions, #427). This section is rewritten
-around the actual plugin model; the original "app store" concept is
-**rejected** as incompatible with docs/architecture-rules.md §5 unless a
-future ADR changes that rule.
+0.11.23, after the built-in looks became bundled extensions, #427). This
+section is rewritten around the actual plugin model; the original "app store"
+concept is **rejected** as incompatible with docs/architecture-rules.md §5
+unless a future ADR changes that rule.
 
 The model (binding, from docs/architecture-rules.md §5 and #265):
 
@@ -767,10 +767,13 @@ thumbnail preview** of its CSS.
 custom properties of **every enabled look** — bundled, npm or path — in
 cascade order (a later look wins a duplicate), overlaid with the book's own
 active stylesheet, which wins. Every edit is written to **that book
-stylesheet** (`styles/book.css` by default): the token's declaration is
-updated if the sheet has one, otherwise added to its `:root` block (created
-if missing). A look's own files are never written; the author's stylesheet
-is the one escape hatch, and there is no eject or copy of a look. The
+stylesheet** (`styles/book.css` by default): the token's `:root` declaration
+is updated if the sheet has one, otherwise added to its `:root` block
+(created if missing); a declaration in any other rule or in a comment is
+left alone. A token's Revert is an undo: a token the sheet did not declare
+has its declaration taken out again, so a look's value is never pinned into
+the book. A look's own files are never written; the author's stylesheet is
+the one escape hatch, and there is no eject or copy of a look. The
 stylesheet list sits under it on the same tab.
 
 There is **no apply and no revert**: a look is an ordinary list entry

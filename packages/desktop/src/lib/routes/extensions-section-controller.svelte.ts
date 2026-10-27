@@ -50,8 +50,8 @@
  * Same single-owner discipline as every other `*SectionController`: the
  * component reads the public rune fields and calls the intent methods; host
  * coupling is injected so this stays testable with fakes and PWA-clean (§8)
- * — type-only DTO imports plus the pure helpers from
- * `config-helpers` / `theme-grid`, ZERO `node:*` / lib value imports.
+ * — type-only DTO imports plus the pure helpers from `config-helpers`,
+ * ZERO `node:*` / lib value imports.
  * Computed values are plain getters, not `$derived` (mirrors
  * `design-section-controller.svelte.ts`), so bun's unit tests need only the
  * `$state` shim.
@@ -69,12 +69,12 @@ import type {
   ExtensionVersionsResult,
 } from "#lib/platform/dtos.ts";
 import {
+  addedBuiltInIds,
   orderAfterMove,
   pickerVersions,
   sampleSrcdoc,
   hoverPreviewSrcdoc,
 } from "#lib/components/config/config-helpers.ts";
-import { addedBuiltInIds } from "#lib/components/config/theme-grid.ts";
 
 export interface ExtensionsSectionDeps {
   /** The open project directory (reactive prop), or null when none is open. */
@@ -223,7 +223,7 @@ export class ExtensionsSectionController {
    */
   get availableBundled(): BundledExtensionInfo[] {
     const copies = addedBuiltInIds(this.entries);
-    return this.bundled.filter((b) => !copies.has(b.use) && !this.entries.some((e) => e.use === b.use));
+    return this.bundled.filter((b) => !(b.look && copies.has(b.use)) && !this.entries.some((e) => e.use === b.use));
   }
   /** npm results not already in the list — the "Find more on npm" rows. An
    *  installed npm entry's `use` is `name@version`, so the comparison is by

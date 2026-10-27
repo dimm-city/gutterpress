@@ -71,7 +71,7 @@ The list is read top to bottom, and its order means two things at once:
 - **Markdown registration.** A later entry's plugin is registered with markdown-it after the earlier ones, so it runs later during parsing and sees the tokens earlier plugins produced. If plugin B needs plugin A's output, list A first.
 - **The cascade.** Each extension's stylesheets are wrapped in a cascade layer of their own (`@layer ext.<name>`), declared in list order, so a later entry wins ties whatever its CSS looks like. Your own `styles:` stay unlayered and load after every extension, so a rule in your own stylesheet beats any extension rule at any specificity.
 
-Underneath all of it, core's built-in plugins (below) always run first, and core's own CSS sits in two cascade layers declared before every extension's. To change who wins, move the entry: `gutterpress ext list` prints the list in this order, and the desktop's Look and Features views let you drag entries into a new order.
+Underneath all of it, core's built-in plugins (below) always run first, and core's own CSS sits in two cascade layers declared before every extension's. To change who wins, move the entry: `gutterpress ext list` prints the list in this order, and the desktop's **Extensions** tab moves entries up or down.
 
 ## Managing Extensions from the Terminal
 
@@ -836,7 +836,7 @@ extensions:
 
 ## Error Handling
 
-Gutterpress **fails the build** on extension errors --- a final PDF must never silently omit formatting you configured. The live preview is the one exception: an extension that cannot load is skipped with a loud warning (and a "Needs install" state in the desktop's Features view) so one broken entry does not blank the whole preview.
+Gutterpress **fails the build** on extension errors --- a final PDF must never silently omit formatting you configured. The live preview is the one exception: an extension that cannot load is skipped with a loud warning (and a "Needs install" state in the desktop's Extensions tab) so one broken entry does not blank the whole preview.
 
 @section
 

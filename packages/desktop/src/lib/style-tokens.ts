@@ -272,29 +272,47 @@ export function cascadeStyleTokens(sheets: string[]): StyleToken[] {
 }
 
 /**
- * Set a single `:root` custom property's value. If the property already exists,
- * every declaration of it is replaced; otherwise it is inserted into the first
- * `:root` block. If the stylesheet has no `:root` block at all, one is appended
- * so the token is never silently dropped. Returns the new CSS.
+ * One `:root` block's comments and custom-property declarations, scanned in
+ * source order the way `parseStyleTokens` scans them, so a commented-out
+ * declaration is skipped whole. A declaration also takes the line break and
+ * indent before it, so removing one takes its line with it; the lookbehind
+ * and the greedy name match a name whole (`--my--x` is never `--x`).
  */
-export function updateRootToken(cssText: string, name: string, value: string): string {
-  const escaped = name.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
-  const existing = new RegExp(`(${escaped}\\s*:)[^;]*(;)`, "g");
-  if (existing.test(cssText)) {
-    return cssText.replace(new RegExp(`(${escaped}\\s*:)[^;]*(;)`, "g"), `$1 ${value}$2`);
-  }
+const ROOT_ITEM_RE = /\/\*[\s\S]*?\*\/|(\n?[ \t]*)(?<![\w-])(--[\w-]+)(\s*:\s*)[^;]+;/g;
+
+/**
+ * Set one `:root` custom property's value, or remove it (`value` null). Only
+ * declarations inside `:root` blocks count: a scoped rule's or a comment's
+ * mention of the name is left alone. Every `:root` declaration of it is
+ * replaced (or removed, with its line, and a `:root` block that leaves empty
+ * goes too); a property no `:root` block declares is inserted into the first
+ * one, or into a `:root` block appended when the stylesheet has none, so an
+ * edit is never silently dropped. Returns the new CSS.
+ */
+export function updateRootToken(cssText: string, name: string, value: string | null): string {
+  let declared = false;
+  const out = cssText.replace(/(:root\s*\{)([^}]*)\}(\n?)/g, (block, open: string, body: string, end: string) => {
+    const next = body.replace(ROOT_ITEM_RE, (item, indent?: string, prop?: string, colon?: string) => {
+      if (prop !== name) return item;
+      declared = true;
+      return value === null ? "" : `${indent}${prop}${colon}${value};`;
+    });
+    if (next === body) return block;
+    return value === null && next.trim() === "" ? "" : `${open}${next}}${end}`;
+  });
+  if (declared || value === null) return out;
   if (/:root\s*\{/.test(cssText)) {
-    return cssText.replace(/(:root\s*\{)/, `$1\n  ${name}: ${value};`);
+    return cssText.replace(/:root\s*\{/, (open) => `${open}\n  ${name}: ${value};`);
   }
   // No :root block yet — append one rather than returning the CSS unchanged.
   const sep = cssText.length > 0 && !cssText.endsWith("\n") ? "\n" : "";
   return `${cssText}${sep}:root {\n  ${name}: ${value};\n}\n`;
 }
 
-/** One pending token mutation. */
+/** One pending token mutation: a new value, or null to remove the declaration. */
 export interface TokenUpdate {
   name: string;
-  value: string;
+  value: string | null;
 }
 
 /**

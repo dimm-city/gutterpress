@@ -315,6 +315,14 @@ test("availableBundled also hides a look the book still has as an older ./extens
   expect(h.ctrl.availableBundled).toEqual([REC_SUB, BUILTIN_ZINE]);
 });
 
+test("an ./extensions/<id> folder only hides a bundled LOOK of that name, never a feature", async () => {
+  // e.g. a .zip import whose id happens to match a bundled feature's name.
+  const imported = entry({ use: "./extensions/markdown-it-sub", carries: STYLES, dir: "/proj/extensions/markdown-it-sub" });
+  const h = make({ entries: [imported] });
+  await h.ctrl.loadExtensions();
+  expect(h.ctrl.availableBundled).toEqual(BUNDLED);
+});
+
 // ── Search: npm (#246) ──────────────────────────────────────────────────────
 
 test("loadExtensions never touches search — npm is only searched on demand", async () => {

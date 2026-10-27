@@ -423,6 +423,7 @@ function lookHarness(extensions: ProjectExtensionEntry[], css: Record<string, st
   fs.files.set(BOOK, bookCss);
   const timer = new FakeTimer();
   const readCssCalls: string[] = [];
+  const written: string[] = [];
   const ctrl = new DesignSectionController({
     projectDir: () => "/proj",
     listStyles: () => Promise.resolve([{ path: BOOK, displayName: "styles/book.css", active: true }]),
@@ -433,14 +434,13 @@ function lookHarness(extensions: ProjectExtensionEntry[], css: Record<string, st
     },
     readFile: fs.readFile,
     writeFile: (path, content) => {
-      // The fake host must never be asked to write anything but the book's sheet.
-      expect(path).toBe(BOOK);
+      written.push(path);
       return fs.writeFile(path, content);
     },
     setTimer: timer.set,
     clearTimer: timer.clear,
   });
-  return { ctrl, fs, timer, readCssCalls };
+  return { ctrl, fs, timer, readCssCalls, written };
 }
 
 const tokenValues = (ctrl: DesignSectionController) => Object.fromEntries(ctrl.tokens.map((t) => [t.name, t.value]));
@@ -514,7 +514,7 @@ test("editing a look's token adds it to the book's :root block — the look's CS
   h.ctrl.setToken(h.ctrl.colorTokens[0]!, "#7b2f8a");
   h.timer.fire();
   await flush();
-  expect(h.fs.writes).toBe(1);
+  expect(h.written).toEqual([BOOK]);
   expect(h.fs.files.get(BOOK)).toBe("/* Your book's own styles. */\n:root {\n  --color-accent: #7b2f8a;\n  --book-only: 2;\n}\n");
   expect(h.ctrl.designSaveStatus).toBe("saved");
 });
@@ -525,6 +525,7 @@ test("editing a token the book already declares updates that declaration in plac
   h.ctrl.setLength(h.ctrl.sizeTokens[0]!, "12");
   h.timer.fire();
   await flush();
+  expect(h.written).toEqual([BOOK]);
   expect(h.fs.files.get(BOOK)).toBe(":root {\n  --fs-body: 12pt;\n}\n");
 });
 
@@ -535,7 +536,59 @@ test("a book sheet with no :root block gets one, after the starter comment", asy
   h.ctrl.setToken(h.ctrl.colorTokens[0]!, "#112233");
   h.timer.fire();
   await flush();
+  expect(h.written).toEqual([BOOK]);
   expect(h.fs.files.get(BOOK)).toBe(`${STARTER}:root {\n  --color-accent: #112233;\n}\n`);
+});
+
+// Revert is an undo: a token only a look declares must not end up pinned in
+// the book's sheet at the look's value, or a later look change never shows.
+
+test("reverting a look's token takes the book's declaration out again — the sheet is byte-identical", async () => {
+  const STARTER = "/* mine */\n";
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": ":root { --color-accent: #2b4c7e; --fs-body: 11pt; }" }, STARTER);
+  await h.ctrl.loadDesign();
+  h.ctrl.setToken(h.ctrl.colorTokens[0]!, "#ff0000");
+  h.ctrl.setLength(h.ctrl.sizeTokens[0]!, "12");
+  h.timer.fire();
+  await flush();
+  expect(h.fs.files.get(BOOK)).toBe(`${STARTER}:root {\n  --fs-body: 12pt;\n  --color-accent: #ff0000;\n}\n`);
+  h.ctrl.revertAllTokens();
+  expect(tokenValues(h.ctrl)).toEqual({ "--color-accent": "#2b4c7e", "--fs-body": "11pt" });
+  expect(h.ctrl.anyDirty).toBe(false);
+  h.timer.fire();
+  await flush();
+  expect(h.written).toEqual([BOOK, BOOK]);
+  expect(h.fs.files.get(BOOK)).toBe(STARTER);
+  expect(h.ctrl.designSaveStatus).toBe("saved");
+});
+
+test("reverting a token the book declares puts the book's own value back", async () => {
+  const BOOK_CSS = ":root {\n  --color-accent: #7b2f8a;\n}\n";
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": ":root { --color-accent: #2b4c7e; }" }, BOOK_CSS);
+  await h.ctrl.loadDesign();
+  const accent = h.ctrl.colorTokens[0]!;
+  h.ctrl.setToken(accent, "#ff0000");
+  h.timer.fire();
+  await flush();
+  h.ctrl.resetToken(accent);
+  expect(accent.value).toBe("#7b2f8a");
+  h.timer.fire();
+  await flush();
+  expect(h.written).toEqual([BOOK, BOOK]);
+  expect(h.fs.files.get(BOOK)).toBe(BOOK_CSS);
+});
+
+test("an edit after a revert in the same debounce window wins over the queued removal", async () => {
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": ":root { --color-accent: #2b4c7e; }" }, "");
+  await h.ctrl.loadDesign();
+  const accent = h.ctrl.colorTokens[0]!;
+  h.ctrl.setToken(accent, "#ff0000");
+  h.ctrl.resetToken(accent);
+  h.ctrl.setToken(accent, "#00ff00");
+  h.timer.fire();
+  await flush();
+  expect(h.written).toEqual([BOOK]);
+  expect(h.fs.files.get(BOOK)).toBe(":root {\n  --color-accent: #00ff00;\n}\n");
 });
 
 test("loadDesign tolerates a failing extension list — the book's own tokens still load", async () => {

@@ -189,10 +189,10 @@ workflow of your own. You add one exactly like any other extension (see
 gutterpress ext add <package-name>
 ```
 
-In the desktop app, add it from **Book setup** &rarr; **Features**, where it shows
-**+ publish destination**. From then on it appears in the Publish wizard's
-list of destinations with an **Experimental** badge, and on the command line
-under its package name:
+In the desktop app, add it from **Book setup** &rarr; **Extensions**, where its
+row shows a **Publish destination** badge. From then on it appears in the
+Publish wizard's list of destinations with an **Experimental** badge, and on
+the command line under its package name:
 
 ```bash
 gutterpress publish --list                      # plugins show as "experimental"

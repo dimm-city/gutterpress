@@ -154,8 +154,8 @@ new "House Style" --kind look` scaffolds a layered six-sheet one; either way
 ### Looks with more than one stylesheet
 
 A look folder is not limited to one `theme.css`. Its `package.json` --- the same
-standard file npm already wants --- declares an ordered list of sheets and which
-sheet holds its tokens, under one `"gutterpress"` key:
+standard file npm already wants --- declares an ordered list of sheets under one
+`"gutterpress"` key:
 
 ```json
 {
@@ -175,10 +175,14 @@ load in that order at the look's position in `extensions:` --- one entry,
 however many files --- and a sheet that must win over the others simply goes
 last in the list. Disabling or removing the entry removes them all. A look
 declares its sheets: there is no implicit `theme.css`, so `gutterpress.styles`
-is the one field a look cannot leave out. `tokensFile` defaults to the first
-entry in `styles`. The file need not be called `theme.css` at all; a `.zip` or
-URL import still needs one to find the package root, and an import writes the
-package.json for you when the package has none.
+is the one field a look cannot leave out. A sheet need not be called
+`theme.css` at all; a `.zip` or URL import still needs one to find the package
+root, and an import writes the package.json for you when the package has none.
+
+The desktop app's **Design** tab reads the `:root` custom properties of every
+enabled look's stylesheets plus your book's own sheet, and writes your edits to
+the book's sheet. `tokensFile`, which names the sheet holding a look's tokens,
+is optional package metadata the desktop app no longer reads.
 
 The other fields are npm's own `name`, `description` and `author`, plus
 `gutterpress.preview` (an image, relative to the folder) and --- for a look that

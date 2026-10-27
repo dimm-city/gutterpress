@@ -183,7 +183,15 @@ await screen("book-settings-details", async () => {
   await click("[aria-label='Book setup']");
   await wait(1500);
 }, { crop: SETTINGS, width: 960 });
-await screen("book-settings-extensions", () => click("[role=tab]:has-text('Extensions')"), { crop: SETTINGS, width: 960 });
+// The demo book lists no extensions, so add a built-in feature and a look:
+// the list then shows rows with their badges and a thumbnail, and Design
+// shows the look's tokens.
+await screen("book-settings-extensions", async () => {
+  await click("[role=tab]:has-text('Extensions')");
+  await click("[aria-label='Add Highlight']");
+  await click("[aria-label='Add Clean book']");
+  await wait(2500);
+}, { crop: SETTINGS, width: 960 });
 await screen("extensions-search", async () => {
   await click("[role=tab]:has-text('Search')");
   await page.fill("input[placeholder^='footnote']", "footnote");
@@ -191,7 +199,13 @@ await screen("extensions-search", async () => {
   await wait(6000); // npm answers over the network
 }, { crop: SETTINGS, width: 960 });
 await screen("book-settings-design", () => click("[role=tab]:has-text('Design')"), { crop: SETTINGS, width: 960 });
-await press("Escape");
+// Take both out again, so the preview in the shots below is unchanged. A
+// removed row takes the focus with it, so close with the X, not Esc.
+await click("[role=tab]:has-text('Extensions')");
+await click("[aria-label='Remove Highlight']");
+await click("[aria-label='Remove Clean book']");
+await wait(1500);
+await click("[aria-label='Close this screen']");
 await wait(800);
 
 console.log("desktop-screenshots: publishing and versions");

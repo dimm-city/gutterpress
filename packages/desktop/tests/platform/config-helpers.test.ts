@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
 import {
+  addedBuiltInIds,
   describeSegments,
   extensionSourceLabel,
   extensionStatus,
@@ -202,4 +203,39 @@ test("pickerVersions: a pin the registry does not list (or an unloaded list) is 
   expect(pickerVersions([], "1.2.0-alpha.2", false)).toEqual(["1.2.0-alpha.2"]);
   expect(pickerVersions(["1.1.0"], "9.9.9", false)).toEqual(["9.9.9", "1.1.0"]);
   expect(pickerVersions([], undefined, true)).toEqual([]);
+});
+
+// ── addedBuiltInIds: an older version's ./extensions/<id> copy of a look ──────
+
+/** A path entry, the way a copied look (or anything else on disk) is listed. */
+const onDisk = (use: string, kind: ProjectExtensionEntry["kind"] = "path") =>
+  entry({ use, kind, name: use, label: use, carries: { ...NONE, styles: true } });
+
+test("addedBuiltInIds is empty when nothing is configured", () => {
+  expect(addedBuiltInIds([])).toEqual(new Set());
+});
+
+test("addedBuiltInIds recognizes a built-in copied to ./extensions/<id> (#265)", () => {
+  const ids = addedBuiltInIds([onDisk("./extensions/clean-book"), entry()]);
+  expect(ids).toEqual(new Set(["clean-book"]));
+});
+
+test("addedBuiltInIds tolerates a trailing slash and backslashes as written by hand", () => {
+  expect(addedBuiltInIds([onDisk("./extensions/zine/")])).toEqual(new Set(["zine"]));
+  expect(addedBuiltInIds([onDisk(".\\extensions\\zine")])).toEqual(new Set(["zine"]));
+});
+
+test("addedBuiltInIds ignores looks that live anywhere else, nested folders, and npm entries", () => {
+  const ids = addedBuiltInIds([
+    onDisk("./themes/clean-book"),
+    onDisk("./extensions/vendor/clean-book"),
+    onDisk("../shared/extensions/zine"),
+    onDisk("clean-book@1.0.0", "npm"),
+  ]);
+  expect(ids).toEqual(new Set());
+});
+
+test("addedBuiltInIds reports a disabled copy too — the folder exists, so Use would only re-reference it", () => {
+  const off = { ...onDisk("./extensions/technical-doc"), enabled: false };
+  expect(addedBuiltInIds([off])).toEqual(new Set(["technical-doc"]));
 });

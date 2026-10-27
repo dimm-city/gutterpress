@@ -8,10 +8,12 @@
  * a path/npm entry's declared sheets), overlaid with the book's own active
  * stylesheet, which loads last and wins (`cascadeStyleTokens`). What it
  * writes is ONLY that book stylesheet (`cssPath` / `cssName` — `styles/book.css`
- * by default): an edit updates the sheet's own declaration of the token, or
- * adds one to its `:root` block (`applyTokenUpdates`). A look's own files are
- * never written; the author's stylesheet is the one place a look is styled
- * over (#427).
+ * by default): an edit updates the sheet's own `:root` declaration of the
+ * token, or adds one to its `:root` block (`applyTokenUpdates`). A look's own
+ * files are never written; the author's stylesheet is the one place a look is
+ * styled over (#427). Revert is an undo: a token the book declared gets its
+ * own value back, and one only a look declared has the book's declaration of
+ * it removed again, so the look's value shows through instead of being pinned.
  *
  * The load-bearing part is the debounced, serialized, race-free token
  * writer: edits coalesce into `tokenPending` (keyed by name, last value wins)
@@ -42,6 +44,7 @@
 import type { ProjectExtensionEntry, ProjectStyle, StyleToken } from "#lib/platform/dtos.ts";
 import {
   cascadeStyleTokens,
+  parseStyleTokens,
   applyTokenUpdates,
   type TokenUpdate,
 } from "#lib/style-tokens.ts";
@@ -87,7 +90,10 @@ export class DesignSectionController {
 
   // ── Non-reactive internals ──────────────────────────────────────────────────
   private readonly originals = new Map<string, string>();
-  private readonly tokenPending = new Map<string, string>();
+  /** The tokens the book's own sheet declared at load (the rest come from looks). */
+  private bookDeclared = new Set<string>();
+  /** Coalesced edits by name: a value to write, or null to remove the book's declaration. */
+  private readonly tokenPending = new Map<string, string | null>();
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private commitChain: Promise<void> = Promise.resolve();
 
@@ -196,6 +202,7 @@ export class DesignSectionController {
         this.deps.readFile(active.path),
       ]);
       this.tokens = cascadeStyleTokens(sheets);
+      this.bookDeclared = new Set(parseStyleTokens(sheets.at(-1)!).map((t) => t.name));
       this.originals.clear();
       for (const t of this.tokens) this.originals.set(t.name, t.value);
       this.designSaveStatus = "idle";
@@ -207,7 +214,7 @@ export class DesignSectionController {
   }
 
   // ── Debounced, serialized token writes ──────────────────────────────────────
-  private scheduleTokenWrite(name: string, value: string): void {
+  private scheduleTokenWrite(name: string, value: string | null): void {
     this.tokenPending.set(name, value);
     this.designSaveStatus = "saving";
     if (this.flushTimer) this.clearTimer(this.flushTimer);
@@ -273,7 +280,11 @@ export class DesignSectionController {
 
   resetToken = (t: StyleToken): void => {
     const o = this.originals.get(t.name);
-    if (o !== undefined && o !== t.value) this.setToken(t, o);
+    if (o === undefined || o === t.value) return;
+    t.value = o;
+    this.tokens = this.tokens; // nudge reactivity (mutated element)
+    // Undo, never pin: only a value the book itself declared is written back.
+    this.scheduleTokenWrite(t.name, this.bookDeclared.has(t.name) ? o : null);
   };
 
   revertAllTokens = (): void => {

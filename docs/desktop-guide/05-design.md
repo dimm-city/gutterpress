@@ -39,7 +39,7 @@ To use a look from elsewhere, open **Advanced** under **Add** and choose **Impor
 **Import**. [Find plugins](https://gutterpress.dimm.city/plugins/) lists looks and other extensions
 on npm.
 
-![Book settings, Extensions tab: the list and the built-in looks and features to add](images/book-settings-extensions.jpg)
+![Book settings, Extensions tab: a feature and a look in the list, and the built-in extras to add](images/book-settings-extensions.jpg)
 
 ## Fine-tune fonts, colours and sizes
 

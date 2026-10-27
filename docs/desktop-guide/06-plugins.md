@@ -24,7 +24,7 @@ one, and it works straight away:
 | Callouts | `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]` |
 | Math | `$E = mc^2$` in a line, or `$$` ... `$$` on lines of their own |
 
-![Extensions, Built in: the formatting extras and looks, each with Add](images/book-settings-extensions.jpg)
+![Extensions, Built in: a feature and a look in the list, and the formatting extras, each with Add](images/book-settings-extensions.jpg)
 
 ## Find and install a plugin
 
@@ -36,8 +36,8 @@ one, and it works straight away:
 ![Extensions, Search: results from npm for "footnote", each with Add](images/extensions-search.jpg)
 
 Gutterpress downloads it, checks it, keeps a copy inside your book, and adds it to the list. Your
-book then builds from that copy, even offline. You can also browse
-the same search on the [Find plugins](https://gutterpress.dimm.city/plugins/) page.
+book then builds from that copy, even offline. You can also browse the same search on the
+[Find plugins](https://gutterpress.dimm.city/plugins/) page.
 
 If you know the package's name, open **Advanced**, type it under **Install from npm** (with a
 version if you want one, such as `markdown-it-highlightjs@4.3.0`) and click **Install**.
@@ -45,7 +45,8 @@ version if you want one, such as `markdown-it-highlightjs@4.3.0`) and click **In
 
 ## Choose a version and stay up to date
 
-Each installed plugin in the list has a **Version** menu; pick a version to switch to it. If the new version fails to download or load, your book keeps the old one.
+Each installed plugin in the list has a **Version** menu; pick a version to switch to it. If the
+new version fails to download or load, your book keeps the old one.
 
 - **Check for updates** asks npm for newer versions. A plugin with one shows the new version and
   an **Update** button.

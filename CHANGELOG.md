@@ -70,11 +70,12 @@ This project follows [Semantic Versioning](https://semver.org/).
   **Design** tab (with the stylesheet list) shows the settings of every look
   that is switched on (built in, from npm or a folder) in list order, as
   your own stylesheet sets them, and saves a change to that stylesheet
-  (`styles/book.css` unless `styles:` names another): where it already sets
-  the value, or in its `:root` block, which is added if missing. It used to
-  edit only the first look kept in a folder, in the look's own file; a look's
-  files are never written now, and a built-in or npm look is no longer left
-  out.
+  (`styles/book.css` unless `styles:` names another), in its `:root` block,
+  which is added if missing; rules elsewhere in the sheet are left alone.
+  **Revert** is an undo: a value only a look sets is taken back out of your
+  stylesheet, not copied into it. It used to edit only the first look kept in
+  a folder, in the look's own file; a look's files are never written now, and
+  a built-in or npm look is no longer left out.
 - **A footnote links to its own note in a book of several files.** Each file
   numbers its notes from 1, and the links behind the numbers were named after
   the number alone, so in a book with notes in two files a note's return arrow,
