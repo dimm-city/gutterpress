@@ -310,7 +310,8 @@ export interface ProjectConfigFields {
  * prints with, in points — and what the author picks. Type-only imports erase
  * at build time, so the SPA still never value-imports the lib (§8).
  */
-export type { PageMargin, PageSetup, PageSizeChoice } from 'gutterpress';
+import type { PageMargin, PageSetup, PageSizeChoice } from 'gutterpress';
+export type { PageMargin, PageSetup, PageSizeChoice };
 
 export interface DirEntry {
   name: string;
