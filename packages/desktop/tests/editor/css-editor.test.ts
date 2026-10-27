@@ -108,9 +108,19 @@ test("cssDiagnosticsSource reports a syntax error", async () => {
 });
 
 test("cssDiagnosticsSource returns nothing for clean print-safe CSS", async () => {
-  const doc = "@page {\n  size: A4 portrait;\n  margin: 20mm;\n}\n";
+  const doc = "@page {\n  margin: 20mm;\n}\n";
   const state = EditorState.create({ doc });
   expect(await cssDiagnosticsSource(state)).toEqual([]);
+});
+
+test("cssDiagnosticsSource flags a page size in a stylesheet: the manifest sets it", async () => {
+  const doc = "@page {\n  size: A4 portrait;\n  margin: 20mm;\n}\n";
+  const state = EditorState.create({ doc });
+  const diags = await cssDiagnosticsSource(state);
+  const size = diags.find((d) => d.source === "printsafe/page-size-in-stylesheet");
+  expect(size).toBeDefined();
+  expect(size?.severity).toBe("warning");
+  expect(doc.slice(size!.from, size!.to)).toContain("size");
 });
 
 // ── pagedMediaCompletions / completion source ────────────────────────────────
@@ -121,16 +131,11 @@ test("pagedMediaCompletions covers the key Paged Media constructs", () => {
   expect(labels).toContain("@top-center");
   expect(labels).toContain("@bottom-right");
   expect(labels).toContain("@left-middle");
-  expect(labels).toContain("size");
   expect(labels).toContain("margin");
   expect(labels).toContain("bleed");
   expect(labels).toContain("marks");
-  // size has multiple value-hint variants.
-  const sizeApplies = pagedMediaCompletions
-    .filter((c) => c.label === "size")
-    .map((c) => c.apply);
-  expect(sizeApplies).toContain("size: A4 portrait;");
-  expect(sizeApplies).toContain("size: letter landscape;");
+  // No `size`: the manifest sets the page size, and the CSS check flags one here.
+  expect(labels).not.toContain("size");
 });
 
 test("pagedMediaCompletionSource offers @page when typing '@pa'", () => {

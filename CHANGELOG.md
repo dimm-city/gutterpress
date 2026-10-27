@@ -118,7 +118,8 @@ This project follows [Semantic Versioning](https://semver.org/).
   look sets. A book that has not set margins yet shows the ones its
   stylesheets give it (or the 1in default) and says so. Nothing is written to
   a stylesheet any more, and nothing can drift: the "Use this size in the
-  stylesheet too" note is gone.
+  stylesheet too" note is gone, and the stylesheet editor no longer offers a
+  `size` completion inside `@page`.
 - **Book setup's Details tab saves as you go.** There is no Save button and no
   "saved" toast: a choice (page size, print checks, chapter order) is written
   at once, a title or author when you leave the field or press Enter, and
