@@ -17,36 +17,64 @@
   // src/engine/viewer/fragment.ts
   var exports_fragment = {};
   __export(exports_fragment, {
-    wrapGeometry: () => wrapGeometry,
-    waitForLayoutReady: () => waitForLayoutReady,
-    versoShiftPt: () => versoShiftPt,
-    synthesizeColumnBreaks: () => synthesizeColumnBreaks,
-    stripMetrics: () => stripMetrics,
-    strideOf: () => strideOf,
-    stabilizeFullHeightPageRoots: () => stabilizeFullHeightPageRoots,
-    spreadModeSupported: () => spreadModeSupported,
-    runPageBox: () => runPageBox,
-    rowStrideOf: () => rowStrideOf,
-    pageRangeOf: () => pageRangeOf,
-    pageOf: () => pageOf,
-    padToSignature: () => padToSignature,
-    measure: () => measure,
-    makeOverflowFragmentable: () => makeOverflowFragmentable,
-    loadStyleSources: () => loadStyleSources,
-    injectViewerCss: () => injectViewerCss,
-    injectBreakMapping: () => injectBreakMapping,
-    indexInStrip: () => indexInStrip,
-    fragmentDocument: () => fragmentDocument,
-    cssZoomOf: () => cssZoomOf,
-    contentEdgeRect: () => contentEdgeRect,
-    compensateRepeatedHeaders: () => compensateRepeatedHeaders,
-    compensateRectoBreaks: () => compensateRectoBreaks,
-    columnReserve: () => columnReserve,
-    collectCssText: () => collectCssText,
-    buildStrips: () => buildStrips,
-    blankPageIndices: () => blankPageIndices,
+    PX_PER_PT: () => PX_PER_PT,
     applySpreadMode: () => applySpreadMode,
-    PX_PER_PT: () => PX_PER_PT
+    blankPageIndices: () => blankPageIndices,
+    buildStrips: () => buildStrips,
+    collectCssText: () => collectCssText,
+    columnReserve: () => columnReserve,
+    compensateRectoBreaks: () => compensateRectoBreaks,
+    compensateRepeatedHeaders: () => compensateRepeatedHeaders,
+    contentEdgeRect: () => contentEdgeRect,
+    cssZoomOf: () => cssZoomOf,
+    fragmentDocument: () => fragmentDocument,
+    indexInStrip: () => indexInStrip,
+    injectBreakMapping: () => injectBreakMapping,
+    injectViewerCss: () => injectViewerCss,
+    loadStyleSources: () => loadStyleSources,
+    makeOverflowFragmentable: () => makeOverflowFragmentable,
+    measure: () => measure,
+    padToSignature: () => padToSignature,
+    pageOf: () => pageOf,
+    pageRangeOf: () => pageRangeOf,
+    rowStrideOf: () => rowStrideOf,
+    runPageBox: () => runPageBox,
+    spreadModeSupported: () => spreadModeSupported,
+    stabilizeFullHeightPageRoots: () => stabilizeFullHeightPageRoots,
+    strideOf: () => strideOf,
+    stripMetrics: () => stripMetrics,
+    synthesizeColumnBreaks: () => synthesizeColumnBreaks,
+    versoShiftPt: () => versoShiftPt,
+    waitForLayoutReady: () => waitForLayoutReady,
+    wrapGeometry: () => wrapGeometry
+  });
+
+  // src/engine/shared/gcpm-extract.ts
+  var exports_gcpm_extract = {};
+  __export(exports_gcpm_extract, {
+    DEFAULT_PAGE_MARGIN_PT: () => DEFAULT_PAGE_MARGIN_PT,
+    MARGIN_BOX_NAMES: () => MARGIN_BOX_NAMES,
+    PAGE_SIZES: () => PAGE_SIZES,
+    extract: () => extract,
+    mediaPrintBodies: () => mediaPrintBodies,
+    parseDeclarations: () => parseDeclarations,
+    parseMargin: () => parseMargin,
+    parseSize: () => parseSize,
+    resolvePage: () => resolvePage,
+    splitTopLevel: () => splitTopLevel,
+    toPt: () => toPt
+  });
+
+  // src/engine/shared/content-value.ts
+  var exports_content_value = {};
+  __export(exports_content_value, {
+    evaluate: () => evaluate,
+    evaluateContent: () => evaluateContent,
+    formatCounter: () => formatCounter,
+    needsMeasurement: () => needsMeasurement,
+    parseContent: () => parseContent,
+    resolveUrlArg: () => resolveUrlArg,
+    unquote: () => unquote
   });
 
   // src/engine/viewer/viewer.css
@@ -357,20 +385,6 @@
 `;
 
   // src/engine/shared/gcpm-extract.ts
-  var exports_gcpm_extract = {};
-  __export(exports_gcpm_extract, {
-    toPt: () => toPt,
-    splitTopLevel: () => splitTopLevel,
-    resolvePage: () => resolvePage,
-    parseSize: () => parseSize,
-    parseMargin: () => parseMargin,
-    parseDeclarations: () => parseDeclarations,
-    mediaPrintBodies: () => mediaPrintBodies,
-    extract: () => extract,
-    PAGE_SIZES: () => PAGE_SIZES,
-    MARGIN_BOX_NAMES: () => MARGIN_BOX_NAMES,
-    DEFAULT_PAGE_MARGIN_PT: () => DEFAULT_PAGE_MARGIN_PT
-  });
   var MARGIN_BOX_NAMES = [
     "top-left-corner",
     "top-left",
@@ -2051,16 +2065,6 @@
   }
 
   // src/engine/shared/content-value.ts
-  var exports_content_value = {};
-  __export(exports_content_value, {
-    unquote: () => unquote,
-    resolveUrlArg: () => resolveUrlArg,
-    parseContent: () => parseContent,
-    needsMeasurement: () => needsMeasurement,
-    formatCounter: () => formatCounter,
-    evaluateContent: () => evaluateContent,
-    evaluate: () => evaluate
-  });
   var FUNC = /^([a-z-]+)\(/i;
   function parseContent(value) {
     const parts = [];
@@ -2619,7 +2623,7 @@
   var SKIP = new Set(["SCRIPT", "STYLE", "LINK", "TEMPLATE", "BR", "WBR", "SOURCE", "TRACK", "META"]);
   var ART_TAGS = new Set(["img", "svg", "video", "canvas"]);
   var inches = (px) => +(Math.abs(px) / 96).toFixed(2);
-  var ptIn = (pt2) => `${+(pt2 / 72).toFixed(3)}in`;
+  var ptIn = (pt) => `${+(pt / 72).toFixed(3)}in`;
   var LEGEND_FOLD_KEY = "gutterpress.overlay-legend-collapsed";
   var legendCollapsed = false;
   try {
@@ -2723,45 +2727,45 @@
       const side = p.sheet.dataset.side === "verso" ? "verso" : "recto";
       const boxes = pageBoxes(area ?? sheetArea(p.sheet), side, PX_PER_PT);
       const rect = p.sheet.getBoundingClientRect();
-      const host2 = div("gp-ov-page", {
+      const host = div("gp-ov-page", {
         x: (rect.left - stage.left) / stage.zoom,
         y: (rect.top - stage.top) / stage.zoom,
         w: boxes.sheet.w,
         h: boxes.sheet.h
       });
-      host2.dataset.page = String(p.index + 1);
+      host.dataset.page = String(p.index + 1);
       if (layers.bleed && boxes.bleed > 0) {
         const sh = boxes.sheet;
         const t = boxes.trim;
         const band = div("gp-ov-bleed", sh);
         band.style.borderWidth = `${t.y - sh.y}px ${sh.x + sh.w - (t.x + t.w)}px ${sh.y + sh.h - (t.y + t.h)}px ${t.x - sh.x}px`;
-        host2.appendChild(band);
-        host2.appendChild(div("gp-ov-trim", t));
+        host.appendChild(band);
+        host.appendChild(div("gp-ov-trim", t));
       }
       if (layers.safe && area && area.safe > 0) {
-        host2.appendChild(unsafeTint(boxes));
-        host2.appendChild(div("gp-ov-safe", boxes.safe));
+        host.appendChild(unsafeTint(boxes));
+        host.appendChild(div("gp-ov-safe", boxes.safe));
       }
       if (layers.art && area && area.artSafe > 0)
-        host2.appendChild(div("gp-ov-art", boxes.safeArt));
+        host.appendChild(div("gp-ov-art", boxes.safeArt));
       if (layers.margins && !p.padded)
-        host2.appendChild(div("gp-ov-margins", marginsBox(p, side)));
-      layer.appendChild(host2);
-      painted.set(p.index, { host: host2, boxes, sheet: p.sheet, rect });
+        host.appendChild(div("gp-ov-margins", marginsBox(p, side)));
+      layer.appendChild(host);
+      painted.set(p.index, { host, boxes, sheet: p.sheet, rect });
     }
     const flags = [];
     const counts = { text: 0, art: 0, bleed: 0, offPage: 0, intended: 0 };
     const seen = new Set;
     const range = document.createRange();
     const source = area?.spec?.label ?? "the safe area";
-    const inspect = (root2, pageOf2, zoom) => {
+    const inspect = (root, pageOf, zoom) => {
       if (!layers.safe && !layers.art)
         return;
       const judge = (el, rule, rects) => {
         for (const r of rects) {
           if (r.width <= 0 && r.height <= 0)
             continue;
-          const target = pageOf2(r);
+          const target = pageOf(r);
           if (!target)
             continue;
           target.rect ??= target.sheet.getBoundingClientRect();
@@ -2810,19 +2814,19 @@
         for (const child of node.childNodes)
           visit(child);
       };
-      visit(root2);
+      visit(root);
     };
     for (const strip of strips) {
       const zoom = cssZoomOf(strip.el);
       const colW = (parseFloat(strip.el.style.getPropertyValue("--gp-content-w")) || 0) * zoom;
       const colH = (parseFloat(strip.el.style.getPropertyValue("--gp-content-h")) || 0) * zoom;
-      const pageOf2 = (r) => {
+      const pageOf = (r) => {
         const ax = r.left + Math.min(r.width, colW || r.width) / 2;
         const ay = r.top + Math.min(r.height, colH || r.height) / 2;
         return painted.get(strip.offset + indexInStrip(ax, ay, strip));
       };
       for (const child of strip.el.childNodes)
-        inspect(child, pageOf2, zoom);
+        inspect(child, pageOf, zoom);
     }
     for (const target of painted.values()) {
       for (const furniture of target.sheet.querySelectorAll(".gp-marginbox"))
@@ -2934,20 +2938,20 @@
     document.body.classList.add("gp-stage");
     if (document.body.dataset.designer === undefined)
       api.setDesigner(!!opts.designer);
-    function pageContext(strip, indexInStrip2, bookIndex) {
+    function pageContext(strip, indexInStrip, bookIndex) {
       if (paddedPages.has(bookIndex)) {
-        const { geometry: geometry2 } = resolvePage(model, { pseudos: [] });
-        return { index: bookIndex, strip, pseudos: [], geometry: geometry2, marginBoxes: {}, decls: {}, padded: true };
+        const { geometry } = resolvePage(model, { pseudos: [] });
+        return { index: bookIndex, strip, pseudos: [], geometry, marginBoxes: {}, decls: {}, padded: true };
       }
       if (blankPages.has(bookIndex)) {
-        const pseudos2 = ["blank"];
-        const { geometry: geometry2, marginBoxes: marginBoxes2, decls: decls2 } = resolvePage(model, { pseudos: pseudos2 });
-        return { index: bookIndex, strip, pseudos: pseudos2, geometry: geometry2, marginBoxes: marginBoxes2, decls: decls2 };
+        const pseudos = ["blank"];
+        const { geometry, marginBoxes, decls } = resolvePage(model, { pseudos });
+        return { index: bookIndex, strip, pseudos, geometry, marginBoxes, decls };
       }
       const pseudos = [];
       if (bookIndex === 0)
         pseudos.push("first");
-      if (indexInStrip2 === 0)
+      if (indexInStrip === 0)
         pseudos.push("nth-first-of-run");
       pseudos.push(bookIndex % 2 === 0 ? "right" : "left");
       const { geometry, marginBoxes, decls } = resolvePage(model, {
@@ -3063,8 +3067,8 @@
       }
       if (!marked.length)
         return;
-      const canvas2 = document.createElement("canvas");
-      const cx = canvas2.getContext("2d");
+      const canvas = document.createElement("canvas");
+      const cx = canvas.getContext("2d");
       for (const m of marked)
         m.el.setAttribute(m.attr, m.raw.replace(LEADER_RE, ""));
       document.body.offsetHeight;

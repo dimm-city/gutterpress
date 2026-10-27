@@ -130,6 +130,8 @@ This project follows [Semantic Versioning](https://semver.org/).
   a stylesheet any more, and nothing can drift: the "Use this size in the
   stylesheet too" note is gone, and the stylesheet editor no longer offers a
   `size` completion inside `@page`.
+- **The editor highlights `manifest.yaml`.** A `.yaml` or `.yml` file opens
+  with YAML highlighting instead of plain text.
 - **Book setup's Details tab saves as you go.** There is no Save button and no
   "saved" toast: a choice (page size, print checks, chapter order) is written
   at once, a title or author when you leave the field or press Enter, and

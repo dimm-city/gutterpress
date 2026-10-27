@@ -54,6 +54,7 @@
   import type { ToolbarAction, ToolbarPayload } from "#lib/components/EditorToolbar.svelte";
   import { markdown } from "@codemirror/lang-markdown";
   import { css } from "@codemirror/lang-css";
+  import { yaml } from "@codemirror/lang-yaml";
   import { languages } from "@codemirror/language-data";
   import {
     syntaxHighlighting,
@@ -175,6 +176,7 @@
   function languageExtension(lang: EditorLanguage): Extension {
     if (lang === "css") return css();
     if (lang === "markdown") return markdown({ codeLanguages: languages });
+    if (lang === "yaml") return yaml();
     return [];
   }
 
