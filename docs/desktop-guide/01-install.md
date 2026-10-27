@@ -46,8 +46,9 @@ around.
 ## Switch to Author
 
 A new install starts as a **Reader**: just the pages, with Edit, Setup and Publish out of the
-way. To write, open the **Settings** tab and under **App → How you use Gutterpress** choose
-**Author** — "Write and set up your book, then publish it."
+way. Creating a book switches you to **Author**. To switch by hand, open the **Settings** tab
+and under **App → How you use Gutterpress** choose **Author** — "Write and set up your book,
+then publish it."
 
 ![Settings, App tab: How you use Gutterpress, with Author selected](images/settings-author.jpg)
 

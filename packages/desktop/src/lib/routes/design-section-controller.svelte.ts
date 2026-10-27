@@ -87,11 +87,15 @@ export class DesignSectionController {
   designError = $state<string | null>(null);
   /** The debounced-save badge state. */
   designSaveStatus = $state<"idle" | "saving" | "saved">("idle");
+  /** Display names of the enabled looks whose tokens the panel shows, in cascade order. */
+  lookLabels = $state<string[]>([]);
 
   // ── Non-reactive internals ──────────────────────────────────────────────────
   private readonly originals = new Map<string, string>();
   /** The tokens the book's own sheet declared at load (the rest come from looks). */
   private bookDeclared = new Set<string>();
+  /** Each token's value from the enabled looks alone (what shows when the book's override goes). */
+  private lookValues = new Map<string, string>();
   /** Coalesced edits by name: a value to write, or null to remove the book's declaration. */
   private readonly tokenPending = new Map<string, string | null>();
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -171,6 +175,18 @@ export class DesignSectionController {
   isDirty = (t: StyleToken): boolean =>
     this.originals.has(t.name) && this.originals.get(t.name) !== t.value;
 
+  /** True when the book's stylesheet overrides a value an enabled look sets
+   * (a saved edit from an earlier session, or a hand-written rule), so the
+   * look's value can be put back with `resetToken`. */
+  overridesLook = (t: StyleToken): boolean =>
+    !this.isDirty(t) &&
+    this.bookDeclared.has(t.name) &&
+    this.lookValues.has(t.name) &&
+    this.lookValues.get(t.name) !== t.value;
+
+  /** The value the enabled looks give the token, or undefined when none sets it. */
+  lookValue = (t: StyleToken): string | undefined => this.lookValues.get(t.name);
+
   // ── Load ────────────────────────────────────────────────────────────────────
   async loadDesign(): Promise<void> {
     const projectDir = this.deps.projectDir();
@@ -195,14 +211,16 @@ export class DesignSectionController {
       this.cssName = active.displayName;
       // Every enabled look in cascade order, then the book's own sheet, which
       // loads after all of them. A look whose CSS can't be read (a missing
-      // folder) contributes nothing here; the Extensions list reports it.
+      // folder) contributes nothing here; the Looks & features list reports it.
       const looks = extensions.filter((e) => e.enabled && e.carries.styles);
       const sheets = await Promise.all([
         ...looks.map((e) => this.deps.readCss(projectDir, e.use).catch(() => "")),
         this.deps.readFile(active.path),
       ]);
+      this.lookLabels = looks.map((e) => e.label);
       this.tokens = cascadeStyleTokens(sheets);
       this.bookDeclared = new Set(parseStyleTokens(sheets.at(-1)!).map((t) => t.name));
+      this.lookValues = new Map(cascadeStyleTokens(sheets.slice(0, -1)).map((t) => [t.name, t.value]));
       this.originals.clear();
       for (const t of this.tokens) this.originals.set(t.name, t.value);
       this.designSaveStatus = "idle";
@@ -278,17 +296,32 @@ export class DesignSectionController {
     this.scheduleTokenWrite(t.name, value);
   };
 
+  /**
+   * Undo a token edit. While the edit is unsaved-in-session (dirty) the loaded
+   * value comes back; a clean token the book overrides from an earlier session
+   * drops its override instead, so the look's value shows through again.
+   * Never pins: only a value the book itself declared is written back.
+   */
   resetToken = (t: StyleToken): void => {
-    const o = this.originals.get(t.name);
-    if (o === undefined || o === t.value) return;
-    t.value = o;
+    if (this.isDirty(t)) {
+      const o = this.originals.get(t.name)!;
+      t.value = o;
+      this.tokens = this.tokens; // nudge reactivity (mutated element)
+      this.scheduleTokenWrite(t.name, this.bookDeclared.has(t.name) ? o : null);
+      return;
+    }
+    if (!this.overridesLook(t)) return;
+    const fromLook = this.lookValues.get(t.name)!;
+    t.value = fromLook;
     this.tokens = this.tokens; // nudge reactivity (mutated element)
-    // Undo, never pin: only a value the book itself declared is written back.
-    this.scheduleTokenWrite(t.name, this.bookDeclared.has(t.name) ? o : null);
+    this.bookDeclared.delete(t.name);
+    this.originals.set(t.name, fromLook);
+    this.scheduleTokenWrite(t.name, null);
   };
 
+  /** Undo this session's edits only; stored overrides are left alone. */
   revertAllTokens = (): void => {
-    for (const t of this.tokens) this.resetToken(t);
+    for (const t of this.tokens) if (this.isDirty(t)) this.resetToken(t);
   };
 
   setLength = (t: StyleToken, num: string): void => {

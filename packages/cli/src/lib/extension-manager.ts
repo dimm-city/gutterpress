@@ -110,8 +110,8 @@ export interface ProjectExtensionEntry {
   /** Declared stylesheets relative to the folder, in cascade order
    *  (`gutterpress.styles`). Absent when the folder declares none. */
   styles?: string[];
-  /** What the extension declares — the badges on the desktop's Extensions
-   *  list. */
+  /** What the extension declares — the badges on the desktop's Looks &
+   *  features list. */
   carries: ExtensionCarries;
   /** Absolute folder its metadata was read from. Absent for a bundled name,
    *  a bare JS file, an uninstalled npm entry, or a missing path. */
@@ -799,7 +799,7 @@ async function pruneStaleVersions(projectDir: string, name: string, keep: readon
 //
 // A book pins exact versions and builds offline; nothing here runs from the
 // loader, build or preview. Checking is ON DEMAND — `gutterpress ext outdated`,
-// `ext update`, and the desktop's Extensions tab when it is opened — and an
+// `ext update`, and the desktop's Looks & features tab when it is opened — and an
 // update is the same `addExtension` an author would run by hand, so the new
 // version is downloaded, verified, vendored, load-tested and re-pinned in
 // place (and the old version's folder removed) exactly as `ext add` does.
@@ -1035,19 +1035,26 @@ export async function validateProjectExtensions(
 
 /**
  * Read an extension's stylesheets, concatenated in cascade order, for a
- * preview thumbnail (the renderer never touches fs). Read-only, so
- * concatenation is fine even though it would not be for an editable surface.
+ * preview thumbnail (the renderer never touches fs). A bundled look answers
+ * whether or not the manifest lists it, so a book can show what a look is
+ * before adding it. Read-only, so concatenation is fine even though it would
+ * not be for an editable surface.
  */
 export async function readExtensionCss(projectDir: string, use: string): Promise<string> {
+  const direct = bundledExtension(use)?.css;
+  if (direct !== undefined) return direct;
   const entry = await describeExtension(projectDir, use);
   if (!entry) throw new Error(`Extension "${use}" is not in the manifest.`);
-  const bundledCss = entry.kind === "bundled" ? bundledExtension(entry.name)?.css : undefined;
-  if (bundledCss !== undefined) return bundledCss;
-  if (!entry.dir) throw new Error(`Extension "${use}" has no stylesheets to preview.`);
+  return readEntryCss(entry);
+}
+
+/** The same, for an entry already described (`listProjectExtensions`), so a caller with the list in hand reads each once. */
+export async function readEntryCss(entry: Pick<ProjectExtensionEntry, "use" | "dir">): Promise<string> {
+  const direct = bundledExtension(entry.use)?.css;
+  if (direct !== undefined) return direct;
+  if (!entry.dir) throw new Error(`Extension "${entry.use}" has no stylesheets to preview.`);
   const meta = await readExtensionMeta(entry.dir);
-  const sheets = resolveExtension(entry.dir, meta, `Extension "${use}"`).styles ?? [];
-  if (sheets.length === 0) throw new Error(`Extension "${use}" declares no stylesheets.`);
-  const parts: string[] = [];
-  for (const sheet of sheets) parts.push(await readFile(sheet, "utf8"));
-  return parts.join("\n\n");
+  const sheets = resolveExtension(entry.dir, meta, `Extension "${entry.use}"`).styles ?? [];
+  if (sheets.length === 0) throw new Error(`Extension "${entry.use}" declares no stylesheets.`);
+  return (await Promise.all(sheets.map((sheet) => readFile(sheet, "utf8")))).join("\n\n");
 }

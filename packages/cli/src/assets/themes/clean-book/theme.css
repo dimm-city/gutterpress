@@ -1,6 +1,7 @@
 /* =============================================================================
    Clean Book — gutterpress built-in theme (theme.css)
    A calm, classic long-form book look. Change the :root tokens from the book's own stylesheet.
+   The page SIZE comes from the manifest (Setup > Details), so it is deliberately not set here.
    ============================================================================= */
 
 :root {
@@ -19,11 +20,7 @@
   --fs-h2: 1.5rem;
   --fs-h3: 1.2rem;
   --leading:  1.55;
-}
 
-@page {
-  size: 6in 9in;
-  margin: 0.85in 0.75in;
 }
 
 body {

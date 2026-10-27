@@ -1,7 +1,9 @@
 <script lang="ts">
   /**
-   * Details section of ProjectSettingsView — title, authors, output filename,
-   * source files. All state + `api.manifest.*` calls live in
+   * Details section of ProjectSettingsView — title, authors, chapters, page
+   * size and margins, publish targets. It saves as you go: a choice commits at once; a
+   * text field commits on `change` (blur or Enter) via
+   * `controller.flushPendingSave`. All state + `api.manifest.*` calls live in
    * `DetailsSectionController` (passed as the single `controller` prop); this
    * child renders the controller's rune fields and calls its intent methods
    * directly (plain text fields bind straight to controller fields via
@@ -12,8 +14,12 @@
    */
   import Icon from "#lib/components/Icon.svelte";
   import PageSizeFields from "#lib/components/PageSizeFields.svelte";
-  import { PRESET_CHOICES, pointsToInches } from "#lib/page-size-choices.ts";
-  import type { DetailsSectionController } from "#lib/routes/details-section-controller.svelte.ts";
+  import { PRESET_CHOICES } from "#lib/page-size-choices.ts";
+  import {
+    MARGIN_EDGES,
+    type DetailsSectionController,
+    type MarginEdge,
+  } from "#lib/routes/details-section-controller.svelte.ts";
   import {
     PUBLISH_TARGET_CHOICES,
     missingToolsForTargets,
@@ -37,20 +43,24 @@
     ),
   );
 
-  // The stylesheet and the manifest drifted apart (hand-edited `@page`, or an
-  // older book): say so, since Save puts them back in step.
-  const pageDrift = $derived.by(() => {
-    const css = controller.pageSetup?.css;
-    const bounds = controller.pageSetup?.bounds;
-    if (!css || !bounds) return null;
-    if (Math.abs(css.width - bounds.width) < 0.5 && Math.abs(css.height - bounds.height) < 0.5) {
-      return null;
+  // The margin fields, in reading order; "Inside" is the binding edge.
+  const MARGIN_LABELS: Record<MarginEdge, string> = {
+    top: "Top",
+    bottom: "Bottom",
+    inside: "Inside",
+    outside: "Outside",
+  };
+
+  // Where the margins shown come from, until the author records their own.
+  const marginsNote = $derived.by(() => {
+    switch (controller.pageSetup?.marginsFrom) {
+      case "stylesheet":
+        return "These come from a stylesheet (your look's). Change one and your margins take over.";
+      case "default":
+        return "No margins are set yet; these are the defaults. Change one to set your own.";
+      default:
+        return null;
     }
-    const inches = (w: number, h: number) => `${pointsToInches(w)} × ${pointsToInches(h)} in`;
-    return (
-      `Your stylesheet (${css.file}) prints at ${inches(css.width, css.height)}, but this book is ` +
-      `checked against ${inches(bounds.width, bounds.height)}. Save to make them match.`
-    );
   });
 
   // ── Source-files drag-and-drop reorder (HTML5 DnD; the up/down buttons are
@@ -84,7 +94,31 @@
 </script>
 
 <section class="block">
-  <h3>Details</h3>
+  <!-- The heading shares its row with the save badge and "Save as template…"
+       (the DesignSection / ExtensionsSection head-row pattern): there is no
+       Save button — every change here saves as you go. -->
+  <div class="block-head">
+    <h3>Details</h3>
+    <div class="row">
+      <!-- Always in the DOM with its text swapped: a live region announces a
+           change to its content, not its own arrival (WCAG 2.2 SC 4.1.3). -->
+      <span
+        class="save-status"
+        class:saving={controller.detailsSaveStatus === "saving"}
+        class:saved={controller.detailsSaveStatus === "saved"}
+        aria-live="polite"
+      >{controller.detailsSaveStatus === "saving" ? "Saving…" : controller.detailsSaveStatus === "saved" ? "Changes saved" : ""}</span>
+      {#if onSaveAsTemplate}
+        <button
+          class="ghost small"
+          onclick={(e) => onSaveAsTemplate?.(e.currentTarget as HTMLButtonElement)}
+          title="Save this book as a reusable starter for new books"
+        >
+          Save as template…
+        </button>
+      {/if}
+    </div>
+  </div>
   {#if controller.detailsError}
     <p class="error" role="alert">{controller.detailsError}</p>
   {/if}
@@ -97,6 +131,7 @@
       class="input"
       type="text"
       bind:value={controller.titleDraft}
+      onchange={() => controller.flushPendingSave()}
       placeholder="Untitled book"
     />
   </label>
@@ -110,6 +145,7 @@
             type="text"
             value={controller.authorsDraft[i]}
             oninput={(e) => controller.setAuthor(i, e.currentTarget.value)}
+            onchange={() => controller.flushPendingSave()}
             placeholder="Author name"
             aria-label={`Author ${i + 1}`}
           />
@@ -122,11 +158,11 @@
     </div>
   </div>
   <div class="field">
-    <span class="lbl">Source files</span>
+    <span class="lbl">Chapters</span>
     {#if controller.sourceFiles.length === 0}
-      <p class="hint">No markdown files found in this book yet.</p>
+      <p class="hint">No markdown files in this book folder yet.</p>
     {:else}
-      <ul class="source-list" aria-label="Source files (drag to reorder)">
+      <ul class="source-list" aria-label="Chapters (drag to reorder)">
         {#each controller.sourceFiles as entry, i (entry.path)}
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
           <li
@@ -149,7 +185,7 @@
             />
             <span class="source-path" class:mono={true}>{entry.path}</span>
             {#if entry.missing}
-              <span class="missing" title="This manifest entry has no matching file in this book">missing</span>
+              <span class="missing" title="This file is listed in the book but isn't in the folder.">missing</span>
             {/if}
             <span class="row-move">
               <button
@@ -170,13 +206,13 @@
           </li>
         {/each}
       </ul>
-      <span class="hint">Drag rows (or use the arrows) to set the chapter order. Unchecked files are left out of the book.</span>
+      <span class="hint">Your book's markdown files, in reading order. Drag rows (or use the arrows) to reorder; unchecked files are left out.</span>
     {/if}
   </div>
-  <!-- Page size (#357): the wizard's "What are you designing it for?" choices
-       (shared #lib/page-size-choices), changeable after the book exists. Saved
-       with the rest of the details: the manifest's preset + bounds and the
-       stylesheet's page size are written together. -->
+  <!-- Page size (#357): the wizard's "What size should the pages be?" choices
+       (shared #lib/page-size-choices), changeable after the book exists. A
+       choice writes the manifest's preset + bounds as soon as it is complete;
+       the manifest is the only place the size lives. -->
   {#if controller.pageSetup}
     <div class="field" role="radiogroup" aria-label="Page size">
       <span class="lbl">Page size</span>
@@ -199,19 +235,67 @@
         {/each}
       </ul>
       {#if controller.presetDraft === "custom"}
-        <PageSizeFields
-          idPrefix="details"
-          bind:sizeChoice={controller.sizeChoice}
-          bind:widthIn={controller.widthIn}
-          bind:heightIn={controller.heightIn}
-        />
-      {/if}
-      {#if pageDrift}
-        <p class="tool-note" role="note">{pageDrift}</p>
+        <!-- The size select's and the inches inputs' `change` bubbles here
+             after the bound values updated, and commits; their `input` marks
+             the size as edited, so closing before `change` (Escape) still
+             saves it. PageSizeFields itself is shared with the wizard and
+             stays a plain bindable component. -->
+        <div
+          class="size-fields"
+          oninput={controller.touchPage}
+          onchange={() => controller.flushPendingSave()}
+        >
+          <PageSizeFields
+            idPrefix="details"
+            bind:sizeChoice={controller.sizeChoice}
+            bind:widthIn={controller.widthIn}
+            bind:heightIn={controller.heightIn}
+          />
+        </div>
+        {#if controller.pageIncomplete}
+          <span class="hint">Enter a width and height to save the page size.</span>
+        {/if}
       {/if}
       <span class="hint">
-        Saving updates the size your book prints at and the size your finished
-        PDF is checked against, together.
+        The size your book prints at and the size the finished PDF is checked against.
+      </span>
+    </div>
+    <!-- Page margins: the space between the trim and the text, typed in inches
+         and recorded in the manifest (`page.margin`) over whatever a stylesheet
+         gives. `input` marks them as the author's, so closing before a field's
+         `change` (Escape) still saves them; `change` commits. -->
+    <div class="field">
+      <span class="lbl">Margins</span>
+      <div
+        class="margin-fields"
+        role="group"
+        aria-label="Page margins in inches"
+        oninput={controller.touchMargins}
+        onchange={() => controller.flushPendingSave()}
+      >
+        {#each MARGIN_EDGES as edge (edge)}
+          <label class="margin-field" for={`details-margin-${edge}`}>
+            <span>{MARGIN_LABELS[edge]} (in)</span>
+            <input
+              id={`details-margin-${edge}`}
+              class="input"
+              type="number"
+              min="0"
+              step="0.05"
+              bind:value={controller.marginDrafts[edge]}
+              autocomplete="off"
+            />
+          </label>
+        {/each}
+      </div>
+      {#if controller.marginsIncomplete}
+        <span class="hint">Enter all four margins to save them.</span>
+      {:else if marginsNote}
+        <span class="hint">{marginsNote}</span>
+      {/if}
+      <span class="hint">
+        The space between the edge of the page and your text. Inside is the edge at the binding.
+        Your margins win over any a look sets.
       </span>
     </div>
   {/if}
@@ -220,7 +304,7 @@
        new-book wizard (shared #lib/publish-targets), so the two surfaces
        never describe a destination differently. -->
   <div class="field">
-    <span class="lbl">Publish targets</span>
+    <span class="lbl">Check the PDF against</span>
     <ul class="target-list">
       {#each PUBLISH_TARGET_CHOICES as choice (choice.id)}
         <li>
@@ -242,23 +326,10 @@
       <p class="tool-note" role="note">{targetToolGap}</p>
     {/if}
     <span class="hint">
-      Checked destinations are validated when you build. With none checked,
-      only the general print checks run.
+      Gutterpress has no checks for other places you publish to (Amazon KDP, Google Drive…); you
+      choose where to send the PDF when you publish. With none checked, only the general print
+      checks run.
     </span>
-  </div>
-  <div class="details-actions">
-    <button class="primary small app-btn-primary" onclick={controller.saveDetails} disabled={controller.detailsSaving}>
-      {controller.detailsSaving ? "Saving…" : "Save details"}
-    </button>
-    {#if onSaveAsTemplate}
-      <button
-        class="ghost small"
-        onclick={(e) => onSaveAsTemplate?.(e.currentTarget as HTMLButtonElement)}
-        title="Save this book as a reusable starter for new books"
-      >
-        Save as template…
-      </button>
-    {/if}
   </div>
 </section>
 
@@ -273,7 +344,11 @@
   .target-desc { font-size: 11px; color: var(--app-text-muted); line-height: 1.35; }
   .tool-note { margin: 4px 0 0; font-size: 11px; line-height: 1.45; color: var(--app-warning-text); }
 
-  .details-actions { display: flex; align-items: center; gap: 8px; }
+  .size-fields { display: flex; flex-direction: column; gap: 4px; }
+  .margin-fields { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+  .margin-field { display: flex; flex-direction: column; gap: 4px; }
+  .margin-field > span { font-size: 11px; color: var(--app-text-muted); }
+  .margin-field .input { width: 84px; }
   .authors { display: flex; flex-direction: column; gap: 4px; }
   .author-row { display: flex; gap: 4px; align-items: center; }
   .author-row .input { flex: 1; }

@@ -208,7 +208,7 @@ export interface AppSettings {
     /** Release stream for desktop update checks (see UpdateChannel above). */
     channel: UpdateChannel;
     /**
-     * Extensions tab: offer pre-release versions (`-alpha`, `-beta`, `-rc`) of
+     * Looks & features tab: offer pre-release versions (`-alpha`, `-beta`, `-rc`) of
      * npm extensions in the version picker, and count them as "newer" in the
      * update check. An app preference, not per book — it is about which
      * builds this author wants to see. Default off.

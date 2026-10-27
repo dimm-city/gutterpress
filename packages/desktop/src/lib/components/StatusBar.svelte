@@ -97,7 +97,7 @@
     onEnableVersionHistory = undefined as (() => Promise<void>) | undefined,
     /** Called for "See previous versions" — opens the activity view. */
     onShowVersions = undefined as (() => void) | undefined,
-    /** Called for the online-backup rows that only explain: opens Book settings → Connections. */
+    /** Called for the online-backup rows that only explain: opens Book setup → Backup. */
     onOpenBookConnections = undefined as (() => void) | undefined,
     onOpenSettings = undefined as (() => void) | undefined,
     onOpenHelp = undefined as (() => void) | undefined,
@@ -476,7 +476,7 @@
   </div>
 
   <div class="shell-actions" class:divided={showSave} aria-label="Application actions">
-    <button class="status-icon-btn" onclick={() => onOpenSettings?.()} title="App preferences (Ctrl+,)" aria-label="App preferences">
+    <button class="status-icon-btn" onclick={() => onOpenSettings?.()} title="Settings (Ctrl+,)" aria-label="Settings">
       <Icon name="settings" size={14} />
     </button>
     <button class="status-icon-btn" onclick={onOpenHelp} title="Help" aria-label="Help">

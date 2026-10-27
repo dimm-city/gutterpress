@@ -158,7 +158,7 @@ export interface ProjectExtensionEntry {
   author?: string;
   /** Preview image path relative to the extension folder, when declared. */
   preview?: string | null;
-  /** What it declares — the Extensions tab shows a badge per kind. */
+  /** What it declares — the Looks & features tab shows a badge per kind. */
   carries: ExtensionCarries;
   /** Absolute folder its metadata was read from. Absent for a bundled name,
    *  a bare JS file, an uninstalled npm entry, or a missing path. */
@@ -234,7 +234,7 @@ export interface ExtensionUpdateCheck {
 
 /**
  * Result of checking npm for updates. As with search, a fetch failure is DATA
- * (`ok: false`): the Extensions tab shows `message` as one quiet line and the
+ * (`ok: false`): the Looks & features tab shows `message` as one quiet line and the
  * list itself is never blocked by the network.
  */
 export type ExtensionUpdatesResult =

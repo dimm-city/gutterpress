@@ -354,7 +354,7 @@
               type="button"
               class="link-btn"
               onclick={goAdvancedSetup}
-            >Open Connections settings</button>
+            >Open Accounts settings</button>
           </p>
         {/if}
         <footer class="dlg-actions">
@@ -428,7 +428,7 @@
           <p class="hint subtle">
             Or connect a different Git server in
             <button type="button" class="link-btn" onclick={goAdvancedSetup}
-            >Connections settings</button>
+            >Accounts settings</button>
           </p>
         {/if}
         <footer class="dlg-actions">

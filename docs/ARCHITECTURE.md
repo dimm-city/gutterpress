@@ -274,12 +274,7 @@ never a `<link>` — in a fixed cascade order (`markdown/assemble.ts`):
    (page/section/spread mechanics). Always present.
 2. **Core utilities** — `GUTTERPRESS_CSS`, exported by
    `gutterpress-css.ts` (`gp-*` image, positioning, and column vocabulary).
-3. **Page size default** — `@page { size: <w>pt <h>pt }` from the manifest's
-   `page` block, unlayered, written only when neither an extension's nor the
-   project's CSS sets a plain `@page { size }` (#415): Chromium prints the
-   stylesheet's `size`, and this is where the manifest's becomes one. An
-   author's own `size` wins by the cascade.
-4. **Extension CSS** - each `extensions:` entry's stylesheets, in list order:
+3. **Extension CSS** - each `extensions:` entry's stylesheets, in list order:
    a look's or component library's declared `styles` (from its
    `package.json`'s `gutterpress` block), or a plugin module's `styles` files
    (paths relative to the module) followed by its `css` string export. All
@@ -288,7 +283,7 @@ never a `<link>` — in a fixed cascade order (`markdown/assemble.ts`):
    wrapped in its own cascade layer (`@layer ext.<name>`, declared in list
    order after core's), so a later entry's CSS wins ties whatever the
    extension's own CSS does, and every extension beats core.
-5. **Project CSS** - the manifest's `styles:` list, resolved and inlined last
+4. **Project CSS** - the manifest's `styles:` list, resolved and inlined
    (so project rules win at equal specificity, over every extension) by
    `lib/asset-inline.ts`: each
    file is *read*, not linked — local `@import`s are followed and inlined in
@@ -301,6 +296,13 @@ never a `<link>` — in a fixed cascade order (`markdown/assemble.ts`):
    (`../design-guide/styles/guide.css`) — with no copying and no destination
    indirection. An `extensions:` path entry (`./extensions/<id>`,
    `../../shared/house-style`) is read the same way.
+5. **Page geometry** — `@page { size }` from the manifest's `page` block,
+   with `@page`, `@page :left` and `@page :right` margins when it sets
+   `page.margin`; unlayered and LAST, so the manifest wins by the cascade: a
+   `size` in an extension's or the project's CSS is overridden (the
+   print-safety check reports it), and so is an `@page` margin once the
+   manifest has margins (`pageGeometryCss`). Left out of the manifest,
+   margins stay the stylesheets', else the engine's 1in.
 
 **Design Rationale**:
 - Self-contained HTML output (no external dependencies, no `<link>` that can 404)

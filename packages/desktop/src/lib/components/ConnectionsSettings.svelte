@@ -4,7 +4,7 @@
    * stored credential. Section order (owner request 2026-07-30): GitHub
    * first — it sits directly under the author's name & email, the identity
    * it carries — then publishing accounts, then other Git servers. The open
-   * project's sync diagnostics live in Book settings → Connections
+   * project's sync diagnostics live in Book setup → Backup
    * (ProjectConnectionsSection.svelte); the diagnosis is still fetched here
    * because the Git-server connect form uses it for host prefill and
    * repo-scoped validation.

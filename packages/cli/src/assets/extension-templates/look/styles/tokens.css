@@ -75,13 +75,5 @@
     --{{PREFIX}}space-2: 0.5em;
     --{{PREFIX}}space-3: 1em;
     --{{PREFIX}}space-4: 1.75em;
-
-    /* -- Page geometry ------------------------------------------------- */
-    /* Consumed by page-rules.css. Kept here so trim size and margins are
-       editable next to the rest of the brand, not buried in an @page block. */
-    --{{PREFIX}}page-margin-top: 0.75in;
-    --{{PREFIX}}page-margin-outer: 0.75in;
-    --{{PREFIX}}page-margin-bottom: 0.85in;
-    --{{PREFIX}}page-margin-inner: 0.9in;
   }
 }

@@ -68,7 +68,7 @@
   let discovered = $state<DiscoveredProject[]>([]);
   let loading = $state(false);
   // The recents/favorites load must not catch-and-ignore: a failed load would
-  // render the exact same "No recent books yet" copy as a genuinely empty
+  // render the exact same "No books yet" copy as a genuinely empty
   // list — a lie that hides a real problem from the writer. Tracked
   // per-surface (this component owns one load surface: recents +
   // favorites, loaded together below) so the empty-state branch can tell
@@ -465,7 +465,7 @@
             <button type="button" class="retry-btn" onclick={() => loadLists()}>Retry</button>
           </div>
         {:else if !loading}
-          <p class="empty-section-hint">No recent books yet. Open a folder to get started.</p>
+          <p class="empty-section-hint">No books yet. Create a new book or open a folder to get started.</p>
         {/if}
       </section>
     {/if}

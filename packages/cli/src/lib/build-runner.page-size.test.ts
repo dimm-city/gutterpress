@@ -1,14 +1,15 @@
 /**
- * END TO END (#415): the manifest's page size is what a book prints at,
- * unless a stylesheet sets its own.
+ * END TO END: the manifest's page size is what a book prints at, whatever
+ * its stylesheets say.
  *
  * `page.width` x `page.height` — the preset's, or the manifest's — is what
- * every check and the preview's print overlays judge against, but Chromium
- * prints the stylesheet's plain `@page { size }`. A book whose author wrote
+ * every check and the preview's print overlays judge against, and Chromium
+ * prints the `@page { size }` it is given. A book whose author wrote
  * `@page { margin }` alone, or had no stylesheet at all, set none, so it
- * printed at Letter (612x792) while `pdf.print.page-size` expected 621x810.
- * The markdown assembly now writes the manifest's size as that rule when no
- * extension or book CSS sets one (lib/markdown/assemble.ts).
+ * printed at Letter (612x792) while `pdf.print.page-size` expected 621x810
+ * (#415); a look that set its own `size` shadowed the manifest. The markdown
+ * assembly writes the manifest's size after every stylesheet
+ * (lib/markdown/assemble.ts), so the manifest wins in every case below.
  *
  * This drives the WHOLE product path — `runBuild`, a manifest, a stylesheet,
  * a real Chromium, a real PDF — because the gap was between the pieces: the
@@ -40,9 +41,6 @@ afterEach(async () => {
 
 /** The dtrpg preset's sheet: 8.625 x 11.25in, the trim plus its bleed. */
 const DTRPG = { w: 621, h: 810 };
-/** A trade 6 x 9in page, as an author would write it. */
-const TRADE = { w: 432, h: 648 };
-
 /**
  * A one-chapter `dtrpg` book. `css` is the book's one stylesheet (none when
  * null); `lookCss` adds a look extension whose only sheet holds it.
@@ -119,24 +117,24 @@ testIf(
 );
 
 testIf(
-  "a stylesheet's own plain @page size wins over the manifest's",
+  "a stylesheet's own plain @page size is overridden by the manifest's",
   async () => {
     expectEveryPage(
       await printedPageSizes(await makeBook("@page { size: 6in 9in; margin: 0.75in }\n")),
-      TRADE,
+      DTRPG,
     );
   },
   120_000,
 );
 
 testIf(
-  "a look's plain @page size, inside its extension layer, wins over the manifest's too",
+  "a look's plain @page size, inside its extension layer, is overridden by the manifest's too",
   async () => {
     expectEveryPage(
       await printedPageSizes(
         await makeBook("@page { margin: 0.75in }\n", "@page { size: 6in 9in; margin: 1in }\n"),
       ),
-      TRADE,
+      DTRPG,
     );
   },
   120_000,

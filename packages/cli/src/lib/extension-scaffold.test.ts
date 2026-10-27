@@ -318,18 +318,25 @@ describe("scaffoldExtension --kind look", () => {
     }
   });
 
-  test("declares an explicit @page size", async () => {
-    // Measured, not assumed: with no `size:` anywhere in a book's CSS,
-    // Chromium falls back to US Letter and prints the whole book at the wrong
-    // trim with no error. The built-in looks that choose a trim declare it
-    // (academic leaves the trim to the manifest's `page`); so does this one.
+  test("sets no page size or margin: the geometry is the book's manifest's", async () => {
+    // The build writes the manifest's `@page { size; margin }` after every
+    // stylesheet, so a size here would be ignored (and reported by the
+    // print-safety check) and a margin would hold only until the author sets
+    // margins in the app. The starter owns the margin boxes and named pages.
     const parent = await tmpParent();
     const result = await scaffoldExtension({ name: "House Style", kind: "look", parentDir: parent });
     const pageRules = await readFile(
       path.join(result.extensionDir, "styles", "page-rules.css"),
       "utf8",
     );
-    expect(pageRules).toMatch(/@page\s*\{[^}]*\bsize:\s*6in\s+9in\s*;/);
+    for (const m of pageRules.matchAll(/@page\b[^{]*\{([^}]*)/g)) {
+      const body = m[1]!.replace(/@[a-z-]+\s*\{[^}]*\}?/g, "");
+      expect(body).not.toMatch(/(?<![\w-])size\s*:/);
+      expect(body).not.toMatch(/(?<![\w-])margin(-[a-z]+)?\s*:/);
+    }
+    expect(pageRules).toMatch(/@bottom-right\s*\{\s*content:\s*counter\(page\)/);
+    const tokens = await readFile(path.join(result.extensionDir, "styles", "tokens.css"), "utf8");
+    expect(tokens).not.toContain("page-margin");
   });
 
   test("the worked component demonstrates the token pattern end to end", async () => {

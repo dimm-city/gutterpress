@@ -2,23 +2,27 @@ import { error } from '@sveltejs/kit';
 import { defineRoute, loadApiLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-type Choice = Parameters<Awaited<ReturnType<typeof loadApiLib>>['setPageSetup']>[1];
+type Change = Parameters<Awaited<ReturnType<typeof loadApiLib>>['setPageSetup']>[1];
 
 /**
- * Change a book's page size: the manifest's `preset:` + `page:` bounds and the
- * stylesheet's `@page` size, written together by the lib (#357).
+ * Change a book's page geometry in the manifest: the size (`preset:` + `page:`
+ * bounds), the margins (`page.margin`), or both; a part left out stays as
+ * recorded (#357).
  */
-export const POST: RequestHandler = defineRoute<{ projectDir: string; choice: Choice }>({
+export const POST: RequestHandler = defineRoute<{ projectDir: string; change: Change }>({
   validate: async (raw) => {
-    const body = raw as { projectDir?: string; choice?: Choice };
+    const body = raw as { projectDir?: string; change?: Change };
     const projectDir = await requireProjectDir(body.projectDir, 'page-size/set');
-    if (!body.choice || typeof body.choice !== 'object' || typeof body.choice.preset !== 'string') {
-      error(400, 'page-size/set requires a choice with a preset');
+    const change = body.change;
+    const hasSize = typeof change?.size === 'object' && change.size !== null && typeof change.size.preset === 'string';
+    const hasMargins = typeof change?.margins === 'object' && change.margins !== null;
+    if (!change || (!hasSize && !hasMargins)) {
+      error(400, 'page-size/set requires a change with a size or margins');
     }
-    return { projectDir, choice: body.choice };
+    return { projectDir, change };
   },
   call: async ({ body }) => {
     const lib = await loadApiLib();
-    return lib.setPageSetup(body.projectDir, body.choice);
+    return lib.setPageSetup(body.projectDir, body.change);
   },
 });

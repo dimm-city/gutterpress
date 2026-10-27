@@ -389,9 +389,17 @@ testIf(
     const dir = await makeTempDir("gp-transparency-e2e-");
     try {
       await mkdir(join(dir, "styles"));
+      // The margin is stated: at the build's 1in default (any margin from
+      // about 0.5in up), Chromium paints a sub-pixel sliver of page 4's
+      // gradient box at the foot of page 3 — the page root's `- 1px`
+      // fragmentation cushion (markers.js) — and the PostScript-shading scan
+      // then reports page 3 as well. That is a fragmentation quirk, not what
+      // this test is about; 1cm is what Chromium printed this book with
+      // before the build supplied a default.
       await writeFile(
         join(dir, "styles", "main.css"),
-        `body { font: bold 20px/1.2 sans-serif; color: #000 }
+        `@page { margin: 1cm }
+body { font: bold 20px/1.2 sans-serif; color: #000 }
 .card { padding: 16px; background: #fff; box-shadow: 0 12px 24px rgba(0, 0, 0, .45) }
 .cover { position: relative; height: 300px; font: bold 110px/1 sans-serif }
 .cover i { position: absolute; inset: 0; background: #c00 }

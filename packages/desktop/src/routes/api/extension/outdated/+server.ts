@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 
 // Each pinned npm extension against npm's `latest` (or, with `includePrerelease`,
 // the newest version of any kind), fetched ON DEMAND when the
-// Extensions tab opens or the author asks — never at project load, never by the
+// Looks & features tab opens or the author asks — never at project load, never by the
 // loader/build/preview paths (a book builds offline from its vendored copy).
 // A fetch failure is DATA, not a 500: the tab shows one quiet line and the
 // extension list itself is never blocked by the network. Updating is the

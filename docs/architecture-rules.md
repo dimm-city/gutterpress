@@ -387,7 +387,7 @@ a rebuild after the manifest's pins change (an edit, Get latest, restoring a
 version) and a restart into another book. It degrades rather than failing. The
 desktop's `PreviewOpenController` also restores when a book is opened, only so
 the open can show download progress and a toast (`restoredExtensions`); the
-Extensions tab's "Needs install" row + Install button stay the fallback.
+Looks & features tab's "Needs install" row + Install button stay the fallback.
 `publish` loads no plugins and does not restore — except for a publishing
 plugin (experimental, #381; ratified 2026-10-14): when the provider id is not
 a built-in and names an npm entry, `resolvePublishProvider`
@@ -431,7 +431,7 @@ The loader has two modes via `loadPlugins(configs, baseDir, onError?)`:
     A final artifact must never silently omit author-configured formatting.
   - **Degrade-and-report (`onError` supplied)** — the LIVE PREVIEW only. A plugin
     whose vendored copy is missing or cannot load is skipped, `onError` fires
-    (the preview `warn`s; the desktop Extensions tab shows "Needs install" or the
+    (the preview `warn`s; the desktop Looks & features tab shows "Needs install" or the
     load error with fix instructions), and the rest of the document still
     renders. This is NOT the silent-skip that the loader deliberately removed —
     every skip is surfaced loudly. Rationale: one uninstalled plugin must not

@@ -1,7 +1,7 @@
 import { defineRoute, loadApiLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-/** A book's page size as recorded: manifest preset + bounds, and the stylesheet's `@page` size. */
+/** A book's page geometry as recorded: manifest preset + bounds, and the margins it prints with. */
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   validate: async (raw) => ({
     projectDir: await requireProjectDir((raw as { projectDir?: string }).projectDir, 'page-size/read'),

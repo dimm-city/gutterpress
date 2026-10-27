@@ -1,7 +1,8 @@
 <script lang="ts">
   /**
-   * ProjectSettingsView — the "Book settings" surface (tab bar, one cohesive
-   * slice per tab), opened in the shared AppView layer because a sidebar
+   * ProjectSettingsView — the "Book setup" surface (the toolbar's Setup
+   * button; tab bar, one cohesive slice per tab), opened in the shared
+   * AppView layer because a sidebar
    * column is a cramped frame for manifest editing, theme browsing, and
    * plugin management. AppView owns the frame, the close control, Escape and
    * focus (a dialog on top, e.g. "Save as template…", takes Escape first).
@@ -15,19 +16,21 @@
    *
    * Four tabs, backed by FOUR controllers (no `$effect`: data loads on mount +
    * after mutations, mirroring SettingsView/History):
-   *   1. Details     — title, authors, output filename, source files
-   *                    (`api.manifest.{read,setFields}`).
-   *   2. Extensions  — ONE list of the manifest's `extensions:` (looks,
-   *                    features, component libraries — #265): toggle,
-   *                    reorder, remove, validate, versions, and one Add area
-   *                    (`ExtensionsSection`, `api.extension.*`).
+   *   1. Details     — title, authors, chapters, page size, publish targets
+   *                    (`api.manifest.{read,setFields}`, `api.pageSize.*`);
+   *                    saves as you go, flushed on tab switch, close, unmount.
+   *   2. Looks & features (id `extensions`) — ONE list of the manifest's
+   *                    `extensions:` (looks, features, component libraries —
+   *                    #265): toggle, reorder, remove, validate, versions, and
+   *                    one Add area (`ExtensionsSection`, `api.extension.*`).
    *   3. Design      — the design tokens of every enabled look, edited in the
    *                    book's own stylesheet (`DesignSection`) → the raw
    *                    stylesheet list (`StylesSection`) under a
    *                    "Stylesheets" heading.
-   *   4. Connections — this project's sync surface (remote diagnosis +
-   *                    Test Remote Access; `ProjectConnectionsSection`,
-   *                    self-loading — no controller).
+   *   4. Backup (id `connections`) — this project's online-copy surface
+   *                    (remote diagnosis + Test Remote Access;
+   *                    `ProjectConnectionsSection`, self-loading — no
+   *                    controller).
    *
    * `afterLookChange` (a styles-carrying extension was added/removed/toggled/
    * moved → reload Styles + Design) and `afterStyleChange` (a stylesheet was
@@ -82,11 +85,11 @@
     /** Close the view — return to the workspace. */
     onClose?: () => void;
     /** Open the app Settings view on the Accounts tab (the parent closes
-     *  this view first). Used by the Connections tab's guidance. */
+     *  this view first). Used by the Backup tab's guidance. */
     onOpenAccounts?: () => void;
-    /** The Connections tab just turned on version history: re-read the project's classification. */
+    /** The Backup tab just turned on version history: re-read the project's classification. */
     onVersionHistoryEnabled?: (projectDir: string) => void;
-    /** The Connections tab just set up online backup: re-read the project's classification. */
+    /** The Backup tab just set up online backup: re-read the project's classification. */
     onBackupSetUp?: (projectDir: string) => void;
     /** The control that opened the view, for focus restore on close. */
     triggerEl?: HTMLElement | null;
@@ -125,7 +128,7 @@
     projectDir: projectDirAccessor,
     readManifest: (dir) => api.manifest.read(dir),
     writeManifest: (dir, updates) => api.manifest.setFields(dir, updates),
-    // Page size (#357): read back from the manifest + stylesheet, written to both.
+    // Page geometry (#357): the manifest's size and margins, read and written there.
     readPageSetup: (dir) => api.pageSize.read(dir),
     writePageSetup: (dir, choice) => api.pageSize.set(dir, choice),
     // The source-files list universe: top-level markdown files (the same set
@@ -144,14 +147,13 @@
             .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
             .map((t) => t.id),
         ),
-    onSaved: () => toast?.success?.("Book details saved."),
     onError: (msg) => toast?.error?.(msg),
   });
 
   const settings = useSettings();
 
-  // ── Extensions — ONE list (#265). A change to a look refreshes Styles +
-  //    Design. ─────────────────────────────────────────────────────────────
+  // ── Looks & features — ONE list (#265). A change to a look refreshes
+  //    Styles + Design. ───────────────────────────────────────────────────
   const extensions = new ExtensionsSectionController({
     projectDir: projectDirAccessor,
     list: (dir) => api.extension.list(dir),
@@ -170,8 +172,15 @@
     readCss: (dir, use) => api.extension.readCss(dir, use),
     importFromFile: (dir) => api.extension.importFromFile(dir),
     importFromUrl: (dir, url) => api.extension.importFromUrl(dir, url),
-    onLookAdded: (label) => {
-      toast?.success?.(`${label} added — it now shows in the preview. Use Design to fine-tune.`);
+    onLookAdded: (label, above) => {
+      // A look added below another wins where they disagree: say so, and
+      // name the way to use the new one alone.
+      if (above.length > 0) {
+        const old = above.join(", ");
+        toast?.success?.(`${label} added below ${old} — the lower look wins. Turn off ${old} to use ${label} on its own.`);
+      } else {
+        toast?.success?.(`${label} added — it now shows in the preview. Use Design to fine-tune.`);
+      }
     },
     afterLookChange: async () => {
       await Promise.all([styles.loadStyles(), design.loadDesign()]);
@@ -186,6 +195,7 @@
     });
     return () => {
       cancelled = true;
+      void details.flushPendingSave();
       void design.flushPendingTokenWrites();
     };
   });
@@ -205,14 +215,14 @@
 
   // ── Tabs (SettingsView pattern: WAI-ARIA tabs, arrow-key navigation) ──────
   //
-  // Extensions is where a look is added; Design is where it is fine-tuned.
-  // See `docs/ux-design-contract.md` sections 9 and 11.
+  // Looks & features (id `extensions`) is where a look is added; Design is
+  // where it is fine-tuned. See `docs/ux-design-contract.md` sections 9 and 11.
   type ProjectSettingsTab = "details" | "extensions" | "design" | "connections";
   const TABS: Array<{ id: ProjectSettingsTab; label: string }> = [
     { id: "details", label: "Details" },
-    { id: "extensions", label: "Extensions" },
+    { id: "extensions", label: "Looks & features" },
     { id: "design", label: "Design" },
-    { id: "connections", label: "Connections" },
+    { id: "connections", label: "Backup" },
   ];
   // svelte-ignore state_referenced_locally
   let activeTab = $state<ProjectSettingsTab>(initialTab);
@@ -233,12 +243,21 @@
     else if (e.key === "End") next = ids.length - 1;
     if (next === undefined) return;
     e.preventDefault();
-    activeTab = ids[next]!;
+    selectTab(ids[next]!);
     tabEls[activeTab]?.focus();
   }
 
-  function close() {
-    onClose?.();
+  /** Leaving Details commits anything still typed there (a text field whose
+   *  `change` has not fired yet). */
+  function selectTab(id: ProjectSettingsTab) {
+    if (activeTab === "details" && id !== "details") void details.flushPendingSave();
+    activeTab = id;
+  }
+
+  /** Close once Details has saved; a failed write keeps the panel open on
+   *  its error (the unmount flush stays the backstop for every other exit). */
+  async function close() {
+    if (await details.flushPendingSave()) onClose?.();
   }
 
   // "Save as template…" (Details tab) — mounted fresh per open so its form
@@ -246,8 +265,8 @@
   let templateDialogTrigger = $state<HTMLButtonElement | null>(null);
 </script>
 
-<AppView title="Book settings" icon="wrench" measure={860} onClose={close} {triggerEl}>
-  <div class="tab-bar" role="tablist" aria-label="Book settings sections" onkeydown={onTablistKeydown} tabindex="-1">
+<AppView title="Book setup" icon="wrench" measure={860} onClose={close} {triggerEl}>
+  <div class="tab-bar" role="tablist" aria-label="Book setup sections" onkeydown={onTablistKeydown} tabindex="-1">
     {#each TABS as tab (tab.id)}
       <button
         id="project-settings-tab-{tab.id}"
@@ -258,7 +277,7 @@
         aria-controls="project-settings-panel"
         tabindex={activeTab === tab.id ? 0 : -1}
         bind:this={tabEls[tab.id]}
-        onclick={() => (activeTab = tab.id)}
+        onclick={() => selectTab(tab.id)}
       >{tab.label}</button>
     {/each}
   </div>
@@ -286,12 +305,18 @@
       {/if}
 
       {#if activeTab === "design"}
-        <!-- Design tokens → stylesheet list. The stylesheet list is a plain
-             always-visible section - book settings has no collapsible
+        <!-- Fonts, colors & sizes → stylesheet list. The stylesheet list is a plain
+             always-visible section - Book setup has no collapsible
              sections. -->
         <section class="block look-style">
           <h3>Design</h3>
-          <DesignSection controller={design} />
+          <DesignSection
+            controller={design}
+            onChooseLook={() => {
+              selectTab("extensions");
+              tabEls.extensions?.focus();
+            }}
+          />
           <div class="advanced">
             <h4 class="advanced-heading">Stylesheets</h4>
             <div class="advanced-body">
@@ -302,8 +327,8 @@
       {/if}
 
       {#if activeTab === "connections"}
-        <!-- This project's connection details. Accounts/credentials stay
-             global in Settings → Accounts; onOpenAccounts routes there. -->
+        <!-- This project's online backup. Accounts/credentials stay global
+             in Settings → Accounts; onOpenAccounts routes there. -->
         <ProjectConnectionsSection {projectDir} {onOpenAccounts} {onVersionHistoryEnabled} {onBackupSetUp} />
       {/if}
     {/if}

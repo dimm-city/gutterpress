@@ -2,7 +2,8 @@ import { readFile } from "node:fs/promises";
 import { existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { parse as parseYaml, YAMLParseError } from "yaml";
-import type { GutterpressManifest, ResolvedConfig, ExtensionConfig, ResolvedExtensionConfig } from "../schema/manifest.types";
+import type { GutterpressManifest, PageMargin, ResolvedConfig, ExtensionConfig, ResolvedExtensionConfig } from "../schema/manifest.types";
+import { isNonNegativePoints } from "../engine/shared/print-area";
 import { isPathSpecifier, parseExtensionSpecifier } from "./extension-specifier";
 import { resolvePreset, warnOnce, type VendorPreset } from "./presets";
 import { overlayPreset, publishTargetFor, resolveTargets } from "./targets";
@@ -346,7 +347,41 @@ function resolveCustomPage(
     safe: c.page?.safe ?? m.page?.safe,
     artSafe: c.page?.artSafe ?? m.page?.artSafe,
     gutter: c.page?.gutter ?? m.page?.gutter,
+    margin: c.page?.margin ?? m.page?.margin,
   };
+}
+
+/** The edges of `page.margin`, in the order they are shown and written. */
+export const MARGIN_EDGES = ["top", "bottom", "inside", "outside"] as const;
+
+/**
+ * The one rule for a legal `page.margin`, applied to a manifest as it is
+ * resolved and to a margin Book setup is about to write: all four edges or
+ * nothing (a partial block would leave the missing edges to whatever a
+ * stylesheet says, the two-places split the field exists to end), each a
+ * finite point value of 0 or more, and the four leaving room for text on the
+ * page. Returns the margin typed, or throws the message both callers show.
+ */
+export function validatePageMargin(margin: unknown, size: { width: number; height: number }): PageMargin {
+  const edges =
+    isPlainObject(margin) &&
+    Object.keys(margin).every((k) => (MARGIN_EDGES as readonly string[]).includes(k)) &&
+    MARGIN_EDGES.every((e) => isNonNegativePoints(margin[e]));
+  if (!edges) {
+    throw new UsageError(
+      "Manifest field `page.margin` must set all four edges in points (72pt = 1in), for example\n" +
+        "  page:\n    margin:\n      top: 54\n      bottom: 54\n      inside: 54\n      outside: 54\n" +
+        `got ${JSON.stringify(margin)}.`
+    );
+  }
+  const m = margin as unknown as PageMargin;
+  if (m.inside + m.outside >= size.width || m.top + m.bottom >= size.height) {
+    throw new UsageError(
+      `Manifest field \`page.margin\` leaves no room for text on a ${size.width} x ${size.height}pt page ` +
+        `(inside ${m.inside} + outside ${m.outside} across, top ${m.top} + bottom ${m.bottom} down).`
+    );
+  }
+  return m;
 }
 
 function resolveWithPreset(
@@ -468,6 +503,9 @@ function resolveWithPreset(
     .filter(({ entry }) => typeof entry === "string" || (entry as ExtensionConfig)?.enabled !== false)
     .map(({ entry, index }) => normalizeExtensionEntry(entry, index));
 
+  const page = preset.page ? mergeShape(c.page, m.page, preset.page) : resolveCustomPage(c, m);
+  if (page.margin !== undefined && page.margin !== null) validatePageMargin(page.margin, page);
+
   return {
     title: c.title ?? m.title ?? "Document",
     authors: c.authors ?? m.authors ?? [],
@@ -489,7 +527,7 @@ function resolveWithPreset(
     // `print.lastPage` (blank | short-by-one) is absent from both presets: it
     // only exists when an author writes it, and then wins over reserveLastPage.
     print: mergeShape(c.print, m.print, preset.print),
-    page: preset.page ? mergeShape(c.page, m.page, preset.page) : resolveCustomPage(c, m),
+    page,
     ink: mergeShape(c.ink, m.ink, preset.ink),
     // `rules` is an open dictionary (not a fixed shape), so it merges like
     // `validate.checks`: cli over manifest, key by key.

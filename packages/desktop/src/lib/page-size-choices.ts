@@ -1,5 +1,5 @@
 /**
- * The page-size choices, shared by the new-book wizard and Book settings
+ * The page-size choices, shared by the new-book wizard and Book setup
  * (#357) so the two surfaces offer — and word — exactly the same options.
  *
  * Pure data + arithmetic: no `gutterpress` value import, no `node:*` (CLAUDE.md
@@ -15,17 +15,17 @@ export const PRESET_CHOICES: Array<{ id: PresetChoice; label: string; descriptio
   {
     id: "dtrpg",
     label: "DriveThruRPG print",
-    description: "Print-on-demand ready for DriveThruRPG: trim, ink and PDF checks preset.",
+    description: "US Letter (8.5 × 11 in), set up for DriveThruRPG's print rules.",
   },
   {
     id: "book",
-    label: "Trade book",
-    description: "A neutral 6×9in book with no print-service rules.",
+    label: "Trade paperback",
+    description: "6 × 9 in. No print-service rules.",
   },
   {
     id: "custom",
-    label: "Custom size",
-    description: "You set the page size your book is designed for.",
+    label: "Other size",
+    description: "A common size (Letter, A4, Digest…) or one you type.",
   },
 ];
 
@@ -52,20 +52,49 @@ export const COMMON_SIZES: CommonSize[] = [
 const round3 = (n: number): number => Math.round(n * 1000) / 1000;
 
 /**
+ * What an inches field holds: the string we set it to, the number the author
+ * typed (a number input's `bind:value` hands back a number), or null once the
+ * author emptied it.
+ */
+export type InchesDraft = string | number | null;
+
+/**
+ * Typed inches -> points, or null while the field is not a length (empty, not
+ * a number, negative). Zero is a length: a margin can be none.
+ */
+export function inchesToPoints(draft: InchesDraft): number | null {
+  if (draft === null || String(draft).trim() === "") return null;
+  const n = Number(draft);
+  return Number.isFinite(n) && n >= 0 ? round3(n * PT_PER_INCH) : null;
+}
+
+/**
  * The trim in points a size dropdown + typed inches mean, or null while the
  * typed inches are incomplete. A named size wins over the inches fields.
  */
 export function trimPoints(
   sizeChoice: string,
-  widthIn: string,
-  heightIn: string,
+  widthIn: InchesDraft,
+  heightIn: InchesDraft,
 ): { width: number; height: number } | null {
   const named = COMMON_SIZES.find((s) => s.id === sizeChoice)?.points;
   if (named) return named;
-  const w = Number(widthIn);
-  const h = Number(heightIn);
-  if (!(Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0)) return null;
-  return { width: round3(w * PT_PER_INCH), height: round3(h * PT_PER_INCH) };
+  const width = inchesToPoints(widthIn);
+  const height = inchesToPoints(heightIn);
+  if (!width || !height) return null;
+  return { width, height };
+}
+
+/** The size drafts (dropdown row + typed inches) for a recorded trim, or the blank defaults for none. */
+export function sizeDraftsFor(
+  points: { width: number; height: number } | null | undefined,
+): { sizeChoice: string; widthIn: string; heightIn: string } {
+  if (!points) return { sizeChoice: "letter", widthIn: "", heightIn: "" };
+  return {
+    sizeChoice: sizeChoiceFor(points.width, points.height),
+    widthIn: pointsToInches(points.width),
+    heightIn: pointsToInches(points.height),
+  };
 }
 
 /** Points -> an inches string for a number input (`612` -> `"8.5"`). */

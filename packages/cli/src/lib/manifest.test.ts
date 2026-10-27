@@ -206,6 +206,42 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     expect(config.page.tolerance).toBe(DTRPG_PRESET.page!.tolerance);
   });
 
+  test("page.margin: no preset sets one; a manifest's merges through whole, for every preset, and must be all four edges that fit the page", () => {
+    const margin = { top: 61.2, bottom: 61.2, inside: 54, outside: 50 };
+    expect(resolveConfig({}, {}).page.margin).toBeUndefined();
+    expect(resolveConfig({}, { preset: "book" }).page.margin).toBeUndefined();
+    expect(resolveConfig({}, { page: { margin } }).page.margin).toEqual(margin);
+    expect(resolveConfig({}, { preset: "book", page: { margin } }).page.margin).toEqual(margin);
+    expect(
+      resolveConfig({}, { preset: "custom", page: { width: 612, height: 792, margin } }).page.margin,
+    ).toEqual(margin);
+    expect(resolveConfig({ page: { margin } }, { page: { margin: { ...margin, top: 1 } } }).page.margin).toEqual(margin);
+    // Partial, non-numeric, negative or unknown-edged blocks are errors, not half-applied.
+    for (const bad of [
+      { top: 72 },
+      { top: 72, bottom: 72, inside: 72, outside: "1in" },
+      { top: -1, bottom: 72, inside: 72, outside: 72 },
+      { top: 72, bottom: 72, inside: 72, outside: 72, left: 72 },
+      54,
+    ]) {
+      expect(() => resolveConfig({}, { page: { margin: bad as never } })).toThrow(/page\.margin.*all four edges/s);
+    }
+    // Margins that meet in the middle leave no text block.
+    expect(() =>
+      resolveConfig({}, { preset: "book", page: { margin: { top: 72, bottom: 72, inside: 216, outside: 216 } } }),
+    ).toThrow(/no room for text/);
+    expect(() =>
+      resolveConfig({}, { preset: "book", page: { margin: { top: 324, bottom: 324, inside: 54, outside: 54 } } }),
+    ).toThrow(/no room for text/);
+    // Zero is a margin (a full-bleed edge).
+    expect(resolveConfig({}, { page: { margin: { top: 0, bottom: 0, inside: 0, outside: 0 } } }).page.margin).toEqual({
+      top: 0,
+      bottom: 0,
+      inside: 0,
+      outside: 0,
+    });
+  });
+
   test("page.bleed: dtrpg declares DriveThruRPG's 0.125in in-sheet bleed; book/custom declare none; a manifest overrides it", () => {
     expect(DTRPG_PRESET.page!.bleed).toBe(9);
     expect(resolveConfig({}, {}).page.bleed).toBe(9);

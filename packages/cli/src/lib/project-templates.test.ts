@@ -456,6 +456,15 @@ test("each built-in template exposes the preset its manifest declares", async ()
   }
 });
 
+test("a template designed for one size exposes it; a preset-sized template does not", async () => {
+  const templates = await listBuiltInTemplates();
+  const byId = Object.fromEntries(templates.map((t) => [t.id, t]));
+  expect(byId.zine?.page).toEqual({ width: 396, height: 612 });
+  expect(byId.technical?.page).toEqual({ width: 612, height: 792 });
+  expect(byId.paper?.page).toEqual({ width: 612, height: 792 });
+  expect(byId.book?.page).toBeUndefined();
+});
+
 test("a saved custom template carries its project's preset and targets", async () => {
   const parent = await tmp("gutterpress-tplchoices-src-");
   const templatesRoot = await tmp("gutterpress-tplchoices-dest-");

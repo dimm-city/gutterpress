@@ -32,6 +32,7 @@ import { loadManifestDoc, writeManifestDoc, scalarString } from "./manifest-doc.
 import { collectStyleDependencies, escapesProjectRoot } from "./asset-inline.ts";
 import { toPosixPath } from "./plugin-vendor.ts";
 import { slugify, prettify } from "./slug.ts";
+import { numberAt } from "./page-size.ts";
 
 /** The built-in templates shipped as embedded assets. */
 export const BUILT_IN_TEMPLATE_IDS = [
@@ -62,20 +63,27 @@ export interface TemplateInfo {
   preset?: string;
   /** The `targets:` this template's manifest declares, when it has one. */
   targets?: string[];
+  /**
+   * The `page:` size (points) this template's manifest declares, when it has
+   * one. A `custom`-preset template says what size it is designed for here,
+   * and the creation flows show that size pre-filled.
+   */
+  page?: { width: number; height: number };
 }
 
 /**
- * Read the `preset:`/`targets:` a template's manifest declares. Best-effort
- * and never throws: a template with no (or an unreadable) manifest simply
- * carries no starting point, and the caller falls back to its own defaults.
+ * Read the `preset:`/`targets:`/`page:` a template's manifest declares.
+ * Best-effort and never throws: a template with no (or an unreadable)
+ * manifest simply carries no starting point, and the caller falls back to
+ * its own defaults.
  */
 async function readTemplateChoices(
   manifestPath: string,
-): Promise<{ preset?: string; targets?: string[] }> {
+): Promise<Pick<TemplateInfo, "preset" | "targets" | "page">> {
   try {
     const text = await readFile(manifestPath, "utf8");
     const doc = parseDocument(text);
-    const out: { preset?: string; targets?: string[] } = {};
+    const out: Pick<TemplateInfo, "preset" | "targets" | "page"> = {};
     const preset = doc.get("preset");
     if (typeof preset === "string" && preset) out.preset = preset;
     const targets = doc.get("targets", true);
@@ -84,6 +92,9 @@ async function readTemplateChoices(
         .map((i) => scalarString(i))
         .filter((s): s is string => s !== null);
     }
+    const width = numberAt(doc, ["page", "width"]);
+    const height = numberAt(doc, ["page", "height"]);
+    if (width !== undefined && height !== undefined) out.page = { width, height };
     return out;
   } catch {
     return {};
@@ -93,19 +104,20 @@ async function readTemplateChoices(
 export const BUILT_IN_META: Record<ProjectTemplateId, { label: string; description: string }> = {
   book: {
     label: "Book",
-    description: "A clean starting point for a novel, memoir, or any long-form book.",
+    description: "A clean starting point for a novel, memoir, or any long-form book. Uses the Clean book look.",
   },
   zine: {
     label: "Zine",
-    description: "A short, personal zine made to be printed, folded, and shared.",
+    description: "A short, personal zine made to be printed, folded, and shared. Uses the Zine look.",
   },
   technical: {
     label: "Technical document",
-    description: "A manual or guide with steps, reference tables, and code examples.",
+    description: "A manual or guide with steps, reference tables, and code examples. Uses the Technical doc look.",
   },
   paper: {
     label: "Academic paper",
-    description: "A journal-style article with LaTeX math, numbered equations, figures, tables, notes and references.",
+    description:
+      "A journal-style article with LaTeX math, numbered equations, figures, tables, notes and references. Uses the Academic look.",
   },
 };
 

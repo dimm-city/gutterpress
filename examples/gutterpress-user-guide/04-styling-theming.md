@@ -125,7 +125,7 @@ blocks of its stylesheets are the whole vocabulary.
 
 ### Creating a custom look
 
-For one book, the fastest approach is three sections in `styles/book.css`:
+For one book, the fastest approach is two sections in `styles/book.css`:
 
 ```css
 /* 1. Override brand tokens */
@@ -135,16 +135,21 @@ For one book, the fastest approach is three sections in `styles/book.css`:
   --fs-body:      11.5pt;
 }
 
-/* 2. Override page geometry */
-@page { size: 6in 9in; margin: 0.75in; }
-
-/* 3. Add component rules */
+/* 2. Add component rules */
 .my-special-block {
   background: #f3f5f9;
   border-left: 3pt solid var(--color-accent);
   padding: 0.5em 0.8em;
 }
 ```
+
+The page size and margins are not a stylesheet's business: they come from the
+manifest (`preset:`, or `page:` with `width`, `height` and `margin`), which the
+app edits under Setup > Details, and the build writes them as the `@page` rule
+after every stylesheet. No built-in look sets either; a `size` in your own
+`@page` rule is ignored (the print-safety check says so), and an `@page`
+margin of your own holds only until the manifest sets margins (Chapter 1,
+*Page Size Reference*).
 
 To reuse a look across books, make it a folder: a `theme.css` plus a
 `package.json` declaring it, which is all a one-sheet look is. `gutterpress

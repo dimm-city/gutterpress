@@ -336,13 +336,19 @@ describe("extension-manager", () => {
       expect(results[2]!.error).toMatch(/not found/i);
     });
 
-    test("readExtensionCss concatenates the declared sheets in order; a bundled name has none", async () => {
+    test("readExtensionCss concatenates the declared sheets in order; a bundled feature has none", async () => {
       const dir = projectDir(["title: T", "extensions:", "  - ./ext/house", "  - markdown-it-mark", ""].join("\n"));
       writeHouse(dir);
       expect(await readExtensionCss(dir, "./ext/house")).toBe(
         ":root { --house: 1; }\n\n\n.house { color: red; }\n",
       );
       await expect(readExtensionCss(dir, "markdown-it-mark")).rejects.toThrow(/no stylesheets/);
+    });
+
+    test("readExtensionCss answers for a bundled look the manifest does not list (a thumbnail before adding it)", async () => {
+      const dir = projectDir("title: T\n");
+      expect(await readExtensionCss(dir, "clean-book")).toContain(":root");
+      await expect(readExtensionCss(dir, "./ext/nowhere")).rejects.toThrow(/not in the manifest/);
     });
   });
 

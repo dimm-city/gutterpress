@@ -4,7 +4,7 @@ import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 // The "turn a plain local-folder into a versioned project" half of the
-// CLAUDE.md §7 escape hatch. Book settings → Connections calls it for a
+// CLAUDE.md §7 escape hatch. Book setup → Backup calls it for a
 // plain folder (ProjectConnectionsSection, #310).
 
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({

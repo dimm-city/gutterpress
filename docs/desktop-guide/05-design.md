@@ -1,54 +1,64 @@
 ---
 title: Change your book's design
-description: Open Book settings to change the title, authors, chapter order and page size, choose a look, fine-tune fonts, colours and sizes, and edit stylesheets.
+description: Open Book setup to change the title, authors, chapters and page size, choose a look, fine-tune fonts, colors, sizes and margins, and edit stylesheets.
 ---
 
 # Change your book's design
 
-Click **Setup** (the wrench) in the toolbar to open **Book settings**. Its tabs are **Details**,
-**Extensions**, **Design** and **Connections**. Close it with the X or Esc.
+Click **Setup** (the wrench) in the toolbar to open **Book setup**. Its tabs are **Details**,
+**Looks & features**, **Design** and **Backup**. Close it with the X or Esc. Every tab saves as you
+go: there is no Save button. **Details** and **Design** show **Changes saved** beside their heading
+when a change has been written; **Looks & features** and **Backup** apply each change at once.
 
-## Title, authors and chapter order
+## Title, authors and chapters
 
 On the **Details** tab:
 
-- set the **Title** and **Authors** (**Add author** adds another);
-- under **Source files**, tick the files that belong in the book and drag them, or use **Move
-  up** and **Move down**, to set the order of chapters;
-- under **Page size**, choose what the book is designed for: **DriveThruRPG print**, **Trade
-  book** (a neutral 6×9in book), or **Custom size** and then a size (US Letter, Trade paperback,
-  Digest, A4, A5, or your own width and height in inches). These are the same choices as when you
-  [create the book](02-books.md#create-a-new-book). The settings open on the book's current size;
-- under **Publish targets**, tick where you plan to publish.
+- set the **Title** and **Authors** (**Add author** adds another). A name is saved when you leave
+  the field or press Enter;
+- under **Chapters**, tick the markdown files that belong in the book and drag them, or use **Move
+  up** and **Move down**, to set the reading order;
+- under **Page size**, choose the size the book prints at and is checked against: **DriveThruRPG
+  print** (US Letter, set up for DriveThruRPG's print rules), **Trade paperback** (6 × 9 in), or
+  **Other size** and then a size (US Letter, Trade paperback, Digest, A4, A5, or your own width and
+  height in inches). These are the same choices as when you
+  [create the book](02-books.md#create-a-new-book). The tab opens on the book's current size;
+- under **Check the PDF against**, tick the print services whose rules the finished PDF should be
+  checked against. Gutterpress has no checks for other places you publish to.
 
-Click **Save details**. **Save as template…** saves this book's setup as a template you can start
-new books from.
+**Save as template…** saves this book's setup as a template you can start new books from.
 
-![Book settings, Details tab: title, authors, chapter order and publish targets](images/book-settings-details.jpg)
+![Book setup, Details tab: title, authors, chapters and print checks](images/book-settings-details.jpg)
 
 ## Choose a look
 
-A *look* is a complete design for a book. Looks are extensions, listed with your plugins on the
-**Extensions** tab. Under **Add**, on the **Built in** tab, click **Add** next to **Clean book**,
-**Technical doc**, **Zine** or **Academic**. Each look you have added is a row in the list, with a
-small preview, where it can be turned off, moved up or down, or removed. Looks lower in the list
-win where they disagree.
+A *look* is a complete design for a book. Looks are listed with your features on the
+**Looks & features** tab. Under **Add**, on the **Built in** tab, looks come first, each with a
+small preview of what it does to a page: click **Add** next to **Clean book**, **Technical doc**,
+**Zine** or **Academic**. Each look you have added is a row in the list, with the same preview,
+where it can be turned off, moved up or down, or removed. Looks lower in the list win where they
+disagree; when you add a second look, Gutterpress says so and names the one to turn off to use the
+new look on its own. A new book already has the look its template came with.
 
 To use a look from elsewhere, open **Advanced** under **Add** and choose **Import a .zip or
 .css...** or **Add a folder or plugin file...**, or paste a URL into the URL field and click
 **Import**. [Find plugins](https://gutterpress.dimm.city/plugins/) lists looks and other extensions
 on npm.
 
-![Book settings, Extensions tab: a feature and a look in the list, and the built-in extras to add](images/book-settings-extensions.jpg)
+![Book setup, Looks & features tab: a feature and a look in the list, and the built-in looks and features to add](images/book-settings-extensions.jpg)
 
-## Fine-tune fonts, colours and sizes
+## Fine-tune fonts, colors and sizes
 
-The **Design** tab shows the settings of every look you have switched on, grouped into **Fonts**,
-**Colors**, **Sizes & numbers** and **Other**. Change a value and the preview follows; Gutterpress
-saves the change to your book's own stylesheet (`styles/book.css` unless you chose another), never
-to the look itself. **Revert** puts a value back; **Edit raw CSS** opens that stylesheet.
+The **Design** tab names the look it is editing and shows its settings under **Fonts, colors &
+sizes**, grouped into **Fonts**, **Colors**, **Sizes & numbers** and **Other**. (The page size and
+margins are on the Details tab, below.) Change a
+value and Gutterpress saves it to your book's own stylesheet (`styles/book.css` unless you chose
+another), never to the look itself; the preview shows the change when you close Book setup.
+**Revert** undoes this session's changes; the undo arrow beside a value you changed earlier offers
+**Use the look's value** instead. **Edit the stylesheet** opens the stylesheet itself. A book with
+no look switched on offers **Choose a look**, which opens Looks & features.
 
-![Book settings, Design tab: design tokens grouped into fonts and colours](images/book-settings-design.jpg)
+![Book setup, Design tab: fonts, colors and sizes of the book's look](images/book-settings-design.jpg)
 
 ## Edit stylesheets
 
@@ -56,16 +66,23 @@ Under **Stylesheets** on the **Design** tab, each of the book's stylesheets can 
 off, and **Edit** opens it in the editor. The [styling chapter](https://gutterpress.dimm.city/docs/styling-theming/)
 covers what a stylesheet can do.
 
-## Change the page size
+## Change the page size and margins
 
-Page size is on the **Details** tab (see above), and you can change it at any time. When you
-click **Save details**, Gutterpress updates two things together: the size your book prints at
-(the `@page` rule in your stylesheet, edited in place, with the rest of the file left exactly as
-it was) and the size your finished PDF is checked against. If your stylesheet has no page size
-yet, a small page rule is added to the end of your book's own stylesheet. If a stylesheet and
-the book disagree, Details says so and Save makes them match.
+The page size and the margins are on the **Details** tab (see above), and you can change them at
+any time. Both live in your book's manifest and nowhere else: the size you choose is the size your
+book prints at and the size your finished PDF is checked against, and no stylesheet is edited.
 
-Choosing **DriveThruRPG print** or **Trade book** uses that preset's page size and print
-checks. It does not change which **Publish targets** are ticked.
+Under **Page size**, choosing **DriveThruRPG print** or **Trade paperback** uses that preset's page
+size and print checks; **Other size** takes a common size (Letter, A4, Digest…) or a width and height
+you type. A book that has never chosen its print checks follows the preset (DriveThruRPG print
+checks against DriveThruRPG); once you tick or untick a service, the choice is yours.
+
+Under **Margins**, type the top, bottom, inside and outside margins in inches (inside is the edge at
+the binding). A change is saved as soon as you leave the field, and your margins win over any a
+look sets. A book that has not set its own margins yet shows the ones its look gives it, or the
+1 in default, and says so; change one and they become yours. The built-in looks set neither a page
+size nor margins, so what you choose here is what you get.
+
+![Book setup, Details tab: the page size choices and the four margin fields](images/book-settings-page.jpg)
 
 Next: [add plugins and formatting extras](06-plugins.md).

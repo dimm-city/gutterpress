@@ -15,14 +15,15 @@
 </script>
 
 <div class="help-content">
-  <p class="intro">How to open, edit, save and publish your book.</p>
+  <p class="intro">How to open, edit, set up, save and publish your book.</p>
 
   <section class="getting-started">
     <h3>Getting Started</h3>
     <ol class="steps">
-      <li><strong>Open your book folder</strong> — on the welcome screen, click <em>Open a folder</em> (or pick a book from <em>Your books</em>) and choose the folder that contains your <code>manifest.yaml</code> file. Once a book is open, click the folder button at the left of the status bar (<em>Books — open the start screen</em>) to get back to your list of books.</li>
+      <li><strong>Open your book folder</strong> — on the welcome screen, click <em>Open a folder</em> (or pick a book from <em>Your books</em>) and choose your book's folder. Once a book is open, click the folder button at the left of the status bar (<em>Books — open the start screen</em>) to get back to your list of books.</li>
       <li><strong>Browse your document</strong> — use the arrow keys or Page Up/Down to flip through pages. Click <em>Read</em> in the toolbar to see two pages side by side like an open book, and use the magnifier menu to zoom.</li>
       <li><strong>Edit your pages</strong> — click <em>Edit</em> (or press {modKey}+E) to open the markdown editor beside the preview. By default your changes save automatically, and {modKey}+S or the Save button saves immediately. To save only when you choose, turn off <em>Save edits automatically</em> under Settings &gt; Saving (open Settings with the gear icon in the bottom-right corner).</li>
+      <li><strong>Set up and style your book</strong> — click <em>Setup</em> in the toolbar: <em>Details</em> for the title, authors and page size; <em>Looks &amp; features</em> to add a look (the book's overall design) or a feature such as callouts or math; <em>Design</em> to change the look's fonts, colors, sizes and margins.</li>
       <li><strong>Keep versions of your work</strong> — click the save status in the bottom-right corner to open <em>Where your work is kept</em>: save a version, see previous versions, and back up online.</li>
       <li><strong>Publish</strong> — click <em>Publish</em> to save a PDF or website to a folder and send it on (or press {modKey}+Shift+E to save a PDF directly).</li>
     </ol>
@@ -68,7 +69,6 @@
   .getting-started h3, .online-copy h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; color: var(--app-text-muted); letter-spacing: 0.5px; }
   .steps { margin: 0 0 10px; padding-left: 20px; font-size: 13px; line-height: 1.6; color: var(--app-text-secondary); }
   .steps li { margin-bottom: 6px; }
-  .steps code { font-family: var(--app-font-mono); color: light-dark(#2b4a6f, #99aabb); background: light-dark(#e8edf5, #2a3040); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
   .gs-note { margin: 0; font-size: 12px; color: var(--app-text-muted); }
   .inline-link { background: none; border: none; color: var(--app-link); cursor: pointer; font-size: 12px; padding: 0; text-decoration: underline; text-underline-offset: 2px; }
   .inline-link:hover { color: var(--app-link-hover); }

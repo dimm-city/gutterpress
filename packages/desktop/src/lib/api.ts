@@ -189,6 +189,8 @@ export interface TemplateInfo {
   preset?: string;
   /** The `targets:` this template's manifest declares, if any. */
   targets?: string[];
+  /** The `page:` size (points) a `custom`-preset template is designed for, if any. */
+  page?: { width: number; height: number };
 }
 
 /** {@link TemplateInfo} plus what save-as-template did with out-of-book refs. */
@@ -273,7 +275,7 @@ export interface ClassCatalogEntry {
 }
 
 /** Static publish-provider metadata (no project needed) — used by the
- *  Settings → Connections tab to classify + label stored credentials. */
+ *  Settings → Accounts tab to classify + label stored credentials. */
 export interface PublishProviderStaticInfo {
   id: string;
   label: string;
@@ -303,23 +305,13 @@ export interface ProjectConfigFields {
 }
 
 /**
- * A book's page size as recorded (mirrors the lib's `PageSetup`): the manifest's
- * preset + validation bounds, and what the stylesheet's plain `@page` prints at.
- * Sizes are points (72pt = 1in).
+ * A book's page geometry as the lib records it — the manifest's preset +
+ * bounds (the size it prints at and is checked against) and the margins it
+ * prints with, in points — and what the author picks. Type-only imports erase
+ * at build time, so the SPA still never value-imports the lib (§8).
  */
-export interface PageSetup {
-  /** null when the manifest names a preset the app doesn't know. */
-  preset: 'dtrpg' | 'book' | 'custom' | null;
-  bounds: { width: number; height: number; tolerance: number } | null;
-  css: { width: number; height: number; file: string } | null;
-}
-
-/** What the author picks (mirrors the lib's `PageSizeChoice`). */
-export interface PageSizeChoice {
-  preset: 'dtrpg' | 'book' | 'custom';
-  /** Required for `custom`; the other presets own their size. */
-  page?: { width: number; height: number };
-}
+import type { PageMargin, PageSetup, PageSetupChange, PageSizeChoice } from 'gutterpress';
+export type { PageMargin, PageSetup, PageSetupChange, PageSizeChoice };
 
 export interface DirEntry {
   name: string;
@@ -607,7 +599,7 @@ export const api = {
    * styles, a feature is one that carries markdown, a component library
    * carries both — every one is a `use` specifier in the manifest's
    * `extensions:` list, and `list` returns them all in cascade order. The
-   * desktop's Extensions tab shows that list with this one verb set; `use` is
+   * desktop's Looks & features tab shows that list with this one verb set; `use` is
    * the stable ref every mutating call takes.
    */
   extension: {
@@ -646,7 +638,7 @@ export const api = {
     bundled: () => get<BundledExtensionInfo[]>('/api/extension/bundled'),
     /** Search npm for extensions (#246), on demand. A network/parse failure is data (`ok: false`), never a thrown error. */
     search: (query: string) => post<ExtensionSearchResult>('/api/extension/search', { query }),
-    /** Each pinned npm extension against npm's latest (the newest of any kind with `includePrerelease`), on demand (the Extensions tab, never project load). A network failure is data (`ok: false`). */
+    /** Each pinned npm extension against npm's latest (the newest of any kind with `includePrerelease`), on demand (the Looks & features tab, never project load). A network failure is data (`ok: false`). */
     outdated: (projectDir: string, includePrerelease = false) =>
       post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir, includePrerelease }),
     /** Every published version of one npm package, newest first, pre-releases included (the version picker's list). On demand; a network failure is data (`ok: false`). */
@@ -687,12 +679,12 @@ export const api = {
   },
 
   pageSize: {
-    /** Read the book's page size back from its manifest and stylesheet. */
+    /** Read the book's page geometry back from its manifest (margins it does not set: from its stylesheets). */
     read: (projectDir: string) =>
       post<PageSetup>('/api/page-size/read', { projectDir }),
-    /** Change it: manifest preset + bounds and the stylesheet's `@page` size, together. */
-    set: (projectDir: string, choice: PageSizeChoice) =>
-      post<PageSetup>('/api/page-size/set', { projectDir, choice }),
+    /** Change it in the manifest: the size, the margins, or both; a part left out stays as recorded. */
+    set: (projectDir: string, change: PageSetupChange) =>
+      post<PageSetup>('/api/page-size/set', { projectDir, change }),
   },
 
   style: {

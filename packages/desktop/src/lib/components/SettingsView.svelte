@@ -18,9 +18,10 @@
     embedded = false,
     idPrefix = "settings",
     onProjectFilesChanged,
+    onSetUpBackup,
   }: {
     onClose?: () => void;
-    /** The open project dir (Connections tab: adding a publishing key verifies
+    /** The open project dir (Accounts tab: adding a publishing key verifies
      *  against the platform, and some checks read the project's settings;
      *  the Saving tab's online-backup switch uses it to check canSync). */
     projectDir?: string | null;
@@ -45,6 +46,9 @@
      *  changed push stream, since the checkout's writes are ordinary disk
      *  writes to the watched folder. */
     onProjectFilesChanged?: () => void;
+    /** Open the book's Backup tab (Book setup) so an unbacked-up book can be
+     *  set up from the Saving tab's note; the host closes this surface first. */
+    onSetUpBackup?: () => void;
   } = $props();
 
   const settings = useSettings();
@@ -227,10 +231,11 @@
   >
       <!-- App appearance (light/dark chrome) --------------------------------
            Qualified as "App appearance" so it can't be confused with the
-           book's print look (Extensions and Design in Book settings). -->
+           book's print look (Looks & features and Design in Book setup). -->
       {#if activeTab === "app"}
       <!-- Reader or author: the one switch that decides how much of the app
-           shows. Reader is the default; the choice is remembered. -->
+           shows. Reader is the default; creating a book switches to Author;
+           the choice is remembered. -->
       <section class="group">
         <div class="group-head">
           <h3>How you use Gutterpress</h3>
@@ -240,7 +245,7 @@
             <input type="radio" name="set-role" value="reader" checked={s.workspace.role === "reader"} onchange={() => settings.set({ workspace: { role: "reader" } })} />
             <span class="role-text">
               <span class="role-title">Reader</span>
-              <span class="role-desc">Just the pages. Edit, Setup and Publish stay out of the way.</span>
+              <span class="role-desc">Just the pages. Edit, Setup and Publish stay out of the way. Creating a book switches you to Author.</span>
             </span>
           </label>
           <label class="role-option" class:selected={s.workspace.role === "author"}>
@@ -318,7 +323,7 @@
         <div class="row">
           <div class="row-label">
             <label for="set-overlay-strength">Print overlay strength</label>
-            <span class="row-hint">How strongly the preview's print overlays (the toolbar button) are drawn. The bleed and safe area come from your book's print settings (manifest.yaml); the page margins are your stylesheet's own.</span>
+            <span class="row-hint">How strongly the print guides (bleed, safe area, page margins) are drawn when you turn them on from the preview toolbar.</span>
           </div>
           <select
             id="set-overlay-strength"
@@ -445,10 +450,12 @@
              for a project that can sync — canSyncLoading/canSync are read
              once on mount from diagnoseProjectRemote (no live re-check while
              this view stays open, matching ConnectionsSettings/
-             ProjectConnectionsSection); a local-only project or the start
-             screen (projectDir === null) gets one status line instead of a
-             switch that would do nothing. Disabled when previous versions is
-             off: a backup with nothing to push is not a backup. -->
+             ProjectConnectionsSection); a local-only project gets one status
+             line and the way to Book setup > Backup instead of a switch that
+             would do nothing; the start screen (projectDir === null) has no
+             book to set up, so it gets the status line alone. Disabled when
+             previous versions is off: a backup with nothing to push is not a
+             backup. -->
         {#if canSyncLoading}
           <div class="row"><span class="row-hint">Checking this book's online status…</span></div>
         {:else if canSync}
@@ -477,8 +484,15 @@
               }}
             />
           </div>
+        {:else if projectDir}
+          <div class="row">
+            <span class="row-hint">Not backed up online.</span>
+            {#if onSetUpBackup}
+              <button class="action" onclick={onSetUpBackup}>Set up online backup…</button>
+            {/if}
+          </div>
         {:else}
-          <div class="row"><span class="row-hint">This book isn't connected to an online service yet. Connect one in Settings &gt; Accounts to back it up.</span></div>
+          <div class="row"><span class="row-hint">Open a book to set up its online backup.</span></div>
         {/if}
         <!-- Copy switching (#273): which copy (git branch) the project is on,
              and a way to switch to another. Copies that exist only online are

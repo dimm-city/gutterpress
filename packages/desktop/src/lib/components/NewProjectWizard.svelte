@@ -6,10 +6,17 @@
   import { dialogBehavior, guardedClose, FOCUSABLE } from "#lib/dialog.ts";
   import { useSettings } from "#lib/settings.svelte.ts";
   import PageSizeFields from "#lib/components/PageSizeFields.svelte";
-  import { PRESET_CHOICES, trimPoints, type PresetChoice } from "#lib/page-size-choices.ts";
+  import {
+    type InchesDraft,
+    PRESET_CHOICES,
+    type PresetChoice,
+    sizeDraftsFor,
+    trimPoints,
+  } from "#lib/page-size-choices.ts";
   import {
     PUBLISH_TARGET_CHOICES,
     PRINT_TOOL_IDS,
+    defaultTargetsFor,
     missingToolsForTargets,
     toolGapMessage,
   } from "#lib/publish-targets.ts";
@@ -51,7 +58,7 @@
   // own manifest — the template is the first decision, and everything under
   // it starts from what that template is for. The writer can still change
   // any of it before creating.
-  // The choices + copy are shared with Book settings (#lib/page-size-choices).
+  // The choices + copy are shared with Book setup (#lib/page-size-choices).
   let selectedPreset = $state<PresetChoice | null>(null);
 
   // Page size for the `custom` preset. Authors think in INCHES, so that is
@@ -59,8 +66,8 @@
   // sizes carry exact point values (A4/A5 are not round inch numbers).
   let sizeChoice = $state<string>("letter");
   // Free-form trim in INCHES — only used when sizeChoice is "custom".
-  let widthIn = $state("");
-  let heightIn = $state("");
+  let widthIn = $state<InchesDraft>("");
+  let heightIn = $state<InchesDraft>("");
 
   /** The trim in points the manifest will record, or null while incomplete. */
   const customPagePoints = $derived(trimPoints(sizeChoice, widthIn, heightIn));
@@ -74,10 +81,6 @@
   // required-check errors later. Choices + copy are shared with project
   // settings (#lib/publish-targets).
   const TARGET_CHOICES = PUBLISH_TARGET_CHOICES;
-  /** Mirrors the lib presets' defaultTargets (dtrpg → [dtrpg]; else []). */
-  function defaultTargetsFor(preset: PresetChoice | null): string[] {
-    return preset === "dtrpg" ? ["dtrpg"] : [];
-  }
   // Defaults follow the template/preset until the writer touches a checkbox;
   // after that their selection is theirs (no $effect — the derived falls
   // back only while untouched).
@@ -149,11 +152,11 @@
 
   /**
    * Choosing a template is the FIRST decision and seeds everything under it:
-   * the design preset and the publish targets both start from what that
-   * template's own manifest declares (falling back to the preset's defaults
-   * when it declares no targets). Any of it can then be changed — this only
-   * moves the starting point, so it runs in the click handler, never an
-   * `$effect`. A writer-touched target selection is reset so the new
+   * the design preset, the page size and the publish targets all start from
+   * what that template's own manifest declares (falling back to the preset's
+   * defaults when it declares no targets). Any of it can then be changed —
+   * this only moves the starting point, so it runs in the click handler,
+   * never an `$effect`. A writer-touched target selection is reset so the new
    * template's own choices actually show.
    */
   function selectTemplate(tpl: TemplateInfo | null): void {
@@ -161,6 +164,9 @@
     const preset = tpl?.preset;
     selectedPreset =
       preset === "dtrpg" || preset === "book" || preset === "custom" ? preset : null;
+    // A custom-size template says which size it is designed for; the size
+    // fields show it so the writer sees (and can change) the real choice.
+    ({ sizeChoice, widthIn, heightIn } = sizeDraftsFor(preset === "custom" ? tpl?.page : null));
     templateTargets = tpl?.targets ?? null;
     targetsTouched = false;
     checkedTargets = [];
@@ -211,7 +217,7 @@
   let presetValid = $derived(
     selectedPreset !== null && (selectedPreset !== "custom" || customPagePoints !== null)
   );
-  let canCreate = $derived(nameValid && !!parentDir && presetValid && !creating);
+  let canCreate = $derived(nameValid && presetValid && !creating);
 
   function reset() {
     step = 0;
@@ -267,13 +273,7 @@
    *      (`lastProjectDir`, already returned — and existence-checked — by
    *      `getDesktopPrefs`) — a writer's existing project folder is a sound
    *      proxy for "where my books live";
-   *   3. nothing — "Choose folder…" stays the escape hatch either way.
-   *
-   * A true first-run default (an OS Documents folder via the host's
-   * `defaultProjectSearchRoots()`, already used by discover-projects) needs
-   * a renderer-reachable route that does not exist yet — out of scope here
-   * (no new `src/routes/api/**` files in this change); (1)/(2) cover every
-   * returning writer, which is the common case.
+   *   3. nothing — Create asks for a folder when pressed.
    */
   async function loadDefaultParentDir() {
     try {
@@ -372,9 +372,14 @@
   }
 
   async function create() {
+    // Create is never disabled for want of a folder: pressing it asks for one.
     if (!parentDir) {
-      error = "Choose where to save your book first.";
-      return;
+      await chooseLocation();
+      if (!parentDir) {
+        // A dialog that failed has already said why; only a dismissed one needs the prompt.
+        if (!error) error = "Choose a folder to save your book in.";
+        return;
+      }
     }
     creating = true;
     error = null;
@@ -522,8 +527,8 @@
         {/if}
       {:else}
         <div class="field">
-          <span>What are you designing it for?</span>
-          <div class="template-list preset-list" role="radiogroup" aria-label="Book preset">
+          <span id="np-preset-question">What size should the pages be?</span>
+          <div class="template-list preset-list" role="radiogroup" aria-labelledby="np-preset-question">
             {#each PRESET_CHOICES as choice (choice.id)}
               {@const picked = selectedPreset === choice.id}
               <label class="template-card" class:selected={picked}>
@@ -543,15 +548,14 @@
           {#if selectedPreset === "custom"}
             <PageSizeFields idPrefix="np" bind:sizeChoice bind:widthIn bind:heightIn />
             <p class="page-hint">
-              This is the page size your finished book is checked against; keep it
-              matching the <code>@page</code> size in your stylesheet.
+              This is the size your book prints at and is checked against.
             </p>
           {/if}
         </div>
 
         <div class="field">
-          <span>Where will you publish it? <em class="optional">(you can change this later)</em></span>
-          <ul class="target-list" aria-label="Publish targets">
+          <span>Check the finished PDF against a print service's rules? <em class="optional">(optional)</em></span>
+          <ul class="target-list" aria-label="Print services to check against">
             {#each TARGET_CHOICES as choice (choice.id)}
               <li>
                 <label class="target-row">
@@ -572,23 +576,26 @@
           {#if targetToolGap}
             <p class="tool-note" role="note">{targetToolGap}</p>
           {/if}
+          <p class="page-hint">
+            Gutterpress has no checks for other places you publish to (Amazon KDP, Google
+            Drive…); you choose where to send the PDF when you publish. With none checked, only
+            the general print checks run.
+          </p>
         </div>
 
         <div class="field">
           <span>Where should we save it?</span>
           <div class="location-row">
-            <!-- parentDir is prefilled (last-used parent, else the
-                 folder containing the most recent project) whenever we have
-                 one, so this reads as "Change…" — the escape hatch, not the
-                 only way in — rather than a dead Create hiding behind a
-                 mandatory folder picker. -->
+            <!-- parentDir is prefilled (last-used parent, else the folder of
+                 the most recent project) when we have one; otherwise Create
+                 asks for a folder when pressed. -->
             <button class="dlg-ghost body-btn browse" onclick={chooseLocation} disabled={creating}>
               {parentDir ? "Change…" : "Choose folder…"}
             </button>
             {#if parentDir}
               <span class="location-path" title={parentDir}>{parentDir}{folderPreview ? `/${folderPreview}` : ""}</span>
             {:else}
-              <span class="location-empty">No folder chosen yet</span>
+              <span class="location-empty">No folder chosen yet — Create book will ask for one.</span>
             {/if}
           </div>
         </div>
@@ -716,7 +723,6 @@
     line-height: 1.4;
     color: var(--app-text-muted);
   }
-  .page-hint code { font-family: var(--app-font-mono); font-size: 10px; }
   .template-label { font-size: 13px; font-weight: 600; color: var(--app-text); display: flex; align-items: center; gap: 6px; }
   .template-tag { font-size: 10px; font-style: normal; text-transform: uppercase; letter-spacing: 0.04em; color: var(--app-text-muted); border: 1px solid var(--app-border); border-radius: 3px; padding: 0 4px; }
   .template-desc { font-size: 11px; color: var(--app-text-muted); line-height: 1.35; }

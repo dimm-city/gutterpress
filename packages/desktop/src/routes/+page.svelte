@@ -1102,8 +1102,8 @@
     snippetPickerRef?.show();
   }
 
-  // ── Book settings view ──────────────────────────────────────────────────
-  // Book settings open in the shared AppView layer, like every task screen:
+  // ── Book setup view ────────────────────────────────────────────────────
+  // Book setup opens in the shared AppView layer, like every task screen:
   // the workspace underneath is inert until the writer closes them (X or
   // Esc) — a sidebar tab or docked panel squeezes manifest editing, theme
   // browsing and plugin management into a strip. Activity is the only alternate
@@ -1111,7 +1111,7 @@
   let editorView = $state<"editor" | "activity">("editor");
   let projectSettingsOpen = $state(false);
 
-  /** One button → the whole book settings view (manifest details, look &
+  /** One button → the whole Book setup view (details, looks & features,
    *  style, plugins), covering the workspace. */
   function openProjectConfig(): void {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
@@ -1119,15 +1119,15 @@
     projectSettingsOpen = true;
   }
 
-  // Book settings opens on Details; the save-status dialog sends writers to
-  // Connections to see how an online backup gets set up.
+  // Book setup opens on Details; the save-status dialog and Settings > Saving
+  // send writers to its Backup tab to see how an online backup gets set up.
   let projectSettingsTab = $state<"details" | "extensions" | "connections">("details");
   function openBookConnections(): void {
     openProjectConfig();
     projectSettingsTab = "connections";
   }
-  // A failed extension download's toast sends writers to Extensions, where the
-  // "Needs install" row's Install button retries it.
+  // A failed extension download's toast sends writers to Looks & features,
+  // where the "Needs install" row's Install button retries it.
   function openBookExtensions(): void {
     openProjectConfig();
     projectSettingsTab = "extensions";
@@ -1139,7 +1139,7 @@
 
   /**
    * Open one stylesheet (absolute path) in the shared editor and reveal it.
-   * Used as the "Edit raw CSS" escape hatch from the Config view's Design
+   * Used as the "Edit the stylesheet" escape hatch from Book setup's Design
    * section AND from its Styles section's per-row "Edit" button — both routes
    * flip `editorView` back to "editor" so the author lands on the file.
    */
@@ -2887,7 +2887,7 @@
   // The single-column (narrow) layout switches the one visible pane between the
   // editor and the preview. `editorPaneOpen` is the visible source of truth;
   // the persisted paneMode is only consulted after the editor was explicitly
-  // opened. Project styling lives in the Book settings view, not a tab.
+  // opened. Project styling lives in the Book setup view, not a tab.
   //
   // Single source of truth: whether the shared editor is on a CSS file is
   // derived SOLELY from the open file's extension (`openFileIsCss`) — no
@@ -3040,8 +3040,8 @@
   <title>{lifecycle.docTitle ? `${lifecycle.docTitle} — Gutterpress` : "Gutterpress"}</title>
 </svelte:head>
 
-<!-- inert while the start screen or Book settings is up: the workspace keeps
-      rendering (a stylesheet written from Book settings re-renders the preview
+<!-- inert while the start screen or Book setup is up: the workspace keeps
+      rendering (a stylesheet written from Book setup re-renders the preview
       live) but never accepts interaction underneath the layer. -->
 <div class="app-root" inert={landingVisible || projectSettingsOpen || publishOpen} use:activity.track={activityStages}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
@@ -3161,7 +3161,7 @@
       onProjectChosen={(path) => void openProjectPath(path)}
       onOpenUrl={openUrl}
       onOpenBook={() => { contextMenu.close(); void inlineEdit.endActive(true); openBookOpen = true; }}
-      onNewProject={readerMode ? undefined : () => { contextMenu.close(); void inlineEdit.endActive(true); newProjectWizardRef?.show(); }}
+      onNewProject={() => { contextMenu.close(); void inlineEdit.endActive(true); newProjectWizardRef?.show(); }}
       onSyncReconnect={onSyncReconnect}
       onPanelStateChange={persistLeftPanelPrefs}
     />
@@ -3585,7 +3585,7 @@
   onSwitchBook={(path) => void switchBook(path)}
   onOpenUrl={openUrl}
   onBrowse={() => void browseFromLanding()}
-  onNewProject={readerMode ? undefined : () => newProjectWizardRef?.show()}
+  onNewProject={() => newProjectWizardRef?.show()}
   onOpenGitHub={() => (githubOpen = true)}
   onOpenGuide={openSetupGuide}
   onWhatsNew={openReleaseNotes}
@@ -3596,10 +3596,11 @@
   onDismiss={() => dismissLanding()}
   settingsTab={landingSettingsTab}
   onProjectFilesChanged={onSnapshotRestored}
+  onSetUpBackup={() => { dismissLanding(); openBookConnections(); }}
   onCloseBook={() => lifecycle.stopPreview()}
 />
 {#if projectSettingsOpen}
-  <!-- Book settings (manifest), in the shared AppView layer. Mounted fresh per
+  <!-- Book setup (manifest), in the shared AppView layer. Mounted fresh per
        open; a project switch closes it (lifecycle resetExtras), so no stale
        section state can outlive its project. No {#key} wrapper: Svelte 5
        transitions are local, and a key block between the {#if} and the view
@@ -3659,6 +3660,9 @@
   bind:this={newProjectWizardRef}
   onCreated={(projectDir) => {
     invalidateDiscoveredProjects(); // the new book must show up in lists now
+    // Creating a book is authoring: a reader who creates one becomes an
+    // author, so the new book opens with Edit, Setup and Publish in reach.
+    if (settings.current.workspace.role === "reader") settings.set({ workspace: { role: "author" } });
     return openProjectPath(projectDir);
   }}
   onClosed={() => {

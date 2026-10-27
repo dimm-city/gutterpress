@@ -1,18 +1,20 @@
 <script lang="ts">
   /**
-   * The Extensions tab (#243, #265): ONE list of the manifest's `extensions:`
-   * entries in cascade order, owned by `ExtensionsSectionController`. A row is
-   * a look, a feature, or both — its badges say which (`carriedKinds`) — and
-   * every row has the same verbs: move up/down, enable toggle, remove, plus an
-   * npm package's version picker, Update and Install. A row that carries
-   * styles shows a sample thumbnail of its CSS; hovering it enlarges that to a
-   * fixed two-page spread (#106). The book's own stylesheets always load after
-   * the whole list; fine-tuning a look is the Design tab's job.
+   * The Looks & features tab (id `extensions`; #243, #265): ONE list of the
+   * manifest's `extensions:` entries in cascade order, owned by
+   * `ExtensionsSectionController`. A row is a look, a feature, or both — its
+   * badges say which (`carriedKinds`) — and every row has the same verbs:
+   * move up/down, enable toggle, remove, plus an npm package's version
+   * picker, Update and Install. A row that carries styles shows a sample
+   * thumbnail of its CSS — in the list and on the Built in tab before it is
+   * added; there is no hover preview. The book's own stylesheets always load
+   * after the whole list; fine-tuning a look is the Design tab's job.
    *
    * Below the list, one Add area in three tabs (`Tabs.svelte`, the start
    * screen's strip; the selection lives on the controller). *Built in* is the
-   * bundled features and looks in plain language (#309 — a name, one line,
-   * what to type, the package name only as a tooltip). *Search* is the npm
+   * bundled looks (first, with thumbnails) and features in plain language
+   * (#309 — a name, one line, what to type, the package name only as a
+   * tooltip). *Search* is the npm
    * search (#246), run the first time the tab is shown (`showAddTab`, called on
    * mount too, for a remembered Search tab) — never at project load.
    * *Advanced* is install by name, a plugin file or folder used where it is,
@@ -37,14 +39,17 @@
   import Tabs from "#lib/components/Tabs.svelte";
   import { api } from "#lib/api.ts";
   import { extensionStatus, extensionSourceLabel, describeSegments, carriedKinds } from "./config-helpers";
-  import type { ProjectExtensionEntry } from "#lib/platform/dtos.ts";
+  import type { BundledExtensionInfo, ProjectExtensionEntry } from "#lib/platform/dtos.ts";
   import { ADD_TABS, type ExtensionsSectionController } from "#lib/routes/extensions-section-controller.svelte.ts";
 
   let { controller }: { controller: ExtensionsSectionController } = $props();
 
+  // An npm entry is what the update controls are for.
+  const hasNpm = $derived(controller.entries.some((e) => e.kind === "npm"));
+
   onMount(() => {
     controller.showAddTab(controller.addTab);
-    if (controller.updates.status === "idle" && controller.entries.some((e) => e.kind === "npm")) {
+    if (controller.updates.status === "idle" && hasNpm) {
       void controller.checkUpdates();
     }
   });
@@ -63,11 +68,14 @@
     select.value = e.version ?? "";
   }
 
-  /** The row's sample srcdoc, or null while loading / when there is no CSS to render. */
-  function thumbOf(e: ProjectExtensionEntry): string | null {
-    const t = controller.thumbs[e.use];
+  /** The sample srcdoc for a `use`, or null while loading / when there is no CSS to render. */
+  function thumbOf(use: string): string | null {
+    const t = controller.thumbs[use];
     return t && t !== "__fallback__" ? t : null;
   }
+
+  const bundledLooks = $derived(controller.availableBundled.filter((b) => b.look));
+  const bundledFeatures = $derived(controller.availableBundled.filter((b) => !b.look));
 </script>
 
 <!-- A built-in's one line, its "what to type" spans set in code type — under
@@ -76,26 +84,54 @@
   <p class="rec-desc">{#each describeSegments(description) as seg}{#if seg.code}<code>{seg.text}</code>{:else}{seg.text}{/if}{/each}</p>
 {/snippet}
 
-<!-- The non-blank thumbnail until (or instead of) a sample: the CSS may still
-     be loading, or the entry has no stylesheet to show. -->
-{#snippet placeholder(label: string)}
-  <div class="thumb-placeholder" role="img" aria-label={`Sample preview for ${label}`}>
-    <span class="fallback-title">Aa</span>
-    <span class="fallback-line"></span>
-    <span class="fallback-line short"></span>
+<!-- A look's sample thumbnail (its CSS over a fixed sample), the same on a
+     list row and on a Built in row. Until the CSS arrives, or when there is
+     none to show, a non-blank placeholder. -->
+{#snippet thumb(use: string, label: string)}
+  {@const src = thumbOf(use)}
+  <div class="thumb">
+    {#if src}
+      <iframe title={`Preview of ${label}`} srcdoc={src} sandbox="allow-same-origin" loading="lazy"></iframe>
+    {:else}
+      <div class="thumb-placeholder" role="img" aria-label={`Sample preview for ${label}`}>
+        <span class="fallback-title">Aa</span>
+        <span class="fallback-line"></span>
+        <span class="fallback-line short"></span>
+      </div>
+    {/if}
   </div>
+{/snippet}
+
+<!-- One bundled look or feature on the Built in tab: a thumbnail for a look,
+     the name, one line, a kind badge, and Add. -->
+{#snippet bundledRow(b: BundledExtensionInfo)}
+  <li>
+    {#if b.look}{@render thumb(b.use, b.label)}{/if}
+    <div class="rec-main">
+      <span class="rec-label" title={b.use}>{b.label}</span>
+      {@render oneLiner(b.description)}
+      <span class="ext-meta"><span class="badge">{b.look ? "Look" : "Feature"}</span></span>
+    </div>
+    <button class="primary small app-btn-primary" aria-label={`Add ${b.label}`} onclick={() => controller.addBundled(b)} disabled={controller.busy !== null}>{controller.busy === b.use ? "Adding…" : "Add"}</button>
+  </li>
 {/snippet}
 
 <section class="block">
   <div class="block-head">
-    <h3>Extensions</h3>
+    <h3>Looks &amp; features</h3>
+    <!-- Developer-shaped controls only when they have something to act on:
+         npm updates need an npm entry; a load re-check needs a list. -->
     <span class="head-actions">
-      <button class="ghost small" onclick={() => controller.checkUpdates()} disabled={controller.updates.status === "loading"} title="Ask npm whether a newer version of any installed package exists">
-        <Icon name="refresh-cw" size={13} /> {controller.updates.status === "loading" ? "Checking npm…" : "Check for updates"}
-      </button>
-      <button class="ghost small" onclick={controller.validateExtensions} disabled={controller.validating} title="Re-check that each extension loads">
-        <Icon name="refresh-cw" size={13} /> Re-check
-      </button>
+      {#if hasNpm}
+        <button class="ghost small" onclick={() => controller.checkUpdates()} disabled={controller.updates.status === "loading"} title="Ask npm whether a newer version of any installed package exists">
+          <Icon name="refresh-cw" size={13} /> {controller.updates.status === "loading" ? "Checking npm…" : "Check for updates"}
+        </button>
+      {/if}
+      {#if controller.entries.length > 0}
+        <button class="ghost small" onclick={controller.validateExtensions} disabled={controller.validating} title="Re-check that each look and feature loads">
+          <Icon name="refresh-cw" size={13} /> Re-check
+        </button>
+      {/if}
     </span>
   </div>
   {#if controller.error}
@@ -114,8 +150,8 @@
       </ul>
     </div>
   {/if}
-  <p class="hint">Extensions apply from top to bottom: a lower one wins where they disagree, and your own stylesheets always come last. Hover a look to preview a two-page spread.</p>
-  {#if controller.entries.some((e) => e.kind === "npm")}
+  <p class="hint">Looks and features apply from top to bottom: a lower one wins where they disagree, and your changes on the Design tab always win.</p>
+  {#if hasNpm}
     <div class="prerelease-row">
       <span id="prerelease-label">Include pre-release versions</span>
       <button class="toggle" class:on={controller.includePrerelease} role="switch" aria-checked={controller.includePrerelease} aria-labelledby="prerelease-label" title="Also offer alpha, beta and release-candidate versions in the version lists, and count them as updates" onclick={() => controller.setIncludePrerelease(!controller.includePrerelease)}>
@@ -125,27 +161,13 @@
   {/if}
 
   {#if controller.entries.length === 0}
-    <p class="muted">No extensions yet. Add a look or a feature below.</p>
+    <p class="muted">No looks or features yet. Add one below.</p>
   {:else}
     <ul class="ext-list">
       {#each controller.entries as e, i (e.use)}
         {@const st = extensionStatus(e, controller.validation, controller.validating)}
-        <li
-          class:disabled={!e.enabled}
-          onmouseenter={() => controller.showHoverPreview(e)}
-          onmouseleave={controller.hideHoverPreview}
-          onfocusin={() => controller.showHoverPreview(e)}
-          onfocusout={controller.hideHoverPreview}
-        >
-          {#if e.carries.styles}
-            <div class="thumb">
-              {#if thumbOf(e)}
-                <iframe title={`Preview of ${e.label}`} srcdoc={thumbOf(e)} sandbox="allow-same-origin" loading="lazy"></iframe>
-              {:else}
-                {@render placeholder(e.label)}
-              {/if}
-            </div>
-          {/if}
+        <li class:disabled={!e.enabled}>
+          {#if e.carries.styles}{@render thumb(e.use, e.label)}{/if}
           <div class="ext-main">
             <span class="ext-label" title={e.use}>{e.label}</span>
             {#if e.author}<span class="ext-author">{e.author}</span>{/if}
@@ -205,7 +227,7 @@
             <button class="ghost icononly" onclick={() => controller.move(e, -1)} disabled={i === 0 || controller.busy !== null} title="Move up" aria-label={`Move ${e.label} up`}>
               <Icon name="chevron-up" size={13} />
             </button>
-            <button class="ghost icononly" onclick={() => controller.move(e, 1)} disabled={i === controller.entries.length - 1 || controller.busy !== null} title="Move down (wins over the extensions above it)" aria-label={`Move ${e.label} down`}>
+            <button class="ghost icononly" onclick={() => controller.move(e, 1)} disabled={i === controller.entries.length - 1 || controller.busy !== null} title="Move down (wins over the ones above it)" aria-label={`Move ${e.label} down`}>
               <Icon name="chevron-down" size={13} />
             </button>
             <button class="toggle" class:on={e.enabled} role="switch" aria-checked={e.enabled} aria-label={`${e.enabled ? "Turn off" : "Turn on"} ${e.label}`} disabled={controller.busy !== null} onclick={() => controller.toggle(e)}>
@@ -226,33 +248,33 @@
   {/if}
 
   <h4 class="subhead">Add</h4>
-  <Tabs tabs={ADD_TABS} active={controller.addTab} label="Ways to add an extension" idPrefix="add" onselect={controller.showAddTab} />
+  <Tabs tabs={ADD_TABS} active={controller.addTab} label="Ways to add a look or feature" idPrefix="add" onselect={controller.showAddTab} />
   <div id="add-panel" class="tab-body" role="tabpanel" aria-labelledby="add-tab-{controller.addTab}">
   {#if controller.addTab === "built-in"}
     {#if controller.availableBundled.length === 0}
       <p class="muted">Every built-in look and feature is already in your list.</p>
     {:else}
-      <p class="hint">Built in, nothing to install. A look styles the whole book; a feature adds something you can type.</p>
-      <ul class="rec-list">
-        {#each controller.availableBundled as b (b.use)}
-          <li>
-            <div class="rec-main">
-              <span class="rec-label" title={b.use}>{b.label}</span>
-              {@render oneLiner(b.description)}
-              <span class="ext-meta"><span class="badge">{b.look ? "Styles" : "Markdown"}</span></span>
-            </div>
-            <button class="primary small app-btn-primary" aria-label={`Add ${b.label}`} onclick={() => controller.addBundled(b)} disabled={controller.busy !== null}>{controller.busy === b.use ? "Adding…" : "Add"}</button>
-          </li>
-        {/each}
-      </ul>
+      <p class="hint">Built in, nothing to install. A look styles the whole book; a feature adds something you can type. Footnotes (<code>[^1]</code>), tables and definition lists are always on.</p>
+      {#if bundledLooks.length > 0}
+        <h5 class="subhead">Looks</h5>
+        <ul class="rec-list" aria-label="Built-in looks">
+          {#each bundledLooks as b (b.use)}{@render bundledRow(b)}{/each}
+        </ul>
+      {/if}
+      {#if bundledFeatures.length > 0}
+        <h5 class="subhead">Features</h5>
+        <ul class="rec-list" aria-label="Built-in features">
+          {#each bundledFeatures as b (b.use)}{@render bundledRow(b)}{/each}
+        </ul>
+      {/if}
     {/if}
 
   {:else if controller.addTab === "search"}
     <!-- #246: npm search — beyond the bundled set. Loading/error is one quiet
          line; it never blocks the rest of the panel. -->
-    <p class="hint">Packages on npm tagged <code>gutterpress</code> or <code>markdown-it-plugin</code>. Only install packages you trust.</p>
+    <p class="hint">More looks and features other authors have shared on npm. Only add ones you trust.</p>
     <div class="add-row">
-      <input class="input" type="text" aria-label="search npm for extensions" placeholder="footnote, callout, table..." bind:value={controller.searchQuery} onkeydown={(e) => { if (e.key === "Enter") controller.runSearch(); }} />
+      <input class="input" type="text" aria-label="Search npm for looks and features" placeholder="emoji, task lists, anchors…" bind:value={controller.searchQuery} onkeydown={(e) => { if (e.key === "Enter") controller.runSearch(); }} />
       <button class="ghost small" onclick={() => controller.runSearch()} disabled={controller.search.status === "loading"}>Search</button>
     </div>
     {#if controller.search.status === "loading"}
@@ -260,7 +282,7 @@
     {:else if controller.search.status === "error"}
       <p class="muted search-status">Couldn't search npm: {controller.search.message}</p>
     {:else if controller.search.status === "ready" && controller.availableSearch.length === 0}
-      <p class="muted search-status">No extensions on npm match that.</p>
+      <p class="muted search-status">Nothing on npm matches that.</p>
     {:else if controller.availableSearch.length > 0}
       <p class="muted search-status">Showing {controller.availableSearch.length} of {controller.search.total}.</p>
       <ul class="rec-list">
@@ -311,18 +333,6 @@
   </div>
 </section>
 
-<!--
-  #106 hover preview: an enlarged, FIXED two-page sample spread rendered with the
-  hovered look's CSS (reusing the thumbnail readCss -> srcdoc -> sandboxed iframe
-  mechanism). It never renders the author's document. pointer-events:none so it
-  can't steal the hover; aria-hidden as it's a decorative enlargement of the row.
--->
-{#if controller.hoverPreview}
-  <div class="hover-preview" aria-hidden="true">
-    <iframe title="Look sample spread preview" srcdoc={controller.hoverPreview} sandbox="allow-same-origin"></iframe>
-  </div>
-{/if}
-
 <style>
   @import "../../styles/config-section-shared.css";
 
@@ -336,8 +346,8 @@
   .ext-name { font-size: 10px; color: var(--app-text-muted); font-family: var(--app-font-mono); word-break: break-all; }
   .ext-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; flex-wrap: wrap; }
   .ext-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-  /* The "what to type" spans in a built-in's one-liner (describeSegments). */
-  .rec-desc code { font-family: var(--app-font-mono); font-size: 11px; color: var(--app-text); }
+  /* The "what to type" spans in a built-in's one-liner (describeSegments) and in the Built in hint. */
+  .rec-desc code, .hint code { font-family: var(--app-font-mono); font-size: 11px; color: var(--app-text); }
   .search-status { font-size: 12px; }
   .head-actions { display: flex; align-items: center; gap: 6px; }
   .prerelease-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--app-text); }
@@ -388,25 +398,4 @@
   .import-warnings .warn-title { margin: 0 0 4px; font-size: 11px; font-weight: 600; }
   .import-warnings ul { margin: 0; padding-left: 16px; }
   .import-warnings li { font-size: 11px; line-height: 1.4; }
-
-  /* #106: enlarged fixed 2-page sample spread shown while hovering a styles
-     row. It is a decorative overlay (pointer-events:none) pinned to the right
-     edge of the Book settings layer, in the space beside its centred column. */
-  .hover-preview {
-    position: fixed; right: 24px; top: 50%; transform: translateY(-50%);
-    width: 360px; max-width: 42vw; aspect-ratio: 3 / 2;
-    z-index: 40; pointer-events: none;
-    border-radius: 8px; overflow: hidden;
-    border: 1px solid var(--app-border-strong); background: var(--app-surface);
-    box-shadow: 0 8px 30px var(--app-shadow-lg);
-  }
-  .hover-preview iframe { width: 100%; height: 100%; border: 0; background: #fff; }
-
-  /* Wide windows only: the layer's column is centred at up to 860px, so the
-     flyout clears it only from ~1620px; narrower than that it would cover the
-     very rows being hovered. Below that, the row's own thumbnail is the
-     preview. */
-  @media (max-width: 1620px) {
-    .hover-preview { display: none; }
-  }
 </style>

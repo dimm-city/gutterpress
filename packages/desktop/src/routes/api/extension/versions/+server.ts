@@ -3,7 +3,7 @@ import { defineRoute, loadLib } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 // Every published version of one npm package, newest first (pre-releases
-// included — the Extensions tab's version picker filters them by the author's
+// included — the Looks & features tab's version picker filters them by the author's
 // "Include pre-release versions" preference). Read from the same abbreviated
 // registry metadata the update check uses, fetched ON DEMAND when the tab
 // opens or a picker is opened — never at project load. A fetch failure is

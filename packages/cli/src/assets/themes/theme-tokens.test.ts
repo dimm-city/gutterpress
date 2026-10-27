@@ -61,6 +61,20 @@ describe("built-in theme tokens", () => {
     expect(css).toMatch(/font-size:\s*var\(--fs-body\)/);
   });
 
+  // The page geometry is the book's, not the look's: size and margins come
+  // from the manifest (`preset:` / `page:`, which Setup > Details edits) and
+  // the templates record each look's old margins there. No theme sets a page
+  // size or a page margin, and none defines a page-margin token.
+  test.each(themeNames)("%s sets no @page size or margin and defines no page-margin token", (name) => {
+    const css = readFileSync(join(THEMES_DIR, name, "theme.css"), "utf8");
+    for (const m of css.matchAll(/@page\b[^{]*\{([^}]*)/g)) {
+      const body = m[1]!.replace(/@[a-z-]+\s*\{[^}]*\}?/g, "");
+      expect(body, name).not.toMatch(/(?<![\w-])size\s*:/);
+      expect(body, name).not.toMatch(/(?<![\w-])margin(-[a-z]+)?\s*:/);
+    }
+    expect(css).not.toContain("--page-margin");
+  });
+
   test("the user guide teaches only tokens the themes provide", () => {
     const guide = readFileSync(GUIDE, "utf8");
     const defined = new Set<string>();

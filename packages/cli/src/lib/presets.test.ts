@@ -279,13 +279,15 @@ test("resolvePreset's 'no preset set' notice respects resetWarnOnce (no leftover
 // must declare an explicit `preset` so a fresh `gutterpress new` project never
 // silently falls through resolvePreset's undefined-preset path (which
 // defaults to dtrpg's vendor geometry/TAC/PDF/X forcing).
-// `book`/`technical`/`zine` all get the neutral `book` preset.
+// `book` gets the neutral `book` preset (6 x 9 in); `zine`, `technical` and
+// `paper` are designed for a size of their own (Digest, US Letter, US Letter),
+// so they carry `preset: custom` plus a `page:` block.
 describe("built-in template manifests declare an explicit preset (maintainer review, presets.ts:236)", () => {
   const EXPECTED_TEMPLATE_PRESET: Record<(typeof BUILT_IN_TEMPLATE_IDS)[number], string> = {
     book: "book",
-    technical: "book",
-    zine: "book",
-    paper: "book",
+    technical: "custom",
+    zine: "custom",
+    paper: "custom",
   };
 
   test("every shipped template id has an expected preset pinned in this test (no silent additions)", () => {

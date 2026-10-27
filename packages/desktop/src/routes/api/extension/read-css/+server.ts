@@ -3,7 +3,7 @@ import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 // A configured extension's stylesheets, concatenated in cascade order, for
-// the Extensions tab's sample thumbnail and the Design tab's token list. A
+// the Looks & features tab's sample thumbnail and the Design tab's token list. A
 // bundled look answers from its inlined css; otherwise the folder is resolved
 // from the MANIFEST entry `use` names (never from a client-supplied path), and
 // an entry with no folder (uninstalled, missing) throws — the caller shows a

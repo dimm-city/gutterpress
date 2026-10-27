@@ -8,7 +8,6 @@ import {
   orderAfterMove,
   carriedKinds,
   sampleSrcdoc,
-  hoverPreviewSrcdoc,
 } from "../../src/lib/components/config/config-helpers";
 import type { ProjectExtensionEntry, ExtensionValidationResult } from "../../src/lib/api";
 
@@ -26,20 +25,14 @@ function entry(overrides: Partial<ProjectExtensionEntry> = {}): ProjectExtension
   };
 }
 
-// ── #106: hover preview renders a fixed 2-page sample, never the document ──────
+// ── The sample thumbnail: a fixed sample, never the document ──────────────────
 
-test("hoverPreviewSrcdoc inlines the look's CSS into a fixed two-page spread", () => {
+test("sampleSrcdoc inlines the look's CSS into a self-contained sample document", () => {
   const css = ":root { --accent: #036; }";
-  const doc = hoverPreviewSrcdoc(css);
+  const doc = sampleSrcdoc(css);
+  expect(doc.startsWith("<!DOCTYPE html>")).toBe(true);
   expect(doc).toContain(css);
-  expect((doc.match(/pm-sample-page/g) ?? []).length).toBeGreaterThanOrEqual(2);
-  expect(doc).toContain("Chapter One");
-});
-
-test("hoverPreviewSrcdoc is a superset sample of the thumbnail (both self-contained docs)", () => {
-  const css = "h1 { color: red; }";
-  expect(sampleSrcdoc(css).startsWith("<!DOCTYPE html>")).toBe(true);
-  expect(hoverPreviewSrcdoc(css).startsWith("<!DOCTYPE html>")).toBe(true);
+  expect(doc).toContain("Chapter Title");
 });
 
 // ── extensionSourceLabel: where a row comes from, in one caption ───────────
@@ -103,12 +96,13 @@ test("orderAfterMove returns null at the list's edge or for an entry not in it",
 
 // ── carriedKinds: the badges on a row ──────────────────────────────────────
 
-test("carriedKinds names each kind an entry carries, in a fixed order", () => {
-  expect(carriedKinds(FEAT)).toEqual(["Markdown"]);
-  expect(carriedKinds(LOOK_A)).toEqual(["Styles"]);
+test("carriedKinds names each kind an entry carries, in author words and a fixed order", () => {
+  expect(carriedKinds(FEAT)).toEqual(["Feature"]);
+  expect(carriedKinds(LOOK_A)).toEqual(["Look"]);
+  // Styles beside markdown are a component library's own, not a look: "Styles".
   expect(
     carriedKinds(entry({ carries: { markdown: true, styles: true, snippets: true, components: true, publish: true } })),
-  ).toEqual(["Markdown", "Styles", "Snippets", "Components", "Publish destination"]);
+  ).toEqual(["Feature", "Styles", "Snippets", "Components", "Publish destination"]);
   expect(carriedKinds(entry({ carries: NONE }))).toEqual([]);
 });
 
@@ -132,11 +126,11 @@ test("extensionStatus: NOT validating and no result is a distinct 'check failed'
   expect(st.label).toMatch(/re-check/i);
 });
 
-test("extensionStatus: ok result reads Loads OK", () => {
+test("extensionStatus: ok result reads Working", () => {
   const validation: Record<string, ExtensionValidationResult> = {
     "markdown-it-mark": { use: "markdown-it-mark", kind: "bundled", enabled: true, ok: true },
   };
-  expect(extensionStatus(entry(), validation, false)).toEqual({ label: "Loads OK", kind: "ok" });
+  expect(extensionStatus(entry(), validation, false)).toEqual({ label: "Working", kind: "ok" });
 });
 
 test("extensionStatus: an npm entry the lib flagged as not installed / not pinned points to the in-app installer, ahead of any load-test result", () => {

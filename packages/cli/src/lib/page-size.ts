@@ -1,50 +1,50 @@
 /**
- * A book's page size — the ONE place that knows how the size is recorded, for
- * both the new-book wizard (via `scaffoldProject`) and Book settings (#357).
+ * A book's page geometry — size and margins — the ONE place that knows how it
+ * is recorded, for both the new-book wizard (via `scaffoldProject`) and Book
+ * setup (#357).
  *
- * A book's page size lives in two places that must agree:
+ * It lives in the manifest and nowhere else:
  *
- *  - the manifest: `preset:` (dtrpg / book / custom — which also carries the
+ *  - the size: `preset:` (dtrpg / book / custom — which also carries the
  *    print rules that go with the preset) and, for `custom` (or an explicit
- *    override), `page: { width, height, tolerance }` in points. These are the
- *    VALIDATION BOUNDS the built PDF is checked against. The same `page:`
- *    block also carries the print area (`bleed`, `safe`, `artSafe`,
- *    `gutter`); this module writes only its three keys and leaves the rest
- *    as the author wrote them; and
- *  - the stylesheet: a plain `@page { size: … }` rule, which is what Chrome
- *    prints at when one is set. When none is, the markdown assembly writes
- *    the manifest's size as that rule ahead of every stylesheet
- *    (`defaultPageSizeCss`, lib/markdown/assemble.ts — #415), so a book with
- *    no `size` in its CSS prints at the manifest's; a `size` an author does
- *    write wins, which is why the two must still agree.
+ *    override), `page: { width, height, tolerance }` in points. These are
+ *    the size the book prints at AND the validation bounds the built PDF is
+ *    checked against: the markdown assembly writes them as the `@page { size }`
+ *    after every stylesheet (`pageGeometryCss`, lib/markdown/assemble.ts), so
+ *    a stylesheet's own `size` never wins (the print-safety check reports
+ *    one); and
+ *  - the margins: `page.margin` (top, bottom, inside, outside; points),
+ *    written the same way as the book's `@page` margins for both page sides.
+ *    Left out, the stylesheets' `@page` margins apply (a look's design), else
+ *    the build's 1in default. `readPageSetup` reports whichever the book
+ *    prints with, and the first change in Book setup records it here.
  *
- * Creating a book writes the manifest half (the starter stylesheet is empty,
- * the look supplies `@page`); changing the size later writes both halves
- * together. The CSS edit is a postcss round-trip that rewrites the existing
- * rule's `size` value in place and leaves every other byte of the file alone;
- * when no plain `@page` rule sets a size, a minimal one is appended to the
- * book's own (last) stylesheet — it loads after every look, so it wins.
+ * The same `page:` block also carries the print area (`bleed`, `safe`,
+ * `artSafe`, `gutter`); this module writes only its own keys and leaves the
+ * rest as the author wrote them.
  *
- * Host-side (node:fs + postcss). Bundle-safe (CLAUDE.md §1/§3): no runtime
- * package.json reads, no computed dynamic imports, no bundlers.
+ * Host-side (node:fs). Bundle-safe (CLAUDE.md §1/§3): no runtime package.json
+ * reads, no computed dynamic imports, no bundlers.
  */
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
-import postcss from "postcss";
-import { isMap, Scalar } from "yaml";
+import { isMap } from "yaml";
 import type { Document } from "yaml";
 import { UsageError } from "./cli-args.ts";
-import { ensureSeq, loadManifestDoc, writeManifestDoc } from "./manifest-doc.ts";
+import { listProjectExtensions, readEntryCss } from "./extension-manager.ts";
+import { MARGIN_EDGES, validatePageMargin } from "./manifest.ts";
+import { loadManifestDoc, writeManifestDoc } from "./manifest-doc.ts";
 import { PRESET_IDS, PRESETS, type PresetId } from "./presets.ts";
 import { resolveActiveStyles } from "./style-resolver.ts";
-import { parseSize } from "../engine/shared/gcpm-extract.ts";
-import { formatPageSize, isPositivePoints } from "../engine/shared/print-area.ts";
+import { DEFAULT_PAGE_MARGIN_PT, extract, resolvePage } from "../engine/shared/gcpm-extract.ts";
+import { isNonNegativePoints, isPositivePoints, round3 } from "../engine/shared/print-area.ts";
+import type { PageMargin } from "../schema/manifest.types.ts";
 
-// The point check and the `size` spelling are shared with the assembly's
-// manifest default (engine/shared/print-area.ts), so there is one definition
-// of each; re-exported for this module's callers.
-export { formatPageSize, isPositivePoints };
+// The point check is the assembly's (engine/shared/print-area.ts); re-exported
+// for the scaffold, which writes the same bounds.
+export { isPositivePoints };
+export type { PageMargin };
 
 /** Page bounds written to the manifest's `page:` block (points; 72pt = 1in). */
 export interface CustomPageOptions {
@@ -62,21 +62,33 @@ export interface PageSizePoints {
   height: number;
 }
 
-/** What an author picks: a preset, plus the trim when the preset is `custom`. */
+/** What an author picks for the size: a preset, and the trim when the preset is `custom`. */
 export interface PageSizeChoice {
   preset: PresetId;
   /** Required for `custom`; ignored for `dtrpg` / `book` (the preset owns it). */
   page?: PageSizePoints;
 }
 
-/** A book's page size as currently recorded, read back for the settings UI. */
+/**
+ * A change to a book's page geometry: the size, the margins, or both. A part
+ * left out stays as recorded, so a margin edit never rewrites the size (nor
+ * drops a preset's `page:` override) and a size change never invents margins.
+ */
+export interface PageSetupChange {
+  size?: PageSizeChoice;
+  margins?: PageMargin;
+}
+
+/** A book's page geometry as currently recorded, read back for the settings UI. */
 export interface PageSetup {
   /** The manifest's preset (`dtrpg` when undeclared — the product default); null when unrecognised. */
   preset: PresetId | null;
-  /** The validation bounds the manifest resolves to, or null (custom with no `page:`). */
+  /** The size the book prints at and is checked against, or null (custom with no `page:`). */
   bounds: (PageSizePoints & { tolerance: number }) | null;
-  /** What the book's stylesheets print at, or null when no plain `@page` sets a size (the book then prints at `bounds`). */
-  css: (PageSizePoints & { file: string }) | null;
+  /** The margins the book prints with (points, `inside` at the binding edge). */
+  margins: PageMargin;
+  /** Where `margins` come from: the manifest's `page.margin` (the author's own), a stylesheet's `@page` (a look's design), or the engine's 1in default. */
+  marginsFrom: "manifest" | "stylesheet" | "default";
 }
 
 /**
@@ -87,14 +99,14 @@ export interface PageSetup {
  */
 export function writePageBounds(doc: Document, page: CustomPageOptions): void {
   const tolerance = page.tolerance ?? numberAt(doc, ["page", "tolerance"]);
-  if (!isMap(doc.get("page", true))) doc.set("page", doc.createNode({}));
+  ensurePageMap(doc);
   doc.setIn(["page", "width"], page.width);
   doc.setIn(["page", "height"], page.height);
   if (tolerance !== undefined) doc.setIn(["page", "tolerance"], tolerance);
 }
 
 /** Remove the bounds a preset owns and nothing else; a `page:` left empty goes too. */
-function deletePageBounds(doc: Document): void {
+export function deletePageBounds(doc: Document): void {
   const block = doc.get("page", true);
   if (!isMap(block)) {
     doc.delete("page");
@@ -104,7 +116,19 @@ function deletePageBounds(doc: Document): void {
   if (block.items.length === 0) doc.delete("page");
 }
 
-function numberAt(doc: Document, keyPath: string[]): number | undefined {
+/** Write the manifest's `page.margin`, all four edges; the block's other keys stay as written. */
+export function writePageMargin(doc: Document, margin: PageMargin): void {
+  ensurePageMap(doc);
+  if (!isMap(doc.getIn(["page", "margin"], true))) doc.setIn(["page", "margin"], doc.createNode({}));
+  for (const edge of MARGIN_EDGES) doc.setIn(["page", "margin", edge], margin[edge]);
+}
+
+function ensurePageMap(doc: Document): void {
+  if (!isMap(doc.get("page", true))) doc.set("page", doc.createNode({}));
+}
+
+/** A positive point value at `keyPath` in the manifest, or undefined. */
+export function numberAt(doc: Document, keyPath: string[]): number | undefined {
   const v = doc.getIn(keyPath);
   return isPositivePoints(v) ? v : undefined;
 }
@@ -129,102 +153,10 @@ export function pageSizeForChoice(choice: PageSizeChoice): PageSizePoints {
   return { width: base.width, height: base.height };
 }
 
-// ── CSS ────────────────────────────────────────────────────────────────────
-
-/** Points two sizes may differ by and still count as the same page. */
-const SAME_SIZE_PT = 0.5;
-
-function sameSize(a: PageSizePoints, b: PageSizePoints): boolean {
-  return Math.abs(a.width - b.width) < SAME_SIZE_PT && Math.abs(a.height - b.height) < SAME_SIZE_PT;
-}
-
-/** The unqualified `@page` rules (no name, no `:first`/`:left`…) — the book's base geometry. */
-function plainPageRules(root: postcss.Root): postcss.AtRule[] {
-  const rules: postcss.AtRule[] = [];
-  root.walkAtRules("page", (rule) => {
-    if (rule.params.trim() === "") rules.push(rule);
-  });
-  return rules;
-}
-
-function sizeDeclsOf(rule: postcss.AtRule): postcss.Declaration[] {
-  const decls: postcss.Declaration[] = [];
-  rule.each((node) => {
-    if (node.type === "decl" && node.prop.toLowerCase() === "size") decls.push(node);
-  });
-  return decls;
-}
-
-/** The size the LAST plain `@page { size }` in the stylesheet sets (cascade: last wins), or null. */
-export function readPageSizeFromCss(css: string): PageSizePoints | null {
-  let root: postcss.Root;
-  try {
-    root = postcss.parse(css);
-  } catch {
-    return null;
-  }
-  const decls = plainPageRules(root).flatMap(sizeDeclsOf);
-  const last = decls[decls.length - 1];
-  return last ? (parseSize(last.value) ?? null) : null;
-}
-
-/**
- * Point a stylesheet's plain `@page` rule at `page`. Rewrites the existing
- * `size` declaration's value in place — comments, whitespace, other rules and
- * `!important` untouched — or, when no plain `@page` sets a size, appends a
- * minimal rule. An already-matching size leaves the text exactly as it was.
- * Throws when the CSS does not parse (it must never be half-rewritten).
- */
-export function setPageSizeInCss(css: string, page: PageSizePoints): string {
-  const root = postcss.parse(css);
-  const decls = plainPageRules(root).flatMap(sizeDeclsOf);
-  const last = decls[decls.length - 1];
-  const value = formatPageSize(page);
-  if (last) {
-    const current = parseSize(last.value);
-    if (current && sameSize(current, page)) return css;
-    // Only the winning declaration changes; an earlier one it overrides is
-    // left as the author wrote it.
-    last.value = value;
-    return root.toString();
-  }
-  const rule = `@page {\n  size: ${value};\n}\n`;
-  if (css.trim() === "") return css + rule;
-  return `${css}${css.endsWith("\n") ? "" : "\n"}\n${rule}`;
-}
-
 // ── Project ────────────────────────────────────────────────────────────────
 
-/** Active stylesheets that live inside the book (a shared sheet is never edited), as absolute paths. */
-async function ownStylesheets(projectDir: string): Promise<string[]> {
-  const rels = await resolveActiveStyles(projectDir).catch(() => [] as string[]);
-  return rels
-    .map((rel) => path.resolve(projectDir, rel))
-    .filter((abs) => {
-      const inside = path.relative(projectDir, abs);
-      return !inside.startsWith("..") && !path.isAbsolute(inside) && existsSync(abs);
-    });
-}
-
-const relDisplay = (projectDir: string, abs: string) =>
-  path.relative(projectDir, abs).split(path.sep).join("/");
-
-/** The last of the book's own stylesheets that sets a plain `@page` size, with that size. */
-async function findCssSize(
-  projectDir: string,
-  sheets: string[],
-): Promise<{ file: string; size: PageSizePoints } | null> {
-  let found: { file: string; size: PageSizePoints } | null = null;
-  for (const file of sheets) {
-    const size = readPageSizeFromCss(await readFile(file, "utf8"));
-    if (size) found = { file, size };
-  }
-  return found;
-}
-
-/** Read a book's page size back from its manifest and stylesheets. */
-export async function readPageSetup(projectDir: string): Promise<PageSetup> {
-  const { doc } = await loadManifestDoc(projectDir);
+/** What the manifest alone says: preset, bounds, and `page.margin` when it is complete. */
+function manifestGeometry(doc: Document): Pick<PageSetup, "preset" | "bounds"> & { margins?: PageMargin } {
   const declared = doc.get("preset");
   const preset: PresetId | null =
     declared === undefined || declared === null
@@ -237,58 +169,94 @@ export async function readPageSetup(projectDir: string): Promise<PageSetup> {
   const width = numberAt(doc, ["page", "width"]) ?? base?.width;
   const height = numberAt(doc, ["page", "height"]) ?? base?.height;
   const tolerance = numberAt(doc, ["page", "tolerance"]) ?? base?.tolerance ?? 0.5;
+  const bounds = width !== undefined && height !== undefined ? { width, height, tolerance } : null;
 
-  const found = await findCssSize(projectDir, await ownStylesheets(projectDir));
-  return {
-    preset,
-    bounds: width !== undefined && height !== undefined ? { width, height, tolerance } : null,
-    css: found ? { ...found.size, file: relDisplay(projectDir, found.file) } : null,
-  };
+  const at = (edge: (typeof MARGIN_EDGES)[number]) => doc.getIn(["page", "margin", edge]);
+  const margins = MARGIN_EDGES.every((edge) => isNonNegativePoints(at(edge)))
+    ? ({ top: at("top"), bottom: at("bottom"), inside: at("inside"), outside: at("outside") } as PageMargin)
+    : undefined;
+  return { preset, bounds, ...(margins ? { margins } : {}) };
 }
 
 /**
- * Change a book's page size: the manifest's `preset:` + `page:` bounds and the
- * stylesheet's `@page` size, together. Mirrors what the wizard records —
- * `dtrpg` / `book` carry their own bounds (the `page:` block's width, height
- * and tolerance are removed so they cannot shadow them; its print-area keys
- * stay), `custom` records the typed trim. Nothing is written
- * unless the whole choice validates and the stylesheet parses.
+ * The margins the book's stylesheets give its pages — every enabled
+ * extension's CSS, then the book's own, read with the engine's `@page`
+ * reader for a right-hand page, so `inside` is its left edge. Best-effort:
+ * an extension that cannot be read, or CSS the reader rejects, counts as
+ * setting nothing.
+ */
+async function stylesheetMargins(
+  projectDir: string,
+  manifestStyles: string[] | undefined,
+): Promise<Pick<PageSetup, "margins" | "marginsFrom">> {
+  const d = DEFAULT_PAGE_MARGIN_PT;
+  const fallback: Pick<PageSetup, "margins" | "marginsFrom"> = {
+    margins: { top: d, bottom: d, inside: d, outside: d },
+    marginsFrom: "default",
+  };
+  const [entries, rels] = await Promise.all([
+    listProjectExtensions(projectDir).catch(() => []),
+    resolveActiveStyles(projectDir, manifestStyles).catch(() => [] as string[]),
+  ]);
+  const sheets = rels.map((rel) => path.resolve(projectDir, rel)).filter((abs) => existsSync(abs));
+  const parts = await Promise.all([
+    ...entries.filter((e) => e.enabled && e.carries.styles).map((e) => readEntryCss(e).catch(() => "")),
+    ...sheets.map((file) => readFile(file, "utf8").catch(() => "")),
+  ]);
+  try {
+    const page = resolvePage(extract(parts.join("\n\n")), { pseudos: ["right"] });
+    const declared = Object.keys(page.decls).some((prop) => prop === "margin" || prop.startsWith("margin-"));
+    if (!declared) return fallback;
+    const m = page.geometry.margin;
+    return {
+      margins: { top: round3(m.top), bottom: round3(m.bottom), inside: round3(m.left), outside: round3(m.right) },
+      marginsFrom: "stylesheet",
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+/** The setup a manifest document describes, reading the stylesheets only for margins it does not set. */
+async function setupOf(projectDir: string, doc: Document): Promise<PageSetup> {
+  const { margins, ...geometry } = manifestGeometry(doc);
+  if (margins) return { ...geometry, margins, marginsFrom: "manifest" };
+  const styles = doc.toJS()?.styles;
+  return { ...geometry, ...(await stylesheetMargins(projectDir, Array.isArray(styles) ? styles : undefined)) };
+}
+
+/** Read a book's page geometry back from its manifest (and, for margins it does not set, its stylesheets). */
+export async function readPageSetup(projectDir: string): Promise<PageSetup> {
+  const { doc } = await loadManifestDoc(projectDir);
+  return setupOf(projectDir, doc);
+}
+
+/**
+ * Change a book's page geometry in the manifest. The size mirrors what the
+ * wizard records — `dtrpg` / `book` carry their own bounds (the `page:` block's
+ * width, height and tolerance are removed so they cannot shadow them; its
+ * other keys stay), `custom` records the typed trim. The margins go to
+ * `page.margin`, validated against the size being written, else the recorded
+ * one. Nothing is written unless the whole change validates.
  */
 export async function setPageSetup(
   projectDir: string,
-  choice: PageSizeChoice,
+  change: PageSetupChange,
 ): Promise<PageSetup> {
-  const size = pageSizeForChoice(choice);
-
-  const sheets = await ownStylesheets(projectDir);
-  const found = await findCssSize(projectDir, sheets);
-  // The sheet to rewrite: the one holding the winning `size`, else the book's
-  // own (last) sheet, else a new `styles/book.css` the manifest will list.
-  const newSheet = path.join(projectDir, "styles", "book.css");
-  const target = found?.file ?? sheets[sheets.length - 1] ?? newSheet;
-  const before = existsSync(target) ? await readFile(target, "utf8") : "";
-  let after: string;
-  try {
-    after = setPageSizeInCss(before, size);
-  } catch (e) {
-    throw new UsageError(
-      `Could not update the page size: ${relDisplay(projectDir, target)} has a CSS error ` +
-        `(${e instanceof Error ? e.message : String(e)}). Fix it, then try again.`,
-    );
-  }
-
   const { doc, file } = await loadManifestDoc(projectDir);
-  doc.set("preset", choice.preset);
-  if (choice.preset === "custom") writePageBounds(doc, size);
-  else deletePageBounds(doc);
-  if (target === newSheet && !sheets.includes(newSheet)) {
-    ensureSeq(doc, "styles").add(new Scalar("styles/book.css"));
+  const size = change.size ? pageSizeForChoice(change.size) : null;
+  let margins: PageMargin | undefined;
+  if (change.margins !== undefined) {
+    const against = size ?? manifestGeometry(doc).bounds;
+    if (!against) throw new UsageError("Choose a page size before setting margins: the manifest records none.");
+    margins = validatePageMargin(change.margins, against);
   }
+  if (change.size && size) {
+    doc.set("preset", change.size.preset);
+    if (change.size.preset === "custom") writePageBounds(doc, size);
+    else deletePageBounds(doc);
+  }
+  if (margins) writePageMargin(doc, margins);
   await writeManifestDoc(file, doc);
-
-  if (after !== before || !existsSync(target)) {
-    await mkdir(path.dirname(target), { recursive: true });
-    await writeFile(target, after, "utf8");
-  }
-  return readPageSetup(projectDir);
+  return setupOf(projectDir, doc);
 }

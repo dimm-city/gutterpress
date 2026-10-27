@@ -7,13 +7,21 @@ source:
     - chapter-01.md
 styles:
   - styles/book.css
-# A paper prints on US Letter; for A4 set width 595 and height 842.
+# Page size and margins in points (72 = 1 in): US Letter with 1 in margins
+# (A4 is width 595, height 842); text stays 0.25 in (18) inside the trim.
+# Change them under Setup > Details.
 page:
   width: 612
   height: 792
+  safe: 18
+  margin:
+    top: 72
+    bottom: 72
+    inside: 72
+    outside: 72
 extensions:
   - markdown-it-sup
   - gutterpress-math
   # The built-in academic look. Style over it from styles/book.css.
   - academic
-preset: book
+preset: custom

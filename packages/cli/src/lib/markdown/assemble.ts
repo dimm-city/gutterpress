@@ -14,13 +14,10 @@
  * so the pure markdown→HTML→book.html work lives here and the wrapper just
  * supplies inputs.
  *
- * The page-size default (#415) reads the assembled CSS with the engine's own
- * `@page` reader (`engine/shared/gcpm-extract.ts`: no imports, node-free) —
- * NOT `lib/page-size.ts`'s postcss one, which is host-side (`node:fs`) and
- * would drag Node into the `gutterpress/render` graph. The engine's reader is
- * also the right one on its merits: what `defaultPageSizeCss` decides from is
- * exactly what the viewer's and the compiler's `resolvePage` will read from
- * this same `<style>`, so the three cannot disagree about whether a size is set.
+ * The manifest's page geometry (`pageGeometryCss`) is written as plain CSS
+ * Paged Media after every stylesheet, so the viewer's and the compiler's
+ * `@page` reader (`engine/shared/gcpm-extract.ts`) and Chromium's print all
+ * read the same size and margins from this one `<style>`.
  */
 import { MARKER_CSS } from "./markers.js";
 import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
@@ -32,12 +29,13 @@ import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
 import { collectHtmlImageRefs, type ImageRefEnv } from "./images";
 import { lastPageMode, type PrintPadding } from "../../engine/shared/synthesis.ts";
 import {
+  cssLength,
   formatPageSize,
   isPositivePoints,
   printAreaMeta,
   type PrintAreaSource,
 } from "../../engine/shared/print-area.ts";
-import { extract, resolvePage } from "../../engine/shared/gcpm-extract.ts";
+import { DEFAULT_PAGE_MARGIN_PT } from "../../engine/shared/gcpm-extract.ts";
 
 /** Reader injected by the host: resolve a project-root-relative file → its text. */
 export type ReadText = (relPath: string) => Promise<string>;
@@ -179,9 +177,10 @@ export interface AssembleBookHtmlOptions {
    * preset id and printer spec — written as `<meta name="gp-print-area">`
    * (engine/shared/print-area.ts) into EVERY assembled book, preview, build
    * and publish alike: the preview's print overlays judge the ink against it,
-   * and both engines place pinned art on its art-safe line. Metadata only,
-   * with one exception: its `width` x `height` is also the page size the book
-   * prints at when no stylesheet sets one — see {@link defaultPageSizeCss}.
+   * and both engines place pinned art on its art-safe line. Metadata, except
+   * that its `width` x `height` is also the page size the book prints at, and
+   * its `margin`, when the manifest sets one, the margins — see
+   * {@link pageGeometryCss}.
    */
   printArea?: PrintAreaSource;
   plugins?: LoadedPlugin[];
@@ -209,36 +208,49 @@ export interface AssembleBookHtmlOptions {
 }
 
 /**
- * The plain `@page { size }` a book prints at when none of its CSS sets one
- * (#415), or `null` when one is set or there is no page geometry to supply.
+ * The page geometry the manifest decides, as plain CSS Paged Media: the
+ * `@page { size }` the book prints at and, when the manifest sets
+ * `page.margin`, its margins; `null` when there is no page geometry to supply.
  *
  * `page.width` x `page.height` in the manifest (or the preset's) is what every
- * check and the preview's print overlays judge against, but what Chromium
- * prints is the stylesheet's plain `@page { size }` — and a book whose author
- * wrote `@page { margin }` alone, or replaced the scaffolded sheet, had none,
- * so it printed at Letter while everything else assumed the manifest's size.
- * Supplying that size as standard CSS, BEFORE the extensions' and the book's
- * own sheets, makes the print path, the preview and the checks agree on one
- * size; an author's own `size` still wins by the cascade, because this rule
- * is only written when there is none to lose to.
+ * check and the preview's print overlays judge against, and this rule is what
+ * makes Chromium print at it: written AFTER every extension's and the book's
+ * own sheet, it wins by the cascade, so a `size` in a look's or an author's
+ * `@page` cannot shadow the manifest (the print-safety check reports one), and
+ * neither can an `@page` margin once the manifest has margins. Left out of the
+ * manifest, margins stay the stylesheets' business — a look's design — else
+ * the 1in default `defaultPageMarginCss` writes; Setup > Details records
+ * `page.margin` the first time an author changes one.
  *
- * "Set" means what the engine means: a plain `@page` rule — no name, no
- * `:first`/`:left`… — anywhere in `css` (inside `@media print` or an
- * extension's `@layer` included) sets `size`, i.e. `resolvePage`'s base page
- * has one; a named page's size is its own, not the book's geometry. `extract`
- * throws only for a geometry `var()` it cannot resolve; the engine reports
- * that, in its own words, when it reads this same CSS, so here it counts as
- * set and nothing is added.
+ * Margins are written for both page sides, so a look's own `@page :left` or
+ * `:right` margin cannot outrank them: `inside` is the binding edge, the left
+ * of a right-hand page and the right of a left-hand one.
  */
-function defaultPageSizeCss(css: string, page: PrintAreaSource | undefined): string | null {
+function pageGeometryCss(page: PrintAreaSource | undefined): string | null {
   if (!page || !isPositivePoints(page.width) || !isPositivePoints(page.height)) return null;
-  try {
-    if (resolvePage(extract(css)).decls.size !== undefined) return null;
-  } catch {
-    return null;
-  }
-  // The same spelling Book settings writes into a stylesheet: one size, one form.
-  return `@page { size: ${formatPageSize(page)}; }`;
+  const size = `size: ${formatPageSize(page)};`;
+  const m = page.margin;
+  if (!m) return `@page { ${size} }`;
+  const [top, bottom, inside, outside] = [m.top, m.bottom, m.inside, m.outside].map(cssLength);
+  const recto = `margin: ${top} ${outside} ${bottom} ${inside};`;
+  const verso = `margin: ${top} ${inside} ${bottom} ${outside};`;
+  return [`@page { ${size} ${recto} }`, `@page :left { ${verso} }`, `@page :right { ${recto} }`].join("\n");
+}
+
+/**
+ * The margin a book prints with when the manifest sets none: a default, not a
+ * decision (`DEFAULT_PAGE_MARGIN_PT` says why one is needed at all). Written
+ * AHEAD of every stylesheet and INSIDE the core `gp.vocab` layer, so a look's
+ * `@page` margin (in its `ext.<name>` layer, declared later) and the book's
+ * own (unlayered) both win by the cascade — in Chromium, which ranks `@page`
+ * declarations by layer, as well as in the engine's order-based reader.
+ * Unlayered, it would beat a look's margin in print while the preview took
+ * the look's. `null` once the manifest has margins — `pageGeometryCss` then
+ * writes them last — or when there is no page geometry to supply.
+ */
+function defaultPageMarginCss(page: PrintAreaSource | undefined): string | null {
+  if (!page || page.margin) return null;
+  return `@layer gp.vocab {\n@page { margin: ${cssLength(DEFAULT_PAGE_MARGIN_PT)}; }\n}`;
 }
 
 /**
@@ -338,23 +350,26 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   // it replaces an inline style, which beat plugin CSS (layered) and a book's
   // generic `th { text-align }`, so it must still beat both, while a book rule
   // that is at least as specific and later can override it.
-  const pageSize = defaultPageSizeCss(`${pluginCss}\n${projectCss}`, opts.printArea);
+  const pageGeometry = pageGeometryCss(opts.printArea);
+  const defaultMargin = defaultPageMarginCss(opts.printArea);
   const inlineCss = [
     "@layer gp.marker, gp.vocab;",
     // The two-versions box (two-versions.ts) rides in the marker layer: it
     // styles DOM only core emits, exactly like the marker wrappers.
     `/* gutterpress markers */\n@layer gp.marker {\n${MARKER_CSS.trim()}\n${TWO_VERSIONS_CSS.trim()}\n}`,
     `/* gutterpress */\n@layer gp.vocab {\n${GUTTERPRESS_CSS.trim()}\n}`,
-    // The manifest's page size, only when no extension or book CSS sets one
-    // (defaultPageSizeCss). Unlayered — `@page` stays out of cascade layers —
-    // and ahead of every sheet that could have set it, so its place says what
-    // it is: the default.
-    pageSize ? `/* page size (manifest) */\n${pageSize}` : null,
+    // The default margin (defaultPageMarginCss): in the core layer and ahead
+    // of every sheet that could set one, so its place says what it is.
+    defaultMargin ? `/* page margins (default) */\n${defaultMargin}` : null,
     pluginCss ? `/* extension css */\n${pluginCss.trim()}` : null,
     // Unlayered, before the project CSS (equal specificity: the book's rule,
     // coming later, wins).
     `/* column alignment */\n${TABLE_ALIGN_CSS.trim()}`,
     projectCss ? `/* project css */\n${projectCss.trim()}` : null,
+    // The manifest's page geometry (pageGeometryCss). Unlayered and LAST,
+    // after every sheet that could have set a size or a margin, so its place
+    // says what it is: the decision.
+    pageGeometry ? `/* page geometry (manifest) */\n${pageGeometry}` : null,
   ].filter(Boolean).join("\n\n");
 
   // SHIM — spec gap #152; see `preloadImages` above for why and when to delete.

@@ -207,17 +207,17 @@
     },
     "page": {
       "type": "object",
-      "description": "Page geometry, in POINTS (1in = 72pt): the trim size the book prints at. The build writes it as the default `@page { size }` unless a stylesheet's own plain `@page` rule sets a size, in which case that rule wins, and the `pdf.print.page-size` check compares the produced PDF against these numbers either way. A bleed-inclusive @page size legitimately differs from the trim recorded here.",
+      "description": "Page geometry, in POINTS (1in = 72pt): the trim size the book prints at and, with `margin`, the margins. The build writes them as the `@page` rule after every stylesheet, so a `size` in a stylesheet's own `@page` is overridden (the print-safety check reports it); the `pdf.print.page-size` check compares the produced PDF against these numbers. A bleed-inclusive page size legitimately differs from the trim recorded here.",
       "properties": {
         "width": {
           "type": "number",
-          "description": "Page width in points (1in = 72pt): the trim the book prints at unless a stylesheet's plain @page rule sets its own, and what validation compares against. Preset defaults: dtrpg 621, book 432 (6in).",
+          "description": "Page width in points (1in = 72pt): the trim the book prints at and what validation compares against. Preset defaults: dtrpg 621, book 432 (6in).",
           "exclusiveMinimum": 0,
           "examples": [612, 621, 432]
         },
         "height": {
           "type": "number",
-          "description": "Page height in points (1in = 72pt): the trim the book prints at unless a stylesheet's plain @page rule sets its own, and what validation compares against. Preset defaults: dtrpg 810, book 648 (9in).",
+          "description": "Page height in points (1in = 72pt): the trim the book prints at and what validation compares against. Preset defaults: dtrpg 810, book 648 (9in).",
           "exclusiveMinimum": 0,
           "examples": [792, 810, 648]
         },
@@ -250,6 +250,18 @@
           "description": "The binding allowance, in points: how far content stays from the spine, measured from the trim at the binding edge (the left edge of a right-hand page, the right edge of a left-hand one). It stands in for `safe` there, for text and for art alike: the preview's overlay draws and judges that edge against it, the `pdf.print.safe-margins` check fails text or an image closer to the spine than it, and an image pinned to the binding edge (`.gp-pin`) sits on it. The other edges keep `safe` and `artSafe`. Use it when your book keeps its text further from the spine than the printer's minimum, for example 54 (0.75in) where DriveThruRPG asks for 0.5in. Absent = the same as `safe`. Preset default: dtrpg 36 (0.5in, DriveThruRPG's rule for text and non-bleeding art at the binding — the same as its `safe`, declared so a book inherits it visibly); book and custom none.",
           "minimum": 0,
           "examples": [54]
+        },
+        "margin": {
+          "type": "object",
+          "description": "Page margins, in points (1in = 72pt): the space between the trim and the text on each edge. `inside` is the binding edge (the left of a right-hand page, the right of a left-hand one), `outside` the other. When set, the book prints with these margins and any `@page` margin in a stylesheet is overridden; when left out, the stylesheets' `@page` margins apply (a look's design), else 1in. Setup > Details in the app edits it. All four edges are required together.",
+          "properties": {
+            "top": { "type": "number", "description": "Top margin in points.", "minimum": 0, "examples": [61.2, 72] },
+            "bottom": { "type": "number", "description": "Bottom margin in points.", "minimum": 0, "examples": [61.2, 72] },
+            "inside": { "type": "number", "description": "Binding-edge margin in points: the left of a right-hand page, the right of a left-hand one.", "minimum": 0, "examples": [54, 72] },
+            "outside": { "type": "number", "description": "Outer-edge margin in points.", "minimum": 0, "examples": [54, 72] }
+          },
+          "required": ["top", "bottom", "inside", "outside"],
+          "additionalProperties": false
         }
       }
     },
