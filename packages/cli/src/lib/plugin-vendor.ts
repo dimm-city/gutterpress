@@ -3,8 +3,10 @@
  * the small path/identity helpers the installer (`npm-plugin-installer.ts`)
  * and the loader (`markdown/plugins.ts`) share.
  *
- * Layout: `<project>/plugins/npm/<name>/<version>/node_modules/<name>/…` — a
- * plain nested npm tree. Node's (and Bun's) own module resolution walks it, so
+ * Layout: `<project>/extensions/npm/<name>/<version>/node_modules/<name>/…`
+ * — a plain nested npm tree, beside the book's other extensions. Books
+ * vendored before 0.11.23 keep theirs under `plugins/npm/`; those are still
+ * read (`resolveVendoredPluginInstallRoot`), never written to. Node's (and Bun's) own module resolution walks it, so
  * the loader simply `import()`s the package entry and every `import`/`require`
  * inside the package resolves the ordinary way. There is no receipt, no
  * digest, and no per-load re-verification: integrity is checked once, at
@@ -14,8 +16,10 @@ import { lstat, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { exports as resolveExports } from "resolve.exports";
 
-/** Project-relative folder shared by local and vendored npm plugins. */
-export const PLUGINS_DIR = "plugins";
+/** Project-relative folder every extension a book carries lives under: vendored npm copies in `npm/`, imports beside them. */
+export const EXTENSIONS_DIR = "extensions";
+/** Where books vendored before 0.11.23 keep their npm copies. Read, never written. */
+export const LEGACY_PLUGINS_DIR = "plugins";
 export const VENDORED_NPM_DIR = "npm";
 
 const NPM_SEGMENT = /^[a-z0-9][a-z0-9._~-]*$/;
@@ -94,14 +98,9 @@ export function vendoredNpmPluginRoot(
   projectDir: string,
   name: string,
   version: string,
+  parent: string = EXTENSIONS_DIR,
 ): string {
-  return path.join(
-    projectDir,
-    PLUGINS_DIR,
-    VENDORED_NPM_DIR,
-    encodePathPart(name),
-    encodePathPart(version),
-  );
+  return path.join(projectDir, parent, VENDORED_NPM_DIR, encodePathPart(name), encodePathPart(version));
 }
 
 /** npm-compatible package location within a versioned vendor root. */
@@ -286,18 +285,19 @@ export async function resolveVendoredPluginInstallRoot(
   expectedVersion: string,
 ): Promise<string | null> {
   const requestedProjectRoot = path.resolve(projectDir);
-  const requestedInstallRoot = vendoredNpmPluginRoot(
-    requestedProjectRoot,
-    expectedName,
-    expectedVersion,
-  );
+  let requestedInstallRoot = "";
   let installInfo;
-  try {
-    installInfo = await lstat(requestedInstallRoot);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw error;
+  // The current folder first, then the one older books vendored into.
+  for (const parent of [EXTENSIONS_DIR, LEGACY_PLUGINS_DIR]) {
+    requestedInstallRoot = vendoredNpmPluginRoot(requestedProjectRoot, expectedName, expectedVersion, parent);
+    try {
+      installInfo = await lstat(requestedInstallRoot);
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
   }
+  if (!installInfo) return null;
   if (!installInfo.isDirectory() || installInfo.isSymbolicLink()) {
     throw new Error("Vendor install root is not a normal directory.");
   }

@@ -304,6 +304,17 @@ describe("extension-manager", () => {
     });
   });
 
+  test("an npm copy an older book vendored under plugins/npm/ is still found", async () => {
+    const dir = projectDir(["title: T", "extensions:", "  - markdown-it-legacy@1.0.0", ""].join("\n"));
+    const pkg = join(dir, "plugins", "npm", "markdown-it-legacy", "1.0.0", "node_modules", "markdown-it-legacy");
+    mkdirSync(pkg, { recursive: true });
+    writeFileSync(join(pkg, "package.json"), JSON.stringify({ name: "markdown-it-legacy", version: "1.0.0", main: "index.js" }), "utf8");
+    writeFileSync(join(pkg, "index.js"), "module.exports = function () {};\n", "utf8");
+    const [entry] = await listProjectExtensions(dir);
+    expect(entry!.warnings ?? []).toEqual([]);
+    expect(entry!.dir).toBe(pkg);
+  });
+
   describe("validateProjectExtensions / readExtensionCss", () => {
     test("load-tests enabled entries only and reports the loader's error per entry", async () => {
       const dir = projectDir(

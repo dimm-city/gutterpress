@@ -252,7 +252,7 @@ export function isDotPathUnderRoot(candidatePath: string, root: string): boolean
  * Path segments inside the project whose subtrees are GENERATED or VENDORED, and
  * so are never publication source (R15): `dist/` is build output — one
  * `gutterpress build` writes a whole book's worth of files there — and
- * `plugins/npm/`, `node_modules/` are managed dependency trees a plugin install
+ * `extensions/npm/` (and `plugins/npm/` in older books), `node_modules/` are managed dependency trees an extension install
  * writes wholesale. Watching them meant a build or an install stormed the
  * debounce and triggered full preview re-renders for output nobody edited.
  *
@@ -264,7 +264,7 @@ function isGeneratedProjectPath(relative: string): boolean {
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
     if (segment === "dist" || segment === "node_modules") return true;
-    if (segment === "plugins" && segments[i + 1] === "npm") return true;
+    if ((segment === "extensions" || segment === "plugins") && segments[i + 1] === "npm") return true;
   }
   return false;
 }

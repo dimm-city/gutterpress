@@ -25,7 +25,7 @@ import {
   findEnclosingRepoDir,
 } from "./project-source.ts";
 import { createFileLogger } from "./remote-auth/operation-log.ts";
-import { PLUGINS_DIR, VENDORED_NPM_DIR } from "./plugin-vendor.ts";
+import { EXTENSIONS_DIR, LEGACY_PLUGINS_DIR, VENDORED_NPM_DIR } from "./plugin-vendor.ts";
 
 const noopLogger: { debug(): void; info(): void; warn(): void; error(): void } = {
   debug: () => {},
@@ -788,11 +788,12 @@ export async function countUnversionedChanges(
   if (source.type !== "local-git-folder") return null;
   const dir = gitScopeFor(source);
   const bookPrefix = source.subPath ? `${source.subPath.replace(/\/+$/, "")}/` : "";
-  const appWritten = `${bookPrefix}${PLUGINS_DIR}/${VENDORED_NPM_DIR}/`;
+  // The vendored npm trees (the current folder and the one older books used).
+  const appWritten = [EXTENSIONS_DIR, LEGACY_PLUGINS_DIR].map((d) => `${bookPrefix}${d}/${VENDORED_NPM_DIR}/`);
   return withRepoLock(dir, async () => {
     const { adds, removes } = await listWorkdirChanges(dir);
     const mine = new Set(
-      [...adds, ...removes].filter((f) => f.startsWith(bookPrefix) && !f.startsWith(appWritten)),
+      [...adds, ...removes].filter((f) => f.startsWith(bookPrefix) && !appWritten.some((p) => f.startsWith(p))),
     );
     return { changedFiles: mine.size, stale: fs.existsSync(snapshotStagingMarkerPath(dir)) };
   });

@@ -696,7 +696,7 @@ The specifier's form picks the branch:
    before any other lookup
 2. **Paths** → the file or folder, relative to the manifest
 3. **npm** → the project-local vendored copy
-   (`plugins/npm/<name>/<version>/`, selected by the pinned `name@version`; the
+   (`extensions/npm/<name>/<version>/`, selected by the pinned `name@version`; the
    copy is gitignored, and every build/export, check run and `preview` and the
    desktop's book open download a missing one first — `extension-restore.ts`, never the
    loader); an unpinned name

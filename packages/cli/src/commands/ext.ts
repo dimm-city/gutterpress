@@ -163,7 +163,7 @@ function printAdded(entry: ProjectExtensionEntry, projectDir: string, warnings: 
   if (entry.kind === "npm") {
     console.log(`Installed ${entry.use}`);
     console.log(`  project: ${projectDir}`);
-    console.log("  vendored under: plugins/npm");
+    console.log("  vendored under: extensions/npm");
     console.log("  manifest: exact version pinned");
   } else if (entry.kind === "bundled") {
     console.log(`Enabled bundled ${entry.carries.styles && !entry.carries.markdown ? "look" : "feature"} ${entry.use}`);
@@ -443,7 +443,7 @@ const update = defineCommand({
       }
       for (const u of updated) console.log(`Updated ${u.name}  ${u.from} -> ${u.to}`);
       console.log(`  project: ${projectDir}`);
-      console.log("  vendored under: plugins/npm (previous version removed)");
+      console.log("  vendored under: extensions/npm (previous version removed)");
       console.log("  manifest: exact version re-pinned");
     } catch (error) {
       failPipeline("Could not update extensions", error);

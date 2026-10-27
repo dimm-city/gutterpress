@@ -35,6 +35,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Downloaded npm extensions live under `extensions/npm/`**, beside the
+  looks and components a book imports, instead of `plugins/npm/`. New books
+  ignore `extensions/npm/` in their `.gitignore`; a book vendored earlier
+  keeps working from `plugins/npm/` until its next `ext add` or `ext update`.
 - **The built-in looks are bundled extensions, listed by name.** `clean-book`,
   `zine`, `technical-doc` and `academic` join the bundled names: `gutterpress
   ext add academic` (or Use in the Look view) writes `- academic` to the

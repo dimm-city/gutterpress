@@ -399,8 +399,11 @@ test("countUnversionedChanges ignores app-written plugin files and reports a sta
   const dir = await tempDir();
   try {
     await initProject(dir);
-    await mkdir(path.join(dir, "plugins", "npm", "x", "1.0.0"), { recursive: true });
-    await writeFile(path.join(dir, "plugins", "npm", "x", "1.0.0", "index.js"), "1");
+    await mkdir(path.join(dir, "extensions", "npm", "x", "1.0.0"), { recursive: true });
+    await writeFile(path.join(dir, "extensions", "npm", "x", "1.0.0", "index.js"), "1");
+    // An older book's vendored tree is the app's too.
+    await mkdir(path.join(dir, "plugins", "npm", "y", "1.0.0"), { recursive: true });
+    await writeFile(path.join(dir, "plugins", "npm", "y", "1.0.0", "index.js"), "1");
     expect(await countUnversionedChanges(dir)).toEqual({ changedFiles: 0, stale: false });
     fs.writeFileSync(snapshotStagingMarkerPath(dir), "");
     expect(await countUnversionedChanges(dir)).toEqual({ changedFiles: 0, stale: true });

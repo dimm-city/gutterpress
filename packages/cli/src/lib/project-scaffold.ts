@@ -380,7 +380,7 @@ export async function scaffoldProject(
   }
 
   // 1b. Ensure `dist/` (the build output dir — lib/output-paths.ts) and
-  // `plugins/npm/` (downloaded extensions) are gitignored. See
+  // `extensions/npm/` (downloaded extensions) are gitignored. See
   // `project-gitignore.ts`: without it, auto-snapshot commits and pushes every
   // build's output by default.
   try {
@@ -502,7 +502,7 @@ function prettifyFolderName(base: string): string {
  * Adopt an EXISTING folder as a gutterpress project, in place (no new subfolder).
  * Writes a `manifest.yaml` (using the folder's existing top-level `.md` files as
  * `source.files`, or scaffolding a `chapter-01.md` when there are none), copies
- * a starter `styles/book.css`, ensures `dist/` and `plugins/npm/` are gitignored
+ * a starter `styles/book.css`, ensures `dist/` and `extensions/npm/` are gitignored
  * (see `ensureProjectGitignore`), and optionally initialises local version history.
  *
  * NON-DESTRUCTIVE (global never-overwrite rule): refuses if the folder is
@@ -576,7 +576,7 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
     await writeFile(path.join(dir, MANIFEST_FILENAMES[0]), manifest, "utf8");
     await mkdir(path.join(dir, "assets"), { recursive: true });
 
-    // 4. Ensure `dist/` and `plugins/npm/` are gitignored — same reasoning as scaffoldProject's
+    // 4. Ensure `dist/` and `extensions/npm/` are gitignored — same reasoning as scaffoldProject's
     // step 1b. An ADOPTED folder is even more likely to already be under
     // some other version control the author set up by hand, so this is
     // never-overwrite: it only creates or appends, never replaces.

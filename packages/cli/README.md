@@ -392,7 +392,7 @@ Add an extension. What `SOURCE` is decides what happens:
 
 - an **npm package** (`name` or `name@version`) is downloaded straight from
   the registry along with its runtime dependencies, hash-verified, vendored
-  into the project under `plugins/npm/`, load-tested, and written back pinned
+  into the project under `extensions/npm/`, load-tested, and written back pinned
   as `name@<exact version>`. This does not invoke npm, Bun, Node.js tooling,
   or package install scripts;
 - a **bundled name** — a markdown feature (`markdown-it-mark`,
@@ -409,15 +409,15 @@ Add an extension. What `SOURCE` is decides what happens:
 Adding something already listed re-pins or updates that entry instead of
 adding a second one.
 
-An npm install also makes sure the book's `.gitignore` ignores `plugins/npm/`
-(append-only; an author's own `!plugins/npm/` re-include is respected and the
+An npm install also makes sure the book's `.gitignore` ignores `extensions/npm/`
+(append-only; an author's own `!extensions/npm/` re-include is respected and the
 install warns that downloaded extensions shouldn't be committed). The manifest
 pin is what travels with the book; the downloaded copy does not.
 
 ##### Restoring pinned extensions
 
 A fresh clone has `manifest.yaml`'s `name@version` pins but not the downloaded
-copies under `plugins/npm/`. `build`, `validate`, `preflight` and `preview`
+copies under `extensions/npm/`. `build`, `validate`, `preflight` and `preview`
 download any missing (or incomplete) pinned version before they load plugins —
 exactly the pinned version, through the same registry-resolved, hash-verified,
 load-tested install as `ext add`, without touching the manifest. Builds and
@@ -429,7 +429,7 @@ paths and bundled features are never touched. The plugin loader itself stays
 offline. The desktop app does the same when it opens a book.
 
 Once a package's pinned version is installed (by `ext add` or a restore), its
-other downloaded versions under `plugins/npm/<name>/` are deleted — a cache
+other downloaded versions under `extensions/npm/<name>/` are deleted — a cache
 that a pulled pin or branch switch would otherwise leave to pile up — except a
 version another enabled manifest entry still pins. A failed install removes the
 folders it created and nothing else.
@@ -455,7 +455,7 @@ gutterpress ext add https://example.com/looks/cool/ ./my-book
 
 Remove an extension from the manifest, by the specifier as written there (for
 an npm package the bare name is enough). An npm extension's vendored copy
-under `plugins/npm/` is deleted too; a path extension's folder is yours and is
+under `extensions/npm/` is deleted too; a path extension's folder is yours and is
 never touched.
 
 ```sh
@@ -557,7 +557,7 @@ An extension folder (or npm package) describes itself in its **`package.json`** 
 
 Order is load order: a later entry's markdown runs after earlier entries' (and sees their output) and its CSS wins ties — each extension's stylesheets are wrapped in their own cascade layer (`@layer ext.<name>`), declared in list order, so this holds however an extension writes its CSS; the project's own `styles:` stay unlayered and load after every extension, beating all of them at any specificity. There is no `priority` and no `path:`/`name:` wrapper — a manifest still carrying `plugins:` fails with a message that prints the same entries rewritten as `extensions:`. The `engine:` and `engineStyles:` keys are gone too (there is one engine; move any `engineStyles` entries to the end of `styles:`).
 
-Pinned npm packages and their runtime dependencies live under `plugins/npm/`
+Pinned npm packages and their runtime dependencies live under `extensions/npm/`
 as a plain nested `node_modules` tree, which Node's own module resolution loads.
 The pin travels with the project; the downloaded copy is gitignored, and
 `build`, `validate`, `preflight` and `preview` download a missing pinned version first

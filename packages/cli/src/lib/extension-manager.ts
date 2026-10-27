@@ -16,7 +16,7 @@
  *   - a PATH (`./x`, `../x`) is referenced IN PLACE. The author put that
  *     folder there; Gutterpress reads it. Nothing is copied;
  *   - an NPM specifier is downloaded, integrity-checked, vendored under
- *     `plugins/npm/` (`npm-plugin-installer.ts`) and written back pinned, as
+ *     `extensions/npm/` (`npm-plugin-installer.ts`) and written back pinned, as
  *     `name@version`.
  *
  * Nothing is copied into a project here. A bundled look is read from the
@@ -48,6 +48,7 @@ import {
   type NpmPluginInstallOptions,
 } from "./npm-plugin-installer.ts";
 import {
+  EXTENSIONS_DIR,
   isExactNpmVersion,
   resolvePackageEntry,
   resolveVendoredPluginInstallRoot,
@@ -76,12 +77,10 @@ import { slugify, prettify } from "./slug.ts";
 import { ensureProjectGitignore } from "./project-gitignore.ts";
 import type { ResolvedExtensionConfig } from "../schema/manifest.types.ts";
 
-/** Folder (relative to the project root) zip and URL imports land in
+/** The folder (relative to the project root) a book's extensions live under:
+ *  vendored npm copies in `extensions/npm/`, zip and URL imports beside them
  *  (extension-import.ts). Path entries elsewhere are never moved. */
-export const EXTENSIONS_DIR = "extensions";
-
-/** The vendored npm tree stays where 0.10.8 put it. */
-export { PLUGINS_DIR } from "./plugin-vendor.ts";
+export { EXTENSIONS_DIR } from "./plugin-vendor.ts";
 
 /** How an `extensions:` entry resolves — the form of its specifier decides. */
 export type ExtensionSourceKind = "bundled" | "path" | "npm";
@@ -649,7 +648,7 @@ export function restoreNpmExtension(
   });
 }
 
-/** True when `plugins/npm/<name>/<version>/` is absent or has no loadable entry — what the loader calls "not installed" or "incomplete". */
+/** True when `extensions/npm/<name>/<version>/` is absent or has no loadable entry — what the loader calls "not installed" or "incomplete". */
 export async function vendoredCopyNeedsInstall(projectDir: string, name: string, version: string): Promise<boolean> {
   try {
     const installRoot = await resolveVendoredPluginInstallRoot(projectDir, name, version);
@@ -716,9 +715,9 @@ async function vendorNpmExtension(
   });
   try {
     const { negated } = await ensureProjectGitignore(projectDir);
-    if (negated.includes("plugins/npm/")) {
+    if (negated.includes("extensions/npm/")) {
       warnings.push(
-        "Your .gitignore re-includes plugins/npm/, so downloaded extensions will be committed with " +
+        "Your .gitignore re-includes extensions/npm/, so downloaded extensions will be committed with " +
           "your book. They shouldn't be: the manifest pins each version and a build downloads a " +
           "missing copy again.",
       );

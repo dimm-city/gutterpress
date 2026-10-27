@@ -1150,7 +1150,7 @@ describe('stopFileWatcher', () => {
 //
 // The in-project ignore rule was the dotfile rule alone, so `gutterpress build`
 // (which writes a whole book's worth of files into `dist/`) and a plugin install
-// (which vendors a tree under `plugins/npm/`) both stormed the watcher and
+// (which vendors a tree under `extensions/npm/`) both stormed the watcher and
 // triggered full preview re-renders for output nobody edited. Generated and
 // vendored trees are never publication SOURCE (R15).
 
@@ -1163,14 +1163,16 @@ describe("isIgnoredWatchPath — generated and vendored subtrees", () => {
     expect(isIgnoredWatchPath("/book/dist/book.html", root)).toBe(true);
   });
 
-  test("ignores the vendored npm plugin tree", () => {
+  test("ignores the vendored npm tree, current and older location", () => {
+    expect(isIgnoredWatchPath("/book/extensions/npm/some-plugin/1.0.0/index.js", root)).toBe(true);
     expect(isIgnoredWatchPath("/book/plugins/npm/some-plugin/1.0.0/index.js", root)).toBe(true);
     expect(isIgnoredWatchPath("/book/node_modules/.bin/x", root)).toBe(true);
   });
 
-  test("does NOT ignore a book's own authored plugin source", () => {
-    // `plugins/*.js` is author-written source; only `plugins/npm/**` is managed.
+  test("does NOT ignore a book's own authored plugin source or an extension it owns", () => {
+    // `plugins/*.js` and `extensions/<folder>` are author-written; only the `npm/` subtree is managed.
     expect(isIgnoredWatchPath("/book/plugins/components.js", root)).toBe(false);
+    expect(isIgnoredWatchPath("/book/extensions/house/theme.css", root)).toBe(false);
   });
 
   test("does NOT ignore a source file whose name merely starts with an ignored segment", () => {

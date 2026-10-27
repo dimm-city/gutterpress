@@ -128,13 +128,13 @@ gutterpress ext add markdown-it-emoji@3.0.0 ./my-book --export full
 
 Gutterpress resolves the npm registry metadata to exact versions, verifies each
 registry integrity hash, and vendors the plugin's complete runtime dependency
-tree under the project's `plugins/npm/` folder as a plain `node_modules`
+tree under the project's `extensions/npm/` folder as a plain `node_modules`
 layout. Gutterpress then writes the pinned specifier ---
 `markdown-it-highlightjs@4.3.0` --- into `extensions:`. The pin is what travels
-with your book; the downloaded copy under `plugins/npm/` does not (see
+with your book; the downloaded copy under `extensions/npm/` does not (see
 [Cloning a book](#cloning-a-book-with-installed-extensions) below), and an
 ordinary build, with every copy present, does not access the network. Explicit
-reinstall always downloads fresh bytes rather than trusting the existing folder.
+reinstall always downloads fresh bytes rather than trusting the existing folder. A book set up before 0.11.23 keeps its copies under `plugins/npm/`; they still load, and the next `ext add` or `ext update` vendors into `extensions/npm/`.
 
 No Bun, npm, Node.js installation, or package lifecycle script is used.
 Pure-JavaScript packages with normal registry dependencies are supported.
@@ -170,12 +170,12 @@ downloading a third-party plugin.
 ## Cloning a Book with Installed Extensions
 
 Downloaded extensions are not part of your book's version history. New books
-(and folders you set up as a book) list `plugins/npm/` in their `.gitignore`
+(and folders you set up as a book) list `extensions/npm/` in their `.gitignore`
 next to `dist/`, and installing an extension adds that line to an older book's
 `.gitignore` if it is missing. A book inside a larger repository keeps the rule
 in its own folder's `.gitignore`, which version history honours. Nothing else in
 your `.gitignore` is changed, and if you have deliberately re-included
-`plugins/npm/` (a `!` rule) it is left alone and the install tells you
+`extensions/npm/` (a `!` rule) it is left alone and the install tells you
 downloaded extensions shouldn't be committed.
 
 So a fresh clone has your `manifest.yaml` and its pins but not the downloaded
@@ -209,7 +209,7 @@ files --- and it does not need you to do anything:
   yet and to run the command again once you are online. For any other failure
   (registry error, failed integrity check), they name the extension, the reason
   and how to try again, or suggest `gutterpress ext add name@version`. A failed attempt
-  leaves nothing behind, not even an empty `plugins/npm/` folder. Live
+  leaves nothing behind, not even an empty `extensions/npm/` folder. Live
   `preview` downloads a missing pinned version before every render, including
   after you change a pin while it runs. If it cannot, it only warns and keeps
   going, like any other plugin it cannot load.
@@ -227,9 +227,9 @@ there; local paths, unpinned names and bundled features are never touched.
 Because you pinned that exact version yourself, the desktop app does not ask
 for confirmation again when it restores it.
 
-If an older book already committed `plugins/npm/`, adding the ignore rule does
+If an older book already committed `extensions/npm/`, adding the ignore rule does
 not remove those files from its history --- git keeps tracking what it already
-tracks. Remove them when you are ready (`git rm -r --cached plugins/npm`);
+tracks. Remove them when you are ready (`git rm -r --cached extensions/npm`);
 Gutterpress never deletes anything from git for you.
 
 ## Updating a Pinned Extension
@@ -247,7 +247,7 @@ gutterpress ext update gp-dimm-city ./my-book # just one
 `update` is `ext add name@latest` for each outdated entry: the new version is
 downloaded, verified against the registry hash, vendored, load-tested, and
 re-pinned in place --- the entry's `export:` and `enabled:` stay as written ---
-and the previous version's folder under `plugins/npm/` is removed (a re-pin
+and the previous version's folder under `extensions/npm/` is removed (a re-pin
 with `ext add` and a restore do the same). Commit the manifest; the new downloaded copy
 stays out of git, and a clone fetches it from the new pin. To move to a specific version instead of the latest, or to go back,
 run `ext add name@x.y.z`.

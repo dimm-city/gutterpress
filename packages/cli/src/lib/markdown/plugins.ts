@@ -208,7 +208,7 @@ async function importVendoredEntry(
     entry = await resolvePackageEntry(packageDir);
   } catch (cause) {
     throw new Error(
-      `the downloaded copy of ${spec} under plugins/npm/ is incomplete ` +
+      `the downloaded copy of ${spec} under extensions/npm/ is incomplete ` +
         `(${cause instanceof Error ? cause.message : String(cause)}). ` +
         `Reinstall it with \`gutterpress ext add ${spec}\`.`,
       { cause },
@@ -225,7 +225,7 @@ async function importVendoredEntry(
  *
  * Resolution order:
  *   1. The project-local vendored copy `gutterpress ext add` installed
- *      (`plugins/npm/<name>/<version>/`), when the entry is pinned and that
+ *      (`extensions/npm/<name>/<version>/`), when the entry is pinned and that
  *      folder exists
  *   2. User's project node_modules (legacy unpinned entries)
  *   3. gutterpress's own dependencies — for built-in/legacy plugins
