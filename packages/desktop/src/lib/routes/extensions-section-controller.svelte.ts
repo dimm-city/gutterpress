@@ -1,7 +1,8 @@
 /**
  * ExtensionsSectionController (#243, #265) — the single owner of the
- * Extensions tab's state: ONE list (`entries` — the manifest's `extensions:`
- * in cascade order) and ONE verb set (add, remove, toggle, move).
+ * Looks & features tab's (id `extensions`) state: ONE list (`entries` — the
+ * manifest's `extensions:` in cascade order) and ONE verb set (add, remove,
+ * toggle, move).
  *
  * A look is an extension that carries styles; a feature is one that carries
  * markdown; a component library carries both — each is one row of the same
@@ -73,7 +74,6 @@ import {
   orderAfterMove,
   pickerVersions,
   sampleSrcdoc,
-  hoverPreviewSrcdoc,
 } from "#lib/components/config/config-helpers.ts";
 
 export interface ExtensionsSectionDeps {
@@ -105,13 +105,17 @@ export interface ExtensionsSectionDeps {
   setEnabled: (projectDir: string, use: string, enabled: boolean) => Promise<unknown>;
   /** Rewrite the whole list order; must name every `use` exactly once. */
   reorder: (projectDir: string, order: string[]) => Promise<unknown>;
-  /** An entry's stylesheets as CSS text (a bundled look's, or a folder's declared sheets), for the sample thumbnail. */
+  /** An extension's stylesheets as CSS text (a bundled look's — listed or not — or a folder's declared sheets), for the sample thumbnail. */
   readCss: (projectDir: string, use: string) => Promise<string>;
   /** `.zip`/`.css` via the native file picker (#106). Null when cancelled. */
   importFromFile: (projectDir: string) => Promise<ExtensionImportResult | null>;
   importFromUrl: (projectDir: string, url: string) => Promise<ExtensionImportResult>;
-  /** Fired after a styles-carrying extension was added by any route (the panel toasts). */
-  onLookAdded?: (label: string) => void;
+  /**
+   * Fired after a styles-carrying extension was added by any route (the panel
+   * toasts), with the labels of the OTHER looks still enabled — when there are
+   * any, the new look sits below them and wins, which the toast explains.
+   */
+  onLookAdded?: (label: string, otherEnabledLooks: string[]) => void;
   /**
    * Fired after any successful change to a styles-carrying entry (added,
    * removed, toggled, moved): the Styles + Design sections both depend on
@@ -162,7 +166,7 @@ export class ExtensionsSectionController {
   addTab = $state<AddTab>(lastAddTab);
   /**
    * Update check — each pinned npm entry against npm's latest. Run when the
-   * Extensions tab mounts (an explicit tab open, never project load) and on
+   * Looks & features tab mounts (an explicit tab open, never project load) and on
    * *Check for updates*; a failure is one quiet `message`, never a modal.
    */
   updates = $state<{
@@ -196,18 +200,9 @@ export class ExtensionsSectionController {
   npmName = $state("");
   /** Optional named module export for packages without a default plugin export. */
   npmExport = $state("");
-  /** Sample-thumbnail srcdoc per `use` (`"__fallback__"` when unavailable). */
+  /** Sample-thumbnail srcdoc per `use` (`"__fallback__"` when unavailable) —
+   *  shared by the list rows and the Built in tab's look rows. */
   thumbs = $state<Record<string, string>>({});
-  /** `use` of the styles row hovered for the enlarged preview, and its srcdoc (#106). */
-  hoverUse = $state<string | null>(null);
-  hoverPreview = $state<string | null>(null);
-
-  /**
-   * Raw CSS cached per `use` (populated by `loadThumb`) so the hover preview
-   * can build its enlarged 2-page spread without a second host round trip.
-   * Non-reactive: only read imperatively by `showHoverPreview`.
-   */
-  private rawCssCache: Record<string, string> = {};
 
   private readonly deps: ExtensionsSectionDeps;
 
@@ -259,10 +254,13 @@ export class ExtensionsSectionController {
       const [entries, bundled] = await Promise.all([this.deps.list(projectDir), this.deps.bundled()]);
       this.entries = entries;
       this.bundled = bundled;
-      // Thumbnails lazy-load in the background (non-fatal if they fail).
-      void Promise.all(
-        entries.filter((e) => e.carries.styles).map((e) => this.loadThumb(e)),
-      );
+      // Thumbnails lazy-load in the background (non-fatal if they fail): every
+      // listed row that carries styles, and every bundled look — so a look
+      // shows what it looks like before it is added, too.
+      void Promise.all([
+        ...entries.filter((e) => e.carries.styles).map((e) => this.loadThumb(e.use)),
+        ...bundled.filter((b) => b.look).map((b) => this.loadThumb(b.use)),
+      ]);
       await this.validateExtensions();
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e);
@@ -424,16 +422,15 @@ export class ExtensionsSectionController {
     return added;
   }
 
-  private async loadThumb(entry: ProjectExtensionEntry): Promise<void> {
-    if (this.thumbs[entry.use]) return;
+  private async loadThumb(use: string): Promise<void> {
+    if (this.thumbs[use]) return;
     const projectDir = this.deps.projectDir();
     if (!projectDir) return;
     try {
-      const css = await this.deps.readCss(projectDir, entry.use);
-      this.rawCssCache[entry.use] = css;
-      this.thumbs = { ...this.thumbs, [entry.use]: sampleSrcdoc(css) };
+      const css = await this.deps.readCss(projectDir, use);
+      this.thumbs = { ...this.thumbs, [use]: sampleSrcdoc(css) };
     } catch {
-      this.thumbs = { ...this.thumbs, [entry.use]: "__fallback__" };
+      this.thumbs = { ...this.thumbs, [use]: "__fallback__" };
     }
   }
 
@@ -471,10 +468,15 @@ export class ExtensionsSectionController {
     }
   }
 
-  /** After a successful add: surface the host's non-fatal warnings, and announce a new look. */
+  /** After a successful add (the list is already reloaded): surface the host's
+   *  non-fatal warnings, and announce a new look, naming the other looks still on. */
   private announceAdded(entry: ProjectExtensionEntry): void {
     if (entry.warnings?.length) this.notice = entry.warnings.join(" ");
-    if (entry.carries.styles) this.deps.onLookAdded?.(entry.label);
+    if (!entry.carries.styles) return;
+    const others = this.entries
+      .filter((e) => e.enabled && e.carries.styles && e.use !== entry.use)
+      .map((e) => e.label);
+    this.deps.onLookAdded?.(entry.label, others);
   }
 
   // ── Verbs (arrow fields: passed as callbacks from the templates) ────────────
@@ -560,38 +562,4 @@ export class ExtensionsSectionController {
     this.importWarnings = result.warnings.map((w) => w.message);
     this.announceAdded(result.entry);
   }
-
-  // ── Hover preview (#106) ────────────────────────────────────────────────────
-  //
-  // Reuses the per-row thumbnail mechanism (readCss → inline <style> →
-  // sandboxed <iframe srcdoc>), swapping the sample for a FIXED built-in
-  // 2-page spread. It renders a constant sample, never the author's document,
-  // so it structurally cannot re-paginate the manuscript. The raw CSS is
-  // already cached by `loadThumb`; on a cache miss we fetch it once. Only a
-  // styles-carrying entry has CSS to show.
-  showHoverPreview = async (entry: ProjectExtensionEntry): Promise<void> => {
-    if (!entry.carries.styles) return;
-    this.hoverUse = entry.use;
-    const cached = this.rawCssCache[entry.use];
-    if (cached !== undefined) {
-      this.hoverPreview = hoverPreviewSrcdoc(cached);
-      return;
-    }
-    const projectDir = this.deps.projectDir();
-    if (!projectDir) return;
-    try {
-      const css = await this.deps.readCss(projectDir, entry.use);
-      this.rawCssCache[entry.use] = css;
-      // The pointer may have moved on while we were fetching: only paint if
-      // this row is still the hovered one.
-      if (this.hoverUse === entry.use) this.hoverPreview = hoverPreviewSrcdoc(css);
-    } catch {
-      if (this.hoverUse === entry.use) this.hoverPreview = null;
-    }
-  };
-
-  hideHoverPreview = (): void => {
-    this.hoverUse = null;
-    this.hoverPreview = null;
-  };
 }

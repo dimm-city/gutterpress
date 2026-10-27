@@ -10,7 +10,7 @@ import type {
   ExtensionUpdatesResult,
   ExtensionVersionsResult,
 } from "../../src/lib/platform/dtos";
-import { sampleSrcdoc, hoverPreviewSrcdoc, carriedKinds } from "../../src/lib/components/config/config-helpers";
+import { sampleSrcdoc, carriedKinds } from "../../src/lib/components/config/config-helpers";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests (same shim as design-section-controller.test.ts).
@@ -219,7 +219,7 @@ function make(
       h.entries = [...h.entries, LOOK_B];
       return Promise.resolve({ entry: LOOK_B, warnings: [{ code: "no-theme-json", message: "No package.json found" }] });
     },
-    onLookAdded: (label) => onLookAdded(label),
+    onLookAdded: (label, others) => onLookAdded(label, others),
     afterLookChange: () => {
       afterLookChange();
       return Promise.resolve();
@@ -247,8 +247,6 @@ test("initial public rune state matches the panel defaults", () => {
   expect(ctrl.npmName).toBe("");
   expect(ctrl.npmExport).toBe("");
   expect(ctrl.thumbs).toEqual({});
-  expect(ctrl.hoverUse).toBeNull();
-  expect(ctrl.hoverPreview).toBeNull();
   expect(ctrl.search).toEqual({ status: "idle", query: "", matches: [], total: 0, message: null });
   expect(ctrl.searchQuery).toBe("");
   expect(ctrl.availableSearch).toEqual([]);
@@ -264,15 +262,19 @@ test("loadExtensions populates the list, the bundled catalog, and the validation
   expect(h.ctrl.error).toBeNull();
 });
 
-test("loadExtensions lazy-loads a sample thumbnail for the rows that carry styles — a bundled look's too", async () => {
+test("loadExtensions lazy-loads a sample thumbnail for the rows that carry styles and for every bundled look, listed or not", async () => {
   const h = make({ entries: [LOOK_A, FEATURE, BROKEN, BUNDLED_LOOK] });
   await h.ctrl.loadExtensions();
   await flush();
   expect(h.ctrl.thumbs[LOOK_A.use]).toBe(sampleSrcdoc(":root { --x: 1; }"));
   expect(h.ctrl.thumbs[BUNDLED_LOOK.use]).toBe(sampleSrcdoc(":root { --x: 1; }"));
+  // The Built in tab's look rows show the same thumbnail before the look is added.
+  expect(h.ctrl.thumbs[BUILTIN_CLEAN.use]).toBe(sampleSrcdoc(":root { --x: 1; }"));
+  expect(h.ctrl.thumbs[BUILTIN_ZINE.use]).toBe(sampleSrcdoc(":root { --x: 1; }"));
   expect(h.ctrl.thumbs[FEATURE.use]).toBeUndefined();
+  expect(h.ctrl.thumbs[REC_MARK.use]).toBeUndefined();
   expect(h.ctrl.thumbs[BROKEN.use]).toBeUndefined();
-  expect(named(h, "readCss").map((c) => c.args[1])).toEqual([LOOK_A.use, BUNDLED_LOOK.use]);
+  expect(named(h, "readCss").map((c) => c.args[1])).toEqual([LOOK_A.use, BUNDLED_LOOK.use, BUILTIN_CLEAN.use, BUILTIN_ZINE.use]);
 });
 
 test("loadExtensions no-ops without a project dir", async () => {
@@ -295,9 +297,9 @@ test("the list is every manifest entry in cascade order, each with a badge per k
   const h = make({ entries: [LOOK_A, FEATURE, BOTH, BROKEN] });
   await h.ctrl.loadExtensions();
   expect(h.ctrl.entries.map((e) => [e.use, carriedKinds(e)])).toEqual([
-    [LOOK_A.use, ["Styles"]],
-    [FEATURE.use, ["Markdown"]],
-    [BOTH.use, ["Markdown", "Styles", "Snippets"]],
+    [LOOK_A.use, ["Look"]],
+    [FEATURE.use, ["Feature"]],
+    [BOTH.use, ["Feature", "Look", "Snippets"]],
     // An entry carrying nothing recognizable is still a row, so it is never invisible or un-removable.
     [BROKEN.use, []],
   ]);
@@ -597,7 +599,7 @@ test("addLocal: a cancelled picker changes nothing; a picked look announces itse
   h.addLocalResult = BOTH;
   await h.ctrl.addLocal();
   expect(h.ctrl.entries).toEqual([BOTH]);
-  expect(h.onLookAdded.calls).toEqual([["House"]]);
+  expect(h.onLookAdded.calls).toEqual([["House", []]]);
   expect(h.afterLookChange.calls.length).toBe(1);
 });
 
@@ -608,9 +610,16 @@ test("addBundled adds a look by name through the same path, announces it, and re
   expect(named(h, "add").map((c) => c.args)).toEqual([["/proj", "zine", undefined]]);
   expect(h.ctrl.availableBundled.some((b) => b.use === "zine")).toBe(false);
   expect(h.ctrl.entries.map((e) => e.use)).toEqual(["zine"]);
-  expect(h.onLookAdded.calls).toEqual([["zine"]]);
+  expect(h.onLookAdded.calls).toEqual([["zine", []]]);
   expect(h.afterLookChange.calls.length).toBe(1);
   expect(h.ctrl.busy).toBeNull();
+});
+
+test("adding a second look passes the other enabled looks' labels to onLookAdded (a disabled look and a feature do not count)", async () => {
+  const h = make({ entries: [LOOK_A, { ...LOOK_B, enabled: false }, FEATURE] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.addBundled(BUILTIN_ZINE);
+  expect(h.onLookAdded.calls).toEqual([["zine", ["Clean Book"]]]);
 });
 
 // ── #106: file / URL import ───────────────────────────────────────────────────
@@ -627,7 +636,7 @@ test("importFile surfaces the host warnings, announces the look, and reloads on 
   await h.ctrl.importFile();
   expect(h.ctrl.importWarnings).toEqual(["Remote URL is not allowed", "No package.json found"]);
   expect(h.ctrl.entries).toEqual([LOOK_B]);
-  expect(h.onLookAdded.calls).toEqual([["Zine"]]);
+  expect(h.onLookAdded.calls).toEqual([["Zine", []]]);
   expect(h.afterLookChange.calls.length).toBe(1);
   expect(h.ctrl.error).toBeNull();
   expect(h.ctrl.busy).toBeNull();
@@ -657,33 +666,6 @@ test("importUrl trims, imports, clears the draft, surfaces warnings, and reloads
   expect(h.ctrl.importWarnings).toEqual(["No package.json found"]);
   expect(h.ctrl.entries).toEqual([LOOK_B]);
   expect(h.ctrl.error).toBeNull();
-});
-
-// ── #106: hover preview ───────────────────────────────────────────────────────
-
-test("showHoverPreview renders the fixed 2-page spread with the look's CSS", async () => {
-  const h = make();
-  await h.ctrl.showHoverPreview(LOOK_A);
-  expect(h.ctrl.hoverUse).toBe(LOOK_A.use);
-  expect(h.ctrl.hoverPreview).toBe(hoverPreviewSrcdoc(":root { --x: 1; }"));
-  h.ctrl.hideHoverPreview();
-  expect(h.ctrl.hoverUse).toBeNull();
-  expect(h.ctrl.hoverPreview).toBeNull();
-});
-
-test("showHoverPreview renders a bundled look, which has no folder, from its inlined CSS", async () => {
-  const h = make();
-  await h.ctrl.showHoverPreview(BUNDLED_LOOK);
-  expect(h.ctrl.hoverPreview).toBe(hoverPreviewSrcdoc(":root { --x: 1; }"));
-  expect(named(h, "readCss").map((c) => c.args[1])).toEqual([BUNDLED_LOOK.use]);
-});
-
-test("showHoverPreview has nothing to render for an entry that carries no styles", async () => {
-  const h = make();
-  await h.ctrl.showHoverPreview(FEATURE);
-  expect(h.ctrl.hoverUse).toBeNull();
-  expect(h.ctrl.hoverPreview).toBeNull();
-  expect(named(h, "readCss")).toEqual([]);
 });
 
 // ── Updates ──────────────────────────────────────────────────────────────────

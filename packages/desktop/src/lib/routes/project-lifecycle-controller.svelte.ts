@@ -172,7 +172,7 @@ export interface ProjectLifecycleDeps {
   dismissLanding: (runPendingRecoveryScan?: boolean) => void;
   /** The live toast surface, or null when unavailable. */
   toast: () => ProjectLifecycleToast | null;
-  /** Open Book settings on its Extensions tab (where a missing extension's Install button is). */
+  /** Open Book setup on its Looks & features tab (where a missing extension's Install button is). */
   openExtensions?: () => void;
   /** Clear stale problems/log-path state for the project a new open targets. */
   clearStaleProjectState: () => void;
@@ -469,7 +469,7 @@ export class ProjectLifecycleController {
           ? `Couldn't download ${first.use} (${first.message.replace(/[.\s]+$/, "")}). The book opened without it.`
           : `Couldn't download ${restore.failed.length} extensions (${uses}). The book opened without them.`;
       const open = this.deps.openExtensions;
-      toast?.show(message, restore.offline ? "error" : "warning", 0, open ? { label: "Open Extensions", onClick: open } : undefined);
+      toast?.show(message, restore.offline ? "error" : "warning", 0, open ? { label: "Open Looks & features", onClick: open } : undefined);
     }
   }
 

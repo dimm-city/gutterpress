@@ -26,7 +26,7 @@
 </script>
 
 <div class="look-subsection styles-subsection">
-  <p class="hint">Turn your book's own stylesheets on or off. Most writers never need this — a look's stylesheets come with it and are switched on the Extensions tab.</p>
+  <p class="hint">Turn your book's own stylesheets on or off. Most writers never need this — a look's stylesheets come with it and are switched on the Looks &amp; features tab.</p>
   {#if controller.stylesError}
     <p class="error" role="alert">{controller.stylesError}</p>
   {/if}
