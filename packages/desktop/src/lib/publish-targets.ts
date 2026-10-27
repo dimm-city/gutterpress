@@ -38,6 +38,15 @@ export const PUBLISH_TARGET_CHOICES: PublishTargetChoice[] = [
   },
 ];
 
+/**
+ * The targets a book designed for a preset validates against by default
+ * (mirrors the lib presets' `defaultTargets`: dtrpg → [dtrpg]; else none).
+ * Shared by the new-book wizard and Book setup > Details.
+ */
+export function defaultTargetsFor(preset: string | null): string[] {
+  return preset === "dtrpg" ? ["dtrpg"] : [];
+}
+
 /** Tool ids whose absence blocks a print-compliant build (for `/api/doctor`). */
 export const PRINT_TOOL_IDS = ["qpdf", "gs"];
 
@@ -72,7 +81,7 @@ export function toolGapMessage(missingNeeded: readonly string[]): string | null 
   const plural = missingNeeded.length > 1;
   return (
     `${names} ${plural ? "aren't" : "isn't"} installed on this computer, so a ` +
-    `print-compliant (PDF/X) file can't be built or verified until ${plural ? "they are" : "it is"}. ` +
+    `print-ready (PDF/X) file can't be built or verified until ${plural ? "they are" : "it is"}. ` +
     `You can keep this checked and install ${plural ? "them" : "it"} later ` +
     `(see Troubleshooting → Diagnostics), or uncheck it for now.`
   );

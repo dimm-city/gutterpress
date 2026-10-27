@@ -1,5 +1,5 @@
 /**
- * The page-size choices, shared by the new-book wizard and Book settings
+ * The page-size choices, shared by the new-book wizard and Book setup
  * (#357) so the two surfaces offer — and word — exactly the same options.
  *
  * Pure data + arithmetic: no `gutterpress` value import, no `node:*` (CLAUDE.md
@@ -15,17 +15,17 @@ export const PRESET_CHOICES: Array<{ id: PresetChoice; label: string; descriptio
   {
     id: "dtrpg",
     label: "DriveThruRPG print",
-    description: "Print-on-demand ready for DriveThruRPG: trim, ink and PDF checks preset.",
+    description: "US Letter (8.5 × 11 in), set up for DriveThruRPG's print rules.",
   },
   {
     id: "book",
-    label: "Trade book",
-    description: "A neutral 6×9in book with no print-service rules.",
+    label: "Trade paperback",
+    description: "6 × 9 in. No print-service rules.",
   },
   {
     id: "custom",
-    label: "Custom size",
-    description: "You set the page size your book is designed for.",
+    label: "Other size",
+    description: "A common size (Letter, A4, Digest…) or one you type.",
   },
 ];
 

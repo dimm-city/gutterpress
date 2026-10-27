@@ -1,7 +1,9 @@
 <script lang="ts">
   /**
-   * Details section of ProjectSettingsView — title, authors, output filename,
-   * source files. All state + `api.manifest.*` calls live in
+   * Details section of ProjectSettingsView — title, authors, chapters, page
+   * size, publish targets. It saves as you go: a choice commits at once; a
+   * text field commits on `change` (blur or Enter) via
+   * `controller.flushPendingSave`. All state + `api.manifest.*` calls live in
    * `DetailsSectionController` (passed as the single `controller` prop); this
    * child renders the controller's rune fields and calls its intent methods
    * directly (plain text fields bind straight to controller fields via
@@ -38,7 +40,7 @@
   );
 
   // The stylesheet and the manifest drifted apart (hand-edited `@page`, or an
-  // older book): say so, since Save puts them back in step.
+  // older book): say so, and offer to put them back in step.
   const pageDrift = $derived.by(() => {
     const css = controller.pageSetup?.css;
     const bounds = controller.pageSetup?.bounds;
@@ -49,7 +51,7 @@
     const inches = (w: number, h: number) => `${pointsToInches(w)} × ${pointsToInches(h)} in`;
     return (
       `Your stylesheet (${css.file}) prints at ${inches(css.width, css.height)}, but this book is ` +
-      `checked against ${inches(bounds.width, bounds.height)}. Save to make them match.`
+      `checked against ${inches(bounds.width, bounds.height)}.`
     );
   });
 
@@ -84,7 +86,25 @@
 </script>
 
 <section class="block">
-  <h3>Details</h3>
+  <!-- The heading shares its row with the save badge and "Save as template…"
+       (the DesignSection / ExtensionsSection head-row pattern): there is no
+       Save button — every change here saves as you go. -->
+  <div class="block-head">
+    <h3>Details</h3>
+    <div class="row">
+      {#if controller.detailsSaveStatus === "saving"}<span class="save-status saving" aria-live="polite">Saving…</span>
+      {:else if controller.detailsSaveStatus === "saved"}<span class="save-status saved" aria-live="polite">Changes saved</span>{/if}
+      {#if onSaveAsTemplate}
+        <button
+          class="ghost small"
+          onclick={(e) => onSaveAsTemplate?.(e.currentTarget as HTMLButtonElement)}
+          title="Save this book as a reusable starter for new books"
+        >
+          Save as template…
+        </button>
+      {/if}
+    </div>
+  </div>
   {#if controller.detailsError}
     <p class="error" role="alert">{controller.detailsError}</p>
   {/if}
@@ -97,6 +117,7 @@
       class="input"
       type="text"
       bind:value={controller.titleDraft}
+      onchange={() => controller.flushPendingSave()}
       placeholder="Untitled book"
     />
   </label>
@@ -110,6 +131,7 @@
             type="text"
             value={controller.authorsDraft[i]}
             oninput={(e) => controller.setAuthor(i, e.currentTarget.value)}
+            onchange={() => controller.flushPendingSave()}
             placeholder="Author name"
             aria-label={`Author ${i + 1}`}
           />
@@ -122,11 +144,11 @@
     </div>
   </div>
   <div class="field">
-    <span class="lbl">Source files</span>
+    <span class="lbl">Chapters</span>
     {#if controller.sourceFiles.length === 0}
-      <p class="hint">No markdown files found in this book yet.</p>
+      <p class="hint">No markdown files in this book folder yet.</p>
     {:else}
-      <ul class="source-list" aria-label="Source files (drag to reorder)">
+      <ul class="source-list" aria-label="Chapters (drag to reorder)">
         {#each controller.sourceFiles as entry, i (entry.path)}
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
           <li
@@ -149,7 +171,7 @@
             />
             <span class="source-path" class:mono={true}>{entry.path}</span>
             {#if entry.missing}
-              <span class="missing" title="This manifest entry has no matching file in this book">missing</span>
+              <span class="missing" title="This file is listed in the book but isn't in the folder.">missing</span>
             {/if}
             <span class="row-move">
               <button
@@ -170,13 +192,13 @@
           </li>
         {/each}
       </ul>
-      <span class="hint">Drag rows (or use the arrows) to set the chapter order. Unchecked files are left out of the book.</span>
+      <span class="hint">Your book's markdown files, in reading order. Drag rows (or use the arrows) to reorder; unchecked files are left out.</span>
     {/if}
   </div>
-  <!-- Page size (#357): the wizard's "What are you designing it for?" choices
-       (shared #lib/page-size-choices), changeable after the book exists. Saved
-       with the rest of the details: the manifest's preset + bounds and the
-       stylesheet's page size are written together. -->
+  <!-- Page size (#357): the wizard's "What size should the pages be?" choices
+       (shared #lib/page-size-choices), changeable after the book exists. A
+       choice writes the manifest's preset + bounds and the stylesheet's page
+       size together, as soon as it is complete. -->
   {#if controller.pageSetup}
     <div class="field" role="radiogroup" aria-label="Page size">
       <span class="lbl">Page size</span>
@@ -199,19 +221,29 @@
         {/each}
       </ul>
       {#if controller.presetDraft === "custom"}
-        <PageSizeFields
-          idPrefix="details"
-          bind:sizeChoice={controller.sizeChoice}
-          bind:widthIn={controller.widthIn}
-          bind:heightIn={controller.heightIn}
-        />
+        <!-- The size select's and the inches inputs' `change` bubbles here
+             after the bound values updated; PageSizeFields itself is shared
+             with the wizard and stays a plain bindable component. -->
+        <div class="size-fields" onchange={() => controller.flushPendingSave({ page: true })}>
+          <PageSizeFields
+            idPrefix="details"
+            bind:sizeChoice={controller.sizeChoice}
+            bind:widthIn={controller.widthIn}
+            bind:heightIn={controller.heightIn}
+          />
+        </div>
+        {#if controller.pageIncomplete}
+          <span class="hint">Enter a width and height to save the page size.</span>
+        {/if}
       {/if}
       {#if pageDrift}
-        <p class="tool-note" role="note">{pageDrift}</p>
+        <p class="tool-note" role="note">
+          {pageDrift}
+          <button class="ghost small" onclick={controller.matchPageSize}>Use this size in the stylesheet too</button>
+        </p>
       {/if}
       <span class="hint">
-        Saving updates the size your book prints at and the size your finished
-        PDF is checked against, together.
+        The size your book prints at and the size the finished PDF is checked against.
       </span>
     </div>
   {/if}
@@ -220,7 +252,7 @@
        new-book wizard (shared #lib/publish-targets), so the two surfaces
        never describe a destination differently. -->
   <div class="field">
-    <span class="lbl">Publish targets</span>
+    <span class="lbl">Check the PDF against</span>
     <ul class="target-list">
       {#each PUBLISH_TARGET_CHOICES as choice (choice.id)}
         <li>
@@ -242,23 +274,9 @@
       <p class="tool-note" role="note">{targetToolGap}</p>
     {/if}
     <span class="hint">
-      Checked destinations are validated when you build. With none checked,
-      only the general print checks run.
+      Other places you publish to (Amazon KDP, Google Drive…) need no check here — you choose
+      where to send the PDF when you publish. With none checked, only the general print checks run.
     </span>
-  </div>
-  <div class="details-actions">
-    <button class="primary small app-btn-primary" onclick={controller.saveDetails} disabled={controller.detailsSaving}>
-      {controller.detailsSaving ? "Saving…" : "Save details"}
-    </button>
-    {#if onSaveAsTemplate}
-      <button
-        class="ghost small"
-        onclick={(e) => onSaveAsTemplate?.(e.currentTarget as HTMLButtonElement)}
-        title="Save this book as a reusable starter for new books"
-      >
-        Save as template…
-      </button>
-    {/if}
   </div>
 </section>
 
@@ -273,7 +291,11 @@
   .target-desc { font-size: 11px; color: var(--app-text-muted); line-height: 1.35; }
   .tool-note { margin: 4px 0 0; font-size: 11px; line-height: 1.45; color: var(--app-warning-text); }
 
-  .details-actions { display: flex; align-items: center; gap: 8px; }
+  .save-status { font-size: 11px; }
+  .save-status.saving { color: var(--app-text-muted); }
+  .save-status.saved { color: var(--app-success-text); }
+  .size-fields { display: flex; flex-direction: column; gap: 4px; }
+  .tool-note .ghost { margin-left: 6px; vertical-align: baseline; }
   .authors { display: flex; flex-direction: column; gap: 4px; }
   .author-row { display: flex; gap: 4px; align-items: center; }
   .author-row .input { flex: 1; }

@@ -1,24 +1,33 @@
 /**
  * DetailsSectionController — the single owner of the Details section's state
- * + logic (title, authors, output filename, source files).
+ * + logic (title, authors, chapters, page size, publish targets).
  *
- * The page size (#357) rides along as drafts: it is read back from the manifest
- * + stylesheet on load and written (both together) by the same Save button,
- * only when it actually changed.
+ * Details saves as you go — there is no Save button. A choice (preset,
+ * target, chapter order, remove author) commits at once; a text field (title,
+ * author) commits when the view reports `change` (blur or Enter) through
+ * `flushPendingSave`, which the panel also calls on tab switch, close and
+ * unmount so nothing typed is lost. Each commit writes only what differs from
+ * the manifest as last read (`fields`): a title edit never rewrites `targets`
+ * or the page size. The page size (#357) is written only when its own
+ * controls were touched (`pageTouched`) — or on the drift note's explicit
+ * request (`matchPageSize`) — so the stylesheet is never rewritten as a side
+ * effect of an unrelated edit.
  *
- * Centralises the read manifest subset (`fields`), the four editable drafts
- * (`titleDraft` / `authorsDraft` / `sourceDraft`), the
- * load/save flags, and the author-list array intents (`addAuthor` /
- * `removeAuthor` / `setAuthor`).
+ * Publish targets: a manifest with no `targets:` key shows the preset's
+ * default (dtrpg → DriveThruRPG) and keeps following the preset until the
+ * author touches a checkbox; only then (or when the key already exists) is
+ * `targets` written, empty included (`targets: []` is the explicit opt-out).
  *
  * Single-owner discipline mirrors `DesignSectionController`
  * (`design-section-controller.svelte.ts`): the component reads the public
  * rune fields directly (including via `bind:value={controller.titleDraft}`
- * for the plain-text drafts) and calls the intent methods.
+ * for the plain-text drafts) and calls the intent methods. Overlapping
+ * commits are serialized on `saveChain` (Design's `commitChain` pattern) so a
+ * flush during an in-flight save runs after it and sees its result.
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
  * (§8): the reactive `projectDir` accessor, the `readManifest` /
- * `writeManifest` host calls, and the `onSaved` / `onError` (toast) hooks.
+ * `writeManifest` / page-setup host calls, and the `onError` (toast) hook.
  * `ProjectConfigFields` is a type-only import — ZERO `node:*` / lib value
  * imports.
  */
@@ -30,6 +39,7 @@ import {
   trimPoints,
   type PresetChoice,
 } from "#lib/page-size-choices.ts";
+import { defaultTargetsFor } from "#lib/publish-targets.ts";
 import {
   buildSourceList,
   moveEntry,
@@ -43,13 +53,14 @@ export interface DetailsSectionDeps {
   projectDir: () => string | null;
   /** Read the author-facing manifest subset. */
   readManifest: (projectDir: string) => Promise<ProjectConfigFields>;
-  /** Apply manifest field updates (one yaml round-trip); returns the saved state. */
+  /** Apply manifest field updates (one yaml round-trip; only the keys present
+   *  are written); returns the saved state. */
   writeManifest: (
     projectDir: string,
     updates: ProjectConfigFields,
   ) => Promise<ProjectConfigFields>;
   /** List the project's markdown files (project-relative paths) — the
-   *  universe the source-files include/exclude list is built from. */
+   *  universe the chapters include/exclude list is built from. */
   listMarkdownFiles: (projectDir: string) => Promise<string[]>;
   /** Which of the print tools (`qpdf`/`gs`) are missing on this computer.
    *  Best-effort: a rejection just means no tool note is shown. */
@@ -59,30 +70,30 @@ export interface DetailsSectionDeps {
   readPageSetup?: (projectDir: string) => Promise<PageSetup>;
   /** Write the page size to the manifest AND the stylesheet together (#357). */
   writePageSetup?: (projectDir: string, choice: PageSizeChoice) => Promise<PageSetup>;
-  /** Fired after a successful save (the panel wires this to a toast). */
-  onSaved?: () => void;
   /** Fired after a load/save failure (the panel wires this to a toast). */
   onError?: (message: string) => void;
 }
+
+const sameList = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((v, i) => v === b[i]);
 
 export class DetailsSectionController {
   // ── Public rune state (read by the template; mutated only via methods) ──────
   /** The manifest subset as last read/saved from disk. */
   fields = $state<ProjectConfigFields>({});
-  /** True while a save round-trip is in flight. */
-  detailsSaving = $state(false);
+  /** The save badge: idle until something is written, then saving → saved. */
+  detailsSaveStatus = $state<"idle" | "saving" | "saved">("idle");
   /** Last load/save error, or null. */
   detailsError = $state<string | null>(null);
   /** Editable title draft — bound directly from the template. */
   titleDraft = $state("");
-  /** Editable output-filename draft — bound directly from the template. */
   /** Editable author-name drafts, one per row. */
   authorsDraft = $state<string[]>([]);
-  /** The source-files list: every project markdown file, ordered, each row
+  /** The chapters list: every project markdown file, ordered, each row
    *  included or excluded (the DnD editor's model — see source-files.ts). */
   sourceFiles = $state<SourceFileEntry[]>([]);
   /** Editable publish-target selection (ADR 0008) — the destinations this
-   *  book is validated against. Saved with the rest of the details. */
+   *  book is validated against. */
   targetsDraft = $state<string[]>([]);
   /** Tool ids (`qpdf`/`gs`) missing on this computer, for the note beside a
    *  checked destination that needs them. Empty when the probe failed. */
@@ -104,6 +115,13 @@ export class DetailsSectionController {
    *  an explicit manifest (never the "all files" null sentinel), so a blind
    *  save can't silently widen the book to files we couldn't see. */
   private scanOk = false;
+  /** True once the manifest has a `targets:` key or the author touched a
+   *  checkbox; until then the draft follows the preset's default and is
+   *  never written. */
+  private targetsExplicit = false;
+  /** True when a page-size control was touched since the last page write. */
+  private pageTouched = false;
+  private saveChain: Promise<void> = Promise.resolve();
   private readonly deps: DetailsSectionDeps;
 
   constructor(deps: DetailsSectionDeps) {
@@ -126,8 +144,11 @@ export class DetailsSectionController {
       this.fields = f;
       this.titleDraft = f.title ?? "";
       this.authorsDraft = f.authors ?? [];
-      this.targetsDraft = f.targets ?? [];
       await this.loadPageSetup(projectDir);
+      this.targetsExplicit = f.targets !== undefined;
+      this.targetsDraft = f.targets ?? defaultTargetsFor(this.pageSetup?.preset ?? null);
+      this.pageTouched = false;
+      this.detailsSaveStatus = "idle";
       this.scanOk = scan.ok;
       // Failed scan: fall back to the manifest's own entries as the universe
       // so they stay editable without every row being flagged "missing".
@@ -182,9 +203,9 @@ export class DetailsSectionController {
   }
 
   /**
-   * Whether saving must write the page size: the choice differs from what is
+   * Whether a page write has something to do: the choice differs from what is
    * recorded, or the stylesheet prints at a size other than the manifest's
-   * (the two halves drifted — saving puts them back in step).
+   * (the two halves drifted — a write puts them back in step).
    */
   get pageDirty(): boolean {
     const setup = this.pageSetup;
@@ -201,78 +222,112 @@ export class DetailsSectionController {
     return !!css && !!b && (Math.abs(css.width - b.width) >= 0.5 || Math.abs(css.height - b.height) >= 0.5);
   }
 
+  /** Choose a preset: the targets follow it while the manifest has none of its own. */
   setPreset = (preset: PresetChoice): void => {
     this.presetDraft = preset;
+    if (!this.targetsExplicit) this.targetsDraft = defaultTargetsFor(preset);
+    void this.flushPendingSave({ page: true });
   };
+
+  /** The drift note's action: write the recorded size to the stylesheet too. */
+  matchPageSize = (): Promise<void> => this.flushPendingSave({ page: true });
 
   // ── Publish-target intents (ADR 0008) ───────────────────────────────────────
   toggleTarget = (id: string): void => {
     this.targetsDraft = this.targetsDraft.includes(id)
       ? this.targetsDraft.filter((t) => t !== id)
       : [...this.targetsDraft, id];
+    this.targetsExplicit = true;
+    void this.flushPendingSave();
   };
 
   // ── Author-list intents ──────────────────────────────────────────────────────
+  /** A new, empty row — nothing to write until a name is typed (an empty row trims away). */
   addAuthor = (): void => {
     this.authorsDraft = [...this.authorsDraft, ""];
   };
 
   removeAuthor = (i: number): void => {
     this.authorsDraft = this.authorsDraft.filter((_, idx) => idx !== i);
+    void this.flushPendingSave();
   };
 
+  /** Draft only: the row's `change` (blur or Enter) commits it. */
   setAuthor = (i: number, v: string): void => {
     this.authorsDraft = this.authorsDraft.map((a, idx) => (idx === i ? v : a));
   };
 
-  // ── Source-files intents (DnD reorder + include/exclude) ─────────────────────
+  // ── Chapter intents (DnD reorder + include/exclude) ──────────────────────────
   moveSourceFile = (from: number, to: number): void => {
     this.sourceFiles = moveEntry(this.sourceFiles, from, to);
+    void this.flushPendingSave();
   };
 
   setSourceIncluded = (i: number, included: boolean): void => {
     this.sourceFiles = setIncluded(this.sourceFiles, i, included);
+    void this.flushPendingSave();
   };
 
   // ── Save ──────────────────────────────────────────────────────────────────
-  saveDetails = async (): Promise<void> => {
+  /**
+   * Write whatever differs from the manifest as last read. `page: true` marks
+   * the page-size controls as touched, so the page size is written too when
+   * it changed. Chained after any in-flight commit, so two flushes never
+   * interleave and the later one sees the earlier one's result.
+   */
+  flushPendingSave = (opts?: { page?: boolean }): Promise<void> => {
+    if (opts?.page) this.pageTouched = true;
+    this.saveChain = this.saveChain.then(() => this.commitChanges());
+    return this.saveChain;
+  };
+
+  private async commitChanges(): Promise<void> {
     const projectDir = this.deps.projectDir();
     if (!projectDir) return;
-    if (this.pageIncomplete) {
-      this.detailsError = "Enter a width and height for your custom page size.";
-      return;
+    const updates: ProjectConfigFields = {};
+    const title = this.titleDraft.trim();
+    if (title !== (this.fields.title ?? "")) updates.title = title;
+    const authors = this.authorsDraft.map((a) => a.trim()).filter((a) => a.length > 0);
+    if (!sameList(authors, this.fields.authors ?? [])) updates.authors = authors;
+    const included = this.sourceFiles.filter((e) => e.included).map((e) => e.path);
+    // Only a successful scan may collapse to the "all files" null sentinel —
+    // without the true universe that collapse could silently widen the book.
+    const src = this.scanOk
+      ? toManifestFiles(this.sourceFiles, this.allMarkdownFiles)
+      : included.length > 0
+        ? included
+        : null;
+    const recorded = this.fields.sourceFiles ?? null;
+    if ((src === null) !== (recorded === null) || (src && recorded && !sameList(src, recorded))) {
+      updates.sourceFiles = src;
     }
-    const trimmedAuthors = this.authorsDraft.map((a) => a.trim()).filter((a) => a.length > 0);
-    this.detailsSaving = true;
+    // Written only once explicit, empty included: `targets: []` is the
+    // explicit "no destination policies" opt-out, not an omission. A manifest
+    // with no key yet gets one on the first touch, whatever the selection.
+    if (this.targetsExplicit) {
+      const recorded = this.fields.targets;
+      if (recorded === undefined || !sameList(this.targetsDraft, recorded)) {
+        updates.targets = [...this.targetsDraft];
+      }
+    }
+    const choice = this.pageChoice;
+    const writePage =
+      this.pageTouched && !!choice && this.pageDirty && !this.pageIncomplete && !!this.deps.writePageSetup;
+    const hasUpdates = Object.keys(updates).length > 0;
+    if (!hasUpdates && !writePage) return;
+    this.detailsSaveStatus = "saving";
     this.detailsError = null;
     try {
-      const included = this.sourceFiles.filter((e) => e.included).map((e) => e.path);
-      // Only a successful scan may collapse to the "all files" null sentinel —
-      // without the true universe that collapse could silently widen the book.
-      const src = this.scanOk
-        ? toManifestFiles(this.sourceFiles, this.allMarkdownFiles)
-        : included.length > 0
-          ? included
-          : null;
-      const out = await this.deps.writeManifest(projectDir, {
-        title: this.titleDraft.trim(),
-        authors: trimmedAuthors,
-        sourceFiles: src,
-        // Always sent, empty included: `targets: []` is the explicit "no
-        // destination policies" opt-out, not an omission.
-        targets: [...this.targetsDraft],
-      });
-      this.fields = out;
-      const choice = this.pageChoice;
-      if (choice && this.pageDirty && this.deps.writePageSetup) {
-        this.applyPageSetup(await this.deps.writePageSetup(projectDir, choice));
-      }
-      this.deps.onSaved?.();
+      if (hasUpdates) this.fields = await this.deps.writeManifest(projectDir, updates);
+      if (writePage) this.applyPageSetup(await this.deps.writePageSetup!(projectDir, choice!));
+      // An incomplete custom size stays pending until its fields are filled in.
+      this.pageTouched = this.pageIncomplete;
+      this.detailsSaveStatus = "saved";
     } catch (e) {
+      // The drafts stay as typed, so the author can retry; the error says why.
       this.detailsError = e instanceof Error ? e.message : String(e);
       this.deps.onError?.(`Could not save details: ${this.detailsError}`);
-    } finally {
-      this.detailsSaving = false;
+      this.detailsSaveStatus = "idle";
     }
-  };
+  }
 }

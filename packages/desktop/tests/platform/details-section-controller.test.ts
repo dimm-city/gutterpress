@@ -15,9 +15,17 @@ const spy = (): ((...a: unknown[]) => void) & Spy => {
   return fn;
 };
 
+/** Flush the microtask queue so a `void flushPendingSave()` settles. */
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+const BOOK_SETUP: PageSetup = {
+  preset: "book",
+  bounds: { width: 432, height: 648, tolerance: 0.5 },
+  css: { width: 432, height: 648, file: "styles/book.css" },
+};
+
 interface Harness {
   ctrl: DetailsSectionController;
-  onSaved: ReturnType<typeof spy>;
   onError: ReturnType<typeof spy>;
   projectDir: string | null;
   fields: ProjectConfigFields;
@@ -25,17 +33,21 @@ interface Harness {
   readCalls: number;
   listCalls: number;
   writeCalls: Array<{ dir: string; updates: ProjectConfigFields }>;
+  pageWrites: PageSizeChoice[];
+  /** What `readPageSetup` answers (null = the fake rejects: no page-size control). */
+  pageSetup: PageSetup | null;
   failNextWrite: boolean;
   failList: boolean;
+  /** When set, the next `writeManifest` parks until released (for the in-flight test). */
+  gateNextWrite: boolean;
+  releaseWrite: (() => void) | null;
 }
 
 function make(
-  over: Partial<{ noProject: boolean; fields: ProjectConfigFields; allFiles: string[] }> = {},
+  over: Partial<{ noProject: boolean; fields: ProjectConfigFields; allFiles: string[]; pageSetup: PageSetup | null }> = {},
 ): Harness {
-  const onSaved = spy();
   const onError = spy();
   const h = {
-    onSaved,
     onError,
     projectDir: over.noProject ? null : "/proj",
     fields: over.fields ?? { title: "My Book", authors: ["A", "B"], sourceFiles: ["a.md", "b.md"] },
@@ -43,8 +55,12 @@ function make(
     readCalls: 0,
     listCalls: 0,
     writeCalls: [],
+    pageWrites: [],
+    pageSetup: over.pageSetup === undefined ? BOOK_SETUP : over.pageSetup,
     failNextWrite: false,
     failList: false,
+    gateNextWrite: false,
+    releaseWrite: null,
   } as Harness;
   h.ctrl = new DetailsSectionController({
     projectDir: () => h.projectDir,
@@ -52,22 +68,38 @@ function make(
       h.readCalls++;
       return Promise.resolve(h.fields);
     },
-    writeManifest: (dir, updates) => {
+    writeManifest: async (dir, updates) => {
       h.writeCalls.push({ dir, updates });
+      if (h.gateNextWrite) {
+        h.gateNextWrite = false;
+        await new Promise<void>((resolve) => {
+          h.releaseWrite = resolve;
+        });
+      }
       if (h.failNextWrite) {
         h.failNextWrite = false;
-        return Promise.reject(new Error("disk full"));
+        throw new Error("disk full");
       }
       const out = { ...h.fields, ...updates };
       h.fields = out;
-      return Promise.resolve(out);
+      return out;
     },
     listMarkdownFiles: () => {
       h.listCalls++;
       if (h.failList) return Promise.reject(new Error("scan failed"));
       return Promise.resolve(h.allFiles);
     },
-    onSaved: () => onSaved(),
+    readPageSetup: () => (h.pageSetup ? Promise.resolve(h.pageSetup) : Promise.reject(new Error("nope"))),
+    writePageSetup: (_d, choice) => {
+      h.pageWrites.push(choice);
+      const page = choice.page ?? (choice.preset === "dtrpg" ? { width: 621, height: 810 } : { width: 432, height: 648 });
+      h.pageSetup = {
+        preset: choice.preset,
+        bounds: { ...page, tolerance: 0.5 },
+        css: { ...page, file: "styles/book.css" },
+      };
+      return Promise.resolve(h.pageSetup);
+    },
     onError: (m) => onError(m),
   });
   return h;
@@ -76,14 +108,14 @@ function make(
 test("initial public rune state matches the panel defaults", () => {
   const { ctrl } = make();
   expect(ctrl.fields).toEqual({});
-  expect(ctrl.detailsSaving).toBe(false);
+  expect(ctrl.detailsSaveStatus).toBe("idle");
   expect(ctrl.detailsError).toBeNull();
   expect(ctrl.titleDraft).toBe("");
   expect(ctrl.authorsDraft).toEqual([]);
   expect(ctrl.sourceFiles).toEqual([]);
 });
 
-test("loadDetails populates fields, drafts, and the source-files list (manifest order first, extras excluded)", async () => {
+test("loadDetails populates fields, drafts, and the chapters list (manifest order first, extras excluded)", async () => {
   const h = make();
   await h.ctrl.loadDetails();
   expect(h.readCalls).toBe(1);
@@ -95,6 +127,7 @@ test("loadDetails populates fields, drafts, and the source-files list (manifest 
     { path: "b.md", included: true },
     { path: "c.md", included: false },
   ]);
+  expect(h.ctrl.detailsSaveStatus).toBe("idle");
 });
 
 test("loadDetails no-ops without a project dir", async () => {
@@ -125,14 +158,15 @@ test("loadDetails survives a failed file scan: manifest entries stay editable, n
   ]);
 });
 
-test("after a failed scan, saving preserves the explicit list — it never collapses to the all-files sentinel", async () => {
+test("after a failed scan, a chapter edit writes the explicit list — it never collapses to the all-files sentinel", async () => {
   const h = make();
   h.failList = true;
   await h.ctrl.loadDetails();
-  await h.ctrl.saveDetails();
+  h.ctrl.moveSourceFile(1, 0);
+  await settle();
   // The manifest listed [a.md, b.md] explicitly; with the universe unknown a
   // null here could silently widen the book to unseen files.
-  expect(h.writeCalls[0]!.updates.sourceFiles).toEqual(["a.md", "b.md"]);
+  expect(h.writeCalls.map((w) => w.updates)).toEqual([{ sourceFiles: ["b.md", "a.md"] }]);
 });
 
 test("addAuthor/setAuthor/removeAuthor mutate the drafts array", () => {
@@ -157,60 +191,101 @@ test("moveSourceFile / setSourceIncluded drive the list model", async () => {
   expect(h.ctrl.sourceFiles[1]).toEqual({ path: "a.md", included: false });
 });
 
-test("saveDetails trims authors and writes the ordered included source files", async () => {
+// ── Saves as you go: write only what changed ──────────────────────────────────
+
+test("a title change writes only { title }, trimmed, and the badge reads saved", async () => {
   const h = make();
   await h.ctrl.loadDetails();
   h.ctrl.titleDraft = "  New Title  ";
-  h.ctrl.authorsDraft = ["  Ada ", "", "  Grace"];
-  await h.ctrl.saveDetails();
-  expect(h.writeCalls.length).toBe(1);
-  expect(h.writeCalls[0]).toEqual({
-    dir: "/proj",
-    updates: {
-      title: "New Title",
-      authors: ["Ada", "Grace"],
-      // a.md + b.md included (manifest), c.md excluded → explicit list.
-      sourceFiles: ["a.md", "b.md"],
-      // ADR 0008: always sent, so an empty selection lands as the explicit
-      // `targets: []` opt-out rather than leaving a stale list behind.
-      targets: [],
-    },
-  });
-  expect(h.ctrl.detailsSaving).toBe(false);
+  await h.ctrl.flushPendingSave();
+  expect(h.writeCalls).toEqual([{ dir: "/proj", updates: { title: "New Title" } }]);
+  expect(h.ctrl.fields.title).toBe("New Title");
+  expect(h.ctrl.detailsSaveStatus).toBe("saved");
   expect(h.ctrl.detailsError).toBeNull();
-  expect(h.onSaved.calls.length).toBe(1);
+  expect(h.pageWrites).toEqual([]);
 });
 
-test("saveDetails sends null sourceFiles when everything is included in natural order (the 'all chapters' sentinel)", async () => {
-  const h = make({ fields: {} });
+test("author edits write only { authors }, trimmed, empty rows dropped; adding an empty row writes nothing", async () => {
+  const h = make();
   await h.ctrl.loadDetails();
-  await h.ctrl.saveDetails();
-  expect(h.writeCalls[0]!.updates.sourceFiles).toBeNull();
+  h.ctrl.addAuthor();
+  await settle();
+  expect(h.writeCalls).toEqual([]);
+  h.ctrl.setAuthor(2, "  Grace ");
+  await h.ctrl.flushPendingSave();
+  expect(h.writeCalls.map((w) => w.updates)).toEqual([{ authors: ["A", "B", "Grace"] }]);
+  h.ctrl.removeAuthor(0);
+  await settle();
+  expect(h.writeCalls.map((w) => w.updates).at(-1)).toEqual({ authors: ["B", "Grace"] });
 });
 
-test("a reorder is persisted as an explicit ordered list", async () => {
+test("an unchanged flush writes nothing and leaves the badge idle", async () => {
+  const h = make();
+  await h.ctrl.loadDetails();
+  h.ctrl.titleDraft = " My Book ";
+  await h.ctrl.flushPendingSave();
+  expect(h.writeCalls).toEqual([]);
+  expect(h.pageWrites).toEqual([]);
+  expect(h.ctrl.detailsSaveStatus).toBe("idle");
+});
+
+test("a chapter reorder is persisted at once as an explicit ordered list; the all-files default is the null sentinel", async () => {
   const h = make({ fields: {} });
   await h.ctrl.loadDetails();
   h.ctrl.moveSourceFile(2, 0);
-  await h.ctrl.saveDetails();
-  expect(h.writeCalls[0]!.updates.sourceFiles).toEqual(["c.md", "a.md", "b.md"]);
+  await settle();
+  expect(h.writeCalls.map((w) => w.updates)).toEqual([{ sourceFiles: ["c.md", "a.md", "b.md"] }]);
+  h.ctrl.moveSourceFile(0, 2);
+  await settle();
+  expect(h.writeCalls.map((w) => w.updates).at(-1)).toEqual({ sourceFiles: null });
 });
 
-test("saveDetails no-ops without a project dir", async () => {
+test("unticking a chapter writes the included list", async () => {
+  const h = make();
+  await h.ctrl.loadDetails();
+  h.ctrl.setSourceIncluded(1, false);
+  await settle();
+  expect(h.writeCalls.map((w) => w.updates)).toEqual([{ sourceFiles: ["a.md"] }]);
+});
+
+test("flushPendingSave no-ops without a project dir", async () => {
   const h = make({ noProject: true });
-  await h.ctrl.saveDetails();
+  h.ctrl.titleDraft = "x";
+  await h.ctrl.flushPendingSave();
   expect(h.writeCalls.length).toBe(0);
 });
 
-test("a failed save surfaces detailsError + onError and clears detailsSaving", async () => {
+test("a failed save keeps the drafts, surfaces detailsError + onError, and drops the badge to idle", async () => {
   const h = make();
+  await h.ctrl.loadDetails();
   h.failNextWrite = true;
-  await h.ctrl.saveDetails();
-  expect(h.ctrl.detailsSaving).toBe(false);
+  h.ctrl.titleDraft = "Kept";
+  await h.ctrl.flushPendingSave();
+  expect(h.ctrl.detailsSaveStatus).toBe("idle");
   expect(h.ctrl.detailsError).toContain("disk full");
   expect(h.onError.calls.length).toBe(1);
   expect(String(h.onError.calls[0][0])).toContain("disk full");
-  expect(h.onSaved.calls.length).toBe(0);
+  expect(h.ctrl.titleDraft).toBe("Kept");
+  // A retry writes the same change.
+  await h.ctrl.flushPendingSave();
+  expect(h.writeCalls.map((w) => w.updates)).toEqual([{ title: "Kept" }, { title: "Kept" }]);
+  expect(h.ctrl.detailsSaveStatus).toBe("saved");
+});
+
+test("a flush during an in-flight save runs after it and sees its result (no lost update)", async () => {
+  const h = make();
+  await h.ctrl.loadDetails();
+  h.gateNextWrite = true;
+  h.ctrl.titleDraft = "First";
+  const first = h.ctrl.flushPendingSave();
+  await settle();
+  expect(h.releaseWrite).not.toBeNull(); // parked on the write
+  h.ctrl.titleDraft = "Second";
+  const second = h.ctrl.flushPendingSave();
+  h.releaseWrite!();
+  await Promise.all([first, second]);
+  expect(h.writeCalls.map((w) => w.updates)).toEqual([{ title: "First" }, { title: "Second" }]);
+  expect(h.ctrl.fields.title).toBe("Second");
 });
 
 // ── Publish targets (ADR 0008) ────────────────────────────────────────────
@@ -221,68 +296,63 @@ test("loadDetails seeds the target draft from the manifest", async () => {
   expect(h.ctrl.targetsDraft).toEqual(["dtrpg"]);
 });
 
-test("toggleTarget adds and removes a destination", async () => {
-  const h = make({ fields: { targets: ["dtrpg"] } });
+test("toggling a target writes only { targets }, empty included", async () => {
+  const h = make({ fields: { title: "T", targets: ["dtrpg"] } });
   await h.ctrl.loadDetails();
-
   h.ctrl.toggleTarget("itch");
+  await settle();
   expect(h.ctrl.targetsDraft).toEqual(["dtrpg", "itch"]);
-
   h.ctrl.toggleTarget("dtrpg");
-  expect(h.ctrl.targetsDraft).toEqual(["itch"]);
+  h.ctrl.toggleTarget("itch");
+  await settle();
+  expect(h.ctrl.targetsDraft).toEqual([]);
+  expect(h.writeCalls.map((w) => w.updates)).toEqual([{ targets: ["dtrpg", "itch"] }, { targets: [] }]);
 });
 
-test("saveDetails writes the edited target selection", async () => {
-  const h = make({ fields: { targets: ["dtrpg"] } });
+test("a book with no targets: key and preset dtrpg shows DriveThruRPG checked, and a title change writes no targets", async () => {
+  const h = make({
+    fields: { title: "T" },
+    pageSetup: { preset: "dtrpg", bounds: { width: 621, height: 810, tolerance: 0.5 }, css: null },
+  });
   await h.ctrl.loadDetails();
+  expect(h.ctrl.targetsDraft).toEqual(["dtrpg"]);
+  h.ctrl.titleDraft = "Renamed";
+  await h.ctrl.flushPendingSave();
+  expect(h.writeCalls.map((w) => w.updates)).toEqual([{ title: "Renamed" }]);
+});
+
+test("changing the preset on a book with no targets: key reseeds the default targets; once touched they are the author's", async () => {
+  const h = make({ fields: { title: "T" } }); // BOOK_SETUP: preset book, no targets
+  await h.ctrl.loadDetails();
+  expect(h.ctrl.targetsDraft).toEqual([]);
+  h.ctrl.setPreset("dtrpg");
+  await settle();
+  expect(h.ctrl.targetsDraft).toEqual(["dtrpg"]);
+  // The preset change wrote the page size, never the (still implicit) targets.
+  expect(h.pageWrites).toEqual([{ preset: "dtrpg" }]);
+  expect(h.writeCalls).toEqual([]);
   h.ctrl.toggleTarget("dtrpg");
-  await h.ctrl.saveDetails();
-  expect(h.writeCalls[0]!.updates.targets).toEqual([]);
+  await settle();
+  expect(h.writeCalls.map((w) => w.updates)).toEqual([{ targets: [] }]);
+  h.ctrl.setPreset("book");
+  await settle();
+  expect(h.ctrl.targetsDraft).toEqual([]);
+  h.ctrl.setPreset("dtrpg");
+  await settle();
+  expect(h.ctrl.targetsDraft).toEqual([]); // explicit now: the preset no longer reseeds
 });
 
 // ── Page size (#357) ─────────────────────────────────────────────────────────
 
-function makePage(setup: PageSetup) {
-  const h = make();
-  const writes: PageSizeChoice[] = [];
-  let current = setup;
-  const ctrl = new DetailsSectionController({
-    projectDir: () => "/proj",
-    readManifest: () => Promise.resolve(h.fields),
-    writeManifest: (_d, updates) => Promise.resolve({ ...h.fields, ...updates }),
-    listMarkdownFiles: () => Promise.resolve(h.allFiles),
-    readPageSetup: () => Promise.resolve(current),
-    writePageSetup: (_d, choice) => {
-      writes.push(choice);
-      const page = choice.page ?? (choice.preset === "dtrpg" ? { width: 621, height: 810 } : { width: 432, height: 648 });
-      current = {
-        preset: choice.preset,
-        bounds: { ...page, tolerance: 0.5 },
-        css: { ...page, file: "styles/book.css" },
-      };
-      return Promise.resolve(current);
-    },
-  });
-  return { ctrl, writes };
-}
-
-const BOOK_SETUP: PageSetup = {
-  preset: "book",
-  bounds: { width: 432, height: 648, tolerance: 0.5 },
-  css: { width: 432, height: 648, file: "styles/book.css" },
-};
-
 test("loadDetails reads the page size back into the drafts", async () => {
-  const { ctrl } = makePage(BOOK_SETUP);
-  await ctrl.loadDetails();
-  expect(ctrl.presetDraft).toBe("book");
-  expect(ctrl.sizeChoice).toBe("trade");
-  expect(ctrl.pageDirty).toBe(false);
+  const h = make();
+  await h.ctrl.loadDetails();
+  expect(h.ctrl.presetDraft).toBe("book");
+  expect(h.ctrl.sizeChoice).toBe("trade");
+  expect(h.ctrl.pageDirty).toBe(false);
 
-  const odd = makePage({
-    preset: "custom",
-    bounds: { width: 360, height: 504, tolerance: 0.5 },
-    css: null,
+  const odd = make({
+    pageSetup: { preset: "custom", bounds: { width: 360, height: 504, tolerance: 0.5 }, css: null },
   });
   await odd.ctrl.loadDetails();
   expect(odd.ctrl.presetDraft).toBe("custom");
@@ -290,91 +360,75 @@ test("loadDetails reads the page size back into the drafts", async () => {
   expect([odd.ctrl.widthIn, odd.ctrl.heightIn]).toEqual(["5", "7"]);
 });
 
-test("saving without touching the page size does not write it", async () => {
-  const { ctrl, writes } = makePage(BOOK_SETUP);
-  await ctrl.loadDetails();
-  await ctrl.saveDetails();
-  expect(writes).toEqual([]);
+test("choosing another preset writes the page size once, and nothing else", async () => {
+  const h = make();
+  await h.ctrl.loadDetails();
+  h.ctrl.setPreset("dtrpg");
+  await settle();
+  expect(h.pageWrites).toEqual([{ preset: "dtrpg" }]);
+  expect(h.writeCalls).toEqual([]);
+  expect(h.ctrl.pageSetup?.preset).toBe("dtrpg");
+  expect(h.ctrl.pageDirty).toBe(false);
+  expect(h.ctrl.detailsSaveStatus).toBe("saved");
 });
 
-test("choosing another preset and saving writes the page size once", async () => {
-  const { ctrl, writes } = makePage(BOOK_SETUP);
-  await ctrl.loadDetails();
-  ctrl.setPreset("dtrpg");
-  expect(ctrl.pageDirty).toBe(true);
-  await ctrl.saveDetails();
-  expect(writes).toEqual([{ preset: "dtrpg" }]);
-  expect(ctrl.pageSetup?.preset).toBe("dtrpg");
-  expect(ctrl.pageDirty).toBe(false);
+test("a title change never writes the page size, even when the stylesheet drifted; the drift note's action does", async () => {
+  const h = make({ pageSetup: { ...BOOK_SETUP, css: { width: 612, height: 792, file: "styles/book.css" } } });
+  await h.ctrl.loadDetails();
+  expect(h.ctrl.pageDirty).toBe(true);
+  h.ctrl.titleDraft = "Renamed";
+  await h.ctrl.flushPendingSave();
+  expect(h.writeCalls.map((w) => w.updates)).toEqual([{ title: "Renamed" }]);
+  expect(h.pageWrites).toEqual([]);
+  await h.ctrl.matchPageSize();
+  expect(h.pageWrites).toEqual([{ preset: "book" }]);
+  expect(h.ctrl.pageDirty).toBe(false);
 });
 
-test("a custom size is sent in points, from a named size or typed inches", async () => {
-  const { ctrl, writes } = makePage(BOOK_SETUP);
-  await ctrl.loadDetails();
-  ctrl.setPreset("custom");
-  ctrl.sizeChoice = "a4";
-  await ctrl.saveDetails();
-  ctrl.sizeChoice = "custom";
-  ctrl.widthIn = "7.25";
-  ctrl.heightIn = "10";
-  await ctrl.saveDetails();
-  expect(writes).toEqual([
+test("a custom size is sent in points, from a named size or typed inches, when its fields report change", async () => {
+  const h = make();
+  await h.ctrl.loadDetails();
+  h.ctrl.setPreset("custom");
+  await settle();
+  // Trade (the recorded 6 x 9 in) under the custom preset is a preset change only.
+  expect(h.pageWrites).toEqual([{ preset: "custom", page: { width: 432, height: 648 } }]);
+  h.ctrl.sizeChoice = "a4";
+  await h.ctrl.flushPendingSave({ page: true });
+  h.ctrl.sizeChoice = "custom";
+  h.ctrl.widthIn = "7.25";
+  h.ctrl.heightIn = "10";
+  await h.ctrl.flushPendingSave({ page: true });
+  expect(h.pageWrites.slice(1)).toEqual([
     { preset: "custom", page: { width: 595, height: 842 } },
     { preset: "custom", page: { width: 522, height: 720 } },
   ]);
 });
 
-test("an incomplete custom size blocks the save and writes nothing", async () => {
+test("an incomplete custom size saves the other fields and skips the page write until it is complete", async () => {
   const h = make();
-  const writes: PageSizeChoice[] = [];
-  const ctrl = new DetailsSectionController({
-    projectDir: () => "/proj",
-    readManifest: () => Promise.resolve(h.fields),
-    writeManifest: (d, u) => {
-      h.writeCalls.push({ dir: d, updates: u });
-      return Promise.resolve(h.fields);
-    },
-    listMarkdownFiles: () => Promise.resolve(h.allFiles),
-    readPageSetup: () => Promise.resolve(BOOK_SETUP),
-    writePageSetup: (_d, c) => {
-      writes.push(c);
-      return Promise.resolve(BOOK_SETUP);
-    },
-  });
-  await ctrl.loadDetails();
-  ctrl.setPreset("custom");
-  ctrl.sizeChoice = "custom";
-  ctrl.widthIn = "";
-  ctrl.heightIn = "9";
-  await ctrl.saveDetails();
-  expect(ctrl.pageIncomplete).toBe(true);
-  expect(ctrl.detailsError).toContain("width and height");
-  expect(h.writeCalls).toEqual([]);
-  expect(writes).toEqual([]);
-});
-
-test("a stylesheet that drifted from the manifest is brought back in step on save", async () => {
-  const { ctrl, writes } = makePage({
-    ...BOOK_SETUP,
-    css: { width: 612, height: 792, file: "styles/book.css" },
-  });
-  await ctrl.loadDetails();
-  expect(ctrl.pageDirty).toBe(true);
-  await ctrl.saveDetails();
-  expect(writes).toEqual([{ preset: "book" }]);
+  await h.ctrl.loadDetails();
+  h.ctrl.setPreset("custom");
+  await settle();
+  h.pageWrites.length = 0;
+  h.ctrl.sizeChoice = "custom";
+  h.ctrl.widthIn = "";
+  h.ctrl.heightIn = "9";
+  h.ctrl.titleDraft = "Renamed";
+  await h.ctrl.flushPendingSave({ page: true });
+  expect(h.ctrl.pageIncomplete).toBe(true);
+  expect(h.ctrl.detailsError).toBeNull();
+  expect(h.writeCalls.map((w) => w.updates)).toEqual([{ title: "Renamed" }]);
+  expect(h.pageWrites).toEqual([]);
+  // Filling in the width completes it; the pending page write happens now.
+  h.ctrl.widthIn = "7";
+  await h.ctrl.flushPendingSave({ page: true });
+  expect(h.pageWrites).toEqual([{ preset: "custom", page: { width: 504, height: 648 } }]);
 });
 
 test("a failed page-size read leaves the control out and details still load", async () => {
-  const h = make();
-  const ctrl = new DetailsSectionController({
-    projectDir: () => "/proj",
-    readManifest: () => Promise.resolve(h.fields),
-    writeManifest: () => Promise.resolve(h.fields),
-    listMarkdownFiles: () => Promise.resolve(h.allFiles),
-    readPageSetup: () => Promise.reject(new Error("nope")),
-  });
-  await ctrl.loadDetails();
-  expect(ctrl.detailsError).toBeNull();
-  expect(ctrl.pageSetup).toBeNull();
-  expect(ctrl.titleDraft).toBe("My Book");
+  const h = make({ pageSetup: null });
+  await h.ctrl.loadDetails();
+  expect(h.ctrl.detailsError).toBeNull();
+  expect(h.ctrl.pageSetup).toBeNull();
+  expect(h.ctrl.titleDraft).toBe("My Book");
 });

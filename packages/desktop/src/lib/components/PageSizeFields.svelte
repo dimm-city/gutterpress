@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * The custom page-size inputs — a size dropdown plus width/height in inches
-   * for "My own size…". One component for the new-book wizard and Book settings
+   * for "My own size…". One component for the new-book wizard and Book setup
    * (#357), so the two never offer different sizes or word them differently.
    * The choices + arithmetic live in `#lib/page-size-choices.ts`.
    */
