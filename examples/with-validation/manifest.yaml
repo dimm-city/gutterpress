@@ -26,7 +26,6 @@ targets:
 page:
   width: 621
   height: 810
-  tolerance: 0.5
 
 # ---------- Validation Configuration ----------
 # This section demonstrates all validation options.

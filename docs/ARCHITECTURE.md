@@ -524,7 +524,6 @@ chapters:                   # If specified, only these files are included, in or
 page:
   width: 621
   height: 810
-  tolerance: 0.5
 
 # PDF/X settings
 pdfx:

@@ -2,7 +2,7 @@
 
 Gutterpress includes a JSON schema for `manifest.yaml` that provides autocomplete, validation, and documentation directly in your editor.
 
-The schema is **editor-facing only**. Gutterpress itself does not validate `manifest.yaml` against it at build or preview time — an unknown key is simply ignored by `resolveConfig`. (The removed keys are the exception: `plugins`, `engine`, `engineStyles`, `output` and `source.assets` each fail with a message naming their replacement — see `extensions` below. The keys 0.11.23 replaced — `source.files`, `validate`, `lint` and `ink` — still work in 0.11.23, with one notice naming each new spelling.) Wiring the schema into your editor (below) is what turns a typo into visible feedback.
+The schema is **editor-facing only**. Gutterpress itself does not validate `manifest.yaml` against it at build or preview time — an unknown key is simply ignored by `resolveConfig`. (The removed keys are the exception: `plugins`, `engine`, `engineStyles`, `output` and `source.assets` each fail with a message naming their replacement — see `extensions` below. The keys 0.11.23 replaced — `source.files`, `validate`, `lint`, `ink` and `page.tolerance` — still work in 0.11.23, with one notice naming each new spelling.) Wiring the schema into your editor (below) is what turns a typo into visible feedback.
 
 ## Quick Setup
 
@@ -308,7 +308,6 @@ Expected page geometry, in **points** (1in = 72pt).
 > **This is the size the book prints at, and `margin` the margins.** The build writes `@page { size: <width> <height> }` from these values after every stylesheet, so a `size` in a stylesheet's own `@page` (plain or `:first`/`:left`/`:right`; a named page's size is its own) is overridden and reported by the `printsafe/page-size-in-stylesheet` check, and the PDF, the preview and the checks share one size. `page.width`/`page.height` are also what the `pdf.print.page-size` check compares the produced PDF against. In the app, Book setup > Details edits the size and the margins.
 
 - `width` / `height` (number) - Expected size in points. Preset defaults: `dtrpg` 621x810, `book` 432x648 (6x9in).
-- `tolerance` (number) - Allowed deviation in points. Default `0.5`.
 - `bleed` (number) - A bleed in points that `width` x `height` **already contain**, on the top, bottom and outer edges only (the binding edge has none). This is how DriveThruRPG's interior file is cut (8.625x11.25in for an 8.5x11in book), so the `dtrpg` preset sets `9` (0.125in); `book` and `custom` set none. It tells the preview's print overlays, `pdf.print.safe-margins` and pinned art where the trim is; it changes nothing else in the PDF.
 - `safe` (number) - The text rule: how far inside the trim, in points, text must stay on every edge. The preview's **Safe area: text** layer draws it as the dashed line and flags text outside it, and `pdf.print.safe-margins` fails a built PDF whose text is closer. `dtrpg` sets `36` (0.5in, DriveThruRPG's rule), `book` `18` (0.25in); `custom` sets none, and the check is skipped. It is also where every pin sits where `artSafe` is not set; no CSS moves it. At the binding edge `gutter` takes over where it is set.
 - `artSafe` (number) - The art rule: how far inside the trim, in points, art that does not bleed (images, backgrounds, borders, rules) must stay on the top, bottom and outer edges; the binding edge uses `gutter`. Art that runs out to the page's edge is a bleed and is not judged on that edge. The preview's **Safe area: art** layer draws it as the dotted line and flags art outside it, and `pdf.print.safe-margins` fails a built PDF with an image closer, or one that stops in the bleed band (backgrounds and borders are judged in the overlay only). Where none is set, art follows `safe`. `dtrpg` sets `18` (0.25in, DriveThruRPG's rule for non-bleeding art); `book` and `custom` set none. An image pinned to the top, bottom or outside edge (`.gp-pin`) sits on this line, unless it carries `.gp-flush`; no CSS moves it.
@@ -320,7 +319,6 @@ Expected page geometry, in **points** (1in = 72pt).
 page:
   width: 612
   height: 792
-  tolerance: 0.5
   margin:
     top: 72
     bottom: 72
@@ -416,7 +414,6 @@ chapters:
 page:
   width: 432
   height: 648
-  tolerance: 0.5
 
 checks:
   pdf.nav.bookmarks: warn

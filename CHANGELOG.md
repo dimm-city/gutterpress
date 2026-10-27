@@ -49,8 +49,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   `../.markdownlint.jsonc` needs no setting. A manifest written for 0.11.22
   still builds in 0.11.23: the old spellings are read and named, with their
   new spelling, in one notice. Book setup rewrites `source.files` as
-  `chapters` when it saves the chapter list. The `asset.font.approved-files`
-  check, which nothing could switch on, is gone.
+  `chapters` when it saves the chapter list. `page.tolerance` (and `gutterpress
+  new --page-tolerance`) went the same way: the page-size check allows the
+  preset's 0.5pt. The `asset.font.approved-files` check, which nothing could
+  switch on, is gone.
 - **`gutterpress new` no longer insists on `--preset`.** Every starter
   template carries a preset, so leaving the flag out keeps the template's;
   the flag overrides it. `--kind theme` is `--kind look`, the word the rest of

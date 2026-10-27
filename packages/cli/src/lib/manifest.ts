@@ -326,7 +326,8 @@ export function resolveConfigForTarget(
 
 /**
  * `custom` supplies no geometry, so the manifest (or CLI) must: width and
- * height in points are required, tolerance defaults to 0.5pt. The error
+ * height in points are required (the page-size check allows the same 0.5pt
+ * the other presets do). The error
  * names exactly what to add — this is the contract that makes
  * `preset: custom` safe to offer non-technical authors.
  */
@@ -350,7 +351,7 @@ function resolveCustomPage(
   return {
     width: width!,
     height: height!,
-    tolerance: c.page?.tolerance ?? m.page?.tolerance ?? 0.5,
+    tolerance: 0.5,
     bleed: c.page?.bleed ?? m.page?.bleed,
     safe: c.page?.safe ?? m.page?.safe,
     artSafe: c.page?.artSafe ?? m.page?.artSafe,
