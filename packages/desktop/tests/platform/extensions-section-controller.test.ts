@@ -45,6 +45,7 @@ const LOOK_B = entry({ use: "./extensions/zine", label: "Zine", carries: STYLES,
 const FEATURE = entry({ use: "markdown-it-mark", kind: "bundled", label: "Highlight", carries: MARKDOWN });
 const BUNDLED_LOOK = entry({ use: "academic", kind: "bundled", label: "Academic", carries: STYLES });
 const BOTH = entry({ use: "../shared/house", label: "House", carries: { markdown: true, styles: true, snippets: true, components: false }, dir: "/shared/house" });
+const NPM_LOOK = entry({ use: "house-look@1.0.0", kind: "npm", name: "house-look", version: "1.0.0", label: "House look", carries: STYLES });
 const BROKEN = entry({ use: "./missing", label: "missing", warnings: ["Not found: /proj/missing"] });
 
 const REC_MARK: BundledExtensionInfo = { use: "markdown-it-mark", label: "Highlight", description: "d", look: false };
@@ -176,10 +177,13 @@ function make(
         ...(exportName ? { export: exportName } : {}),
         ...(h.addWarnings.length ? { warnings: h.addWarnings } : {}),
       });
-      // An npm re-pin replaces the entry for that package (what the host's `upsertEntry` does).
+      // An npm re-pin replaces the entry for that package in place (what the
+      // host's `upsertEntry` does); the package still carries what it did.
       const npmAt = added.kind === "npm" ? h.entries.findIndex((e) => e.kind === "npm" && e.name === specifier.replace(/@[^@]*$/, "")) : -1;
       if (npmAt >= 0) {
         added.name = h.entries[npmAt]!.name;
+        added.label = h.entries[npmAt]!.label;
+        added.carries = h.entries[npmAt]!.carries;
         added.version = specifier.slice(added.name.length + 1);
         h.entries = h.entries.map((e, i) => (i === npmAt ? added : e));
       } else h.entries = [...h.entries, added];
@@ -299,7 +303,8 @@ test("the list is every manifest entry in cascade order, each with a badge per k
   expect(h.ctrl.entries.map((e) => [e.use, carriedKinds(e)])).toEqual([
     [LOOK_A.use, ["Look"]],
     [FEATURE.use, ["Feature"]],
-    [BOTH.use, ["Feature", "Look", "Snippets"]],
+    // A component library's styles serve its own markdown: "Styles", not "Look".
+    [BOTH.use, ["Feature", "Styles", "Snippets"]],
     // An entry carrying nothing recognizable is still a row, so it is never invisible or un-removable.
     [BROKEN.use, []],
   ]);
@@ -596,10 +601,20 @@ test("addLocal: a cancelled picker changes nothing; a picked look announces itse
   expect(named(h, "list")).toEqual([]);
   expect(h.onLookAdded.calls.length).toBe(0);
 
+  h.addLocalResult = LOOK_B;
+  await h.ctrl.addLocal();
+  expect(h.ctrl.entries).toEqual([LOOK_B]);
+  expect(h.onLookAdded.calls).toEqual([["Zine", []]]);
+  expect(h.afterLookChange.calls.length).toBe(1);
+});
+
+test("a component library (markdown and styles) is not a look: adding one announces nothing, but still refreshes Styles+Design", async () => {
+  const h = make({ entries: [LOOK_A] });
+  await h.ctrl.loadExtensions();
   h.addLocalResult = BOTH;
   await h.ctrl.addLocal();
-  expect(h.ctrl.entries).toEqual([BOTH]);
-  expect(h.onLookAdded.calls).toEqual([["House", []]]);
+  expect(h.ctrl.entries).toEqual([LOOK_A, BOTH]);
+  expect(h.onLookAdded.calls).toEqual([]);
   expect(h.afterLookChange.calls.length).toBe(1);
 });
 
@@ -615,11 +630,20 @@ test("addBundled adds a look by name through the same path, announces it, and re
   expect(h.ctrl.busy).toBeNull();
 });
 
-test("adding a second look passes the other enabled looks' labels to onLookAdded (a disabled look and a feature do not count)", async () => {
-  const h = make({ entries: [LOOK_A, { ...LOOK_B, enabled: false }, FEATURE] });
+test("adding a second look passes the enabled looks above it to onLookAdded (a disabled look, a feature and a component library do not count)", async () => {
+  const h = make({ entries: [LOOK_A, { ...LOOK_B, enabled: false }, FEATURE, BOTH] });
   await h.ctrl.loadExtensions();
   await h.ctrl.addBundled(BUILTIN_ZINE);
   expect(h.onLookAdded.calls).toEqual([["zine", ["Clean Book"]]]);
+});
+
+test("re-adding an npm look that sits above another keeps its place, so the other is not named as the one to turn off", async () => {
+  const h = make({ entries: [NPM_LOOK, BUNDLED_LOOK] });
+  await h.ctrl.loadExtensions();
+  h.ctrl.npmName = "house-look@1.1.0";
+  await h.ctrl.addNpm();
+  expect(h.ctrl.entries.map((e) => e.use)).toEqual(["house-look@1.1.0", "academic"]);
+  expect(h.onLookAdded.calls).toEqual([["House look", []]]);
 });
 
 // ── #106: file / URL import ───────────────────────────────────────────────────
@@ -712,6 +736,26 @@ test("update re-pins through add(name@latest) keeping the export, reloads, and c
   expect(named(h, "list").length).toBeGreaterThan(1); // reloaded after the re-pin
   expect(h.ctrl.updateFor(PINNED_DC)).toBeNull();
   expect(h.ctrl.busy).toBeNull();
+});
+
+test("update, install and a version switch re-pin without announcing a look; the host's warnings still show", async () => {
+  const h = make({
+    entries: [NPM_LOOK, BUNDLED_LOOK],
+    updatesResult: {
+      ok: true,
+      checks: [{ use: NPM_LOOK.use, name: "house-look", current: "1.0.0", latest: "1.1.0", outdated: true }],
+    },
+  });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.checkUpdates();
+  h.addWarnings = ["Registry provided legacy SHA-1 integrity."];
+  await h.ctrl.update(NPM_LOOK);
+  await h.ctrl.install(h.ctrl.entries[0]!);
+  await h.ctrl.switchVersion(h.ctrl.entries[0]!, "1.0.0");
+  expect(named(h, "add").map((c) => c.args[1])).toEqual(["house-look@1.1.0", "house-look@1.1.0", "house-look@1.0.0"]);
+  expect(h.ctrl.entries[0]!.carries).toEqual(STYLES); // still a look, re-pinned in place
+  expect(h.onLookAdded.calls).toEqual([]);
+  expect(h.ctrl.notice).toContain("legacy SHA-1");
 });
 
 test("update is a no-op for an entry with nothing newer, and a cancelled trust gate changes nothing", async () => {

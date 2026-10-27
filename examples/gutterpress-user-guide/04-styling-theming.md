@@ -147,8 +147,9 @@ For one book, the fastest approach is three sections in `styles/book.css`:
 }
 ```
 
-The page size is not set in CSS: it comes from the manifest (`preset:` or
-`page:`), which the app edits under Setup > Details.
+No built-in look sets the page size: it comes from the manifest (`preset:` or
+`page:`), which the app edits under Setup > Details. A `size` in your own
+`@page` rule still wins, and Details keeps it in step.
 
 To reuse a look across books, make it a folder: a `theme.css` plus a
 `package.json` declaring it, which is all a one-sheet look is. `gutterpress

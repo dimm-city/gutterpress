@@ -8,8 +8,9 @@ styles:
   - styles/book.css
 extensions:
   - zine
-# Digest (5.5 x 8.5 in), in points.
+# Digest (5.5 x 8.5 in), in points; text stays 0.25 in (18) inside the trim.
 page:
   width: 396
   height: 612
+  safe: 18
 preset: custom

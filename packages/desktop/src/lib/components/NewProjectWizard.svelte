@@ -529,8 +529,8 @@
         {/if}
       {:else}
         <div class="field">
-          <span>What size should the pages be?</span>
-          <div class="template-list preset-list" role="radiogroup" aria-label="Book preset">
+          <span id="np-preset-question">What size should the pages be?</span>
+          <div class="template-list preset-list" role="radiogroup" aria-labelledby="np-preset-question">
             {#each PRESET_CHOICES as choice (choice.id)}
               {@const picked = selectedPreset === choice.id}
               <label class="template-card" class:selected={picked}>
@@ -579,9 +579,9 @@
             <p class="tool-note" role="note">{targetToolGap}</p>
           {/if}
           <p class="page-hint">
-            Other places you publish to (Amazon KDP, Google Drive…) need no check here — you
-            choose where to send the PDF when you publish. With none checked, only the general
-            print checks run.
+            Gutterpress has no checks for other places you publish to (Amazon KDP, Google
+            Drive…); you choose where to send the PDF when you publish. With none checked, only
+            the general print checks run.
           </p>
         </div>
 

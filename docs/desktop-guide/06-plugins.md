@@ -8,7 +8,8 @@ description: Turn on the built-in formatting extras, find and install plugins fr
 Plugins add new markdown to your book: highlights, callouts, footnote styles, a game's components
 and more. Open **Setup → Looks & features**. The list at the top is everything your book uses,
 looks and features together, each with a badge for what it adds (**Look**, **Feature**,
-**Snippets**, **Components**). Under it, **Add** has three tabs: **Built in**, **Search** and
+**Snippets**, **Components**, and **Styles** for a component library's own styling). Under it,
+**Add** has three tabs: **Built in**, **Search** and
 **Advanced**.
 
 ## Turn on a formatting extra
@@ -34,7 +35,7 @@ always on):
 2. Type what you are looking for (for example `emoji` or `task lists`) and click **Search**.
 3. Click **Add** on the one you want.
 
-![Looks & features, Search: results from npm for "footnote", each with Add](images/extensions-search.jpg)
+![Looks & features, Search: results from npm for "emoji", each with Add](images/extensions-search.jpg)
 
 Gutterpress downloads it, checks it, keeps a copy inside your book, and adds it to the list. Your
 book then builds from that copy, even offline. You can also browse the same search on the

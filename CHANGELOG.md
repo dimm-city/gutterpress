@@ -60,8 +60,9 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **Book setup shows one Looks & features list.** The Look and Features tabs
   are one **Looks & features** tab: every `extensions:` entry in order, looks
   and features side by side, each with a badge for what it carries (Look,
-  Feature, Snippets, Components), its switch, Move up and down, Remove, and an
-  npm package's version and update controls; every look row shows its preview
+  Feature, Snippets, Components; a component library's CSS reads Styles, not
+  Look), its switch, Move up and down, Remove, and an npm package's version
+  and update controls; every look row shows its preview
   thumbnail, in the list and before it is added. Below the list, one Add
   area: *Built in* (every bundled look, then every bundled feature), *Search*
   (npm) and *Advanced* (install by name, a folder or file used in place, a
@@ -82,14 +83,15 @@ This project follows [Semantic Versioning](https://semver.org/).
   and offers the text box, not a number box, for a value such as `1pt solid`.
   It used to edit only the first look kept in a folder, in the look's own
   file; a look's files are never written now, and a built-in or npm look is no
-  longer left out. A book with no look yet is pointed at **Choose a look**.
-- **Every new book comes with its look, and the manifest alone sets the page
-  size.** The Book, Zine and Technical document templates list `clean-book`,
-  `zine` and `technical-doc` the way the Academic paper template already
-  listed `academic`, so a new book is styled from its first page and the
-  template picker says which look each one brings. Bundled looks no longer
-  set the page size; a 0.11.23-alpha book that lists clean-book, zine or
-  technical-doc by name now prints at its manifest size (a manifest with no
+  longer left out. A book with no look switched on is pointed at **Choose a
+  look**.
+- **Every new book comes with its look, and bundled looks no longer set the
+  page size.** The Book, Zine and Technical document templates list
+  `clean-book`, `zine` and `technical-doc` the way the Academic paper template
+  already listed `academic`, so a new book is styled from its first page and
+  the template picker says which look each one brings. A 0.11.23-alpha book
+  that lists clean-book, zine or technical-doc by name now prints at its
+  manifest size (a manifest with no
   `preset:` means DriveThruRPG) — set the size once under Setup > Details.
   The Zine and Technical document templates carry their size (Digest, US
   Letter) in the manifest, and the wizard shows it pre-filled; choosing

@@ -7,10 +7,12 @@ source:
     - chapter-01.md
 styles:
   - styles/book.css
-# A paper prints on US Letter; for A4 set width 595 and height 842.
+# A paper prints on US Letter; for A4 set width 595 and height 842. Text
+# stays 0.25 in (18) inside the trim.
 page:
   width: 612
   height: 792
+  safe: 18
 extensions:
   - markdown-it-sup
   - gutterpress-math

@@ -99,9 +99,10 @@ test("orderAfterMove returns null at the list's edge or for an entry not in it",
 test("carriedKinds names each kind an entry carries, in author words and a fixed order", () => {
   expect(carriedKinds(FEAT)).toEqual(["Feature"]);
   expect(carriedKinds(LOOK_A)).toEqual(["Look"]);
+  // Styles beside markdown are a component library's own, not a look: "Styles".
   expect(
     carriedKinds(entry({ carries: { markdown: true, styles: true, snippets: true, components: true, publish: true } })),
-  ).toEqual(["Feature", "Look", "Snippets", "Components", "Publish destination"]);
+  ).toEqual(["Feature", "Styles", "Snippets", "Components", "Publish destination"]);
   expect(carriedKinds(entry({ carries: NONE }))).toEqual([]);
 });
 

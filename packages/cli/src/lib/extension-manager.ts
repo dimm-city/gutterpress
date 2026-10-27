@@ -1049,8 +1049,6 @@ export async function readExtensionCss(projectDir: string, use: string): Promise
   if (direct !== undefined) return direct;
   const entry = await describeExtension(projectDir, use);
   if (!entry) throw new Error(`Extension "${use}" is not in the manifest.`);
-  const bundledCss = entry.kind === "bundled" ? bundledExtension(entry.name)?.css : undefined;
-  if (bundledCss !== undefined) return bundledCss;
   if (!entry.dir) throw new Error(`Extension "${use}" has no stylesheets to preview.`);
   const meta = await readExtensionMeta(entry.dir);
   const sheets = resolveExtension(entry.dir, meta, `Extension "${use}"`).styles ?? [];

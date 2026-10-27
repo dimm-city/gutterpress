@@ -6,12 +6,14 @@
  * target, chapter order, remove author) commits at once; a text field (title,
  * author) commits when the view reports `change` (blur or Enter) through
  * `flushPendingSave`, which the panel also calls on tab switch, close and
- * unmount so nothing typed is lost. Each commit writes only what differs from
- * the manifest as last read (`fields`): a title edit never rewrites `targets`
- * or the page size. The page size (#357) is written only when its own
- * controls were touched (`pageTouched`) — or on the drift note's explicit
- * request (`matchPageSize`) — so the stylesheet is never rewritten as a side
- * effect of an unrelated edit.
+ * unmount so nothing typed is lost (it resolves to false when the write
+ * failed, so close can keep the panel open on the error). Each commit writes
+ * only what differs from the manifest as last read (`fields`): a title edit
+ * never rewrites `targets` or the page size. The page size (#357) is written
+ * only when its own controls were touched (`pageTouched`, set as soon as a
+ * size is typed) — or on the drift note's explicit request (`matchPageSize`)
+ * — so the stylesheet is never rewritten as a side effect of an unrelated
+ * edit.
  *
  * Publish targets: a manifest with no `targets:` key shows the preset's
  * default (dtrpg → DriveThruRPG) and keeps following the preset until the
@@ -122,11 +124,13 @@ export class DetailsSectionController {
   private targetsExplicit = false;
   /** True when a page-size control was touched since the last page write. */
   private pageTouched = false;
-  /** The book `fields` and the drafts belong to. A commit is bound to it:
-   *  the unmount flush can run after the host has moved to another book,
-   *  and drafts diffed against THIS book's fields must never land there. */
+  /** The book `fields` and the drafts belong to, set only once a load has
+   *  filled every one of them. A commit is bound to it: a flush during a
+   *  load (the drafts still empty) writes nothing, and the unmount flush can
+   *  run after the host has moved to another book, where drafts diffed
+   *  against THIS book's fields must never land. */
   private loadedDir: string | null = null;
-  private saveChain: Promise<void> = Promise.resolve();
+  private saveChain: Promise<boolean> = Promise.resolve(true);
   private readonly deps: DetailsSectionDeps;
 
   constructor(deps: DetailsSectionDeps) {
@@ -138,6 +142,7 @@ export class DetailsSectionController {
     const projectDir = this.deps.projectDir();
     if (!projectDir) return;
     this.detailsError = null;
+    this.loadedDir = null;
     try {
       const [f, scan] = await Promise.all([
         this.deps.readManifest(projectDir),
@@ -147,7 +152,6 @@ export class DetailsSectionController {
           .catch(() => ({ ok: false, files: [] as string[] })),
       ]);
       this.fields = f;
-      this.loadedDir = projectDir;
       this.titleDraft = f.title ?? "";
       this.authorsDraft = f.authors ?? [];
       await this.loadPageSetup(projectDir);
@@ -160,6 +164,8 @@ export class DetailsSectionController {
       // so they stay editable without every row being flagged "missing".
       this.allMarkdownFiles = scan.ok ? scan.files : (f.sourceFiles ?? []);
       this.sourceFiles = buildSourceList(this.allMarkdownFiles, f.sourceFiles ?? null);
+      // Last: every field a commit diffs is now this book's.
+      this.loadedDir = projectDir;
       // Independent + best-effort: the tool probe must never fail the load.
       void this.deps
         .listMissingPrintTools?.()
@@ -235,8 +241,14 @@ export class DetailsSectionController {
     void this.flushPendingSave({ page: true });
   };
 
+  /** A size field was typed in: the size is the author's to write from now on,
+   *  so a close before the field's `change` still saves it (once complete). */
+  touchPage = (): void => {
+    this.pageTouched = true;
+  };
+
   /** The drift note's action: write the recorded size to the stylesheet too. */
-  matchPageSize = (): Promise<void> => this.flushPendingSave({ page: true });
+  matchPageSize = (): Promise<boolean> => this.flushPendingSave({ page: true });
 
   // ── Publish-target intents (ADR 0008) ───────────────────────────────────────
   toggleTarget = (id: string): void => {
@@ -279,17 +291,18 @@ export class DetailsSectionController {
    * Write whatever differs from the manifest as last read. `page: true` marks
    * the page-size controls as touched, so the page size is written too when
    * it changed. Chained after any in-flight commit, so two flushes never
-   * interleave and the later one sees the earlier one's result.
+   * interleave and the later one sees the earlier one's result. Resolves to
+   * false when the write failed (the drafts are kept), true otherwise.
    */
-  flushPendingSave = (opts?: { page?: boolean }): Promise<void> => {
+  flushPendingSave = (opts?: { page?: boolean }): Promise<boolean> => {
     if (opts?.page) this.pageTouched = true;
     this.saveChain = this.saveChain.then(() => this.commitChanges());
     return this.saveChain;
   };
 
-  private async commitChanges(): Promise<void> {
+  private async commitChanges(): Promise<boolean> {
     const projectDir = this.deps.projectDir();
-    if (!projectDir || projectDir !== this.loadedDir) return;
+    if (!projectDir || projectDir !== this.loadedDir) return true;
     const updates: ProjectConfigFields = {};
     const title = this.titleDraft.trim();
     if (title !== (this.fields.title ?? "")) updates.title = title;
@@ -323,20 +336,30 @@ export class DetailsSectionController {
     const writePage =
       this.pageTouched && !!choice && this.pageDirty && !this.pageIncomplete && !!this.deps.writePageSetup;
     const hasUpdates = Object.keys(updates).length > 0;
-    if (!hasUpdates && !writePage) return;
+    if (!hasUpdates && !writePage) return true;
+    // Consumed by this write (an incomplete size stays pending); a size typed
+    // while the write is in flight marks it again.
+    if (writePage) this.pageTouched = false;
     this.detailsSaveStatus = "saving";
     this.detailsError = null;
     try {
       if (hasUpdates) this.fields = await this.deps.writeManifest(projectDir, updates);
-      if (writePage) this.applyPageSetup(await this.deps.writePageSetup!(projectDir, choice!));
-      // An incomplete custom size stays pending until its fields are filled in.
-      this.pageTouched = this.pageIncomplete;
+      if (writePage) {
+        const setup = await this.deps.writePageSetup!(projectDir, choice!);
+        // Re-base the drafts on what was written, unless the author changed
+        // them meanwhile: those stay as typed, for the next flush to write.
+        if (this.pageTouched) this.pageSetup = setup;
+        else this.applyPageSetup(setup);
+      }
       this.detailsSaveStatus = "saved";
+      return true;
     } catch (e) {
+      if (writePage) this.pageTouched = true;
       // The drafts stay as typed, so the author can retry; the error says why.
       this.detailsError = e instanceof Error ? e.message : String(e);
       this.deps.onError?.(`Could not save details: ${this.detailsError}`);
       this.detailsSaveStatus = "idle";
+      return false;
     }
   }
 }

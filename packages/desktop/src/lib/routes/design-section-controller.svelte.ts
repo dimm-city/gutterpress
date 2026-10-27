@@ -211,7 +211,7 @@ export class DesignSectionController {
       this.cssName = active.displayName;
       // Every enabled look in cascade order, then the book's own sheet, which
       // loads after all of them. A look whose CSS can't be read (a missing
-      // folder) contributes nothing here; the Extensions list reports it.
+      // folder) contributes nothing here; the Looks & features list reports it.
       const looks = extensions.filter((e) => e.enabled && e.carries.styles);
       const sheets = await Promise.all([
         ...looks.map((e) => this.deps.readCss(projectDir, e.use).catch(() => "")),

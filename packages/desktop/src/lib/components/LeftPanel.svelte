@@ -2,7 +2,7 @@
   /**
    * LeftPanel — global left panel with 4 tabs.
    *
-   * Tabs: Books, TOC, Files, Media. (Book setup live in the full-window
+   * Tabs: Books, TOC, Files, Media. (Book setup lives in the full-window
    * ProjectSettingsView, not a tab here.)
    *
    * Architecture notes:

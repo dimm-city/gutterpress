@@ -228,12 +228,17 @@
       </ul>
       {#if controller.presetDraft === "custom"}
         <!-- The size select's and the inches inputs' `change` bubbles here
-             after the bound values updated; PageSizeFields itself is shared
-             with the wizard and stays a plain bindable component. -->
-        <div class="size-fields" onchange={() => controller.flushPendingSave({ page: true })}>
+             after the bound values updated, and commits; their `input` marks
+             the size as edited, so closing before `change` (Escape) still
+             saves it. PageSizeFields itself is shared with the wizard and
+             stays a plain bindable component. -->
+        <div
+          class="size-fields"
+          oninput={controller.touchPage}
+          onchange={() => controller.flushPendingSave({ page: true })}
+        >
           <PageSizeFields
             idPrefix="details"
-            label="Size"
             bind:sizeChoice={controller.sizeChoice}
             bind:widthIn={controller.widthIn}
             bind:heightIn={controller.heightIn}
@@ -281,8 +286,9 @@
       <p class="tool-note" role="note">{targetToolGap}</p>
     {/if}
     <span class="hint">
-      Other places you publish to (Amazon KDP, Google Drive…) need no check here — you choose
-      where to send the PDF when you publish. With none checked, only the general print checks run.
+      Gutterpress has no checks for other places you publish to (Amazon KDP, Google Drive…); you
+      choose where to send the PDF when you publish. With none checked, only the general print
+      checks run.
     </span>
   </div>
 </section>

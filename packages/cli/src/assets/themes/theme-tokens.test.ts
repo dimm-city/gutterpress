@@ -65,7 +65,8 @@ describe("built-in theme tokens", () => {
 
   // The page margins are Design-tab settings: every theme's `@page` reads the
   // two margin tokens, so an override in the book's own stylesheet moves them.
-  // The page SIZE is the manifest's alone, so no theme sets one.
+  // No theme sets the page SIZE: it comes from the manifest, unless the
+  // book's own stylesheet sets one.
   test.each(themeNames)("%s reads its @page margins from the two margin tokens and sets no size", (name) => {
     const css = readFileSync(join(THEMES_DIR, name, "theme.css"), "utf8");
     const page = /@page\s*\{([^}]*)/.exec(css)?.[1] ?? "";

@@ -53,7 +53,8 @@ function starterOverridesCss(): string {
  * look, and Setup > Design changes its fonts, colors, sizes and margins
  * (those changes are saved here as :root custom properties).
  *
- * From the command line: gutterpress ext add clean-book <book>
+ * To change the look from the command line: gutterpress ext remove <old>
+ * <book>, then gutterpress ext add <look> <book>.
  */
 `;
 }

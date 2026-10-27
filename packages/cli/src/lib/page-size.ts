@@ -18,8 +18,9 @@
  *    no `size` in its CSS prints at the manifest's; a `size` an author does
  *    write wins, which is why the two must still agree.
  *
- * Creating a book writes the manifest half (the starter stylesheet is empty,
- * the look supplies `@page`); changing the size later writes both halves
+ * Creating a book writes the manifest half (the starter stylesheet is empty
+ * and no bundled look sets a size, so the assembly writes the manifest's —
+ * `defaultPageSizeCss`); changing the size later writes both halves
  * together. The CSS edit is a postcss round-trip that rewrites the existing
  * rule's `size` value in place and leaves every other byte of the file alone;
  * when no plain `@page` rule sets a size, a minimal one is appended to the

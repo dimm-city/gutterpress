@@ -4,12 +4,13 @@
  * manifest's `extensions:` in cascade order) and ONE verb set (add, remove,
  * toggle, move).
  *
- * A look is an extension that carries styles; a feature is one that carries
- * markdown; a component library carries both — each is one row of the same
- * list, with a badge per kind it carries (`carriedKinds`). There is no
- * apply/revert and no "active look": any number of looks can be on at once,
- * the list order is the CSS cascade (later wins ties) and the markdown
- * registration order, and the project's own stylesheets always load last.
+ * A look is an extension that carries styles and no markdown (`isLook`); a
+ * feature is one that carries markdown; a component library carries both —
+ * each is one row of the same list, with a badge per kind it carries
+ * (`carriedKinds`). There is no apply/revert and no "active look": any
+ * number of looks can be on at once, the list order is the CSS cascade
+ * (later wins ties) and the markdown registration order, and the project's
+ * own stylesheets always load last.
  * Moving a row up or down therefore rewrites the whole list order
  * (`config-helpers.ts`'s `orderAfterMove`).
  *
@@ -71,6 +72,7 @@ import type {
 } from "#lib/platform/dtos.ts";
 import {
   addedBuiltInIds,
+  isLook,
   orderAfterMove,
   pickerVersions,
   sampleSrcdoc,
@@ -111,11 +113,12 @@ export interface ExtensionsSectionDeps {
   importFromFile: (projectDir: string) => Promise<ExtensionImportResult | null>;
   importFromUrl: (projectDir: string, url: string) => Promise<ExtensionImportResult>;
   /**
-   * Fired after a styles-carrying extension was added by any route (the panel
-   * toasts), with the labels of the OTHER looks still enabled — when there are
-   * any, the new look sits below them and wins, which the toast explains.
+   * Fired after a look (`isLook`) was added by any add route (the panel
+   * toasts), never on an update, install or version switch, with the labels
+   * of the enabled looks ABOVE it: when there are any, the new look wins over
+   * them where they disagree, which the toast explains.
    */
-  onLookAdded?: (label: string, otherEnabledLooks: string[]) => void;
+  onLookAdded?: (label: string, enabledLooksAbove: string[]) => void;
   /**
    * Fired after any successful change to a styles-carrying entry (added,
    * removed, toggled, moved): the Styles + Design sections both depend on
@@ -418,7 +421,8 @@ export class ExtensionsSectionController {
       `Couldn't install ${spec}. ${failureNote}`,
     );
     if (!added) return null;
-    this.announceAdded(added);
+    // A re-pin, not an add: the host's warnings show, but no look is announced.
+    if (added.warnings?.length) this.notice = added.warnings.join(" ");
     return added;
   }
 
@@ -469,14 +473,14 @@ export class ExtensionsSectionController {
   }
 
   /** After a successful add (the list is already reloaded): surface the host's
-   *  non-fatal warnings, and announce a new look, naming the other looks still on. */
+   *  non-fatal warnings, and announce a new look, naming the enabled looks
+   *  above it in the list (the ones it wins over). */
   private announceAdded(entry: ProjectExtensionEntry): void {
     if (entry.warnings?.length) this.notice = entry.warnings.join(" ");
-    if (!entry.carries.styles) return;
-    const others = this.entries
-      .filter((e) => e.enabled && e.carries.styles && e.use !== entry.use)
-      .map((e) => e.label);
-    this.deps.onLookAdded?.(entry.label, others);
+    if (!isLook(entry)) return;
+    const at = this.entries.findIndex((e) => e.use === entry.use);
+    const above = at < 0 ? [] : this.entries.slice(0, at);
+    this.deps.onLookAdded?.(entry.label, above.filter((e) => e.enabled && isLook(e)).map((e) => e.label));
   }
 
   // ── Verbs (arrow fields: passed as callbacks from the templates) ────────────

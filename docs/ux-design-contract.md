@@ -715,10 +715,11 @@ The model (binding, from docs/architecture-rules.md §5 and #265):
 Shipped UI (the baseline to refine, not replace): **one list** of the
 manifest's `extensions:` entries in order. Each row shows its label, where it
 comes from, a badge per kind it carries, in author words (Feature, Look,
-Snippets, Components, Publish destination), its load status ("Working";
-"Re-check" validates again), an enable toggle, move up/down, and remove; an
-npm row adds its version picker, Update and Install/Reinstall (the actionable
-missing-vendor state). A row that carries styles also shows a rendered
+Snippets, Components, Publish destination; a look is styles without
+markdown, so a component library's CSS is badged Styles), its load status
+("Working"; "Re-check" validates again), an enable toggle, move up/down, and
+remove; an npm row adds its version picker, Update and Install/Reinstall (the
+actionable missing-vendor state). A row that carries styles also shows a rendered
 thumbnail (§11). The developer-shaped head controls appear only with
 something to act on: "Check for updates" when an npm entry is listed,
 "Re-check" when the list is not empty. Below the list, one **Add** area in
@@ -727,8 +728,9 @@ the features, in plain language, #309), *Search* (npm, #246 — run only when
 the tab is first shown, never at project load), and *Advanced* (install by
 name, a local folder or file referenced in place, and the `.zip`/`.css`/URL
 importers, §11). There is no separate look view: a look is a row like any
-other. Adding a second look says that the lower look wins and names the one
-to turn off to use the new look on its own.
+other. Adding a look below another enabled look says that the lower look
+wins and names the one to turn off to use the new look on its own; an
+update, install or version switch announces nothing.
 
 Refinements (PROPOSED): link each plugin to its npm page for
 author/version/last-published metadata; surface load errors inline.
@@ -813,7 +815,7 @@ also after the panel is reopened — with "Use the look's value"; the look's
 value is read from the enabled looks, never pinned. Derived labels are plain
 words (`--fs-display` → "Display size"); a look labels its own extra tokens
 with `@label`. A compound value (`1pt solid …`) is edited as text, never as a
-bare number. With no look, the tab offers "Choose a look" (opens Looks &
+bare number. With no look switched on, the tab offers "Choose a look" (opens Looks &
 features); "Edit the stylesheet" is the secondary path. The hint says the
 preview shows the changes when the panel is closed (it is hidden behind the
 full-screen panel). A look's own files are never written; the author's

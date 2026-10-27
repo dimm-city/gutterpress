@@ -24,7 +24,7 @@ On the **Details** tab:
   height in inches). These are the same choices as when you
   [create the book](02-books.md#create-a-new-book). The tab opens on the book's current size;
 - under **Check the PDF against**, tick the print services whose rules the finished PDF should be
-  checked against. Other places you publish to need no check here.
+  checked against. Gutterpress has no checks for other places you publish to.
 
 **Save as template…** saves this book's setup as a template you can start new books from.
 
@@ -56,7 +56,7 @@ value and Gutterpress saves it to your book's own stylesheet (`styles/book.css` 
 another), never to the look itself; the preview shows the change when you close Book setup.
 **Revert** undoes this session's changes; the undo arrow beside a value you changed earlier offers
 **Use the look's value** instead. **Edit the stylesheet** opens the stylesheet itself. A book with
-no look yet offers **Choose a look**, which opens Looks & features.
+no look switched on offers **Choose a look**, which opens Looks & features.
 
 ![Book setup, Design tab: fonts, colors and sizes of the book's look](images/book-settings-design.jpg)
 

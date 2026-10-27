@@ -8,8 +8,9 @@ styles:
   - styles/book.css
 extensions:
   - technical-doc
-# US Letter (8.5 x 11 in), in points.
+# US Letter (8.5 x 11 in), in points; text stays 0.25 in (18) inside the trim.
 page:
   width: 612
   height: 792
+  safe: 18
 preset: custom

@@ -89,7 +89,7 @@ test("scaffoldProject (no git) creates a valid project tree", async () => {
   }
 });
 
-test("every built-in template lists its look by name and copies nothing", async () => {
+test("every built-in template lists its look by name, copies nothing, and keeps the 0.25 in safe area", async () => {
   const parent = await tmpParent();
   try {
     const looks = { book: "clean-book", zine: "zine", technical: "technical-doc", paper: "academic" } as const;
@@ -103,6 +103,10 @@ test("every built-in template lists its look by name and copies nothing", async 
       expect(existsSync(path.join(result.projectDir, EXTENSIONS_DIR))).toBe(false);
       const uses = (await listProjectExtensions(result.projectDir)).map((e) => e.use);
       expect(uses).toContain(looks[template]);
+      // `preset: custom` takes the whole page from the manifest, so the
+      // Zine, Technical and Paper templates state the safe area themselves:
+      // it drives the safe-margins check and the preview's safe-area guide.
+      expect(resolveConfig({}, await loadManifest(result.projectDir)).page.safe).toBe(18);
     }
   } finally {
     await rm(parent, { recursive: true, force: true });
@@ -113,7 +117,7 @@ test("a chosen preset replaces the template's own page size", async () => {
   const parent = await tmpParent();
   try {
     // The zine template is designed for Digest (preset: custom + page:); a
-    // writer who picks Trade book on top of it gets 6 x 9 in, not Digest.
+    // writer who picks Trade paperback on top of it gets 6 x 9 in, not Digest.
     const result = await scaffoldProject({
       name: "Zine As Book",
       parentDir: parent,

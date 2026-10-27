@@ -195,7 +195,7 @@ await screen("book-settings-extensions", async () => {
 }, { crop: SETTINGS, width: 960 });
 await screen("extensions-search", async () => {
   await click("[role=tab]:has-text('Search')");
-  await page.fill("input[placeholder^='emoji']", "footnote");
+  await page.fill("input[placeholder^='emoji']", "emoji");
   await press("Enter");
   await wait(6000); // npm answers over the network
 }, { crop: SETTINGS, width: 960 });

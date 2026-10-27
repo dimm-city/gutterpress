@@ -46,15 +46,24 @@ export function extensionSourceLabel(entry: ProjectExtensionEntry): string {
 }
 
 /**
+ * A look is an extension that carries styles and no markdown. A component
+ * library ships styles too, but for its own markdown, not as the book's design.
+ */
+export function isLook(entry: ProjectExtensionEntry): boolean {
+  return entry.carries.styles && !entry.carries.markdown;
+}
+
+/**
  * The badge per kind of thing an extension carries, in a fixed order — the
  * one list shows a look, a feature and a component library side by side, and
- * these say which is which.
+ * these say which is which. A component library's styles read "Styles", not
+ * "Look" (`isLook`).
  */
 export function carriedKinds(entry: ProjectExtensionEntry): string[] {
   const c = entry.carries;
   return [
     ...(c.markdown ? ["Feature"] : []),
-    ...(c.styles ? ["Look"] : []),
+    ...(c.styles ? [isLook(entry) ? "Look" : "Styles"] : []),
     ...(c.snippets ? ["Snippets"] : []),
     ...(c.components ? ["Components"] : []),
     ...(c.publish ? ["Publish destination"] : []),

@@ -41,6 +41,10 @@ interface Harness {
   /** When set, the next `writeManifest` parks until released (for the in-flight test). */
   gateNextWrite: boolean;
   releaseWrite: (() => void) | null;
+  /** When set, `readPageSetup` waits for it (a load still in progress). */
+  holdPageRead: Promise<void> | null;
+  /** When set, `writePageSetup` waits for it (a page write in flight). */
+  holdPageWrite: Promise<void> | null;
 }
 
 function make(
@@ -61,6 +65,8 @@ function make(
     failList: false,
     gateNextWrite: false,
     releaseWrite: null,
+    holdPageRead: null,
+    holdPageWrite: null,
   } as Harness;
   h.ctrl = new DetailsSectionController({
     projectDir: () => h.projectDir,
@@ -89,16 +95,21 @@ function make(
       if (h.failList) return Promise.reject(new Error("scan failed"));
       return Promise.resolve(h.allFiles);
     },
-    readPageSetup: () => (h.pageSetup ? Promise.resolve(h.pageSetup) : Promise.reject(new Error("nope"))),
-    writePageSetup: (_d, choice) => {
+    readPageSetup: async () => {
+      if (h.holdPageRead) await h.holdPageRead;
+      if (!h.pageSetup) throw new Error("nope");
+      return h.pageSetup;
+    },
+    writePageSetup: async (_d, choice) => {
       h.pageWrites.push(choice);
+      if (h.holdPageWrite) await h.holdPageWrite;
       const page = choice.page ?? (choice.preset === "dtrpg" ? { width: 621, height: 810 } : { width: 432, height: 648 });
       h.pageSetup = {
         preset: choice.preset,
         bounds: { ...page, tolerance: 0.5 },
         css: { ...page, file: "styles/book.css" },
       };
-      return Promise.resolve(h.pageSetup);
+      return h.pageSetup;
     },
     onError: (m) => onError(m),
   });
@@ -223,10 +234,26 @@ test("an unchanged flush writes nothing and leaves the badge idle", async () => 
   const h = make();
   await h.ctrl.loadDetails();
   h.ctrl.titleDraft = " My Book ";
-  await h.ctrl.flushPendingSave();
+  expect(await h.ctrl.flushPendingSave()).toBe(true); // nothing to save: the panel may close
   expect(h.writeCalls).toEqual([]);
   expect(h.pageWrites).toEqual([]);
   expect(h.ctrl.detailsSaveStatus).toBe("idle");
+});
+
+test("a flush while the book is still loading writes nothing — never the not-yet-loaded chapter list", async () => {
+  // A scaffolded book: one chapter, listed explicitly.
+  const h = make({ fields: { title: "T", sourceFiles: ["chapter-01.md"] }, allFiles: ["chapter-01.md"] });
+  let release!: () => void;
+  h.holdPageRead = new Promise<void>((r) => (release = r));
+  const loading = h.ctrl.loadDetails();
+  await settle(); // the manifest is read; the page size is not
+  expect(await h.ctrl.flushPendingSave()).toBe(true);
+  expect(h.writeCalls).toEqual([]);
+  release();
+  await loading;
+  await h.ctrl.flushPendingSave();
+  expect(h.writeCalls).toEqual([]);
+  expect(h.ctrl.sourceFiles).toEqual([{ path: "chapter-01.md", included: true }]);
 });
 
 test("an untouched flush never rewrites an explicit chapter list that equals natural order (every scaffolded book)", async () => {
@@ -278,14 +305,14 @@ test("a failed save keeps the drafts, surfaces detailsError + onError, and drops
   await h.ctrl.loadDetails();
   h.failNextWrite = true;
   h.ctrl.titleDraft = "Kept";
-  await h.ctrl.flushPendingSave();
+  expect(await h.ctrl.flushPendingSave()).toBe(false); // the panel stays open on the error
   expect(h.ctrl.detailsSaveStatus).toBe("idle");
   expect(h.ctrl.detailsError).toContain("disk full");
   expect(h.onError.calls.length).toBe(1);
   expect(String(h.onError.calls[0][0])).toContain("disk full");
   expect(h.ctrl.titleDraft).toBe("Kept");
   // A retry writes the same change.
-  await h.ctrl.flushPendingSave();
+  expect(await h.ctrl.flushPendingSave()).toBe(true);
   expect(h.writeCalls.map((w) => w.updates)).toEqual([{ title: "Kept" }, { title: "Kept" }]);
   expect(h.ctrl.detailsSaveStatus).toBe("saved");
 });
@@ -441,6 +468,48 @@ test("an incomplete custom size saves the other fields and skips the page write 
   h.ctrl.widthIn = "7";
   await h.ctrl.flushPendingSave({ page: true });
   expect(h.pageWrites).toEqual([{ preset: "custom", page: { width: 504, height: 648 } }]);
+});
+
+test("a custom size typed and not yet committed (Escape before the fields' change) is saved by the close flush", async () => {
+  const h = make({
+    pageSetup: { preset: "custom", bounds: { width: 360, height: 504, tolerance: 0.5 }, css: null },
+  });
+  await h.ctrl.loadDetails();
+  // What the view does on each keystroke: the bound value, then `input`.
+  h.ctrl.sizeChoice = "custom";
+  h.ctrl.touchPage();
+  h.ctrl.widthIn = "7";
+  h.ctrl.touchPage();
+  h.ctrl.heightIn = "9";
+  h.ctrl.touchPage();
+  h.ctrl.titleDraft = "Z2";
+  await h.ctrl.flushPendingSave(); // close: no `change` ever fired
+  expect(h.writeCalls.map((w) => w.updates)).toEqual([{ title: "Z2" }]);
+  expect(h.pageWrites).toEqual([{ preset: "custom", page: { width: 504, height: 648 } }]);
+});
+
+test("a size typed while the previous size is being written stays as typed, and the close flush writes it", async () => {
+  const h = make({
+    pageSetup: { preset: "custom", bounds: { width: 360, height: 504, tolerance: 0.5 }, css: null },
+  });
+  await h.ctrl.loadDetails();
+  let release!: () => void;
+  h.holdPageWrite = new Promise<void>((r) => (release = r));
+  h.ctrl.sizeChoice = "custom";
+  h.ctrl.widthIn = "7";
+  const widthCommit = h.ctrl.flushPendingSave({ page: true }); // Tab out of Width: its `change`
+  await settle();
+  h.ctrl.heightIn = "9"; // typed into Height before that write returns
+  h.ctrl.touchPage();
+  release();
+  await widthCommit;
+  expect(h.ctrl.heightIn).toBe("9");
+  h.holdPageWrite = null;
+  await h.ctrl.flushPendingSave(); // Escape
+  expect(h.pageWrites).toEqual([
+    { preset: "custom", page: { width: 504, height: 504 } },
+    { preset: "custom", page: { width: 504, height: 648 } },
+  ]);
 });
 
 test("a failed page-size read leaves the control out and details still load", async () => {

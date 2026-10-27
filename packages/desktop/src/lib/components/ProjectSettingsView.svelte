@@ -172,11 +172,11 @@
     readCss: (dir, use) => api.extension.readCss(dir, use),
     importFromFile: (dir) => api.extension.importFromFile(dir),
     importFromUrl: (dir, url) => api.extension.importFromUrl(dir, url),
-    onLookAdded: (label, others) => {
-      // A second look sits below the first and wins where they disagree:
-      // say so, and name the way to use the new one alone.
-      if (others.length > 0) {
-        const old = others.join(", ");
+    onLookAdded: (label, above) => {
+      // A look added below another wins where they disagree: say so, and
+      // name the way to use the new one alone.
+      if (above.length > 0) {
+        const old = above.join(", ");
         toast?.success?.(`${label} added below ${old} — the lower look wins. Turn off ${old} to use ${label} on its own.`);
       } else {
         toast?.success?.(`${label} added — it now shows in the preview. Use Design to fine-tune.`);
@@ -254,9 +254,10 @@
     activeTab = id;
   }
 
-  function close() {
-    void details.flushPendingSave();
-    onClose?.();
+  /** Close once Details has saved; a failed write keeps the panel open on
+   *  its error (the unmount flush stays the backstop for every other exit). */
+  async function close() {
+    if (await details.flushPendingSave()) onClose?.();
   }
 
   // "Save as template…" (Details tab) — mounted fresh per open so its form
@@ -309,7 +310,13 @@
              sections. -->
         <section class="block look-style">
           <h3>Design</h3>
-          <DesignSection controller={design} onChooseLook={() => (activeTab = "extensions")} />
+          <DesignSection
+            controller={design}
+            onChooseLook={() => {
+              selectTab("extensions");
+              tabEls.extensions?.focus();
+            }}
+          />
           <div class="advanced">
             <h4 class="advanced-heading">Stylesheets</h4>
             <div class="advanced-body">

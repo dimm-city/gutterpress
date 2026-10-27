@@ -34,7 +34,7 @@
   }: {
     controller: DesignSectionController;
     /** Open the Looks & features tab (the parent owns the tab state); shown
-     *  when the book has no look yet, so the empty state hands off there. */
+     *  when the book has no look switched on, so the empty state hands off there. */
     onChooseLook?: () => void;
   } = $props();
 
@@ -77,7 +77,7 @@
     <p class="muted">This book has no stylesheet of its own yet, so there is nowhere to save changes. Add one (for example <code>styles/book.css</code>) to fine-tune your looks here.</p>
   {:else if controller.tokens.length === 0}
     {#if controller.lookLabels.length === 0}
-      <p class="muted">This book has no look yet. Add one on the Looks &amp; features tab to see its fonts, colors and sizes here.</p>
+      <p class="muted">This book has no look switched on yet. Choose one on the Looks &amp; features tab to see its fonts, colors and sizes here.</p>
       <div class="row">
         {#if onChooseLook}
           <button class="primary small app-btn-primary" onclick={onChooseLook}>Choose a look</button>
