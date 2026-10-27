@@ -223,11 +223,10 @@ extensions:
 styles:
   - "styles/custom.css"
 
-# File ordering (defaults to alphabetical if omitted)
-source:
-  files:
-    - "01-introduction.md"
-    - "02-chapter-two.md"
+# Chapter order (defaults to alphabetical if omitted)
+chapters:
+  - "01-introduction.md"
+  - "02-chapter-two.md"
 ```
 
 Plugins are optional and most projects don't need any --- see Chapter 5, *Plugins*, for the `extensions:` manifest list (looks and plugins share it) and the bundled, no-install-required features.

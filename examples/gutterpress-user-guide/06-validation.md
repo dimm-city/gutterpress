@@ -2,7 +2,7 @@
 
 @section .lede
 
-Gutterpress's validation system checks your project for print compliance at two points in the pipeline --- before the PDF build and after. This chapter covers the 40 built-in checks, CLI usage, and production workflow recommendations.
+Gutterpress's validation system checks your project for print compliance at two points in the pipeline --- before the PDF build and after. This chapter covers the 35 built-in checks, CLI usage, and production workflow recommendations.
 
 @end-section
 
@@ -225,7 +225,7 @@ Run it like any other PDF check:
 gutterpress validate --pdf dist/my-book/my-book-pdfx.pdf --target dtrpg
 ```
 
-`gutterpress preflight` runs it too, and so does the last step of a `--format pdfx` build. It reads the PDF itself and needs no extra tool, but the PDF/X lines in the same run need **qpdf** and **Ghostscript** installed ([Chapter 7](#ch-system)). To turn it off or change its severity, use `validate.checks` like any other check (see Manifest Configuration below). The desktop app runs it on every PDF export and lists what it finds in the Problems list; the **Safe area** layers draw the same lines while you write.
+`gutterpress preflight` runs it too, and so does the last step of a `--format pdfx` build. It reads the PDF itself and needs no extra tool, but the PDF/X lines in the same run need **qpdf** and **Ghostscript** installed ([Chapter 7](#ch-system)). To turn it off or change its severity, use `checks` like any other check (see Manifest Configuration below). The desktop app runs it on every PDF export and lists what it finds in the Problems list; the **Safe area** layers draw the same lines while you write.
 
 ### Asset checks (pre-build)
 
@@ -241,57 +241,45 @@ Examples: ink coverage estimates, page count anomalies, unexpected blank pages.
 
 ## Manifest Configuration
 
-Add a `validate` section to enable/disable which checks run. Check
-*thresholds* (like the ink-coverage limit below) are configured under their
-own top-level manifest keys, not under `validate:`:
+Add a `checks` map to turn a check off or change how loudly it reports. Each
+key is a check id (shown with every finding) or a CSS print-safety rule id
+(`printsafe/...`); each value is `off`, `on`, `info`, `warn` or `error`. `on`
+keeps the check's own severity.
 
 ```yaml
-validate:
-  # Disable specific checks
-  checks:
-    pdf.structure.qpdf: false
-    source.accessibility.alt-text: false
-    # A PDF cannot open a relative link such as [spec](docs/spec.md) -- the
-    # build drops its href before print and `source.links.dangling` warns
-    # about each one. Switch it off for a book published only as HTML.
-    source.links.dangling: false
-
-  # Disable built-in source linting (markdown / HTML) if not needed
-  source:
-    htmlhint: false
-    markdownlint: false
-
-# Ink-coverage / TAC threshold -- this is a TOP-LEVEL manifest key, not
-# nested under `validate:`. There is no `validate.thresholds` key; unknown
-# keys are silently ignored, so a threshold nested under `validate:` has no
-# effect at all.
-ink:
-  maxTac: 240        # max total area coverage %; the dtrpg preset's default --
-                     # book (this guide's preset) defaults to 400 instead
-  tacTolerance: 0.5  # allowed overage before a page is flagged, default 0.5
+checks:
+  pdf.structure.qpdf: off
+  source.accessibility.alt-text: off
+  # A PDF cannot open a relative link such as [spec](docs/spec.md) -- the
+  # build drops its href before print and `source.links.dangling` warns
+  # about each one. Switch it off for a book published only as HTML.
+  source.links.dangling: off
+  source.markdownlint: off
+  printsafe/page-containment: warn
 ```
+
+The limits a check measures against --- the ink-coverage limit, the minimum
+image resolution, the largest image file --- come from the preset and the
+publish target, not from the manifest.
+
+The Markdown and HTML linters are opt-in: `source.markdownlint` reads a
+`.markdownlint.yaml` (or `.jsonc`, `.json`, `.yml`) and `source.htmlhint` reads
+a `.htmlhintrc`, found in the book's folder or the nearest folder above it up
+to the repository root. With no such file the check reports nothing.
 
 ### Silencing a warning you have decided is fine
 
 Some warnings are known false alarms for a particular book. Turn them off
 without disabling the whole check, either for the whole book or for one spot.
 
-**Whole book** --- set a rule's level under the top-level `lint.rules` key.
-`off` silences it; `warn` or `error` changes its severity:
-
-```yaml
-lint:
-  rules:
-    printsafe/no-risky-print-effects: off
-    printsafe/page-containment: warn
-    source.accessibility.heading-order: off
-```
-
-The rule id is the one shown in the warning: `printsafe/...` for CSS print-safety
-rules (`printsafe/no-risky-print-effects`, `printsafe/page-containment`,
-`printsafe/preview-cannot-follow`, `printsafe/no-remote-urls`), or the check id for the rest (for example
-`source.accessibility.heading-order`). An id that matches no rule is ignored,
-so a typo has no effect --- check the spelling against the warning text.
+**Whole book** --- set the rule's level in `checks`, as above. `off` silences
+it; `warn` or `error` changes its severity. The rule id is the one shown in
+the warning: `printsafe/...` for CSS print-safety rules
+(`printsafe/no-risky-print-effects`, `printsafe/page-containment`,
+`printsafe/preview-cannot-follow`, `printsafe/no-remote-urls`), or the check id
+for the rest (for example `source.accessibility.heading-order`). An id that
+matches no rule is ignored, so a typo has no effect --- check the spelling
+against the warning text.
 
 **One spot** --- put a `gutterpress-disable-next-line` comment on the line
 directly above it. List several rules with commas, and add a reason after
@@ -308,7 +296,7 @@ directly above it. List several rules with commas, and add a reason after
 ```
 
 The comment silences only the next line. (The desktop editor's CSS gutter
-honours these comments too, but not `lint.rules`; the Problems panel honours
+honours these comments too, but not `checks`; the Problems panel honours
 both.)
 
 ## Automatic Tool Detection

@@ -276,7 +276,7 @@ fixture — but only when the thing being kept-with can actually be placed:
   default; the build names each one's cause. See
   [PDF/X and transparency](publishing.md#pdfx-transparency).
 - To accept a warning you have decided is fine, switch the rule off for the
-  book (`lint.rules` in `manifest.yaml`) or for one line
+  book (`checks` in `manifest.yaml`) or for one line
   (`/* gutterpress-disable-next-line <rule-id> -- reason */`).
 
 ## 9. Full-bleed art without shrinking the book

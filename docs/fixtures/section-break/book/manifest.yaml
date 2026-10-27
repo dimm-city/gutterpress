@@ -7,9 +7,8 @@ preset: book
 styles:
   - styles/style.css
 
-source:
-  files:
-    - 01-boxes.md
+chapters:
+  - 01-boxes.md
 
 page:
   width: 432   # 6in

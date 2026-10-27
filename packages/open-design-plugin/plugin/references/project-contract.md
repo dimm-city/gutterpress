@@ -18,21 +18,23 @@ the manifest does not exist there, stop without writing anything.
 ## Manuscript selection
 
 ```yaml
-source:
-  files:
-    - chapters/01-introduction.md
-    - chapters/02-rules.md
+chapters:
+  - chapters/01-introduction.md
+  - chapters/02-rules.md
 ```
 
 - **Explicit** — the listed files render, in that order. Any location works,
   including subdirectories.
-- **Implicit** (`source.files` absent or empty) — every `.md` file **directly
+- **Implicit** (`chapters` absent or empty) — every `.md` file **directly
   inside** the book folder renders, alphabetically. Discovery never recurses, so
   a `chapters/` folder is invisible unless it is listed.
 
+A book written for Gutterpress 0.11.22 or earlier spells the list
+`source: { files: [...] }`; treat it exactly like `chapters`.
+
 The hazard to check before writing any Markdown at a book root: under implicit
 discovery a root `DESIGN.md`, `README.md`, or `NOTES.md` **is a chapter**. Put
-control documents under `design/`, above the book, or make `source.files`
+control documents under `design/`, above the book, or make `chapters`
 explicit first. Never create a root-level control document in a book that uses
 implicit discovery.
 

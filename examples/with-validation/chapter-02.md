@@ -35,7 +35,7 @@ errors.
 ## Ink Coverage
 
 Total Area Coverage (TAC) measures the combined ink density on a page. This
-project's `dtrpg` preset caps it at 240% (`ink.maxTac`). The `pdf.print.ink-coverage` check
+project's `dtrpg` preset caps it at 240%. The `pdf.print.ink-coverage` check
 uses Ghostscript to measure this.
 
 > **Note:** High ink coverage can cause paper curling, slow drying, and ink smearing. Keep decorative elements in check.

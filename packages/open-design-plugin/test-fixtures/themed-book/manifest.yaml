@@ -1,8 +1,7 @@
 title: Themed Fixture
 preset: book
-source:
-  files:
-    - chapter.md
+chapters:
+  - chapter.md
 styles:
   - themes/publisher/theme.css
   - styles/book.css

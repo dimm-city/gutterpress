@@ -166,7 +166,7 @@ export async function generateAndWriteHtml(
     title?: string;
     language?: string;
     styles?: string[];
-    source?: { files?: string[] | null };
+    chapters?: string[] | null;
     extensions?: ResolvedExtensionConfig[];
     print?: PrintPadding;
     page?: { width: number; height: number; bleed?: number; safe?: number; artSafe?: number; gutter?: number };
@@ -191,7 +191,7 @@ export async function generateAndWriteHtml(
     ...config,
     printArea: config.page && { ...config.page, preset: config.preset, spec: config.spec },
   }, {
-    files: config.source?.files ?? null,
+    files: config.chapters ?? null,
     onCssAssets: (copies) => {
       for (const copy of copies) nextAssets.set(copy.to, copy.from);
     },

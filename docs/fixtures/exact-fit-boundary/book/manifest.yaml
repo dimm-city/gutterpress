@@ -7,9 +7,8 @@ preset: book
 styles:
   - styles/style.css
 
-source:
-  files:
-    - 01-boundary.md
+chapters:
+  - 01-boundary.md
 
 page:
   width: 612

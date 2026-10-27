@@ -17,7 +17,7 @@
  * Two kinds keep their own severity: a plugin component's opt-in `validate`
  * (its designer may mark a problem `error` or `info`), and `flush_art`, an
  * `info` because `.gp-flush` is a choice the author made. An author can still
- * downgrade the whole check via `validate.checks` in the manifest.
+ * downgrade the whole check via `checks:` in the manifest.
  */
 import { readFile } from "node:fs/promises";
 import { registerCheck } from "../registry";

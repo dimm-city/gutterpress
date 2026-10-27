@@ -22,8 +22,6 @@ const check: Check = {
   category: "asset",
   phase: "pre-build",
   async run(ctx: CheckContext): Promise<CheckResult[]> {
-    if (!ctx.config.validate.assets.requireFontLicense) return [];
-
     const { glob } = await import("glob");
     const dirs = ctx.assetDirs ?? [ctx.inputDir];
 

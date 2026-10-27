@@ -2,13 +2,22 @@ import { readFile } from "node:fs/promises";
 import { existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { parse as parseYaml, YAMLParseError } from "yaml";
-import type { GutterpressManifest, PageMargin, ResolvedConfig, ExtensionConfig, ResolvedExtensionConfig } from "../schema/manifest.types";
+import type {
+  CheckLevel,
+  CheckLevelInput,
+  GutterpressManifest,
+  PageMargin,
+  ResolvedConfig,
+  ExtensionConfig,
+  ResolvedExtensionConfig,
+} from "../schema/manifest.types";
 import { isNonNegativePoints } from "../engine/shared/print-area";
 import { isPathSpecifier, parseExtensionSpecifier } from "./extension-specifier";
-import { resolvePreset, warnOnce, type VendorPreset } from "./presets";
+import { resolvePreset, type VendorPreset } from "./presets";
 import { overlayPreset, publishTargetFor, resolveTargets } from "./targets";
 import { UsageError } from "./cli-args";
 import { TWO_VERSIONS_OPEN } from "./two-versions-markers";
+import { readOldSpellings } from "./manifest-old-spellings";
 
 /**
  * The manifest file name Gutterpress recognizes.
@@ -80,8 +89,8 @@ export async function loadManifestWithPath(
         );
       }
       try {
-        const manifest = (parseYaml(raw) as GutterpressManifest) ?? {};
-        return { manifest, manifestDir: dirname(p), manifestPath: p };
+        const parsed = (parseYaml(raw) as GutterpressManifest | null) ?? {};
+        return { manifest: readOldSpellings(parsed), manifestDir: dirname(p), manifestPath: p };
       } catch (error) {
         if (!(error instanceof YAMLParseError)) throw error;
         const position = error.linePos?.[0];
@@ -232,12 +241,11 @@ function isPlainObject(v: unknown): v is PlainObject {
 /**
  * Recursively merge a "closed shape" nested config object — cli overrides
  * manifest overrides preset, leaf-by-leaf, at any depth (e.g.
- * `validate.heuristics.textDensityRange.min`, three levels deep). Keys always
- * come from `preset`'s own shape, NOT the union with `cli`/`manifest`, so a
- * key the manifest type happens to carry alongside real ones but `preset`
- * (and `ResolvedConfig`) doesn't declare can never leak into the resolved
- * result; deprecated fields get their own explicit warn-and-ignore check
- * instead (see `resolveConfig` below).
+ * `page.margin.top`). Keys always come from `preset`'s own shape, NOT the
+ * union with `cli`/`manifest`, so a key the manifest type happens to carry
+ * alongside real ones but `preset` (and `ResolvedConfig`) doesn't declare can
+ * never leak into the resolved result; the spellings an older manifest used
+ * are translated where it is read (manifest-old-spellings.ts).
  *
  * A leaf value (anything that isn't a plain object — string, number,
  * boolean, array, or `null`) resolves with `??` precedence: the first of
@@ -247,7 +255,7 @@ function isPlainObject(v: unknown): v is PlainObject {
  * through to `resolveActiveStyles`'s own discovery, not crash trying to
  * `.filter()` a `null`.
  *
- * `validate.checks` — an OPEN dictionary keyed by check id, where a manifest
+ * `checks` — an OPEN dictionary keyed by check or rule id, where a manifest
  * can introduce ids the preset never declared — is intentionally NOT run
  * through this (a closed-shape merge would silently drop custom check ids); it
  * keeps its own one-line `{...preset, ...manifest, ...cli}` union merge in
@@ -393,47 +401,16 @@ function resolveWithPreset(
   const m = manifest;
   const c = cliOverrides;
 
-  // Deprecated-keys table: manifest/CLI fields that still parse
-  // (so old manifests don't break) but no longer affect resolution — each
-  // gets a one-line once-per-process notice instead of being threaded
-  // through the merge above.
-  // `output:` and `source.assets:` are gone entirely (not merely ignored): the
-  // output location is a convention (lib/output-paths.ts) and the asset set is
-  // derived from the book's own references (lib/asset-inline.ts). A manifest
-  // that still carries either gets one actionable error rather than silently
-  // building to a place the author no longer controls.
-  const legacy = m as { output?: unknown; source?: { assets?: unknown } };
-  if (legacy.output !== undefined || legacy.source?.assets !== undefined) {
-    const stale = [
-      legacy.output !== undefined ? "`output`" : null,
-      legacy.source?.assets !== undefined ? "`source.assets`" : null,
-    ].filter(Boolean);
+  // `output:` is gone entirely (not merely ignored): the output location is a
+  // convention (lib/output-paths.ts). A manifest that still carries it gets
+  // one actionable error rather than silently building to a place the author
+  // no longer controls. (`source.assets` is refused where the old spellings
+  // are read, manifest-old-spellings.ts.)
+  if ((m as { output?: unknown }).output !== undefined) {
     throw new UsageError(
-      `Manifest field(s) ${stale.join(" and ")} are no longer supported — remove them.\n` +
-        "  Output goes to `dist/<title-slug>/` automatically (use `--out` for a one-off location).\n" +
-        "  Assets are discovered from what your book actually references, so no list is needed."
+      "Manifest field `output` is no longer supported — remove it.\n" +
+        "  Output goes to `dist/<title-slug>/` automatically (use `--out` for a one-off location)."
     );
-  }
-  if (
-    (m.validate?.source?.allowedCallouts?.length ?? 0) > 0 ||
-    (c.validate?.source?.allowedCallouts?.length ?? 0) > 0
-  ) {
-    warnOnce(
-      "allowed-callouts-deprecated",
-      "[gutterpress] manifest field `validate.source.allowedCallouts` is " +
-        "deprecated and ignored. The `:::` container syntax it gated was " +
-        "removed 2026-05-17. See docs/migrations/2026-05-removing-container-syntax.md."
-    );
-  }
-  for (const key of ["minImageDpi", "allowedColorSpaces"] as const) {
-    if (m.validate?.assets?.[key] !== undefined || c.validate?.assets?.[key] !== undefined) {
-      warnOnce(
-        `assets-${key}-deprecated`,
-        `[gutterpress] manifest field \`validate.assets.${key}\` is deprecated and ` +
-          "ignored. The source-image check it configured was removed; the build " +
-          "and the PDF checks measure what actually prints."
-      );
-    }
   }
 
   // `engine:` and `engineStyles:` are gone (#266). The Gutterpress engine is
@@ -519,7 +496,11 @@ function resolveWithPreset(
     styles: c.styles ?? m.styles,
     extensions,
     targets: resolveTargets(c.targets ?? m.targets, preset.defaultTargets),
-    source: mergeShape(c.source, m.source, preset.source),
+    chapters: c.chapters ?? m.chapters ?? preset.chapters,
+    // An open dictionary keyed by check or rule id: merged key by key, the
+    // preset's (and the target's) levels first, then the manifest's, then
+    // the CLI's.
+    checks: { ...preset.checks, ...resolveCheckLevels(m.checks), ...resolveCheckLevels(c.checks) },
     pdfx: mergeShape(c.pdfx, m.pdfx, preset.pdfx),
     // `book` defaults to signature: 1 = no padding (postprocess only pads
     // when > 1). `dtrpg` defaults to signature 4 + reserveLastPage so the
@@ -528,24 +509,36 @@ function resolveWithPreset(
     // only exists when an author writes it, and then wins over reserveLastPage.
     print: mergeShape(c.print, m.print, preset.print),
     page,
-    ink: mergeShape(c.ink, m.ink, preset.ink),
-    // `rules` is an open dictionary (not a fixed shape), so it merges like
-    // `validate.checks`: cli over manifest, key by key.
-    lint: {
-      ...mergeShape(c.lint, m.lint, preset.lint),
-      rules: { ...preset.lint.rules, ...m.lint?.rules, ...c.lint?.rules },
-    },
-    validate: {
-      enabled: c.validate?.enabled ?? m.validate?.enabled ?? preset.validate.enabled,
-      checks: { ...preset.validate.checks, ...m.validate?.checks, ...c.validate?.checks },
-      source: mergeShape(c.validate?.source, m.validate?.source, preset.validate.source),
-      assets: mergeShape(c.validate?.assets, m.validate?.assets, preset.validate.assets),
-      pdf: mergeShape(c.validate?.pdf, m.validate?.pdf, preset.validate.pdf),
-      heuristics: mergeShape(
-        c.validate?.heuristics,
-        m.validate?.heuristics,
-        preset.validate.heuristics
-      ),
-    },
+    // The thresholds are the preset's and the publish target's: a printer's
+    // specification, not a book's choice. A book changes a check's level.
+    ink: structuredClone(preset.ink),
+    validate: structuredClone(preset.validate),
   };
+}
+
+/**
+ * Read a manifest's (or the CLI's) `checks:` map: `off` / `false` switch a
+ * check or rule off, `on` / `true` switch it on at its own severity, and
+ * `info`, `warn` (or `warning`) and `error` set the severity its findings
+ * are reported at. Anything else is a usage error naming the entry, so a
+ * typo never silently does nothing.
+ */
+function resolveCheckLevels(input: Record<string, CheckLevelInput> | undefined): Record<string, CheckLevel> {
+  if (input === undefined || input === null) return {};
+  if (!isPlainObject(input)) {
+    throw new UsageError("Manifest field `checks` must map check ids to off, on, info, warn or error.");
+  }
+  const out: Record<string, CheckLevel> = {};
+  for (const [id, value] of Object.entries(input)) {
+    if (value === false || value === "off") out[id] = "off";
+    else if (value === true || value === "on") out[id] = "on";
+    else if (value === "warn" || value === "warning") out[id] = "warning";
+    else if (value === "info" || value === "error") out[id] = value;
+    else {
+      throw new UsageError(
+        `Manifest field \`checks.${id}\` must be off, on, info, warn or error, got ${JSON.stringify(value)}.`
+      );
+    }
+  }
+  return out;
 }

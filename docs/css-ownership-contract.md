@@ -27,15 +27,15 @@ contract and no built-in opinion about how your CSS should be organized.
 
 ## Where the contract lives
 
-By default, `.gutterpress/css-contract.yaml` (or `.yml`) in the project root
-(next to `manifest.yaml`). To use a different path, or to turn the check off
-entirely, set it in the manifest:
+`.gutterpress/css-contract.yaml` (or `.yml`) in the book's folder (next to
+`manifest.yaml`) or the nearest folder above it, up to the repository root, so
+the books in one repository can share a contract. File paths in the contract
+are relative to the book's folder. To turn the check off while the file is
+there:
 
 ```yaml
-validate:
-  source:
-    cssOwnership: ".gutterpress/css-contract.yaml" # default location, shown explicitly
-    # cssOwnership: false                           # disable the check
+checks:
+  source.css-ownership: off
 ```
 
 ## Shape
@@ -146,7 +146,7 @@ and each fires only for a specific, real ownership violation.
 
 ## See also
 
-- [Schema reference — `validate.source`](./schema-autocomplete.md#validate-object)
+- [Schema reference — `checks`](./schema-autocomplete.md#checks-object)
 - The 2026-09-01 CSS architecture review, finding C6 — the review this check implements (the review document itself was retired once its findings shipped; the check landed in 0.10.8 under #238/#262)
 - `packages/cli/src/lib/printsafe.ts` — the sibling postcss-based print-safety
   checks this follows the same no-stylelint approach as

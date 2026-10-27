@@ -64,7 +64,7 @@ testIf(
       const htmlPath = await renderChaptersToFile(renderDir, stageDir, {
         title: config.title,
         styles: config.styles,
-        files: config.source.files,
+        files: config.chapters,
         plugins,
         pluginStyles,
         onImageRefs: (refs) => imageRefs.push(...refs),

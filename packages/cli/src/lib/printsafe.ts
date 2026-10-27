@@ -387,7 +387,7 @@ function nodeLoc(node: postcss.Node): { line: number; column: number } {
 }
 
 export interface CheckCssOptions {
-  /** The manifest's `lint.rules`: `off` drops a rule, `warn`/`error` set its severity. */
+  /** The book's `checks` levels: `off` drops a rule, `warn`/`error` set its severity. */
   rules?: Readonly<Record<string, unknown>>;
 }
 

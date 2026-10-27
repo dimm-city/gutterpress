@@ -53,10 +53,7 @@ describe("target registry", () => {
     // overlay could still false-green when the preset disables that check.
     for (const target of Object.values(TARGETS)) {
       for (const id of target.requiredChecks) {
-        expect(target.overlay.validate?.checks?.[id]).toEqual({
-          enabled: true,
-          severity: "error",
-        });
+        expect(target.overlay.checks?.[id]).toBe("error");
       }
     }
   });
@@ -88,15 +85,12 @@ describe("overlayPreset", () => {
 
     // Policy comes from the destination…
     expect(overlaid.ink.maxTac).toBe(DTRPG_PRESET.ink.maxTac);
-    expect(overlaid.validate.checks["pdf.print.pdfx-markers"]).toEqual({
-      enabled: true,
-      severity: "error",
-    });
-    expect(overlaid.validate.checks["pdf.print.safe-margins"]).toEqual({
-      enabled: true,
-      severity: "error",
-    });
-    expect(overlaid.validate.pdf.forbidTransparency).toBe(true);
+    expect(overlaid.checks["pdf.print.pdfx-markers"]).toBe("error");
+    expect(overlaid.checks["pdf.print.safe-margins"]).toBe("error");
+    // The book preset switches the transparency check off; DriveThruRPG's
+    // PDF/X-1a forbids transparency, so its overlay switches it back on.
+    expect(BOOK_PRESET.checks["pdf.print.transparency"]).toBe("off");
+    expect(overlaid.checks["pdf.print.transparency"]).toBe("on");
     // …but HOW the book is designed stays the preset's: same trim.
     expect(overlaid.page).toEqual(BOOK_PRESET.page);
   });
@@ -104,24 +98,19 @@ describe("overlayPreset", () => {
   test("itch overlay onto the dtrpg preset relaxes the print-only constraints", () => {
     const overlaid = overlayPreset(DTRPG_PRESET, publishTargetFor("itch"));
 
-    expect(overlaid.validate.checks["pdf.print.pdfx-markers"]).toBe(false);
-    expect(overlaid.validate.checks["pdf.print.pdfx-metadata"]).toBe(false);
-    expect(overlaid.validate.checks["pdf.print.ink-coverage"]).toBe(false);
-    expect(overlaid.validate.checks["pdf.print.safe-margins"]).toBe(false);
-    expect(overlaid.validate.assets.allowAlpha).toBe(true);
+    expect(overlaid.checks["pdf.print.pdfx-markers"]).toBe("off");
+    expect(overlaid.checks["pdf.print.pdfx-metadata"]).toBe("off");
+    expect(overlaid.checks["pdf.print.ink-coverage"]).toBe("off");
+    expect(overlaid.checks["pdf.print.safe-margins"]).toBe("off");
+    expect(overlaid.checks["asset.image.alpha-channel"]).toBe("off");
+    expect(overlaid.checks["pdf.print.transparency"]).toBe("off");
+    expect(overlaid.checks["pdf.print.bleed"]).toBe("off");
     // Print image limits do not apply to a screen PDF.
     expect(overlaid.validate.assets.maxImageSize).toBe(0);
     expect(overlaid.validate.pdf.minImageResolution).toBe(0);
-    expect(overlaid.validate.pdf.forbidTransparency).toBe(false);
     // Digital release still demands a structurally sound PDF with fonts.
-    expect(overlaid.validate.checks["pdf.structure.qpdf"]).toEqual({
-      enabled: true,
-      severity: "error",
-    });
-    expect(overlaid.validate.checks["pdf.print.embedded-fonts"]).toEqual({
-      enabled: true,
-      severity: "error",
-    });
+    expect(overlaid.checks["pdf.structure.qpdf"]).toBe("error");
+    expect(overlaid.checks["pdf.print.embedded-fonts"]).toBe("error");
   });
 
   test("does not mutate the preset it overlays", () => {
@@ -132,20 +121,19 @@ describe("overlayPreset", () => {
 });
 
 describe("resolveConfigForTarget precedence (cli > manifest > target > preset)", () => {
-  test("the author's explicit manifest value beats the target's overlay", () => {
+  test("the author's explicit check level beats the target's overlay", () => {
     const config = resolveConfigForTarget(
       {},
-      { preset: "book", ink: { maxTac: 300 } },
+      { preset: "book", checks: { "pdf.print.safe-margins": "warn" } },
       "dtrpg"
     );
 
-    // Manifest wins over the target's 240…
-    expect(config.ink.maxTac).toBe(300);
-    // …while everything the manifest left unset comes from the target.
-    expect(config.validate.checks["pdf.print.pdfx-markers"]).toEqual({
-      enabled: true,
-      severity: "error",
-    });
+    // Manifest wins over the target's error…
+    expect(config.checks["pdf.print.safe-margins"]).toBe("warning");
+    // …while everything the manifest left unset comes from the target,
+    // thresholds included (they are not a manifest setting at all).
+    expect(config.checks["pdf.print.pdfx-markers"]).toBe("error");
+    expect(config.ink.maxTac).toBe(DTRPG_PRESET.ink.maxTac);
   });
 
   test("an explicit manifest check disable survives the target overlay", () => {
@@ -153,13 +141,13 @@ describe("resolveConfigForTarget precedence (cli > manifest > target > preset)",
       {},
       {
         preset: "book",
-        validate: { checks: { "pdf.print.pdfx-markers": false } },
+        checks: { "pdf.print.pdfx-markers": "off" },
       },
       "dtrpg"
     );
 
     // The author owns this choice — the target only supplies defaults.
-    expect(config.validate.checks["pdf.print.pdfx-markers"]).toBe(false);
+    expect(config.checks["pdf.print.pdfx-markers"]).toBe("off");
   });
 });
 
@@ -170,23 +158,22 @@ describe("applyDefaultPdfStrictChecks", () => {
     const base = resolveConfig(
       {},
       {
-        validate: {
-          checks: {
-            "pdf.structure.qpdf": false,
-          },
+        checks: {
+          "pdf.structure.qpdf": "off",
+          "pdf.print.embedded-fonts": "on",
         },
       }
     );
+    delete base.checks["pdf.print.pdfx-markers"];
 
     const next = applyDefaultPdfStrictChecks(base);
 
     // Explicitly disabled by the author — must survive.
-    expect(next.validate.checks["pdf.structure.qpdf"]).toBe(false);
+    expect(next.checks["pdf.structure.qpdf"]).toBe("off");
+    // Explicitly on (at the check's own severity) — left as written.
+    expect(next.checks["pdf.print.embedded-fonts"]).toBe("on");
     // Left unset — filled in as an error.
-    expect(next.validate.checks["pdf.print.pdfx-markers"]).toEqual({
-      enabled: true,
-      severity: "error",
-    });
+    expect(next.checks["pdf.print.pdfx-markers"]).toBe("error");
   });
 
   test("does not mutate the original config", () => {
@@ -194,8 +181,8 @@ describe("applyDefaultPdfStrictChecks", () => {
     const next = applyDefaultPdfStrictChecks(base);
 
     expect(next).not.toBe(base);
-    next.validate.checks["pdf.structure.qpdf"] = false;
-    expect(base.validate.checks["pdf.structure.qpdf"]).not.toBe(false);
+    next.checks["pdf.structure.qpdf"] = "off";
+    expect(base.checks["pdf.structure.qpdf"]).not.toBe("off");
   });
 
   test("a config with an extension entry survives structuredClone (options object deep-cloned too)", () => {

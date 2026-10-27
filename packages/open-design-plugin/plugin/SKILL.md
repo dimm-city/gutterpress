@@ -99,7 +99,7 @@ After `</question-form>`, stop. Do not narrate next steps or begin inspection.
     2. Find the first existing manifest: `manifest.yaml`.
 3. Stop without writing when no manifest exists at the exact target path.
 4. Read the manifest before scanning or editing project files.
-5. If `source.files` is absent or empty, remember that every **top-level** `.md` file in the book is manuscript content, and that discovery never recurses — a `chapters/` folder only renders when it is listed explicitly. Never add a root `DESIGN.md`, `README.md`, or notes file in that case; put control documents under `design/`.
+5. If `chapters` is absent or empty, remember that every **top-level** `.md` file in the book is manuscript content, and that discovery never recurses — a `chapters/` folder only renders when it is listed explicitly. Never add a root `DESIGN.md`, `README.md`, or notes file in that case; put control documents under `design/`.
 
 ### 2. Inspect the publication contract
 

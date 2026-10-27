@@ -98,9 +98,10 @@ export interface Gates {
    * Disable the `source.stylelint` check (CSS print-safety: remote urls,
    * risky print effects, page-containment) for this run, without touching
    * `preValidate` itself (#272 — one CSS gate, not two). `true` when
-   * `--skip-lint` was passed or `config.lint.enabled === false`; consulted
-   * only when `preValidate` is also true — with `preValidate` off, no
-   * pre-build check (CSS included) runs at all, `--skip-lint` or not.
+   * `--skip-lint` was passed (a book switches it off for good with
+   * `checks: { source.stylelint: off }`); consulted only when `preValidate`
+   * is also true — with `preValidate` off, no pre-build check (CSS
+   * included) runs at all, `--skip-lint` or not.
    */
   skipStylelint: boolean;
   preValidate: boolean;
@@ -110,7 +111,6 @@ export interface Gates {
 export function computeGates(
   format: BuildFormat,
   opts: { skipLint?: boolean; skipPreValidate?: boolean; skipPostValidate?: boolean },
-  config: { lint: { enabled: boolean }; validate: { enabled: boolean } }
 ): Gates {
   if (format === "html") {
     if (opts.skipLint || opts.skipPreValidate || opts.skipPostValidate) {
@@ -121,12 +121,9 @@ export function computeGates(
     return { skipStylelint: false, preValidate: false, postValidate: false };
   }
 
-  const skipStylelint = !!opts.skipLint || config.lint.enabled === false;
-  const preValidate = !opts.skipPreValidate && config.validate.enabled !== false;
-  const postValidate =
-    format === "pdfx" &&
-    !opts.skipPostValidate &&
-    config.validate.enabled !== false;
+  const skipStylelint = !!opts.skipLint;
+  const preValidate = !opts.skipPreValidate;
+  const postValidate = format === "pdfx" && !opts.skipPostValidate;
 
   return { skipStylelint, preValidate, postValidate };
 }

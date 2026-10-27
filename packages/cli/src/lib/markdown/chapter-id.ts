@@ -13,7 +13,7 @@
  *   - the desktop's editor↔preview sync scoping
  *     (packages/desktop +page.svelte editorChapter)
  *
- * WHY: manifest `source.files` entries are author-written and arrive in many
+ * WHY: manifest `chapters` entries are author-written and arrive in many
  * spellings (`./chapters/03.md`, `chapters\03.md` on Windows, `chapters//03.md`),
  * while the watcher broadcasts `path.relative(inputPath, file)`. Before this
  * helper the build tagged the manifest string VERBATIM, so any `./`-prefixed

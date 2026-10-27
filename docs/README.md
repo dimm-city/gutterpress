@@ -149,7 +149,6 @@ docs/
 ├── installing.md                           # Install channels, platform support, unsigned-app guidance
 ├── known-limitations.md                   # Silent Chromium print gaps (upstream-tracked)
 ├── local-extension-development.md         # Develop an extension against a book, unpublished
-├── SOURCE-FILES-GUIDE.md                  # Deep-dive into source.files configuration
 ├── migrations/                            # Migration guides
 ├── docker.md                              # Running Gutterpress in Docker
 ├── publishing.md                          # Publishing built output to platforms

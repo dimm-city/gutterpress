@@ -11,8 +11,6 @@ const check: Check = {
   phase: "post-build",
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
-    if (!ctx.config.validate.pdf.requireBookmarks) return [];
-
     const doc = await loadPdf(ctx.pdfPath);
     if (!doc) {
       return [

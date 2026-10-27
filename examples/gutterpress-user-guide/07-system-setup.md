@@ -182,19 +182,17 @@ required.** These run everywhere, including from the standalone binary.
 Markdown linting (`source.markdownlint`) and HTML linting (`source.htmlhint`)
 run **in-process** using the bundled `markdownlint` and `htmlhint` libraries.
 No `markdownlint-cli2` or `htmlhint` CLI install is required --- these checks run
-everywhere, including from the standalone binary. Disable either in the manifest
-if not needed, or point them at a config file:
+everywhere, including from the standalone binary. Each runs only when it finds
+its config file in the book's folder or the nearest folder above it, up to the
+repository root: `.markdownlint.{yaml,yml,json,jsonc}` (or the
+`.markdownlint-cli2.{yaml,jsonc}` variants) for Markdown, `.htmlhintrc` for
+HTML. To switch one off while the file is there:
 
 ```yaml
-validate:
-  source:
-    markdownlint: false          # or ".markdownlint.yaml" to use a config
-    htmlhint: false              # or ".htmlhintrc"
+checks:
+  source.markdownlint: off
+  source.htmlhint: off
 ```
-
-Markdown linting auto-detects `.markdownlint.{yaml,yml,json,jsonc}` (and the
-`.markdownlint-cli2.{yaml,jsonc}` variants) in the source directory; HTML
-linting auto-detects `.htmlhintrc`.
 
 ### CSS print-safety linting --- built in (no stylelint)
 

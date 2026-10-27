@@ -11,7 +11,7 @@
  *
  * Code blocks are scanned too: a curly quote pasted into a code sample is a
  * bug in the sample. `<!-- gutterpress-disable-next-line source.characters -->`
- * silences the line below it; `lint.rules` sets the level for the whole book.
+ * silences the line below it; `checks:` in the manifest sets the level for the whole book.
  */
 import { readFile } from "node:fs/promises";
 import { registerCheck } from "../registry";

@@ -563,7 +563,7 @@ describe("explicit manifest public seams", () => {
   test.each(["normal", "connect"] as const)(
     "publish %s reports malformed explicit YAML as clean usage error",
     async (mode) => {
-      const dir = await makeProjectDir("title: Broken\nsource:\n\tfiles:\n");
+      const dir = await makeProjectDir("title: Broken\nchapters:\n\t- a.md\n");
       try {
         const manifest = path.join(dir, "manifest.yaml");
         const args = [

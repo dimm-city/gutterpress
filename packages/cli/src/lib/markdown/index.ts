@@ -18,7 +18,7 @@ export type { LayoutWarning } from "./assemble";
  * resolver — markdown's counterpart to `resolveActiveStyles` (style-resolver.ts).
  * Both `renderChapters` below AND validation (validation-exec.ts) call this,
  * so what gets checked is always what gets rendered:
- *   1. `configuredFiles` (the manifest `source.files` list), if it has entries,
+ *   1. `configuredFiles` (the manifest `chapters` list), if it has entries,
  *      in that order; else
  *   2. every `.md` file directly inside `inputDir` — NOT recursive, since a
  *      book's chapters live at the project root by convention — alphabetically.
@@ -130,7 +130,7 @@ export async function renderChapters(
   if (cssAssetCopies.length > 0) opts.onCssAssets?.(cssAssetCopies);
   const pluginCss = blocks.length > 0 ? [`@layer ${layers.join(", ")};`, ...blocks].join("\n\n") : "";
 
-  // Determine which files to process (manifest `source.files` in order, else
+  // Determine which files to process (manifest `chapters` in order, else
   // every root-level .md file alphabetically) — see resolveActiveMarkdownFiles.
   const files = await resolveActiveMarkdownFiles(inputDir, opts.files);
 

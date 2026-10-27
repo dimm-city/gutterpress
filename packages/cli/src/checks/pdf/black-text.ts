@@ -31,7 +31,7 @@ const check: Check = {
             "`pdfx.blackText: k-only` already does that for near-black text; this text is either a dark " +
             "colour (for example a dark brown, which keeps its colour) or painted in a way the build cannot " +
             "rewrite (an image or a pattern). To print it on the black plate, make the text black (#000). " +
-            "If the colour is intended, set `lint.rules: { pdf.print.black-text: off }` in manifest.yaml.",
+            "If the colour is intended, set `checks: { pdf.print.black-text: off }` in manifest.yaml.",
           code: "rich-black-text",
           data: { runs: found.runs, pages: found.pages },
         }),
