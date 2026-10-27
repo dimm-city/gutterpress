@@ -10,7 +10,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 ### Added
 
 - **Math is a bundled feature (#425).** `gutterpress-math`, listed under
-  `extensions:` or switched on under Setup → Features → Math, typesets
+  `extensions:` or added under Setup → Extensions → Math, typesets
   `$…$` in a line and `$$…$$` on lines of their own with MathJax. Each formula is
   written as a drawing of its own glyphs, so a PDF needs no math font, no
   stylesheet and no font files in the project, and the preview paginates like
@@ -50,13 +50,31 @@ This project follows [Semantic Versioning](https://semver.org/).
   keeps working from `plugins/npm/` until its next `ext add` or `ext update`.
 - **The built-in looks are bundled extensions, listed by name.** `clean-book`,
   `zine`, `technical-doc` and `academic` join the bundled names: `gutterpress
-  ext add academic` (or Use in the Look view) writes `- academic` to the
+  ext add academic` (or Add on the desktop's Extensions tab) writes `- academic` to the
   manifest and copies nothing, the way `gutterpress-math` already worked. The
   look's stylesheet is compiled into Gutterpress and loads like a plugin's own
   CSS; a book styles over it from its own `styles:` sheets, which load after
   every extension. `ext add --look` and the `extensions/<id>` copy are gone; a book
   that still carries such a copy keeps working as the path extension it is.
   Several looks may be listed at once, later ones winning ties, as before.
+- **Book settings shows one Extensions list.** The Look and Features tabs are
+  one **Extensions** tab: every `extensions:` entry in order, looks and
+  features side by side, each with a badge for what it carries (Markdown,
+  Styles, Snippets, Components), its switch, Move up and down, Remove, and an
+  npm package's version and update controls; a look keeps its preview
+  thumbnail. Below the list, one Add area: *Built in* (every bundled feature
+  and look), *Search* (npm) and *Advanced* (install by name, a folder or file
+  used in place, a `.zip`, `.css` or URL import). A failed download's notice
+  now offers **Open Extensions**.
+- **Design tokens come from every look and are saved to your stylesheet.** The
+  **Design** tab (with the stylesheet list) shows the settings of every look
+  that is switched on (built in, from npm or a folder) in list order, as
+  your own stylesheet sets them, and saves a change to that stylesheet
+  (`styles/book.css` unless `styles:` names another): where it already sets
+  the value, or in its `:root` block, which is added if missing. It used to
+  edit only the first look kept in a folder, in the look's own file; a look's
+  files are never written now, and a built-in or npm look is no longer left
+  out.
 - **A footnote links to its own note in a book of several files.** Each file
   numbers its notes from 1, and the links behind the numbers were named after
   the number alone, so in a book with notes in two files a note's return arrow,

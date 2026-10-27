@@ -39,7 +39,7 @@ contract and those documents conflict, the architecture documents win.**
 |---|---|---|
 | Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls, host fs primitives) | `docs/architecture-rules.md` §8 | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
 | Preview bridge protocol | `docs/inline-editing-plan.md` | Sync scroll, page navigation, outline, any preview overlay or overflow probe must go through the bridge. |
-| Plugins are plain markdown-it plugins; no plugin API; loader never auto-installs | `docs/architecture-rules.md` §5 | Constrains §9 (Features) below. |
+| Plugins are plain markdown-it plugins; no plugin API; loader never auto-installs | `docs/architecture-rules.md` §5 | Constrains §9 (Extensions) below. |
 | PDF rendering = Electron `printToPDF` (desktop) / a system Chromium driven over raw CDP (CLI); pure-JS tooling posture | `docs/architecture-rules.md` §1/§3 | Preflight/export UX; "export" not "download". |
 | Git/GitHub operations are Node-native pure JS | `docs/architecture-rules.md` §7 | Project source / sync / provider-auth UX. |
 | `$effect` is eslint-banned in the SPA; persisted preferences flow through the settings store's `onSettingsChange()` channel | `docs/architecture-rules.md` §8 | Every persisted preference this contract specs (font size, pane layout, sync toggle, tooltip-seen state). |
@@ -115,10 +115,12 @@ gutterpress/
 ├── Problems panel                             SHIPPED  (ProblemsPanel, #28)
 ├── Publish workflow                           SHIPPED  (PublishWizard + Connections, #35; see §6 for
 │                                                        proposed deltas: preflight checklist, history)
-├── Extensions (Look / Features)               SHIPPED  (Project settings tab bar --
-│                                                        LookSection / FeaturesSection, one shared
-│                                                        ExtensionsSectionController, #243)
-├── Design tokens editor                       SHIPPED  (DesignSection: guided :root custom-property editor)
+├── Extensions                                 SHIPPED  (Project settings "Extensions" tab --
+│                                                        ExtensionsSection: ONE list + one Add area,
+│                                                        ExtensionsSectionController, #265)
+├── Design tokens editor                       SHIPPED  (Project settings "Design" tab -- DesignSection:
+│                                                        every enabled look's :root tokens, written
+│                                                        to the book's own stylesheet)
 ├── Project source / version history / GitHub  SHIPPED  (#12–#16, the Node-native git layer; AdvancedSetupDialog,
 │                                                        GitHubDialog, sync status)
 ├── Media panel                                SHIPPED  (MediaPanel, #47)
@@ -130,10 +132,10 @@ gutterpress/
 └── AI Assistant                               PROPOSED (#36)
 ```
 
-Document theming ("Look & style", design tokens, stylesheets) and features
-(plugins) both live in the **project settings view's Extensions surface**
-(the merged Look / Features tabs, #243), not app Settings — app appearance and
-print theme are deliberately separated concepts; do not merge them back.
+Document theming (looks, design tokens, stylesheets) and features (plugins)
+live in the **project settings view** — the Extensions tab adds looks and
+features, the Design tab fine-tunes them — not app Settings: app appearance
+and print theme are deliberately separated concepts; do not merge them back.
 
 ### Navigation model
 
@@ -420,9 +422,9 @@ buttons.
   menus at all times — hiding would contradict
   the Dev persona's "no escape hatches" pain point and would **regress
   shipped, ungated features** (#30 plugins, #32 themes).
-- The **Look tab is core to a good first PDF and is never gated**; only
-  power-user surfaces (the Look tab's importer, visual layout editor #37, AI #36)
-  get the Advanced badge.
+- The **Extensions and Design tabs are core to a good first PDF and are never
+  gated**; only power-user surfaces (the Extensions tab's Advanced importers,
+  visual layout editor #37, AI #36) get the Advanced badge.
 - Settings tabs are the shipped **App / Editor / Saving / Accounts**; the
   former "Advanced" ("for developers") tab is a section on Editor, and the
   whole surface lives on the start screen's Settings tab rather than in a
@@ -651,30 +653,30 @@ Proposed refinements (file issues):
   and badge the count above N matches.
 - "Visual Mode" toggle → belongs to #37 (see §5).
 
-### 9. Features (the Extensions surface's plugin view)
+### 9. Extensions (one list: looks, features, component libraries)
 
-**Status: SHIPPED** (project settings' Extensions surface → `FeaturesSection`,
-#30; merged with the Look grid into one Extensions surface, #243; since #265
-both views are filters over ONE manifest list, `extensions:` — see §11 for
-the Look view this section shares a controller with). This section is
-rewritten around the actual plugin model; the original "app store" concept is
-**rejected** as incompatible with docs/architecture-rules.md §5 unless a future ADR changes
-that rule.
+**Status: SHIPPED** (project settings → **Extensions** tab →
+`ExtensionsSection`, #30; looks and features merged into one surface, #243;
+one manifest list, `extensions:`, since #265; one on-screen list since
+0.11.23, after the built-in looks became bundled extensions, #427). This section is rewritten
+around the actual plugin model; the original "app store" concept is
+**rejected** as incompatible with docs/architecture-rules.md §5 unless a
+future ADR changes that rule.
 
 The model (binding, from docs/architecture-rules.md §5 and #265):
 
 - Plugins are **plain markdown-it packages**, each one entry in the project
   manifest's `extensions:` list — the same list that holds looks and component
   libraries. An entry is a bare specifier whose form says what it is: a
-  bundled feature name (nothing to install, works offline), a `./` path
-  referenced in place, or an npm package pinned as `name@version`. There is
-  no custom plugin API, hosted Gutterpress registry, or sandbox. Explicit
-  install (`addExtension` — the same shared-lib function `gutterpress ext add`
-  calls) resolves the public npm registry and vendors an exact version plus
-  its runtime dependency tree; the build/preview loader itself never installs
-  or accesses the network. The desktop host confines the target to the open
-  project and requires a native confirmation that says third-party code
-  receives full filesystem and network privileges.
+  bundled name (a feature or a look — nothing to install, works offline), a
+  `./` path referenced in place, or an npm package pinned as `name@version`.
+  There is no custom plugin API, hosted Gutterpress registry, or sandbox.
+  Explicit install (`addExtension` — the same shared-lib function `gutterpress
+  ext add` calls) resolves the public npm registry and vendors an exact
+  version plus its runtime dependency tree; the build/preview loader itself
+  never installs or accesses the network. The desktop host confines the
+  target to the open project and requires a native confirmation that says
+  third-party code receives full filesystem and network privileges.
 - Build/export/validate **fail fast** on any plugin load error, identifying
   the offending manifest entry — a final artifact never silently omits
   author-configured formatting. Live preview **degrades and reports loudly**
@@ -685,12 +687,19 @@ The model (binding, from docs/architecture-rules.md §5 and #265):
   only ordering control — there is no `priority`, and the UI must not invent
   one.
 
-Shipped UI (the baseline to refine, not replace): the markdown-carrying
-entries of the one list, with enable/disable toggle, reorder, remove,
-"Re-check" validation, the curated bundled features, verified/pinned npm
-install, local folder/file add, and an actionable missing-vendor state. An
-extension that carries both markdown and styles appears in the view its
-metadata says it belongs to, with the other half visible in its detail view.
+Shipped UI (the baseline to refine, not replace): **one list** of the
+manifest's `extensions:` entries in order. Each row shows its label, where it
+comes from, a badge per kind it carries (Markdown, Styles, Snippets,
+Components, Publish destination), its load status ("Re-check" validates
+again), an enable toggle, move up/down, and remove; an npm row adds its
+version picker, Update and Install/Reinstall (the actionable missing-vendor
+state). A row that carries styles also shows a rendered thumbnail (§11).
+Below the list, one **Add** area in three tabs: *Built in* (the bundled
+features and looks, in plain language, #309), *Search* (npm, #246 — run only
+when the tab is first shown, never at project load), and *Advanced* (install
+by name, a local folder or file referenced in place, and the `.zip`/`.css`/URL
+importers, §11). There is no separate look view: a look is a row like any
+other.
 
 Refinements (PROPOSED): link each plugin to its npm page for
 author/version/last-published metadata; surface load errors inline.
@@ -740,33 +749,38 @@ Raw rule-ID columns and rule-ID-first presentation are anti-patterns here.
   when its last problem is fixed says "No problems found — your project looks
   good!" until dismissed.
 
-### 11. Look (the Extensions surface's styles view)
+### 11. Looks and the Design tab
 
-**Status: SHIPPED baseline** (#32; project settings' Extensions surface →
-"Look" tab, merged with Features under one `ExtensionsSectionController`,
-#243; reshaped by #265 into a view over the one `extensions:` list) with
-PROPOSED refinements tracked in **#106**.
+**Status: SHIPPED baseline** (#32; since 0.11.23 a look is a styles-carrying
+row of the one Extensions list, §9, and its tokens are edited on the
+**Design** tab) with PROPOSED refinements tracked in **#106**.
 
-Shipped: a grid of the built-in looks plus the styles-carrying entries of the
-project's `extensions:` list, with per-card **rendered thumbnail previews**,
-Add / Remove / enable-disable / reorder, and add **from folder, ZIP, CSS file
-or URL** (`extension-import.ts`, reached through server routes). **Adding a
-built-in look lists it by name** (`clean-book`): it is a bundled extension,
-nothing is copied, and the author styles over it from the book's own
-stylesheet. The grid dedupes the card once the look is listed (by name, or as
-a copy at `./extensions/<id>` left by an older version). A folder the author
-already has is referenced in place, never copied. Look tokens are surfaced
-through the DesignSection editor.
+Shipped: a look is added like any extension — a bundled name from the Add
+area's *Built in* tab (`clean-book`: nothing is copied), an npm package, a
+folder referenced in place, or a **folder, ZIP, CSS file or URL** import
+(`extension-import.ts`, reached through server routes). The bundled Add rows
+hide a look once it is listed (by name, or as a copy at `./extensions/<id>`
+left by an older version). Every styles-carrying row shows a **rendered
+thumbnail preview** of its CSS.
 
-There is **no apply and no revert**: a look is an ordinary list entry, and
-Look and Features are two views over the same list (enable/disable, reorder,
-remove — the same verbs `gutterpress ext` exposes). "Switching" looks is
-adding the new one and disabling or removing the old; the manifest edit is
-versioned by the same snapshot commits as every other project file, so the
-previous state is always recoverable without a look-specific undo. The
-`themePrevious` manifest key and the `revertTheme` / `getPreviousTheme`
-routes of the earlier theme rail are gone; do not reintroduce a
-theme-specific history.
+**Design tab.** The guided token editor (`DesignSection`) shows the `:root`
+custom properties of **every enabled look** — bundled, npm or path — in
+cascade order (a later look wins a duplicate), overlaid with the book's own
+active stylesheet, which wins. Every edit is written to **that book
+stylesheet** (`styles/book.css` by default): the token's declaration is
+updated if the sheet has one, otherwise added to its `:root` block (created
+if missing). A look's own files are never written; the author's stylesheet
+is the one escape hatch, and there is no eject or copy of a look. The
+stylesheet list sits under it on the same tab.
+
+There is **no apply and no revert**: a look is an ordinary list entry
+(enable/disable, reorder, remove — the same verbs `gutterpress ext`
+exposes). "Switching" looks is adding the new one and disabling or removing
+the old; the manifest edit is versioned by the same snapshot commits as
+every other project file, so the previous state is always recoverable
+without a look-specific undo. The `themePrevious` manifest key and the
+`revertTheme` / `getPreviousTheme` routes of the earlier theme rail are gone;
+do not reintroduce a theme-specific history.
 
 Shipped refinements (#106, 0.8.0-beta.1; carried into the one-list model):
 
@@ -775,8 +789,8 @@ Shipped refinements (#106, 0.8.0-beta.1; carried into the one-list model):
   re-pagination cannot meet the ≤500ms gate and would storm on hover).
   Full-document re-pagination happens only when the list actually changes
   (add, enable/disable, reorder), with a progress state. Shipped:
-  `LookSection` (formerly `AppearanceSection`, merged #243) renders the
-  sample into a hover-preview iframe via `hoverPreviewSrcdoc`.
+  `ExtensionsSection` renders the sample into a hover-preview iframe via
+  `hoverPreviewSrcdoc` for any styles-carrying row.
 - **ZIP drag-and-drop import**, validated against the extension package
   format: `theme.css` at root + optional `assets/` + optional `package.json`
   declaring `name` and a `gutterpress` block's `styles`/`tokensFile`

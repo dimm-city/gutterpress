@@ -183,14 +183,14 @@ await screen("book-settings-details", async () => {
   await click("[aria-label='Book setup']");
   await wait(1500);
 }, { crop: SETTINGS, width: 960 });
-await screen("book-settings-look", () => click("[role=tab]:has-text('Look')"), { crop: SETTINGS, width: 960 });
-await screen("features-installed", () => click("[role=tab]:has-text('Features')"), { crop: SETTINGS, width: 960 });
-await screen("features-search", async () => {
-  await click("button:has-text('Search')");
+await screen("book-settings-extensions", () => click("[role=tab]:has-text('Extensions')"), { crop: SETTINGS, width: 960 });
+await screen("extensions-search", async () => {
+  await click("[role=tab]:has-text('Search')");
   await page.fill("input[placeholder^='footnote']", "footnote");
   await press("Enter");
   await wait(6000); // npm answers over the network
 }, { crop: SETTINGS, width: 960 });
+await screen("book-settings-design", () => click("[role=tab]:has-text('Design')"), { crop: SETTINGS, width: 960 });
 await press("Escape");
 await wait(800);
 

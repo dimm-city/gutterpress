@@ -73,10 +73,13 @@ gutterpress ext disable clean-book ./my-book   # keep it listed, stop loading it
 gutterpress ext remove clean-book ./my-book    # or drop the entry
 ```
 
-The desktop app's **Project settings &rarr; Look** view is the same list: add a
-look, drag entries into a new order, switch one off, or remove it. There is no
-separate apply or revert step --- a look is just an entry, and the snapshot
-history versions the manifest change like any other edit.
+The desktop app's **Project settings &rarr; Extensions** tab is the same list,
+looks and features together: add a look, move entries up or down, switch one
+off, or remove it. There is no separate apply or revert step --- a look is
+just an entry, and the snapshot history versions the manifest change like any
+other edit. The **Design** tab beside it shows the tokens of every look you
+have switched on and saves your changes to `styles/book.css`; the looks
+themselves are never edited.
 
 Bundled looks define the full token set (see below) so you only need to
 override the tokens you want to change. This guide's own project (the one
@@ -116,9 +119,9 @@ whichever look you started from:
 
 The values above are `clean-book`'s; each look ships its own. A look may add
 tokens of its own beyond this set --- `technical-doc`, for example, adds
-`--color-tint` for its code and note fills. Open `extensions/<id>/theme.css`
-in your project to see everything a given look exposes; the `:root` block at
-the top is the whole vocabulary.
+`--color-tint` for its code and note fills. The desktop app's **Design** tab
+lists every token the looks you use expose; for a look folder, the `:root`
+blocks of its stylesheets are the whole vocabulary.
 
 ### Creating a custom look
 
@@ -152,7 +155,7 @@ new "House Style" --kind look` scaffolds a layered six-sheet one; either way
 
 A look folder is not limited to one `theme.css`. Its `package.json` --- the same
 standard file npm already wants --- declares an ordered list of sheets and which
-sheet holds the tokens the Design panel edits, under one `"gutterpress"` key:
+sheet holds its tokens, under one `"gutterpress"` key:
 
 ```json
 {

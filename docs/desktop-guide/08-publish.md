@@ -30,8 +30,8 @@ Google Drive for both.
 Each destination shows whether it is **Connected**, **Needs a key**, or needs **No account**.
 
 A book can also add destinations of its own with a **publishing plugin** (experimental: it may
-change or be removed). Add one under **Book setup** → **Features** like any extension; it shows
-**+ publish destination** there, and in this list after the built-in destinations, marked
+change or be removed). Add one under **Book setup** → **Extensions** like any extension; it shows
+a **Publish destination** badge there, and in this list after the built-in destinations, marked
 **Experimental**.
 
 ![The Choose step for a PDF: a folder on this computer is always included](images/publish-choose.jpg)
