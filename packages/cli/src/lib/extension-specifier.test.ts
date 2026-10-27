@@ -9,8 +9,12 @@ import {
 import { BUILTIN_OPTIONAL_PLUGINS } from "./markdown/renderer";
 
 describe("extension specifiers (#265)", () => {
-  test("the bundled list and the renderer's bundled registry are the same five names", () => {
-    expect(([...BUNDLED_EXTENSIONS] as string[]).sort()).toEqual(Object.keys(BUILTIN_OPTIONAL_PLUGINS).sort());
+  test("every bundled markdown feature has a plugin in the renderer's registry, and only those", () => {
+    const features = BUNDLED_EXTENSIONS.filter((b) => b.css === undefined).map((b) => b.name);
+    expect(features.sort()).toEqual(Object.keys(BUILTIN_OPTIONAL_PLUGINS).sort());
+    const looks = BUNDLED_EXTENSIONS.filter((b) => b.css !== undefined);
+    expect(looks.map((b) => b.name)).toEqual(["clean-book", "zine", "technical-doc", "academic"]);
+    for (const look of looks) expect(look.css).toContain(":root");
   });
 
   test("./, ../, / and a drive letter are paths; nothing else is", () => {

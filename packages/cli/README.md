@@ -395,16 +395,16 @@ Add an extension. What `SOURCE` is decides what happens:
   into the project under `plugins/npm/`, load-tested, and written back pinned
   as `name@<exact version>`. This does not invoke npm, Bun, Node.js tooling,
   or package install scripts;
-- a **bundled feature** (`markdown-it-mark`, `markdown-it-sub`,
-  `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts`,
-  `gutterpress-math`) is simply listed — nothing to install, works offline;
+- a **bundled name** — a markdown feature (`markdown-it-mark`,
+  `markdown-it-sub`, `markdown-it-sup`, `markdown-it-abbr`,
+  `gutterpress-gfm-alerts`, `gutterpress-math`) or a built-in look
+  (`clean-book`, `zine`, `technical-doc`, `academic`) — is simply listed:
+  nothing to install, works offline;
 - a **folder or plugin-file path** is load-tested and listed as a
   manifest-relative path, referenced in place — never copied;
 - a **`.zip` or `.css` file**, or an **http(s) URL**, is validated (every
   declared sheet must exist and parse; print-safety findings are warnings)
-  and landed in `extensions/<id>/`, then listed as `./extensions/<id>`;
-- with `--look`, `SOURCE` is a built-in look id, copied into
-  `extensions/<id>/` as the author's own editable files and listed.
+  and landed in `extensions/<id>/`, then listed as `./extensions/<id>`.
 
 Adding something already listed re-pins or updates that entry instead of
 adding a second one.
@@ -438,7 +438,6 @@ folders it created and nothing else.
 gutterpress ext add <source> [dir] [options]
 
   --export <name>    Named module export to use as the plugin function (npm and path extensions only)
-  --look             Treat SOURCE as a built-in look id (clean-book, zine, technical-doc, academic): copy it into extensions/ and add it
 ```
 
 ```sh
@@ -447,7 +446,7 @@ gutterpress ext add markdown-it-highlightjs@4.3.0 ./my-book
 gutterpress ext add markdown-it-emoji@3.0.0 ./my-book --export full
 gutterpress ext add markdown-it-mark ./my-book
 gutterpress ext add ./plugins/field-notes ./my-book
-gutterpress ext add zine ./my-book --look
+gutterpress ext add zine ./my-book
 gutterpress ext add ./parchment.zip ./my-book
 gutterpress ext add https://example.com/looks/cool/ ./my-book
 ```

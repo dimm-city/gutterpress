@@ -651,7 +651,7 @@ test("adoptFolder appends dist/ to an existing .gitignore without overwriting it
   await rm(dir, { recursive: true, force: true });
 });
 
-test("scaffoldProject adds the built-in look a template names (paper → academic)", async () => {
+test("scaffoldProject lists the bundled look the paper template names, copying nothing", async () => {
   const parent = await tmpParent();
   try {
     const result = await scaffoldProject({
@@ -661,10 +661,11 @@ test("scaffoldProject adds the built-in look a template names (paper → academi
       preset: "book",
       versionHistory: "none",
     });
-    expect(existsSync(path.join(result.projectDir, EXTENSIONS_DIR, "academic", "theme.css"))).toBe(true);
+    expect(existsSync(path.join(result.projectDir, EXTENSIONS_DIR))).toBe(false);
     const entries = await listProjectExtensions(result.projectDir);
-    expect(entries.map((e) => e.use)).toEqual(["markdown-it-sup", "gutterpress-math", "./extensions/academic"]);
+    expect(entries.map((e) => e.use)).toEqual(["markdown-it-sup", "gutterpress-math", "academic"]);
     expect(entries.every((e) => e.enabled)).toBe(true);
+    expect(entries[2]).toMatchObject({ kind: "bundled", label: "Academic", carries: { styles: true, markdown: false } });
     // Added through the comment-preserving manifest writer.
     expect(await readFile(result.manifestPath, "utf8")).toContain("# A paper prints on US Letter");
     const config = resolveConfig({}, await loadManifest(result.projectDir));

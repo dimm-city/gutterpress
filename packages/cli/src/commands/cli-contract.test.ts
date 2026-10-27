@@ -405,32 +405,20 @@ describe("ext usage errors", () => {
     }
   }, 30000);
 
-  test("add --look with an unknown id exits 2 naming the built-in looks", async () => {
-    const dir = await makeTempDir("gutterpress-cli-ext-look-");
-    try {
-      const { exitCode, stderr } = runCli(["ext", "add", "no-such-look", dir, "--look"]);
-      expect(exitCode).toBe(2);
-      expect(stderr).toContain('unknown built-in look "no-such-look"');
-      expect(stderr).toContain("clean-book");
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  }, 30000);
-
-  test("add --look, list, disable: the look is one enabled extension, end to end", async () => {
+  test("add a bundled look, list, disable: the look is one enabled extension and nothing is copied, end to end", async () => {
     const dir = await makeTempDir("gutterpress-cli-ext-e2e-");
     try {
-      const added = runCli(["ext", "add", "zine", dir, "--look"]);
+      const added = runCli(["ext", "add", "zine", dir]);
       expect(added.exitCode).toBe(0);
-      expect(added.stdout).toContain("Added ./extensions/zine");
-      expect(fs.existsSync(path.join(dir, "extensions", "zine", "theme.css"))).toBe(true);
+      expect(added.stdout).toContain("Enabled bundled look zine");
+      expect(fs.existsSync(path.join(dir, "extensions"))).toBe(false);
 
       const listed = runCli(["ext", "list", dir]);
       expect(listed.exitCode).toBe(0);
-      expect(listed.stdout).toContain("./extensions/zine");
+      expect(listed.stdout).toContain("zine  [bundled; styles]");
       expect(listed.stdout).toContain("Zine");
 
-      expect(runCli(["ext", "disable", "./extensions/zine", dir]).exitCode).toBe(0);
+      expect(runCli(["ext", "disable", "zine", dir]).exitCode).toBe(0);
       expect(runCli(["ext", "list", dir]).stdout).toContain("(disabled)");
     } finally {
       await rm(dir, { recursive: true, force: true });

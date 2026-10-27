@@ -164,21 +164,16 @@ export {
   reorderExtensions,
   validateProjectExtensions,
   readExtensionCss,
-  listBuiltInStyleSets,
-  addBuiltInStyleSet,
+  listBundledExtensions,
   sameExtension,
-  RECOMMENDED_EXTENSIONS,
-  BUILT_IN_STYLE_SET_IDS,
   EXTENSIONS_DIR,
   PLUGINS_DIR,
 } from "../lib/extension-manager.ts";
 export type {
   ProjectExtensionEntry,
   ExtensionValidationResult,
-  RecommendedExtension,
+  BundledExtensionInfo,
   ExtensionSourceKind,
-  BuiltInStyleSet,
-  BuiltInStyleSetId,
   AddExtensionOptions,
   ExtensionUpdateCheck,
   ExtensionUpdateResult,
@@ -187,11 +182,13 @@ export type {
 } from "../lib/extension-manager.ts";
 export {
   BUNDLED_EXTENSIONS,
+  BUNDLED_EXTENSION_NAMES,
+  bundledExtension,
   isBundledExtension,
   isPathSpecifier,
   parseExtensionSpecifier,
 } from "../lib/extension-specifier.ts";
-export type { ParsedExtensionSpecifier } from "../lib/extension-specifier.ts";
+export type { BundledExtension, ParsedExtensionSpecifier } from "../lib/extension-specifier.ts";
 
 // ── Restoring pinned extensions ──────────────────────────────────────────────
 // Downloaded copies are not in a book's git history; this downloads a missing

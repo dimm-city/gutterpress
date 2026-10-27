@@ -467,7 +467,7 @@ test("loadDesign skips a disabled look, a markdown-only extension, and an npm lo
   const ctrl = lookGlueController([
     look({ tokensFile: "css/identity.css", enabled: false }),
     look({ use: "markdown-it-mark", kind: "bundled", name: "markdown-it-mark", carries: { ...STYLES_ONLY, styles: false, markdown: true }, dir: undefined, styles: undefined }),
-    look({ use: "@acme/look@1.0.0", kind: "npm", name: "@acme/look", version: "1.0.0", tokensFile: "css/identity.css", dir: "/proj/plugins/npm/@acme/look/1.0.0/node_modules/@acme/look" }),
+    look({ use: "@acme/look@1.0.0", kind: "npm", name: "@acme/look", version: "1.0.0", tokensFile: "css/identity.css", dir: "/proj/extensions/npm/@acme/look/1.0.0/node_modules/@acme/look" }),
   ]);
   await ctrl.loadDesign();
   expect(ctrl.cssPath).toBe("/proj/styles/book.css");

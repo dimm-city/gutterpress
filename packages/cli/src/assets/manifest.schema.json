@@ -58,7 +58,7 @@
     },
     "extensions": {
       "type": "array",
-      "description": "Extensions, in load order: markdown-it plugins, looks (stylesheets), component libraries — anything from npm or a folder. Each entry is a specifier: a bundled feature name (markdown-it-mark, markdown-it-sub, markdown-it-sup, markdown-it-abbr, gutterpress-gfm-alerts, gutterpress-math), a path starting with ./ or ../ (relative to this file), or an npm package name, optionally pinned as name@version. A later entry loads later: its markdown runs after earlier entries' and its CSS wins ties. The project's own `styles` always load after every extension.",
+      "description": "Extensions, in load order: markdown-it plugins, looks (stylesheets), component libraries — anything from npm or a folder. Each entry is a specifier: a bundled name (a markdown feature: markdown-it-mark, markdown-it-sub, markdown-it-sup, markdown-it-abbr, gutterpress-gfm-alerts, gutterpress-math; or a built-in look: clean-book, zine, technical-doc, academic), a path starting with ./ or ../ (relative to this file), or an npm package name, optionally pinned as name@version. A later entry loads later: its markdown runs after earlier entries' and its CSS wins ties. The project's own `styles` always load after every extension.",
       "items": {
         "oneOf": [
           {

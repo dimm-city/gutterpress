@@ -10,7 +10,7 @@
  * library carries both plus snippets and a catalog. Each is one entry in
  * `extensions:`, added one way:
  *
- *   - a BUNDLED name (the five markdown features compiled into Gutterpress,
+ *   - a BUNDLED name (a markdown feature or a look compiled into Gutterpress,
  *     `extension-specifier.ts`) is written as-is — nothing to install, works
  *     offline;
  *   - a PATH (`./x`, `../x`) is referenced IN PLACE. The author put that
@@ -19,10 +19,10 @@
  *     `plugins/npm/` (`npm-plugin-installer.ts`) and written back pinned, as
  *     `name@version`.
  *
- * The built-in looks are the one thing this module copies INTO a
- * project (`extensions/<id>/`, then referenced by path): a book's look must
- * be the author's own editable files, never a hidden dependency on the CSS
- * embedded in whichever Gutterpress version happens to be installed.
+ * Nothing is copied into a project here. A bundled look is read from the
+ * embedded assets exactly like an extension folder an author owns; the book
+ * styles over it from its own `styles:` sheets, which load after every
+ * extension. Zip and URL imports land in `extensions/` (extension-import.ts).
  *
  * Cascade order and markdown registration order are BOTH the list order —
  * a later entry loads later and its CSS wins ties — and the project's own
@@ -71,13 +71,13 @@ import {
   resolveExtension,
   type ExtensionCarries,
 } from "./extension-manifest.ts";
-import { getAssetsDir } from "./embedded-assets.ts";
+import { BUNDLED_EXTENSIONS, bundledExtension } from "./extension-specifier.ts";
 import { slugify, prettify } from "./slug.ts";
 import { ensureProjectGitignore } from "./project-gitignore.ts";
 import type { ResolvedExtensionConfig } from "../schema/manifest.types.ts";
 
-/** Folder (relative to the project root) extensions this module COPIES land in
- *  (built-in looks, zip/URL imports). Path entries elsewhere are never moved. */
+/** Folder (relative to the project root) zip and URL imports land in
+ *  (extension-import.ts). Path entries elsewhere are never moved. */
 export const EXTENSIONS_DIR = "extensions";
 
 /** The vendored npm tree stays where 0.10.8 put it. */
@@ -132,72 +132,6 @@ export interface ExtensionValidationResult {
   ok: boolean;
   /** The loader's fail-fast error message when `ok` is `false`. */
   error?: string;
-}
-
-/** A curated, bundled markdown feature an author can turn on. */
-export interface RecommendedExtension {
-  /** The bundled name — also the manifest entry "Add" writes. */
-  use: string;
-  /** Short, plain-language feature name shown as the row title. */
-  label: string;
-  /** One-line author-friendly description in plain words. Backtick spans mark
-   *  "what to type" (the desktop sets them in code type), so keep them paired
-   *  and keep HTML tag names out of the prose. */
-  description: string;
-}
-
-/**
- * The bundled markdown features (`BUNDLED_EXTENSIONS`): adding one writes the
- * manifest entry AND the feature works immediately — no terminal, no install,
- * offline. The always-on defaults (attrs/footnote/deflist, applied
- * unconditionally in renderer.ts) are deliberately NOT listed: recommending
- * the author "add" something already active is pure confusion.
- */
-export const RECOMMENDED_EXTENSIONS: RecommendedExtension[] = [
-  {
-    use: "markdown-it-mark",
-    label: "Highlight",
-    description: "Highlight text by wrapping it in `==double equals==`.",
-  },
-  {
-    use: "markdown-it-sub",
-    label: "Subscript",
-    description: "Lower text below the line, like the 2 in `H~2~O`.",
-  },
-  {
-    use: "markdown-it-sup",
-    label: "Superscript",
-    description: "Raise text above the line, like the th in `29^th^`.",
-  },
-  {
-    use: "markdown-it-abbr",
-    label: "Abbreviations",
-    description: "Explain an abbreviation when readers hover over it. Define it once, like `*[GPS]: Global Positioning System`.",
-  },
-  {
-    // Not a real npm package — Gutterpress's own code (#237), named to fit
-    // the "keyed by npm name" shape. See BUILTIN_OPTIONAL_PLUGINS (renderer.ts).
-    use: "gutterpress-gfm-alerts",
-    label: "Callouts",
-    description: "Turn a quote into a boxed note: start it with `> [!NOTE]` (or `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`).",
-  },
-  {
-    // Gutterpress's own code too (math.ts) — see BUILTIN_OPTIONAL_PLUGINS.
-    use: "gutterpress-math",
-    label: "Math",
-    description: "Write LaTeX math between dollar signs: `$E = mc^2$` in a line, or `$$` … `$$` on lines of their own.",
-  },
-];
-
-/** The built-in looks shipped as embedded assets (ids are folder names). */
-export const BUILT_IN_STYLE_SET_IDS = ["clean-book", "zine", "technical-doc", "academic"] as const;
-export type BuiltInStyleSetId = (typeof BUILT_IN_STYLE_SET_IDS)[number];
-
-/** A built-in look, as listed for the desktop's Look view. */
-export interface BuiltInStyleSet {
-  id: BuiltInStyleSetId;
-  name: string;
-  description: string;
 }
 
 // ── Serialization ────────────────────────────────────────────────────────────
@@ -356,15 +290,15 @@ async function describeEntry(projectDir: string, raw: RawEntry): Promise<Project
   }
 
   if (parsed.kind === "bundled") {
-    const bundledName = parsed.name;
-    const rec = RECOMMENDED_EXTENSIONS.find((r) => r.use === bundledName);
+    const bundled = bundledExtension(parsed.name);
     return withWarnings({
       ...common,
       kind: "bundled",
-      name: bundledName,
-      label: rec?.label ?? bundledName,
-      ...(rec ? { description: rec.description } : {}),
-      carries: { ...NO_CARRIES, markdown: true },
+      name: parsed.name,
+      label: bundled?.label ?? parsed.name,
+      ...(bundled?.description ? { description: bundled.description } : {}),
+      // A bundled look carries its stylesheet as text; everything else bundled is markdown.
+      carries: { ...NO_CARRIES, ...(bundled?.css !== undefined ? { styles: true } : { markdown: true }) },
     });
   }
 
@@ -1025,21 +959,26 @@ export async function updateExtensions(
   return updated;
 }
 
-// ── Built-in looks ───────────────────────────────────────────────────────────
+// ── Bundled extensions ───────────────────────────────────────────────────────
 
-/** List the built-in looks (metadata read from the embedded assets). */
-export async function listBuiltInStyleSets(): Promise<BuiltInStyleSet[]> {
-  const assets = await getAssetsDir();
-  const out: BuiltInStyleSet[] = [];
-  for (const id of BUILT_IN_STYLE_SET_IDS) {
-    const meta = await readExtensionMeta(path.join(assets, "themes", id));
-    out.push({
-      id,
-      name: prettify(meta.name?.trim() || id),
-      description: meta.description?.trim() || "",
-    });
-  }
-  return out;
+/** A bundled extension as the desktop lists it: "Add" writes `use`. */
+export interface BundledExtensionInfo {
+  use: string;
+  /** Short, plain-language name shown as the row title. */
+  label: string;
+  description: string;
+  /** A look (styles only), as opposed to a markdown feature. */
+  look: boolean;
+}
+
+/** The bundled extensions, in table order. */
+export function listBundledExtensions(): BundledExtensionInfo[] {
+  return BUNDLED_EXTENSIONS.map((b) => ({
+    use: b.name,
+    label: b.label,
+    description: b.description,
+    look: b.css !== undefined,
+  }));
 }
 
 /** A folder name under `extensions/` not yet taken: `<slug>`, `<slug>-2`, … */
@@ -1050,30 +989,6 @@ export async function uniqueExtensionId(projectDir: string, base: string): Promi
     candidate = `${slug}-${n}`;
   }
   return candidate;
-}
-
-/**
- * Copy a built-in look into `extensions/<id>/` and add it to the manifest as
- * `./extensions/<id>`. The copy is deliberate (see the module doc): the look
- * becomes the author's own editable files. Idempotent — a folder already
- * there is kept as it is and only (re-)referenced.
- */
-export async function addBuiltInStyleSet(
-  projectDir: string,
-  id: string,
-): Promise<ProjectExtensionEntry> {
-  if (!(BUILT_IN_STYLE_SET_IDS as readonly string[]).includes(id)) {
-    throw new Error(`Unknown built-in look "${id}" (one of: ${BUILT_IN_STYLE_SET_IDS.join(", ")}).`);
-  }
-  return withMutationLock(projectDir, async () => {
-    const dest = path.join(projectDir, EXTENSIONS_DIR, id);
-    if (!existsSync(dest)) {
-      const src = path.join(await getAssetsDir(), "themes", id);
-      await mkdir(path.dirname(dest), { recursive: true });
-      await cp(src, dest, { recursive: true });
-    }
-    return addExtensionUnlocked(projectDir, `./${EXTENSIONS_DIR}/${id}`, {});
-  });
 }
 
 // ── Validate / read ──────────────────────────────────────────────────────────
@@ -1117,6 +1032,8 @@ export async function validateProjectExtensions(
 export async function readExtensionCss(projectDir: string, use: string): Promise<string> {
   const entry = await describeExtension(projectDir, use);
   if (!entry) throw new Error(`Extension "${use}" is not in the manifest.`);
+  const bundledCss = entry.kind === "bundled" ? bundledExtension(entry.name)?.css : undefined;
+  if (bundledCss !== undefined) return bundledCss;
   if (!entry.dir) throw new Error(`Extension "${use}" has no stylesheets to preview.`);
   const meta = await readExtensionMeta(entry.dir);
   const sheets = resolveExtension(entry.dir, meta, `Extension "${use}"`).styles ?? [];

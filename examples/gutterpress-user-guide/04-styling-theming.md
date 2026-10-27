@@ -22,14 +22,13 @@ A look (a *theme*, in older docs and in `gutterpress new --kind theme`) is an
 metadata file, listed in the manifest's `extensions:` list alongside any
 plugins ([Chapter 5](#ch-plugins) covers that list in full).
 
-Adding a built-in look **copies** it into your project at `extensions/<id>/`,
-so the book owns editable files rather than a hidden dependency on whichever
-Gutterpress version happens to be installed, and adds `./extensions/<id>` to
-the list:
+A built-in look is bundled with Gutterpress: adding one lists its name,
+installs nothing, and copies nothing. Your own `styles/book.css` loads after
+it, so that is where you change what the look decides.
 
 ```sh
-gutterpress ext add clean-book ./my-book --look   # copy the built-in look in and list it
-gutterpress ext list ./my-book                    # every extension, in load (= cascade) order
+gutterpress ext add clean-book ./my-book   # list the built-in look
+gutterpress ext list ./my-book             # every extension, in load (= cascade) order
 ```
 
 A new book has no look until you add one this way. After adding
@@ -53,7 +52,7 @@ itself --- it is your copy.
 Any of these adds a look to the list:
 
 ```sh
-gutterpress ext add zine ./my-book --look                     # another built-in (copied to extensions/zine/)
+gutterpress ext add zine ./my-book                            # another built-in look, by name
 gutterpress ext add ./house-style ./my-book                   # a folder you already have -- referenced in place, never copied
 gutterpress ext add ./parchment.zip ./my-book                 # a packaged look -> extensions/parchment/
 gutterpress ext add ./parchment.css ./my-book                 # a single stylesheet -> extensions/parchment/
@@ -69,9 +68,9 @@ Two looks listed at once both load, and the later one wins ties --- so
 switching is adding the new look, then disabling or removing the old one:
 
 ```sh
-gutterpress ext add zine ./my-book --look
-gutterpress ext disable ./extensions/clean-book ./my-book   # keep it around, stop loading it
-gutterpress ext remove ./extensions/clean-book ./my-book    # or drop the entry (the folder stays yours)
+gutterpress ext add zine ./my-book
+gutterpress ext disable clean-book ./my-book   # keep it listed, stop loading it
+gutterpress ext remove clean-book ./my-book    # or drop the entry
 ```
 
 The desktop app's **Project settings &rarr; Look** view is the same list: add a

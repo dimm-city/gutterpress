@@ -14,6 +14,7 @@ import {
   safePackageTarget,
   vendoredNpmPluginPackageDir,
 } from "../plugin-vendor";
+import { bundledExtension } from "../extension-specifier";
 // #239: the SAME declared-stylesheet resolver a theme's `styles` resolve
 // through (extension-manager.ts) — see
 // resolvePluginStyles's doc comment below for why this is the literal
@@ -759,20 +760,22 @@ export async function loadPlugin(
     );
   }
 
-  // Built-in opt-in plugins resolve from the bundled registry — no project
-  // install, no network, works offline and in the compiled binary. This is the
-  // happy path for the desktop's recommended plugins.
-  if (
-    !config.path &&
-    !config.version &&
-    config.name &&
-    BUILTIN_OPTIONAL_PLUGINS[config.name]
-  ) {
-    return {
-      name: config.name,
-      plugin: BUILTIN_OPTIONAL_PLUGINS[config.name]!,
-      options: config.options,
-    };
+  // Bundled extensions resolve from the binary — no project install, no
+  // network, works offline. A markdown feature is a plugin function in
+  // BUILTIN_OPTIONAL_PLUGINS; a look is its stylesheet, carried as text the
+  // way a plugin's `css` export is.
+  if (!config.path && !config.version && config.name) {
+    const bundled = bundledExtension(config.name);
+    if (bundled?.css !== undefined) {
+      return { name: config.name, plugin: noopPlugin, css: bundled.css, options: config.options };
+    }
+    if (BUILTIN_OPTIONAL_PLUGINS[config.name]) {
+      return {
+        name: config.name,
+        plugin: BUILTIN_OPTIONAL_PLUGINS[config.name]!,
+        options: config.options,
+      };
+    }
   }
 
   // #241 — a `path` entry may name an EXTENSION FOLDER (a package.json

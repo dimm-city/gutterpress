@@ -599,10 +599,11 @@ Everything a book loads beyond core — markdown-it plugins, looks
 `extensions:` list (#265). An entry is a bare specifier whose FORM says what
 it is; there is no `path:`/`name:` wrapper and no `priority`:
 
-1. a **bundled** name (`BUNDLED_EXTENSIONS`: `markdown-it-mark`, `-sub`,
-   `-sup`, `-abbr`, `gutterpress-gfm-alerts`, `gutterpress-math`) resolves to the copy compiled
-   into Gutterpress — no install, no network; bundled names shadow npm and
-   cannot be pinned;
+1. a **bundled** name (`BUNDLED_EXTENSIONS`: the markdown features
+   `markdown-it-mark`, `-sub`, `-sup`, `-abbr`, `gutterpress-gfm-alerts`,
+   `gutterpress-math`, and the looks `clean-book`, `zine`, `technical-doc`,
+   `academic`) resolves to the copy compiled into Gutterpress — no install,
+   no network; bundled names shadow npm and cannot be pinned;
 2. `./x`, `../x`, `/x` or a Windows drive path is a **path** relative to the
    manifest — a folder with a `package.json` or a bare `.js` plugin file —
    referenced in place, never copied;
@@ -612,7 +613,7 @@ it is; there is no `path:`/`name:` wrapper and no `priority`:
 ```yaml
 # manifest.yaml
 extensions:
-  - ./extensions/clean-book            # a look, copied in by `ext add --look`
+  - clean-book                         # a built-in look, bundled
   - ./plugins/my-custom-plugin.js      # a bare plugin file, referenced in place
   - markdown-it-footnote@4.0.0         # npm, pinned by `ext add`
   - use: markdown-it-anchor@9.2.0      # object form: only when an entry needs more
@@ -680,11 +681,12 @@ writes no second manifest, so a plain markdown-it plugin package is a valid
 extension unchanged, and "look" and "plugin" are just what a package happens
 to declare. The removed `gutterpress.json`/`theme.json` are not read: a folder
 still carrying one fails to load with the package.json shape spelled out.
-The built-in looks are the one thing the manager COPIES into a project
-(`extensions/<id>/`, then referenced as `./extensions/<id>`): a book's look
-must be the author's own editable files, never a hidden dependency on the CSS
-embedded in whichever Gutterpress version is installed. `.zip` / `.css` / URL
-imports land the same way.
+A built-in look is a bundled extension: its folder lives in the embedded
+assets and is read exactly like an extension folder an author owns, so
+`clean-book` in `extensions:` installs and copies nothing. The book styles
+over it from its own `styles:` sheets, which load after every extension.
+`.zip` / `.css` / URL imports are the one thing that lands a copy, in
+`extensions/<id>/`, listed as `./extensions/<id>`.
 
 ### Plugin Resolution
 

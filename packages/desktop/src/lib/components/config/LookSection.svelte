@@ -113,20 +113,20 @@
   {/if}
 
   <h4 class="subhead">Built-in looks</h4>
-  <p class="hint">Use one and it's copied into your book's <code>extensions</code> folder as your own files, ready to fine-tune under Design.</p>
+  <p class="hint">Use one and it joins your book's extensions, nothing to install. Fine-tune it from your own stylesheet under Design.</p>
   <ul class="theme-grid">
-    {#each controller.builtIns as b (b.id)}
+    {#each controller.builtIns as b (b.use)}
       <li class="theme-card">
-        <div class="thumb">{@render placeholder(b.name)}</div>
+        <div class="thumb">{@render placeholder(b.label)}</div>
         <div class="theme-info">
-          <span class="theme-name">{b.name}</span>
+          <span class="theme-name">{b.label}</span>
           {#if b.description}<span class="theme-desc">{b.description}</span>{/if}
         </div>
         <div class="theme-actions">
-          {#if controller.isBuiltInAdded(b.id)}
+          {#if controller.isBuiltInAdded(b.use)}
             <span class="muted dim added"><Icon name="circle-check" size={12} /> Added</span>
           {:else}
-            <button class="primary small app-btn-primary" onclick={() => controller.useBuiltIn(b.id)} disabled={controller.busy !== null}>{controller.busy === b.id ? "Adding..." : "Use"}</button>
+            <button class="primary small app-btn-primary" onclick={() => controller.useBuiltIn(b.use)} disabled={controller.busy !== null}>{controller.busy === b.use ? "Adding..." : "Use"}</button>
           {/if}
         </div>
       </li>

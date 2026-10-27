@@ -92,14 +92,6 @@ import tplThemeBookCss from "../assets/extension-templates/theme/styles/book.css
 
 // Built-in looks (#32, #276). Each = theme.css + package.json, baked in so the
 // look list (compiled binary + desktop) reads from one embedded source.
-import themeCleanBookCss from "../assets/themes/clean-book/theme.css" with { type: "file" };
-import themeCleanBookJson from "../assets/themes/clean-book/package.json" with { type: "file" };
-import themeZineCss from "../assets/themes/zine/theme.css" with { type: "file" };
-import themeZineJson from "../assets/themes/zine/package.json" with { type: "file" };
-import themeTechnicalCss from "../assets/themes/technical-doc/theme.css" with { type: "file" };
-import themeTechnicalJson from "../assets/themes/technical-doc/package.json" with { type: "file" };
-import themeAcademicCss from "../assets/themes/academic/theme.css" with { type: "file" };
-import themeAcademicJson from "../assets/themes/academic/package.json" with { type: "file" };
 
 // Resolve paths relative to this module's location so that relative string
 // paths produced by bun build --target node work regardless of CWD.
@@ -145,14 +137,6 @@ const EMBEDDED_ASSETS: Record<string, string> = {
   "extension-templates/theme/styles/page-templates.css": abs(filePath(tplThemePageTemplatesCss)),
   "extension-templates/theme/styles/page-rules.css":    abs(filePath(tplThemePageRulesCss)),
   "extension-templates/theme/styles/book.css":          abs(filePath(tplThemeBookCss)),
-  "themes/clean-book/theme.css":            abs(filePath(themeCleanBookCss)),
-  "themes/clean-book/package.json":         abs(filePath(themeCleanBookJson)),
-  "themes/zine/theme.css":                  abs(filePath(themeZineCss)),
-  "themes/zine/package.json":               abs(filePath(themeZineJson)),
-  "themes/technical-doc/theme.css":         abs(filePath(themeTechnicalCss)),
-  "themes/technical-doc/package.json":      abs(filePath(themeTechnicalJson)),
-  "themes/academic/theme.css":              abs(filePath(themeAcademicCss)),
-  "themes/academic/package.json":           abs(filePath(themeAcademicJson)),
 };
 
 let extractPromise: Promise<string> | null = null;

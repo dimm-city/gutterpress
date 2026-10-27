@@ -59,7 +59,7 @@ my-book/
 ```
 
 A new book has no look. Add one when you want it --- a built-in look
-(`gutterpress ext add clean-book my-book --look`) or one from npm --- and it is
+(`gutterpress ext add clean-book my-book`) or one from npm --- and it is
 listed under `extensions:` in the manifest, with `styles/book.css` as your own
 layer on top of it. Chapter 4 covers looks; Chapter 5 covers the
 `extensions:` list itself.

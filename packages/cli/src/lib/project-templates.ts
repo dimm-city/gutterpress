@@ -26,7 +26,6 @@ import { isPathSpecifier } from "./extension-specifier.ts";
 import type { Document } from "yaml";
 
 import type { ProjectTemplateId } from "./project-scaffold.ts";
-import type { BuiltInStyleSetId } from "./extension-manager.ts";
 import { getAssetPath } from "./embedded-assets.ts";
 import { MANIFEST_FILENAMES } from "./manifest.ts";
 import { loadManifestDoc, writeManifestDoc, scalarString } from "./manifest-doc.ts";
@@ -91,11 +90,7 @@ async function readTemplateChoices(
   }
 }
 
-/** `look`: the built-in look a new book from the template starts with. */
-export const BUILT_IN_META: Record<
-  ProjectTemplateId,
-  { label: string; description: string; look?: BuiltInStyleSetId }
-> = {
+export const BUILT_IN_META: Record<ProjectTemplateId, { label: string; description: string }> = {
   book: {
     label: "Book",
     description: "A clean starting point for a novel, memoir, or any long-form book.",
@@ -111,7 +106,6 @@ export const BUILT_IN_META: Record<
   paper: {
     label: "Academic paper",
     description: "A journal-style article with LaTeX math, numbered equations, figures, tables, notes and references.",
-    look: "academic",
   },
 };
 

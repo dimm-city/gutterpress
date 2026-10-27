@@ -89,7 +89,7 @@ gutterpress ext enable markdown-it-mark ./my-book
 gutterpress ext remove markdown-it-highlightjs ./my-book
 ```
 
-`add` also takes a `.zip` or `.css` file, an `http(s)` URL, or --- with `--look` --- a built-in look id; those land a copy in `extensions/<id>/` and list it as `./extensions/<id>` ([Chapter 4](#ch-styling)). `remove`, `enable` and `disable` take the specifier as it appears in the manifest (for an npm package the bare name is enough). Re-running `add` on something already listed re-pins that entry in place rather than adding a second one; `remove` deletes an npm package's vendored copy but never touches a folder you referenced by path.
+`add` also takes a `.zip` or `.css` file or an `http(s)` URL; those land a copy in `extensions/<id>/` and list it as `./extensions/<id>` ([Chapter 4](#ch-styling)). A built-in look is a bundled name like any other: `gutterpress ext add academic ./my-book`. `remove`, `enable` and `disable` take the specifier as it appears in the manifest (for an npm package the bare name is enough). Re-running `add` on something already listed re-pins that entry in place rather than adding a second one; `remove` deletes an npm package's vendored copy but never touches a folder you referenced by path.
 
 Not sure what's out there? `gutterpress ext search [query]` searches **npm**
 (not project-scoped --- it takes no directory) for packages tagged `gutterpress`

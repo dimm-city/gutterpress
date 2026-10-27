@@ -141,14 +141,14 @@ test("loadLib resolves the real lib module and caches the same promise across ca
   expect(p1).toBe(p2); // same cached promise instance — not re-imported per call
   const lib = await p1;
   expect(typeof lib.addExtension).toBe("function");
-  expect(typeof lib.listBuiltInStyleSets).toBe("function");
+  expect(typeof lib.listBundledExtensions).toBe("function");
 });
 
 test("setLibForTests substitutes what loadLib resolves, and null restores the real lib", async () => {
   setLibForTests({ addExtension: (async () => "fake") as never });
   expect(await (await loadLib()).addExtension("/p", "x")).toBe("fake");
   setLibForTests(null);
-  expect(typeof (await loadLib()).listBuiltInStyleSets).toBe("function");
+  expect(typeof (await loadLib()).listBundledExtensions).toBe("function");
 });
 
 test("loadApiLib resolves the narrower 'gutterpress/api' surface and caches it", async () => {

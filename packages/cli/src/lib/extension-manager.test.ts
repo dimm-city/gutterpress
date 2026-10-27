@@ -1,7 +1,7 @@
 /**
  * #265 — the one extension rail: `extensions:` read/write/toggle/reorder,
- * adding by path (referenced in place), by bundled name, and as a copied
- * built-in look; validation through the one loader; CSS read for previews.
+ * adding by path (referenced in place) and by bundled name (a markdown feature
+ * or a look); validation through the one loader; CSS read for previews.
  * npm installs are covered end to end in `npm-plugin-installer.test.ts`
  * (through the same `addExtension`).
  */
@@ -10,19 +10,16 @@ import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "node
 import { join } from "node:path";
 
 import {
-  addBuiltInStyleSet,
   addExtension,
   describeExtension,
-  listBuiltInStyleSets,
+  listBundledExtensions,
   listProjectExtensions,
   readExtensionCss,
   removeExtension,
   reorderExtensions,
   setExtensionEnabled,
   validateProjectExtensions,
-  BUILT_IN_STYLE_SET_IDS,
   EXTENSIONS_DIR,
-  RECOMMENDED_EXTENSIONS,
 } from "./extension-manager";
 import { BUNDLED_EXTENSIONS } from "./extension-specifier";
 
@@ -270,41 +267,39 @@ describe("extension-manager", () => {
     });
   });
 
-  describe("built-in looks", () => {
-    test("listBuiltInStyleSets names the built-in looks", async () => {
-      const sets = await listBuiltInStyleSets();
-      expect(sets.map((s) => s.id)).toEqual([...BUILT_IN_STYLE_SET_IDS]);
-      for (const s of sets) expect(s.name.length).toBeGreaterThan(0);
+  describe("bundled looks", () => {
+    test("listBundledExtensions lists every bundled name in table order and flags the looks", async () => {
+      const listed = await listBundledExtensions();
+      expect(listed.map((b) => b.use)).toEqual(BUNDLED_EXTENSIONS.map((b) => b.name));
+      expect(listed.filter((b) => b.look).map((b) => b.use)).toEqual(["clean-book", "zine", "technical-doc", "academic"]);
+      for (const b of listed) {
+        expect(b.label.length).toBeGreaterThan(0);
+        expect(b.description.length).toBeGreaterThan(0);
+      }
+      expect(listed.find((b) => b.use === "zine")!.label).toBe("Zine");
     });
 
-    test("addBuiltInStyleSet copies the look into extensions/<id>/, lists it, and is idempotent", async () => {
+    test("a bundled look is added by name, described from the embedded folder, and copies nothing", async () => {
       const dir = projectDir();
-      const entry = await addBuiltInStyleSet(dir, "zine");
+      const entry = await addExtension(dir, "zine");
       expect(entry).toMatchObject({
-        use: `./${EXTENSIONS_DIR}/zine`,
-        kind: "path",
+        use: "zine",
+        kind: "bundled",
         label: "Zine",
-        styles: ["theme.css"],
         carries: { styles: true, markdown: false },
       });
-      expect(existsSync(join(dir, EXTENSIONS_DIR, "zine", "theme.css"))).toBe(true);
-      expect(await readExtensionCss(dir, "./extensions/zine")).toContain(":root");
-
-      // Edit the copy: it is the author's now, and a second add keeps it.
-      writeFileSync(join(dir, EXTENSIONS_DIR, "zine", "theme.css"), ":root { --mine: 1; }\n", "utf8");
-      await addBuiltInStyleSet(dir, "zine");
-      expect((await listProjectExtensions(dir)).map((e) => e.use)).toEqual(["./extensions/zine"]);
-      expect(await readExtensionCss(dir, "./extensions/zine")).toBe(":root { --mine: 1; }\n");
-
-      await expect(addBuiltInStyleSet(dir, "no-such-look")).rejects.toThrow(/Unknown built-in look/);
+      expect(entry.dir).toBeUndefined();
+      expect(readManifest(dir)).toContain("- zine");
+      expect(existsSync(join(dir, EXTENSIONS_DIR))).toBe(false);
+      expect(await readExtensionCss(dir, "zine")).toContain(":root");
     });
 
     test("two looks can be on at once — no exclusivity", async () => {
       const dir = projectDir();
-      await addBuiltInStyleSet(dir, "clean-book");
-      await addBuiltInStyleSet(dir, "zine");
+      await addExtension(dir, "clean-book");
+      await addExtension(dir, "zine");
       const list = await listProjectExtensions(dir);
-      expect(list.map((e) => e.use)).toEqual(["./extensions/clean-book", "./extensions/zine"]);
+      expect(list.map((e) => e.use)).toEqual(["clean-book", "zine"]);
       expect(list.every((e) => e.enabled && e.carries.styles)).toBe(true);
     });
   });
@@ -335,12 +330,8 @@ describe("extension-manager", () => {
     });
   });
 
-  test("RECOMMENDED_EXTENSIONS are exactly the bundled names", () => {
-    expect(RECOMMENDED_EXTENSIONS.map((r) => r.use).sort()).toEqual([...BUNDLED_EXTENSIONS].sort());
-  });
-
-  test("RECOMMENDED_EXTENSIONS descriptions are plain words with paired backtick spans, no HTML tags", () => {
-    for (const rec of RECOMMENDED_EXTENSIONS) {
+  test("bundled descriptions are plain words with paired backtick spans, no HTML tags", async () => {
+    for (const rec of await listBundledExtensions()) {
       // The desktop splits on backticks and sets odd-numbered pieces in code
       // type, so an unpaired backtick would render as the wrong text.
       expect(rec.description.split("`").length % 2).toBe(1);

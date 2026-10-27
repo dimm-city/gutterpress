@@ -23,9 +23,7 @@ This project follows [Semantic Versioning](https://semver.org/).
   and hyphenated, ruled tables, notes and references set smaller), with the
   title block, abstract, figures, tables and references styled by the
   `@section` each sits in. `gutterpress new … --template paper` starts a paper
-  with the look, math and superscripts already listed; creating the paper adds
-  the look as `gutterpress ext add academic --look` would, so it is the
-  author's own editable file.
+  with the look, math and superscripts already listed.
 - **A `language` manifest field** (a BCP 47 tag such as `en`, `de-CH` or
   `pt-BR`; default `en`). It is the `lang` of the built HTML, which is what
   hyphenation follows (every book hyphenated as English before), and the
@@ -37,6 +35,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The built-in looks are bundled extensions, listed by name.** `clean-book`,
+  `zine`, `technical-doc` and `academic` join the bundled names: `gutterpress
+  ext add academic` (or Use in the Look view) writes `- academic` to the
+  manifest and copies nothing, the way `gutterpress-math` already worked. The
+  look is read from the embedded assets like any extension folder; a book
+  styles over it from its own `styles:` sheets, which load after every
+  extension. `ext add --look` and the `extensions/<id>` copy are gone; a book
+  that still carries such a copy keeps working as the path extension it is.
+  Several looks may be listed at once, later ones winning ties, as before.
 - **A footnote links to its own note in a book of several files.** Each file
   numbers its notes from 1, and the links behind the numbers were named after
   the number alone, so in a book with notes in two files a note's return arrow,

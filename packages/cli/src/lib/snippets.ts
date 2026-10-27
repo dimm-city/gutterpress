@@ -202,7 +202,8 @@ export async function deleteSnippet(
 /**
  * One plugin-declared marker (a "component", `export const markers`) the
  * project can use, with the example snippet the editor inserts for it.
- * Unrelated to the `gutterpress.components` catalog file, which nothing reads.
+ * Unrelated to the `gutterpress.components` catalog file, which the desktop's
+ * class catalog reads for class completions.
  */
 export interface MarkerComponent {
   /** The marker name, without `@` — e.g. `term-box`. */

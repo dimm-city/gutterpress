@@ -291,13 +291,14 @@ test("a nested .git path is still ignored at any depth", () => {
   expect(h.clock.size).toBe(0);
 });
 
-test("generated and vendored subtrees are ignored (dist, plugins/npm, node_modules)", () => {
+test("generated and vendored subtrees are ignored (dist, extensions/npm and the older plugins/npm, node_modules)", () => {
   const h = makeHarness();
   h.fw.start(DIR);
   for (const f of [
     "dist/field-guide/field-guide-pdf.pdf",
     "dist",
     "plugins/npm/some-plugin/1.0.0/index.js",
+    "extensions/npm/some-plugin/1.0.0/index.js",
     "node_modules/.bin/x",
     "dist\\windows\\spelling.pdf",
   ]) {
