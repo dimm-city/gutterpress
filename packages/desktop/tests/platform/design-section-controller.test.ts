@@ -591,6 +591,87 @@ test("an edit after a revert in the same debounce window wins over the queued re
   expect(h.fs.files.get(BOOK)).toBe(":root {\n  --color-accent: #00ff00;\n}\n");
 });
 
+test("lookLabels names the enabled styles-carrying entries after load, in cascade order", async () => {
+  const h = lookHarness(
+    [look({ ...CLEAN_BOOK, label: "Clean book" }), { ...HOUSE, enabled: false }, look({ use: "markdown-it-mark", kind: "bundled", label: "Highlight", carries: { ...STYLES_ONLY, styles: false, markdown: true } }), look({ ...FROM_NPM, label: "Acme look" })],
+    { "clean-book": ":root { --color-accent: #2b4c7e; }", "@acme/look@1.0.0": ":root { --acme-rule: 1px; }" },
+    "",
+  );
+  expect(h.ctrl.lookLabels).toEqual([]);
+  await h.ctrl.loadDesign();
+  expect(h.ctrl.lookLabels).toEqual(["Clean book", "Acme look"]);
+});
+
+// A book override of a look's token written in an earlier session is clean
+// (not dirty) after a fresh load, yet the author must still be able to drop
+// it: "Use the look's value" removes the book's declaration.
+
+test("a book override of a look token shows as overriding after a fresh load and is not dirty", async () => {
+  const h = lookHarness(
+    [CLEAN_BOOK],
+    { "clean-book": ":root { --color-accent: #2b4c7e; --fs-body: 11pt; }" },
+    ":root {\n  --color-accent: #7b2f8a;\n  --book-only: 2;\n}\n",
+  );
+  await h.ctrl.loadDesign();
+  const accent = h.ctrl.tokens.find((t) => t.name === "--color-accent")!;
+  const body = h.ctrl.tokens.find((t) => t.name === "--fs-body")!;
+  const own = h.ctrl.tokens.find((t) => t.name === "--book-only")!;
+  expect(h.ctrl.isDirty(accent)).toBe(false);
+  expect(h.ctrl.overridesLook(accent)).toBe(true);
+  expect(h.ctrl.lookValue(accent)).toBe("#2b4c7e");
+  // A look token the book leaves alone, and a token only the book declares, offer nothing.
+  expect(h.ctrl.overridesLook(body)).toBe(false);
+  expect(h.ctrl.overridesLook(own)).toBe(false);
+  expect(h.ctrl.lookValue(own)).toBeUndefined();
+  expect(h.ctrl.anyDirty).toBe(false);
+});
+
+test("resetToken on an overriding token removes the declaration from the book sheet and the row stops overriding", async () => {
+  const h = lookHarness(
+    [CLEAN_BOOK],
+    { "clean-book": ":root { --color-accent: #2b4c7e; }" },
+    ":root {\n  --color-accent: #7b2f8a;\n  --book-only: 2;\n}\n",
+  );
+  await h.ctrl.loadDesign();
+  const accent = h.ctrl.tokens.find((t) => t.name === "--color-accent")!;
+  h.ctrl.resetToken(accent);
+  expect(accent.value).toBe("#2b4c7e");
+  expect(h.ctrl.overridesLook(accent)).toBe(false);
+  expect(h.ctrl.isDirty(accent)).toBe(false);
+  h.timer.fire();
+  await flush();
+  expect(h.written).toEqual([BOOK]);
+  expect(h.fs.files.get(BOOK)).toBe(":root {\n  --book-only: 2;\n}\n");
+  expect(h.ctrl.designSaveStatus).toBe("saved");
+  // Editing it again from here is an ordinary edit; its reset removes the declaration again.
+  h.ctrl.setToken(accent, "#ff0000");
+  expect(h.ctrl.isDirty(accent)).toBe(true);
+  h.ctrl.resetToken(accent);
+  expect(accent.value).toBe("#2b4c7e");
+  h.timer.fire();
+  await flush();
+  expect(h.fs.files.get(BOOK)).toBe(":root {\n  --book-only: 2;\n}\n");
+});
+
+test("revertAllTokens leaves stored overrides alone (it undoes this session only)", async () => {
+  const h = lookHarness(
+    [CLEAN_BOOK],
+    { "clean-book": ":root { --color-accent: #2b4c7e; --fs-body: 11pt; }" },
+    ":root {\n  --color-accent: #7b2f8a;\n}\n",
+  );
+  await h.ctrl.loadDesign();
+  const body = h.ctrl.tokens.find((t) => t.name === "--fs-body")!;
+  h.ctrl.setLength(body, "12");
+  h.ctrl.revertAllTokens();
+  expect(h.ctrl.anyDirty).toBe(false);
+  h.timer.fire();
+  await flush();
+  const accent = h.ctrl.tokens.find((t) => t.name === "--color-accent")!;
+  expect(accent.value).toBe("#7b2f8a");
+  expect(h.ctrl.overridesLook(accent)).toBe(true);
+  expect(h.fs.files.get(BOOK)).toBe(":root {\n  --color-accent: #7b2f8a;\n}\n");
+});
+
 test("loadDesign tolerates a failing extension list — the book's own tokens still load", async () => {
   const ctrl = new DesignSectionController({
     projectDir: () => "/proj",

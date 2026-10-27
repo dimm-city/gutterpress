@@ -133,14 +133,15 @@ export const PRINT_SAFE_FONT_STACKS: FontStackChoice[] = [
 /**
  * Plain-language labels for the shared token vocabulary every built-in look
  * defines and the user guide's styling chapter teaches (plus `--color-ink-faint`,
- * the third step of the same ink scale). The name-derived default ("Color ink
- * muted", "Fs h1") reads as designer jargon to a writer; these say what the
- * token DOES. Tokens a look adds beyond this set keep the derived label unless
+ * the third step of the same ink scale, and the two page-margin tokens the
+ * bundled looks read). A name-derived label ("Secondary text color" would be
+ * "Color ink muted") reads as designer jargon to a writer; these say what the
+ * token DOES. Tokens a look adds beyond this set get `derivedTokenLabel` unless
  * the look labels them itself. Display only: the token NAMES are the CSS
  * authors write and are never renamed (the panel keeps showing them beside the
  * label), and a stylesheet's own `@label` still wins over these.
  */
-const SHARED_TOKEN_LABELS: Record<string, string> = {
+export const SHARED_TOKEN_LABELS: Record<string, string> = {
   "--font-body": "Body text font",
   "--font-display": "Heading font",
   "--font-mono": "Code font",
@@ -155,14 +156,54 @@ const SHARED_TOKEN_LABELS: Record<string, string> = {
   "--fs-h2": "Heading 2 size",
   "--fs-h3": "Heading 3 size",
   "--leading": "Line spacing",
+  "--page-margin-top-bottom": "Top & bottom margins",
+  "--page-margin-sides": "Side margins",
 };
+
+/** Plain words for the abbreviations token names are built from. */
+const TOKEN_WORDS: Record<string, string> = {
+  h1: "heading 1",
+  h2: "heading 2",
+  h3: "heading 3",
+  h4: "heading 4",
+  h5: "heading 5",
+  h6: "heading 6",
+  xs: "extra small",
+  sm: "small",
+  md: "medium",
+  lg: "large",
+  xl: "extra large",
+  space: "spacing",
+  radius: "corner radius",
+  bg: "background",
+};
+
+/**
+ * The label a token gets when neither the shared vocabulary nor a stylesheet's
+ * own `@label` names it: the name's segments as plain words (`--fs-display` →
+ * "Display size", `--space-xs` → "Spacing extra small", `--radius-sm` →
+ * "Corner radius small"). A look labels anything this cannot make readable
+ * with `@label`.
+ */
+export function derivedTokenLabel(name: string): string {
+  const segments = name.replace(/^--/, "").toLowerCase().split("-").filter(Boolean);
+  const isSize = segments[0] === "fs";
+  const words = (isSize ? segments.slice(1) : segments).map((seg) => TOKEN_WORDS[seg] ?? seg);
+  if (isSize) words.push("size");
+  const text = words.join(" ");
+  return text.replace(/^\w/, (c) => c.toUpperCase());
+}
+
+/** The first family of a CSS font stack, unquoted (`"Georgia", serif` → `Georgia`). */
+export function firstFontFamily(stack: string): string {
+  const first = stack.split(",")[0] ?? "";
+  return first.trim().replace(/^["']|["']$/g, "").trim();
+}
 
 /** Build a typed StyleToken (color / font / length / number / text) from a
  * name + raw value. */
 export function makeStyleToken(name: string, raw: string): StyleToken {
-  const label =
-    SHARED_TOKEN_LABELS[name] ??
-    name.replace(/^--/, "").replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+  const label = SHARED_TOKEN_LABELS[name] ?? derivedTokenLabel(name);
   const trimmed = raw.trim();
   if (
     /^#[0-9a-fA-F]{3,8}$|^rgba?\s*\(|^hsla?\s*\(|^oklch\s*\(|^color\s*\(/.test(trimmed) ||
@@ -173,7 +214,9 @@ export function makeStyleToken(name: string, raw: string): StyleToken {
   if (isFontProperty(name) || looksLikeFontStack(trimmed)) {
     return { name, value: raw, kind: "font", label };
   }
-  const len = trimmed.match(/^(-?[\d.]+)\s*(px|rem|em|vh|vw|vmin|vmax|%|pt|cm|mm|in|ex|ch)\b/i);
+  // Anchored at both ends: a compound value such as `1pt solid #ccc` is not a
+  // length to edit as a bare number, so it falls through to the text control.
+  const len = trimmed.match(/^(-?[\d.]+)\s*(px|rem|em|vh|vw|vmin|vmax|%|pt|cm|mm|in|ex|ch)\s*$/i);
   if (len) {
     return { name, value: raw, kind: "length", label, number: parseFloat(len[1]), unit: len[2] };
   }

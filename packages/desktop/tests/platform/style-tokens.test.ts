@@ -6,6 +6,9 @@ import {
   parseStyleTokens,
   updateRootToken,
   applyTokenUpdates,
+  derivedTokenLabel,
+  firstFontFamily,
+  SHARED_TOKEN_LABELS,
 } from "../../src/lib/style-tokens";
 
 test("makeStyleToken classifies color / length / font / text", () => {
@@ -296,6 +299,8 @@ const PLAIN_LABELS: Record<string, string> = {
   "--fs-h2": "Heading 2 size",
   "--fs-h3": "Heading 3 size",
   "--leading": "Line spacing",
+  "--page-margin-top-bottom": "Top & bottom margins",
+  "--page-margin-sides": "Side margins",
 };
 
 test("the shared token vocabulary gets plain-language labels (#308)", () => {
@@ -307,9 +312,39 @@ test("the shared token vocabulary gets plain-language labels (#308)", () => {
   }
 });
 
-test("a token outside the shared vocabulary keeps the name-derived label", () => {
-  expect(makeStyleToken("--fs-display", "30pt").label).toBe("Fs display");
+test("a token outside the shared vocabulary gets a label in plain words", () => {
+  expect(makeStyleToken("--fs-display", "30pt").label).toBe("Display size");
+  expect(makeStyleToken("--fs-h4", "10pt").label).toBe("Heading 4 size");
+  expect(makeStyleToken("--fs-micro", "7pt").label).toBe("Micro size");
+  expect(makeStyleToken("--space-xs", "0.35em").label).toBe("Spacing extra small");
+  expect(makeStyleToken("--radius-sm", "2pt").label).toBe("Corner radius small");
+  expect(makeStyleToken("--color-tint-warn", "#fffbeb").label).toBe("Color tint warn");
   expect(makeStyleToken("--dc-skill-tab-shape", "1px").label).toBe("Dc skill tab shape");
+  expect(derivedTokenLabel("--fs-display")).toBe("Display size");
+});
+
+test("a compound value is never offered as a bare number (the text control takes it)", () => {
+  const border = makeStyleToken("--border-thin", "1pt solid var(--color-rule)");
+  expect(border.kind).toBe("text");
+  expect(border.number).toBeUndefined();
+  // A plain length still gets the numeric control, with and without spacing.
+  expect(makeStyleToken("--fs-body", "11pt").kind).toBe("length");
+  expect(makeStyleToken("--gap", " 2 rem ").kind).toBe("length");
+});
+
+test("firstFontFamily names the first family of a stack, unquoted", () => {
+  expect(firstFontFamily('"Helvetica Neue", "Segoe UI", Arial, sans-serif')).toBe("Helvetica Neue");
+  expect(firstFontFamily("serif")).toBe("serif");
+  expect(firstFontFamily("'Latin Modern Roman', serif")).toBe("Latin Modern Roman");
+});
+
+test("a bundled look labels its own extra token with @label (technical-doc's --color-tint)", () => {
+  const css = readFileSync(
+    path.resolve(import.meta.dir, "../../../cli/src/assets/themes/technical-doc/theme.css"),
+    "utf8",
+  );
+  const tint = parseStyleTokens(css).find((t) => t.name === "--color-tint");
+  expect(tint?.label).toBe("Note and code background");
 });
 
 test("a stylesheet's own @label wins over the plain-language default", () => {
@@ -331,7 +366,7 @@ test("every token all the built-in looks share is labelled in plain language", (
   const shared = perTheme[0]!.filter((t) => perTheme.every((tokens) => tokens.some((o) => o.name === t.name)));
   expect(shared.length).toBeGreaterThanOrEqual(13);
   for (const t of shared) {
-    const derived = t.name.replace(/^--/, "").replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
-    expect(t.label, `${t.name} still has the name-derived label`).not.toBe(derived);
+    expect(t.name in SHARED_TOKEN_LABELS, `${t.name} has no plain-language label`).toBe(true);
+    expect(t.label).toBe(SHARED_TOKEN_LABELS[t.name]!);
   }
 });

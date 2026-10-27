@@ -1,12 +1,13 @@
 <script lang="ts">
   /**
-   * Design-tokens sub-section of the Design tab. The guided `:root`
+   * "Fonts, colors & sizes" sub-section of the Design tab. The guided `:root`
    * custom-property editor (theme-curated groups, then fonts + colors +
    * sizes/numbers + other) shows the tokens of every enabled look as the
    * book's own stylesheet overrides them, and saves each change to that
-   * stylesheet (`controller.cssName`) — never to a look's files. It is the
-   * first of the two panes ProjectSettingsView composes under the "Design"
-   * heading, before the stylesheet list. No section wrapper or `<h3>` of its
+   * stylesheet (`controller.cssName`) — never to a look's files. It names the
+   * look(s) it edits; with no look it hands off to the Looks & features tab
+   * (`onChooseLook`). It is the first of the two panes ProjectSettingsView
+   * composes under the "Design" heading, before the stylesheet list. No section wrapper or `<h3>` of its
    * own; the parent owns the outer `.block`/heading. All token state, the
    * debounced read-modify-write token machinery, and the host calls live in
    * `DesignSectionController` (passed as the single `controller` prop).
@@ -24,10 +25,23 @@
    */
   import Icon from "#lib/components/Icon.svelte";
   import type { StyleToken } from "#lib/platform/dtos.ts";
-  import { toHex, PRINT_SAFE_FONT_STACKS } from "#lib/style-tokens.ts";
+  import { toHex, firstFontFamily, PRINT_SAFE_FONT_STACKS } from "#lib/style-tokens.ts";
   import type { DesignSectionController } from "#lib/routes/design-section-controller.svelte.ts";
 
-  let { controller }: { controller: DesignSectionController } = $props();
+  let {
+    controller,
+    onChooseLook,
+  }: {
+    controller: DesignSectionController;
+    /** Open the Looks & features tab (the parent owns the tab state); shown
+     *  when the book has no look yet, so the empty state hands off there. */
+    onChooseLook?: () => void;
+  } = $props();
+
+  /** "your look (Clean book)" / "your looks (Clean book, House)" for the hint. */
+  const lookPhrase = $derived(
+    `your ${controller.lookLabels.length > 1 ? "looks" : "look"} (${controller.lookLabels.join(", ")})`,
+  );
 
   /** The curated dropdown's selected option: the matching preset value, or
    * the "custom" sentinel when the current value isn't one of the presets
@@ -40,7 +54,7 @@
 
 <div class="look-subsection design-subsection">
   <div class="block-head">
-    <h4 class="tokens-title">Design tokens</h4>
+    <h4 class="tokens-title">Fonts, colors &amp; sizes</h4>
     <div class="row">
       {#if controller.designSaveStatus === "saving"}<span class="save-status saving" aria-live="polite">Saving…</span>
       {:else if controller.designSaveStatus === "saved"}<span class="save-status saved" aria-live="polite">Changes saved</span>{/if}
@@ -56,10 +70,24 @@
   {:else if !controller.cssPath}
     <p class="muted">This book has no stylesheet of its own yet, so there is nowhere to save changes. Add one (for example <code>styles/book.css</code>) to fine-tune your looks here.</p>
   {:else if controller.tokens.length === 0}
-    <p class="muted">Your looks and {controller.cssName} don't expose any settings yet. Use “Edit raw CSS” to add <code>:root</code> custom properties.</p>
-    {@render editRaw()}
+    {#if controller.lookLabels.length === 0}
+      <p class="muted">This book has no look yet. Add one on the Looks &amp; features tab to see its fonts, colors and sizes here.</p>
+      <div class="row">
+        {#if onChooseLook}
+          <button class="primary small app-btn-primary" onclick={onChooseLook}>Choose a look</button>
+        {/if}
+        {@render editRaw()}
+      </div>
+    {:else}
+      <p class="muted">{lookPhrase.replace(/^y/, "Y")} and {controller.cssName} don't expose any settings yet. Use “Edit the stylesheet” to add <code>:root</code> custom properties.</p>
+      {@render editRaw()}
+    {/if}
   {:else}
-    <p class="hint">Settings from your looks and your own stylesheet. Changes are saved to {controller.cssName} as you go, and the preview updates live.</p>
+    {#if controller.lookLabels.length > 0}
+      <p class="hint">Settings from {lookPhrase} and your own stylesheet ({controller.cssName}). Changes are saved to the stylesheet as you go and show in the preview when you close this panel.</p>
+    {:else}
+      <p class="hint">Settings from your own stylesheet ({controller.cssName}). Changes are saved as you go and show in the preview when you close this panel.</p>
+    {/if}
     {#each controller.customGroups as g (g.name)}
       <h4 class="subhead">{g.name}</h4>
       {#each g.tokens as t (t.name)}{@render tokenRow(t)}{/each}
@@ -85,8 +113,8 @@
 </div>
 
 {#snippet editRaw()}
-  <button class="ghost small" onclick={controller.editRawCss} title="Open your book's stylesheet in the raw editor">
-    <Icon name="file-text" size={13} /> Edit raw CSS
+  <button class="ghost small" onclick={controller.editRawCss} title="Open your book's stylesheet in the editor">
+    <Icon name="file-text" size={13} /> Edit the stylesheet
   </button>
 {/snippet}
 
@@ -119,7 +147,7 @@
             {#each PRINT_SAFE_FONT_STACKS as f (f.value)}
               <option value={f.value}>{f.label}</option>
             {/each}
-            <option value="__custom__">Custom…</option>
+            <option value="__custom__">{fontPreset(t.value) === "__custom__" ? `${firstFontFamily(t.value)} (current)` : "Custom…"}</option>
           </select>
           <input class="input sharp" type="text" value={t.value} oninput={(e) => controller.setToken(t, e.currentTarget.value)} title={t.value} aria-label={`${t.label} value`} />
         </div>
@@ -134,7 +162,7 @@
         </div>
       {:else if t.kind === "length" || t.kind === "number"}
         <div class="control size">
-          <input id={`cfg-${t.name}`} type="number" value={t.number} oninput={(e) => controller.setLength(t, e.currentTarget.value)} step="0.1" aria-label={`${t.label} number`} />
+          <input id={`cfg-${t.name}`} type="number" value={t.number} oninput={(e) => controller.setLength(t, e.currentTarget.value)} step="0.1" aria-label={`${t.label} (${t.unit ?? "number"})`} />
           <span class="unit">{t.unit}</span>
         </div>
       {:else}
@@ -142,8 +170,15 @@
           <input id={`cfg-${t.name}`} class="input sharp" type="text" value={t.value} oninput={(e) => controller.setToken(t, e.currentTarget.value)} aria-label={`${t.label} value`} />
         </div>
       {/if}
+      <!-- One undo control: this session's edit goes back to the loaded
+           value; a stored override of a look's value is dropped so the
+           look's value shows through (it is never pinned). -->
       {#if controller.isDirty(t)}
         <button class="ghost icononly" onclick={() => controller.resetToken(t)} title={t.kind === "font" || t.kind === "color" ? "Reset to original" : "Reset"} aria-label={`Reset ${t.label}`}>
+          <Icon name="refresh-cw" size={12} />
+        </button>
+      {:else if controller.overridesLook(t)}
+        <button class="ghost icononly" onclick={() => controller.resetToken(t)} title={`Use the look's value (${controller.lookValue(t)})`} aria-label={`Use the look's value for ${t.label} (${controller.lookValue(t)})`}>
           <Icon name="refresh-cw" size={12} />
         </button>
       {/if}
