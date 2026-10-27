@@ -400,7 +400,7 @@ authors:
 preset: book
 
 extensions:
-  - "./extensions/clean-book"
+  - clean-book
   - "./plugins/callouts.js"
 
 styles:

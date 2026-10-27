@@ -363,7 +363,7 @@ List, add, remove, enable, or disable the project's extensions. Markdown-it
 plugins, looks (stylesheets) and component libraries are all extensions — one
 `extensions:` list in `manifest.yaml`, in load order (see
 [Extensions](#extensions) below). These are the same shared-lib functions the
-desktop app's Look and Features views call, so an extension added from the
+desktop app's Extensions tab calls, so an extension added from the
 terminal is the same entry the GUI shows.
 
 ```sh
@@ -475,8 +475,8 @@ gutterpress ext enable markdown-it-mark ./my-book
 
 #### `gutterpress ext search`
 
-Search **npm** for extensions — the same list the desktop app's Features view
-shows under "Find more on npm." Not project-scoped (no `dir` argument): it
+Search **npm** for extensions — the same list the desktop app's Extensions tab
+shows under *Search*. Not project-scoped (no `dir` argument): it
 queries the registry for packages tagged `gutterpress` (Gutterpress
 extensions: plugins, looks, component libraries) or `markdown-it-plugin` (the
 markdown-it ecosystem's own tag — those work in Gutterpress unchanged), and
@@ -521,7 +521,7 @@ extensions:
   # a feature bundled with Gutterpress — nothing to install, works offline
   - markdown-it-mark
   # a folder or plugin file, relative to manifest.yaml — referenced in place
-  - ./extensions/clean-book
+  - ./extensions/house-look
   - ./plugins/my-custom-plugin.js
   # an npm package, pinned to the exact version `gutterpress ext add` installed
   - markdown-it-highlightjs@4.3.0
@@ -547,8 +547,7 @@ An extension folder (or npm package) describes itself in its **`package.json`** 
   "gutterpress": {
     "styles": ["styles/plugin.css"],
     "snippets": "snippets",
-    "components": "components.yaml",
-    "tokensFile": "styles/tokens.css"
+    "components": "components.yaml"
   }
 }
 ```

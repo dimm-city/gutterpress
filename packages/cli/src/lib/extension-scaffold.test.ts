@@ -273,8 +273,6 @@ describe("scaffoldExtension --kind look", () => {
       "styles/page-rules.css",
       "styles/book.css",
     ]);
-    // The Design panel's guided editor reads this.
-    expect(meta.tokensFile).toBe("styles/tokens.css");
     expect(meta.components).toBe("components.yaml");
   });
 

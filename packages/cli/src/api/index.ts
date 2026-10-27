@@ -224,7 +224,7 @@ export { DEFAULT_NPM_REGISTRY, npmRegistryUrl } from "../lib/npm-registry.ts";
 // only") and `markdown/plugins.ts` (a plugin is "markdown only") both build
 // on. One file describes every extension: npm's own `name`/`description`/
 // `author`/`keywords`/`main`, plus a `"gutterpress"` block for
-// `styles`/`markdown`/`snippets`/`components`/`tokensFile`/`preview`.
+// `styles`/`markdown`/`snippets`/`components`/`preview`.
 // Exported here — not just used internally — because a "list installed
 // extensions" surface resolves a folder's full declared shape through
 // exactly this, not a re-implementation. `snippets.ts`'s `listMergedSnippets`

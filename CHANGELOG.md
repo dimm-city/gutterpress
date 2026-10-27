@@ -35,6 +35,11 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **An extension package no longer declares `tokensFile`.** The desktop's
+  Design tab reads the `:root` tokens of every enabled look's stylesheets and
+  saves changes to the book's own sheet, so the field that once named a
+  look's token sheet is read nowhere. `gutterpress new --kind look` no longer
+  writes it, and a package that still carries it loads unchanged.
 - **`gutterpress new` no longer insists on `--preset`.** Every starter
   template carries a preset, so leaving the flag out keeps the template's;
   the flag overrides it. `--kind theme` is `--kind look`, the word the rest of

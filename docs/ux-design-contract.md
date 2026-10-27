@@ -796,7 +796,7 @@ Shipped refinements (#106, 0.8.0-beta.1; carried into the one-list model):
   `hoverPreviewSrcdoc` for any styles-carrying row.
 - **ZIP drag-and-drop import**, validated against the extension package
   format: `theme.css` at root + optional `assets/` + optional `package.json`
-  declaring `name` and a `gutterpress` block's `styles`/`tokensFile`
+  declaring `name` and a `gutterpress` block's `styles`
   (#239/#241/#276 — every declared sheet is validated like `theme.css`; a
   package without one gets a package.json written into the landed copy, so
   what lands always loads);

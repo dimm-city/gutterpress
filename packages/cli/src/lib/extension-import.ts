@@ -238,10 +238,9 @@ async function finalizeExtensionImport(
     }
   }
 
-  // markdown/components/snippets are declared-but-unenforced here
-  // (same "advisory, not existence-checked by this flow" treatment
-  // tokensFile already had) — only suppressed from the "unexpected extra
-  // files" warning below so a well-formed extension package doesn't get a
+  // markdown/components/snippets are declared-but-unenforced here (advisory,
+  // not existence-checked by this flow) — only suppressed from the "unexpected
+  // extra files" warning below so a well-formed extension package doesn't get a
   // false positive for its own declared plugin/catalog/snippets. Whichever
   // flow actually consumes a field is what existence-checks it: `markdown`
   // via the build's loader (plugins.ts's `resolveExtension`
