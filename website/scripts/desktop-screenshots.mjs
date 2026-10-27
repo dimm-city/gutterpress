@@ -128,7 +128,8 @@ console.log("desktop-screenshots: start screen and new book");
 await screen("start-screen", async () => {}, { crop: CENTRE, width: 760 });
 await screen("settings-author", async () => {
   await click("button:has-text('Settings')");
-  await click("label:has-text('Author')");
+  // The radio by value: both role descriptions mention "Author".
+  await click("input[name='set-role'][value='author']");
 }, { crop: [370, 60, 700, 820], width: 700 });
 await screen("new-book-name", async () => {
   await click("button:has-text('Books')");
