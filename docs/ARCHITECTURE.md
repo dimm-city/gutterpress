@@ -157,14 +157,14 @@ Check Registry ← registerCheck() at import time
     ↓
 Tool Check (tool-check.ts)
     ├── Collect requiredTools from active checks
-    ├── Filter out disabled checks (manifest + source tool config)
+    ├── Filter out checks the manifest turns off
     ├── Probe system for each tool via `which`
     ├── Warn about missing tools → list affected check IDs
     └── Pass skipped check IDs to runner
     ↓
 Runner (runner.ts)
     ├── Get checks from registry (filtered by category/phase/IDs)
-    ├── Apply manifest enable/disable (validate.checks map)
+    ├── Drop checks the manifest's `checks` map sets to off
     ├── Apply CLI --only/--skip filters
     ├── Skip checks with missing tools (from tool-check)
     ├── Execute each check → CheckResult[]
@@ -176,7 +176,7 @@ Formatter (formatter.ts)
     └── JSON format (structured, for CI)
 ```
 
-**40 checks across 4 categories:**
+**35 checks across 4 categories:**
 - **Source (11)**: markdownlint + htmlhint wrappers, print-safety CSS checks
   (PostCSS), an optional CSS ownership contract check (PostCSS —
   [docs/css-ownership-contract.md](./css-ownership-contract.md)), local
@@ -184,7 +184,7 @@ Formatter (formatter.ts)
   accessibility checks, leftover sync-merge-marker detection, and unusual
   characters pasted into the markdown
 - **PDF (17)**: Structure, page size, text safe margins, color spaces, fonts, ink coverage, transparency, bleed, bookmarks, etc.
-- **Asset (4)**: Size and alpha of the images the book ships, and font approval/license checks
+- **Asset (3)**: Size and alpha of the images the book ships, and the font license check
 - **Heuristic (4)**: Text density, section density, layer count, placement variance
 
 ## Build Pipeline
@@ -507,16 +507,15 @@ styles:
   - css/print.css
   - css/custom.css
 
-# Source files (optional)
-source:
-  files:                    # If specified, only these files are included in order
-    - intro.md
-    - chapter-01.md
-    - chapter-02.md
+# Chapters (optional)
+chapters:                   # If specified, only these files are included, in order
+  - intro.md
+  - chapter-01.md
+  - chapter-02.md
 
 # No `output:` block — every build writes to `<manifestDir>/dist/<title-slug>/`,
 # and artifacts are named `<title-slug>-<format>.<ext>` (lib/output-paths.ts).
-# `--out <path>` overrides this per invocation. There is also no `source.assets`
+# `--out <path>` overrides this per invocation. There is also no assets
 # list: CSS is read and inlined (fonts embedded as data: URIs), and images are
 # copied because the book's own markdown/CSS references them, not because a
 # directory was declared (lib/asset-inline.ts).
@@ -533,19 +532,11 @@ pdfx:
   icc: profiles/color-profile.icc
   stripAnnotations: true
 
-# Validation settings
-validate:
-  enabled: true
-  checks:                   # Per-check overrides
-    pdf.structure.qpdf: false
-  source:
-    markdownlint: ".markdownlint.yaml"
-  assets:
-    maxImageSize: 10000000
-  pdf:
-    forbidTransparency: true
-  heuristics:
-    textDensityRange: { min: 200, max: 5000 }
+# Check levels: off | on | info | warn | error. Thresholds come from the
+# preset and the publish target (lib/presets.ts, lib/targets.ts).
+checks:
+  pdf.structure.qpdf: off
+  pdf.print.transparency: on
 ```
 
 See the [`with-validation` example](../examples/with-validation/README.md) for a

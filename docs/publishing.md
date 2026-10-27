@@ -164,8 +164,8 @@ pdfx:
   The build reports three groups: pages that kept their text live, pages that
   show no text, and text pages that fell back (below), and it says so when no
   page kept its text. Alpha-channel images are still flagged by
-  the `dtrpg` preset (`validate.assets.allowAlpha: false`); a book that opts in
-  and uses them sets `allowAlpha: true` itself.
+  the `dtrpg` preset (`asset.image.alpha-channel`); a book that opts in
+  and uses them sets `checks: { asset.image.alpha-channel: off }` itself.
 
 Under `preserve-text`, to check the result:
 

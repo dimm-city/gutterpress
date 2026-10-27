@@ -14,15 +14,14 @@ export const INSPECT_FAILED_CODE = "inspect-failed";
  * Used by BOTH the runner (execution) and tool-check (tool probing) so the two
  * can never drift.
  *
- * Order: an explicit manifest disable wins first, then the check's own
- * declarative `enabledWhen(config)` predicate — the canonical, per-check way to
- * express a tool-specific config gate (e.g. `source.stylelint === false`)
- * instead of hard-coding special cases in the runner/tool-check.
+ * Order: a check's level `off` (preset, target, `checks:` or the CLI) wins
+ * first, then the check's own declarative `enabledWhen(config)` predicate —
+ * the canonical, per-check way to express a build-setting gate (e.g.
+ * `print.signature > 1`) instead of hard-coding special cases in the
+ * runner/tool-check.
  */
 export function isCheckEnabled(check: Check, config: ResolvedConfig): boolean {
-  const entry = config.validate.checks[check.id];
-  if (entry === false) return false;
-  if (typeof entry === "object" && entry.enabled === false) return false;
+  if (config.checks[check.id] === "off") return false;
   if (check.enabledWhen && !check.enabledWhen(config)) return false;
   return true;
 }

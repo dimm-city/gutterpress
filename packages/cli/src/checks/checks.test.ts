@@ -86,7 +86,6 @@ describe("Check Registry", () => {
     const assetIds = ids.filter((id) => id.startsWith("asset."));
     expect(assetIds).toContain("asset.image.file-size");
     expect(assetIds).toContain("asset.image.alpha-channel");
-    expect(assetIds).toContain("asset.font.approved-files");
     expect(assetIds).toContain("asset.font.license");
   });
 
@@ -194,7 +193,7 @@ describe("Check Registry", () => {
     // checks are namespaced by category (pdf/source/asset/heuristic) and never
     // start with `test.`, so excluding those makes the count deterministic.
     const all = getAllCheckIds().filter((id) => !id.startsWith("test."));
-    // 17 pdf + 11 source + 4 asset + 4 heuristic = 36
+    // 17 pdf + 11 source + 3 asset + 4 heuristic = 35
     // (source.sync.merge-markers added 0.10.1 — the converge merge's marker
     // blocks and kept-both `.online` siblings were invisible until print;
     // source.callout-validation removed with ::: container syntax, 2026-05-17;
@@ -214,8 +213,9 @@ describe("Check Registry", () => {
     // pdf.print.safe-margins added 0.11.20 — text kept `page.safe` inside the
     // trim; asset.image.color-space, asset.image.resolution,
     // asset.image.tac-raster and pdf.print.rasterized-pages removed 0.11.21 —
-    // each guessed at print output the build and the PDF checks measure.)
-    expect(all.length).toBe(36);
+    // each guessed at print output the build and the PDF checks measure;
+    // asset.font.approved-files removed 0.11.23 (#443).)
+    expect(all.length).toBe(35);
   });
 });
 
@@ -224,15 +224,6 @@ describe("Check Registry", () => {
 // ---------------------------------------------------------------------------
 
 describe("Check Runner", () => {
-  test("returns empty report when validation is disabled", async () => {
-    const config = makeConfig();
-    config.validate.enabled = false;
-    const ctx = makeCtx({ config });
-    const report = await runChecks(ctx);
-    expect(report.summary.total).toBe(0);
-    expect(report.results).toHaveLength(0);
-  });
-
   test("filters by phase", async () => {
     // post-build without a pdfPath: every post-build check should
     // return [] because they early-return when pdfPath is missing
@@ -292,7 +283,7 @@ describe("Check Runner", () => {
 
   test("manifest check disable works", async () => {
     const config = makeConfig();
-    config.validate.checks["pdf.structure.qpdf"] = false;
+    config.checks["pdf.structure.qpdf"] = "off";
     const ctx = makeCtx({ config });
     const report = await runChecks(ctx, {
       only: ["pdf.structure.qpdf"],
@@ -301,23 +292,9 @@ describe("Check Runner", () => {
     expect(report.summary.total).toBe(0);
   });
 
-  test("manifest check object-style disable works", async () => {
-    const config = makeConfig();
-    config.validate.checks["pdf.print.page-size"] = {
-      enabled: false,
-    };
-    const ctx = makeCtx({ config });
-    const report = await runChecks(ctx, {
-      only: ["pdf.print.page-size"],
-    });
-    expect(report.summary.total).toBe(0);
-  });
-
   test("severity override from manifest", async () => {
     const config = makeConfig();
-    config.validate.checks["heuristic.whitespace.text-density"] = {
-      severity: "info",
-    };
+    config.checks["heuristic.whitespace.text-density"] = "info";
     // text-density check skips when no pdfPath, so it "passes"
     // but the override would apply if it returned results
     const ctx = makeCtx({ config });
@@ -643,108 +620,30 @@ describe("Check Formatter", () => {
 // Manifest / Config integration
 // ---------------------------------------------------------------------------
 
-describe("Manifest validate section", () => {
-  test("resolveConfig includes validate defaults", () => {
+describe("Manifest checks and thresholds", () => {
+  test("resolveConfig carries the preset's check levels and thresholds", () => {
     const config = resolveConfig({}, {});
-    expect(config.validate).toBeDefined();
-    expect(config.validate.enabled).toBe(true);
-    expect(config.validate.checks["pdf.structure.qpdf"]).toEqual({
-      enabled: true,
-      severity: "error",
-    });
-    expect(config.validate.checks["pdf.print.pdfx-markers"]).toEqual({
-      enabled: true,
-      severity: "error",
-    });
-    // allowedCallouts was deprecated-and-ignored (::: syntax
-    // removed 2026-05-17) yet still fully resolved into ResolvedConfig — it
-    // has since been deleted from ResolvedConfig and the presets
-    // entirely; the manifest field still parses (for backward compat) but no
-    // longer appears on the resolved config at all.
-    expect((config.validate.source as Record<string, unknown>).allowedCallouts).toBeUndefined();
+    expect(config.checks["pdf.structure.qpdf"]).toBe("error");
+    expect(config.checks["pdf.print.pdfx-markers"]).toBe("error");
+    // No entry: the check runs at its own severity.
+    expect(config.checks["pdf.print.transparency"]).toBeUndefined();
     expect(config.validate.assets.maxImageSize).toBe(10_000_000);
-    expect(config.validate.pdf.forbidTransparency).toBe(true);
     expect(config.validate.heuristics.textDensityRange.min).toBe(200);
   });
 
-  test("manifest overrides preset defaults", () => {
+  test("manifest check levels merge over the preset's", () => {
     const config = resolveConfig(
       {},
       {
-        validate: {
-          enabled: false,
-          assets: { maxImageSize: 5_000_000 },
-          source: { allowedCallouts: ["note", "warning"] },
+        checks: {
+          "pdf.structure.qpdf": "off",
+          "heuristic.whitespace.text-density": "info",
         },
       }
     );
-    expect(config.validate.enabled).toBe(false);
-    expect(config.validate.assets.maxImageSize).toBe(5_000_000);
-    // A manifest-set allowedCallouts still parses (deprecated field
-    // kept on GutterpressManifest for compatibility) but is dropped, not
-    // resolved — it no longer appears anywhere on ResolvedConfig.
-    expect((config.validate.source as Record<string, unknown>).allowedCallouts).toBeUndefined();
-    // Other defaults preserved
-    expect(config.validate.assets.allowAlpha).toBe(false);
-  });
-
-  test("check-level overrides merge correctly", () => {
-    const config = resolveConfig(
-      {},
-      {
-        validate: {
-          checks: {
-            "pdf.structure.qpdf": false,
-            "heuristic.whitespace.text-density": {
-              severity: "info",
-            },
-          },
-        },
-      }
-    );
-    expect(config.validate.checks["pdf.structure.qpdf"]).toBe(false);
-    const td = config.validate.checks["heuristic.whitespace.text-density"];
-    expect(typeof td).toBe("object");
-    expect((td as any).severity).toBe("info");
-  });
-
-  test("source tool config resolves false correctly", () => {
-    const config = resolveConfig(
-      {},
-      {
-        validate: {
-          source: { markdownlint: false, htmlhint: false },
-        },
-      }
-    );
-    expect(config.validate.source.markdownlint).toBe(false);
-    expect(config.validate.source.htmlhint).toBe(false);
-  });
-
-  test("source tool config resolves string path", () => {
-    const config = resolveConfig(
-      {},
-      {
-        validate: {
-          source: { markdownlint: ".markdownlint.yaml" },
-        },
-      }
-    );
-    expect(config.validate.source.markdownlint).toBe(".markdownlint.yaml");
-  });
-
-  test("heuristics textDensityRange partial override", () => {
-    const config = resolveConfig(
-      {},
-      {
-        validate: {
-          heuristics: { textDensityRange: { min: 500 } },
-        },
-      }
-    );
-    expect(config.validate.heuristics.textDensityRange.min).toBe(500);
-    // max should still be the preset default
-    expect(config.validate.heuristics.textDensityRange.max).toBe(5000);
+    expect(config.checks["pdf.structure.qpdf"]).toBe("off");
+    expect(config.checks["heuristic.whitespace.text-density"]).toBe("info");
+    expect(config.checks["pdf.print.pdfx-markers"]).toBe("error");
   });
 });
 
@@ -1501,7 +1400,7 @@ describe("Dangling links check", () => {
       await writeFile(mainFile, "[c](docs/c.md)\n");
       const config = resolveConfig({}, {
         preset: "book",
-        validate: { checks: { [DANGLING]: { severity: "error" } } },
+        checks: { [DANGLING]: "error" },
       });
       const report = await runChecks(
         makeCtx({ config, inputDir: dir, markdownFiles: [mainFile] }),
@@ -1593,14 +1492,14 @@ describe("Source accessibility checks", () => {
     expect(results.map((r) => r.line)).toEqual([5]);
   });
 
-  test("lint.rules turns a check id off or changes its severity via runChecks (#339)", async () => {
+  test("checks turns a check id off or changes its severity via runChecks (#339, #443)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "gutterpress-heading-order-"));
     const mainFile = join(dir, "main.md");
     await writeFile(mainFile, ["# H1", "### H3 jump"].join("\n"));
     const only = ["source.accessibility.heading-order"];
-    const run = (rules: Record<string, "off" | "warn" | "error">) => {
+    const run = (checks: ResolvedConfig["checks"]) => {
       const config = makeConfig();
-      config.lint.rules = rules;
+      config.checks = checks;
       return runChecks(makeCtx({ config, markdownFiles: [mainFile] }), { only });
     };
     expect((await run({})).warnings).toHaveLength(1);
@@ -1608,14 +1507,14 @@ describe("Source accessibility checks", () => {
     expect((await run({ "source.accessibility.heading-order": "error" })).errors).toHaveLength(1);
   });
 
-  test("lint.rules switches off a printsafe rule in the CSS check (#339)", async () => {
+  test("checks switches off a printsafe rule in the CSS check (#339, #443)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "gutterpress-printsafe-rules-"));
     const cssFile = join(dir, "book.css");
     await writeFile(cssFile, ".x { filter: blur(1px); }\n");
     const check = getCheckById("source.stylelint")!;
     const config = makeConfig();
     expect(await check.run(makeCtx({ config, cssFiles: [cssFile] }))).toHaveLength(1);
-    config.lint.rules = { "printsafe/no-risky-print-effects": "off" };
+    config.checks["printsafe/no-risky-print-effects"] = "off";
     expect(await check.run(makeCtx({ config, cssFiles: [cssFile] }))).toHaveLength(0);
   });
 });
@@ -1687,41 +1586,23 @@ describe("Heuristic checks skip when no pdfPath", () => {
 });
 
 describe("Conditional checks respect config", () => {
-  test("bookmarks check skips when requireBookmarks=false", async () => {
-    const config = makeConfig();
-    config.validate.pdf.requireBookmarks = false;
-    const check = getCheckById("pdf.nav.bookmarks")!;
-    const ctx = makeCtx({ config, pdfPath: "/tmp/test.pdf" });
-    const results = await check.run(ctx);
-    expect(results).toHaveLength(0);
-  });
-
-  test("toc-links check skips when requireTocLinks=false", async () => {
-    const config = makeConfig();
-    config.validate.pdf.requireTocLinks = false;
-    const check = getCheckById("pdf.nav.toc-links")!;
-    const ctx = makeCtx({ config, pdfPath: "/tmp/test.pdf" });
-    const results = await check.run(ctx);
-    expect(results).toHaveLength(0);
-  });
-
-  test("transparency check skips when forbidTransparency=false", async () => {
-    const config = makeConfig();
-    config.validate.pdf.forbidTransparency = false;
-    const check = getCheckById("pdf.print.transparency")!;
-    const ctx = makeCtx({ config, pdfPath: "/tmp/test.pdf" });
-    const results = await check.run(ctx);
-    expect(results).toHaveLength(0);
-  });
-
-  test("bleed check skips when requireBleed=false", async () => {
-    const config = makeConfig();
-    config.validate.pdf.requireBleed = false;
-    const check = getCheckById("pdf.print.bleed")!;
-    const ctx = makeCtx({ config, pdfPath: "/tmp/test.pdf" });
-    const results = await check.run(ctx);
-    expect(results).toHaveLength(0);
-  });
+  // The presets switch some of these off; a book switches them on or off in
+  // `checks:`. Either way an `off` check is dropped before it runs (#443).
+  for (const id of [
+    "pdf.nav.bookmarks",
+    "pdf.nav.toc-links",
+    "pdf.print.transparency",
+    "pdf.print.bleed",
+    "asset.image.alpha-channel",
+    "asset.font.license",
+  ]) {
+    test(`${id} does not run when its level is off`, async () => {
+      const config = makeConfig();
+      config.checks[id] = "off";
+      const report = await runChecks(makeCtx({ config, pdfPath: "/tmp/test.pdf" }), { only: [id] });
+      expect(report.summary.total).toBe(0);
+    });
+  }
 
   test("image-resolution check skips when minImageResolution=0", async () => {
     const config = makeConfig();
@@ -1731,53 +1612,23 @@ describe("Conditional checks respect config", () => {
     const results = await check.run(ctx);
     expect(results).toHaveLength(0);
   });
-
-  test("alpha-channel check skips when allowAlpha=true", async () => {
-    const config = makeConfig();
-    config.validate.assets.allowAlpha = true;
-    const check = getCheckById("asset.image.alpha-channel")!;
-    const ctx = makeCtx({ config });
-    const results = await check.run(ctx);
-    expect(results).toHaveLength(0);
-  });
-
-  test("font-license check skips when requireFontLicense=false", async () => {
-    const config = makeConfig();
-    config.validate.assets.requireFontLicense = false;
-    const check = getCheckById("asset.font.license")!;
-    const ctx = makeCtx({ config });
-    const results = await check.run(ctx);
-    expect(results).toHaveLength(0);
-  });
 });
 
 describe("Source checks skip when tool is disabled", () => {
-  test("markdownlint skips when set to false", async () => {
-    const config = makeConfig();
-    (config.validate.source.markdownlint as any) = false;
-    const check = getCheckById("source.markdownlint")!;
-    const ctx = makeCtx({ config, markdownFiles: ["/tmp/test.md"] });
-    const results = await check.run(ctx);
-    expect(results).toHaveLength(0);
-  });
-
-  test("htmlhint skips when set to false", async () => {
-    const config = makeConfig();
-    (config.validate.source.htmlhint as any) = false;
-    const check = getCheckById("source.htmlhint")!;
-    const ctx = makeCtx({ config, htmlPath: "/tmp/test.html" });
-    const results = await check.run(ctx);
-    expect(results).toHaveLength(0);
-  });
-
-  test("stylelint skips when set to false", async () => {
-    const config = makeConfig();
-    (config.validate.source.stylelint as any) = false;
-    const check = getCheckById("source.stylelint")!;
-    const ctx = makeCtx({ config, cssFiles: ["/tmp/test.css"] });
-    const results = await check.run(ctx);
-    expect(results).toHaveLength(0);
-  });
+  for (const id of ["source.markdownlint", "source.htmlhint", "source.stylelint"]) {
+    test(`${id} does not run when its level is off`, async () => {
+      const config = makeConfig();
+      config.checks[id] = "off";
+      const ctx = makeCtx({
+        config,
+        markdownFiles: ["/tmp/test.md"],
+        htmlPath: "/tmp/test.html",
+        cssFiles: ["/tmp/test.css"],
+      });
+      const report = await runChecks(ctx, { only: [id] });
+      expect(report.summary.total).toBe(0);
+    });
+  }
 
   test("flags remote url() as error and risky print effects as warning", async () => {
     const dir = await mkdtemp(join(tmpdir(), "gutterpress-stylelint-"));
@@ -1846,7 +1697,6 @@ describe("Tool Check", () => {
       "source.accessibility.alt-text",
       "source.accessibility.heading-order",
       "asset.image.file-size",
-      "asset.font.approved-files",
       "asset.font.license",
       "heuristic.chunking.section-density",
       // Phase 1 — pure JS
@@ -1897,8 +1747,7 @@ describe("Tool Check", () => {
 
   test("checkToolAvailability returns empty for disabled checks", async () => {
     const config = makeConfig();
-    // Disable htmlhint via source config
-    (config.validate.source.htmlhint as any) = false;
+    config.checks["source.htmlhint"] = "off";
 
     const result = await checkToolAvailability(config, {
       only: ["source.htmlhint"],
@@ -1911,7 +1760,7 @@ describe("Tool Check", () => {
   test("checkToolAvailability returns empty for manifest-disabled checks", async () => {
     const config = makeConfig();
     // pdf.print.pdfx-markers still requires qpdf (PDF/X-only check).
-    config.validate.checks["pdf.print.pdfx-markers"] = false;
+    config.checks["pdf.print.pdfx-markers"] = "off";
 
     const result = await checkToolAvailability(config, {
       only: ["pdf.print.pdfx-markers"],
@@ -2104,32 +1953,13 @@ describe("In-process source/PDF checks (no external tools)", () => {
     }
   });
 
-  test("htmlhint uses built-in defaults when config path is set but missing", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "gutterpress-htmlhint-"));
-    try {
-      const htmlFile = join(dir, "page.html");
-      await writeFile(htmlFile, "<DIV></DIV>");
-      const config = makeConfig();
-      (config.validate.source.htmlhint as any) = ".htmlhintrc"; // explicit but absent
-      const check = getCheckById("source.htmlhint")!;
-      const ctx = makeCtx({ config, inputDir: dir, htmlPath: htmlFile });
-      const results = await check.run(ctx);
-      // default ruleset includes tagname-lowercase — never disabled by an empty {}
-      expect(results.some((r) => r.message.includes("tagname-lowercase"))).toBe(true);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
   test("transparency detects markers via raw byte scan", async () => {
     const dir = await mkdtemp(join(tmpdir(), "gutterpress-pdf-"));
     try {
       const pdfFile = join(dir, "t.pdf");
       await writeFile(pdfFile, "%PDF-1.7\n<< /Type /Group /S /Transparency >>\n/SMask 5 0 R\n");
-      const config = makeConfig();
-      config.validate.pdf.forbidTransparency = true;
       const check = getCheckById("pdf.print.transparency")!;
-      const ctx = makeCtx({ config, pdfPath: pdfFile });
+      const ctx = makeCtx({ pdfPath: pdfFile });
       const results = await check.run(ctx);
       expect(results).toHaveLength(1);
       expect(results[0]!.message).toContain("Transparency group");
@@ -2193,12 +2023,11 @@ function buildPng(colorType: number): Buffer {
 }
 
 describe("Asset image checks (in-process reader)", () => {
-  test("alpha-channel flags an RGBA PNG when allowAlpha=false", async () => {
+  test("alpha-channel flags an RGBA PNG", async () => {
     const dir = await mkdtemp(join(tmpdir(), "gutterpress-asset-"));
     try {
       await writeFile(join(dir, "rgba.png"), buildPng(6)); // colorType 6 = RGBA
       const config = makeConfig();
-      config.validate.assets.allowAlpha = false;
       const check = getCheckById("asset.image.alpha-channel")!;
       const results = await check.run(
         makeCtx({ config, inputDir: dir, imageFiles: [join(dir, "rgba.png")] }),
@@ -2216,7 +2045,6 @@ describe("Asset image checks (in-process reader)", () => {
     try {
       await writeFile(join(dir, "rgb.png"), buildPng(2)); // colorType 2 = RGB
       const config = makeConfig();
-      config.validate.assets.allowAlpha = false;
       const check = getCheckById("asset.image.alpha-channel")!;
       const results = await check.run(
         makeCtx({ config, inputDir: dir, imageFiles: [join(dir, "rgb.png")] }),
@@ -2232,7 +2060,6 @@ describe("Asset image checks (in-process reader)", () => {
     try {
       await writeFile(join(dir, "unplaced.png"), buildPng(6));
       const config = makeConfig();
-      config.validate.assets.allowAlpha = false;
       const check = getCheckById("asset.image.alpha-channel")!;
       const results = await check.run(makeCtx({ config, inputDir: dir, imageFiles: [] }));
       expect(results).toHaveLength(0);
@@ -2247,7 +2074,6 @@ describe("Asset image checks (in-process reader)", () => {
       const file = join(dir, "rgba.png");
       await writeFile(file, buildPng(6));
       const config = makeConfig();
-      config.validate.assets.allowAlpha = false;
       config.pdfx.transparency = "preserve-text";
       const check = getCheckById("asset.image.alpha-channel")!;
       const results = await check.run(makeCtx({ config, inputDir: dir, imageFiles: [file] }));

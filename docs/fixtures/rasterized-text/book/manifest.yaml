@@ -11,9 +11,8 @@ preset: book
 styles:
   - styles/style.css
 
-source:
-  files:
-    - content.md
+chapters:
+  - content.md
 
 page:
   width: 432   # 6in

@@ -1,9 +1,8 @@
 title: "{{TITLE}}"
 authors:
   - "{{AUTHOR}}"
-source:
-  files:
-    - chapter-01.md
+chapters:
+  - chapter-01.md
 styles:
   - styles/book.css
 extensions:

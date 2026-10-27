@@ -78,16 +78,15 @@ Open Design can see the shared foundation and all books. Gutterpress renders onl
 
 Gutterpress recognizes `manifest.yaml`.
 
-When `source.files` is explicit, a root-level `DESIGN.md` is safe:
+When `chapters` is explicit, a root-level `DESIGN.md` is safe:
 
 ```yaml
-source:
-  files:
-    - chapters/01-introduction.md
-    - chapters/02-rules.md
+chapters:
+  - chapters/01-introduction.md
+  - chapters/02-rules.md
 ```
 
-When `source.files` is absent or empty, Gutterpress renders every top-level `.md` file in the book folder alphabetically — and only top-level files, so a `chapters/` folder needs an explicit list. Put book-specific guidance under `design/DESIGN.md` when discovery is implicit.
+When `chapters` is absent or empty, Gutterpress renders every top-level `.md` file in the book folder alphabetically — and only top-level files, so a `chapters/` folder needs an explicit list. Put book-specific guidance under `design/DESIGN.md` when discovery is implicit.
 
 The Gutterpress Publishing plugin checks this before editing and warns when a control document could enter the publication.
 
@@ -215,10 +214,9 @@ Extensions load in list order (a later entry's CSS wins ties), and every `styles
 An `extensions:` path entry and a `styles:` entry are both paths Gutterpress **reads**, not files it copies. Point a book straight at the shared foundation and list the book's own CSS after it:
 
 ```yaml
-source:
-  files:
-    - chapters/01-introduction.md
-    - chapters/02-rules.md
+chapters:
+  - chapters/01-introduction.md
+  - chapters/02-rules.md
 extensions:
   - ../../shared/extensions/publisher
 styles:

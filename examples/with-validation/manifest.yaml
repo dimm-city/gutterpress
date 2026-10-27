@@ -6,10 +6,9 @@ styles:
   - styles/main.css
 
 # Only the book itself; this folder's README.md is documentation, not a page.
-source:
-  files:
-    - chapter-01.md
-    - chapter-02.md
+chapters:
+  - chapter-01.md
+  - chapter-02.md
 
 # How the book is designed: the DriveThruRPG print-on-demand preset.
 preset: dtrpg
@@ -37,44 +36,16 @@ page:
 # Checks whose tools aren't installed are skipped with a warning.
 # Disabled checks (below) suppress the missing-tool warning entirely.
 
-validate:
-  enabled: true
+# Per-check levels: off, on, info, warn or error, keyed by check id. The
+# numbers the checks measure against (image resolution, ink coverage, the
+# safe area) come from the preset and the publish targets.
+checks:
+  # Switch a check off
+  pdf.structure.qpdf: off
+  # Report a check's findings as info instead of warnings
+  heuristic.whitespace.text-density: info
+  # Switch on a check the preset leaves off
+  pdf.nav.bookmarks: warn
 
-  # Per-check overrides: disable or change severity
-  checks:
-    # Disable a check entirely
-    pdf.structure.qpdf: false
-    # Downgrade a check from "warning" to "info"
-    heuristic.whitespace.text-density:
-      severity: info
-
-  # Source validation — points to external tool config files
-  source:
-    markdownlint: ".markdownlint.yaml"   # Path to markdownlint config
-    htmlhint: ".htmlhintrc"              # Path to htmlhint config
-    # stylelint: false                   # Uncomment to disable CSS linting
-
-  # Asset validation
-  assets:
-    maxImageSize: 5000000          # 5 MB per image
-    allowAlpha: false              # No transparency for print
-    approvedFontFiles:
-      - "fonts/**/*.{woff2,otf,ttf}"
-    requireFontLicense: false
-
-  # PDF / print production checks
-  pdf:
-    requireBookmarks: false
-    requireTocLinks: false
-    minImageResolution: 300
-    forbidTransparency: true
-    requireBleed: false
-    bleedSize: 9                   # 0.125 in (points)
-
-  # Heuristic quality proxies
-  heuristics:
-    maxDecorativeLayers: 5         # Max images per page
-    textDensityRange:
-      min: 200                     # Min characters per page
-      max: 5000                    # Max characters per page
-    maxParagraphsPerSection: 10
+# The markdownlint and HTMLHint checks read .markdownlint.yaml and .htmlhintrc,
+# found by name in this folder (or a folder above it, up to the repository).

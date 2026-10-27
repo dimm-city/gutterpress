@@ -17,7 +17,7 @@ import { renderedLocalRefs } from "./local-ref-parser";
  * `source.links.local-refs` answers a different question — does the target
  * exist on disk — and a link can pass that while still being unopenable from
  * a PDF, which is why this is its own check (and can be switched off for an
- * HTML-only book via `validate.checks`).
+ * HTML-only book via `checks:` in the manifest).
  */
 const check: Check = {
   id: "source.links.dangling",

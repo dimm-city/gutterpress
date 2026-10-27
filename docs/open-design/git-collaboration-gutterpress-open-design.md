@@ -71,7 +71,7 @@ Gutterpress's managed `extensions/npm/` tree should be ignored too: it is downlo
 
 ## Keep control Markdown out of implicit manuscript discovery
 
-If a book has no explicit `source.files`, Gutterpress renders every top-level `.md` file in that book alphabetically. Discovery is top-level only, so a `chapters/` directory always needs an explicit list.
+If a book has no explicit `chapters`, Gutterpress renders every top-level `.md` file in that book alphabetically. Discovery is top-level only, so a `chapters/` directory always needs an explicit list.
 
 Therefore:
 
@@ -107,10 +107,9 @@ order, then `styles:` in listed order — inlined into `book.html`, so a book
 points straight at the shared foundation:
 
 ```yaml
-source:
-  files:
-    - chapters/01-introduction.md
-    - chapters/02-rules.md
+chapters:
+  - chapters/01-introduction.md
+  - chapters/02-rules.md
 extensions:
   - ../../shared/extensions/publisher
 styles:

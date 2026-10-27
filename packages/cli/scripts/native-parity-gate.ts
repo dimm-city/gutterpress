@@ -324,7 +324,7 @@ async function stage(
     language: config.language,
     printArea: { ...config.page, preset: config.preset, spec: config.spec },
     styles: config.styles,
-    files: config.source.files,
+    files: config.chapters,
     plugins,
     // The extensions' own stylesheets (a look's `theme.css`), as the build and
     // the preview pass them. Without this a book styled by a look was measured

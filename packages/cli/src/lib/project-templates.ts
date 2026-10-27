@@ -437,7 +437,7 @@ async function retokeniseManifest(manifestPath: string): Promise<void> {
     .replace(/^title:\s*.*$/m, 'title: "{{TITLE}}"')
     // Re-tokenise ONLY the first list item that belongs to the `authors:` block
     // (anchored to the `authors:` key) — not just any first `- item`, which
-    // would clobber a `source.files:` entry in manifests that list source
+    // would clobber a `chapters:` entry in manifests that list chapters
     // before authors. Inline `authors:` (no block list) is left as-is.
     .replace(/^(authors:[^\n]*\n[ \t]*-[ \t]*).*$/m, '$1"{{AUTHOR}}"');
   await writeFile(manifestPath, text, "utf8");

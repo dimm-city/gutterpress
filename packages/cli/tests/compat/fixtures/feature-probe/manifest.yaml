@@ -5,9 +5,8 @@ authors:
 styles:
   - styles/probe.css
 
-source:
-  files:
-    - 01-features.md
+chapters:
+  - 01-features.md
 
 page:
   width: 612

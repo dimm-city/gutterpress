@@ -2,7 +2,7 @@
 
 Gutterpress includes a JSON schema for `manifest.yaml` that provides autocomplete, validation, and documentation directly in your editor.
 
-The schema is **editor-facing only**. Gutterpress itself does not validate `manifest.yaml` against it at build or preview time — an unknown key is simply ignored by `resolveConfig`. (The removed keys are the exception: `plugins`, `engine`, `engineStyles`, `output` and `source.assets` each fail with a message naming their replacement — see `extensions` below.) Wiring the schema into your editor (below) is what turns a typo into visible feedback.
+The schema is **editor-facing only**. Gutterpress itself does not validate `manifest.yaml` against it at build or preview time — an unknown key is simply ignored by `resolveConfig`. (The removed keys are the exception: `plugins`, `engine`, `engineStyles`, `output` and `source.assets` each fail with a message naming their replacement — see `extensions` below. The keys 0.11.23 replaced — `source.files`, `validate`, `lint` and `ink` — still work in 0.11.23, with one notice naming each new spelling.) Wiring the schema into your editor (below) is what turns a typo into visible feedback.
 
 ## Quick Setup
 
@@ -183,7 +183,7 @@ title: "My Book"
 The schema validates:
 - **Types** - Strings must be strings, arrays must be arrays, `page.width` must be a number
 - **Allowed values** - e.g. `preset` must be `dtrpg` or `book`, `pdfx.flavor` must be `x1a` or `x3`
-- **Structure** - Nested sections (`source`, `validate`, `pdfx`, …) and their property names
+- **Structure** - Nested sections (`page`, `pdfx`, `checks`, …) and their property names
 
 Every property is optional: an omitted field falls back to the resolved preset default.
 
@@ -276,22 +276,20 @@ extensions:
       leftDelimiter: "["
 ```
 
-#### `source` (object)
-Where the content comes from.
+#### `chapters` (array of strings, or `null`)
+The chapters, in order, as markdown files relative to the manifest directory.
+Omit it or set `null` to include every top-level `.md` file alphabetically.
 
-- `files` (array of strings, or `null`) - Explicit, ordered markdown files relative to the manifest directory. Omit or set `null` to include every `.md` file alphabetically.
-
-There is no `assets` field: Gutterpress discovers every file the book actually
+There is no assets list: Gutterpress discovers every file the book actually
 references — image `src` attributes, CSS `url()`/`@font-face` — and copies
 exactly those. An author-maintained directory list could drift from what the
 book uses; this can't.
 
 ```yaml
-source:
-  files:
-    - "frontmatter/title-page.md"
-    - "chapters/01-introduction.md"
-    - "appendix/glossary.md"
+chapters:
+  - "frontmatter/title-page.md"
+  - "chapters/01-introduction.md"
+  - "appendix/glossary.md"
 ```
 
 #### Output location (not a manifest field)
@@ -360,34 +358,29 @@ print:
   lastPage: short-by-one
 ```
 
-#### `ink` (object)
-- `maxTac` (number) - Maximum total area coverage, summed across C+M+Y+K. Preset defaults: `dtrpg` 240, `book` 400 (the physical ceiling, i.e. effectively no cap).
-- `tacTolerance` (number) - Percentage of sampled pixels allowed to exceed `maxTac`. Default `0.5`.
+#### `checks` (object)
+Each check's level, keyed by check id. Any registered check id may appear,
+including ids contributed by plugins (built-in ids are namespaced `source.*`,
+`asset.*`, `pdf.*`, `heuristic.*`), and so may a CSS print-safety rule id
+(`printsafe/...`). A value is one of:
 
-#### `lint` (object)
-- `enabled` (boolean) - Default `true`. Despite the name, this gates the `source.stylelint` CSS print-safety check, not Markdown linting — `build-preflight.ts` sets `skipStylelint` when this is `false` (or `--skip-lint` is passed).
-- `configPath` (string or `null`) - Read by no production code. Markdownlint's own config path is `validate.source.markdownlint`, below (not this object's `source`); with no config found, `source.markdownlint` reports nothing.
+- `off` - the check does not run (a rule is not reported).
+- `on` - the check runs at its own severity, for a check the preset or target leaves off.
+- `info`, `warn`, `error` - the check runs and reports at that severity. `error` fails `gutterpress validate` and stops a build.
 
-#### `validate` (object)
-Preflight configuration.
-
-- `enabled` (boolean) - Default `true`.
-- `checks` (object) - Per-check overrides keyed by check id. This is an **open dictionary**: any registered check id may appear, including ids contributed by plugins. Built-in ids are namespaced `source.*`, `asset.*`, `pdf.*`, `heuristic.*`. A value is either a boolean (shorthand for enabled/disabled) or `{ enabled, severity, options }`, where `severity` is `error`, `warning`, or `info`.
-- `source` (object) - `markdownlint`, `htmlhint`: a config file path, or `false` to disable that check. `stylelint`: `false` disables the `source.stylelint` check; any other value leaves it enabled — the key is kept only for manifest back-compat, the check itself runs the same postcss-based print-safety rules as `checkCss` and does not read a stylelint config. `cssOwnership`: a path to a CSS ownership contract, or `false` to disable `source.css-ownership`; absent means no contract, so the check reports nothing by default (see [CSS ownership contract](./css-ownership-contract.md)). `allowedCallouts` is **deprecated and ignored** — the `:::` container syntax it gated was removed.
-- `assets` (object) - `maxImageSize`, `allowAlpha`, `approvedFontFiles`, `requireFontLicense`.
-- `pdf` (object) - `requireBookmarks`, `requireTocLinks`, `minImageResolution`, `forbidTransparency`, `requireBleed`, `bleedSize` (points).
-- `heuristics` (object) - `maxDecorativeLayers`, `textDensityRange` (`min`/`max`), `maxParagraphsPerSection`.
+The limits a check measures against (ink coverage, image size and resolution,
+bleed size, the heuristics' ranges) come from the preset and the publish
+target; they are not manifest settings. The Markdown, HTML and CSS-ownership
+checks are configured by their own files (`.markdownlint.yaml`, `.htmlhintrc`,
+`.gutterpress/css-contract.yaml`), found in the book's folder or the nearest
+folder above it, up to the repository root.
 
 ```yaml
-validate:
-  enabled: true
-  checks:
-    pdf.nav.bookmarks:
-      enabled: true
-      severity: warning
-    pdf.print.pdfx-markers: false
-  pdf:
-    requireBookmarks: true
+checks:
+  pdf.nav.bookmarks: warn
+  pdf.print.pdfx-markers: off
+  asset.image.alpha-channel: off
+  printsafe/page-containment: warn
 ```
 
 #### `publish` (object)
@@ -412,13 +405,12 @@ extensions:
 styles:
   - "styles/book.css"
 
-source:
-  files:
-    - "frontmatter/title-page.md"
-    - "frontmatter/copyright.md"
-    - "chapters/01-introduction.md"
-    - "chapters/02-installation.md"
-    - "appendix/glossary.md"
+chapters:
+  - "frontmatter/title-page.md"
+  - "frontmatter/copyright.md"
+  - "chapters/01-introduction.md"
+  - "chapters/02-installation.md"
+  - "appendix/glossary.md"
 
 # The trim the book prints at, unless a stylesheet's plain @page rule sets its own size.
 page:
@@ -426,12 +418,8 @@ page:
   height: 648
   tolerance: 0.5
 
-validate:
-  enabled: true
-  checks:
-    pdf.nav.bookmarks:
-      enabled: true
-      severity: warning
+checks:
+  pdf.nav.bookmarks: warn
 ```
 
 ---

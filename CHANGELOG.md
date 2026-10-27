@@ -35,6 +35,22 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **One flat manifest: `chapters` and `checks` (#443).** The chapter list is
+  `chapters:` (was `source.files`). Every check and lint rule is set in one
+  `checks:` map, id to `off`, `on`, `info`, `warn` or `error` (was
+  `validate.checks`, `lint.rules`, and the on/off flags under
+  `validate.assets` and `validate.pdf` such as `allowAlpha` and
+  `requireBookmarks`). `validate`, `lint` and `ink` are no longer settings:
+  the limits a check measures against come from the preset and the publish
+  target, and the markdownlint, HTMLHint and CSS-ownership checks find their
+  own config file (`.markdownlint.yaml`, `.htmlhintrc`,
+  `.gutterpress/css-contract.yaml`) in the book's folder or the nearest folder
+  above it, up to the repository root, so a repository's
+  `../.markdownlint.jsonc` needs no setting. A manifest written for 0.11.22
+  still builds in 0.11.23: the old spellings are read and named, with their
+  new spelling, in one notice. Book setup rewrites `source.files` as
+  `chapters` when it saves the chapter list. The `asset.font.approved-files`
+  check, which nothing could switch on, is gone.
 - **`gutterpress new` no longer insists on `--preset`.** Every starter
   template carries a preset, so leaving the flag out keeps the template's;
   the flag overrides it. `--kind theme` is `--kind look`, the word the rest of

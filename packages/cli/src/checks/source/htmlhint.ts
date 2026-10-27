@@ -21,19 +21,12 @@ const check: Check = {
   category: "source",
   phase: "pre-build",
   async run(ctx: CheckContext): Promise<CheckResult[]> {
-    const sourceConfig = ctx.config.validate.source;
-    if (sourceConfig.htmlhint === false) return [];
-
     // HTMLHint validates the generated HTML file
     if (!ctx.htmlPath || !existsSync(ctx.htmlPath)) return [];
 
-    const configPath =
-      typeof sourceConfig.htmlhint === "string"
-        ? sourceConfig.htmlhint
-        : null;
-    const resolvedConfig = findConfigFile(ctx.inputDir, CONFIG_NAMES, configPath);
-
-    if (!resolvedConfig && !configPath) return [];
+    // Opt-in: no .htmlhintrc in the book's folder or above it, no check.
+    const resolvedConfig = findConfigFile(ctx.inputDir, CONFIG_NAMES);
+    if (!resolvedConfig) return [];
 
     // A .htmlhintrc replaces the default ruleset (matches the prior `--config`
     // CLI behavior). No config → HTMLHint's built-in defaults. NEVER pass `{}`:

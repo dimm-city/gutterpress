@@ -588,7 +588,7 @@ problem is a message, or `{ message, line, severity }` to point at a specific
 line or choose `"error"`, `"warning"` (the default) or `"info"`. Each one
 appears as `@term-box: <message>` at that line. Use `"error"` sparingly: it
 fails `gutterpress validate` and stops a build, though a book can downgrade
-the whole check with `validate.checks."source.markdown.layout-markers"`.
+the whole check with `checks: { source.markdown.layout-markers: warn }`.
 `validate` must be synchronous; if it throws, the author sees that as a
 problem instead of a broken preview.
 

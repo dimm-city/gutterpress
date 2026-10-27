@@ -3,6 +3,20 @@ import type { LastPageMode } from "../engine/shared/synthesis";
 type CheckSeverity = "error" | "warning" | "info";
 
 /**
+ * What a manifest's `checks:` entry may say about one check or lint rule:
+ * `off`, or the severity its findings are reported at (`info`, `warn`,
+ * `error`). `true` / `on` switch on a check its preset leaves off, at the
+ * check's own severity; `false` is `off`. `warning` is accepted for `warn`.
+ */
+export type CheckLevelInput = "off" | "on" | "info" | "warn" | "warning" | "error" | boolean;
+
+/**
+ * A check's resolved level: `off`, `on` (runs at its own severity) or the
+ * severity every finding is reported at.
+ */
+export type CheckLevel = "off" | "on" | CheckSeverity;
+
+/**
  * The object form of an `extensions:` entry (#265) — only for an entry that
  * has to say more than its specifier. The common case is the bare string;
  * `use` carries the same specifier in both forms.
@@ -131,9 +145,17 @@ export interface GutterpressManifest {
    * project's own `styles` always load after every extension.
    */
   extensions?: (string | ExtensionConfig)[];
-  source?: {
-    files?: string[] | null;
-  };
+  /**
+   * The book's markdown files, in reading order, relative to the manifest.
+   * Absent or null: every top-level `.md` file in natural order.
+   */
+  chapters?: string[] | null;
+  /**
+   * Per-check and per-rule levels, keyed by a check id
+   * (`pdf.print.image-resolution`) or a lint rule id
+   * (`printsafe/no-risky-print-effects`). A key that names nothing is ignored.
+   */
+  checks?: Record<string, CheckLevelInput>;
   pdfx?: {
     flavor?: "x1a" | "x3";
     icc?: string;
@@ -243,79 +265,6 @@ export interface GutterpressManifest {
      */
     margin?: PageMargin;
   };
-  ink?: {
-    maxTac?: number;
-    tacTolerance?: number;
-  };
-  lint?: {
-    enabled?: boolean;
-    configPath?: string | null;
-    /**
-     * Per-rule level overrides, keyed by rule id (`printsafe/*`, or a check id
-     * such as `source.accessibility.heading-order`). `off` silences the rule;
-     * `warn` / `error` set its severity. Unknown ids are ignored.
-     */
-    rules?: Record<string, "off" | "warn" | "error">;
-  };
-  validate?: {
-    enabled?: boolean;
-    checks?: Record<string, boolean | {
-      enabled?: boolean;
-      severity?: CheckSeverity;
-      options?: Record<string, unknown>;
-    }>;
-    source?: {
-      markdownlint?: string | false;
-      htmlhint?: string | false;
-      stylelint?: string | false;
-      /**
-       * Path to a CSS ownership contract (#232), or `false` to disable
-       * `source.css-ownership`. Optional — absent means no contract, so the
-       * check reports nothing. Default discovery: `.gutterpress/css-contract.yaml`
-       * (or `.yml`) in the project root. See docs/css-ownership-contract.md.
-       */
-      cssOwnership?: string | false;
-      /**
-       * @deprecated `:::name` container syntax was removed 2026-05-17 and the
-       * callout-validation check it gated was removed at the same time. This
-       * field is now a no-op kept for backward-compatible manifest parsing.
-       * Will be removed in a future major version. See
-       * docs/migrations/2026-05-removing-container-syntax.md.
-       */
-      allowedCallouts?: string[];
-    };
-    assets?: {
-      maxImageSize?: number;
-      /**
-       * @deprecated No-op. The source-image resolution check it configured
-       * read DPI metadata, which says nothing about the printed size; the
-       * build measures each placed image's printed DPI instead.
-       */
-      minImageDpi?: number;
-      /**
-       * @deprecated No-op. The source-image colour-space check it configured
-       * was removed: a PDF/X build converts every image to the output intent,
-       * and `pdf.print.color-spaces` checks the result.
-       */
-      allowedColorSpaces?: string[];
-      allowAlpha?: boolean;
-      approvedFontFiles?: string[];
-      requireFontLicense?: boolean;
-    };
-    pdf?: {
-      requireBookmarks?: boolean;
-      requireTocLinks?: boolean;
-      minImageResolution?: number;
-      forbidTransparency?: boolean;
-      requireBleed?: boolean;
-      bleedSize?: number;
-    };
-    heuristics?: {
-      maxDecorativeLayers?: number;
-      textDensityRange?: { min?: number; max?: number };
-      maxParagraphsPerSection?: number;
-    };
-  };
 }
 
 export interface ResolvedExtensionConfig {
@@ -360,9 +309,14 @@ export interface ResolvedConfig {
   styles?: string[];
   /** Enabled extensions, in manifest (= load = cascade) order. */
   extensions: ResolvedExtensionConfig[];
-  source: {
-    files: string[] | null;
-  };
+  /** The book's markdown files in reading order, or null for every top-level `.md` file. */
+  chapters: string[] | null;
+  /**
+   * Each check's or lint rule's level, merged key by key: preset, then the
+   * publish target's policy, then the manifest's `checks:`, then the CLI. An
+   * id that is absent runs at its own severity.
+   */
+  checks: Record<string, CheckLevel>;
   pdfx: {
     flavor: "x1a" | "x3";
     icc: string;
@@ -396,36 +350,20 @@ export interface ResolvedConfig {
     maxTac: number;
     tacTolerance: number;
   };
-  lint: {
-    enabled: boolean;
-    configPath: string | null;
-    rules: Record<string, "off" | "warn" | "error">;
-  };
+  /**
+   * The numbers the checks measure against. They come from the preset and
+   * the publish target (a printer's specification), not from the manifest:
+   * a book switches a check off, or changes how loudly it reports, in
+   * `checks:`.
+   */
   validate: {
-    enabled: boolean;
-    checks: Record<string, boolean | {
-      enabled?: boolean;
-      severity?: CheckSeverity;
-      options?: Record<string, unknown>;
-    }>;
-    source: {
-      markdownlint: string | false | null;
-      htmlhint: string | false | null;
-      stylelint: string | false | null;
-      cssOwnership: string | false | null;
-    };
     assets: {
+      /** Largest image file in bytes; 0 = no limit. */
       maxImageSize: number;
-      allowAlpha: boolean;
-      approvedFontFiles: string[];
-      requireFontLicense: boolean;
     };
     pdf: {
-      requireBookmarks: boolean;
-      requireTocLinks: boolean;
+      /** Lowest effective image resolution in DPI; 0 = no floor. */
       minImageResolution: number;
-      forbidTransparency: boolean;
-      requireBleed: boolean;
       bleedSize: number;
     };
     heuristics: {

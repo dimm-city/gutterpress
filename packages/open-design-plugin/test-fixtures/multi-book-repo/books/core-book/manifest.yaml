@@ -1,8 +1,7 @@
 title: Core Book Fixture
 preset: book
-source:
-  files:
-    - chapters/01-core.md
+chapters:
+  - chapters/01-core.md
 styles:
   - ../../shared/themes/publisher/theme.css
   - ../../shared/styles/components.css

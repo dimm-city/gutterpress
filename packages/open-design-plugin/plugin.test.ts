@@ -37,7 +37,7 @@ async function renderFixture(relativePath: string): Promise<string> {
   return renderChapters(book, {
     title: config.title,
     styles: config.styles,
-    files: config.source?.files ?? null,
+    files: config.chapters,
   });
 }
 
@@ -114,7 +114,7 @@ describe("Gutterpress compatibility fixtures", () => {
   test("explicit source membership excludes a root design document", async () => {
     const book = path.join(fixturesRoot, "simple-explicit");
     const manifest = await loadManifest(book);
-    const files = await resolveActiveMarkdownFiles(book, manifest.source?.files);
+    const files = await resolveActiveMarkdownFiles(book, manifest.chapters);
     const html = await renderFixture("simple-explicit");
 
     expect(files).toEqual(["chapters/01-introduction.md"]);

@@ -41,7 +41,7 @@
    *
    * "New chapter" is deliberately ROOT-ONLY, not a per-folder action: the
    * default chapter build (`renderChapters` in the lib, when a manifest
-   * doesn't pin an explicit `source.files` list) discovers chapters with a
+   * doesn't pin an explicit `chapters` list) discovers chapters with a
    * plain non-recursive `readdir` of the project root — a `.md` file
    * authored inside a subfolder would silently never render. Offering "New
    * chapter" inside a folder would set non-technical authors up to write a

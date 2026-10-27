@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveConfig } from "../../lib/manifest";
 import { getCheckById } from "../registry";
+import { isCheckEnabled } from "../policy";
 import { makeCtx } from "../../test-helpers/testkit";
 import type { ResolvedConfig } from "../../schema/manifest.types";
 
@@ -20,14 +21,12 @@ async function makeProject(): Promise<string> {
   return mkdtemp(join(tmpdir(), "gutterpress-css-contract-"));
 }
 
-function configWith(cssOwnership?: string | false): ResolvedConfig {
-  const manifest =
-    cssOwnership === undefined ? {} : { validate: { source: { cssOwnership } } };
-  return resolveConfig({}, manifest as never);
+function configWith(level?: "off"): ResolvedConfig {
+  return resolveConfig({}, level === undefined ? {} : { checks: { "source.css-ownership": level } });
 }
 
 describe("source.css-ownership: opt-in discovery", () => {
-  test("no .gutterpress/css-contract.yaml and no explicit path: reports nothing (silent no-op)", async () => {
+  test("no .gutterpress/css-contract.yaml: reports nothing (silent no-op)", async () => {
     const dir = await makeProject();
     try {
       const cssFile = join(dir, "styles.css");
@@ -43,39 +42,23 @@ describe("source.css-ownership: opt-in discovery", () => {
     }
   });
 
-  test("validate.source.cssOwnership: false disables the check even with a contract present", async () => {
-    const dir = await makeProject();
-    try {
-      await mkdir(join(dir, ".gutterpress"), { recursive: true });
-      await writeFile(
-        join(dir, ".gutterpress/css-contract.yaml"),
-        "files:\n  a.css:\n    owns-properties: [columns]\n"
-      );
-      const aCss = join(dir, "a.css");
-      const bCss = join(dir, "b.css");
-      await writeFile(aCss, ".x { columns: 2; }\n");
-      await writeFile(bCss, ".y { columns: 3; }\n"); // would violate a.css's ownership
-
-      const check = getCheckById("source.css-ownership")!;
-      expect(check.enabledWhen!(configWith(false))).toBe(false);
-
-      const ctx = makeCtx({
-        inputDir: dir,
-        cssFiles: [aCss, bCss],
-        config: configWith(false),
-      });
-      expect(await check.run(ctx)).toEqual([]);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+  test("checks: { source.css-ownership: off } disables the check even with a contract present", () => {
+    const check = getCheckById("source.css-ownership")!;
+    expect(isCheckEnabled(check, configWith("off"))).toBe(false);
+    expect(isCheckEnabled(check, configWith())).toBe(true);
   });
 
-  test("an explicit validate.source.cssOwnership path is used instead of the conventional location", async () => {
-    const dir = await makeProject();
+  test("a contract in a folder above the book, up to the repository, is used", async () => {
+    const repo = await makeProject();
     try {
-      const customPath = join(dir, "contracts/my-contract.yaml");
-      await mkdir(join(dir, "contracts"), { recursive: true });
-      await writeFile(customPath, "files:\n  a.css:\n    owns-properties: [columns]\n");
+      await mkdir(join(repo, ".git"), { recursive: true });
+      await mkdir(join(repo, ".gutterpress"), { recursive: true });
+      await writeFile(
+        join(repo, ".gutterpress/css-contract.yaml"),
+        "files:\n  a.css:\n    owns-properties: [columns]\n"
+      );
+      const dir = join(repo, "books", "book-01");
+      await mkdir(dir, { recursive: true });
       const aCss = join(dir, "a.css");
       const bCss = join(dir, "b.css");
       await writeFile(aCss, ".x { columns: 2; }\n");
@@ -85,14 +68,14 @@ describe("source.css-ownership: opt-in discovery", () => {
       const ctx = makeCtx({
         inputDir: dir,
         cssFiles: [aCss, bCss],
-        config: configWith("contracts/my-contract.yaml"),
+        config: configWith(),
       });
       const results = await check.run(ctx);
 
       expect(results.length).toBe(1);
       expect(results[0]!.file).toBe(bCss);
     } finally {
-      await rm(dir, { recursive: true, force: true });
+      await rm(repo, { recursive: true, force: true });
     }
   });
 

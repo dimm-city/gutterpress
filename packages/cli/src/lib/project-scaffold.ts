@@ -495,7 +495,7 @@ function prettifyFolderName(base: string): string {
 /**
  * Adopt an EXISTING folder as a gutterpress project, in place (no new subfolder).
  * Writes a `manifest.yaml` (using the folder's existing top-level `.md` files as
- * `source.files`, or scaffolding a `chapter-01.md` when there are none), copies
+ * `chapters`, or scaffolding a `chapter-01.md` when there are none), copies
  * a starter `styles/book.css`, ensures `dist/` and `extensions/npm/` are gitignored
  * (see `ensureProjectGitignore`), and optionally initialises local version history.
  *
@@ -559,13 +559,13 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
     // Explicit `preset:` and `targets:` (ADR 0008): adoption is a one-click
     // rescue affordance, so it takes the product default — but written out,
     // visible and editable, never implicit.
-    const filesYaml = mdFiles.map((f) => `    - "${escapeYamlScalar(f)}"`).join("\n");
+    const filesYaml = mdFiles.map((f) => `  - "${escapeYamlScalar(f)}"`).join("\n");
     const manifest =
       `title: "${escapeYamlScalar(title)}"\n` +
       `authors:\n  - "${escapeYamlScalar(author)}"\n` +
       `preset: dtrpg\n` +
       `targets:\n  - dtrpg\n` +
-      `source:\n  files:\n${filesYaml}\n` +
+      `chapters:\n${filesYaml}\n` +
       `styles:\n  - styles/book.css\n`;
     await writeFile(path.join(dir, MANIFEST_FILENAMES[0]), manifest, "utf8");
     await mkdir(path.join(dir, "assets"), { recursive: true });
@@ -614,7 +614,7 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
 }
 
 /**
- * Best-effort: read the first `source.files` entry from a manifest so the wizard
+ * Best-effort: read the first `chapters` entry from a manifest so the wizard
  * can open it. A light regex (not a full YAML parse) keeps this dependency-free;
  * returns undefined when no list item is found.
  */
@@ -625,8 +625,9 @@ async function firstSourceFile(manifestPath: string): Promise<string | undefined
   } catch {
     return undefined;
   }
-  // Find the `files:` list and return its first `- value` entry.
-  const filesIdx = text.search(/^\s*files:\s*$/m);
+  // Find the `chapters:` list (or a custom template's older `source.files:`)
+  // and return its first `- value` entry.
+  const filesIdx = text.search(/^(?:chapters|\s+files):\s*$/m);
   if (filesIdx === -1) return undefined;
   const rest = text.slice(filesIdx);
   const m = rest.match(/^\s*-\s*"?([^"\n]+?)"?\s*$/m);

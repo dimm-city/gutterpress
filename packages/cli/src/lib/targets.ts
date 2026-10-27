@@ -25,8 +25,8 @@ import { UsageError } from "./cli-args";
 export type TargetOverlay = {
   pdfx?: Partial<ResolvedConfig["pdfx"]>;
   ink?: Partial<ResolvedConfig["ink"]>;
+  checks?: ResolvedConfig["checks"];
   validate?: {
-    checks?: ResolvedConfig["validate"]["checks"];
     assets?: Partial<ResolvedConfig["validate"]["assets"]>;
     pdf?: Partial<ResolvedConfig["validate"]["pdf"]>;
   };
@@ -74,16 +74,17 @@ const DTRPG_TARGET: PublishTarget = {
       maxTac: DTRPG_PRESET.ink.maxTac,
       tacTolerance: DTRPG_PRESET.ink.tacTolerance,
     },
+    checks: {
+      "pdf.structure.qpdf": "error",
+      "pdf.print.pdfx-markers": "error",
+      "pdf.print.pdfx-metadata": "error",
+      "pdf.print.embedded-fonts": "error",
+      "pdf.print.safe-margins": "error",
+      // DERIVED: PDF/X-1a forbids transparency; on even for a `book` preset.
+      "pdf.print.transparency": "on",
+    },
     validate: {
-      checks: {
-        "pdf.structure.qpdf": { enabled: true, severity: "error" },
-        "pdf.print.pdfx-markers": { enabled: true, severity: "error" },
-        "pdf.print.pdfx-metadata": { enabled: true, severity: "error" },
-        "pdf.print.embedded-fonts": { enabled: true, severity: "error" },
-        "pdf.print.safe-margins": { enabled: true, severity: "error" },
-      },
       pdf: {
-        forbidTransparency: DTRPG_PRESET.validate.pdf.forbidTransparency,
         minImageResolution: DTRPG_PRESET.validate.pdf.minImageResolution,
       },
     },
@@ -110,23 +111,23 @@ const ITCH_TARGET: PublishTarget = {
   id: "itch",
   label: "itch.io",
   overlay: {
+    checks: {
+      "pdf.structure.qpdf": "error",
+      "pdf.print.embedded-fonts": "error",
+      "pdf.print.pdfx-markers": "off",
+      "pdf.print.pdfx-metadata": "off",
+      "pdf.print.ink-coverage": "off",
+      "pdf.print.safe-margins": "off",
+      "pdf.print.transparency": "off",
+      "pdf.print.bleed": "off",
+      "asset.image.alpha-channel": "off",
+    },
     validate: {
-      checks: {
-        "pdf.structure.qpdf": { enabled: true, severity: "error" },
-        "pdf.print.embedded-fonts": { enabled: true, severity: "error" },
-        "pdf.print.pdfx-markers": false,
-        "pdf.print.pdfx-metadata": false,
-        "pdf.print.ink-coverage": false,
-        "pdf.print.safe-margins": false,
-      },
       assets: {
-        allowAlpha: true,
         // 0 = no limit: a screen PDF has no print file-size cap.
         maxImageSize: 0,
       },
       pdf: {
-        forbidTransparency: false,
-        requireBleed: false,
         // 0 = no floor: 300 DPI is a print bar, not a screen one.
         minImageResolution: 0,
       },
@@ -191,9 +192,9 @@ export function overlayPreset(preset: VendorPreset, target: PublishTarget): Vend
     ...preset,
     pdfx: { ...preset.pdfx, ...o.pdfx },
     ink: { ...preset.ink, ...o.ink },
+    checks: { ...preset.checks, ...o.checks },
     validate: {
       ...preset.validate,
-      checks: { ...preset.validate.checks, ...o.validate?.checks },
       assets: { ...preset.validate.assets, ...o.validate?.assets },
       pdf: { ...preset.validate.pdf, ...o.validate?.pdf },
     },
@@ -202,9 +203,9 @@ export function overlayPreset(preset: VendorPreset, target: PublishTarget): Vend
 
 /**
  * The strict-PDF fill-ins applied to EVERY post-build PDF validation
- * regardless of preset/target: any of these left `undefined` by the config
- * becomes an error-severity check, without overwriting an author's explicit
- * choice (including an explicit disable).
+ * regardless of preset/target: any of these the config leaves unset reports
+ * at error severity, without overwriting an author's explicit level
+ * (including `off`).
  */
 export const DEFAULT_STRICT_PDF_CHECKS = [
   "pdf.structure.qpdf",
@@ -216,9 +217,7 @@ export const DEFAULT_STRICT_PDF_CHECKS = [
 export function applyDefaultPdfStrictChecks(config: ResolvedConfig): ResolvedConfig {
   const next = structuredClone(config);
   for (const checkId of DEFAULT_STRICT_PDF_CHECKS) {
-    if (next.validate.checks[checkId] === undefined) {
-      next.validate.checks[checkId] = { enabled: true, severity: "error" };
-    }
+    if (next.checks[checkId] === undefined) next.checks[checkId] = "error";
   }
   return next;
 }

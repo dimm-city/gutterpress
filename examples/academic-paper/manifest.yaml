@@ -19,10 +19,9 @@ page:
     inside: 72
     outside: 72
 
-source:
-  files:
-    - paper.md
-    - references.md
+chapters:
+  - paper.md
+  - references.md
 
 extensions:
   # Superscripts for author and affiliation marks: Quill^1^.

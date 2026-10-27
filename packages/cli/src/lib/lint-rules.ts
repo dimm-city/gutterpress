@@ -1,10 +1,10 @@
-// Per-project lint rule levels (`lint.rules` in manifest.yaml) and the inline
-// `gutterpress-disable-next-line` directive, shared by every check that reports
-// a lint rule (printsafe's CSS rules, the markdown heading-order check).
+// Per-project lint rule levels (`checks:` in manifest.yaml, the same map that
+// sets every check's level) and the inline `gutterpress-disable-next-line`
+// directive, shared by every check that reports a lint rule (printsafe's CSS
+// rules, the markdown heading-order check).
 //
-//   lint:
-//     rules:
-//       printsafe/no-risky-print-effects: off      # off | warn | error
+//   checks:
+//     printsafe/no-risky-print-effects: off      # off | warn | error
 //
 //   /* gutterpress-disable-next-line printsafe/page-containment -- reason */
 //   <!-- gutterpress-disable-next-line source.accessibility.heading-order -->
@@ -16,7 +16,11 @@
 
 export type LintLevel = "off" | "warn" | "error";
 
-/** Read one rule's configured level; unrecognised values are ignored. */
+/**
+ * Read one rule's configured level; unrecognised values (and `on`) leave the
+ * rule at its own severity. A lint rule reports at warning or error, so
+ * `info` reads as warning.
+ */
 export function ruleLevel(
   rules: Readonly<Record<string, unknown>> | undefined,
   id: string,
@@ -24,7 +28,7 @@ export function ruleLevel(
   const v = rules?.[id];
   // YAML 1.1 readers turn a bare `off` into `false`; accept both spellings.
   if (v === "off" || v === false) return "off";
-  if (v === "warn" || v === "warning") return "warn";
+  if (v === "warn" || v === "warning" || v === "info") return "warn";
   if (v === "error") return "error";
   return undefined;
 }

@@ -7,12 +7,11 @@ preset: book
 styles:
   - styles/style.css
 
-source:
-  files:
-    - 00-cover.md
-    - 01-toc.md
-    - 02-chapter-one.md
-    - 03-chapter-two.md
+chapters:
+  - 00-cover.md
+  - 01-toc.md
+  - 02-chapter-one.md
+  - 03-chapter-two.md
 
 page:
   width: 432   # 6in

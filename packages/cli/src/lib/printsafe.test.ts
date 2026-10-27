@@ -412,7 +412,7 @@ test("checkCss stays silent on plain gradients and the tiled-stripe workaround",
   expect(checkCss(css)).toEqual([]);
 });
 
-test("the PDF/X gradient warning honours disable directives and lint.rules", () => {
+test("the PDF/X gradient warning honours disable directives and the checks levels", () => {
   const css = `/* gutterpress-disable-next-line printsafe/no-risky-print-effects -- web only */
 .a { background: conic-gradient(red, blue); }`;
   expect(checkCss(css)).toEqual([]);

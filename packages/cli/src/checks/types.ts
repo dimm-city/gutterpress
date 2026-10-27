@@ -59,8 +59,8 @@ export interface Check {
   requiredTools?: string[];
   /**
    * Declarative enable gate driven by config (beyond the generic
-   * `validate.checks[id]` enable/disable). Lets a check own a tool-specific
-   * config switch — e.g. `source.stylelint === false` — so the runner and
+   * `checks: { <id>: off }`). Lets a check run only when a build setting it
+   * depends on is in effect — e.g. `print.signature > 1` — so the runner and
    * tool-check never need per-check special cases. Returning `false` disables
    * the check for enablement/tool-probing purposes.
    */

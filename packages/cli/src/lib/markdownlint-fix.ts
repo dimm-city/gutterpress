@@ -58,8 +58,7 @@ async function uncommittedAmong(
 export async function applyMarkdownlintFixes(
   ctx: CheckContext
 ): Promise<string[]> {
-  const sourceConfig = ctx.config.validate.source;
-  if (sourceConfig.markdownlint === false) {
+  if (ctx.config.checks["source.markdownlint"] === "off") {
     log.warn(
       "--fix: source.markdownlint is disabled for this book — no files were fixed."
     );
@@ -72,24 +71,18 @@ export async function applyMarkdownlintFixes(
     return [];
   }
 
-  const configPath =
-    typeof sourceConfig.markdownlint === "string"
-      ? sourceConfig.markdownlint
-      : null;
-  const resolvedConfig = findConfigFile(ctx.inputDir, CONFIG_NAMES, configPath);
+  const resolvedConfig = findConfigFile(ctx.inputDir, CONFIG_NAMES);
 
   // The check skips SILENTLY when no config is found; an explicit --fix must
   // say so rather than look like a successful no-op.
-  if (!resolvedConfig && !configPath) {
+  if (!resolvedConfig) {
     log.warn(
-      `--fix: no markdownlint config found in ${ctx.inputDir} (looked for ${CONFIG_NAMES.join(", ")}) — no files were fixed.`
+      `--fix: no markdownlint config found in ${ctx.inputDir} or a folder above it (looked for ${CONFIG_NAMES.join(", ")}) — no files were fixed.`
     );
     return [];
   }
 
-  const config = resolvedConfig
-    ? await loadConfig(resolvedConfig)
-    : { default: true };
+  const config = await loadConfig(resolvedConfig);
 
   const results = lint({ files, config }) as unknown as Record<
     string,

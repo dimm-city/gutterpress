@@ -57,7 +57,7 @@ async function makeBook(): Promise<string> {
   await writeFile(path.join(dir, "01-intro.md"), CHAPTER);
   await writeFile(
     path.join(dir, "manifest.yaml"),
-    "title: Link Fixture\nsource:\n  files:\n    - 01-intro.md\n    - chapters/02-next.md\n",
+    "title: Link Fixture\nchapters:\n  - 01-intro.md\n  - chapters/02-next.md\n",
   );
   return dir;
 }

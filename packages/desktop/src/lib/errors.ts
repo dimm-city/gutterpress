@@ -94,7 +94,7 @@ export function friendlyPreviewError(raw: string): FriendlyPreviewError {
   if (/No markdown files found/i.test(details)) {
     return {
       title: "No Markdown chapters were found.",
-      message: "Add a chapter or correct the source.files entries in manifest.yaml, then try again.",
+      message: "Add a chapter or correct the chapters list in manifest.yaml, then try again.",
       details,
     };
   }

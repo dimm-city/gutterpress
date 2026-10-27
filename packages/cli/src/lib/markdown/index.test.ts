@@ -54,7 +54,7 @@ test("styles:-less manifest + styles/book.css on disk inlines book.css in a real
   const htmlFile = await renderChaptersToFile(dir, outDir, {
     title: config.title,
     styles: config.styles,
-    files: config.source.files,
+    files: config.chapters,
   });
 
   const html = await readFile(htmlFile, "utf8");
@@ -73,7 +73,7 @@ test("styles:-less manifest with NO conventional stylesheet on disk emits no pha
   const htmlFile = await renderChaptersToFile(dir, outDir, {
     title: config.title,
     styles: config.styles,
-    files: config.source.files,
+    files: config.chapters,
   });
 
   const html = await readFile(htmlFile, "utf8");
@@ -101,7 +101,7 @@ test("an explicit manifest `styles:` list still wins over styles/book.css", asyn
   const htmlFile = await renderChaptersToFile(dir, outDir, {
     title: config.title,
     styles: config.styles,
-    files: config.source.files,
+    files: config.chapters,
   });
 
   const html = await readFile(htmlFile, "utf8");

@@ -90,7 +90,7 @@ A Gutterpress project is a directory. The CLI doesn't impose much structure; the
 my-book/
 ├─ manifest.yaml      ← optional but recommended; metadata + config
 ├─ chapter-01.md      ← markdown files, processed in alphabetical order
-├─ chapter-02.md         (or in the order listed in manifest.yaml#source.files)
+├─ chapter-02.md         (or in the order listed in manifest.yaml#chapters)
 ├─ css/               ← your stylesheets
 │  └─ print.css
 └─ images/            ← images referenced from markdown or CSS
@@ -123,10 +123,9 @@ preset: dtrpg
 styles:
   - css/print.css
 
-source:
-  files:
-    - chapter-01.md
-    - chapter-02.md
+chapters:
+  - chapter-01.md
+  - chapter-02.md
 ```
 
 The full configuration cascade is `CLI flags > manifest.yaml > preset defaults`. See the [configuration reference](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/01-getting-started.md#manifest-configuration) for details.

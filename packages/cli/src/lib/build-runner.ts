@@ -183,7 +183,7 @@ export interface BuildContext {
   inputDir: string;
   /**
    * THE anchor every manifest-relative path resolves against: `styles:`,
-   * `source.files`, authored plugin `path:` entries, and the CSS print-safety
+   * `chapters`, authored plugin `path:` entries, and the CSS print-safety
    * check's stylesheet resolution. Equal to {@link BuildContext.manifestDir}.
    *
    * It is NOT `inputDir`. The two are identical in the normative layout (the
@@ -295,7 +295,7 @@ export async function resolveBuildContext(
       ? { kind: "directory", dir: opts.outDir }
       : { kind: "project", dir: resolveOutputDir(manifestDir, config.title) };
   const outDir = target.kind === "file" ? path.dirname(target.file) : target.dir;
-  const gates = computeGates(format, opts, config);
+  const gates = computeGates(format, opts);
   // For our own `dist/`, the work dir is a sibling of the destination so the
   // publish is a same-filesystem atomic rename. For a caller-supplied target we
   // must not create scratch directories in someone else's folder, so it goes to
@@ -371,12 +371,12 @@ export async function loadBuildPlugins(ctx: BuildContext): Promise<LoadedPlugins
  * Stage 2 — run pre-build validation, the build's only quality gate (#272 —
  * one CSS gate, not two). The CSS print-safety check lives ONLY as
  * `source.stylelint`, run by `executeAndReport` below like every other
- * pre-build check; `gates.skipStylelint` (`--skip-lint` /
- * `config.lint.enabled: false`) disables just that one check for this run,
+ * pre-build check; `gates.skipStylelint` (`--skip-lint`) disables just that
+ * one check for this run,
  * via the `skipStylelint` arg threaded into `executeValidation`
  * (validation-exec.ts), rather than skipping this whole gate. Skipped
- * entirely when `preValidate` is off (`--format html`, `--skip-pre-validate`,
- * or `config.validate.enabled: false`) — a failing gate throws a BuildError
+ * entirely when `preValidate` is off (`--format html` or `--skip-pre-validate`)
+ * — a failing gate throws a BuildError
  * with the pre-build validation exit code (1).
  *
  * When the gate is on, plugins are loaded ONCE here via
@@ -440,8 +440,8 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
 export async function renderBook(ctx: BuildContext): Promise<string> {
   const { config, gates, renderDir, workDir, opts, format } = ctx;
 
-  if (config.source.files && config.source.files.length > 0) {
-    log.info(`Using specified files (${config.source.files.length} total)`);
+  if (config.chapters && config.chapters.length > 0) {
+    log.info(`Using specified files (${config.chapters.length} total)`);
   } else {
     log.info("Using all .md files in alphabetical order");
   }
@@ -465,7 +465,7 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
     print: config.print,
     printArea: { ...config.page, preset: config.preset, spec: config.spec },
     styles: config.styles,
-    files: config.source.files,
+    files: config.chapters,
     plugins,
     pluginStyles,
     // Prevalidation may have reported these exact parser findings through

@@ -106,9 +106,8 @@ test("custom templates preserve and scaffold the recognized manifest.yaml name",
         "title: Original",
         "authors:",
         "  - Writer",
-        "source:",
-        "  files:",
-        "    - chapter.md",
+        "chapters:",
+        "  - chapter.md",
         "output:",
         "  filename: original.pdf",
         "",
@@ -143,9 +142,9 @@ test("custom templates preserve and scaffold the recognized manifest.yaml name",
   }
 });
 
-test("saveProjectAsTemplate re-tokenises the authors block, NOT a leading source list item", async () => {
-  // Regression: a manifest that lists `source.files` BEFORE `authors` must not
-  // get its first source filename rewritten to {{AUTHOR}} (the re-tokeniser is
+test("saveProjectAsTemplate re-tokenises the authors block, NOT a leading chapters list item", async () => {
+  // Regression: a manifest that lists `chapters` BEFORE `authors` must not
+  // get its first chapter filename rewritten to {{AUTHOR}} (the re-tokeniser is
   // anchored to the `authors:` key, not the first `- item` in the file).
   const project = await tmp("gutterpress-retok-src-");
   const templatesRoot = await tmp("gutterpress-retok-dest-");
@@ -154,10 +153,9 @@ test("saveProjectAsTemplate re-tokenises the authors block, NOT a leading source
       path.join(project, "manifest.yaml"),
       [
         'title: My Book',
-        'source:',
-        '  files:',
-        '    - chapter-01.md',
-        '    - chapter-02.md',
+        'chapters:',
+        '  - chapter-01.md',
+        '  - chapter-02.md',
         'authors:',
         '  - Jane Author',
         '',
@@ -174,7 +172,7 @@ test("saveProjectAsTemplate re-tokenises the authors block, NOT a leading source
     const manifest = await readFile(path.join(saved.dir!, "manifest.yaml"), "utf8");
 
     expect(manifest).toContain('title: "{{TITLE}}"');
-    // The source filename survives; the author is tokenised.
+    // The chapter filename survives; the author is tokenised.
     expect(manifest).toContain("- chapter-01.md");
     expect(manifest).toContain('"{{AUTHOR}}"');
     expect(manifest).not.toContain("Jane Author");

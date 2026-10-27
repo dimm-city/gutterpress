@@ -1,7 +1,6 @@
 title: Explicit Fixture
 preset: book
-source:
-  files:
-    - chapters/01-introduction.md
+chapters:
+  - chapters/01-introduction.md
 styles:
   - styles/book.css

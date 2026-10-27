@@ -7,9 +7,8 @@ preset: book
 styles:
   - styles/style.css
 
-source:
-  files:
-    - 01-chapters.md
+chapters:
+  - 01-chapters.md
 
 page:
   width: 612   # 8.5in

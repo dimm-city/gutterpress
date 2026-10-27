@@ -4,7 +4,7 @@ Demonstrates Gutterpress's validation system with all four check categories conf
 
 ## What's Included
 
-- `manifest.yaml` — full `validate` section with all options annotated
+- `manifest.yaml` — a `checks` map, annotated
 - `.markdownlint.yaml` — Markdownlint config for source checks
 - `.htmlhintrc` — HTMLHint config for source checks
 - `chapter-01.md` — clean Markdown that should pass all checks

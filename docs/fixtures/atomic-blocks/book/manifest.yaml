@@ -7,9 +7,8 @@ preset: book
 styles:
   - styles/style.css
 
-source:
-  files:
-    - 01-cards.md
+chapters:
+  - 01-cards.md
 
 page:
   width: 432   # 6in
