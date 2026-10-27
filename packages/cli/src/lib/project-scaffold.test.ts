@@ -444,7 +444,7 @@ test("scaffoldProject customPage overrides a non-custom preset's trim", async ()
       name: "Digest Book",
       parentDir: parent,
       preset: "dtrpg",
-      customPage: { width: 396, height: 612, tolerance: 1 },
+      customPage: { width: 396, height: 612 },
       versionHistory: "none",
     });
     const parsed = await loadManifest(result.projectDir);
@@ -453,7 +453,7 @@ test("scaffoldProject customPage overrides a non-custom preset's trim", async ()
     // sovereignty rule) while the dtrpg policy stays.
     expect(config.page.width).toBe(396);
     expect(config.page.height).toBe(612);
-    expect(config.page.tolerance).toBe(1);
+    expect(config.page.tolerance).toBe(0.5);
     expect(config.ink.maxTac).toBe(240);
   } finally {
     await rm(parent, { recursive: true, force: true });

@@ -210,7 +210,6 @@ export interface GutterpressManifest {
   page?: {
     width?: number;
     height?: number;
-    tolerance?: number;
     /**
      * A bleed (pt) the page `width` x `height` ALREADY CONTAINS, on the top,
      * bottom and OUTER edges only (the binding edge has none) — how
@@ -334,6 +333,7 @@ export interface ResolvedConfig {
   page: {
     width: number;
     height: number;
+    /** Allowed deviation (pt) of a built PDF's page size; the preset's, never the manifest's. */
     tolerance: number;
     /** In-sheet bleed in pt (top, bottom, outer edge; see the manifest field); absent = none. */
     bleed?: number;

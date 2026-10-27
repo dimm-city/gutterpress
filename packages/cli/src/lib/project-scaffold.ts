@@ -228,12 +228,6 @@ function requirePreset(preset: PresetId, customPage: CustomPageOptions | undefin
       "Page overrides need a positive width and height in points (72pt = 1in).",
     );
   }
-  if (customPage?.tolerance !== undefined && !isPositivePoints(customPage.tolerance)) {
-    throw new CreateProjectErrorImpl(
-      "custom-page-required",
-      "Page tolerance must be a positive number of points.",
-    );
-  }
 
   return preset;
 }

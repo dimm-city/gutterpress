@@ -104,10 +104,6 @@ export const newArgs = {
     type: "string",
     description: "Trim height in points, 72pt = 1in (required with --preset custom; optional override otherwise)",
   },
-  "page-tolerance": {
-    type: "string",
-    description: "Allowed trim deviation in points when validating a built PDF (default: 0.5)",
-  },
   git: {
     type: "boolean",
     description: "Initialise local version history (default: true; use --no-git to skip)",
@@ -146,7 +142,6 @@ const BOOK_ONLY_FLAGS = [
   "template",
   "page-width",
   "page-height",
-  "page-tolerance",
   "git",
 ] as const;
 const EXTENSION_ONLY_FLAGS = ["prefix", "description"] as const;
@@ -333,11 +328,8 @@ export default defineCommand({
 
     const pageWidth = parsePoints(args["page-width"], "--page-width");
     const pageHeight = parsePoints(args["page-height"], "--page-height");
-    const pageTolerance = parsePoints(args["page-tolerance"], "--page-tolerance");
     const customPage =
-      pageWidth !== undefined && pageHeight !== undefined
-        ? { width: pageWidth, height: pageHeight, ...(pageTolerance !== undefined ? { tolerance: pageTolerance } : {}) }
-        : undefined;
+      pageWidth !== undefined && pageHeight !== undefined ? { width: pageWidth, height: pageHeight } : undefined;
     if (preset === "custom" && !customPage) {
       console.error(
         "The custom preset needs a trim size: --page-width and --page-height in points (72pt = 1in — e.g. US Letter is 612 x 792).",

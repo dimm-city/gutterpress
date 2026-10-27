@@ -61,7 +61,7 @@ test("custom preset requires page.width and page.height, naming what's missing",
   );
 });
 
-test("custom preset resolves the author's geometry; tolerance defaults to 0.5", () => {
+test("custom preset resolves the author's geometry with the presets' 0.5pt tolerance", () => {
   const config = resolveConfig({}, { preset: "custom", page: { width: 500, height: 700 } });
   expect(config.page).toEqual({ width: 500, height: 700, tolerance: 0.5 });
   // Policy defaults are the neutral book ones.
