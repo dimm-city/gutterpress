@@ -283,15 +283,11 @@ test("readSettings defaults the update channel to stable for existing settings f
   expect((await store.readSettings()).updates.channel).toBe("stable");
 });
 
-test("an existing settings file without the extension pre-release preference reads it as off, and keeps a saved on", async () => {
-  const legacy = makeStore({
-    readFileImpl: async () => JSON.stringify({ updates: { channel: "beta" } }),
+test("a settings file still carrying the removed extension pre-release preference drops it on read", async () => {
+  const { store } = makeStore({
+    readFileImpl: async () => JSON.stringify({ updates: { channel: "beta", includeExtensionPrereleases: true } }),
   });
-  expect((await legacy.store.readSettings()).updates).toEqual({ channel: "beta", includeExtensionPrereleases: false });
-  const saved = makeStore({
-    readFileImpl: async () => JSON.stringify({ updates: { includeExtensionPrereleases: true } }),
-  });
-  expect((await saved.store.readSettings()).updates.includeExtensionPrereleases).toBe(true);
+  expect((await store.readSettings()).updates).toEqual({ channel: "beta" });
 });
 
 test("writeSettings mkdirs the userDataDir, writes pretty JSON to <settingsPath>.tmp, then renames over settingsPath", async () => {

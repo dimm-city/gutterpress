@@ -104,8 +104,8 @@ function make(
       return Promise.resolve(h.entries);
     },
     bundled: () => Promise.resolve(h.bundled),
-    outdated: (dir, includePrerelease) => {
-      record("outdated", dir, includePrerelease);
+    outdated: (dir) => {
+      record("outdated", dir);
       return Promise.resolve(h.updatesResult);
     },
     validate: () => {
@@ -446,7 +446,7 @@ test("checkUpdates asks the host once for the project and exposes the newer vers
   const h = make({ entries: [PINNED_DC, FEATURE], updatesResult: DC_BEHIND });
   await h.ctrl.loadExtensions();
   await h.ctrl.checkUpdates();
-  expect(named(h, "outdated").map((c) => c.args)).toEqual([["/proj", false]]);
+  expect(named(h, "outdated").map((c) => c.args)).toEqual([["/proj"]]);
   expect(h.ctrl.updates.status).toBe("ready");
   expect(h.ctrl.updateFor(PINNED_DC)).toBe("1.2.0");
   expect(h.ctrl.updateFor(FEATURE)).toBeNull(); // bundled: npm has nothing to say

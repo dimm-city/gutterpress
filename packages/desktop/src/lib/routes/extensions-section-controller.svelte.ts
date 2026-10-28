@@ -67,7 +67,7 @@ export interface ExtensionsSectionDeps {
   /** The bundled extensions (markdown extras and looks), static. */
   bundled: () => Promise<BundledExtensionInfo[]>;
   /** Each pinned npm entry against npm's latest. A fetch/parse failure comes back as `{ ok: false }` data, never a rejection. */
-  outdated: (projectDir: string, includePrerelease: boolean) => Promise<ExtensionUpdatesResult>;
+  outdated: (projectDir: string) => Promise<ExtensionUpdatesResult>;
   validate: (projectDir: string) => Promise<ExtensionValidationResult[]>;
   /** Add by specifier. Null when the author cancelled the native npm trust gate. */
   add: (
@@ -259,7 +259,7 @@ export class ExtensionsSectionController {
     if (!projectDir || this.updates.status === "loading") return;
     this.updates = { status: "loading", checks: this.updates.checks };
     try {
-      const result = await this.deps.outdated(projectDir, false);
+      const result = await this.deps.outdated(projectDir);
       this.updates = result.ok ? { status: "ready", checks: result.checks } : { status: "error", checks: [] };
     } catch {
       this.updates = { status: "error", checks: [] };

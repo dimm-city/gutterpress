@@ -1,7 +1,6 @@
 /**
- * POST /api/extension/outdated: each npm pin against npm's latest — or, with
- * `includePrerelease`, the newest of any kind (the desktop asks for stable
- * versions; the option is the lib's, shared with `gutterpress ext outdated`).
+ * POST /api/extension/outdated: each npm pin against npm's latest dist-tag
+ * (pre-releases are `gutterpress ext outdated`'s option, not the desktop's).
  *
  * The real lib runs; only the network is faked (a stubbed `globalThis.fetch`
  * answering the abbreviated packument), so nothing here can reach npm.
@@ -57,13 +56,8 @@ describe("POST /api/extension/outdated", () => {
     });
   });
 
-  test("compares with the newest version of any kind when includePrerelease is true", async () => {
+  test("a request asking for pre-releases still gets the latest dist-tag", async () => {
     const body = (await (await call({ projectDir, includePrerelease: true })).json()) as { checks: Array<{ latest: string }> };
-    expect(body.checks[0]!.latest).toBe("1.2.0-alpha.2");
-  });
-
-  test("only a literal true turns pre-releases on", async () => {
-    const body = (await (await call({ projectDir, includePrerelease: "true" })).json()) as { checks: Array<{ latest: string }> };
     expect(body.checks[0]!.latest).toBe("1.1.0");
   });
 

@@ -631,9 +631,9 @@ export const api = {
       post<ExtensionValidationResult[]>('/api/extension/validate', { projectDir }),
     /** The bundled extensions (markdown features and looks) an author can turn on with no install (static). */
     bundled: () => get<BundledExtensionInfo[]>('/api/extension/bundled'),
-    /** Each pinned npm extension against npm's latest (the newest of any kind with `includePrerelease`), on demand (the Advanced tab, never project load). A network failure is data (`ok: false`), never a thrown error. */
-    outdated: (projectDir: string, includePrerelease = false) =>
-      post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir, includePrerelease }),
+    /** Each pinned npm extension against npm's latest, on demand (the Advanced tab, never project load). A network failure is data (`ok: false`), never a thrown error. */
+    outdated: (projectDir: string) =>
+      post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir }),
     /** A configured extension's stylesheets, concatenated (a bundled look's inlined css, or the entry's folder) — for a sample thumbnail and the design settings. */
     readCss: (projectDir: string, use: string) =>
       post<string>('/api/extension/read-css', { projectDir, use }),
