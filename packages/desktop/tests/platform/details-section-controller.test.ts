@@ -136,7 +136,8 @@ function make(
         margins: change.margins === null ? INCH : (change.margins ?? before.margins),
         marginsFrom: change.margins === null ? before.fallbackMarginsFrom : change.margins ? "manifest" : before.marginsFrom,
         fallbackMarginsFrom: before.fallbackMarginsFrom,
-        presetSizeOverridden: before.presetSizeOverridden,
+        // A size written replaces any override of a preset's size.
+        presetSizeOverridden: size ? false : before.presetSizeOverridden,
       };
       return h.pageSetup;
     },
@@ -727,6 +728,46 @@ test("a size typed while the previous size is being written stays as typed, and 
     { size: { preset: "custom", page: { width: 504, height: 504 } } },
     { size: { preset: "custom", page: { width: 504, height: 648 } } },
   ]);
+});
+
+// The user guide: `preset: book` with a `page:` of 8.5 × 11 in over the preset's 6 × 9.
+const OVERRIDDEN: PageSetup = {
+  ...BOOK_SETUP,
+  bounds: { width: 612, height: 792, tolerance: 0.5 },
+  presetSizeOverridden: true,
+};
+
+test("a book whose manifest overrides its preset's size shows Another size, at the size it prints at", async () => {
+  const h = make({ pageSetup: OVERRIDDEN });
+  await h.ctrl.loadDetails();
+  expect(h.ctrl.presetDraft).toBe("custom");
+  expect(h.ctrl.sizeChoice).toBe("letter");
+  expect(h.ctrl.pageDirty).toBe(false);
+  // Choosing Another size, or its size again, is where the book already is: nothing to write.
+  h.ctrl.setPreset("custom");
+  h.ctrl.touchPage();
+  await h.ctrl.flushPendingSave();
+  expect(h.pageWrites).toEqual([]);
+  // The book's targets still follow its preset (book: none).
+  expect(h.ctrl.targetsDraft).toEqual([]);
+});
+
+test("on an overridden size, choosing the preset goes back to the preset's own size", async () => {
+  const h = make({ pageSetup: OVERRIDDEN });
+  await h.ctrl.loadDetails();
+  h.ctrl.setPreset("book");
+  await settle();
+  expect(h.pageWrites).toEqual([{ size: { preset: "book" } }]);
+  expect(h.ctrl.presetDraft).toBe("book");
+});
+
+test("on an overridden size, a margin edit writes the margins alone", async () => {
+  const h = make({ pageSetup: OVERRIDDEN });
+  await h.ctrl.loadDetails();
+  h.ctrl.marginDrafts.top = "1";
+  h.ctrl.touchMargins();
+  await h.ctrl.flushPendingSave();
+  expect(h.pageWrites).toEqual([{ margins: { ...BOOK_MARGINS, top: 72 } }]);
 });
 
 test("a failed page-size read leaves the control out and details still load", async () => {

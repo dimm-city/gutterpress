@@ -16,10 +16,11 @@
    * for 400 ms (WCAG 3.2.2), and the card order is fixed while the tab is
    * open, so nothing moves under the pointer.
    */
-  import { onDestroy } from "svelte";
+  import { onDestroy, tick } from "svelte";
   import Icon from "#lib/components/Icon.svelte";
+  import ColorField from "./ColorField.svelte";
   import { describeSegments, extensionProblem } from "./config-helpers";
-  import { toHex, firstFontFamily, PRINT_SAFE_FONT_STACKS, SHARED_TOKEN_LABELS } from "#lib/style-tokens.ts";
+  import { firstFontFamily, PRINT_SAFE_FONT_STACKS, SHARED_TOKEN_LABELS } from "#lib/style-tokens.ts";
   import type { StyleToken } from "#lib/platform/dtos.ts";
   import type { ExtensionsSectionController, LookCard } from "#lib/routes/extensions-section-controller.svelte.ts";
   import type { DesignSectionController } from "#lib/routes/design-section-controller.svelte.ts";
@@ -104,17 +105,29 @@
     design.setLength(t, value);
     refreshSample();
   }
-  function useLookSettings() {
-    design.resetBrand();
-    refreshSample();
+
+  // "Reset to the look's settings" asks first (Replace / Keep mine); the
+  // focus stays on the question, then returns to the row.
+  let actionsEl = $state<HTMLElement | null>(null);
+  const lookName = $derived(design.lookLabels.length === 1 ? `${design.lookLabels[0]}'s` : "the look's");
+  async function askReset() {
+    design.askBrandReset();
+    await tick();
+    actionsEl?.querySelector<HTMLButtonElement>(".keep")?.focus();
+  }
+  async function answerReset(replace: boolean) {
+    if (replace) {
+      design.resetBrand();
+      refreshSample();
+    } else design.keepBrand();
+    await tick();
+    const reset = actionsEl?.querySelector<HTMLButtonElement>(".reset");
+    (reset && !reset.disabled ? reset : actionsEl)?.focus();
   }
 
   const fontPreset = (value: string): string =>
     PRINT_SAFE_FONT_STACKS.some((f) => f.value === value) ? value : "__custom__";
 
-  /** An extra's "what to type": the first code span of its description. */
-  const example = (description: string): string =>
-    describeSegments(description).find((s) => s.code)?.text ?? "";
 </script>
 
 {#snippet brandRow(t: StyleToken)}
@@ -135,18 +148,18 @@
             <option value={f.value}>{f.label}</option>
           {/each}
           {#if fontPreset(t.value) === "__custom__"}
-            <option value="__custom__">{firstFontFamily(t.value)} (current)</option>
+            <option value="__custom__">{firstFontFamily(t.value)} (this book's font)</option>
           {/if}
         </select>
       {:else if t.kind === "color"}
-        <span class="color">
-          <input type="color" value={toHex(t.value) ?? "#000000"} oninput={(e) => setToken(t, e.currentTarget.value)} aria-label={`${label} swatch`} />
-          <input id={`look-${t.name}`} class="input" type="text" value={toHex(t.value) ?? t.value} oninput={(e) => setToken(t, e.currentTarget.value)} />
-        </span>
+        <div class="hex">
+          <ColorField id={`look-${t.name}`} value={t.value} {label} onCommit={(value) => setToken(t, value)} />
+        </div>
         {#if t.name === "--color-accent"}<span class="hint">Headings and links</span>{/if}
       {:else if t.kind === "length" || t.kind === "number"}
+        <!-- Saved on change (blur, Enter or the arrows), never mid-number. -->
         <span class="size">
-          <input id={`look-${t.name}`} class="input" type="number" value={parseFloat(t.value)} step={t.name === "--fs-body" ? 0.5 : 0.05} oninput={(e) => setLength(t, e.currentTarget.value)} />
+          <input id={`look-${t.name}`} class="input" type="number" value={parseFloat(t.value)} step={t.name === "--fs-body" ? 0.5 : 0.05} onchange={(e) => setLength(t, e.currentTarget.value)} />
           {#if t.unit}<span class="unit">{t.unit}</span>{/if}
         </span>
       {:else}
@@ -217,9 +230,15 @@
       <div class="adjust">
         <div class="brand">
           {#each design.brandTokens as t (t.name)}{@render brandRow(t)}{/each}
-          <div class="row brand-actions">
-            <button class="ghost small" onclick={useLookSettings} disabled={!design.brandOverridden}>Use the look's settings</button>
-            <button class="link" onclick={() => onOpenAdvanced("design")}>All settings in Advanced <Icon name="arrow-right" size={12} /></button>
+          <div class="row brand-actions" bind:this={actionsEl} tabindex="-1">
+            {#if design.brandResetAsked}
+              <span class="confirm">Replace your settings with {lookName}?</span>
+              <button class="ghost small danger" onclick={() => answerReset(true)}>Replace</button>
+              <button class="ghost small keep" onclick={() => answerReset(false)}>Keep mine</button>
+            {:else}
+              <button class="ghost small reset" onclick={askReset} disabled={!design.brandOverridden}>Reset to the look's settings</button>
+              <button class="link" onclick={() => onOpenAdvanced("design")}>All settings in Advanced <Icon name="arrow-right" size={12} /></button>
+            {/if}
           </div>
         </div>
         <figure class="sample">
@@ -243,7 +262,8 @@
           <label>
             <input type="checkbox" checked={x.on} disabled={extensions.busy !== null} onchange={(e) => extensions.setExtra(x, e.currentTarget.checked)} />
             <span class="extra-name">{x.label}</span>
-            <code>{example(x.description)}</code>
+            <!-- What it does and what to type, the "what to type" set in code type. -->
+            <span class="extra-desc">{#each describeSegments(x.description) as seg}{#if seg.code}<code>{seg.text}</code>{:else}{seg.text}{/if}{/each}</span>
           </label>
         </li>
       {/each}
@@ -295,15 +315,18 @@
   /* ── Adjust the look: six settings beside the sample ── */
   .adjust { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
   .brand { display: flex; flex-direction: column; gap: 8px; }
-  .brand-row { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: 4px 10px; }
-  .brand-row label { font-size: 12.5px; color: var(--app-text-secondary); }
+  /* The label lines up with its field, whatever hint or message is under the field. */
+  .brand-row { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: start; gap: 4px 10px; }
+  .brand-row label { min-height: 34px; display: flex; align-items: center; font-size: 12.5px; color: var(--app-text-secondary); }
   .brand-control { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .color, .size { display: flex; align-items: center; gap: 6px; }
-  .color .input { max-width: 130px; }
-  .color input[type="color"] { width: 30px; height: 30px; padding: 0; border: 1px solid var(--app-border); border-radius: 4px; background: var(--app-control-bg); cursor: pointer; flex-shrink: 0; }
+  .hex { width: 172px; }
+  .size { display: flex; align-items: center; gap: 6px; }
   .size .input { width: 84px; }
   .unit { font-size: 12px; color: var(--app-text-muted); }
-  .brand-actions { margin-top: 4px; flex-wrap: wrap; }
+  .brand-actions { margin-top: 4px; flex-wrap: wrap; outline: none; }
+  .confirm { font-size: 12.5px; color: var(--app-text-secondary); }
+  /* Settings' Remove confirm: the replacing button in the error color. */
+  .brand-actions .danger { color: var(--app-error-text); border-color: var(--app-error-text); }
   .sample { margin: 0; display: flex; flex-direction: column; gap: 4px; }
   .sample-frame { height: 300px; overflow: hidden; border: 1px solid var(--app-border); border-radius: 6px; background: #fff; }
   .sample-frame iframe { border: 0; width: 400px; height: 375px; transform: scale(0.8); transform-origin: top left; }
@@ -311,10 +334,11 @@
 
   /* ── Extras ── */
   .extras { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-  .extras label { display: grid; grid-template-columns: auto 120px minmax(0, 1fr); align-items: center; gap: 8px; cursor: pointer; }
-  .extras input { margin: 0; }
+  .extras label { display: grid; grid-template-columns: auto 120px minmax(0, 1fr); align-items: baseline; gap: 8px; cursor: pointer; }
+  .extras input { margin: 0; align-self: center; }
   .extra-name { font-size: 13px; color: var(--app-text); }
-  .extras code { font-family: var(--app-font-mono); font-size: 12px; color: var(--app-text-secondary); }
+  .extra-desc { font-size: 12px; color: var(--app-text-muted); line-height: 1.4; }
+  .extra-desc code { font-family: var(--app-font-mono); font-size: 12px; color: var(--app-text); }
 
   @media (max-width: 760px) {
     .adjust { grid-template-columns: minmax(0, 1fr); }

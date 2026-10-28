@@ -31,7 +31,7 @@ test("sampleSrcdoc inlines the look's CSS into a self-contained sample document 
   const doc = sampleSrcdoc(css);
   expect(doc.startsWith("<!DOCTYPE html>")).toBe(true);
   expect(doc).toContain(css);
-  expect(doc).toContain("Chapter Title");
+  expect(doc).toContain("<h1>Chapter One</h1>");
   expect(doc).toContain("html,body{margin:0;padding:0;overflow:hidden;}");
 });
 

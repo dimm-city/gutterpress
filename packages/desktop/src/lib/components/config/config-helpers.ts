@@ -23,14 +23,14 @@ export function sampleSrcdoc(css: string): string {
 html,body{margin:0;padding:0;overflow:hidden;} body{padding:14px 16px;} *{box-sizing:border-box;}
 ${css}
 </style></head><body>
-<h1>Chapter Title</h1>
-<h2>A Section Heading</h2>
-<p>The quick brown fox jumps over the lazy dog. Typography, color, and
-spacing preview rendered with this theme&rsquo;s stylesheet.</p>
-<blockquote>A short pull quote shows callout and accent styling.</blockquote>
-<h3>Subheading</h3>
-<ul><li>First list item</li><li>Second list item</li></ul>
-<p><a href="#">A themed link</a> with <code>inline code</code>.</p>
+<h1>Chapter One</h1>
+<h2>The Harbor at Dusk</h2>
+<p>The lamps along the quay came on one by one as the last boats rounded the
+breakwater. Mara counted them from the window, the way her father had taught her.</p>
+<blockquote>&ldquo;Every light is someone waiting to come home.&rdquo;</blockquote>
+<h3>The Keeper&rsquo;s Log</h3>
+<ul><li>Wind from the west, rising</li><li>Two boats still out</li></ul>
+<p>She wrote the hour in the log, <code>18:42</code>, and turned to <a href="#">the next page</a>.</p>
 </body></html>`;
 }
 

@@ -230,10 +230,15 @@ export class DetailsSectionController {
     }
   }
 
-  /** Point the drafts at what is recorded; the size starts from the current bounds, the margins from what the book prints with. */
+  /**
+   * Point the drafts at what is recorded; the size starts from the current
+   * bounds, the margins from what the book prints with. A book whose manifest
+   * overrides its preset's size shows as "Another size" with the size it
+   * prints at; choosing the preset again goes back to the preset's size.
+   */
   private applyPageSetup(setup: PageSetup): void {
     this.pageSetup = setup;
-    this.presetDraft = setup.preset;
+    this.presetDraft = setup.presetSizeOverridden ? "custom" : setup.preset;
     ({ sizeChoice: this.sizeChoice, widthIn: this.widthIn, heightIn: this.heightIn } = sizeDraftsFor(setup.bounds));
     for (const edge of MARGIN_EDGES) this.marginDrafts[edge] = pointsToInches(setup.margins[edge]);
   }
@@ -276,13 +281,13 @@ export class DetailsSectionController {
     const setup = this.pageSetup;
     const choice = this.pageChoice;
     if (!setup || !choice) return false;
-    if (choice.preset !== setup.preset) return true;
-    const b = setup.bounds;
+    // A size of its own: the recorded one unless it is another size, or the
+    // book's size is its preset's. A preset: unless the book is on it already.
     if (choice.preset === "custom" && choice.page) {
-      if (!b || Math.abs(b.width - choice.page.width) >= 0.5 || Math.abs(b.height - choice.page.height) >= 0.5) {
-        return true;
-      }
-    }
+      const b = setup.bounds;
+      const sameSize = !!b && Math.abs(b.width - choice.page.width) < 0.5 && Math.abs(b.height - choice.page.height) < 0.5;
+      if (!sameSize || (setup.preset !== "custom" && !setup.presetSizeOverridden)) return true;
+    } else if (choice.preset !== setup.preset || setup.presetSizeOverridden) return true;
     const margins = this.marginsTouched ? this.marginsChoice : null;
     return !!margins && !sameMargins(margins, setup.margins);
   }

@@ -52,7 +52,8 @@
   color: var(--app-text-secondary); padding: 7px 9px; border-radius: 5px;
   font-size: 13px; font-family: inherit; width: 100%; box-sizing: border-box;
 }
-:global(.config-panel .input:focus) { outline: none; border-color: var(--app-focus-ring); }
+/* The same 2px focus ring as Settings' fields and every button here. */
+:global(.config-panel .input:focus-visible), :global(.config-panel button:focus-visible) { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
 :global(.config-panel textarea.input) { resize: vertical; font-family: var(--app-font-mono); font-size: 12px; }
 :global(.config-panel .input.sharp) { width: auto; min-width: 0; flex: 1; }
 

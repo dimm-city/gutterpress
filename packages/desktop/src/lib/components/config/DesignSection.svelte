@@ -8,7 +8,8 @@
    * edits. The Look tab shows six of these same tokens as brand settings. All
    * token state, the debounced read-modify-write token machinery, and the
    * host calls live in `DesignSectionController` (passed as the single
-   * `controller` prop). `toHex` is a pure browser-only helper (§8-clean).
+   * `controller` prop). A color is typed into `ColorField`, which saves only
+   * a color; a number is saved on change, never mid-number.
    *
    * Token annotations (issue #244): `controller.customGroups` (theme-author
    * `@group` headings, rendered first) and the four kind-based getters
@@ -21,8 +22,9 @@
    * hold a color token next to a plain text one).
    */
   import Icon from "#lib/components/Icon.svelte";
+  import ColorField from "./ColorField.svelte";
   import type { StyleToken } from "#lib/platform/dtos.ts";
-  import { toHex, firstFontFamily, PRINT_SAFE_FONT_STACKS } from "#lib/style-tokens.ts";
+  import { firstFontFamily, PRINT_SAFE_FONT_STACKS } from "#lib/style-tokens.ts";
   import type { DesignSectionController } from "#lib/routes/design-section-controller.svelte.ts";
 
   let { controller }: { controller: DesignSectionController } = $props();
@@ -37,8 +39,6 @@
    * (the text input beside it is always the real, uncapped editor). */
   const fontPreset = (value: string): string =>
     PRINT_SAFE_FONT_STACKS.some((f) => f.value === value) ? value : "__custom__";
-
-  const colorHex = (v: string) => toHex(v) ?? v;
 </script>
 
 <section class="block" aria-labelledby="all-design-settings">
@@ -120,22 +120,17 @@
             {#each PRINT_SAFE_FONT_STACKS as f (f.value)}
               <option value={f.value}>{f.label}</option>
             {/each}
-            <option value="__custom__">{fontPreset(t.value) === "__custom__" ? `${firstFontFamily(t.value)} (current)` : "Custom…"}</option>
+            <option value="__custom__">{fontPreset(t.value) === "__custom__" ? `${firstFontFamily(t.value)} (this book's font)` : "Custom…"}</option>
           </select>
           <input class="input sharp" type="text" value={t.value} oninput={(e) => controller.setToken(t, e.currentTarget.value)} title={t.value} aria-label={`${t.label} value`} />
         </div>
       {:else if t.kind === "color"}
         <div class="control color">
-          {#if toHex(t.value)}
-            <input id={`cfg-${t.name}`} type="color" value={colorHex(t.value)} oninput={(e) => controller.setToken(t, e.currentTarget.value)} title={t.value} />
-          {:else}
-            <span class="swatch" style="background: {t.value}" title={t.value}></span>
-          {/if}
-          <input class="input sharp" type="text" value={colorHex(t.value)} oninput={(e) => controller.setToken(t, e.currentTarget.value)} title={t.value} aria-label={`${t.label} value`} />
+          <ColorField id={`cfg-${t.name}`} value={t.value} label={t.label} onCommit={(value) => controller.setToken(t, value)} />
         </div>
       {:else if t.kind === "length" || t.kind === "number"}
         <div class="control size">
-          <input id={`cfg-${t.name}`} type="number" value={parseFloat(t.value)} oninput={(e) => controller.setLength(t, e.currentTarget.value)} step="0.1" aria-label={`${t.label} (${t.unit ?? "number"})`} />
+          <input id={`cfg-${t.name}`} type="number" value={parseFloat(t.value)} onchange={(e) => controller.setLength(t, e.currentTarget.value)} step="0.1" aria-label={`${t.label} (${t.unit ?? "number"})`} />
           <span class="unit">{t.unit}</span>
         </div>
       {:else}
@@ -188,9 +183,8 @@
   /* Native select chrome ignores the panel's palette (hard black border on a
      sunken-grey form); match the neighbouring .input instead. */
   .control.font select { min-width: 0; padding: 7px 9px; background: var(--app-surface-sunken); border: 1px solid var(--app-border); color: var(--app-text-secondary); border-radius: 5px; font-size: 13px; font-family: inherit; }
-  .control.font select:focus { outline: none; border-color: var(--app-focus-ring); }
-  .control.color input[type="color"] { width: 28px; height: 28px; padding: 0; border: 1px solid var(--app-border); border-radius: 4px; background: var(--app-control-bg); cursor: pointer; }
-  .control.color .swatch { width: 28px; height: 28px; border-radius: 4px; border: 1px solid var(--app-border); }
+  .control.font select:focus-visible, .control.size input:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
+  .control.color { width: 258px; }
   .control.size { gap: 4px; }
   .control.size input[type="number"] { width: 64px; padding: 5px 6px; background: var(--app-surface-sunken); border: 1px solid var(--app-border); color: var(--app-text-secondary); border-radius: 4px; font-size: 12px; }
   .unit { font-size: 11px; color: var(--app-text-muted); }

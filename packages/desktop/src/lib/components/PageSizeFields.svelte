@@ -72,7 +72,7 @@
     border-radius: 6px;
     font-size: 13px;
   }
-  .size-field select:focus { outline: none; border-color: var(--app-focus-ring); }
+  .size-field select:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .custom-page { display: flex; align-items: flex-end; gap: 8px; margin-top: 2px; }
   .page-field { display: flex; flex-direction: column; gap: 4px; }
   .page-field > span { font-size: 11px; color: var(--app-text-muted); }
@@ -85,6 +85,6 @@
     border-radius: 6px;
     font-size: 13px;
   }
-  .page-field input:focus { outline: none; border-color: var(--app-focus-ring); }
+  .page-field input:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .page-times { color: var(--app-text-muted); font-size: 13px; padding-bottom: 8px; }
 </style>

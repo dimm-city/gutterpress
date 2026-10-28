@@ -18,7 +18,7 @@
   import { tick } from "svelte";
   import Icon from "#lib/components/Icon.svelte";
   import PageSizeFields from "#lib/components/PageSizeFields.svelte";
-  import { PRESET_CHOICES, pointsToInches } from "#lib/page-size-choices.ts";
+  import { PRESET_CHOICES } from "#lib/page-size-choices.ts";
   import {
     MARGIN_EDGES,
     type DetailsSectionController,
@@ -186,12 +186,6 @@
         {#if controller.pageIncomplete}
           <span class="hint">Enter a width and height to save the page size.</span>
         {/if}
-      {/if}
-      {#if controller.pageSetup?.presetSizeOverridden && controller.pageSetup.bounds}
-        <span class="hint">
-          This book's manifest sets its own size ({pointsToInches(controller.pageSetup.bounds.width)} ×
-          {pointsToInches(controller.pageSetup.bounds.height)} in). Choosing a size here replaces it.
-        </span>
       {/if}
     </fieldset>
 

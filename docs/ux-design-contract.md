@@ -824,13 +824,17 @@ override.
 **Adjust the look.** Six brand settings — Body text font, Heading font, Body
 text size, Line spacing, Text color, Accent color — the shared tokens every
 built-in look defines, so a choice carries across looks. They sit beside a
-live sample page that redraws as the author types. Every edit is written to
+live sample page that redraws as each setting changes (a typed color or
+number counts once it is committed, on blur or Enter, and only a color is
+saved as a color). Every edit is written to
 the **book's own stylesheet** (`styles/book.css`, created with an empty
 `:root {}` and added to `styles:` on the first edit when the book has none):
 the token's `:root` declaration is updated if the sheet has one, otherwise
 added to its `:root` block; a declaration in any other rule or in a comment
-is left alone. **Use the look's settings** removes the book's declarations
-of the six, so the look's values show through. A look's own files are never
+is left alone. **Reset to the look's settings** asks first ("Replace your
+settings with Clean book's?" **Replace** / **Keep mine**), then removes the
+book's declarations of the six, so the look's values show through; Advanced's
+Undo changes restores them. A look's own files are never
 written; there is no eject or copy of a look.
 
 **All design settings** (Advanced). `DesignSection` shows the `:root`

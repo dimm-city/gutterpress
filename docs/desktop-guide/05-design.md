@@ -52,7 +52,10 @@ Under **Adjust the look** are the six settings every built-in look has: **Body t
 and links). The **Sample page** beside them shows each change as you make it. Your changes are
 saved to your book's own stylesheet (`styles/book.css` unless you chose another; Gutterpress makes
 one the first time you change something), never to the look itself, so they stay if you change
-looks. **Use the look's settings** takes your changes to these six out again.
+looks. A color or a number is saved when you leave its field or press Enter; type a color with or
+without its `#` (anything that is not a color is not saved, and the field says so).
+**Reset to the look's settings** asks first, then (**Replace**) takes your changes to these six out
+again; **Undo changes** in Advanced brings them back.
 
 ![Book setup, Look tab: the looks to choose from, and the six settings beside the sample page](images/book-settings-design.jpg)
 
@@ -76,8 +79,10 @@ book prints at and the size your finished PDF is checked against, and no stylesh
 
 Under **Page size**, choosing **DriveThruRPG print** or **Trade paperback** uses that preset's page
 size and print checks; **Another size** takes a common size (Letter, A4, Digest…) or a width and
-height you type. A book that has never chosen its print checks follows the preset (DriveThruRPG
-print checks against DriveThruRPG); once you tick or untick a service, the choice is yours.
+height you type. A book whose manifest gives it a size of its own shows **Another size** with that
+size; choosing **DriveThruRPG print** or **Trade paperback** goes back to that preset's size. A book
+that has never chosen its print checks follows the preset (DriveThruRPG print checks against
+DriveThruRPG); once you tick or untick a service, the choice is yours.
 
 Under **Margins (inches)**, type the top, bottom, inside and outside margins (inside is the edge at
 the binding). A change is saved as soon as you leave the field, and your margins win over any a

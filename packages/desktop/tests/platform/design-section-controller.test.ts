@@ -720,22 +720,50 @@ test("brandOverridden: the book sets a brand setting a look also sets, or one wa
   expect(stored.ctrl.brandOverridden).toBe(true);
 });
 
+const ACCENT_BOOK = ":root {\n  --color-accent: #c0392b;\n  --space-md: 2rem;\n}\n";
+
 test("resetBrand puts the look's brand settings back and takes the book's declarations of them out", async () => {
-  const h = lookHarness(
-    [CLEAN_BOOK],
-    { "clean-book": CLEAN_CSS },
-    ":root {\n  --color-accent: #c0392b;\n  --space-md: 2rem;\n}\n",
-  );
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": CLEAN_CSS }, ACCENT_BOOK);
   await h.ctrl.loadDesign();
   h.ctrl.setLength(h.ctrl.brandTokens.find((t) => t.name === "--fs-body")!, "12");
+  h.ctrl.askBrandReset();
   h.ctrl.resetBrand();
+  expect(h.ctrl.brandResetAsked).toBe(false);
   expect(tokenValues(h.ctrl)).toMatchObject({ "--color-accent": "#2b4c7e", "--fs-body": "11pt", "--space-md": "2rem" });
   expect(h.ctrl.brandOverridden).toBe(false);
-  expect(h.ctrl.anyDirty).toBe(false);
   h.timer.fire();
   await flush();
   // Only the brand settings went; the book's other token stays.
   expect(h.fs.files.get(BOOK)).toBe(":root {\n  --space-md: 2rem;\n}\n");
+});
+
+test("Reset to the look's settings asks first: Keep mine changes nothing", async () => {
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": CLEAN_CSS }, ACCENT_BOOK);
+  await h.ctrl.loadDesign();
+  h.ctrl.askBrandReset();
+  expect(h.ctrl.brandResetAsked).toBe(true);
+  h.ctrl.keepBrand();
+  expect(h.ctrl.brandResetAsked).toBe(false);
+  expect(tokenValues(h.ctrl)["--color-accent"]).toBe("#c0392b");
+  expect(h.ctrl.brandOverridden).toBe(true);
+  expect(h.timer.pending).toBeNull(); // nothing to write
+});
+
+test("Undo changes after a reset puts back the settings the book had when Book setup opened", async () => {
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": CLEAN_CSS }, ACCENT_BOOK);
+  await h.ctrl.loadDesign();
+  h.ctrl.resetBrand();
+  h.timer.fire();
+  await flush();
+  expect(h.fs.files.get(BOOK)).toBe(":root {\n  --space-md: 2rem;\n}\n");
+  expect(h.ctrl.anyDirty).toBe(true); // Advanced offers Undo changes
+  h.ctrl.revertAllTokens();
+  expect(tokenValues(h.ctrl)["--color-accent"]).toBe("#c0392b");
+  h.timer.fire();
+  await flush();
+  expect(h.fs.files.get(BOOK)).toBe(":root {\n  --color-accent: #c0392b;\n  --space-md: 2rem;\n}\n");
+  expect(h.ctrl.anyDirty).toBe(false);
+  expect(h.ctrl.brandOverridden).toBe(true);
 });
 
 test("sampleDoc is the enabled looks' CSS with the current values on top, and follows an edit", async () => {

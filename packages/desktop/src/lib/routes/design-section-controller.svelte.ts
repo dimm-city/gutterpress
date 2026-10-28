@@ -104,6 +104,8 @@ export class DesignSectionController {
   designSaveStatus = $state<"idle" | "saving" | "saved">("idle");
   /** The last token write's failure, until a write succeeds. */
   designSaveError = $state<string | null>(null);
+  /** "Reset to the look's settings" was pressed: its Replace / Keep mine question shows. */
+  brandResetAsked = $state(false);
   /** Display names of the enabled looks whose tokens the panel shows, in cascade order. */
   lookLabels = $state<string[]>([]);
 
@@ -213,11 +215,9 @@ export class DesignSectionController {
     return DesignSectionController.BRAND.flatMap((name) => this.tokens.filter((t) => t.name === name));
   }
 
-  /** True when the book sets a brand setting a look also sets, or one was changed here. */
+  /** True when a brand setting a look sets has another value here: the book's own, or one changed here. */
   get brandOverridden(): boolean {
-    return this.brandTokens.some(
-      (t) => this.isDirty(t) || (this.bookDeclared.has(t.name) && this.lookValues.has(t.name)),
-    );
+    return this.brandTokens.some((t) => this.lookValues.has(t.name) && this.lookValues.get(t.name) !== t.value);
   }
 
   /** The Look tab's live sample: the enabled looks' CSS, then the current values. */
@@ -387,18 +387,28 @@ export class DesignSectionController {
     for (const t of this.tokens) if (this.isDirty(t)) this.resetToken(t);
   };
 
+  /** "Reset to the look's settings" asks before it replaces anything. */
+  askBrandReset = (): void => {
+    this.brandResetAsked = true;
+  };
+
+  /** "Keep mine": nothing changes. */
+  keepBrand = (): void => {
+    this.brandResetAsked = false;
+  };
+
   /**
-   * "Use the look's settings": every brand setting the book sets (or that was
-   * changed here) and a look also sets goes back to the look's value, and the
-   * book's declaration of it is taken out, so the look shows through.
+   * "Replace": every brand setting a look sets goes back to the look's value,
+   * and the book's declaration of it is taken out, so the look shows through.
+   * Like any edit here it is undone by `revertAllTokens` (Advanced's Undo
+   * changes), which puts back what the book had when Book setup opened.
    */
   resetBrand = (): void => {
+    this.brandResetAsked = false;
     for (const t of this.brandTokens) {
       const fromLook = this.lookValues.get(t.name);
-      if (fromLook === undefined || !(this.bookDeclared.has(t.name) || this.isDirty(t))) continue;
+      if (fromLook === undefined || fromLook === t.value) continue;
       t.value = fromLook;
-      this.bookDeclared.delete(t.name);
-      this.originals.set(t.name, fromLook);
       this.scheduleTokenWrite(t.name, null);
     }
     this.tokens = this.tokens; // nudge reactivity (mutated elements)

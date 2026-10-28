@@ -453,19 +453,46 @@ export function applyTokenUpdates(css: string, updates: TokenUpdate[]): string {
   return out;
 }
 
-// Cached 2D canvas context used to normalise any CSS color to `#rrggbb`.
+// Cached 2D canvas context: the browser's own CSS color parser.
 let _hexCtx: CanvasRenderingContext2D | null | undefined;
 
-/** Normalise a CSS color value to a `#rrggbb` hex string, or null if unparseable. */
-export function toHex(value: string): string | null {
+/**
+ * A CSS color in the canvas's normal form (`#rrggbb`, or `rgba(…)` when it has
+ * alpha), or null when the value is not a color. The canvas ignores a value it
+ * cannot parse and keeps its previous color, so the value is tried over two
+ * different starting colors: only a real color reads back the same both times.
+ */
+function canvasColor(value: string): string | null {
   try {
     if (_hexCtx === undefined) _hexCtx = document.createElement("canvas").getContext("2d");
-    if (!_hexCtx) return null;
+    if (!_hexCtx || !value.trim()) return null;
     _hexCtx.fillStyle = "#000000";
     _hexCtx.fillStyle = value;
-    const out = _hexCtx.fillStyle;
-    return typeof out === "string" && /^#[0-9a-f]{6}$/i.test(out) ? out : null;
+    const overBlack = _hexCtx.fillStyle;
+    _hexCtx.fillStyle = "#ffffff";
+    _hexCtx.fillStyle = value;
+    return typeof overBlack === "string" && overBlack === _hexCtx.fillStyle ? overBlack : null;
   } catch {
     return null;
   }
+}
+
+/** Normalise a CSS color value to a `#rrggbb` hex string, or null if it is not an opaque color. */
+export function toHex(value: string): string | null {
+  const color = canvasColor(value);
+  return color && /^#[0-9a-f]{6}$/i.test(color) ? color : null;
+}
+
+/**
+ * A color as the author typed it into a color field, ready to save: `#rrggbb`
+ * when it is one (bare hex digits get their `#`), any other CSS color as
+ * typed (`rgba(…)`), or null when the text is not a color.
+ */
+export function typedColor(text: string): string | null {
+  const typed = text.trim();
+  const candidates = /^[0-9a-f]{3,8}$/i.test(typed) ? [typed, `#${typed}`] : [typed];
+  for (const candidate of candidates) {
+    if (canvasColor(candidate)) return toHex(candidate) ?? candidate;
+  }
+  return null;
 }

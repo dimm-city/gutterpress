@@ -220,6 +220,8 @@
    * every other exit).
    */
   async function flushAll(): Promise<boolean> {
+    // A field still being typed in saves on `change`, which leaving it fires.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     const [bookSaved, designSaved] = await Promise.all([details.flushPendingSave(), design.flushPendingTokenWrites()]);
     if (!bookSaved) selectTab("book");
     else if (!designSaved && activeTab !== "advanced") selectTab("look");
