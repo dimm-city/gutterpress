@@ -15,7 +15,7 @@
    *                    backup comes from the host's last status (the status
    *                    bar's source, live) or a backup run here (`readyView`),
    *                    never from the setup alone. Back up now / Try again run
-   *                    the same sync as the status bar's Back up now; a
+   *                    the status bar's Back up now (`onBackUpNow`); a
    *                    rejected sign-in gets the connect step again. With two
    *                    or more copies (git branches), the copy switcher (#273).
    *   own-tools      — an SSH (or other non-https) address.
@@ -30,8 +30,7 @@
   import { friendlyHostError } from "#lib/errors.ts";
   import { useSettings } from "#lib/settings.svelte.ts";
   import { suggestRepositoryName } from "#lib/backup-repo-name.ts";
-  import { backupFromOutcome, backupState, onlineCopyName, readyView, type LastBackup } from "#lib/backup-state.ts";
-  import { combinedFilesMessage, keptBothMessage } from "#lib/routes/sync-controller.svelte.ts";
+  import { backupState, onlineCopyName, readyView, type LastBackup } from "#lib/backup-state.ts";
   import { getPlatform } from "#lib/platform/index.ts";
   import GitHubConnect from "#lib/components/GitHubConnect.svelte";
   import Icon from "#lib/components/Icon.svelte";
@@ -42,6 +41,7 @@
     onVersionHistoryEnabled,
     onBackupSetUp,
     onProjectFilesChanged,
+    onBackUpNow,
   }: {
     projectDir: string | null;
     /** Version history was just turned on: the parent re-reads the project's classification so the status bar catches up. */
@@ -50,6 +50,8 @@
     onBackupSetUp?: (projectDir: string) => void;
     /** Another copy was just checked out: the files under `projectDir` changed under the open editor. */
     onProjectFilesChanged?: () => void;
+    /** Back up now: the status bar's own backup (its toasts and editor refresh), and what it ended with. */
+    onBackUpNow?: () => Promise<LastBackup | null>;
   } = $props();
 
   const OTHER_SERVER_GUIDE =
@@ -248,25 +250,12 @@
     if (lastBackup?.state === "auth") lastBackup = null;
   }
 
-  // The status bar's Back up now, run from here: the same sync, its result shown in the headline.
+  // The status bar's Back up now, run from here; its result is the headline.
   const backUpNow = () =>
     act(async (dir) => {
       lastBackup = { state: "syncing", lastSyncAt: null };
-      const at = () => new Date().toISOString();
-      try {
-        const outcome = await api.remote.syncChanges(dir);
-        lastBackup = backupFromOutcome(outcome, at());
-        if (outcome.filesChanged || (outcome.status === "synced" && outcome.mergedRemoteChanges)) onProjectFilesChanged?.();
-        if (outcome.status !== "synced" && outcome.status !== "up-to-date") return null;
-        const kept = [
-          outcome.combinedFiles?.length ? combinedFilesMessage(outcome.combinedFiles) : null,
-          outcome.keptBothFiles?.length ? keptBothMessage(outcome.keptBothFiles) : null,
-        ].filter(Boolean);
-        return kept.length ? kept.join(" ") : null;
-      } catch (e) {
-        lastBackup = { state: "error", lastSyncAt: at(), message: friendlyHostError(e instanceof Error ? e.message : String(e)) };
-        return null;
-      }
+      lastBackup = (await onBackUpNow?.()) ?? (await api.sync.getStatus(dir).catch(() => null));
+      return null;
     });
 
   /**

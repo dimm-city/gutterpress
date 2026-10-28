@@ -54,6 +54,7 @@
   import DesignSection from "#lib/components/config/DesignSection.svelte";
   import { firstHeading } from "#lib/components/config/source-files.ts";
   import ProjectConnectionsSection from "#lib/components/ProjectConnectionsSection.svelte";
+  import type { LastBackup } from "#lib/backup-state.ts";
   import SaveTemplateDialog from "#lib/components/SaveTemplateDialog.svelte";
   import { PRINT_TOOL_IDS } from "#lib/publish-targets.ts";
 
@@ -67,6 +68,7 @@
     onVersionHistoryEnabled,
     onBackupSetUp,
     onProjectFilesChanged,
+    onBackUpNow,
     triggerEl,
   }: {
     projectDir: string | null;
@@ -86,6 +88,8 @@
     onBackupSetUp?: (projectDir: string) => void;
     /** The Backup tab just switched to another copy: the book's files changed on disk. */
     onProjectFilesChanged?: () => void;
+    /** The Backup tab's Back up now: the status bar's backup, and what it ended with. */
+    onBackUpNow?: () => Promise<LastBackup | null>;
     /** The control that opened the view, for focus restore on close. */
     triggerEl?: HTMLElement | null;
   } = $props();
@@ -284,7 +288,7 @@
 
       {#if activeTab === "backup"}
         <!-- This book's backup: connecting its GitHub account or server happens here, in place. -->
-        <ProjectConnectionsSection {projectDir} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} />
+        <ProjectConnectionsSection {projectDir} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} {onBackUpNow} />
       {/if}
 
       {#if activeTab === "advanced"}

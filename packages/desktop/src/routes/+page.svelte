@@ -3590,6 +3590,11 @@
     onVersionHistoryEnabled={(dir) => void projectSession.classify(dir)}
     onBackupSetUp={(dir) => { void projectSession.classify(dir); void syncController.refreshSyncDiag(dir); }}
     onProjectFilesChanged={onSnapshotRestored}
+    onBackUpNow={async () => {
+      await syncController.handleForceSync();
+      const last = syncController.lastManual;
+      return last && last.dir === lifecycle.currentDir ? { state: last.state, lastSyncAt: last.at } : null;
+    }}
   />
 {/if}
 {#if settingsOpen}

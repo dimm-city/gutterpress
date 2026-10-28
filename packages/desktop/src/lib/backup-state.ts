@@ -3,7 +3,7 @@
  * read off `diagnoseProjectRemote`. ProjectConnectionsSection gives each one
  * headline and at most one next step.
  */
-import type { ProjectRemoteDiagnosis, SyncOutcome, SyncStatus } from "./platform/contract";
+import type { ProjectRemoteDiagnosis, SyncStatus } from "./platform/contract";
 import { relativeTime } from "./format";
 
 export type BackupState =
@@ -49,12 +49,6 @@ export function onlineCopyName(remoteUrl: string): string {
 
 /** What is known about the book's last online backup: the host's last status, or a backup run from Backup. */
 export type LastBackup = Pick<SyncStatus, "state" | "lastSyncAt" | "message">;
-
-/** A backup run from Backup, in the status bar's vocabulary. */
-export function backupFromOutcome(outcome: SyncOutcome, at: string): LastBackup {
-  if (outcome.status === "synced" || outcome.status === "up-to-date") return { state: "synced", lastSyncAt: at };
-  return { state: outcome.status, lastSyncAt: at, message: outcome.message };
-}
 
 export interface ReadyView {
   headline: string;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { backupFromOutcome, backupState, onlineCopyName, readyView } from "../../src/lib/backup-state";
+import { backupState, onlineCopyName, readyView } from "../../src/lib/backup-state";
 import type { ProjectRemoteDiagnosis } from "../../src/lib/platform/contract";
 
 type Diag = Pick<ProjectRemoteDiagnosis, "classification" | "guidance" | "remoteUrl">;
@@ -78,17 +78,5 @@ describe("readyView: never claims a backup without evidence", () => {
 
   test("a backup in progress offers nothing to click", () => {
     expect(readyView(copy, { state: "syncing", lastSyncAt: null }, false, now)).toMatchObject({ headline: `Backing up to ${copy}…`, action: null });
-  });
-});
-
-describe("backupFromOutcome", () => {
-  const at = "2026-10-28T12:00:00Z";
-  test("synced and up to date both count as a finished backup", () => {
-    expect(backupFromOutcome({ status: "synced", message: "", mergedRemoteChanges: false }, at)).toEqual({ state: "synced", lastSyncAt: at });
-    expect(backupFromOutcome({ status: "up-to-date", message: "" }, at)).toEqual({ state: "synced", lastSyncAt: at });
-  });
-  test("a failure keeps its kind and message", () => {
-    expect(backupFromOutcome({ status: "error", message: "No." }, at)).toEqual({ state: "error", lastSyncAt: at, message: "No." });
-    expect(backupFromOutcome({ status: "offline", message: "Off." }, at).state).toBe("offline");
   });
 });
