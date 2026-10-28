@@ -8,7 +8,7 @@ styles:
 extensions:
   - clean-book
 # Page margins in points (72 = 1 in): top, bottom, inside (the binding edge)
-# and outside. Change them, and the page size, under Setup > Details.
+# and outside. Change them, and the page size, under Setup > Book.
 page:
   margin:
     top: 61.2

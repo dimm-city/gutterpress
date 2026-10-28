@@ -49,10 +49,10 @@ function starterOverridesCss(): string {
   return `/**
  * Your book's own styles. Rules here win over your look's.
  *
- * In the app you rarely need this file: Setup > Looks & features adds a
- * look, Setup > Design changes its fonts, colors and sizes (those changes
- * are saved here as :root custom properties), and Setup > Details sets the
- * page size and margins (in the manifest).
+ * In the app you rarely need this file: Setup > Look chooses a look and
+ * changes its fonts and colors (those changes are saved here as :root
+ * custom properties), Setup > Advanced lists every setting, and Setup > Book
+ * sets the page size and margins (in the manifest).
  *
  * To change the look from the command line: gutterpress ext remove <old>
  * <book>, then gutterpress ext add <look> <book>.

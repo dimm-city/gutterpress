@@ -97,7 +97,7 @@ function isInPageBox(decl: postcss.Declaration): boolean {
  * Directly inside one of the BOOK's page rules: a plain `@page` or a
  * pseudo-class one (`@page :left`, `:first`…), not a named page (`@page
  * cover`), whose size is its own. The manifest decides the book's page size
- * (`preset:` / `page:`; Setup > Details) and the assembly writes it after
+ * (`preset:` / `page:`; Setup > Book) and the assembly writes it after
  * every stylesheet, so a `size` here never reaches the printed page.
  */
 function isInBookPageRule(decl: postcss.Declaration): boolean {
@@ -468,7 +468,7 @@ function checkCssRaw(css: string, from?: string): PrintSafeWarning[] {
       warnings.push({
         rule: rulePageSizeInStylesheet,
         severity: "warning",
-        message: `"size" in a stylesheet's @page rule is ignored: the page size comes from the manifest (preset:, or page: width and height — Setup > Details in the app), which is written after every stylesheet. Remove this declaration; to print at another size, change the manifest.`,
+        message: `"size" in a stylesheet's @page rule is ignored: the page size comes from the manifest (preset:, or page: width and height — Setup > Book in the app), which is written after every stylesheet. Remove this declaration; to print at another size, change the manifest.`,
         ...nodeLoc(decl),
       });
       return;

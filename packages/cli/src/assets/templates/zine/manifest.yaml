@@ -9,7 +9,7 @@ extensions:
   - zine
 # Page size and margins in points (72 = 1 in): Digest (5.5 x 8.5 in) with
 # 0.4 in margins; text stays 0.25 in (18) inside the trim. Change them under
-# Setup > Details.
+# Setup > Book.
 page:
   width: 396
   height: 612
