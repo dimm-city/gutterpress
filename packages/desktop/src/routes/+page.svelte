@@ -37,6 +37,7 @@
   import AppToolbar from "#lib/components/AppToolbar.svelte";
   import FocusBar from "#lib/components/FocusBar.svelte";
   import ProjectSettingsView from "#lib/components/ProjectSettingsView.svelte";
+  import SettingsView from "#lib/components/SettingsView.svelte";
   import EditorToolbar from "#lib/components/EditorToolbar.svelte";
   import type { ToolbarAction, ToolbarPayload } from "#lib/components/EditorToolbar.svelte";
   import SnippetPicker from "#lib/components/SnippetPicker.svelte";
@@ -87,7 +88,6 @@
   import { escapeExitsFocus } from "#lib/routes/focus-mode.ts";
   import { splitTemplateColumns, shouldRefitPreview } from "#lib/editor/preview-layout.ts";
   import { useSettings, _loadSettings, settingsChangeGuard, onSettingsChange } from "#lib/settings.svelte.ts";
-  import { sanitizeSettingsTab, type SettingsTab } from "#lib/settings-tabs.ts";
   import { clampPanelWidth, viewportWidth } from "#lib/left-panel-width.ts";
   import { showReadLayoutToggle, viewModeFor } from "#lib/read-layout.ts";
   import {
@@ -370,29 +370,29 @@
     closePaneView();
   }
   /**
-   * Open Settings — the start screen's Settings tab, which embeds the WHOLE
-   * settings surface. There is no separate settings window: one surface, one
-   * way in, and closing it returns the author exactly where they were (the
-   * workspace stays mounted, inert, underneath) — the same shape the help
-   * button uses.
-   *
-   * `tab` is `unknown` on purpose: entry points are click handlers, and an
-   * `onclick={onOpenSettings}` call site hands the MouseEvent in as `tab` —
-   * unsanitized, that left NO tab active and an empty settings body.
+   * Settings: its own sheet (AppView), the same over a book and over the start
+   * screen; closing it returns the author exactly where they were. `focus`
+   * opens it with the cursor in Name (the missing name & email banner).
    */
-  function openSettings(tab: unknown = "app"): void {
-    landingSettingsTab = sanitizeSettingsTab(tab);
-    landingRef?.showTab("settings");
-    landingForcedOpen = true;
+  let settingsOpen = $state(false);
+  let settingsFocus = $state<"name" | undefined>(undefined);
+  function openSettings(focus?: "name"): void {
+    settingsFocus = focus;
+    settingsOpen = true;
   }
   function toggleSettings(): void {
-    if (landingForcedOpen) dismissLanding();
+    if (settingsOpen) closeSettings();
     else openSettings();
+  }
+  function closeSettings(): void {
+    settingsOpen = false;
+    // A GitHub connect or a removed key may have changed whether the open book can back up.
+    onConnectDialogClosed();
   }
   /**
    * No author name/email yet: what a project with version history keeps would
    * be attributed to a placeholder, so the workspace carries a persistent notice
-   * with a one-click route to Settings → Accounts. It clears itself the moment
+   * with a one-click route to Settings, cursor in Name. It clears itself the moment
    * both fields are filled.
    *
    * It waits until that is about to matter: the open project HAS version
@@ -431,8 +431,8 @@
       (!settings.current.gitIdentity.authorName.trim() ||
         !settings.current.gitIdentity.authorEmail.trim()),
   );
-  /** After a successful snapshot restore, or a Saving-tab copy switch
-   * (#273 — passed as `onProjectFilesChanged` to WelcomeLanding/SettingsView):
+  /** After a successful snapshot restore, or a copy switch in Book setup →
+   * Backup (#273 — passed as `onProjectFilesChanged` to ProjectSettingsView):
    * reconcile the open editor buffer against disk — same reconciliation the
    * folder watcher runs for any external change (see
    * `startFolderWatch`/`onSyncFilesChanged`) — and re-check for print
@@ -718,11 +718,9 @@
   // the inert workspace, which is a spec no-op).
   let landingRef = $state<{
     focusLayer: () => void;
-    showTab: (tab: "projects" | "settings" | "help" | "troubleshooting", sub?: TroubleshootingTab) => void;
+    showTab: (tab: "projects" | "help" | "troubleshooting", sub?: TroubleshootingTab) => void;
   } | null>(null);
-  /** Sub-tab the start screen's embedded Settings opens on. */
-  let landingSettingsTab = $state<SettingsTab>("app");
-  // The global help and settings buttons re-open the landing (on their tab)
+  // The global help and books buttons re-open the landing (on their tab)
   // OVER an open workspace; closing it returns the author exactly where they
   // left off (the workspace stays mounted, just inert, underneath). One
   // flag for both: they are the same affordance pointed at different tabs.
@@ -864,13 +862,12 @@
     void tick().then(() => leftPanelToggleBtn?.focus());
   }
 
-  // There is deliberately NO launch-time tab hijack here. Sending the start
-  // screen to Settings → Accounts on a missing git identity would open EVERY
-  // first run on account settings instead of the author's books — the
-  // screen's whole job is to pick or continue a book. The missing-identity
-  // nudge is the workspace banner (`needsGitIdentity` above, owner ruling
-  // 2026-07-30); the landing opens on Books and stays there until the author
-  // asks for another tab.
+  // There is deliberately NO launch-time Settings here. Opening Settings on a
+  // missing git identity would open EVERY first run on account settings
+  // instead of the author's books — the start screen's whole job is to pick
+  // or continue a book. The missing-identity nudge is the workspace banner
+  // (`needsGitIdentity` above, owner ruling 2026-07-30); the landing opens on
+  // Books and stays there until the author asks for another tab.
 
   /**
    * The ONE open-a-project-folder pipeline behind the folder picker, the
@@ -991,10 +988,11 @@
   }
 
   // The single Reconnect action: route to the matching connect
-  // flow — GitHub's device flow, or Settings → Accounts for every other server.
+  // flow — GitHub's device flow, or the book's Backup tab for every other
+  // server (it connects the book's own server, address and all).
   function onSyncReconnect() {
     if (syncController.syncDiag?.provider === "github") githubOpen = true;
-    else openSettings("connections");
+    else openBookConnections();
   }
 
   // Completes the Reconnect journey: a connect dialog closing may mean a
@@ -1048,13 +1046,7 @@
   // (before the deriveds that read it) so it is initialised ahead of them.
   // A local $state that `setMode` writes through to settings and `modeSink`
   // below reads back on load.
-  // Reader or author (Settings → App). A reader only reads: the workspace
-  // stays in Read, and the toolbar hides Edit/Read, Setup and Publish. The
-  // author's saved Edit/Read choice is kept untouched underneath.
-  let readerMode = $derived(settings.current.workspace.role === "reader");
-  const effectiveMode = (s: typeof settings.current): WorkspaceMode =>
-    s.workspace.role === "reader" ? "viewer" : s.preview.mode;
-  let mode = $state<WorkspaceMode>(effectiveMode(settings.current));
+  let mode = $state<WorkspaceMode>(settings.current.preview.mode);
   // Focus: a SESSION-ONLY toggle layered on top of Edit or Read (see
   // focus-mode.ts). It hides the chrome and nothing else — it never touches
   // `mode` or the persisted left-panel setting, so leaving it restores exactly
@@ -1494,13 +1486,6 @@
   // change won't clobber a per-project ratio applied at project-open, and the
   // controller's own persist writes this same value back (idempotent).
   const splitRatioSink = settingsChangeGuard<number>((r) => zoomView.restoreSplitRatio(r));
-  // Context menu (inline-editing plan §4.5): imperative teardown on toggle —
-  // if the author flips the setting off while the menu happens to be open,
-  // close it immediately rather than leaving a now-disabled affordance on
-  // screen until the next dismissal event.
-  const contextMenuSettingSink = settingsChangeGuard<boolean>((enabled) => {
-    if (!enabled) contextMenu.close();
-  });
   // Workspace mode: the live value is local $state, so the async settings load
   // has to be pushed into it. The guard dedupes against the last value seen,
   // so setMode's own write-back is a no-op.
@@ -1510,8 +1495,7 @@
   // independent async starts: when settings land LAST, the project-open path
   // already ran `ensureEditorFile()` while the workspace still looked like
   // viewer mode, and nothing else would ever load the editor component.
-  // A role change (Settings → App) arrives here too, and it changes the
-  // derived view mode: push it to the viewer the way setMode does, or the
+  // Push the derived view mode to the viewer the way setMode does, or the
   // pages stay in the old column count until the next full render.
   const modeSink = settingsChangeGuard<WorkspaceMode>((m) => {
     mode = m;
@@ -1546,8 +1530,7 @@
     onSettingsChange((s) => {
       previewBgSink(s.appearance.previewBg);
       splitRatioSink(s.preview.splitRatio);
-      contextMenuSettingSink(s.preview.contextMenu);
-      modeSink(effectiveMode(s));
+      modeSink(s.preview.mode);
       autoSaveSink(s.versionHistory.autoSave);
       readLayoutSink(s.preview.readLayout);
       marginOverlaySink(
@@ -1817,7 +1800,6 @@
    * already has a file; go-to-source places its own caret).
    */
   function openEditorPane(opts: { focus?: boolean; ensureFile?: boolean } = {}) {
-    if (readerMode) return;
     const { focus = true, ensureFile = true } = opts;
     if (mode === "viewer") setMode("editor");
     loadEditorModule();
@@ -2147,7 +2129,7 @@
       if (event.type === "ready") {
         initialReplayComplete = true;
         // Settings first: whether the editor opens with the book depends on
-        // the saved reader/author choice, not the in-memory default.
+        // the saved Edit/Read choice, not the in-memory default.
         if (!initialFileLaunchSeen) void _loadSettings().then(() => startup.run());
         return;
       }
@@ -2317,7 +2299,6 @@
   // ----------------------------------------------------------------
   const contextMenu = new ContextMenuController({
     client: () => client,
-    enabled: () => settings.current.preview.contextMenu,
     rendering: () => lifecycle.rendering,
     currentDir: () => lifecycle.currentDir,
     openContent: (path) => (buffer?.filePath === path ? buffer.content : null),
@@ -2464,10 +2445,10 @@
         toggleSettings();
         return;
       }
-      // The start screen owns the rest of the keyboard while it's up (its own
-      // Esc handling); workspace shortcuts must not act on the inert UI
-      // behind it.
-      if (landingVisible) return;
+      // The start screen and Settings own the rest of the keyboard while they
+      // are up (their own Esc handling); workspace shortcuts must not act on
+      // the inert UI behind them.
+      if (landingVisible || settingsOpen) return;
       // Esc leaves Focus, but ONLY when nothing else wants the key: an open
       // dialog/menu/popover, the find bar, or a handler that already consumed
       // it (editor, context menu) keeps Esc. An Esc pressed inside the preview
@@ -2522,8 +2503,8 @@
       // Only active when a preview URL is loaded.
       if (!lifecycle.previewUrl) return;
       if (e.defaultPrevented) return;
-      // Never page/zoom the pre-rendering preview from behind the start screen.
-      if (landingVisible) return;
+      // Never page/zoom the preview from behind the start screen or Settings.
+      if (landingVisible || settingsOpen) return;
       // Don't intercept when focus is in a form control or the CodeMirror
       // editor (#38) — preview-nav keys (arrows, Home/End, +/-/=, f) must
       // never hijack editing. Shared guard: #lib/a11y isEditableTarget.
@@ -2799,7 +2780,6 @@
    */
   function setMode(next: WorkspaceMode): void {
     if (next === mode) return;
-    if (next === "editor" && readerMode) return;
     settings.set({ preview: { mode: next } });
     mode = next;
     zoomView.applyViewMode(viewMode);
@@ -3042,7 +3022,7 @@
 <!-- inert while the start screen or Book setup is up: the workspace keeps
       rendering (a stylesheet written from Book setup re-renders the preview
       live) but never accepts interaction underneath the layer. -->
-<div class="app-root" inert={landingVisible || projectSettingsOpen || publishOpen} use:activity.track={activityStages}>
+<div class="app-root" inert={landingVisible || settingsOpen || projectSettingsOpen || publishOpen} use:activity.track={activityStages}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}
@@ -3072,7 +3052,7 @@
     <span class="identity-banner-msg">
       Add your name and email so the changes you save are credited to you.
     </span>
-    <button class="identity-action" onclick={() => openSettings("connections")}>
+    <button class="identity-action" onclick={() => openSettings("name")}>
       Add your name &amp; email
     </button>
     <button class="identity-dismiss" onclick={() => (identityNoticeDismissed = true)}>
@@ -3085,7 +3065,6 @@
   {#if inFocus}
     <FocusBar
       view={focusView}
-      {readerMode}
       onSelectView={(v) => { contextMenu.close(); selectFocusView(v); }}
       onExit={() => setFocus(false, true)}
       {pageNav}
@@ -3121,7 +3100,6 @@
     {publishHints}
     publishWarning={lifecycle.saveWarning}
     showProjectSettings={toolbarProjectOpen}
-    {readerMode}
     onOpenProjectSettings={openProjectConfig}
     {focus}
     onToggleFocus={() => setFocus(!focus)}
@@ -3134,7 +3112,6 @@
       bind:open={leftPanelOpen}
       bind:width={leftPanelWidth}
       bind:activeTab={leftPanelTab}
-      {readerMode}
       projectDir={lifecycle.currentDir}
       projectDisplayName={lifecycle.currentFolderDisplayName}
       projectCapabilities={projectSession.projectCapabilities}
@@ -3550,7 +3527,7 @@
     }}
     onShowVersions={showActivityView}
     onOpenBookConnections={openBookConnections}
-    onOpenSettings={openSettings}
+    onOpenSettings={() => openSettings()}
     onOpenHelp={openHelp}
     onOpenBooks={openBooks}
   />
@@ -3593,9 +3570,7 @@
   onUpdateDownload={() => updateController.download()}
   onCheckForUpdates={() => updateController.check()}
   onDismiss={() => dismissLanding()}
-  settingsTab={landingSettingsTab}
-  onProjectFilesChanged={onSnapshotRestored}
-  onSetUpBackup={() => { dismissLanding(); openBookConnections(); }}
+  onOpenSettings={() => openSettings()}
   onCloseBook={() => lifecycle.stopPreview()}
 />
 {#if projectSettingsOpen}
@@ -3612,10 +3587,13 @@
     triggerEl={projectSettingsBtnEl}
     onClose={closeProjectSettings}
     onOpenFile={(path) => { closeProjectSettings(); openFileInEditor(path); }}
-    onOpenAccounts={() => { closeProjectSettings(); openSettings("connections"); }}
     onVersionHistoryEnabled={(dir) => void projectSession.classify(dir)}
-    onBackupSetUp={(dir) => void projectSession.classify(dir)}
+    onBackupSetUp={(dir) => { void projectSession.classify(dir); void syncController.refreshSyncDiag(dir); }}
+    onProjectFilesChanged={onSnapshotRestored}
   />
+{/if}
+{#if settingsOpen}
+  <SettingsView onClose={closeSettings} focus={settingsFocus} />
 {/if}
 
 {#if openBookOpen}
@@ -3632,7 +3610,6 @@
     invalidateDiscoveredProjects(); // a fresh clone is a new discoverable book
     return openProjectPath(projectDir);
   }}
-  onAdvancedSetup={() => openSettings("connections")}
   onClosed={onConnectDialogClosed}
   triggerEl={leftPanelToggleBtn}
 />
@@ -3659,9 +3636,6 @@
   bind:this={newProjectWizardRef}
   onCreated={(projectDir) => {
     invalidateDiscoveredProjects(); // the new book must show up in lists now
-    // Creating a book is authoring: a reader who creates one becomes an
-    // author, so the new book opens with Edit, Setup and Publish in reach.
-    if (settings.current.workspace.role === "reader") settings.set({ workspace: { role: "author" } });
     return openProjectPath(projectDir);
   }}
   onClosed={() => {

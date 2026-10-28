@@ -10,8 +10,7 @@ of the status bar ("Books — open the start screen") to get back to it from a b
 
 ## Create a new book
 
-1. On the Books tab, choose **Create a new book**. (Creating a book makes you an Author: Edit,
-   Setup and Publish appear in the toolbar once it opens.)
+1. On the Books tab, choose **Create a new book**.
 2. **Name & author:** type the book's name under "What's your book called?" and, if you like,
    your name.
 3. **Template:** pick a starting point — **Book** (a novel, memoir or any long-form book),

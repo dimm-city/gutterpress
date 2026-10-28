@@ -1,77 +1,88 @@
 <script lang="ts">
   /**
-   * ProjectConnectionsSection — Book setup → Backup.
+   * ProjectConnectionsSection — Book setup → Backup: where this book is kept,
+   * and the one next step. Six situations (`backupState`, #442), each with one
+   * headline and at most one primary button:
    *
-   * The open project's connection details: how the folder is set up, its
-   * online repository address, whether a server credential is saved,
-   * plus the explicit-click-only Test Remote Access probe. Accounts are
-   * global (Settings → Accounts), but THIS surface is about one project, so it lives with the
-   * rest of the project's settings. Credential management stays in
-   * Settings → Accounts; the guidance copy points there.
+   *   no-versions    — a plain folder: Turn on previous versions.
+   *   local-only     — versions, no online copy: connect GitHub right here,
+   *                    then Back up to GitHub — a new repository or an empty
+   *                    one the author made (`api.remote.setUpBackup`, #358).
+   *   connect-github — the online copy is on GitHub: connect GitHub here.
+   *   connect-server — the online copy is on another server: a token for THAT
+   *                    server, whose address comes from the book, never typed.
+   *   ready          — backing up works; with two or more copies (git
+   *                    branches), the copy switcher (#273).
+   *   own-tools      — an SSH (or other non-https) address.
    *
-   * #310: a plain folder gets a next step instead of two facts on a blank
-   * page — "Turn on version history" (`api.vcs.enableVersionHistory`, the
-   * CLAUDE.md §7 escape hatch's other half). After it, the tab reads as any
-   * other git-backed project.
-   *
-   * #358: a book with version history but no online copy gets "Set up online
-   * backup" — with a connected GitHub account the author creates a new
-   * repository (private by default) or picks an empty one, and the host
-   * connects it and pushes the book's history (`api.remote.setUpBackup`).
-   * Afterwards the book is the same as one opened from GitHub.
+   * Connection diagnostics and the connection test live in Troubleshooting →
+   * Sync, where a failing backup is looked into.
    *
    * PWA-clean (§8): api.* routes only.
    */
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { api } from "#lib/api.ts";
   import { friendlyHostError } from "#lib/errors.ts";
+  import { useSettings } from "#lib/settings.svelte.ts";
   import { suggestRepositoryName } from "#lib/backup-repo-name.ts";
-  import type {
-    ProjectRemoteDiagnosis,
-    RemoteAccessResult,
-    RemoteConnection,
-    RemoteRepository,
-  } from "#lib/platform/contract.ts";
+  import { backupState, onlineCopyName } from "#lib/backup-state.ts";
+  import GitHubConnect from "#lib/components/GitHubConnect.svelte";
+  import Icon from "#lib/components/Icon.svelte";
+  import type { ProjectRemoteDiagnosis, RemoteConnection, RemoteRepository } from "#lib/platform/contract.ts";
 
   let {
     projectDir,
-    onOpenAccounts,
     onVersionHistoryEnabled,
     onBackupSetUp,
+    onProjectFilesChanged,
   }: {
     projectDir: string | null;
-    /** Open the app Settings view on the Accounts tab (to connect a server). */
-    onOpenAccounts?: () => void;
     /** Version history was just turned on: the parent re-reads the project's classification so the status bar catches up. */
     onVersionHistoryEnabled?: (projectDir: string) => void;
-    /** Online backup was just set up: the parent re-reads the project's classification so the status bar catches up. */
+    /** Online backup was just set up or connected: the parent re-reads the project's state so the status bar catches up. */
     onBackupSetUp?: (projectDir: string) => void;
+    /** Another copy was just checked out: the files under `projectDir` changed under the open editor. */
+    onProjectFilesChanged?: () => void;
   } = $props();
+
+  const OTHER_SERVER_GUIDE =
+    "https://gutterpress.dimm.city/docs/desktop/versions-and-backup/#back-up-to-another-git-server";
+
+  const settings = useSettings();
 
   let loading = $state(true);
   let diag = $state<ProjectRemoteDiagnosis | null>(null);
+  const situation = $derived(diag ? backupState(diag) : null);
+  /** What the last action changed ("Connected to git.example.com."). */
+  let done = $state<string | null>(null);
+  /** The one action of the current situation is running. */
+  let busy = $state(false);
+  let actionError = $state<string | null>(null);
+  // Where focus goes after an action: the button that ran it is disabled or
+  // gone, and Escape only reaches Book setup from inside it.
+  let sectionEl = $state<HTMLElement>();
+  let doneEl = $state<HTMLElement>();
+  let errorEl = $state<HTMLElement>();
 
-  // Turn on version history — only ever offered for a plain folder.
-  let enabling = $state(false);
-  let justEnabled = $state(false);
-  let enableError = $state<string | null>(null);
-
-  // Set up online backup (#358) — offered to a versioned book with no online copy.
+  // local-only: set up online backup (#358).
   let github = $state<RemoteConnection | null>(null);
-  let backupMode = $state<"create" | "existing">("create");
+  let useExisting = $state(false);
   let repoName = $state("");
   let makePrivate = $state(true);
   let emptyRepos = $state<RemoteRepository[]>([]);
   let reposLoading = $state(false);
   let reposError = $state<string | null>(null);
   let chosenRepo = $state("");
-  let settingUp = $state(false);
-  let backupError = $state<string | null>(null);
-  let backupDone = $state<string | null>(null);
 
-  // Test Remote Access — only ever runs on explicit click.
-  let testing = $state(false);
-  let testResult = $state<RemoteAccessResult | null>(null);
+  // connect-server.
+  let serverUser = $state("");
+  let serverToken = $state("");
+
+  // ready: the copy this book is on (#273).
+  let copies = $state<{ current: string | null; branches: string[]; remoteOnly: string[] } | null>(null);
+  /** The online check failed, so the list may be missing copies made elsewhere. */
+  let copiesStale = $state(false);
+  let selectedCopy = $state("");
 
   onMount(() => {
     void load();
@@ -84,24 +95,22 @@
     }
     loading = true;
     try {
-      diag = await (api.remote.diagnoseProjectRemote(projectDir) as Promise<ProjectRemoteDiagnosis>);
+      diag = await api.remote.diagnoseProjectRemote(projectDir);
     } catch {
       diag = null;
     } finally {
       loading = false;
     }
-    if (canSetUpBackup) await loadBackupContext(projectDir);
+    if (situation === "local-only") await loadBackupContext(projectDir);
+    // Not awaited: the online check can take a while offline, and nothing waits on the list.
+    if (situation === "ready") void loadCopies(projectDir);
   }
 
   // What the set-up form needs: whether GitHub is connected, and the book's
   // title for the repository name's default. Best-effort — the form still works
   // (with a generic name) if either read fails.
   async function loadBackupContext(dir: string) {
-    try {
-      github = await api.remote.getRemoteConnection();
-    } catch {
-      github = null;
-    }
+    github = await api.remote.getRemoteConnection().catch(() => null);
     if (repoName) return;
     try {
       repoName = suggestRepositoryName((await api.manifest.read(dir)).title);
@@ -110,15 +119,14 @@
     }
   }
 
-  async function chooseBackupMode(mode: "create" | "existing") {
-    backupMode = mode;
-    backupError = null;
-    if (mode !== "existing" || emptyRepos.length > 0 || reposLoading) return;
+  async function chooseExisting(on: boolean) {
+    useExisting = on;
+    actionError = null;
+    if (!on || emptyRepos.length > 0 || reposLoading) return;
     reposLoading = true;
     reposError = null;
     try {
-      const all = await api.remote.listRemoteRepositories();
-      emptyRepos = all.filter((r) => r.maybeEmpty);
+      emptyRepos = (await api.remote.listRemoteRepositories()).filter((r) => r.maybeEmpty);
       if (!chosenRepo && emptyRepos[0]) chosenRepo = emptyRepos[0].fullName;
     } catch (e) {
       reposError = friendlyHostError(e instanceof Error ? e.message : String(e));
@@ -127,317 +135,276 @@
     }
   }
 
-  async function setUpBackup() {
-    if (!projectDir || settingUp) return;
-    const picked = emptyRepos.find((r) => r.fullName === chosenRepo);
-    if (backupMode === "existing" && !picked) {
-      backupError = "Choose which empty repository to use.";
-      return;
-    }
-    settingUp = true;
-    backupError = null;
-    backupDone = null;
+  /** Run the situation's one action: `done` on success, `actionError` on failure; focus follows. */
+  async function act(run: (dir: string) => Promise<string | null>) {
+    if (!projectDir || busy) return;
+    busy = true;
+    actionError = null;
+    let message: string | null = null;
     try {
+      message = await run(projectDir);
+      if (message) done = message;
+    } catch (e) {
+      actionError = friendlyHostError(e instanceof Error ? e.message : String(e));
+    } finally {
+      busy = false;
+    }
+    await tick();
+    (actionError ? errorEl : message ? doneEl : sectionEl)?.focus();
+  }
+
+  const turnOnVersions = () =>
+    act(async (dir) => {
+      try {
+        await api.vcs.enableVersionHistory(dir);
+      } catch {
+        // The route's own message names an internal operation — say what happened.
+        throw new Error("Couldn't turn on previous versions. Your book is unchanged. Try again, and check the app log if it keeps happening.");
+      }
+      onVersionHistoryEnabled?.(dir);
+      await load();
+      return "Previous versions are on. The first version is saved.";
+    });
+
+  const setUpBackup = () =>
+    act(async (dir) => {
+      const picked = emptyRepos.find((r) => r.fullName === chosenRepo);
+      if (useExisting && !picked) throw new Error("Choose which empty repository to use.");
       const result = await api.remote.setUpBackup(
-        projectDir,
-        backupMode === "create"
-          ? { kind: "create", name: repoName.trim(), private: makePrivate }
-          : { kind: "existing", owner: picked!.owner, name: picked!.name },
+        dir,
+        useExisting
+          ? { kind: "existing", owner: picked!.owner, name: picked!.name }
+          : { kind: "create", name: repoName.trim(), private: makePrivate },
       );
-      if (result.status === "connected") {
-        backupDone = `Online backup is on. Your book was copied to ${result.repository.fullName} on GitHub${result.repository.private ? " (private)" : ""}.`;
-        onBackupSetUp?.(projectDir);
-        await load();
-      } else {
-        backupError = result.message;
+      if (result.status !== "connected") {
         // The repository was made but the copy failed: it is empty, so keep it
         // selected and let "Try again" reuse it instead of creating a second one.
         if (result.repository) {
           emptyRepos = [result.repository, ...emptyRepos.filter((r) => r.fullName !== result.repository!.fullName)];
           chosenRepo = result.repository.fullName;
-          backupMode = "existing";
+          useExisting = true;
         }
+        throw new Error(result.message);
       }
-    } catch (e) {
-      backupError = friendlyHostError(e instanceof Error ? e.message : String(e));
-    } finally {
-      settingUp = false;
-    }
-  }
-
-  async function runRemoteTest() {
-    if (!diag?.remoteUrl || testing) return;
-    testing = true;
-    testResult = null;
-    try {
-      testResult = (await api.remote.testRemoteAccess(diag.remoteUrl)) as RemoteAccessResult;
-    } catch (e) {
-      testResult = {
-        ok: false,
-        reason: "unknown",
-        message: friendlyHostError(e instanceof Error ? e.message : String(e)),
-      };
-    } finally {
-      testing = false;
-    }
-  }
-
-  // Give a plain folder its history. The parent is told so the status bar's
-  // cached classification catches up; the tab then re-reads its own diagnosis
-  // and shows the folder as version-history-backed.
-  async function turnOnVersionHistory() {
-    if (!projectDir || enabling) return;
-    enabling = true;
-    enableError = null;
-    try {
-      await api.vcs.enableVersionHistory(projectDir);
-      justEnabled = true;
-      onVersionHistoryEnabled?.(projectDir);
+      onBackupSetUp?.(dir);
       await load();
-    } catch {
-      // The route's own message is a raw JSON envelope naming an internal
-      // operation — say what happened in plain words instead.
-      enableError =
-        "Couldn't turn on version history. Your book is unchanged — try again, and check the app log if it keeps happening.";
-    } finally {
-      enabling = false;
+      return `Online backup is on. Your book was copied to ${result.repository.fullName} on GitHub${result.repository.private ? " (private)" : ""}.`;
+    });
+
+  const connectServer = () =>
+    act(async (dir) => {
+      if (!diag?.remoteHost) return null;
+      const result = await api.remote.connectGenericHost({
+        host: diag.remoteHost,
+        ...(serverUser.trim() ? { username: serverUser.trim() } : {}),
+        token: serverToken,
+        // Checked against this book's repository: proves access to it, not just to the server.
+        ...(diag.remoteUrl ? { repoUrl: diag.remoteUrl } : {}),
+      });
+      serverToken = ""; // the token has done its job — never keep it in state
+      serverUser = "";
+      onBackupSetUp?.(dir);
+      await load();
+      return `Connected to ${result.host}.`;
+    });
+
+  const githubConnected = () =>
+    act(async (dir) => {
+      if (situation === "local-only") {
+        await loadBackupContext(dir);
+        return null;
+      }
+      onBackupSetUp?.(dir);
+      await load();
+      return null;
+    });
+
+  /**
+   * `listBranches` reads refs off disk, so a copy pushed from somewhere else
+   * is invisible until this clone fetches. Refreshing first is what makes a
+   * copy created on another machine — or by a pull request opened for you —
+   * show up here without dropping to a terminal. Best-effort: offline simply
+   * lists what is already on disk.
+   */
+  async function loadCopies(dir: string, refresh = true) {
+    if (refresh) {
+      const r = await api.remote.refreshCopies(dir).catch(() => ({ refreshed: false, reason: "offline" as const }));
+      copiesStale = !r.refreshed && r.reason !== "no-remote";
     }
+    copies = await api.vcs.listBranches(dir).catch(() => null);
+    selectedCopy = copies?.current ?? "";
   }
 
-  const isPlainFolder = $derived(diag?.classification.type === "local-folder");
+  const switchCopy = () =>
+    act(async (dir) => {
+      await api.vcs.switchBranch(dir, selectedCopy);
+      await loadCopies(dir, false);
+      // The workspace reconciles the open editor buffer; the file tree and
+      // preview follow the checkout's writes through the folder watcher.
+      onProjectFilesChanged?.();
+      return null;
+    });
 
-  // A versioned book with no online copy yet — the one shape #358 sets up.
-  const canSetUpBackup = $derived(
-    !!diag && !isPlainFolder && !diag.remoteUrl && diag.guidance === "local-only",
-  );
-
-  const folderLabel = $derived.by(() => {
-    if (!diag) return "—";
-    if (isPlainFolder) return "Plain folder";
-    return diag.remoteUrl
-      ? "Connected folder (has an online repository)"
-      : "Local version history";
-  });
-
-  const guidanceCopy = $derived.by(() => {
-    if (!diag) return null;
-    switch (diag.guidance) {
-      case "local-only":
-        return isPlainFolder
-          ? "Version history is off. Turn it on to keep previous versions of your book on this computer, so you can go back to an earlier one. Nothing is uploaded."
-          : "This book lives only on this computer. Everything works without a Git server.";
-      case "connect-github-to-sync":
-        return "This book's online repository is on GitHub. Connect GitHub in Settings > Accounts so Gutterpress can sync for you.";
-      case "https-connect-server":
-        return "This book's online repository is on a Git server Gutterpress doesn't know yet. Connect that server in Settings > Accounts to prepare it for syncing.";
-      case "ready-to-sync":
-        return "This server is connected. To back up your work online, click the save status at the bottom of the window and choose Back up now.";
-      case "ssh-use-own-tools":
-        return "This book's online address uses SSH (git@…). Everything on this computer works — preview, versions, history, restore. To sync, use your usual Git tool.";
-    }
-  });
-
-  const needsAccounts = $derived(
-    diag?.guidance === "connect-github-to-sync" || diag?.guidance === "https-connect-server",
-  );
-
-  function testLabel(result: RemoteAccessResult): string {
-    if (result.ok) {
-      const branch = result.defaultBranch ? ` Main version: ${result.defaultBranch}.` : "";
-      return `Working — Gutterpress reached the online repository.${branch}`;
-    }
-    // Defence in depth: the lib's messages are URL-free by construction, but a
-    // raw transport string could slip through the catch path — hide any URL
-    // (which may carry credentials) and keep the message a readable length.
-    const safe = (result.message ?? "")
-      .replace(/https?:\/\/\S+/g, "(address hidden)")
-      .slice(0, 200)
-      .trim();
-    return safe || "The connection test failed. See the app log for details.";
-  }
+  const githubRepo = $derived(diag?.remoteUrl ? onlineCopyName(diag.remoteUrl).replace(/^[^/]*\//, "") : "");
 </script>
 
-<section class="block project-connections" aria-label="Book backup">
-  <h3>Backup</h3>
+<section class="backup" bind:this={sectionEl} tabindex="-1">
   {#if loading}
-    <p class="hint">Reading this book's connection status…</p>
+    <p class="hint">Checking this book's backup…</p>
   {:else if !diag}
-    <p class="hint muted">Could not read this folder's status.</p>
+    <p class="hint">Couldn't read this book's backup status. <button class="ghost small" onclick={load}>Try again</button></p>
   {:else}
-    <!-- The facts only once there is an online copy to describe; a book
-         without one gets the set-up guidance below instead of a grid of
-         "None". -->
-    {#if diag.remoteUrl}
-      <dl class="status-grid">
-        <dt>Folder</dt>
-        <dd>{folderLabel}</dd>
-        <dt>Online copy</dt>
-        <dd class="mono">{diag.remoteUrl}</dd>
-        <dt>Address type</dt>
-        <dd>{diag.remoteProtocol === "ssh" ? "SSH (git@…)" : "Web (HTTPS)"}</dd>
-        <dt>Server connection</dt>
-        <dd>{diag.credentialPresent ? "Saved on this computer" : "Not saved yet"}</dd>
-      </dl>
-    {/if}
-    {#if justEnabled}
-      <p class="hint guidance" role="status">Version history is on — the first version of your book is saved.</p>
-    {/if}
-    {#if backupDone}
-      <p class="hint guidance" role="status">{backupDone}</p>
-    {/if}
-    {#if guidanceCopy}
-      <p class="hint guidance">{guidanceCopy}</p>
-    {/if}
-    {#if isPlainFolder}
-      <button class="primary app-btn-primary" onclick={turnOnVersionHistory} disabled={enabling}>
-        {enabling ? "Turning on…" : "Turn on version history"}
+    {#if done}<p class="done" role="status" bind:this={doneEl} tabindex="-1">{done}</p>{/if}
+
+    {#if situation === "no-versions"}
+      <p class="headline">Previous versions are off for this book.</p>
+      <p class="hint">Turn them on to keep earlier versions on this computer, so you can go back. Nothing is uploaded.</p>
+      <button class="app-btn-primary" onclick={turnOnVersions} disabled={busy}>
+        {busy ? "Turning on…" : "Turn on previous versions"}
       </button>
-      {#if enableError}
-        <p class="test-result fail" role="alert">{enableError}</p>
-      {/if}
-    {/if}
-    {#if isPlainFolder}
-      <p class="hint muted">
-        Online backup copies your saved versions to GitHub, so it needs version history first.
-      </p>
-    {/if}
-    {#if canSetUpBackup}
-      <div class="backup" aria-label="Set up online backup">
-        <h4>Set up online backup</h4>
-        {#if !github?.connected}
+    {:else if situation === "local-only"}
+      <p class="headline">Saved on this computer only.</p>
+      <h3>Back it up online</h3>
+      <p class="hint">Keeps a copy of your book, and every earlier version, on GitHub.</p>
+      {#if !github?.connected}
+        <GitHubConnect primary onConnected={githubConnected} />
+      {:else}
+        <p class="hint">Signed in to GitHub{github.username ? ` as @${github.username}` : ""}.</p>
+        {#if !useExisting}
+          <label class="field">
+            <span class="lbl">Repository name</span>
+            <input class="input" bind:value={repoName} spellcheck="false" autocomplete="off" />
+          </label>
+          <label class="check">
+            <input type="checkbox" bind:checked={makePrivate} />
+            Private: only you can see it
+          </label>
+        {:else if reposLoading}
+          <p class="hint">Looking for your empty repositories…</p>
+        {:else if reposError}
+          <p class="error" role="alert">{reposError}</p>
+        {:else if emptyRepos.length === 0}
           <p class="hint">
-            Online backup keeps a copy of your book, and every earlier version, on your GitHub account.
-            Connect GitHub first.
+            No empty repositories found on your GitHub account. Create one on github.com (leave "Add a README"
+            off), then come back.
           </p>
-          {#if onOpenAccounts}
-            <button class="primary app-btn-primary" onclick={() => onOpenAccounts?.()}>Connect GitHub…</button>
-          {/if}
-        {:else}
-          <p class="hint">
-            Signed in to GitHub{github.username ? ` as ${github.username}` : ""}. Your book and its earlier
-            versions will be copied there.
-          </p>
-          <div class="mode-row" role="radiogroup" aria-label="Where to keep the online copy">
-            <label>
-              <input type="radio" name="backup-mode" checked={backupMode === "create"} onchange={() => void chooseBackupMode("create")} />
-              Create a new repository
-            </label>
-            <label>
-              <input type="radio" name="backup-mode" checked={backupMode === "existing"} onchange={() => void chooseBackupMode("existing")} />
-              Use an empty repository I already made
-            </label>
-          </div>
-          {#if backupMode === "create"}
-            <label class="field" for="backup-repo-name">
-              <span class="lbl">Repository name</span>
-              <input id="backup-repo-name" class="input" bind:value={repoName} spellcheck="false" autocomplete="off" />
-            </label>
-            <label class="check">
-              <input type="checkbox" bind:checked={makePrivate} />
-              Keep it private (only you can see it)
-            </label>
-          {:else if reposLoading}
-            <p class="hint">Looking for your empty repositories…</p>
-          {:else if reposError}
-            <p class="test-result fail" role="alert">{reposError}</p>
-          {:else if emptyRepos.length === 0}
-            <p class="hint">
-              No empty repositories found on your GitHub account. Create one on github.com (leave "Add a README"
-              off), then come back.
-            </p>
-            <button class="ghost" onclick={() => void api.shell.openExternal("https://github.com/new").catch(() => {})}>
-              Open github.com to create one…
-            </button>
-          {:else}
-            <label class="field" for="backup-existing-repo">
-              <span class="lbl">Empty repository</span>
-              <select id="backup-existing-repo" class="input" bind:value={chosenRepo}>
-                {#each emptyRepos as r (r.fullName)}
-                  <option value={r.fullName}>{r.fullName}{r.private ? " (private)" : ""}</option>
-                {/each}
-              </select>
-            </label>
-          {/if}
-          <button
-            class="primary app-btn-primary"
-            onclick={setUpBackup}
-            disabled={settingUp || (backupMode === "create" && !repoName.trim()) || (backupMode === "existing" && !chosenRepo)}
-          >
-            {settingUp ? "Setting up…" : backupError ? "Try again" : "Set up online backup"}
+          <button class="ghost" onclick={() => void api.shell.openExternal("https://github.com/new").catch(() => {})}>
+            Open github.com to create one…
           </button>
-          {#if backupError}
-            <p class="test-result fail" role="alert">{backupError}</p>
-          {/if}
+        {:else}
+          <label class="field">
+            <span class="lbl">Empty repository</span>
+            <select class="input" bind:value={chosenRepo}>
+              {#each emptyRepos as r (r.fullName)}
+                <option value={r.fullName}>{r.fullName}{r.private ? " (private)" : ""}</option>
+              {/each}
+            </select>
+          </label>
         {/if}
-      </div>
-    {/if}
-    {#if needsAccounts && onOpenAccounts}
-      <button class="ghost" onclick={() => onOpenAccounts?.()}>Open account settings…</button>
-    {/if}
-    {#if diag.guidance === "ssh-use-own-tools" && diag.provider && diag.provider !== "generic"}
-      <p class="hint muted">
-        Tip: this address points at a server Gutterpress can work with. If you
-        switch the book's address to the web (HTTPS) form with your Git
-        tool, Gutterpress will be able to sync once you connect the server.
-      </p>
-    {/if}
-    {#if diag.remoteUrl}
-      <p class="hint muted">
-        Checks whether Gutterpress can reach this book's online repository.
-        Nothing is changed or uploaded.
-      </p>
-      <div class="test-row">
-        <button class="ghost" onclick={runRemoteTest} disabled={testing}>
-          {testing ? "Testing…" : "Test remote access"}
+        <button
+          class="app-btn-primary"
+          onclick={setUpBackup}
+          disabled={busy || (useExisting ? !chosenRepo : !repoName.trim())}
+        >
+          {busy ? "Setting up…" : actionError ? "Try again" : "Back up to GitHub"}
         </button>
-        {#if testResult}
-          <p class="test-result" class:ok={testResult.ok} class:fail={!testResult.ok} role="status">
-            {testLabel(testResult)}
-          </p>
+        <button class="link" onclick={() => void chooseExisting(!useExisting)}>
+          {useExisting ? "Create a new repository" : "Use an empty repository you already made"}
+        </button>
+      {/if}
+      <p class="hint">
+        Another Git server (GitLab, Gitea, Bitbucket…)?
+        <button class="link" onclick={() => void api.shell.openExternal(OTHER_SERVER_GUIDE).catch(() => {})}>
+          How to back up there <Icon name="external-link" size={11} />
+        </button>
+      </p>
+    {:else if situation === "connect-github"}
+      <p class="headline">This book's online copy is on GitHub: {githubRepo}. Connect GitHub to back it up.</p>
+      <GitHubConnect primary onConnected={githubConnected} />
+    {:else if situation === "connect-server"}
+      <p class="headline">This book's online copy is on {diag.remoteHost}. Connect it to back the book up.</p>
+      <label class="field">
+        <span class="lbl">Username (optional)</span>
+        <input class="input" bind:value={serverUser} autocomplete="username" spellcheck="false" />
+      </label>
+      <label class="field">
+        <span class="lbl">Access token</span>
+        <!-- "new-password" actually suppresses autofill/save prompts; browsers ignore "off" on password fields. -->
+        <input class="input" type="password" bind:value={serverToken} autocomplete="new-password" />
+      </label>
+      {#if diag.tokenSettingsUrl}
+        <button class="link" onclick={() => diag?.tokenSettingsUrl && void api.shell.openExternal(diag.tokenSettingsUrl).catch(() => {})}>
+          Create a token on {diag.remoteHost} <Icon name="external-link" size={11} />
+        </button>
+      {/if}
+      <button class="app-btn-primary" onclick={connectServer} disabled={busy || !serverToken.trim()}>
+        {busy ? "Checking…" : "Connect"}
+      </button>
+    {:else if situation === "ready"}
+      <p class="headline ok">
+        <Icon name="circle-check" size={15} />
+        Backed up online to {onlineCopyName(diag.remoteUrl ?? "")}
+      </p>
+      <p class="hint">
+        {settings.current.versionHistory.autoSync ? "Gutterpress backs it up while you work." : "Automatic backup is off in Settings."}
+      </p>
+      <!-- Vocabulary: "copy", never "branch". -->
+      {#if copies && copies.branches.length >= 2}
+        {@const onlineOnly = new Set(copies.remoteOnly)}
+        <div class="copy-row">
+          <label for="backup-copy">Copy you're working on</label>
+          <select id="backup-copy" class="input" bind:value={selectedCopy} disabled={busy}>
+            {#each copies.branches as name (name)}
+              <option value={name}>{name}{onlineOnly.has(name) ? " (online only)" : ""}</option>
+            {/each}
+          </select>
+          <button class="ghost" onclick={switchCopy} disabled={busy || selectedCopy === copies.current}>
+            {busy ? "Switching…" : "Switch"}
+          </button>
+        </div>
+        {#if copiesStale}
+          <p class="hint">Couldn't check online for other copies. This list shows the copies on this computer.</p>
         {/if}
-      </div>
+      {/if}
+    {:else if diag.remoteProtocol === "ssh"}
+      <p class="headline">
+        This book's online copy uses an SSH address (git@…). Gutterpress can't back up over SSH: use your usual
+        Git tool, or switch the book to its https:// address.
+      </p>
+    {:else}
+      <p class="headline">
+        This book's online copy is at {diag.remoteUrl}. Gutterpress backs up only to https:// addresses: use your
+        usual Git tool.
+      </p>
     {/if}
+
+    {#if actionError}<p class="error" role="alert" bind:this={errorEl} tabindex="-1">{actionError}</p>{/if}
   {/if}
 </section>
 
 <style>
   @import "../styles/config-section-shared.css";
 
-  .hint { font-size: 11px; line-height: 1.4; color: var(--app-text-muted); margin: 4px 0 8px; }
-  .hint.muted { font-style: italic; }
-  .hint.guidance { color: var(--app-text); font-size: 12px; }
-  /* This-project status grid. */
-  .status-grid {
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    gap: 4px 14px;
-    margin: 6px 0 0;
-    font-size: 13px;
+  .backup { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+  /* Focus lands on these after an action; they are not controls. */
+  .backup, .done, .error { outline: none; }
+  .backup .field { align-self: stretch; max-width: 420px; }
+  .headline { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.45; color: var(--app-text); }
+  .headline.ok { display: inline-flex; align-items: center; gap: 6px; }
+  .headline.ok :global(svg) { color: var(--app-success-strong); }
+  h3 { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--app-text); }
+  .done { margin: 0; font-size: 13px; color: var(--app-success-text); }
+  .check { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+  .copy-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .copy-row select { width: auto; }
+  .link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--app-link);
+    font-size: 12px;
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
-  .status-grid dt { color: var(--app-text-muted); }
-  .status-grid dd { margin: 0; }
-  .mono { font-family: var(--app-font-mono); font-size: 12px; word-break: break-all; }
-  .backup { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; margin-top: 12px; }
-  .backup h4 { margin: 0; font-size: 13px; }
-  .backup .field { align-self: stretch; }
-  .mode-row { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
-  .mode-row label, .check { display: flex; gap: 6px; align-items: center; font-size: 13px; }
-  .test-row { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
-  .test-result { margin: 0; font-size: 13px; line-height: 1.5; }
-  .test-result.ok { color: var(--app-text); }
-  .test-result.fail { color: var(--app-error-text); }
-  /* The primary colors come from the shared .app-btn-primary recipe (theme.css). */
-  button.primary { align-self: flex-start; }
-  button.ghost {
-    align-self: flex-start;
-    background: transparent;
-    border: 1px solid var(--app-border);
-    color: var(--app-text-muted);
-    font-size: 11px;
-    padding: 3px 8px;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  button.ghost:hover:not(:disabled) { background: var(--app-surface-hover); color: var(--app-text); }
-  button.ghost:disabled { opacity: 0.5; cursor: default; }
+  .link:hover { color: var(--app-link-hover); }
 </style>

@@ -1,6 +1,6 @@
 /**
- * Troubleshooting sub-tab contract (mirrors settings-tabs.test.ts): any value
- * that is not a known id collapses to "logs" so the panel can't blank.
+ * Troubleshooting sub-tab contract: any value that is not a known id
+ * collapses to "logs" so the panel can't blank.
  */
 import { describe, test, expect } from "bun:test";
 import * as fs from "node:fs";
@@ -39,7 +39,7 @@ describe("About tab folded into Troubleshooting → Diagnostics", () => {
     const ids = [...landing.matchAll(/\{ id: "(\w+)", label: "([^"]+)" \}/g)]
       .filter((m) => ["projects", "settings", "help", "about", "troubleshooting"].includes(m[1]!))
       .map((m) => m[1]);
-    expect(ids).toEqual(["projects", "settings", "help", "troubleshooting"]);
+    expect(ids).toEqual(["projects", "help", "troubleshooting"]);
     expect(landing).not.toContain("AboutView");
     expect(fs.existsSync(path.join(root, "src/lib/components/AboutView.svelte"))).toBe(false);
     expect(read("src/routes/+page.svelte")).not.toContain('"about"');

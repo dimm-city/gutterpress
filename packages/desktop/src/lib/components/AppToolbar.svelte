@@ -78,7 +78,6 @@
     publishWarning = null,
     showProjectSettings,
     onOpenProjectSettings,
-    readerMode = false,
   }: {
     leftPanelOpen: boolean;
     onToggleLeftPanel: () => void;
@@ -116,9 +115,6 @@
     publishWarning?: string | null;
     showProjectSettings: boolean;
     onOpenProjectSettings: () => void;
-    /** Reader (Settings → App): only reading controls — Edit/Read, the pane
-     *  tabs, Setup and Publish are hidden; Focus stays. */
-    readerMode?: boolean;
   } = $props();
 
   // The collapsed menu's summary reports the mode it stands in for.
@@ -162,7 +158,7 @@
   }
 </script>
 
-<header class="toolbar" class:narrow={isNarrow} class:reader={readerMode} class:url-mode={sourceMode === "url"}>
+<header class="toolbar" class:narrow={isNarrow} class:url-mode={sourceMode === "url"}>
   <div class="toolbar-start">
     <!-- Panel toggle — far left, first control in navbar -->
     <button
@@ -663,18 +659,6 @@
   .toolbar.narrow .mode-group,
   .toolbar.narrow .mode-menu,
   .toolbar.narrow .toolbar-sep {
-    display: none;
-  }
-
-  /* Reader: nothing but reading. The authoring controls go (not disabled —
-     a reader has no use for them), leaving Focus beside the title. */
-  .toolbar.reader .pane-toggle,
-  .toolbar.reader .mode-group,
-  .toolbar.reader .mode-menu,
-  .toolbar.reader .project-settings-btn,
-  .toolbar.reader .publish-btn,
-  .toolbar.reader .save-hint,
-  .toolbar.reader .toolbar-sep {
     display: none;
   }
 

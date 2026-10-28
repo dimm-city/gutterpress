@@ -93,8 +93,6 @@ export interface ContextMenuRect {
 export interface ContextMenuDeps {
   /** The live preview client, or undefined when no document is loaded. */
   client: () => ContextMenuClient | undefined;
-  /** `preview.contextMenu` setting — false disables the whole feature. */
-  enabled: () => boolean;
   /** True while a preview render is in flight (ignore contextMenuRequested). */
   rendering: () => boolean;
   /** The open project directory, or null when none is loaded. */
@@ -242,7 +240,6 @@ export class ContextMenuController {
     // or an older asynchronous source read can reopen it afterward.
     const requestId = ++this.requestId;
     this.reset();
-    if (!this.deps.enabled()) return;
     // Ignore while a render is in flight (same guard the sync controller uses).
     if (this.deps.rendering()) return;
     const kind = detail.kind;

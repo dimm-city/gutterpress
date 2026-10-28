@@ -532,7 +532,6 @@
           <Icon name="folder-open" size={14} /> Open book…
         </button>
       {/if}
-      <!-- A reader (Settings → App) gets no New book; Open book stays. -->
       {#if onNewProject}
         <button class="footer-action primary" onclick={onNewProject} title="Create a new book">
           <Icon name="plus" size={14} /> New book

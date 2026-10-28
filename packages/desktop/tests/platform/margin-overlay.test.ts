@@ -313,14 +313,10 @@ describe("the toolbar tooltip", () => {
 });
 
 describe("wiring", () => {
-  test("Settings > Preview has the strength and one colour per layer", () => {
+  test("Settings has no overlay controls: the look stays a stored value (#442)", () => {
     const settingsView = read("src/lib/components/SettingsView.svelte");
-    expect(settingsView).toContain("marginOverlayStrength");
-    expect(settingsView).toContain("overlayColors");
-    expect(settingsView).toContain("OVERLAY_LAYERS");
-    expect(settingsView).toContain('type="color"');
-    // the one colour from before the layers is no longer a control
-    expect(settingsView).not.toContain("marginOverlayColor");
+    expect(settingsView).not.toMatch(/overlay/i);
+    expect(settingsView).not.toContain('type="color"');
   });
 
   const toolbar = read("src/lib/components/PreviewToolbar.svelte");

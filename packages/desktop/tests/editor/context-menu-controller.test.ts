@@ -88,7 +88,6 @@ interface Harness {
   ctrl: ContextMenuController;
   client: FakeClient;
   commitEngine: FakeCommitEngine;
-  enabled: boolean;
   rendering: boolean;
   currentDir: string | null;
   /** Live in-editor content for the one open path. */
@@ -126,7 +125,6 @@ function make(): Harness {
     ctrl: undefined as unknown as ContextMenuController,
     client,
     commitEngine,
-    enabled: true,
     rendering: false,
     currentDir: "/proj",
     openContent: new Map<string, string>(),
@@ -151,7 +149,6 @@ function make(): Harness {
   };
   const deps: ContextMenuDeps = {
     client: () => client,
-    enabled: () => h.enabled,
     rendering: () => h.rendering,
     currentDir: () => h.currentDir,
     openContent: (path: string) => h.openContent.get(path) ?? null,
@@ -227,14 +224,6 @@ describe("open", () => {
   test("ignores contextMenuRequested while a render is in flight", async () => {
     const h = make();
     h.rendering = true;
-    h.client.emit({ name: "contextMenuRequested", detail: detail() });
-    await flush();
-    expect(h.ctrl.open).toBe(false);
-  });
-
-  test("does nothing when preview.contextMenu is disabled", async () => {
-    const h = make();
-    h.enabled = false;
     h.client.emit({ name: "contextMenuRequested", detail: detail() });
     await flush();
     expect(h.ctrl.open).toBe(false);
