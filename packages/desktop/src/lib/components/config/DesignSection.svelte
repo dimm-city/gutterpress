@@ -1,17 +1,15 @@
 <script lang="ts">
   /**
-   * "Fonts, colors & sizes" sub-section of the Design tab. The guided `:root`
-   * custom-property editor (theme-curated groups, then fonts + colors +
-   * sizes/numbers + other) shows the tokens of every enabled look as the
-   * book's own stylesheet overrides them, and saves each change to that
-   * stylesheet (`controller.cssName`) — never to a look's files. It names the
-   * look(s) it edits; with no look it hands off to the Looks & features tab
-   * (`onChooseLook`). It is the first of the two panes ProjectSettingsView
-   * composes under the "Design" heading, before the stylesheet list. No section wrapper or `<h3>` of its
-   * own; the parent owns the outer `.block`/heading. All token state, the
-   * debounced read-modify-write token machinery, and the host calls live in
-   * `DesignSectionController` (passed as the single `controller` prop).
-   * `toHex` is a pure browser-only helper (§8-clean).
+   * Advanced › "All design settings": the guided `:root` custom-property
+   * editor (theme-curated groups, then fonts + colors + sizes/numbers +
+   * other). It shows the tokens of every enabled look as the book's own
+   * stylesheet overrides them, and saves each change to that stylesheet
+   * (`controller.cssName`) — never to a look's files. It names the look(s) it
+   * edits. The Look tab shows six of these same tokens as brand settings. All
+   * token state, the debounced read-modify-write token machinery, and the
+   * host calls live in `DesignSectionController` (passed as the single
+   * `controller` prop). A color is typed into `ColorField`, which saves only
+   * a color; a number is saved on change, never mid-number.
    *
    * Token annotations (issue #244): `controller.customGroups` (theme-author
    * `@group` headings, rendered first) and the four kind-based getters
@@ -24,19 +22,12 @@
    * hold a color token next to a plain text one).
    */
   import Icon from "#lib/components/Icon.svelte";
+  import ColorField from "./ColorField.svelte";
   import type { StyleToken } from "#lib/platform/dtos.ts";
-  import { toHex, firstFontFamily, PRINT_SAFE_FONT_STACKS } from "#lib/style-tokens.ts";
+  import { firstFontFamily, PRINT_SAFE_FONT_STACKS } from "#lib/style-tokens.ts";
   import type { DesignSectionController } from "#lib/routes/design-section-controller.svelte.ts";
 
-  let {
-    controller,
-    onChooseLook,
-  }: {
-    controller: DesignSectionController;
-    /** Open the Looks & features tab (the parent owns the tab state); shown
-     *  when the book has no look switched on, so the empty state hands off there. */
-    onChooseLook?: () => void;
-  } = $props();
+  let { controller }: { controller: DesignSectionController } = $props();
 
   /** "look (Clean book)" / "looks (Clean book, House)" — the hint and the
    *  empty state each put their own "your" / "Your" in front. */
@@ -48,51 +39,34 @@
    * (the text input beside it is always the real, uncapped editor). */
   const fontPreset = (value: string): string =>
     PRINT_SAFE_FONT_STACKS.some((f) => f.value === value) ? value : "__custom__";
-
-  const colorHex = (v: string) => toHex(v) ?? v;
 </script>
 
-<div class="look-subsection design-subsection">
+<section class="block" aria-labelledby="all-design-settings">
   <div class="block-head">
-    <h4 class="tokens-title">Fonts, colors &amp; sizes</h4>
-    <div class="row">
-      <!-- Always in the DOM with its text swapped: a live region announces a
-           change to its content, not its own arrival (WCAG 2.2 SC 4.1.3). -->
-      <span
-        class="save-status"
-        class:saving={controller.designSaveStatus === "saving"}
-        class:saved={controller.designSaveStatus === "saved"}
-        aria-live="polite"
-      >{controller.designSaveStatus === "saving" ? "Saving…" : controller.designSaveStatus === "saved" ? "Changes saved" : ""}</span>
-      {#if controller.anyDirty}
-        <button class="ghost small" onclick={controller.revertAllTokens} title="Revert all changes">Revert</button>
-      {/if}
-    </div>
+    <!-- Focusable so "All settings in Advanced →" can land here. -->
+    <h3 id="all-design-settings" tabindex="-1">All design settings</h3>
+    {#if controller.anyDirty}
+      <button class="ghost small" onclick={controller.revertAllTokens} title="Undo the changes made since Book setup opened">Undo changes</button>
+    {/if}
   </div>
+  {#if controller.designSaveError}
+    <p class="error" role="alert">{controller.designSaveError}</p>
+  {/if}
   {#if controller.designLoading}
     <p class="muted">Loading…</p>
   {:else if controller.designError}
     <p class="error" role="alert">{controller.designError}</p>
-  {:else if !controller.cssPath}
-    <p class="muted">This book has no stylesheet of its own yet, so there is nowhere to save changes. Add one (for example <code>styles/book.css</code>) to fine-tune your looks here.</p>
   {:else if controller.tokens.length === 0}
     {#if controller.lookLabels.length === 0}
-      <p class="muted">This book has no look switched on yet. Choose one on the Looks &amp; features tab to see its fonts, colors and sizes here.</p>
-      <div class="row">
-        {#if onChooseLook}
-          <button class="primary small app-btn-primary" onclick={onChooseLook}>Choose a look</button>
-        {/if}
-        {@render editRaw()}
-      </div>
+      <p class="muted">No look is on. Choose one on the Look tab.</p>
     {:else}
-      <p class="muted">Your {lookWord} ({lookNames}) and {controller.cssName} don't expose any settings yet. Use “Edit the stylesheet” to add <code>:root</code> custom properties.</p>
-      {@render editRaw()}
+      <p class="muted">Your {lookWord} ({lookNames}) and your stylesheet have no settings yet. Open the stylesheet (Files, above) to add <code>:root</code> custom properties.</p>
     {/if}
   {:else}
     {#if controller.lookLabels.length > 0}
-      <p class="hint">Settings from your {lookWord} ({lookNames}) and your own stylesheet ({controller.cssName}). Changes are saved to the stylesheet as you go and show in the preview when you close this panel.</p>
+      <p class="hint">Settings from your {lookWord} ({lookNames}) and your own stylesheet ({controller.cssName || "styles/book.css"}). Changes are saved to the stylesheet as you go.</p>
     {:else}
-      <p class="hint">Settings from your own stylesheet ({controller.cssName}). Changes are saved as you go and show in the preview when you close this panel.</p>
+      <p class="hint">Settings from your own stylesheet ({controller.cssName}). Changes are saved as you go.</p>
     {/if}
     {#each controller.customGroups as g (g.name)}
       <h4 class="subhead">{g.name}</h4>
@@ -114,15 +88,8 @@
       <h4 class="subhead">Other</h4>
       {#each controller.otherTokens as t (t.name)}{@render tokenRow(t)}{/each}
     {/if}
-    {@render editRaw()}
   {/if}
-</div>
-
-{#snippet editRaw()}
-  <button class="ghost small" onclick={controller.editRawCss} title="Open your book's stylesheet in the editor">
-    <Icon name="file-text" size={13} /> Edit the stylesheet
-  </button>
-{/snippet}
+</section>
 
 {#snippet tokenRow(t: StyleToken)}
   <!-- One editable :root token, control chosen by `t.kind` — shared by the
@@ -153,22 +120,17 @@
             {#each PRINT_SAFE_FONT_STACKS as f (f.value)}
               <option value={f.value}>{f.label}</option>
             {/each}
-            <option value="__custom__">{fontPreset(t.value) === "__custom__" ? `${firstFontFamily(t.value)} (current)` : "Custom…"}</option>
+            <option value="__custom__">{fontPreset(t.value) === "__custom__" ? `${firstFontFamily(t.value)} (this book's font)` : "Custom…"}</option>
           </select>
           <input class="input sharp" type="text" value={t.value} oninput={(e) => controller.setToken(t, e.currentTarget.value)} title={t.value} aria-label={`${t.label} value`} />
         </div>
       {:else if t.kind === "color"}
         <div class="control color">
-          {#if toHex(t.value)}
-            <input id={`cfg-${t.name}`} type="color" value={colorHex(t.value)} oninput={(e) => controller.setToken(t, e.currentTarget.value)} title={t.value} />
-          {:else}
-            <span class="swatch" style="background: {t.value}" title={t.value}></span>
-          {/if}
-          <input class="input sharp" type="text" value={colorHex(t.value)} oninput={(e) => controller.setToken(t, e.currentTarget.value)} title={t.value} aria-label={`${t.label} value`} />
+          <ColorField id={`cfg-${t.name}`} value={t.value} label={t.label} onCommit={(value) => controller.setToken(t, value)} />
         </div>
       {:else if t.kind === "length" || t.kind === "number"}
         <div class="control size">
-          <input id={`cfg-${t.name}`} type="number" value={t.number} oninput={(e) => controller.setLength(t, e.currentTarget.value)} step="0.1" aria-label={`${t.label} (${t.unit ?? "number"})`} />
+          <input id={`cfg-${t.name}`} type="number" value={parseFloat(t.value)} onchange={(e) => controller.setLength(t, e.currentTarget.value)} step="0.1" aria-label={`${t.label} (${t.unit ?? "number"})`} />
           <span class="unit">{t.unit}</span>
         </div>
       {:else}
@@ -199,12 +161,7 @@
 <style>
   @import "../../styles/config-section-shared.css";
 
-  /* This sub-section's own heading sits in a `.block-head` row beside the
-     save-status/revert controls (see the template) — a dedicated local class
-     (not the shared `.subhead`, which carries a top margin meant for a
-     heading stacked directly under a preceding block, not one sharing a flex
-     row with other controls). */
-  .tokens-title { margin: 0; font-size: 11px; font-weight: 600; color: var(--app-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  #all-design-settings:focus { outline: none; }
   /* Label beside its control, so the label stays whole in a narrow window
      and the input takes the squeeze instead. A font
      row is too wide for that — select plus text input — so it stacks: label on
@@ -226,9 +183,8 @@
   /* Native select chrome ignores the panel's palette (hard black border on a
      sunken-grey form); match the neighbouring .input instead. */
   .control.font select { min-width: 0; padding: 7px 9px; background: var(--app-surface-sunken); border: 1px solid var(--app-border); color: var(--app-text-secondary); border-radius: 5px; font-size: 13px; font-family: inherit; }
-  .control.font select:focus { outline: none; border-color: var(--app-focus-ring); }
-  .control.color input[type="color"] { width: 28px; height: 28px; padding: 0; border: 1px solid var(--app-border); border-radius: 4px; background: var(--app-control-bg); cursor: pointer; }
-  .control.color .swatch { width: 28px; height: 28px; border-radius: 4px; border: 1px solid var(--app-border); }
+  .control.font select:focus-visible, .control.size input:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
+  .control.color { width: 258px; }
   .control.size { gap: 4px; }
   .control.size input[type="number"] { width: 64px; padding: 5px 6px; background: var(--app-surface-sunken); border: 1px solid var(--app-border); color: var(--app-text-secondary); border-radius: 4px; font-size: 12px; }
   .unit { font-size: 11px; color: var(--app-text-muted); }

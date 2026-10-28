@@ -5,9 +5,10 @@
  * The manifest's `sourceFiles` field is EITHER null/absent ("include every
  * markdown file, natural order") OR an ordered list of the included files.
  * The editor works on a richer view: every markdown file in the project,
- * ordered, each row included or excluded — `toManifestFiles` collapses that
- * back to the manifest shape, preserving the "null = all files" default when
- * the selection is equivalent to it.
+ * ordered, each row included or excluded — the included ones first, in
+ * reading order, then the files left out of the book. `toManifestFiles`
+ * collapses that back to the manifest shape, preserving the "null = all
+ * files" default when the selection is equivalent to it.
  *
  * Pure functions + plain types only (no Svelte, no DOM) so the whole model is
  * unit-testable in bun — the component wires them to drag events.
@@ -74,13 +75,45 @@ export function moveEntry(
   return next;
 }
 
-/** Include/exclude the entry at `index`. */
+/**
+ * Include/exclude the entry at `index`, keeping the two groups apart: an
+ * included file joins the end of the book, an excluded one heads the files
+ * left out.
+ */
 export function setIncluded(
   entries: SourceFileEntry[],
   index: number,
   included: boolean,
 ): SourceFileEntry[] {
-  return entries.map((e, i) => (i === index ? { ...e, included } : e));
+  const entry = entries[index];
+  if (!entry) return entries;
+  const rest = entries.filter((_, i) => i !== index);
+  const at = rest.filter((e) => e.included).length;
+  return [...rest.slice(0, at), { ...entry, included }, ...rest.slice(at)];
+}
+
+/**
+ * The text of a markdown file's first `# ` heading, without a trailing
+ * attribute block (`{#ch-intro}`) or closing `#`s; null when it has none.
+ */
+export function firstHeading(markdown: string): string | null {
+  const text = markdown
+    .match(/^#[ \t]+(.+)$/m)?.[1]!
+    .replace(/\s*\{[^}]*\}\s*$/, "")
+    .replace(/\s+#+\s*$/, "")
+    .trim();
+  return text || null;
+}
+
+/**
+ * A chapter's name when its file has no `# ` heading: the file name made
+ * readable (`01-getting-started.md` → "Getting started", `README.md` →
+ * "Readme"), or the bare name when that leaves nothing (`01.md` → "01").
+ */
+export function readableFileName(path: string): string {
+  const base = path.split(/[\\/]/).pop()!.replace(/\.md$/i, "");
+  const words = base.replace(/^[\d\s._-]+/, "").replace(/[-_]+/g, " ").trim().toLowerCase();
+  return words ? words[0]!.toUpperCase() + words.slice(1) : base;
 }
 
 /**

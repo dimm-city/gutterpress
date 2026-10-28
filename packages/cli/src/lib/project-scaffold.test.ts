@@ -116,7 +116,7 @@ test("every built-in template lists its look by name, copies nothing, and keeps 
       const page = resolveConfig({}, await loadManifest(result.projectDir)).page;
       expect(page.safe).toBe(18);
       // Every template records its margins in the manifest (the look's old
-      // values), where Setup > Details edits them; no look sets any.
+      // values), where Setup > Book edits them; no look sets any.
       expect(page.margin).toEqual(MARGINS[template]);
     }
   } finally {

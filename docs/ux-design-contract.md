@@ -94,10 +94,11 @@ components/controllers.
 
 ```
 gutterpress/
-├── Welcome / start screen                     SHIPPED  (WelcomeLanding: Projects / Settings / Help
-│                                                        tabs — continue card + recents/favorites/
-│                                                        discovered via ProjectsListBody, the WHOLE
-│                                                        settings surface, and in-app help)
+├── Welcome / start screen                     SHIPPED  (WelcomeLanding: Books / Help /
+│                                                        Troubleshooting tabs — continue card +
+│                                                        recents/favorites/discovered via
+│                                                        ProjectsListBody, and in-app help; a
+│                                                        Settings button in the header)
 ├── New project wizard / templates             SHIPPED  (NewProjectWizard, #25; templates from the
 │                                                        shared lib scaffolding — see Onboarding)
 ├── Open dialog (recents/favorites, URLs)      SHIPPED  (#10, #27)
@@ -116,35 +117,49 @@ gutterpress/
 ├── Publish workflow                           SHIPPED  (PublishWizard + Connections, #35; see §6 for
 │                                                        proposed deltas: preflight checklist, history)
 ├── Book setup                                 SHIPPED  (ProjectSettingsView, the toolbar's Setup
-│   │                                                    button; title "Book setup"; tabs Details /
-│   │                                                    Looks & features / Design / Backup; every
-│   │                                                    tab saves as you go)
-│   ├── Details                                SHIPPED  (DetailsSection: title, authors, chapters,
-│   │                                                    page size, margins, print checks; no Save
-│   │                                                    button)
-│   ├── Looks & features (id `extensions`)     SHIPPED  (ExtensionsSection: ONE list + one Add area,
-│   │                                                    ExtensionsSectionController, #265)
-│   ├── Design                                 SHIPPED  (DesignSection: every enabled look's :root
-│   │                                                    tokens, written to the book's own stylesheet;
-│   │                                                    then the stylesheet list)
-│   └── Backup (id `connections`)              SHIPPED  (ProjectConnectionsSection: the book's online
-│                                                        copy and how to set one up)
+│   │                                                    button; title "Book setup"; tabs Book /
+│   │                                                    Look / Backup, Advanced set apart at the
+│   │                                                    right; one Saving…/Saved in the header;
+│   │                                                    every tab saves as you go; #442)
+│   ├── Book (id `book`)                       SHIPPED  (DetailsSection: title, authors, page size,
+│   │                                                    margins, print checks, then chapters by
+│   │                                                    title with "Not in the book" below, then
+│   │                                                    Save as template)
+│   ├── Look (id `look`)                       SHIPPED  (LookSection: Choose a look (a one-choice
+│   │                                                    gallery), Adjust the look (six brand
+│   │                                                    settings beside a live sample), Extras
+│   │                                                    (the built-in features as checkboxes))
+│   ├── Backup (id `backup`)                   SHIPPED  (ProjectConnectionsSection: one sentence for
+│   │                                                    the book's situation and at most one
+│   │                                                    primary action; GitHub or the book's own
+│   │                                                    server connect in place; the copy switcher)
+│   └── Advanced (id `advanced`)               SHIPPED  (the ONE advanced path: Open manifest.yaml /
+│                                                        the stylesheet, the ordered extensions
+│                                                        list (ExtensionsSection) with npm, folder,
+│                                                        .zip/.css and web-address adds, and every
+│                                                        design setting (DesignSection))
 ├── Project source / version history / GitHub  SHIPPED  (#12–#16, the Node-native git layer; AdvancedSetupDialog,
 │                                                        GitHubDialog, sync status)
 ├── Media panel                                SHIPPED  (MediaPanel, #47)
 ├── Crash recovery                             SHIPPED  (RecoveryOverlay / CrashRecoveryDialog)
-├── Settings                                   SHIPPED  (SettingsView, embedded in the start
-│                                                        screen's Settings tab: App / Editor /
-│                                                        Saving / Accounts; the status-bar gear and
-│                                                        Ctrl+, are both named "Settings")
+├── Settings                                   SHIPPED  (SettingsView: one page in its own sheet,
+│                                                        no tabs — Appearance, Saving, Your name
+│                                                        and email, Accounts; opened by the
+│                                                        status-bar gear, Ctrl+, and the start
+│                                                        screen's Settings button; it never reads
+│                                                        the open book, so it is the same
+│                                                        everywhere; #442)
 ├── Visual layout editor                       PROPOSED (#37 — milestone placeholder; sub-issues first)
 └── AI Assistant                               PROPOSED (#36)
 ```
 
 Document theming (looks, design tokens, stylesheets) and features (plugins)
-live in **Book setup** — the Looks & features tab adds looks and features,
-the Design tab fine-tunes them — not app Settings: app appearance and print
-theme are deliberately separated concepts; do not merge them back. One name
+live in **Book setup** — the Look tab chooses a look, adjusts its brand
+settings and turns the extras on; Advanced holds everything else — not app
+Settings: app appearance and print theme are deliberately separated
+concepts; do not merge them back. Forms live where their task happens: a
+publishing key is added in Publish, a book's Git server is connected in its
+Backup tab, and Settings > Accounts only lists what is stored, with Remove. One name
 per surface: the toolbar button, the page title and the docs all say "Book
 setup"; the status-bar gear, the shortcut and the page all say "Settings".
 
@@ -263,7 +278,6 @@ Shipped behavior:
   unreachable from inside a `@section`, whose innermost annotated block
   always wins the primary slot. A preview that does not report the
   enclosing marker (older than bridge protocol v7) offers no such item.
-  Gated by the `preview.contextMenu` setting, default on.
 - **Block overlay.** "Edit this block" opens that block's **markdown
   source** in place over the preview; commit on `Ctrl/Cmd+Enter` or blur,
   cancel on `Escape`.
@@ -390,16 +404,14 @@ buttons.
 
 **Layer 1 — first run (SHIPPED baseline):**
 
-- `WelcomeLanding`: three tabs — **Projects** (continue card with live
-  pre-render status + recents / favorites / discovered projects),
-  **Settings** (the entire settings surface, sub-tabs and all — there is no
-  separate settings window), and **Help**. It always opens on **Projects** —
-  picking or continuing a book is the screen's job. A missing name/email is
-  raised by the workspace's standing identity banner, never by sending the
-  start screen to Settings → Accounts. The **Create a new book** card is
-  shown in both roles; creating a book sets the role to Author, so the new
-  book opens with Edit, Setup and Publish in the toolbar (no toast: the
-  toolbar is the confirmation).
+- `WelcomeLanding`: three tabs — **Books** (continue card with live
+  pre-render status + recents / favorites / discovered projects), **Help**
+  and **Troubleshooting** — and a **Settings** button in the header, which
+  opens Settings as its own page. It always opens on **Books** — picking or
+  continuing a book is the screen's job. A missing name/email is raised by
+  the workspace's standing identity banner, whose button opens Settings with
+  the cursor in Name. There is no Reader/Author role: every author has Edit,
+  Setup and Publish in the toolbar; a reader uses the toolbar's Read.
   `NewProjectWizard`: template first (**4 built-in templates** — Book, Zine,
   Technical document, Academic paper — plus custom templates, save-as-template,
   import-from-folder); each template lists its look (Clean book, Zine,
@@ -407,7 +419,7 @@ buttons.
   seeds the book's page size (a `custom` template's own size shows pre-filled)
   and publish targets (ADR 0008), all of which stay editable. Step 3 asks
   "What size should the pages be?" (DriveThruRPG print / Trade paperback /
-  Other size) and "Check the finished PDF against a print service's rules?";
+  Another size) and "Check the finished PDF against a print service's rules?";
   Create is never disabled for a missing folder — pressing it asks for one.
 - Templates come from the **shared lib scaffolding** in
   `gutterpress` (same set behind `gutterpress new`; docs/architecture-rules.md §7 "one
@@ -441,9 +453,10 @@ buttons.
   menus at all times — hiding would contradict
   the Dev persona's "no escape hatches" pain point and would **regress
   shipped, ungated features** (#30 plugins, #32 themes).
-- The **Looks & features and Design tabs are core to a good first PDF and are
-  never gated**; only power-user surfaces (the Looks & features tab's Advanced
-  importers, visual layout editor #37, AI #36) get the Advanced badge.
+- Book setup's **Book and Look tabs are core to a good first PDF and are
+  never gated**. Its **Advanced** tab is the one advanced path for npm, folder
+  and web extensions, their order, every design setting and the files behind
+  them; the other tabs link to it and never repeat its controls.
 - **Every Book setup tab saves as you go; there is no Save button.** Text
   fields commit when you leave them or press Enter; pending edits are saved
   when you switch tabs or close the panel. A commit writes only what changed
@@ -680,15 +693,15 @@ Proposed refinements (file issues):
   and badge the count above N matches.
 - "Visual Mode" toggle → belongs to #37 (see §5).
 
-### 9. Extensions (one list: looks, features, component libraries) — on screen: Looks & features
+### 9. Extensions (one list: looks, features, component libraries) — on screen: Look and Advanced
 
-**Status: SHIPPED** (Book setup → **Looks & features** tab, id `extensions` →
-`ExtensionsSection`, #30; looks and features merged into one surface, #243;
-one manifest list, `extensions:`, since #265; one on-screen list since
-0.11.23, after the built-in looks became bundled extensions, #427). This
-section is rewritten around the actual plugin model; the original "app store"
-concept is **rejected** as incompatible with docs/architecture-rules.md §5
-unless a future ADR changes that rule.
+**Status: SHIPPED** (one manifest list, `extensions:`, since #265; shown
+since #442 as Book setup → **Look** for the main path — a look chosen from a
+gallery and the built-in features as Extras — and Book setup → **Advanced**
+for the list itself, `ExtensionsSection`). This section is rewritten around
+the actual plugin model; the original "app store" concept is **rejected** as
+incompatible with docs/architecture-rules.md §5 unless a future ADR changes
+that rule.
 
 The model (binding, from docs/architecture-rules.md §5 and #265):
 
@@ -707,32 +720,32 @@ The model (binding, from docs/architecture-rules.md §5 and #265):
 - Build/export/validate **fail fast** on any plugin load error, identifying
   the offending manifest entry — a final artifact never silently omits
   author-configured formatting. Live preview **degrades and reports loudly**
-  ("Not installed" badge + fix instructions); every skip is surfaced.
+  ("Not downloaded yet." with Install on the Advanced row); every skip is
+  surfaced.
 - **List order is load order and cascade order.** A later entry runs after
   earlier ones and sees their output, and its CSS wins ties; the project's
   own `styles:` always load after every extension. Reordering the list is the
   only ordering control — there is no `priority`, and the UI must not invent
   one.
 
-Shipped UI (the baseline to refine, not replace): **one list** of the
-manifest's `extensions:` entries in order. Each row shows its label, where it
-comes from, a badge per kind it carries, in author words (Feature, Look,
-Snippets, Components, Publish destination; a look is styles without
-markdown, so a component library's CSS is badged Styles), its load status
-("Working"; "Re-check" validates again), an enable toggle, move up/down, and
-remove; an npm row adds its version picker, Update and Install/Reinstall (the
-actionable missing-vendor state). A row that carries styles also shows a rendered
-thumbnail (§11). The developer-shaped head controls appear only with
-something to act on: "Check for updates" when an npm entry is listed,
-"Re-check" when the list is not empty. Below the list, one **Add** area in
-three tabs: *Built in* (the bundled looks first, each with its thumbnail, then
-the features, in plain language, #309), *Search* (npm, #246 — run only when
-the tab is first shown, never at project load), and *Advanced* (install by
-name, a local folder or file referenced in place, and the `.zip`/`.css`/URL
-importers, §11). There is no separate look view: a look is a row like any
-other. Adding a look below another enabled look says that the lower look
-wins and names the one to turn off to use the new look on its own; an
-update, install or version switch announces nothing.
+Shipped UI (#442). **Look** is the main path: *Choose a look* is a
+one-choice gallery of thumbnails (the built-in looks and any npm or folder
+look in the list), and choosing replaces the book's look in place in
+`extensions:` — a built-in look is removed, an npm or folder look switched
+off — with no toast; a book with two enabled looks gets a notice and the way
+to Advanced instead of a guess. *Extras* lists the built-in features as
+checkboxes, each with what to type. **Advanced** is the list itself: the
+manifest's `extensions:` entries in order, each row a checkbox (on/off), the
+label, its kind and source in words ("Look · built in", "Extra · npm
+3.0.0"), move up/down and Remove. A row says something only when it needs
+attention: "Version x is available." with Update, "Not downloaded yet." with
+Install, "Couldn't load." with Show details and Check again. Updates are
+checked once when the tab opens, never at project load. Below the list, one
+Add area: an npm package name, a folder or file referenced in place, a
+`.zip`/`.css` import and a web address (§11). No status badges, no version
+picker, no npm search (the website's plugin finder and `gutterpress ext
+search` cover it) and no pre-release switch (`gutterpress ext add
+name@version`).
 
 Refinements (PROPOSED): link each plugin to its npm page for
 author/version/last-published metadata; surface load errors inline.
@@ -782,54 +795,57 @@ Raw rule-ID columns and rule-ID-first presentation are anti-patterns here.
   when its last problem is fixed says "No problems found — your project looks
   good!" until dismissed.
 
-### 11. Looks and the Design tab
+### 11. Looks and the Look tab
 
 **Status: SHIPPED baseline** (#32; since 0.11.23 a look is a styles-carrying
-row of the one Looks & features list, §9, and its tokens are edited on the
-**Design** tab) with PROPOSED refinements tracked in **#106**.
+entry of the one `extensions:` list, §9; since #442 it is chosen and
+adjusted on Book setup's **Look** tab) with PROPOSED refinements tracked in
+**#106**.
 
-Shipped: a look is added like any extension — a bundled name from the Add
-area's *Built in* tab (`clean-book`: nothing is copied), an npm package, a
-folder referenced in place, or a **folder, ZIP, CSS file or URL** import
-(`extension-import.ts`, reached through server routes). The bundled Add rows
-hide a look once it is listed (by name, or as a copy at `./extensions/<id>`
-left by an older version). Every look row, in the list and in Add > Built in,
-shows a **rendered thumbnail** of its CSS over a fixed sample; there is no
-hover preview.
+Shipped: the Look tab's gallery offers the built-in looks (bundled names:
+nothing is copied) and any npm or folder look already in the list; Advanced
+adds a look from npm, a folder referenced in place, or a **folder, ZIP, CSS
+file or URL** import (`extension-import.ts`, reached through server routes).
+Every gallery card shows a **rendered thumbnail** of its CSS over a fixed
+sample; there is no hover preview.
 
 A bundled look never sets the page size or margins; the manifest (Setup >
-Details) does, and `assemble.ts` writes them as the `@page` rule after every
+Book) does, and `assemble.ts` writes them as the `@page` rule after every
 stylesheet, so a look from elsewhere that sets a size is overridden (the CSS
 check reports it) and its margins hold only until the book records its own
-(`page.margin`). Details writes the manifest and nothing else. A book that
-recorded margins takes them out again with **Use the look's margins** (or
-**Use the default margins (1 in)** when no stylesheet sets any), which
-removes `page.margin`; the fields then show what the book prints with. A
-manifest that overrides a preset's size (`preset: book` plus a `page:` width
-and height) shows the preset, with a note that choosing a size here replaces
-the override.
+(`page.margin`). The Book tab writes the manifest and nothing else. A book
+that recorded margins takes them out again with **Use the look's margins**
+(or **Use the default margins** when no stylesheet sets any), which removes
+`page.margin`; the fields then show what the book prints with. A manifest
+that overrides a preset's size (`preset: book` plus a `page:` width and
+height) shows the preset, with a note that choosing a size here replaces the
+override.
 
-**Design tab.** The guided token editor (`DesignSection`, heading "Fonts,
-colors & sizes") names the look(s) it is editing and shows the `:root`
+**Adjust the look.** Six brand settings — Body text font, Heading font, Body
+text size, Line spacing, Text color, Accent color — the shared tokens every
+built-in look defines, so a choice carries across looks. They sit beside a
+live sample page that redraws as each setting changes (a typed color or
+number counts once it is committed, on blur or Enter, and only a color is
+saved as a color). Every edit is written to
+the **book's own stylesheet** (`styles/book.css`, created with an empty
+`:root {}` and added to `styles:` on the first edit when the book has none):
+the token's `:root` declaration is updated if the sheet has one, otherwise
+added to its `:root` block; a declaration in any other rule or in a comment
+is left alone. **Reset to the look's settings** asks first ("Replace your
+settings with Clean book's?" **Replace** / **Keep mine**), then removes the
+book's declarations of the six, so the look's values show through; Advanced's
+Undo changes restores them. A look's own files are never
+written; there is no eject or copy of a look.
+
+**All design settings** (Advanced). `DesignSection` shows the `:root`
 custom properties of **every enabled look** — bundled, npm or path — in
 cascade order (a later look wins a duplicate), overlaid with the book's own
-active stylesheet, which wins. Every edit is written to **that book
-stylesheet** (`styles/book.css` by default): the token's `:root` declaration
-is updated if the sheet has one, otherwise added to its `:root` block
-(created if missing); a declaration in any other rule or in a comment is
-left alone. A token's Revert is an undo: a token the sheet did not declare
-has its declaration taken out again, so a look's value is never pinned into
-the book. A book override of a look's token can be dropped at any time —
-also after the panel is reopened — with "Use the look's value"; the look's
-value is read from the enabled looks, never pinned. Derived labels are plain
-words (`--fs-display` → "Display size"); a look labels its own extra tokens
-with `@label`. A compound value (`1pt solid …`) is edited as text, never as a
-bare number. With no look switched on, the tab offers "Choose a look" (opens Looks &
-features); "Edit the stylesheet" is the secondary path. The hint says the
-preview shows the changes when the panel is closed (it is hidden behind the
-full-screen panel). A look's own files are never written; the author's
-stylesheet is the one escape hatch, and there is no eject or copy of a look.
-The stylesheet list sits under it on the same tab.
+stylesheet, which wins, with each variable's name, a per-row "Use the look's
+value", and Undo changes for the visit. Derived labels are plain words
+(`--fs-display` → "Display size"); a look labels its own extra tokens with
+`@label`. A compound value (`1pt solid …`) is edited as text, never as a
+bare number. The book's stylesheets are listed in the manifest's `styles:`
+(Advanced › Open manifest.yaml); there is no stylesheet list on screen.
 
 There is **no apply and no revert**: a look is an ordinary list entry
 (enable/disable, reorder, remove — the same verbs `gutterpress ext`
@@ -1172,7 +1188,9 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 | Raw rule IDs / linter jargon as primary text | Writer-first product | Plain-language labels, codes demoted (shipped, §10) |
 | Reintroducing stylelint or any bundler-hostile dep for editor lint | Breaks `bun build --compile` (docs/architecture-rules.md §3) | Extend `printsafe.ts` |
 | A Gutterpress-specific plugin API, hosted plugin marketplace, or fake granular permissions UI | Contradicts docs/architecture-rules.md §5 and the unsandboxed runtime | §9's plain-package model and one honest full-privilege confirmation |
-| Settings with >30 items in a flat list | Overwhelming | Shipped tab structure (§4) |
+| Settings with more than a page of choices, or tabs inside Settings | Overwhelming; "where did X go?" | One short Settings page; a choice earns a place only when many authors need it (#442) |
+| A global mode that hides features (a Reader/Author role) | Authors lose Setup and Publish without knowing why | Every author sees every feature; Read is a view, not a role (#442) |
+| Status badges, or switches beside checkboxes, in Book setup | Noise; two controls for one meaning | Silence is success: a row speaks only when it needs attention; checkboxes for items of a set, switches only in Settings (#442) |
 
 ---
 

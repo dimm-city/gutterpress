@@ -30,8 +30,8 @@ Google Drive for both.
 Each destination shows whether it is **Connected**, **Needs a key**, or needs **No account**.
 
 A book can also add destinations of its own with a **publishing plugin** (experimental: it may
-change or be removed). Add one under **Book setup** → **Looks & features** like any extension; it shows
-a **Publish destination** badge there, and in this list after the built-in destinations, marked
+change or be removed). Add one under **Book setup** → **Advanced** like any extension; its row there says **Publish
+destination**, and it shows in this list after the built-in destinations, marked
 **Experimental**.
 
 ![The Choose step for a PDF: a folder on this computer is always included](images/publish-choose.jpg)
@@ -54,7 +54,7 @@ Each destination you ticked has its own step:
   in your book's `manifest.yaml`; the plugin handles its own sign-in.
 
 Click **Save settings** to keep a destination's settings with your book. Keys are stored on your
-computer only. You can also add accounts under Settings → Accounts → **Publishing accounts**.
+computer only. Settings → **Accounts** lists the saved keys; **Remove** deletes one.
 
 ## Preflight
 

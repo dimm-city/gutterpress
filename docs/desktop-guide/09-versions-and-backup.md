@@ -53,34 +53,50 @@ only**.
 
 ## Back up online
 
-Online backup keeps a copy of your book's versions on GitHub (or another Git server).
+Online backup keeps a copy of your book's versions on GitHub (or another Git server). **Setup →
+Backup** says in one line where the book is kept, and offers the one next step:
 
-1. Connect your account: Settings → **Accounts** → **GitHub** → **Connect GitHub…**, then enter
-   the code shown on the GitHub page.
-2. A book that already has an online copy, such as one you opened with
-   [Open from GitHub](02-books.md#open-a-book-from-github), backs up as soon as you are connected.
-   **Setup → Backup** shows its folder and online copy.
-3. A book you started on this computer needs an online copy first. See
-   [Set up online backup for a book you started here](#set-up-online-backup-for-a-book-you-started-here).
+- **Previous versions are off for this book.** The book is a plain folder. Click **Turn on
+  previous versions** to keep earlier versions on this computer. Nothing is uploaded.
+- **Saved on this computer only.** The book has versions but no online copy yet: see
+  [Set up online backup for a book you started here](#set-up-online-backup-for-a-book-you-started-here).
+- **This book's online copy is on GitHub: …. Connect GitHub to back it up.** Click **Connect
+  GitHub…** and enter the code it shows on the GitHub page that opens (**Copy code** copies it;
+  **Open GitHub again** reopens the page). The book backs up as soon as you are connected. A book you opened with
+  [Open from GitHub](02-books.md#open-a-book-from-github) is already connected.
+- **This book's online copy is on git.example.com. Connect it to back the book up.** See
+  [Back up to another Git server](#back-up-to-another-git-server).
+- **Online copy: ….** The book is connected to its online copy. Once a backup has run, the line
+  says how it went: **Backed up online to … · last backup 2 mins ago**; **Couldn't reach …** when
+  the server can't be reached; or **Couldn't back up to …** with the reason. Both offer **Try
+  again** (when the server no longer accepts the saved sign-in, the connect step comes back
+  instead). With automatic backup off, it says so and offers **Back up now**. When
+  the book has more than one copy, **Copy you're working on** shows which: choose another and
+  click **Switch** to work on it.
+- **This book's online copy uses an SSH address (git@…).** Gutterpress can't back up over SSH.
+  Keep backing up with your usual Git tool, or give the book its https:// address with that tool
+  (`git remote set-url origin https://…`) and come back to connect it.
+
+GitHub can also be connected in Settings → **Accounts**, which lists every account saved on this
+computer, each with **Remove**.
 
 ### Set up online backup for a book you started here
 
-You need a connected GitHub account (step 1 above) and version history turned on for the book.
-
-1. Click the save indicator, then **Set up online backup…** under **Online backup** (the same
-   button is under **Settings → Saving** for a book that is not backed up yet). This opens
+1. Click the save indicator, then **Set up online backup…** under **Online backup**. This opens
    **Setup → Backup**.
-2. If the book is a plain folder, click **Turn on version history** first. Online backup copies the
-   versions Gutterpress keeps, so it needs them.
-3. Under **Set up online backup**, choose where the copy goes:
-   - **Create a new repository** — the name starts as your book's title and you can change it.
-     **Keep it private (only you can see it)** is on by default.
-   - **Use an empty repository I already made** — pick one from the list. Repositories that look empty
-     are listed. To make one, click **Open github.com to create one…** and leave "Add a README"
-     off.
-4. Click **Set up online backup**. Gutterpress connects the book to the repository and copies all
-   of its earlier versions there. When it finishes, the status bar shows **Backed up online** and
-   the book works like one opened from GitHub.
+2. If the book is a plain folder, click **Turn on previous versions** first. Online backup copies
+   the versions Gutterpress keeps, so it needs them.
+3. Under **Back it up online**, click **Connect GitHub…** if GitHub isn't connected yet, and enter
+   the code shown on the GitHub page that opens.
+4. Choose where the copy goes:
+   - The **Repository name** starts as your book's title and you can change it. **Private: only
+     you can see it** is on by default.
+   - Or click **Use an empty repository you already made** and pick one from the list.
+     Repositories that look empty are listed. To make one, click **Open github.com to create
+     one…** and leave "Add a README" off.
+5. Click **Back up to GitHub**. Gutterpress connects the book to the repository and copies all of
+   its earlier versions there. When it finishes, the status bar shows **Backed up online** and the
+   book works like one opened from GitHub.
 
 If something goes wrong, Gutterpress says what happened in plain words and leaves your book as it
 was. The common cases:
@@ -90,18 +106,43 @@ was. The common cases:
 - **The repository already has files** — online backup needs an empty one. Choose another, or
   create a new one.
 - **No internet connection** — nothing was changed; try again when you are back online.
-- **GitHub didn't accept the saved connection** — reconnect under Settings → **Accounts**, then try
-  again.
+- **GitHub didn't accept the saved connection** — sign in again with Troubleshooting → **Sync** →
+  **Reconnect GitHub…**, then try again.
 - **The copy didn't go through after the repository was created** — the empty repository is kept
   and selected; click **Try again** to use it.
 
-Settings → **Saving** has the switches: **Save edits automatically**, **Keep previous versions**
-and **Keep this book backed up online**.
+Settings → **Saving** has the switches: **Save changes automatically**, **Keep previous versions**
+and **Back up online automatically**.
+
+### Back up to another Git server
+
+Gutterpress also backs up to GitLab, Gitea, Forgejo, Bitbucket, Azure Repos and other Git servers,
+over their https:// address. It doesn't create repositories there, so the book starts from a copy
+on the server:
+
+1. Put the book in a repository on your server with your usual Git tool, or clone one that is
+   already there.
+2. Open the book's folder in Gutterpress, then **Setup → Backup**. It names the server the book's
+   online copy is on.
+3. Create an access token on that server, paste it under **Access token** (with your **Username**
+   if the server needs one) and click **Connect**. The token is checked with the server before it
+   is saved. For a server Gutterpress recognises, **Create a token on …** opens the page that
+   makes one; for any other, **How to make an access token** opens this section.
+
+Where each server makes its tokens:
+
+- **Gitea or Forgejo:** Settings > Applications.
+- **GitLab:** Preferences > Access tokens, with read and write access to repositories.
+- **Bitbucket:** Personal settings > App passwords, with repository read and write.
+- **Azure Repos:** User settings > Personal access tokens, with Code read & write.
+
+If backing up keeps failing, Troubleshooting → **Sync** has **Test the connection**, which checks
+whether Gutterpress can reach the book's online copy without changing anything.
 
 ### Get and send changes yourself
 
-To get changes from online and send yours only when you choose, turn off **Keep this book backed
-up online**. The status bar then shows two buttons next to the online status:
+To get changes from online and send yours only when you choose, turn off **Back up online
+automatically** in Settings. The status bar then shows two buttons next to the online status:
 
 - **Get latest** brings in the changes from online and sends nothing back. Your own edits stay
   on this computer.

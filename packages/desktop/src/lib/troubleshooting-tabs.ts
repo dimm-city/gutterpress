@@ -1,6 +1,6 @@
 /**
- * The Troubleshooting view's sub-tab contract, mirroring `settings-tabs.ts`:
- * shared by `TroubleshootingView.svelte` and `WelcomeLanding.svelte`'s
+ * The Troubleshooting view's sub-tab contract: shared by
+ * `TroubleshootingView.svelte` and `WelcomeLanding.svelte`'s
  * `showTab("troubleshooting", sub)` deep link. Any value that is not a known
  * id (a stray MouseEvent, say) collapses to the default "logs" tab so
  * the panel can never render empty.

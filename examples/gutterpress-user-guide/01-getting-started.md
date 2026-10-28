@@ -117,7 +117,7 @@ There are four layers. Each has its own colour (you can change them, below) and 
 | **Bleed** | A tinted band outside the trim, and a solid line where the page is cut | Red |
 | **Safe area: text** | The printer's safe line for text, **dashed**, with the strip between it and the trim tinted | Blue |
 | **Safe area: art** | The printer's safe line for art that does not bleed, **dotted** | Purple |
-| **Page margins** | The box your margins (Setup > Details, or `page.margin` in the manifest) leave for text, as a thin solid line. It is your book's choice, not the printer's | Green |
+| **Page margins** | The box your margins (Setup > Book, or `page.margin` in the manifest) leave for text, as a thin solid line. It is your book's choice, not the printer's | Green |
 
 @end-section
 
@@ -246,7 +246,7 @@ Common book trim sizes in points (72pt = 1 inch):
 
 @end-section
 
-Your book prints at the manifest's `page.width` × `page.height` --- your preset's size unless you set them --- and that is also the size the finished PDF is checked against. The build writes it as the `@page { size }` after every stylesheet, so a `size` in a stylesheet is ignored (the CSS check tells you so). Margins work the same way: `page.margin` (`top`, `bottom`, `inside` and `outside`, in points, `inside` at the binding edge) prints your book with those margins whatever a look's stylesheet says; leave it out and the stylesheets' `@page` margins apply, else 1in. In the app, both are under Setup > Details.
+Your book prints at the manifest's `page.width` × `page.height` --- your preset's size unless you set them --- and that is also the size the finished PDF is checked against. The build writes it as the `@page { size }` after every stylesheet, so a `size` in a stylesheet is ignored (the CSS check tells you so). Margins work the same way: `page.margin` (`top`, `bottom`, `inside` and `outside`, in points, `inside` at the binding edge) prints your book with those margins whatever a look's stylesheet says; leave it out and the stylesheets' `@page` margins apply, else 1in. In the app, both are under Setup > Book.
 
 ### DriveThruRPG Requirements {#dtrpg-requirements}
 

@@ -22,26 +22,23 @@
  * the ancestor part of the selector. `:global(...)` also opts every rule out of
  * Svelte's per-component unused-CSS-selector pass — exactly like
  * `dialog-shell.css`'s variant classes — so an @importing section that only
- * uses a SUBSET of these primitives (e.g. StylesSection never renders a
- * `.primary` button) doesn't get flagged for the primitives a SIBLING section
+ * uses a SUBSET of these primitives (e.g. LookSection never renders an
+ * `.add-row`) doesn't get flagged for the primitives a SIBLING section
  * uses. The literal `.config-panel` prefix is what keeps this containED to the
  * config panel's own subtree rather than leaking these generic class names
  * (`.primary`, `.error`, `.row`, …) app-wide the way a bare `:global(.primary)`
  * would.
  *
- * Domain-only primitives (the extension rows and thumbnails, style list,
+ * Domain-only primitives (the extension rows, look cards, chapter rows,
  * design tokens, publish cards, …) are NOT here — they live in each
  * owning section's own `<style>` block, scoped normally.
  */
 
 :global(.config-panel .block) { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--app-border-subtle); }
 :global(.config-panel .block:last-child) { border-bottom: none; }
-:global(.config-panel .block h3) {
-  margin: 0; font-size: 12px; font-weight: 600; color: var(--app-text);
-  text-transform: uppercase; letter-spacing: 0.04em;
-}
+:global(.config-panel .block h3) { margin: 0; font-size: 15px; font-weight: 600; color: var(--app-text); }
 :global(.config-panel .block-head) { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-:global(.config-panel .subhead) { margin: 6px 0 2px; font-size: 11px; font-weight: 600; color: var(--app-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+:global(.config-panel .subhead) { margin: 6px 0 2px; font-size: 13px; font-weight: 600; color: var(--app-text-secondary); }
 
 :global(.config-panel .muted) { margin: 0; font-size: 13px; color: var(--app-text-muted); }
 :global(.config-panel .error) { margin: 0; color: var(--app-error-text); font-size: 12px; }
@@ -49,13 +46,14 @@
 :global(.config-panel .row) { display: flex; align-items: center; gap: 8px; }
 
 :global(.config-panel .field) { display: flex; flex-direction: column; gap: 3px; }
-:global(.config-panel .field .lbl) { font-size: 11px; color: var(--app-text-muted); font-weight: 500; }
+:global(.config-panel .lbl) { padding: 0; font-size: 13px; font-weight: 600; color: var(--app-text); }
 :global(.config-panel .input) {
   background: var(--app-surface-sunken); border: 1px solid var(--app-border);
   color: var(--app-text-secondary); padding: 7px 9px; border-radius: 5px;
   font-size: 13px; font-family: inherit; width: 100%; box-sizing: border-box;
 }
-:global(.config-panel .input:focus) { outline: none; border-color: var(--app-focus-ring); }
+/* The same 2px focus ring as Settings' fields and every button here. */
+:global(.config-panel .input:focus-visible), :global(.config-panel button:focus-visible) { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
 :global(.config-panel textarea.input) { resize: vertical; font-family: var(--app-font-mono); font-size: 12px; }
 :global(.config-panel .input.sharp) { width: auto; min-width: 0; flex: 1; }
 
@@ -70,36 +68,11 @@
    every config-panel primary button carries both classes. */
 :global(.config-panel .ghost) { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
 :global(.config-panel .ghost:hover:not(:disabled)) { background: var(--app-surface-hover); color: var(--app-text); }
+/* A text-only button that reads as a link ("All settings in Advanced →"). */
+:global(.config-panel button.link) { display: inline-flex; align-items: center; gap: 3px; padding: 0; border: 0; background: transparent; color: var(--app-link); font-size: 13px; }
+:global(.config-panel .hint button.link) { font-size: inherit; }
+:global(.config-panel button.link:hover) { color: var(--app-link-hover); text-decoration: underline; }
 :global(.config-panel button:disabled) { opacity: 0.5; cursor: not-allowed; }
 
 :global(.config-panel .add-row) { display: flex; gap: 6px; }
 :global(.config-panel .add-row .input) { flex: 1; }
-
-:global(.config-panel .badge) { font-size: 10px; color: var(--app-text-muted); background: var(--app-surface-hover); padding: 1px 6px; border-radius: 9px; }
-:global(.config-panel .muted.dim) { font-size: 11px; }
-
-:global(.config-panel .kind) { color: var(--app-text-muted); }
-:global(.config-panel .status) { display: inline-flex; align-items: center; gap: 3px; font-weight: 500; }
-:global(.config-panel .status.ok) { color: var(--app-success-text); }
-:global(.config-panel .status.error) { color: var(--app-error-text); }
-:global(.config-panel .status.checking), :global(.config-panel .status.disabled) { color: var(--app-text-muted); }
-:global(.config-panel .status-detail) { margin: 0; font-size: 11px; color: var(--app-error-text); line-height: 1.35; }
-:global(.config-panel .status-raw) { margin: 2px 0 0; }
-:global(.config-panel .status-raw > summary) { font-size: 11px; color: var(--app-text-muted); cursor: pointer; user-select: none; }
-:global(.config-panel .status-raw > pre) { margin: 4px 0 0; padding: 6px; font-size: 11px; color: var(--app-text-muted); background: var(--app-control-bg); border: 1px solid var(--app-border); border-radius: 4px; white-space: pre-wrap; word-break: break-word; }
-:global(.config-panel .rec-desc) { margin: 0; font-size: 11px; color: var(--app-text-muted); line-height: 1.4; }
-:global(.config-panel .notice) { color: var(--app-warning-text); font-size: 12px; margin: 4px 0; }
-
-/* The per-row enable switch of the Extensions list. */
-:global(.config-panel .toggle) { flex-shrink: 0; width: 36px; height: 20px; border-radius: 10px; background: var(--app-border); border: 1px solid var(--app-border); position: relative; cursor: pointer; padding: 0; }
-:global(.config-panel .toggle.on) { background: var(--app-focus-ring); border-color: var(--app-focus-ring); }
-:global(.config-panel .toggle .knob) { position: absolute; top: 1px; left: 1px; width: 16px; height: 16px; border-radius: 50%; background: var(--app-text-on-accent); transition: transform 0.15s; }
-:global(.config-panel .toggle.on .knob) { transform: translateX(15px); }
-:global(.config-panel .toggle:focus-visible) { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
-:global(.config-panel .toggle:disabled) { opacity: 0.5; cursor: progress; }
-
-/* The "Saving… / Changes saved" badge of a section that saves as you go
-   (Details, Design): a live region that exists before its text changes. */
-:global(.config-panel .save-status) { font-size: 11px; }
-:global(.config-panel .save-status.saving) { color: var(--app-text-muted); }
-:global(.config-panel .save-status.saved) { color: var(--app-success-text); }

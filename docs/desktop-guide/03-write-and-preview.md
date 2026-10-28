@@ -103,8 +103,8 @@ The preview shows your book's pages exactly as they will print, and updates as y
 
 - **Turn pages** with the buttons above the preview (first, previous, the page picker, next,
   last), with a flick of the mouse wheel over the preview, or with the keys below.
-- **Zoom** with the menu at the top right of the preview: **Fit to width** or 25%–200%. The
-  starting zoom is set in Settings → App → Preview.
+- **Zoom** with the menu at the top right of the preview: **Fit to width** or 25%–200%. The app
+  remembers your zoom.
 - **Check the print overlays** with the **print overlays** button beside the zoom menu. It draws
   four layers on every page, each in its own colour: the **bleed** (a tinted band outside the
   trim, with a solid line where the page is cut), the printer's safe area for text (**Safe area:
@@ -124,7 +124,7 @@ The preview shows your book's pages exactly as they will print, and updates as y
   - **Where the lines come from.** The bleed and the safe lines come only from your project's print
     settings: `page.width` and `page.height`, `page.bleed`, `page.safe`, `page.artSafe` and
     `page.gutter` in `manifest.yaml`, or your preset's values. The **Page margins** layer shows your
-    own choice: the margins from Book setup > Details (`page.margin`), or a stylesheet's `@page`
+    own choice: the margins from Book setup > Book (`page.margin`), or a stylesheet's `@page`
     margins for a book that has not set its own. They place your text and never move the printer's
     lines, and no stylesheet or plugin can hide or restyle the overlays. A DriveThruRPG (`dtrpg`) file already
     contains 0.125in of bleed on the top, bottom and outer edges (none on the binding edge), so the
@@ -134,11 +134,10 @@ The preview shows your book's pages exactly as they will print, and updates as y
     points) for your printer's, and `page.gutter` if your book keeps further from the spine than
     that. With no bleed or safe area set, that part is not drawn and the legend says which setting
     to add.
-  - **Make it louder or quieter, or change the colours** in Settings → App → Preview: *Print overlay
-    strength* (Subtle, Normal or Strong: line width, tint and bleed band) and a colour for each
-    layer (*Bleed overlay colour*, *Safe area: text overlay colour*, *Safe area: art overlay
-    colour*, *Page margins overlay colour*). The lines stay the same thickness on screen at every
-    zoom. These are app settings, not book CSS.
+  - **Strength and colours.** The lines stay the same thickness on screen at every zoom. To draw
+    them louder or quieter, or in other colours, edit `preview.marginOverlayStrength` (`subtle`,
+    `normal` or `strong`) and `preview.overlayColors` in the app's settings file,
+    `app-settings.json`. These are app settings, not book CSS.
 
 | Key | Does |
 | --- | --- |

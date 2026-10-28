@@ -24,15 +24,12 @@
   let {
     open = $bindable(false),
     onOpened,
-    onAdvancedSetup,
     onClosed,
     triggerEl,
   }: {
     open?: boolean;
     /** Called with the new local project folder once the download finishes. */
     onOpened?: (projectDir: string) => void;
-    /** "Using a different Git host?" — closes this dialog, opens Advanced Setup (#14). */
-    onAdvancedSetup?: () => void;
     /** Called whenever the dialog closes (any path). Useful for post-close refresh. */
     onClosed?: () => void;
     triggerEl?: HTMLButtonElement | undefined;
@@ -162,15 +159,6 @@
     // The search input is the primary action when there is a list; with no
     // repositories the Refresh button is.
     (repos.length > 0 ? filterEl : (refreshBtn ?? filterEl))?.focus();
-  }
-
-  /** Hand off to Advanced Setup (#14) — shared by the connect + repos steps. */
-  function goAdvancedSetup() {
-    open = false;
-    onClosed?.();
-    // No triggerEl?.focus() here: Advanced Setup opens next and takes focus
-    // itself; it restores focus when IT closes.
-    onAdvancedSetup?.();
   }
 
   async function chooseRepo(repo: RemoteRepository) {
@@ -347,16 +335,10 @@
           Connect your GitHub account to open the books stored there.
           A browser window will ask you to enter a short code — that's it.
         </p>
-        {#if onAdvancedSetup}
-          <p class="hint subtle">
-            Using a different Git host (Gitea, GitLab, Bitbucket, …)?
-            <button
-              type="button"
-              class="link-btn"
-              onclick={goAdvancedSetup}
-            >Open Accounts settings</button>
-          </p>
-        {/if}
+        <p class="hint subtle">
+          Using another Git server? Clone the book with your usual Git tool, open the folder, then connect the
+          server in Setup &gt; Backup.
+        </p>
         <footer class="dlg-actions">
           <button class="dlg-ghost" onclick={close}>Cancel</button>
           <button bind:this={connectBtn} class="dlg-primary app-btn-primary" onclick={connect} disabled={busy}>
@@ -423,13 +405,6 @@
               </li>
             {/each}
           </ul>
-        {/if}
-        {#if onAdvancedSetup}
-          <p class="hint subtle">
-            Or connect a different Git server in
-            <button type="button" class="link-btn" onclick={goAdvancedSetup}
-            >Accounts settings</button>
-          </p>
         {/if}
         <footer class="dlg-actions">
           <button class="dlg-ghost" onclick={close}>Cancel</button>

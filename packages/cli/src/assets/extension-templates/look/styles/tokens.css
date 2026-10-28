@@ -4,14 +4,14 @@
  * OWNS
  *   `:root` custom properties, and nothing else. The palette, the type scale,
  *   the spacing scale, the measure. This is the file to edit to rebrand the
- *   look. The desktop app's Design tab lists these tokens (with every other
- *   enabled look's) and saves a book's changes to that book's own
- *   stylesheet, never to this file.
+ *   look. The desktop app's Book setup lists these tokens (the six shared
+ *   ones under Look, every one under Advanced) and saves a book's changes
+ *   to that book's own stylesheet, never to this file.
  *
  * MUST NOT CONTAIN
  *   - Any selector other than `:root`. The moment a rule here targets `h1`,
  *     "change the brand" and "change the look of a heading" stop being
- *     separable, and the Design tab starts showing settings that do not
+ *     separable, and Book setup starts showing settings that do not
  *     do what they say.
  *   - `var()` references to component tokens. Tokens flow one way: brand →
  *     component. A brand token that depends on a component token is a cycle

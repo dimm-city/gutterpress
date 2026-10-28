@@ -55,6 +55,8 @@ interface Harness {
   holdPageWrite: Promise<void> | null;
   /** When set, the next `writePageSetup` rejects. */
   failNextPageWrite: boolean;
+  /** Each chapter file's first heading (a missing path: the read rejects). */
+  headings: Record<string, string | null>;
 }
 
 function make(
@@ -78,6 +80,7 @@ function make(
     holdPageRead: null,
     holdPageWrite: null,
     failNextPageWrite: false,
+    headings: {},
   } as Harness;
   h.ctrl = new DetailsSectionController({
     projectDir: () => h.projectDir,
@@ -106,6 +109,8 @@ function make(
       if (h.failList) return Promise.reject(new Error("scan failed"));
       return Promise.resolve(h.allFiles);
     },
+    readFirstHeading: (_dir, path) =>
+      path in h.headings ? Promise.resolve(h.headings[path]!) : Promise.reject(new Error(`ENOENT: ${path}`)),
     readPageSetup: async () => {
       if (h.holdPageRead) await h.holdPageRead;
       if (!h.pageSetup) throw new Error("nope");
@@ -131,7 +136,8 @@ function make(
         margins: change.margins === null ? INCH : (change.margins ?? before.margins),
         marginsFrom: change.margins === null ? before.fallbackMarginsFrom : change.margins ? "manifest" : before.marginsFrom,
         fallbackMarginsFrom: before.fallbackMarginsFrom,
-        presetSizeOverridden: before.presetSizeOverridden,
+        // A size written replaces any override of a preset's size.
+        presetSizeOverridden: size ? false : before.presetSizeOverridden,
       };
       return h.pageSetup;
     },
@@ -217,13 +223,37 @@ test("addAuthor/setAuthor/removeAuthor mutate the drafts array", () => {
   expect(h.ctrl.authorsDraft).toEqual(["Grace"]);
 });
 
-test("moveSourceFile / setSourceIncluded drive the list model", async () => {
+test("moveSourceFile / setSourceIncluded drive the list model; an excluded chapter goes to the files left out", async () => {
   const h = make({ fields: {} });
   await h.ctrl.loadDetails();
   h.ctrl.moveSourceFile(2, 0);
   expect(h.ctrl.sourceFiles.map((e) => e.path)).toEqual(["c.md", "a.md", "b.md"]);
   h.ctrl.setSourceIncluded(1, false);
-  expect(h.ctrl.sourceFiles[1]).toEqual({ path: "a.md", included: false });
+  expect(h.ctrl.sourceFiles).toEqual([
+    { path: "c.md", included: true },
+    { path: "b.md", included: true },
+    { path: "a.md", included: false },
+  ]);
+});
+
+test("chapters are named by their first heading once read, else by the file name made readable", async () => {
+  const h = make({ allFiles: ["a.md", "b.md", "02-the-end.md"], fields: { sourceFiles: ["a.md", "b.md"] } });
+  h.headings = { "a.md": "Getting Started", "b.md": null }; // b.md has no heading; 02-the-end.md can't be read
+  await h.ctrl.loadDetails();
+  expect(h.ctrl.chapterTitle("a.md")).toBe("A"); // before the headings are read
+  await settle();
+  expect(h.ctrl.titles).toEqual({ "a.md": "Getting Started" });
+  expect(h.ctrl.chapterTitle("a.md")).toBe("Getting Started");
+  expect(h.ctrl.chapterTitle("b.md")).toBe("B");
+  expect(h.ctrl.chapterTitle("02-the-end.md")).toBe("The end");
+});
+
+test("a book with no authors still offers one empty field, and saving it writes nothing", async () => {
+  const h = make({ fields: { title: "T" } });
+  await h.ctrl.loadDetails();
+  expect(h.ctrl.authorsDraft).toEqual([""]);
+  await h.ctrl.flushPendingSave();
+  expect(h.writeCalls).toEqual([]);
 });
 
 // ── Saves as you go: write only what changed ──────────────────────────────────
@@ -331,7 +361,7 @@ test("a failed save keeps the drafts, surfaces detailsError + onError, and drops
   h.ctrl.titleDraft = "Kept";
   expect(await h.ctrl.flushPendingSave()).toBe(false); // the panel stays open on the error
   expect(h.ctrl.detailsSaveStatus).toBe("idle");
-  expect(h.ctrl.detailsError).toContain("disk full");
+  expect(h.ctrl.detailsError).toBe("Couldn't save: disk full. Your changes are still here; try again.");
   expect(h.onError.calls.length).toBe(1);
   expect(String(h.onError.calls[0][0])).toContain("disk full");
   expect(h.ctrl.titleDraft).toBe("Kept");
@@ -698,6 +728,46 @@ test("a size typed while the previous size is being written stays as typed, and 
     { size: { preset: "custom", page: { width: 504, height: 504 } } },
     { size: { preset: "custom", page: { width: 504, height: 648 } } },
   ]);
+});
+
+// The user guide: `preset: book` with a `page:` of 8.5 × 11 in over the preset's 6 × 9.
+const OVERRIDDEN: PageSetup = {
+  ...BOOK_SETUP,
+  bounds: { width: 612, height: 792, tolerance: 0.5 },
+  presetSizeOverridden: true,
+};
+
+test("a book whose manifest overrides its preset's size shows Another size, at the size it prints at", async () => {
+  const h = make({ pageSetup: OVERRIDDEN });
+  await h.ctrl.loadDetails();
+  expect(h.ctrl.presetDraft).toBe("custom");
+  expect(h.ctrl.sizeChoice).toBe("letter");
+  expect(h.ctrl.pageDirty).toBe(false);
+  // Choosing Another size, or its size again, is where the book already is: nothing to write.
+  h.ctrl.setPreset("custom");
+  h.ctrl.touchPage();
+  await h.ctrl.flushPendingSave();
+  expect(h.pageWrites).toEqual([]);
+  // The book's targets still follow its preset (book: none).
+  expect(h.ctrl.targetsDraft).toEqual([]);
+});
+
+test("on an overridden size, choosing the preset goes back to the preset's own size", async () => {
+  const h = make({ pageSetup: OVERRIDDEN });
+  await h.ctrl.loadDetails();
+  h.ctrl.setPreset("book");
+  await settle();
+  expect(h.pageWrites).toEqual([{ size: { preset: "book" } }]);
+  expect(h.ctrl.presetDraft).toBe("book");
+});
+
+test("on an overridden size, a margin edit writes the margins alone", async () => {
+  const h = make({ pageSetup: OVERRIDDEN });
+  await h.ctrl.loadDetails();
+  h.ctrl.marginDrafts.top = "1";
+  h.ctrl.touchMargins();
+  await h.ctrl.flushPendingSave();
+  expect(h.pageWrites).toEqual([{ margins: { ...BOOK_MARGINS, top: 72 } }]);
 });
 
 test("a failed page-size read leaves the control out and details still load", async () => {

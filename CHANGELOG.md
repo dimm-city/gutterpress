@@ -53,6 +53,32 @@ This project follows [Semantic Versioning](https://semver.org/).
   new --page-tolerance`) went the same way: the page-size check allows the
   preset's 0.5pt. The `asset.font.approved-files` check, which nothing could
   switch on, is gone.
+- **Settings and Book setup, redesigned (#442).** Settings is one page with
+  no tabs: Appearance, Saving, Your name and email, and Accounts. It opens
+  in its own sheet from the status-bar gear, Ctrl+, or the start screen's
+  new Settings button, and looks the same with or without a book open. The
+  Reader/Author choice is gone, so every author has Setup and Publish from
+  the first launch. So are the preview, overlay-colour, zoom, file-watcher
+  and log-level options and every Reset button. Book setup has the tabs
+  Book, Look and Backup, with Advanced set apart:
+  - **Book** holds the title, authors, page size, margins, the print checks
+    and the chapters, listed by their titles, with the files left out
+    grouped under "Not in the book".
+  - **Look** chooses a look from a gallery, adjusts six brand settings
+    (fonts, text size, line spacing, text and accent colour) beside a live
+    sample page, and turns the extras (Highlight, Math, Callouts…) on and
+    off.
+  - **Backup** says in one sentence where the book is kept and offers the
+    one next step. GitHub and the book's own Git server connect right there,
+    and the copy switcher moved here from Settings.
+  - **Advanced** is the one place for npm, folder and web extensions and
+    their order, every design setting, and buttons that open
+    `manifest.yaml` and the book's stylesheet.
+
+  Gone from the app: the npm search, the version picker, the pre-release
+  switch, the export-name field and the stylesheet list. `gutterpress ext`
+  and the manifest still do all of them. A publishing key is added in
+  Publish; "Test the connection" moved to Troubleshooting > Sync.
 - **`gutterpress new` no longer insists on `--preset`.** Every starter
   template carries a preset, so leaving the flag out keeps the template's;
   the flag overrides it. `--kind theme` is `--kind look`, the word the rest of

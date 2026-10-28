@@ -26,7 +26,6 @@
     files,
     currentFile,
     onSelectFile,
-    readerMode = false,
   }: {
     view: "edit" | "read";
     onSelectView: (view: "edit" | "read") => void;
@@ -40,8 +39,6 @@
     /** Basename of the file open in the editor. */
     currentFile: string | null;
     onSelectFile: (name: string) => void | Promise<void>;
-    /** Reader (Settings → App): no Edit/Read switch. */
-    readerMode?: boolean;
   } = $props();
 
   let visible = $state(true);
@@ -85,7 +82,6 @@
   onfocusin={onFocusIn}
   onfocusout={onFocusOut}
 >
-  {#if !readerMode}
   <div class="view-switch" role="group" aria-label="View">
     <button
       class:active={view === "edit"}
@@ -104,7 +100,6 @@
       <Icon name="book-open" /><span class="label">Read</span>
     </button>
   </div>
-  {/if}
 
   {#if showPageNav}
     <nav class="page-nav" aria-label="Page navigation">

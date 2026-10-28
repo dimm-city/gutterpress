@@ -130,10 +130,7 @@ export type {
   BundledExtensionInfo,
   ExtensionImportResult,
   ExtensionImportWarning,
-  NpmExtensionMatch,
-  ExtensionSearchResult,
   ExtensionUpdatesResult,
-  ExtensionVersionsResult,
   ProjectStyle,
   RecoveryEntry,
   ProjectClassification,
@@ -156,9 +153,7 @@ import type {
   ExtensionValidationResult,
   BundledExtensionInfo,
   ExtensionImportResult,
-  ExtensionSearchResult,
   ExtensionUpdatesResult,
-  ExtensionVersionsResult,
   ProjectStyle,
   RecoveryEntry,
   ProjectClassification,
@@ -598,9 +593,9 @@ export const api = {
    * The ONE extension rail (#265). A look is an extension that carries
    * styles, a feature is one that carries markdown, a component library
    * carries both — every one is a `use` specifier in the manifest's
-   * `extensions:` list, and `list` returns them all in cascade order. The
-   * desktop's Looks & features tab shows that list with this one verb set; `use` is
-   * the stable ref every mutating call takes.
+   * `extensions:` list, and `list` returns them all in cascade order. Book
+   * setup's Look and Advanced tabs show that list with this one verb set; `use`
+   * is the stable ref every mutating call takes.
    */
   extension: {
     /** Every configured extension, in manifest (= cascade) order. */
@@ -636,14 +631,10 @@ export const api = {
       post<ExtensionValidationResult[]>('/api/extension/validate', { projectDir }),
     /** The bundled extensions (markdown features and looks) an author can turn on with no install (static). */
     bundled: () => get<BundledExtensionInfo[]>('/api/extension/bundled'),
-    /** Search npm for extensions (#246), on demand. A network/parse failure is data (`ok: false`), never a thrown error. */
-    search: (query: string) => post<ExtensionSearchResult>('/api/extension/search', { query }),
-    /** Each pinned npm extension against npm's latest (the newest of any kind with `includePrerelease`), on demand (the Looks & features tab, never project load). A network failure is data (`ok: false`). */
-    outdated: (projectDir: string, includePrerelease = false) =>
-      post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir, includePrerelease }),
-    /** Every published version of one npm package, newest first, pre-releases included (the version picker's list). On demand; a network failure is data (`ok: false`). */
-    versions: (name: string) => post<ExtensionVersionsResult>('/api/extension/versions', { name }),
-    /** A configured extension's stylesheets, concatenated (a bundled look's inlined css, or the entry's folder) — for a sample thumbnail and the Design tab's tokens. */
+    /** Each pinned npm extension against npm's latest, on demand (the Advanced tab, never project load). A network failure is data (`ok: false`), never a thrown error. */
+    outdated: (projectDir: string) =>
+      post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir }),
+    /** A configured extension's stylesheets, concatenated (a bundled look's inlined css, or the entry's folder) — for a sample thumbnail and the design settings. */
     readCss: (projectDir: string, use: string) =>
       post<string>('/api/extension/read-css', { projectDir, use }),
     /** Native picker for a `.zip` package or bare `.css`, imported into `extensions/<id>/` (#106). Null when cancelled. */
@@ -831,10 +822,6 @@ export const api = {
     /** Redacted list of stored connections (host/username/label — no tokens). */
     listHostConnections: () =>
       post<HostConnectionInfo[]>('/api/remote/list-connections'),
-
-    /** Token-settings deep link for recognized forges; null when unknown. */
-    forgeTokenUrl: (host: string) =>
-      post<string | null>('/api/remote/forge-token-url', { host }),
 
     /** Snapshot-first sync of the project to its online repository. */
     syncChanges: (projectDir: string, message?: string) =>

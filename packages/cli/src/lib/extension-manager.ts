@@ -824,7 +824,7 @@ async function pruneStaleVersions(projectDir: string, name: string, keep: readon
 //
 // A book pins exact versions and builds offline; nothing here runs from the
 // loader, build or preview. Checking is ON DEMAND — `gutterpress ext outdated`,
-// `ext update`, and the desktop's Looks & features tab when it is opened — and an
+// `ext update`, and the desktop's Advanced tab when it is opened — and an
 // update is the same `addExtension` an author would run by hand, so the new
 // version is downloaded, verified, vendored, load-tested and re-pinned in
 // place (and the old version's folder removed) exactly as `ext add` does.

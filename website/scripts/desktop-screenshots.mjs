@@ -126,13 +126,10 @@ const TALL = [360, 40, 720, 720];           // Publish / Where your work is kept
 
 console.log("desktop-screenshots: start screen and new book");
 await screen("start-screen", async () => {}, { crop: CENTRE, width: 760 });
-await screen("settings-author", async () => {
-  await click("button:has-text('Settings')");
-  // The radio by value: both role descriptions mention "Author".
-  await click("input[name='set-role'][value='author']");
-}, { crop: [370, 60, 700, 820], width: 700 });
+await screen("settings", () => click(".landing button:has-text('Settings')"), { crop: [370, 50, 700, 670], width: 700 });
+await press("Escape");
+await wait(800);
 await screen("new-book-name", async () => {
-  await click("button:has-text('Books')");
   await click("button:has-text('Create a new book')");
   // The wizard needs a title before Next does anything.
   await page.fill("input[placeholder='My First Book']", "Harbor Lights");
@@ -184,30 +181,25 @@ await screen("book-settings-details", async () => {
   await click("[aria-label='Book setup']");
   await wait(1500);
 }, { crop: SETTINGS, width: 960 });
-// The lower half of Details: the page size and the margins.
+// Further down the Book tab: the page size and the margins.
 await screen("book-settings-page", async () => {
   await page.locator("#details-margin-outside").scrollIntoViewIfNeeded();
   await wait(600);
 }, { crop: SETTINGS, width: 960 });
-// The demo book lists no extensions, so add a built-in feature and a look:
-// the list then shows rows with their badges and a thumbnail, and Design
-// shows the look's tokens.
-await screen("book-settings-extensions", async () => {
-  await click("[role=tab]:has-text('Looks & features')");
-  await click("[aria-label='Add Highlight']");
-  await click("[aria-label='Add Clean book']");
-  await wait(2500);
+// The demo book lists no extensions, so choose a look and tick an extra: Look
+// then shows the look's six settings beside the sample page, and Advanced
+// lists both.
+await screen("book-settings-design", async () => {
+  await click("[role=tab]:has-text('Look')");
+  await click("input[name='book-look'][value='clean-book']");
+  await wait(2500); // a choice is written once it stops changing
+  await page.locator("label:has-text('Highlight') input[type=checkbox]").check();
+  await wait(1500);
+  await page.locator(".app-view :text('Choose a look')").first().scrollIntoViewIfNeeded();
 }, { crop: SETTINGS, width: 960 });
-await screen("extensions-search", async () => {
-  await click("[role=tab]:has-text('Search')");
-  await page.fill("input[placeholder^='emoji']", "emoji");
-  await press("Enter");
-  await wait(6000); // npm answers over the network
-}, { crop: SETTINGS, width: 960 });
-await screen("book-settings-design", () => click("[role=tab]:has-text('Design')"), { crop: SETTINGS, width: 960 });
+await screen("book-settings-extensions", () => click("[role=tab]:has-text('Advanced')"), { crop: SETTINGS, width: 960 });
 // Take both out again, so the preview in the shots below is unchanged. A
 // removed row takes the focus with it, so close with the X, not Esc.
-await click("[role=tab]:has-text('Looks & features')");
 await click("[aria-label='Remove Highlight']");
 await click("[aria-label='Remove Clean book']");
 await wait(1500);

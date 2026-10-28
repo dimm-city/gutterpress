@@ -68,7 +68,7 @@ interface Harness {
   fs: FakeFs;
   timer: FakeTimer;
   onError: ReturnType<typeof spy>;
-  onEditRawCss: ReturnType<typeof spy>;
+  setActiveStyles: ReturnType<typeof spy>;
   styles: ProjectStyle[];
   projectDir: string | null;
 }
@@ -79,12 +79,12 @@ function make(over: Partial<{ cssPath: string; noProject: boolean; css: string }
   fs.files.set(cssPath, over.css ?? ROOT_CSS);
   const timer = new FakeTimer();
   const onError = spy();
-  const onEditRawCss = spy();
+  const setActiveStyles = spy();
   const h = {
     fs,
     timer,
     onError,
-    onEditRawCss,
+    setActiveStyles,
     styles: [{ path: cssPath, displayName: "styles/theme.css", active: true }],
     projectDir: over.noProject ? null : "/proj",
   } as Harness;
@@ -95,8 +95,8 @@ function make(over: Partial<{ cssPath: string; noProject: boolean; css: string }
     readCss: () => Promise.reject(new Error("no extensions")),
     readFile: fs.readFile,
     writeFile: fs.writeFile,
+    setActiveStyles: (dir, paths) => Promise.resolve(setActiveStyles(dir, paths)),
     onError: (m) => onError(m),
-    onEditRawCss: (p) => onEditRawCss(p),
     debounceMs: 250,
     setTimer: timer.set,
     clearTimer: timer.clear,
@@ -227,14 +227,14 @@ test("setLength ignores blank input (no schedule)", async () => {
   expect(h.timer.pending).toBeNull();
 });
 
-test("a failed write re-queues the batch, surfaces onError, and drops to idle", async () => {
+test("a failed write re-queues the batch, surfaces the error in the tab and onError, and drops to idle", async () => {
   const h = make();
   await h.ctrl.loadDesign();
   const t = h.ctrl.colorTokens[0];
   h.fs.failNextWrite = true;
   h.ctrl.setToken(t, "#00ff00");
-  h.timer.fire();
-  await flush();
+  expect(await h.ctrl.flushPendingTokenWrites()).toBe(false); // Book setup stays open on the error
+  expect(h.ctrl.designSaveError).toBe("Couldn't save your change: disk full");
   expect(h.onError.calls.length).toBe(1);
   expect(String(h.onError.calls[0][0])).toContain("disk full");
   expect(h.ctrl.designSaveStatus).toBe("idle");
@@ -242,15 +242,6 @@ test("a failed write re-queues the batch, surfaces onError, and drops to idle", 
   h.ctrl.flushPendingTokenWrites();
   await flush();
   expect(h.fs.files.get("/proj/styles/theme.css")).toContain("--heading-color: #00ff00;");
-});
-
-test("editRawCss forwards the active css path only when one is loaded", async () => {
-  const h = make();
-  h.ctrl.editRawCss();
-  expect(h.onEditRawCss.calls.length).toBe(0); // no cssPath yet
-  await h.ctrl.loadDesign();
-  h.ctrl.editRawCss();
-  expect(h.onEditRawCss.calls).toEqual([["/proj/styles/theme.css"]]);
 });
 
 test("a stylesheet switch during a token-write commit never redirects the old sheet's tokens into the new file (finding #10)", async () => {
@@ -292,8 +283,8 @@ test("a stylesheet switch during a token-write commit never redirects the old sh
     readCss: () => Promise.reject(new Error("no extensions")),
     readFile,
     writeFile,
+    setActiveStyles: () => Promise.resolve(),
     onError: () => {},
-    onEditRawCss: () => {},
     debounceMs: 250,
     setTimer: timer.set,
     clearTimer: timer.clear,
@@ -417,16 +408,19 @@ const CLEAN_BOOK = look({ use: "clean-book", kind: "bundled" });
 const HOUSE = look({ use: "./extensions/house", dir: "/proj/extensions/house" });
 const FROM_NPM = look({ use: "@acme/look@1.0.0", kind: "npm", name: "@acme/look", version: "1.0.0" });
 
-/** A book with looks: `css` maps each look's `use` to what `readCss` returns. */
-function lookHarness(extensions: ProjectExtensionEntry[], css: Record<string, string>, bookCss: string) {
+/** A book with looks: `css` maps each look's `use` to what `readCss` returns;
+ *  a null `bookCss` is a book with no stylesheet of its own yet. */
+function lookHarness(extensions: ProjectExtensionEntry[], css: Record<string, string>, bookCss: string | null) {
   const fs = new FakeFs();
-  fs.files.set(BOOK, bookCss);
+  if (bookCss !== null) fs.files.set(BOOK, bookCss);
   const timer = new FakeTimer();
   const readCssCalls: string[] = [];
   const written: string[] = [];
+  const setActive: string[][] = [];
   const ctrl = new DesignSectionController({
     projectDir: () => "/proj",
-    listStyles: () => Promise.resolve([{ path: BOOK, displayName: "styles/book.css", active: true }]),
+    listStyles: () =>
+      Promise.resolve(bookCss === null ? [] : [{ path: BOOK, displayName: "styles/book.css", active: true }]),
     listExtensions: () => Promise.resolve(extensions),
     readCss: (_dir, use) => {
       readCssCalls.push(use);
@@ -437,10 +431,14 @@ function lookHarness(extensions: ProjectExtensionEntry[], css: Record<string, st
       written.push(path);
       return fs.writeFile(path, content);
     },
+    setActiveStyles: (_dir, paths) => {
+      setActive.push(paths);
+      return Promise.resolve();
+    },
     setTimer: timer.set,
     clearTimer: timer.clear,
   });
-  return { ctrl, fs, timer, readCssCalls, written };
+  return { ctrl, fs, timer, readCssCalls, written, setActive };
 }
 
 const tokenValues = (ctrl: DesignSectionController) => Object.fromEntries(ctrl.tokens.map((t) => [t.name, t.value]));
@@ -680,9 +678,118 @@ test("loadDesign tolerates a failing extension list — the book's own tokens st
     readCss: () => Promise.reject(new Error("unreachable")),
     readFile: () => Promise.resolve(":root { --c: 3; }\n"),
     writeFile: () => Promise.resolve(undefined),
+    setActiveStyles: () => Promise.resolve(),
   });
   await ctrl.loadDesign();
   expect(ctrl.cssPath).toBe(BOOK);
   expect(ctrl.tokens.map((t) => t.name)).toEqual(["--c"]);
   expect(ctrl.designError).toBeNull();
+});
+
+// ── The Look tab: six brand settings, a live sample, a stylesheet on demand ──
+
+const CLEAN_CSS =
+  ":root { --color-ink: #1a1a1a; --color-accent: #2b4c7e; --font-body: Georgia, serif; --font-display: Georgia, serif; --fs-body: 11pt; --leading: 1.55; --space-md: 1rem; }";
+
+test("brandTokens are the six brand settings a look or the book declares, in the Look tab's order", async () => {
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": CLEAN_CSS }, "");
+  await h.ctrl.loadDesign();
+  expect(h.ctrl.brandTokens.map((t) => t.name)).toEqual([
+    "--font-body",
+    "--font-display",
+    "--fs-body",
+    "--leading",
+    "--color-ink",
+    "--color-accent",
+  ]);
+  // A look that declares none of them has no quick settings.
+  const other = lookHarness([HOUSE], { "./extensions/house": ":root { --house-tint: #eee; }" }, "");
+  await other.ctrl.loadDesign();
+  expect(other.ctrl.brandTokens).toEqual([]);
+});
+
+test("brandOverridden: the book sets a brand setting a look also sets, or one was changed here", async () => {
+  const plain = lookHarness([CLEAN_BOOK], { "clean-book": CLEAN_CSS }, ":root {\n  --space-md: 2rem;\n}\n");
+  await plain.ctrl.loadDesign();
+  expect(plain.ctrl.brandOverridden).toBe(false); // the book's own token is not a brand setting
+  plain.ctrl.setToken(plain.ctrl.brandTokens[4]!, "#000000");
+  expect(plain.ctrl.brandOverridden).toBe(true);
+
+  const stored = lookHarness([CLEAN_BOOK], { "clean-book": CLEAN_CSS }, ":root {\n  --color-accent: #c0392b;\n}\n");
+  await stored.ctrl.loadDesign();
+  expect(stored.ctrl.brandOverridden).toBe(true);
+});
+
+const ACCENT_BOOK = ":root {\n  --color-accent: #c0392b;\n  --space-md: 2rem;\n}\n";
+
+test("resetBrand puts the look's brand settings back and takes the book's declarations of them out", async () => {
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": CLEAN_CSS }, ACCENT_BOOK);
+  await h.ctrl.loadDesign();
+  h.ctrl.setLength(h.ctrl.brandTokens.find((t) => t.name === "--fs-body")!, "12");
+  h.ctrl.askBrandReset();
+  h.ctrl.resetBrand();
+  expect(h.ctrl.brandResetAsked).toBe(false);
+  expect(tokenValues(h.ctrl)).toMatchObject({ "--color-accent": "#2b4c7e", "--fs-body": "11pt", "--space-md": "2rem" });
+  expect(h.ctrl.brandOverridden).toBe(false);
+  h.timer.fire();
+  await flush();
+  // Only the brand settings went; the book's other token stays.
+  expect(h.fs.files.get(BOOK)).toBe(":root {\n  --space-md: 2rem;\n}\n");
+});
+
+test("Reset to the look's settings asks first: Keep mine changes nothing", async () => {
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": CLEAN_CSS }, ACCENT_BOOK);
+  await h.ctrl.loadDesign();
+  h.ctrl.askBrandReset();
+  expect(h.ctrl.brandResetAsked).toBe(true);
+  h.ctrl.keepBrand();
+  expect(h.ctrl.brandResetAsked).toBe(false);
+  expect(tokenValues(h.ctrl)["--color-accent"]).toBe("#c0392b");
+  expect(h.ctrl.brandOverridden).toBe(true);
+  expect(h.timer.pending).toBeNull(); // nothing to write
+});
+
+test("Undo changes after a reset puts back the settings the book had when Book setup opened", async () => {
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": CLEAN_CSS }, ACCENT_BOOK);
+  await h.ctrl.loadDesign();
+  h.ctrl.resetBrand();
+  h.timer.fire();
+  await flush();
+  expect(h.fs.files.get(BOOK)).toBe(":root {\n  --space-md: 2rem;\n}\n");
+  expect(h.ctrl.anyDirty).toBe(true); // Advanced offers Undo changes
+  h.ctrl.revertAllTokens();
+  expect(tokenValues(h.ctrl)["--color-accent"]).toBe("#c0392b");
+  h.timer.fire();
+  await flush();
+  expect(h.fs.files.get(BOOK)).toBe(":root {\n  --color-accent: #c0392b;\n  --space-md: 2rem;\n}\n");
+  expect(h.ctrl.anyDirty).toBe(false);
+  expect(h.ctrl.brandOverridden).toBe(true);
+});
+
+test("sampleDoc is the enabled looks' CSS with the current values on top, and follows an edit", async () => {
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": CLEAN_CSS }, "");
+  await h.ctrl.loadDesign();
+  expect(h.ctrl.sampleDoc).toContain(CLEAN_CSS);
+  expect(h.ctrl.sampleDoc).toContain("--color-accent:#2b4c7e;");
+  h.ctrl.setToken(h.ctrl.brandTokens.find((t) => t.name === "--color-accent")!, "#c0392b");
+  expect(h.ctrl.sampleDoc).toContain("--color-accent:#c0392b;");
+});
+
+test("a book with no stylesheet still shows its look's settings; the first edit creates styles/book.css and lists it", async () => {
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": CLEAN_CSS }, null);
+  await h.ctrl.loadDesign();
+  expect(h.ctrl.cssPath).toBeNull();
+  expect(h.ctrl.brandTokens.length).toBe(6);
+  h.ctrl.setToken(h.ctrl.brandTokens.find((t) => t.name === "--color-accent")!, "#c0392b");
+  h.timer.fire();
+  await flush();
+  expect(h.setActive).toEqual([["styles/book.css"]]);
+  expect(h.written).toEqual([BOOK, BOOK]); // created, then the edit
+  expect(h.fs.files.get(BOOK)).toBe(":root {\n  --color-accent: #c0392b;\n}\n");
+  expect(h.ctrl.cssPath).toBe(BOOK);
+  expect(h.ctrl.cssName).toBe("styles/book.css");
+  expect(h.ctrl.designSaveStatus).toBe("saved");
+  // Once there is one, it is the one: nothing more is created.
+  expect(await h.ctrl.ensureStylesheet()).toBe(BOOK);
+  expect(h.setActive.length).toBe(1);
 });

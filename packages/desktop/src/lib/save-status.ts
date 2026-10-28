@@ -85,7 +85,7 @@ export interface SaveStatusCopy {
 export interface SaveStatusInput {
   /** Editor buffer save phase. */
   savePhase: "clean" | "dirty" | "saving" | "error";
-  /** Settings → Saving "Save edits automatically". */
+  /** Settings → Saving "Save changes automatically". */
   autoSave: boolean;
   /** A manual Save is in progress. */
   forceSaving: boolean;
@@ -118,7 +118,7 @@ export interface SaveStatusInput {
     canSync: boolean;
     /** The repo has a remote at all (any protocol). */
     hasRemote: boolean;
-    /** Settings → Saving "Keep this book backed up online". */
+    /** Settings → Saving "Back up online automatically". */
     automatic: boolean;
     /** ISO time of the last completed backup check this session, or null. */
     lastSyncAt: string | null;
@@ -145,7 +145,7 @@ export const ONLINE_EXPLAIN =
   "A copy of your book kept online, so you can get it back if this computer is lost.";
 
 const SETTING_VERSIONS = "Settings → Saving → Keep previous versions";
-const SETTING_BACKUP = "Settings → Saving → Keep this book backed up online";
+const SETTING_BACKUP = "Settings → Saving → Back up online automatically";
 
 const COME_BACK = "Save a version to be able to come back to how your book is now.";
 const files = (n: number): string => `${n} file${n === 1 ? "" : "s"}`;
@@ -384,7 +384,7 @@ export function onlineSection(
     case "offline":
       return {
         ...base,
-        status: "You're offline.",
+        status: "Can't reach the online backup.",
         detail: o.automatic
           ? "Your work is safe on this computer. Online backup will try again on its own."
           : "Your work is safe on this computer. Use Back up now when you're back online.",

@@ -166,7 +166,7 @@ test("offline -> info toast", async () => {
   const h = make();
   h.sync.next = { status: "offline", message: "" };
   await h.ctrl.handleForceSync();
-  expect(h.toast.info.calls).toEqual([["You're offline. Try the online backup again when you're connected."]]);
+  expect(h.toast.info.calls).toEqual([["Couldn't reach the online backup. Check your internet connection, or try again later."]]);
 });
 
 test("error -> the outcome's authored guidance is shown, not a false 'we'll try again later'", async () => {

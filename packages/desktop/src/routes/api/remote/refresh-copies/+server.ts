@@ -3,7 +3,7 @@ import { defineRoute, getHostServices, loadLib, requireProjectDir } from '../../
 import type { RequestHandler } from './$types';
 
 /**
- * Fetch every branch the project's remote has, so Settings → Saving's copy
+ * Fetch every branch the project's remote has, so Book setup → Backup's copy
  * picker lists copies created somewhere else (#273). Reads the network but
  * only ever writes remote-tracking refs — no local branch, no working-tree
  * change — so it is safe to call with unsaved work open.

@@ -12,7 +12,7 @@ export const MSG_SYNCED = "Your changes are online.";
 export const MSG_SYNCED_MERGED =
   "Your changes are online, combined with changes from the online copy.";
 export const MSG_OFFLINE =
-  "Your changes are saved on this computer. gutterpress couldn't reach the online repository — try syncing again when you're back online.";
+  "Your changes are saved on this computer. Gutterpress couldn't reach the online repository — try syncing again when you're back online.";
 export const MSG_AUTH =
   "The online repository didn't accept the saved connection. Reconnect and try again.";
 // No literal scheme tokens ("http://") in this copy: the desktop's Advanced
@@ -39,7 +39,7 @@ export const MSG_UNRELATED =
 export const MSG_NO_REMOTE =
   "This book isn't connected to an online repository yet.";
 export const MSG_SSH_REMOTE =
-  "This book's online address uses SSH (git@…), which gutterpress can't sync to. Switch it to the web (HTTPS) address to sync from here.";
+  "This book's online address uses SSH (git@…), which Gutterpress can't sync to. Switch it to the web (HTTPS) address to sync from here.";
 export const MSG_NO_BRANCH =
   "This book's version history isn't on a named branch, so it can't be synced right now.";
 // The two messages below are recorded VERBATIM as commit messages, so a

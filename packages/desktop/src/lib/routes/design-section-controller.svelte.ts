@@ -1,6 +1,7 @@
 /**
- * DesignSectionController — the single owner of the guided Design section's
- * state + logic (the `:root` custom-property editor).
+ * DesignSectionController — the single owner of the book's design settings
+ * (the `:root` custom properties): the Look tab's six brand settings and live
+ * sample, and Advanced's "All design settings".
  *
  * What the panel shows is the cascade the book renders with: the `:root`
  * custom properties of every ENABLED extension that carries styles, read in
@@ -11,9 +12,15 @@
  * by default): an edit updates the sheet's own `:root` declaration of the
  * token, or adds one to its `:root` block (`applyTokenUpdates`). A look's own
  * files are never written; the author's stylesheet is the one place a look is
- * styled over (#427). Revert is an undo: a token the book declared gets its
- * own value back, and one only a look declared has the book's declaration of
- * it removed again, so the look's value shows through instead of being pinned.
+ * styled over (#427). A book with no stylesheet of its own gets
+ * `styles/book.css` on its first edit (`ensureStylesheet`). Revert is an undo:
+ * a token the book declared gets its own value back, and one only a look
+ * declared has the book's declaration of it removed again, so the look's value
+ * shows through instead of being pinned.
+ *
+ * The six brand settings (`BRAND`) are the shared vocabulary every built-in
+ * look defines, so they carry across looks; `sampleDoc` is the enabled looks'
+ * CSS over a fixed sample with the current values on top.
  *
  * The load-bearing part is the debounced, serialized, race-free token
  * writer: edits coalesce into `tokenPending` (keyed by name, last value wins)
@@ -25,14 +32,14 @@
  * Single-owner discipline mirrors `PageNavController`
  * (`routes/page-nav-controller.svelte.ts`): the component reads the public rune
  * getters and calls the intent methods; the callbacks passed down to
- * `DesignSection.svelte` are arrow fields so `this` survives prop passing.
+ * the sections are arrow fields so `this` survives prop passing.
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
  * (§8): the reactive `projectDir` accessor, the `listStyles` /
- * `listExtensions` / `readCss` / `readFile` / `writeFile` host calls, the
- * `onError` (toast) + `onEditRawCss` hooks, and the debounce timer primitives.
- * Only type-only lib-shaped imports plus the pure `#lib/style-tokens` string
- * helpers — ZERO `node:*` / lib value imports.
+ * `listExtensions` / `readCss` / `readFile` / `writeFile` / `setActiveStyles`
+ * host calls, the `onError` (toast) hook, and the debounce timer primitives.
+ * Only type-only lib-shaped imports plus pure string helpers — ZERO `node:*` /
+ * lib value imports.
  *
  * `tokens` (from `parseStyleTokens`) already excludes `@internal`-annotated
  * declarations and carries each token's optional `@group` annotation (issue
@@ -48,6 +55,11 @@ import {
   applyTokenUpdates,
   type TokenUpdate,
 } from "#lib/style-tokens.ts";
+import { sampleSrcdoc } from "#lib/components/config/config-helpers.ts";
+import { joinPath } from "#lib/platform/paths.ts";
+
+/** The stylesheet a book without one gets on its first edit (what `gutterpress new` scaffolds). */
+const BOOK_STYLESHEET = "styles/book.css";
 
 export interface DesignSectionDeps {
   /** The open project directory (reactive prop), or null when none is open. */
@@ -62,10 +74,10 @@ export interface DesignSectionDeps {
   readFile: (path: string) => Promise<string>;
   /** Write UTF-8 content to a file. Path is absolute. */
   writeFile: (path: string, content: string) => Promise<unknown>;
+  /** Replace the manifest's `styles:` list (project-relative paths). */
+  setActiveStyles: (projectDir: string, paths: string[]) => Promise<unknown>;
   /** Surface a save failure (the panel wires this to a toast). */
   onError?: (message: string) => void;
-  /** Escape hatch: open the active stylesheet in the raw-CSS editor. */
-  onEditRawCss?: (cssPath: string) => void;
   /** Debounce window for coalesced token writes (ms). Default 250. */
   debounceMs?: number;
   /** Injected timer primitives (default real setTimeout/clearTimeout) for tests. */
@@ -74,6 +86,9 @@ export interface DesignSectionDeps {
 }
 
 export class DesignSectionController {
+  /** The Look tab's brand settings, in the order it shows them. */
+  static readonly BRAND = ["--font-body", "--font-display", "--fs-body", "--leading", "--color-ink", "--color-accent"];
+
   // ── Public rune state (read by the template; mutated only via methods) ──────
   /** Absolute path of the book stylesheet edits are written to. */
   cssPath = $state<string | null>(null);
@@ -85,8 +100,12 @@ export class DesignSectionController {
   designLoading = $state(false);
   /** Last load/parse error, or null. */
   designError = $state<string | null>(null);
-  /** The debounced-save badge state. */
+  /** The Book setup header's Saving… / Saved, for token writes. */
   designSaveStatus = $state<"idle" | "saving" | "saved">("idle");
+  /** The last token write's failure, until a write succeeds. */
+  designSaveError = $state<string | null>(null);
+  /** "Reset to the look's settings" was pressed: its Replace / Keep mine question shows. */
+  brandResetAsked = $state(false);
   /** Display names of the enabled looks whose tokens the panel shows, in cascade order. */
   lookLabels = $state<string[]>([]);
 
@@ -96,10 +115,14 @@ export class DesignSectionController {
   private bookDeclared = new Set<string>();
   /** Each token's value from the enabled looks alone (what shows when the book's override goes). */
   private lookValues = new Map<string, string>();
+  /** The enabled looks' CSS, in cascade order (the sample's base). */
+  private lookCss = "";
+  /** The manifest's active stylesheets (project-relative), for `ensureStylesheet`. */
+  private activeStyles: string[] = [];
   /** Coalesced edits by name: a value to write, or null to remove the book's declaration. */
   private readonly tokenPending = new Map<string, string | null>();
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
-  private commitChain: Promise<void> = Promise.resolve();
+  private commitChain: Promise<boolean> = Promise.resolve(true);
 
   private readonly deps: DesignSectionDeps;
   private readonly debounceMs: number;
@@ -187,6 +210,21 @@ export class DesignSectionController {
   /** The value the enabled looks give the token, or undefined when none sets it. */
   lookValue = (t: StyleToken): string | undefined => this.lookValues.get(t.name);
 
+  /** The brand settings an enabled look or the book's stylesheet declares, in `BRAND` order. */
+  get brandTokens(): StyleToken[] {
+    return DesignSectionController.BRAND.flatMap((name) => this.tokens.filter((t) => t.name === name));
+  }
+
+  /** True when a brand setting a look sets has another value here: the book's own, or one changed here. */
+  get brandOverridden(): boolean {
+    return this.brandTokens.some((t) => this.lookValues.has(t.name) && this.lookValues.get(t.name) !== t.value);
+  }
+
+  /** The Look tab's live sample: the enabled looks' CSS, then the current values. */
+  get sampleDoc(): string {
+    return sampleSrcdoc(`${this.lookCss}\n:root{${this.tokens.map((t) => `${t.name}:${t.value};`).join("")}}`);
+  }
+
   // ── Load ────────────────────────────────────────────────────────────────────
   async loadDesign(): Promise<void> {
     const projectDir = this.deps.projectDir();
@@ -201,23 +239,22 @@ export class DesignSectionController {
         this.deps.listStyles(projectDir),
         this.deps.listExtensions(projectDir).catch(() => []),
       ]);
+      // A book with no stylesheet of its own yet still shows its looks'
+      // settings; the first edit creates one (`ensureStylesheet`).
       const active = list.find((x) => x.active) ?? list[0];
-      if (!active) {
-        this.cssPath = null;
-        this.cssName = "";
-        return;
-      }
-      this.cssPath = active.path;
-      this.cssName = active.displayName;
+      this.cssPath = active?.path ?? null;
+      this.cssName = active?.displayName ?? "";
+      this.activeStyles = list.filter((x) => x.active).map((x) => x.displayName);
       // Every enabled look in cascade order, then the book's own sheet, which
       // loads after all of them. A look whose CSS can't be read (a missing
-      // folder) contributes nothing here; the Looks & features list reports it.
+      // folder) contributes nothing here; Advanced's extension list reports it.
       const looks = extensions.filter((e) => e.enabled && e.carries.styles);
       const sheets = await Promise.all([
         ...looks.map((e) => this.deps.readCss(projectDir, e.use).catch(() => "")),
-        this.deps.readFile(active.path),
+        active ? this.deps.readFile(active.path) : "",
       ]);
       this.lookLabels = looks.map((e) => e.label);
+      this.lookCss = sheets.slice(0, -1).join("\n");
       this.tokens = cascadeStyleTokens(sheets);
       this.bookDeclared = new Set(parseStyleTokens(sheets.at(-1)!).map((t) => t.name));
       this.lookValues = new Map(cascadeStyleTokens(sheets.slice(0, -1)).map((t) => [t.name, t.value]));
@@ -242,8 +279,8 @@ export class DesignSectionController {
     }, this.debounceMs);
   }
 
-  /** Flush any pending token edits now (also used on unmount). */
-  flushPendingTokenWrites(): Promise<void> {
+  /** Flush any pending token edits now (also used on close). Resolves to false when the write failed. */
+  flushPendingTokenWrites(): Promise<boolean> {
     if (this.flushTimer) {
       this.clearTimer(this.flushTimer);
       this.flushTimer = null;
@@ -254,40 +291,66 @@ export class DesignSectionController {
     return this.commitChain;
   }
 
-  private async commitPendingTokens(): Promise<void> {
+  private async commitPendingTokens(): Promise<boolean> {
     // Capture the target path BEFORE any await: a concurrent
     // loadDesign() — a stylesheet/theme switch — can reassign `this.cssPath`
     // while we're parked on the read below. Reading `this.cssPath` again after
     // the await for the write would fold the OLD sheet's tokens into the NEWLY
     // selected file, corrupting it. Bind one local `cssPath` and read AND write
     // it, so a batch always lands on the exact sheet its edits came from.
-    const cssPath = this.cssPath;
-    if (!cssPath || this.tokenPending.size === 0) return;
+    let cssPath = this.cssPath;
+    if (this.tokenPending.size === 0) return true;
     // Drain the coalesced edits into one batch, then read → fold → write once.
     const updates: TokenUpdate[] = [...this.tokenPending.entries()].map(
       ([name, value]) => ({ name, value }),
     );
     this.tokenPending.clear();
     try {
+      cssPath ??= await this.ensureStylesheet();
+      if (!cssPath) return true;
       const css = await this.deps.readFile(cssPath);
       await this.deps.writeFile(cssPath, applyTokenUpdates(css, updates));
       // Only advance the badge if the active sheet is still the one we wrote;
       // if a switch happened mid-flight, the badge belongs to the new sheet
       // (loadDesign already reset it to "idle") — don't clobber it with "saved".
-      if (this.cssPath === cssPath && this.tokenPending.size === 0)
-        this.designSaveStatus = "saved";
+      if (this.cssPath === cssPath) {
+        this.designSaveError = null;
+        if (this.tokenPending.size === 0) this.designSaveStatus = "saved";
+      }
+      return true;
     } catch (e) {
       // Re-queue the failed batch (unless a newer edit already superseded it) so
       // a later flush can retry, and surface the error — but only while we're
       // still on the same sheet, so a failed OLD-sheet write can't leak its
       // edits into the pending queue of a sheet the user just switched to.
+      const reason = e instanceof Error ? e.message : String(e);
       if (this.cssPath === cssPath) {
         for (const u of updates) if (!this.tokenPending.has(u.name)) this.tokenPending.set(u.name, u.value);
         this.designSaveStatus = "idle";
+        this.designSaveError = `Couldn't save your change: ${reason}`;
       }
-      this.deps.onError?.(`Couldn't save changes: ${e instanceof Error ? e.message : String(e)}`);
+      this.deps.onError?.(`Couldn't save changes: ${reason}`);
+      return false;
     }
   }
+
+  /**
+   * Give a book with no stylesheet of its own one, so an edit has somewhere
+   * to go: `styles/book.css` holding an empty `:root {}`, added to the
+   * manifest's `styles:`. A no-op once the book has one. Resolves to its path
+   * (null without a project).
+   */
+  ensureStylesheet = async (): Promise<string | null> => {
+    const projectDir = this.deps.projectDir();
+    if (this.cssPath || !projectDir) return this.cssPath;
+    const path = joinPath(projectDir, ...BOOK_STYLESHEET.split("/"));
+    await this.deps.writeFile(path, ":root {\n}\n");
+    this.activeStyles = [...this.activeStyles, BOOK_STYLESHEET];
+    await this.deps.setActiveStyles(projectDir, this.activeStyles);
+    this.cssPath = path;
+    this.cssName = BOOK_STYLESHEET;
+    return path;
+  };
 
   // ── Intents (arrow fields: passed as callback props to DesignSection) ───────
   setToken = (t: StyleToken, value: string): void => {
@@ -324,13 +387,36 @@ export class DesignSectionController {
     for (const t of this.tokens) if (this.isDirty(t)) this.resetToken(t);
   };
 
+  /** "Reset to the look's settings" asks before it replaces anything. */
+  askBrandReset = (): void => {
+    this.brandResetAsked = true;
+  };
+
+  /** "Keep mine": nothing changes. */
+  keepBrand = (): void => {
+    this.brandResetAsked = false;
+  };
+
+  /**
+   * "Replace": every brand setting a look sets goes back to the look's value,
+   * and the book's declaration of it is taken out, so the look shows through.
+   * Like any edit here it is undone by `revertAllTokens` (Advanced's Undo
+   * changes), which puts back what the book had when Book setup opened.
+   */
+  resetBrand = (): void => {
+    this.brandResetAsked = false;
+    for (const t of this.brandTokens) {
+      const fromLook = this.lookValues.get(t.name);
+      if (fromLook === undefined || fromLook === t.value) continue;
+      t.value = fromLook;
+      this.scheduleTokenWrite(t.name, null);
+    }
+    this.tokens = this.tokens; // nudge reactivity (mutated elements)
+  };
+
   setLength = (t: StyleToken, num: string): void => {
     const n = num.trim();
     if (n === "") return;
     this.setToken(t, `${n}${t.unit ?? ""}`);
-  };
-
-  editRawCss = (): void => {
-    if (this.cssPath) this.deps.onEditRawCss?.(this.cssPath);
   };
 }

@@ -956,7 +956,7 @@ test("opening a book that downloaded its pinned extensions says so in one toast"
   expect(deps.toastError.calls).toHaveLength(0);
 });
 
-test("a failed download is a warning toast with an Open Looks & features button, and the book still opens", async () => {
+test("a failed download is a warning toast with an Open Book setup button, and the book still opens", async () => {
   const { ctrl, deps } = make();
   deps.startPreviewResult = {
     previewStarted: true,
@@ -975,7 +975,7 @@ test("a failed download is a warning toast with an Open Looks & features button,
   expect(message).toBe("Couldn't download gp-x@1.0.0 (ECONNREFUSED). The book opened without it.");
   expect(type).toBe("warning");
   expect(duration).toBe(0); // stays until dismissed
-  expect(action?.label).toBe("Open Looks & features");
+  expect(action?.label).toBe("Open Book setup");
   action!.onClick();
   expect(deps.openExtensions.calls).toHaveLength(1);
 });
@@ -1030,7 +1030,7 @@ test("offline with extensions missing is an error toast saying to install them w
   );
   expect(type).toBe("error");
   expect(duration).toBe(0);
-  expect(action?.label).toBe("Open Looks & features");
+  expect(action?.label).toBe("Open Book setup");
 });
 
 test("an ordinary open shows no extension toast", async () => {

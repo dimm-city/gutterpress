@@ -15,7 +15,7 @@
 // Integration is OPT-IN. A portable executable must not silently copy itself
 // into the user's home or mutate their desktop environment on first launch, so
 // nothing here runs unless the user picks "Add to application menu" in
-// Settings → App.
+// Troubleshooting → Diagnostics.
 //
 // The module owns no Electron imports — it takes a plain {@link AppImageEnv}
 // snapshot (platform, isPackaged, $APPIMAGE, home, $XDG_DATA_HOME, packaged

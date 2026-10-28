@@ -10,8 +10,7 @@ of the status bar ("Books — open the start screen") to get back to it from a b
 
 ## Create a new book
 
-1. On the Books tab, choose **Create a new book**. (Creating a book makes you an Author: Edit,
-   Setup and Publish appear in the toolbar once it opens.)
+1. On the Books tab, choose **Create a new book**.
 2. **Name & author:** type the book's name under "What's your book called?" and, if you like,
    your name.
 3. **Template:** pick a starting point — **Book** (a novel, memoir or any long-form book),
@@ -20,7 +19,7 @@ of the status bar ("Books — open the start screen") to get back to it from a b
    Zine, Technical doc or Academic), so the new book is styled from the first page.
 4. **Print & save:**
    - Under **What size should the pages be?** choose **DriveThruRPG print** (US Letter),
-     **Trade paperback** (6 × 9 in), or **Other size** and then a size (US Letter, Trade
+     **Trade paperback** (6 × 9 in), or **Another size** and then a size (US Letter, Trade
      paperback, Digest, A4, A5, or your own width and height). The Zine and Technical document
      templates start on their own size (Digest and US Letter).
    - Under **Check the finished PDF against a print service's rules?** tick DriveThruRPG and/or

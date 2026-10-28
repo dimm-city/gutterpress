@@ -5,19 +5,29 @@ description: Change how the app looks and behaves, update it, and get help or re
 
 # Settings, updates and getting help
 
-The gear at the right of the status bar (or Ctrl+,) opens **Settings**; the **?** next to it opens
-**Help**. Both are tabs of the start screen.
+The gear at the right of the status bar (or Ctrl+, — Cmd+, on a Mac) opens **Settings**, and so
+does the **Settings** button at the top of the start screen; the **?** next to the gear opens
+**Help**, a tab of the start screen.
 
 ## Settings
 
-- **App** — how you use Gutterpress (**Reader** or **Author**), the **Theme** (System, Light or
-  Dark), and the preview's background and default zoom.
-- **Accounts** — your name and email, **GitHub**, **Publishing accounts** and Git servers.
-- **Editor** — font, font size, line spacing and spell-check language.
-- **Saving** — automatic saving, previous versions and online backup (see
-  [Keep versions and back up your work](09-versions-and-backup.md)).
+Settings is one page, the same whether a book is open or not. Every change applies at once: there
+is nothing to save.
 
-![Settings, App tab: how you use Gutterpress, appearance and preview](images/settings-author.jpg)
+- **Appearance** — the **Theme** (**Match system**, **Light** or **Dark**), and **Mark problems
+  in the editor**, which underlines the lines the Problems list mentions.
+- **Saving** — **Save changes automatically** (when it's off, press Ctrl+S to save), **Keep
+  previous versions** and **Back up online automatically** (see
+  [Keep versions and back up your work](09-versions-and-backup.md)).
+- **Your name and email** — saved with each version, so a book's history shows who changed what.
+  Left empty, a version uses the name and email in the book's own Git settings, or else
+  "gutterpress".
+- **Accounts** — the accounts saved on this computer: **GitHub** (with **Connect GitHub…** or
+  **Disconnect**), then any publishing keys and Git servers, each with **Remove**. Publishing
+  accounts are added when you [publish](08-publish.md); to back up to another Git server, see the
+  book's **Setup → Backup**.
+
+![Settings: Appearance, Saving, your name and email, and Accounts](images/settings.jpg)
 
 ## Updates
 

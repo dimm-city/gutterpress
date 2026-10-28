@@ -155,7 +155,7 @@ For one book, the fastest approach is two sections in `styles/book.css`:
 
 The page size and margins are not a stylesheet's business: they come from the
 manifest (`preset:`, or `page:` with `width`, `height` and `margin`), which the
-app edits under Setup > Details, and the build writes them as the `@page` rule
+app edits under Setup > Book, and the build writes them as the `@page` rule
 after every stylesheet. No built-in look sets either; a `size` in your own
 `@page` rule is ignored (the print-safety check says so), and an `@page`
 margin of your own holds only until the manifest sets margins (Chapter 1,

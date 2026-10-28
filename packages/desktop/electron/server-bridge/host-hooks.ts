@@ -44,7 +44,7 @@ export interface DesktopHooks {
   confirmNpmPluginInstall: (packageName: string) => Promise<boolean>;
   /**
    * Native Save / Don't Save / Cancel prompt for leaving a file with unsaved
-   * edits while "Save edits automatically" is off. `fileName` null = the
+   * edits while "Save changes automatically" is off. `fileName` null = the
    * whole window is closing.
    */
   confirmUnsavedChanges: (fileName: string | null) => Promise<UnsavedChoice>;

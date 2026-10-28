@@ -249,8 +249,8 @@ async function loadNpmPackage(
   // copy is an error pointing at reinstall, never a silent fall-through to
   // some other package of the same name. A pinned entry with NO vendored
   // folder falls through to the legacy lookups below and ends at the "not
-  // found — install it" error, which is what the desktop's Looks & features tab
-  // surfaces as "Needs install".
+  // found — install it" error, which the desktop's Advanced tab surfaces as
+  // "Not downloaded yet." with Install.
   const installRoot = await vendoredInstallRoot(packageName, baseDir, version);
   if (installRoot) {
     const packageDir = vendoredNpmPluginPackageDir(installRoot, packageName);
@@ -299,13 +299,13 @@ async function loadNpmPackage(
     throw new Error(
       `Extension "${packageName}${version ? `@${version}` : ""}" is not pinned to an exact version, so it can't be ` +
         `downloaded automatically. Run \`gutterpress ext add ${packageName}\` (or use Book setup > ` +
-        `Looks & features > Advanced in the desktop app) to download it and pin its version in your manifest.`
+        `Advanced in the desktop app) to download it and pin its version in your manifest.`
     );
   }
 
   throw new Error(
     `Extension "${packageName}" not found. Install it with ` +
-      `\`gutterpress ext add ${version ? `${packageName}@${version}` : packageName}\` (or Book setup > Looks & features > Advanced in the desktop app),\n` +
+      `\`gutterpress ext add ${version ? `${packageName}@${version}` : packageName}\` (or Book setup > Advanced in the desktop app),\n` +
       `or reference a local file under \`extensions:\`:\n` +
       `  extensions:\n` +
       `    - ${suggestedPath}`

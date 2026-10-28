@@ -1,41 +1,36 @@
 <script lang="ts">
   /**
    * ProjectSettingsView — the "Book setup" surface (the toolbar's Setup
-   * button; tab bar, one cohesive slice per tab), opened in the shared
-   * AppView layer because a sidebar
-   * column is a cramped frame for manifest editing, theme browsing, and
-   * plugin management. AppView owns the frame, the close control, Escape and
-   * focus (a dialog on top, e.g. "Save as template…", takes Escape first).
+   * button), opened in the shared AppView layer because a sidebar column is a
+   * cramped frame for manifest editing and choosing a look. AppView owns the
+   * frame, the close control, Escape and focus (a dialog on top, e.g. "Save as
+   * template…", takes Escape first).
    *
    * This is the COMPOSITION ROOT for the per-domain section controllers: it
    * instantiates one `*SectionController` per domain and renders the
-   * presentational sections under `./config/`, passing each ITS controller as a
-   * single prop. The children carry no state and no `api` value import — all
-   * `api.*` calls live in the controllers under
-   * `#lib/routes/*-section-controller.svelte.ts`.
+   * presentational sections under `./config/`, passing each its controller.
+   * The children carry no state — the `api.*` calls live in the controllers
+   * under `#lib/routes/*-section-controller.svelte.ts`.
    *
-   * Four tabs, backed by FOUR controllers (no `$effect`: data loads on mount +
-   * after mutations, mirroring SettingsView/History):
-   *   1. Details     — title, authors, chapters, page size, publish targets
-   *                    (`api.manifest.{read,setFields}`, `api.pageSize.*`);
-   *                    saves as you go, flushed on tab switch, close, unmount.
-   *   2. Looks & features (id `extensions`) — ONE list of the manifest's
-   *                    `extensions:` (looks, features, component libraries —
-   *                    #265): toggle, reorder, remove, validate, versions, and
-   *                    one Add area (`ExtensionsSection`, `api.extension.*`).
-   *   3. Design      — the design tokens of every enabled look, edited in the
-   *                    book's own stylesheet (`DesignSection`) → the raw
-   *                    stylesheet list (`StylesSection`) under a
-   *                    "Stylesheets" heading.
-   *   4. Backup (id `connections`) — this project's online-copy surface
-   *                    (remote diagnosis + Test Remote Access;
-   *                    `ProjectConnectionsSection`, self-loading — no
-   *                    controller).
+   * Tabs Book · Look · Backup, and Advanced set apart at the right; three
+   * controllers (no `$effect`: data loads on mount + after mutations):
+   *   1. Book     — title, authors, page size and margins, print checks,
+   *                 chapters (`DetailsSection`, `api.manifest.*`,
+   *                 `api.pageSize.*`); flushed on tab switch and close.
+   *   2. Look     — choose a look, adjust six brand settings beside a live
+   *                 sample, extras (`LookSection`: the extensions AND design
+   *                 controllers).
+   *   3. Backup (id `backup`) — this book's online copy
+   *                 (`ProjectConnectionsSection`, self-loading — no controller).
+   *   4. Advanced — the one place for developer controls: the manifest and
+   *                 stylesheet files, the extension list with npm, folders and
+   *                 web addresses (`ExtensionsSection`), and every design
+   *                 setting (`DesignSection`).
    *
-   * `afterLookChange` (a styles-carrying extension was added/removed/toggled/
-   * moved → reload Styles + Design) and `afterStyleChange` (a stylesheet was
-   * toggled → reload Design) are the cross-section refresh hooks; every other
-   * refresh is a section reloading its own state after its own mutation.
+   * Every write shows in the header's one Saving… / Saved. `afterLookChange`
+   * (a styles-carrying extension changed → reload the design settings) is the
+   * cross-section refresh hook; every other refresh is a section reloading
+   * its own state after its own mutation.
    *
    * The body carries the `.config-panel` class: the sections' shared chrome
    * (`#lib/styles/config-section-shared.css`, @imported per section) scopes
@@ -44,53 +39,57 @@
    * PWA-clean (§8): only `import type` from the lib; everything value-bearing
    * goes through `api.*` HTTP routes inside the controllers.
    */
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { api } from "#lib/api.ts";
-  import { useSettings } from "#lib/settings.svelte.ts";
   import type { ToastController } from "#lib/components/Toast.svelte";
+  import { joinPath } from "#lib/platform/paths.ts";
   import { DetailsSectionController } from "#lib/routes/details-section-controller.svelte.ts";
   import { ExtensionsSectionController } from "#lib/routes/extensions-section-controller.svelte.ts";
-  import { StylesSectionController } from "#lib/routes/styles-section-controller.svelte.ts";
   import { DesignSectionController } from "#lib/routes/design-section-controller.svelte.ts";
   import AppView from "#lib/components/AppView.svelte";
+  import Tabs from "#lib/components/Tabs.svelte";
   import DetailsSection from "#lib/components/config/DetailsSection.svelte";
+  import LookSection from "#lib/components/config/LookSection.svelte";
   import ExtensionsSection from "#lib/components/config/ExtensionsSection.svelte";
-  import StylesSection from "#lib/components/config/StylesSection.svelte";
   import DesignSection from "#lib/components/config/DesignSection.svelte";
+  import { firstHeading } from "#lib/components/config/source-files.ts";
   import ProjectConnectionsSection from "#lib/components/ProjectConnectionsSection.svelte";
+  import type { LastBackup } from "#lib/backup-state.ts";
   import SaveTemplateDialog from "#lib/components/SaveTemplateDialog.svelte";
   import { PRINT_TOOL_IDS } from "#lib/publish-targets.ts";
 
   let {
     projectDir,
     repoRoot = null,
-    initialTab = "details",
+    initialTab = "book",
     toast = null,
-    onEditRawCss,
+    onOpenFile,
     onClose,
-    onOpenAccounts,
     onVersionHistoryEnabled,
     onBackupSetUp,
+    onProjectFilesChanged,
+    onBackUpNow,
     triggerEl,
   }: {
     projectDir: string | null;
     /** The repo the open book belongs to — lets the pickers offer SHARED styles. */
     repoRoot?: string | null;
     /** Tab to open on. Read once at mount (the view is keyed per open). */
-    initialTab?: "details" | "extensions" | "connections";
+    initialTab?: "book" | "backup" | "advanced";
     toast?: ToastController | null;
-    /** Escape hatch: open a stylesheet in the raw-CSS editor (the parent
-     *  closes this view first). */
-    onEditRawCss?: (cssPath: string) => void;
+    /** Open one of the book's files (absolute path) in the editor; the parent
+     *  closes this view first. Advanced › Files. */
+    onOpenFile?: (path: string) => void;
     /** Close the view — return to the workspace. */
     onClose?: () => void;
-    /** Open the app Settings view on the Accounts tab (the parent closes
-     *  this view first). Used by the Backup tab's guidance. */
-    onOpenAccounts?: () => void;
     /** The Backup tab just turned on version history: re-read the project's classification. */
     onVersionHistoryEnabled?: (projectDir: string) => void;
-    /** The Backup tab just set up online backup: re-read the project's classification. */
+    /** The Backup tab just set up or connected online backup: re-read the project's state. */
     onBackupSetUp?: (projectDir: string) => void;
+    /** The Backup tab just switched to another copy: the book's files changed on disk. */
+    onProjectFilesChanged?: () => void;
+    /** The Backup tab's Back up now: the status bar's backup, and what it ended with. */
+    onBackUpNow?: () => Promise<LastBackup | null>;
     /** The control that opened the view, for focus restore on close. */
     triggerEl?: HTMLElement | null;
   } = $props();
@@ -100,8 +99,8 @@
 
   const projectDirAccessor = () => projectDir;
 
-  // ── Design — depended on by Extensions'/Styles' cross-refresh hooks,
-  //    so it's constructed first. ─────────────────────────────────────────
+  // ── Design — depended on by Extensions' cross-refresh hook, so it's
+  //    constructed first. ───────────────────────────────────────────────────
   const design = new DesignSectionController({
     projectDir: projectDirAccessor,
     listStyles: (dir) => api.project.listStyles(dir, repoRoot),
@@ -109,21 +108,11 @@
     readCss: (dir, use) => api.extension.readCss(dir, use),
     readFile: (path) => api.fs.readFile(path),
     writeFile: (path, content) => api.fs.writeFile(path, content),
+    setActiveStyles: (dir, paths) => api.style.setActive(dir, paths),
     onError: (msg) => toast?.error?.(msg),
-    onEditRawCss: (path) => onEditRawCss?.(path),
   });
 
-  // ── Styles — refreshes Design after a toggle. ──────────────────────────
-  const styles = new StylesSectionController({
-    projectDir: projectDirAccessor,
-    listStyles: (dir) => api.project.listStyles(dir, repoRoot),
-    setActive: (dir, paths) => api.style.setActive(dir, paths),
-    onToggled: (on) => toast?.success?.(on ? "Stylesheet enabled." : "Stylesheet disabled."),
-    onEditRawCss: (path) => onEditRawCss?.(path),
-    afterStyleChange: () => design.loadDesign(),
-  });
-
-  // ── Details ─────────────────────────────────────────────────────────────
+  // ── Book ────────────────────────────────────────────────────────────────
   const details = new DetailsSectionController({
     projectDir: projectDirAccessor,
     readManifest: (dir) => api.manifest.read(dir),
@@ -137,6 +126,8 @@
       api.fs
         .listDir(dir)
         .then((entries) => entries.filter((e) => !e.isDir && /\.md$/i.test(e.name)).map((e) => e.name)),
+    // A chapter is named by its first heading.
+    readFirstHeading: (dir, path) => api.fs.readFile(joinPath(dir, path)).then(firstHeading),
     // Which print tools are absent, for the publish-targets note — the same
     // /api/doctor data Troubleshooting → Diagnostics shows.
     listMissingPrintTools: () =>
@@ -150,19 +141,13 @@
     onError: (msg) => toast?.error?.(msg),
   });
 
-  const settings = useSettings();
-
-  // ── Looks & features — ONE list (#265). A change to a look refreshes
-  //    Styles + Design. ───────────────────────────────────────────────────
+  // ── Extensions — ONE list (#265), read by Look and Advanced. A change to
+  //    a look refreshes the design settings. ────────────────────────────────
   const extensions = new ExtensionsSectionController({
     projectDir: projectDirAccessor,
     list: (dir) => api.extension.list(dir),
     bundled: () => api.extension.bundled(),
-    search: (query) => api.extension.search(query),
-    outdated: (dir, includePrerelease) => api.extension.outdated(dir, includePrerelease),
-    versions: (name) => api.extension.versions(name),
-    includePrerelease: () => settings.current.updates.includeExtensionPrereleases,
-    setIncludePrerelease: (on) => settings.set({ updates: { includeExtensionPrereleases: on } }),
+    outdated: (dir) => api.extension.outdated(dir),
     validate: (dir) => api.extension.validate(dir),
     add: (dir, specifier, exportName) => api.extension.add(dir, specifier, exportName),
     addLocal: (dir) => api.extension.addLocal(dir),
@@ -172,19 +157,7 @@
     readCss: (dir, use) => api.extension.readCss(dir, use),
     importFromFile: (dir) => api.extension.importFromFile(dir),
     importFromUrl: (dir, url) => api.extension.importFromUrl(dir, url),
-    onLookAdded: (label, above) => {
-      // A look added below another wins where they disagree: say so, and
-      // name the way to use the new one alone.
-      if (above.length > 0) {
-        const old = above.join(", ");
-        toast?.success?.(`${label} added below ${old} — the lower look wins. Turn off ${old} to use ${label} on its own.`);
-      } else {
-        toast?.success?.(`${label} added — it now shows in the preview. Use Design to fine-tune.`);
-      }
-    },
-    afterLookChange: async () => {
-      await Promise.all([styles.loadStyles(), design.loadDesign()]);
-    },
+    afterLookChange: () => design.loadDesign(),
   });
 
   // ── Lifecycle: load every section's data on mount ────────────────────────
@@ -203,83 +176,94 @@
   async function loadAll(): Promise<void> {
     if (!projectDir) return;
     // Sections load in parallel — none depend on another.
-    await Promise.allSettled([
-      details.loadDetails(),
-      extensions.loadExtensions(),
-      styles.loadStyles(),
-      design.loadDesign(),
-    ]);
+    await Promise.allSettled([details.loadDetails(), extensions.loadExtensions(), design.loadDesign()]);
   }
 
   const hasProject = $derived(!!projectDir);
 
-  // ── Tabs (SettingsView pattern: WAI-ARIA tabs, arrow-key navigation) ──────
-  //
-  // Looks & features (id `extensions`) is where a look is added; Design is
-  // where it is fine-tuned. See `docs/ux-design-contract.md` sections 9 and 11.
-  type ProjectSettingsTab = "details" | "extensions" | "design" | "connections";
-  const TABS: Array<{ id: ProjectSettingsTab; label: string }> = [
-    { id: "details", label: "Details" },
-    { id: "extensions", label: "Looks & features" },
-    { id: "design", label: "Design" },
-    { id: "connections", label: "Backup" },
-  ];
-  // svelte-ignore state_referenced_locally
-  let activeTab = $state<ProjectSettingsTab>(initialTab);
-  let tabEls = $state<Record<ProjectSettingsTab, HTMLButtonElement | undefined>>({
-    details: undefined,
-    extensions: undefined,
-    design: undefined,
-    connections: undefined,
+  // ── The header's one Saving… / Saved, for every tab's writes ─────────────
+  const saveStatus = $derived.by(() => {
+    const all = [details.detailsSaveStatus, design.designSaveStatus, extensions.saveStatus];
+    return all.includes("saving") ? "Saving…" : all.includes("saved") ? "Saved" : "";
   });
 
-  function onTablistKeydown(e: KeyboardEvent) {
-    const ids = TABS.map((tab) => tab.id);
-    const current = ids.indexOf(activeTab);
-    let next: number | undefined;
-    if (e.key === "ArrowRight") next = (current + 1) % ids.length;
-    else if (e.key === "ArrowLeft") next = (current - 1 + ids.length) % ids.length;
-    else if (e.key === "Home") next = 0;
-    else if (e.key === "End") next = ids.length - 1;
-    if (next === undefined) return;
-    e.preventDefault();
-    selectTab(ids[next]!);
-    tabEls[activeTab]?.focus();
-  }
+  // ── Tabs (the start screen's strip; Advanced sits apart at the right) ────
+  type BookSetupTab = "book" | "look" | "backup" | "advanced";
+  const TABS: Array<{ id: BookSetupTab; label: string }> = [
+    { id: "book", label: "Book" },
+    { id: "look", label: "Look" },
+    { id: "backup", label: "Backup" },
+    { id: "advanced", label: "Advanced" },
+  ];
+  // svelte-ignore state_referenced_locally
+  let activeTab = $state<BookSetupTab>(initialTab);
 
-  /** Leaving Details commits anything still typed there (a text field whose
+  /** Leaving Book commits anything still typed there (a text field whose
    *  `change` has not fired yet). */
-  function selectTab(id: ProjectSettingsTab) {
-    if (activeTab === "details" && id !== "details") void details.flushPendingSave();
+  function selectTab(id: BookSetupTab) {
+    if (activeTab === "book" && id !== "book") void details.flushPendingSave();
     activeTab = id;
   }
 
-  /** Close once Details has saved; a failed write keeps the panel open on
-   *  its error (the unmount flush stays the backstop for every other exit). */
-  async function close() {
-    if (await details.flushPendingSave()) onClose?.();
+  /** Look's links to Advanced: its top, or "All design settings". */
+  async function openAdvanced(at?: "design") {
+    selectTab("advanced");
+    await tick();
+    if (at === "design") {
+      const heading = document.getElementById("all-design-settings");
+      heading?.scrollIntoView({ block: "start" });
+      heading?.focus({ preventScroll: true });
+    } else {
+      document.getElementById("project-settings-tab-advanced")?.focus();
+    }
   }
 
-  // "Save as template…" (Details tab) — mounted fresh per open so its form
+  /**
+   * Write everything still pending. A failed write keeps the view open, on
+   * the tab that shows the error (the unmount flush stays the backstop for
+   * every other exit).
+   */
+  async function flushAll(): Promise<boolean> {
+    // A field still being typed in saves on `change`, which leaving it fires.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    const [bookSaved, designSaved] = await Promise.all([details.flushPendingSave(), design.flushPendingTokenWrites()]);
+    if (!bookSaved) selectTab("book");
+    else if (!designSaved && activeTab !== "advanced") selectTab("look");
+    return bookSaved && designSaved;
+  }
+
+  async function close() {
+    if (await flushAll()) onClose?.();
+  }
+
+  // Advanced › Files.
+  async function openManifest() {
+    if (projectDir && (await flushAll())) onOpenFile?.(joinPath(projectDir, "manifest.yaml"));
+  }
+
+  /** A book without a stylesheet of its own gets one to open. */
+  async function openStylesheet() {
+    if (!(await flushAll())) return;
+    const path = await design.ensureStylesheet().catch((e: unknown) => {
+      toast?.error?.(`Couldn't create styles/book.css: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    });
+    if (path) onOpenFile?.(path);
+  }
+
+  // "Save as template…" (Book tab) — mounted fresh per open so its form
   // resets; the opening button is remembered for focus restore.
   let templateDialogTrigger = $state<HTMLButtonElement | null>(null);
 </script>
 
 <AppView title="Book setup" icon="wrench" measure={860} onClose={close} {triggerEl}>
-  <div class="tab-bar" role="tablist" aria-label="Book setup sections" onkeydown={onTablistKeydown} tabindex="-1">
-    {#each TABS as tab (tab.id)}
-      <button
-        id="project-settings-tab-{tab.id}"
-        role="tab"
-        class="tab"
-        class:active={activeTab === tab.id}
-        aria-selected={activeTab === tab.id}
-        aria-controls="project-settings-panel"
-        tabindex={activeTab === tab.id ? 0 : -1}
-        bind:this={tabEls[tab.id]}
-        onclick={() => selectTab(tab.id)}
-      >{tab.label}</button>
-    {/each}
+  {#snippet actions()}
+    <!-- Always in the DOM with its text swapped: a live region announces a
+         change to its content, not its own arrival (WCAG 2.2 SC 4.1.3). -->
+    <span class="save-status" class:saved={saveStatus === "Saved"} aria-live="polite">{saveStatus}</span>
+  {/snippet}
+  <div class="book-tabs">
+    <Tabs tabs={TABS} active={activeTab} label="Book setup sections" idPrefix="project-settings" onselect={selectTab} />
   </div>
 
   <div
@@ -290,46 +274,38 @@
     aria-labelledby="project-settings-tab-{activeTab}"
   >
     {#if !hasProject}
-      <div class="empty">
-        <p>Open a book to configure it.</p>
-      </div>
+      <p class="empty">Open a book to set it up.</p>
     {:else if loadingAll}
-      <p class="loading">Loading…</p>
+      <p class="loading">Loading your book's setup…</p>
     {:else}
-      {#if activeTab === "details"}
+      {#if activeTab === "book"}
         <DetailsSection controller={details} onSaveAsTemplate={(el) => (templateDialogTrigger = el)} />
       {/if}
 
-      {#if activeTab === "extensions"}
-        <ExtensionsSection controller={extensions} />
+      {#if activeTab === "look"}
+        <LookSection {extensions} {design} onOpenAdvanced={openAdvanced} />
       {/if}
 
-      {#if activeTab === "design"}
-        <!-- Fonts, colors & sizes → stylesheet list. The stylesheet list is a plain
-             always-visible section - Book setup has no collapsible
-             sections. -->
-        <section class="block look-style">
-          <h3>Design</h3>
-          <DesignSection
-            controller={design}
-            onChooseLook={() => {
-              selectTab("extensions");
-              tabEls.extensions?.focus();
-            }}
-          />
-          <div class="advanced">
-            <h4 class="advanced-heading">Stylesheets</h4>
-            <div class="advanced-body">
-              <StylesSection controller={styles} />
-            </div>
+      {#if activeTab === "backup"}
+        <!-- This book's backup: connecting its GitHub account or server happens here, in place. -->
+        <ProjectConnectionsSection {projectDir} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} {onBackUpNow} />
+      {/if}
+
+      {#if activeTab === "advanced"}
+        <section class="block">
+          <h3>Advanced</h3>
+          <p class="hint">For extensions from npm or a folder, their order, every design setting, and the files behind them. Most books never need this tab.</p>
+        </section>
+        <section class="block" aria-labelledby="advanced-files">
+          <h3 id="advanced-files">Files</h3>
+          <div class="row files">
+            <button class="ghost small" onclick={openManifest}>Open manifest.yaml</button>
+            <button class="ghost small" onclick={openStylesheet}>Open {design.cssName || "styles/book.css"}</button>
+            <span class="hint">Opens the file in the editor.</span>
           </div>
         </section>
-      {/if}
-
-      {#if activeTab === "connections"}
-        <!-- This project's online backup. Accounts/credentials stay global
-             in Settings → Accounts; onOpenAccounts routes there. -->
-        <ProjectConnectionsSection {projectDir} {onOpenAccounts} {onVersionHistoryEnabled} {onBackupSetUp} />
+        <ExtensionsSection controller={extensions} />
+        <DesignSection controller={design} />
       {/if}
     {/if}
   </div>
@@ -353,51 +329,11 @@
     gap: 16px;
     color: var(--app-text-secondary);
   }
-  /* ── Tab bar (SettingsView pattern) ── */
-  .tab-bar {
-    display: flex;
-    gap: 2px;
-    border-bottom: 1px solid var(--app-border-subtle);
-    flex-shrink: 0;
-    overflow-x: auto;
-  }
-  .tab {
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--app-text-muted);
-    font-size: 12.5px;
-    padding: 8px 10px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .tab:hover { color: var(--app-text); }
-  .tab.active {
-    color: var(--app-text);
-    border-bottom-color: var(--app-accent);
-    font-weight: 600;
-  }
-  .tab:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: -2px; }
+  /* Advanced stands apart at the right; it stays last in the arrow-key order. */
+  .book-tabs :global([role="tab"]:last-child) { margin-left: auto; }
+  .save-status { font-size: 12.5px; color: var(--app-text-muted); }
+  .save-status.saved { color: var(--app-success-text); }
 
-  .empty { padding: 24px; text-align: center; color: var(--app-text-muted); font-size: 13px; }
-  .loading { margin: 0; font-size: 13px; color: var(--app-text-muted); }
-
-  /* The Design section: the gap between its two panes and the stylesheet
-     sub-section chrome are owned here. `.block`/`h3` chrome comes from the
-     shared layer. */
-  .settings-body .look-style { gap: 14px; }
-  .look-style :global(.look-subsection) { display: flex; flex-direction: column; gap: 8px; }
-  .advanced {
-    border-top: 1px solid var(--app-border-subtle);
-    padding-top: 8px;
-  }
-  .advanced-heading {
-    margin: 0;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--app-text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-  .advanced-body { padding-top: 10px; }
+  .empty, .loading { margin: 0; font-size: 13px; color: var(--app-text-muted); }
+  .files { flex-wrap: wrap; }
 </style>
