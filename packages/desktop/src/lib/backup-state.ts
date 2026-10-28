@@ -78,7 +78,7 @@ export function readyView(copy: string, last: LastBackup | null, autoSync: boole
       return { headline: `Backed up online to ${copy} · last backup ${relativeTime(at, now)}`, detail: ongoing, ok: true, action: manual };
     }
     case "offline":
-      return { headline: `Couldn't back up to ${copy}: you're offline.`, detail: "Your work is saved on this computer.", ok: false, action: "try-again" };
+      return { headline: `Couldn't reach ${copy}.`, detail: "Check your internet connection, or try again later. Your work is saved on this computer.", ok: false, action: "try-again" };
     case "auth":
       return { headline: `Couldn't back up to ${copy}: it didn't accept the saved sign-in.`, detail: "Connect again to keep backing up.", ok: false, action: "sign-in" };
     case "error":

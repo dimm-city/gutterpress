@@ -197,7 +197,7 @@ export class SyncController {
       } else if (outcome.status === "auth") {
         this.deps.toast()?.error("Not signed in to online backup. Use the button in Where your work is kept to sign in.");
       } else if (outcome.status === "offline") {
-        this.deps.toast()?.info?.("You're offline. Try again when you're connected.");
+        this.deps.toast()?.info?.("Couldn't reach the online backup. Check your internet connection, or try again later.");
       } else {
         if (outcome.filesChanged) this.deps.onFilesChanged();
         this.deps.toast()?.error(outcome.message || failed);
@@ -259,7 +259,7 @@ export class SyncController {
         this.deps.toast()?.error("Not signed in to online backup. Use the button in Where your work is kept to sign in.");
       } else if (outcome.status === "offline") {
         if (outcome.filesChanged) this.deps.onFilesChanged();
-        this.deps.toast()?.info?.("You're offline. Try the online backup again when you're connected.");
+        this.deps.toast()?.info?.("Couldn't reach the online backup. Check your internet connection, or try again later.");
       } else {
         if (outcome.filesChanged) this.deps.onFilesChanged();
         // Error state. The lib's error-arm messages are ALL authored writer

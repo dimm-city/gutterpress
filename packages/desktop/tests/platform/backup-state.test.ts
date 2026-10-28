@@ -68,7 +68,7 @@ describe("readyView: never claims a backup without evidence", () => {
 
   test("a failure says why and offers the way on", () => {
     expect(readyView(copy, { state: "offline", lastSyncAt: null }, true, now)).toMatchObject({
-      headline: `Couldn't back up to ${copy}: you're offline.`,
+      headline: `Couldn't reach ${copy}.`,
       action: "try-again",
     });
     expect(readyView(copy, { state: "auth", lastSyncAt: null }, true, now).action).toBe("sign-in");

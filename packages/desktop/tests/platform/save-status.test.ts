@@ -341,7 +341,7 @@ describe("online backup", () => {
   });
   test("offline: automatic on promises a retry; off does not", () => {
     const on = sync("offline", { canSync: true });
-    expect(on.status).toBe("You're offline.");
+    expect(on.status).toBe("Can't reach the online backup.");
     expect(on.detail).toContain("will try again on its own");
     const off = sync("offline", { canSync: true, automatic: false });
     expect(off.detail).not.toContain("on its own");

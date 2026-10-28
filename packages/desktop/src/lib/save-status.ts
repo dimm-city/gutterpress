@@ -384,7 +384,7 @@ export function onlineSection(
     case "offline":
       return {
         ...base,
-        status: "You're offline.",
+        status: "Can't reach the online backup.",
         detail: o.automatic
           ? "Your work is safe on this computer. Online backup will try again on its own."
           : "Your work is safe on this computer. Use Back up now when you're back online.",

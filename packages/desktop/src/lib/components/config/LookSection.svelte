@@ -115,6 +115,14 @@
     await tick();
     actionsEl?.querySelector<HTMLButtonElement>(".keep")?.focus();
   }
+
+  // Escape on the open question answers it (Keep mine) instead of closing Book setup.
+  function keepOnEscape(e: KeyboardEvent) {
+    if (e.key !== "Escape") return;
+    e.stopPropagation();
+    answerReset(false);
+  }
+
   async function answerReset(replace: boolean) {
     if (replace) {
       design.resetBrand();
@@ -233,8 +241,8 @@
           <div class="row brand-actions" bind:this={actionsEl} tabindex="-1">
             {#if design.brandResetAsked}
               <span class="confirm">Replace your settings with {lookName}?</span>
-              <button class="ghost small danger" onclick={() => answerReset(true)}>Replace</button>
-              <button class="ghost small keep" onclick={() => answerReset(false)}>Keep mine</button>
+              <button class="ghost small danger" onclick={() => answerReset(true)} onkeydown={keepOnEscape}>Replace</button>
+              <button class="ghost small keep" onclick={() => answerReset(false)} onkeydown={keepOnEscape}>Keep mine</button>
             {:else}
               <button class="ghost small reset" onclick={askReset} disabled={!design.brandOverridden}>Reset to the look's settings</button>
               <button class="link" onclick={() => onOpenAdvanced("design")}>All settings in Advanced <Icon name="arrow-right" size={12} /></button>

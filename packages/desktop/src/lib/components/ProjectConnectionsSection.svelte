@@ -388,7 +388,7 @@
       </p>
       <p class="hint">{ready.detail}</p>
       {#if ready.action === "back-up" || ready.action === "try-again"}
-        <button class="ghost" onclick={backUpNow} disabled={busy}>
+        <button class="app-btn-primary" onclick={backUpNow} disabled={busy}>
           {ready.action === "try-again" ? "Try again" : "Back up now"}
         </button>
       {:else if ready.action === "sign-in"}

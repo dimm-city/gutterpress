@@ -67,9 +67,10 @@ Backup** says in one line where the book is kept, and offers the one next step:
 - **This book's online copy is on git.example.com. Connect it to back the book up.** See
   [Back up to another Git server](#back-up-to-another-git-server).
 - **Online copy: ….** The book is connected to its online copy. Once a backup has run, the line
-  says how it went: **Backed up online to … · last backup 2 mins ago**, or **Couldn't back up to
-  …** with the reason and **Try again** (or, when the server no longer accepts the saved sign-in,
-  the connect step again). With automatic backup off, it says so and offers **Back up now**. When
+  says how it went: **Backed up online to … · last backup 2 mins ago**; **Couldn't reach …** when
+  the server can't be reached; or **Couldn't back up to …** with the reason. Both offer **Try
+  again** (when the server no longer accepts the saved sign-in, the connect step comes back
+  instead). With automatic backup off, it says so and offers **Back up now**. When
   the book has more than one copy, **Copy you're working on** shows which: choose another and
   click **Switch** to work on it.
 - **This book's online copy uses an SSH address (git@…).** Gutterpress can't back up over SSH.
