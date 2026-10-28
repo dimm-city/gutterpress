@@ -1111,26 +1111,26 @@
   let editorView = $state<"editor" | "activity">("editor");
   let projectSettingsOpen = $state(false);
 
-  /** One button → the whole Book setup view (details, looks & features,
-   *  style, plugins), covering the workspace. */
+  /** One button → the whole Book setup view (book, look, backup,
+   *  advanced), covering the workspace. */
   function openProjectConfig(): void {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
-    projectSettingsTab = "details";
+    projectSettingsTab = "book";
     projectSettingsOpen = true;
   }
 
-  // Book setup opens on Details; the save-status dialog and Settings > Saving
+  // Book setup opens on Book; the save-status dialog and Settings > Saving
   // send writers to its Backup tab to see how an online backup gets set up.
-  let projectSettingsTab = $state<"details" | "extensions" | "connections">("details");
+  let projectSettingsTab = $state<"book" | "backup" | "advanced">("book");
   function openBookConnections(): void {
     openProjectConfig();
-    projectSettingsTab = "connections";
+    projectSettingsTab = "backup";
   }
-  // A failed extension download's toast sends writers to Looks & features,
-  // where the "Needs install" row's Install button retries it.
+  // A failed extension download's toast sends writers to Advanced, where the
+  // row's Install button retries it.
   function openBookExtensions(): void {
     openProjectConfig();
-    projectSettingsTab = "extensions";
+    projectSettingsTab = "advanced";
   }
 
   function closeProjectSettings(): void {
@@ -1138,18 +1138,17 @@
   }
 
   /**
-   * Open one stylesheet (absolute path) in the shared editor and reveal it.
-   * Used as the "Edit the stylesheet" escape hatch from Book setup's Design
-   * section AND from its Styles section's per-row "Edit" button — both routes
-   * flip `editorView` back to "editor" so the author lands on the file.
+   * Open one of the book's files (absolute path) in the shared editor and
+   * reveal it: Book setup's Advanced › Files (the manifest, the stylesheet).
+   * Flips `editorView` back to "editor" so the author lands on the file.
    */
-  async function openStyleFile(absPath: string): Promise<void> {
+  async function openFileInEditor(absPath: string): Promise<void> {
     if (!(await selectEditorFile(absPath))) return;
     editorView = "editor";
     paneViewRestore = null;
     if (mode === "viewer") setMode("editor");
     // Narrow single-pane layout keys editor visibility off paneMode, not
-    // the workspace mode — switch panes too, or the loaded stylesheet stays hidden
+    // the workspace mode — switch panes too, or the loaded file stays hidden
     // behind the preview with no way to reveal it (the Markdown tab would
     // swap the file away first).
     if (isNarrow && paneMode !== "edit") setPaneMode("edit");
@@ -3612,7 +3611,7 @@
     {toast}
     triggerEl={projectSettingsBtnEl}
     onClose={closeProjectSettings}
-    onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}
+    onOpenFile={(path) => { closeProjectSettings(); openFileInEditor(path); }}
     onOpenAccounts={() => { closeProjectSettings(); openSettings("connections"); }}
     onVersionHistoryEnabled={(dir) => void projectSession.classify(dir)}
     onBackupSetUp={(dir) => void projectSession.classify(dir)}

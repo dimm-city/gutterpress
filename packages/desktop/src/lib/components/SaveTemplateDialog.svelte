@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * SaveTemplateDialog — capture the open book as a reusable starter template
-   * (Book setup → Details → "Save as template…"). A template is a book-setup
+   * (Book setup → Book → "Save as template…"). A template is a book-setup
    * action, not a publishing destination, so it lives with the book's
    * details.
    *

@@ -1,49 +1,39 @@
 /**
  * ExtensionsSectionController (#243, #265) — the single owner of the
- * Looks & features tab's (id `extensions`) state: ONE list (`entries` — the
- * manifest's `extensions:` in cascade order) and ONE verb set (add, remove,
- * toggle, move).
+ * manifest's `extensions:` list in Book setup: ONE list (`entries`, in
+ * cascade order) and ONE verb set (add, remove, toggle, move). Two tabs read
+ * it:
+ *   - **Look** shows it the way an author thinks of it: one look, chosen from
+ *     a gallery (`galleryLooks`, `chooseLook`), and the built-in extras
+ *     ticked on or off (`extras`, `setExtra`);
+ *   - **Advanced** shows the list itself, with every verb, the npm update
+ *     check, and the ways to add an extension from elsewhere.
  *
- * A look is an extension that carries styles and no markdown (`isLook`); a
- * feature is one that carries markdown; a component library carries both —
- * each is one row of the same list, with a badge per kind it carries
- * (`carriedKinds`). There is no apply/revert and no "active look": any
- * number of looks can be on at once, the list order is the CSS cascade
- * (later wins ties) and the markdown registration order, and the project's
- * own stylesheets always load last.
- * Moving a row up or down therefore rewrites the whole list order
- * (`config-helpers.ts`'s `orderAfterMove`).
+ * A look is an extension that carries styles and no markdown (`isLook`); an
+ * extra carries markdown; a component library carries both. The list order
+ * is the CSS cascade (later wins ties) and the markdown registration order,
+ * and the project's own stylesheets always load last. Moving a row rewrites
+ * the whole order (`config-helpers.ts`'s `orderAfterMove`). Choosing a look
+ * is the same verbs in one step: the new look takes the old one's place, and
+ * the old one goes (a built-in is removed; an npm or folder look is only
+ * switched off, so nothing downloaded or authored is lost).
  *
  * Adding is one verb with several ways to NAME the extension, which differ
  * only in what the host does with the name:
- *   - `addBundled` / `addNpm` / `addSearched` — a bundled name (a feature or
- *     a look, written as-is; nothing is copied) or an npm specifier
- *     (downloaded, verified, vendored, pinned — behind the native trust gate,
- *     so a null result means "the author cancelled"); an npm search result
- *     (#246) is added by its package name, which is already what
- *     `gutterpress ext add` expects;
+ *   - a bundled name (a look or an extra, written as-is; nothing is copied) or
+ *     an npm specifier (`addNpm` — downloaded, verified, vendored, pinned,
+ *     behind the native trust gate, so a null result means "the author
+ *     cancelled");
  *   - `addLocal` — a folder or plugin file from the native picker,
  *     referenced in place, never copied;
  *   - `importFile` / `importUrl` — a `.zip`, `.css`, or URL package the host
  *     validates and lands in `extensions/<id>/` (#106).
- * The Add area under the list is split into the `ADD_TABS`: the bundled
- * names (#309 — what a writer needs, in plain words), the npm search, and
- * everything else (Advanced).
  *
- * `search` (#246) is a SEPARATE, quieter load than the list: an npm registry
- * search for packages tagged `gutterpress` or `markdown-it-plugin`, run over
- * the network only when the Search tab is first shown (never at project load)
- * and whenever the author types a query. A fetch/parse failure surfaces as
- * `search.message` — one line, never an error toast — and never blocks
- * `entries`/`bundled`.
- *
- * Versions: every npm row has a picker over that package's published versions
- * (`loadVersions`, on demand, cached for the session; `versionChoices` filters
- * pre-releases by the app-level "Include pre-release versions" preference and
- * always keeps the pin). `switchVersion` and `install` (the Install button on
- * a row whose downloaded copy is missing or broken) are both just `add` of
- * `name@<version>` — the host pins only after downloading, verifying and
- * load-testing, so a failed install leaves the old pin and copy untouched.
+ * Updates: `checkUpdates` asks npm once for each pinned entry's latest, and
+ * `update` re-pins one; `install` (a row whose downloaded copy is missing or
+ * broken) is the same `add` for exactly the pinned version. The host pins only
+ * after downloading, verifying and load-testing, so a failed install leaves
+ * the old pin and copy untouched.
  *
  * Removal never touches the author's files (a path entry's folder stays; an
  * npm entry's vendored copy — Gutterpress's own — is deleted), so it is a
@@ -64,36 +54,20 @@ import type {
   ExtensionValidationResult,
   BundledExtensionInfo,
   ExtensionImportResult,
-  NpmExtensionMatch,
-  ExtensionSearchResult,
   ExtensionUpdateCheck,
   ExtensionUpdatesResult,
-  ExtensionVersionsResult,
 } from "#lib/platform/dtos.ts";
-import {
-  addedBuiltInIds,
-  isLook,
-  orderAfterMove,
-  pickerVersions,
-  sampleSrcdoc,
-} from "#lib/components/config/config-helpers.ts";
+import { addedBuiltInIds, isLook, orderAfterMove, sampleSrcdoc } from "#lib/components/config/config-helpers.ts";
 
 export interface ExtensionsSectionDeps {
   /** The open project directory (reactive prop), or null when none is open. */
   projectDir: () => string | null;
   /** Every configured extension, in manifest (= cascade) order. */
   list: (projectDir: string) => Promise<ProjectExtensionEntry[]>;
-  /** The bundled extensions (markdown features and looks), static. */
+  /** The bundled extensions (markdown extras and looks), static. */
   bundled: () => Promise<BundledExtensionInfo[]>;
-  /** Search npm for extensions (#246). A fetch/parse failure comes back as `{ ok: false }` data, never a rejection. */
-  search: (query: string) => Promise<ExtensionSearchResult>;
-  /** Each pinned npm entry against npm's latest (or newest of any kind). Same data-not-rejection contract as `search`. */
+  /** Each pinned npm entry against npm's latest. A fetch/parse failure comes back as `{ ok: false }` data, never a rejection. */
   outdated: (projectDir: string, includePrerelease: boolean) => Promise<ExtensionUpdatesResult>;
-  /** Every published version of one npm package, newest first, pre-releases included. Same data-not-rejection contract as `search`. */
-  versions: (name: string) => Promise<ExtensionVersionsResult>;
-  /** The "Include pre-release versions" app preference (`settings.updates.includeExtensionPrereleases`) — read and write. */
-  includePrerelease: () => boolean;
-  setIncludePrerelease: (on: boolean) => void;
   validate: (projectDir: string) => Promise<ExtensionValidationResult[]>;
   /** Add by specifier. Null when the author cancelled the native npm trust gate. */
   add: (
@@ -113,32 +87,22 @@ export interface ExtensionsSectionDeps {
   importFromFile: (projectDir: string) => Promise<ExtensionImportResult | null>;
   importFromUrl: (projectDir: string, url: string) => Promise<ExtensionImportResult>;
   /**
-   * Fired after a look (`isLook`) was added by any add route (the panel
-   * toasts), never on an update, install or version switch, with the labels
-   * of the enabled looks ABOVE it: when there are any, the new look wins over
-   * them where they disagree, which the toast explains.
-   */
-  onLookAdded?: (label: string, enabledLooksAbove: string[]) => void;
-  /**
    * Fired after any successful change to a styles-carrying entry (added,
-   * removed, toggled, moved): the Styles + Design sections both depend on
+   * removed, toggled, moved, a look chosen): the design settings depend on
    * the cascade, so the panel wires this to reload them.
    */
   afterLookChange?: () => Promise<void>;
 }
 
-/** The Add area's tabs, in order (the labels are what the author reads). */
-export const ADD_TABS = [
-  { id: "built-in", label: "Built in" },
-  { id: "search", label: "Search" },
-  { id: "advanced", label: "Advanced" },
-] as const;
-export type AddTab = (typeof ADD_TABS)[number]["id"];
-
-// The selected Add tab outlives the controller (ProjectSettingsView makes a
-// fresh one per open), so leaving book settings and coming back keeps it for
-// the session. Deliberately not persisted: an app restart starts on Built in.
-let lastAddTab: AddTab = "built-in";
+/** One card of the Look tab's gallery: a built-in look, or a look the book lists from npm or a folder. */
+export interface LookCard {
+  /** The `use` it is listed under (or would be, once chosen). */
+  use: string;
+  label: string;
+  description: string;
+  /** "From npm" / "From a folder"; null for a built-in look. */
+  from: string | null;
+}
 
 /** Does this add/import result carry a look? (`null` = cancelled, nothing changed.) */
 const carriesStyles = (entry: ProjectExtensionEntry | null): boolean => !!entry?.carries.styles;
@@ -149,44 +113,14 @@ export class ExtensionsSectionController {
   entries = $state<ProjectExtensionEntry[]>([]);
   bundled = $state<BundledExtensionInfo[]>([]);
   /**
-   * npm search (#246) — the "Find more on npm" list beyond the bundled set.
-   * Run ON DEMAND the first time the Search tab is shown and on every query
-   * the author submits, never at project load; a fetch failure is one quiet
-   * `message`, never a modal, and never blocks the rest of the panel.
-   */
-  search = $state<{
-    status: "idle" | "loading" | "ready" | "error";
-    /** The query the current `matches` are for. */
-    query: string;
-    matches: NpmExtensionMatch[];
-    /** What npm said it had, for "showing N of M". */
-    total: number;
-    message: string | null;
-  }>({ status: "idle", query: "", matches: [], total: 0, message: null });
-  /** The search box's draft text (bound by the view). */
-  searchQuery = $state("");
-  /** The Add area's selected tab (see `showAddTab`). */
-  addTab = $state<AddTab>(lastAddTab);
-  /**
-   * Update check — each pinned npm entry against npm's latest. Run when the
-   * Looks & features tab mounts (an explicit tab open, never project load) and on
-   * *Check for updates*; a failure is one quiet `message`, never a modal.
+   * Update check — each pinned npm entry against npm's latest. Run once when
+   * the Advanced tab is first shown (never at project load); a failure is one
+   * quiet line, never a modal.
    */
   updates = $state<{
     status: "idle" | "loading" | "ready" | "error";
     checks: ExtensionUpdateCheck[];
-    message: string | null;
-  }>({ status: "idle", checks: [], message: null });
-  /**
-   * Published versions per npm package NAME (the version picker's source),
-   * loaded on demand — when an npm row is shown, or its picker is focused
-   * after a failure — and kept for the session. Pre-releases are in the cached list;
-   * `versionChoices` filters them by the preference, so flipping it needs no
-   * second fetch. A failed load is retried the next time a picker opens.
-   */
-  versions = $state<
-    Record<string, { status: "loading" | "ready" | "error"; versions: string[]; message: string | null }>
-  >({});
+  }>({ status: "idle", checks: [] });
   /** Last load-test result per `use`. */
   validation = $state<Record<string, ExtensionValidationResult>>({});
   validating = $state(false);
@@ -196,17 +130,18 @@ export class ExtensionsSectionController {
   /** What an action is in flight for — an entry's `use`, a bundled name, the
    *  npm draft, or `__local__`/`__file__`/`__url__` — else null. */
   busy = $state<string | null>(null);
+  /** The Book setup header's Saving… / Saved, for this list's writes. */
+  saveStatus = $state<"idle" | "saving" | "saved">("idle");
   /** Non-fatal warnings from the last `.zip`/`.css`/URL import (#106). */
   importWarnings = $state<string[]>([]);
   /** Drafts bound directly from the templates. */
   url = $state("");
   npmName = $state("");
-  /** Optional named module export for packages without a default plugin export. */
-  npmExport = $state("");
-  /** Sample-thumbnail srcdoc per `use` (`"__fallback__"` when unavailable) —
-   *  shared by the list rows and the Built in tab's look rows. */
+  /** Sample-thumbnail srcdoc per `use` (`"__fallback__"` when unavailable). */
   thumbs = $state<Record<string, string>>({});
 
+  /** The gallery's card order, fixed by `freezeGalleryOrder` when the Look tab opens. */
+  private galleryOrder: string[] = [];
   private readonly deps: ExtensionsSectionDeps;
 
   constructor(deps: ExtensionsSectionDeps) {
@@ -214,39 +149,68 @@ export class ExtensionsSectionController {
   }
 
   // ── Derivations (getters so bun unit tests need only the $state shim) ─────
+  /** The enabled looks, in cascade order: one in practice; more is an Advanced setup. */
+  get enabledLooks(): ProjectExtensionEntry[] {
+    return this.entries.filter((e) => e.enabled && isLook(e));
+  }
+
   /**
-   * Bundled features and looks not yet in the list — the Built in tab's Add
-   * rows. A look also counts as added when the book still has the copy an
-   * older version made of it at `./extensions/<id>`.
+   * The Look tab's cards: every built-in look, then every look the book lists
+   * from npm or a folder, on or off, with the look in use first. A built-in
+   * the book still has as an older version's `./extensions/<id>` copy shows
+   * once, as that copy. The order is the one `freezeGalleryOrder` fixed (a
+   * card that was not there then goes last), so choosing never moves a card.
    */
-  get availableBundled(): BundledExtensionInfo[] {
+  get galleryLooks(): LookCard[] {
+    const rank = (card: LookCard): number => {
+      const at = this.galleryOrder.indexOf(card.use);
+      return at < 0 ? Infinity : at;
+    };
+    return this.lookCards().sort((a, b) => rank(a) - rank(b));
+  }
+
+  /** Fix the gallery order as it is now (the Look tab calls this as it opens). */
+  freezeGalleryOrder = (): void => {
+    this.galleryOrder = this.lookCards().map((card) => card.use);
+  };
+
+  private lookCards(): LookCard[] {
     const copies = addedBuiltInIds(this.entries);
-    return this.bundled.filter((b) => !(b.look && copies.has(b.use)) && !this.entries.some((e) => e.use === b.use));
+    const inUse = new Set(this.enabledLooks.map((e) => e.use));
+    const cards: LookCard[] = [
+      ...this.bundled
+        .filter((b) => b.look && !copies.has(b.use))
+        .map((b) => ({ use: b.use, label: b.label, description: b.description, from: null })),
+      ...this.entries
+        .filter((e) => isLook(e) && e.kind !== "bundled")
+        .map((e) => ({
+          use: e.use,
+          label: e.label,
+          description: e.description ?? "",
+          from: e.kind === "npm" ? "From npm" : "From a folder",
+        })),
+    ];
+    return [...cards.filter((c) => inUse.has(c.use)), ...cards.filter((c) => !inUse.has(c.use))];
   }
-  /** npm results not already in the list — the "Find more on npm" rows. An
-   *  installed npm entry's `use` is `name@version`, so the comparison is by
-   *  package NAME, not by the whole specifier. */
-  get availableSearch(): NpmExtensionMatch[] {
-    return this.search.matches.filter(
-      (m) => !this.entries.some((e) => e.kind === "npm" ? e.name === m.name : e.use === m.name),
-    );
+
+  /** The built-in extras (bundled, not looks), each ticked when listed and on. */
+  get extras(): Array<BundledExtensionInfo & { on: boolean }> {
+    return this.bundled
+      .filter((b) => !b.look)
+      .map((b) => ({ ...b, on: this.entries.some((e) => e.use === b.use && e.enabled) }));
   }
+
+  /** Listed extensions that are neither looks nor built-in extras: they are set up in Advanced only. */
+  get otherExtensionsCount(): number {
+    return this.entries.filter((e) => !isLook(e) && e.kind !== "bundled").length;
+  }
+
   /** The newer version npm has for an entry, or null (not npm, not checked, or current). */
   updateFor = (entry: ProjectExtensionEntry): string | null => {
     if (entry.kind !== "npm") return null;
     const check = this.updates.checks.find((c) => c.name === entry.name && c.outdated);
     return check && check.current === entry.version ? check.latest : null;
   };
-
-  /** Pre-release versions are offered and counted as "newer" (an app preference, not per book). */
-  get includePrerelease(): boolean {
-    return this.deps.includePrerelease();
-  }
-  /** What a row's version picker lists: stable unless the preference is on, always including the pin. Empty for non-npm entries. */
-  versionChoices = (entry: ProjectExtensionEntry): string[] =>
-    entry.kind === "npm"
-      ? pickerVersions(this.versions[entry.name]?.versions ?? [], entry.version, this.includePrerelease)
-      : [];
 
   // ── Load ────────────────────────────────────────────────────────────────────
   loadExtensions = async (): Promise<void> => {
@@ -257,11 +221,10 @@ export class ExtensionsSectionController {
       const [entries, bundled] = await Promise.all([this.deps.list(projectDir), this.deps.bundled()]);
       this.entries = entries;
       this.bundled = bundled;
-      // Thumbnails lazy-load in the background (non-fatal if they fail): every
-      // listed row that carries styles, and every bundled look — so a look
-      // shows what it looks like before it is added, too.
+      // Gallery thumbnails lazy-load in the background (non-fatal if they
+      // fail): every listed look and every built-in one.
       const wanted = new Set([
-        ...entries.filter((e) => e.carries.styles).map((e) => e.use),
+        ...entries.filter(isLook).map((e) => e.use),
         ...bundled.filter((b) => b.look).map((b) => b.use),
       ]);
       void Promise.all([...wanted].map((use) => this.loadThumb(use)));
@@ -271,6 +234,7 @@ export class ExtensionsSectionController {
     }
   };
 
+  /** Load-test every entry; also the Advanced tab's Check again. */
   validateExtensions = async (): Promise<void> => {
     const projectDir = this.deps.projectDir();
     if (!projectDir) return;
@@ -286,93 +250,20 @@ export class ExtensionsSectionController {
   };
 
   /**
-   * Select an Add tab. Showing Search for the first time is what runs the
-   * npm search (#246) — also when the remembered tab is Search and the view
-   * mounts straight onto it, which is why the view calls this on mount too.
-   */
-  showAddTab = (tab: AddTab): void => {
-    this.addTab = tab;
-    lastAddTab = tab;
-    if (tab === "search" && this.search.status === "idle") void this.runSearch("");
-  };
-
-  /**
-   * Search npm. Called with an empty query the first time the Search tab is
-   * shown (`showAddTab`, never at project load) and with the
-   * author's query when they submit the box. Refuses to pile up a second in-flight search; a
-   * failure lands in `search.message`, not `this.error` — it must never block
-   * or blank the rest of the panel.
-   */
-  runSearch = async (query = this.searchQuery): Promise<void> => {
-    if (this.search.status === "loading") return;
-    const q = query.trim();
-    this.search = {
-      status: "loading",
-      query: q,
-      matches: this.search.matches,
-      total: this.search.total,
-      message: null,
-    };
-    try {
-      const result = await this.deps.search(q);
-      this.search = result.ok
-        ? { status: "ready", query: q, matches: result.matches, total: result.total, message: null }
-        : { status: "error", query: q, matches: [], total: 0, message: result.message };
-    } catch (e) {
-      this.search = {
-        status: "error",
-        query: q,
-        matches: [],
-        total: 0,
-        message: e instanceof Error ? e.message : String(e),
-      };
-    }
-  };
-
-  /**
-   * Ask npm for each pinned entry's latest. Refuses to pile up a second
-   * in-flight check; a failure lands in `updates.message`, not `this.error`.
+   * Ask npm for each pinned entry's latest (stable versions only). Refuses to
+   * pile up a second in-flight check; a failure is `updates.status`, not
+   * `this.error`.
    */
   checkUpdates = async (): Promise<void> => {
     const projectDir = this.deps.projectDir();
     if (!projectDir || this.updates.status === "loading") return;
-    this.updates = { status: "loading", checks: this.updates.checks, message: null };
+    this.updates = { status: "loading", checks: this.updates.checks };
     try {
-      const result = await this.deps.outdated(projectDir, this.includePrerelease);
-      this.updates = result.ok
-        ? { status: "ready", checks: result.checks, message: null }
-        : { status: "error", checks: [], message: result.message };
-    } catch (e) {
-      this.updates = { status: "error", checks: [], message: e instanceof Error ? e.message : String(e) };
+      const result = await this.deps.outdated(projectDir, false);
+      this.updates = result.ok ? { status: "ready", checks: result.checks } : { status: "error", checks: [] };
+    } catch {
+      this.updates = { status: "error", checks: [] };
     }
-  };
-
-  /** Flip "Include pre-release versions" and ask npm again — "newer" now means something else. */
-  setIncludePrerelease = (on: boolean): void => {
-    this.deps.setIncludePrerelease(on);
-    void this.checkUpdates();
-  };
-
-  /**
-   * Load one package's published versions for its picker. A no-op while a load
-   * is in flight or once it succeeded (the session cache); after a failure the
-   * next call tries again. A failure lands in `versions[name].message`, not
-   * `this.error` — it must never block the panel.
-   */
-  loadVersions = async (name: string): Promise<void> => {
-    const current = this.versions[name]?.status;
-    if (current === "loading" || current === "ready") return;
-    this.versions = { ...this.versions, [name]: { status: "loading", versions: [], message: null } };
-    let next: { status: "ready" | "error"; versions: string[]; message: string | null };
-    try {
-      const result = await this.deps.versions(name);
-      next = result.ok
-        ? { status: "ready", versions: result.versions, message: null }
-        : { status: "error", versions: [], message: result.message };
-    } catch (e) {
-      next = { status: "error", versions: [], message: e instanceof Error ? e.message : String(e) };
-    }
-    this.versions = { ...this.versions, [name]: next };
   };
 
   /** Re-pin one npm entry to the version `checkUpdates` found: `add(name@latest)`, behind the same trust gate as any install. */
@@ -396,33 +287,15 @@ export class ExtensionsSectionController {
     }
   };
 
-  /**
-   * The picker: install `name@<version>` and, only once the host has
-   * downloaded, verified and load-tested it, pin it. A failed install leaves
-   * the old pin and its downloaded copy exactly as they were (the host rolls
-   * back), and the error says so. Choosing the version already pinned is a no-op.
-   */
-  switchVersion = async (entry: ProjectExtensionEntry, version: string): Promise<void> => {
-    if (entry.kind !== "npm" || !version || version === entry.version) return;
-    const kept = entry.version ? `This book still uses ${entry.version}. ` : "";
-    if (await this.installSpec(entry, `${entry.name}@${version}`, kept)) void this.checkUpdates();
-  };
-
   /** The one npm install: `add(spec)` keeping the entry's `export`, behind the native trust gate. Null result: cancelled or failed. */
-  private async installSpec(
-    entry: ProjectExtensionEntry,
-    spec: string,
-    /** Said after "Couldn't install …" when it fails, e.g. what the book still uses. */
-    failureNote = "",
-  ): Promise<ProjectExtensionEntry | null> {
+  private async installSpec(entry: ProjectExtensionEntry, spec: string): Promise<ProjectExtensionEntry | null> {
     const added = await this.mutate(
       entry.use,
       (dir) => this.deps.add(dir, spec, entry.export),
       carriesStyles,
-      `Couldn't install ${spec}. ${failureNote}`,
+      `Couldn't install ${spec}. `,
     );
     if (!added) return null;
-    // A re-pin, not an add: the host's warnings show, but no look is announced.
     if (added.warnings?.length) this.notice = added.warnings.join(" ");
     return added;
   }
@@ -442,9 +315,9 @@ export class ExtensionsSectionController {
   // ── The one mutation shape ──────────────────────────────────────────────────
   /**
    * Every verb below: refuse while busy, clear the messages, mark busy, run,
-   * reload the list on success (and the Styles + Design sections when the
-   * change touched a look), surface a failure, clear busy. A `null` result is
-   * the "cancelled, nothing changed" convention of the add/import verbs — no
+   * reload the list on success (and the design settings when the change
+   * touched a look), surface a failure, clear busy. A `null` result is the
+   * "cancelled, nothing changed" convention of the add/import verbs — no
    * reload. Returns the action's result, or undefined when refused or failed.
    */
   private async mutate<T>(
@@ -459,29 +332,24 @@ export class ExtensionsSectionController {
     this.busy = busyKey;
     this.error = null;
     this.notice = null;
+    this.saveStatus = "saving";
     try {
       const result = await action(projectDir);
-      if (result === null) return result;
+      if (result === null) {
+        this.saveStatus = "idle";
+        return result;
+      }
       await this.loadExtensions();
       if (touchesLook(result)) await this.deps.afterLookChange?.();
+      this.saveStatus = "saved";
       return result;
     } catch (e) {
       this.error = failurePrefix + (e instanceof Error ? e.message : String(e));
+      this.saveStatus = "idle";
       return undefined;
     } finally {
       this.busy = null;
     }
-  }
-
-  /** After a successful add (the list is already reloaded): surface the host's
-   *  non-fatal warnings, and announce a new look, naming the enabled looks
-   *  above it in the list (the ones it wins over). */
-  private announceAdded(entry: ProjectExtensionEntry): void {
-    if (entry.warnings?.length) this.notice = entry.warnings.join(" ");
-    if (!isLook(entry)) return;
-    const at = this.entries.findIndex((e) => e.use === entry.use);
-    const above = at < 0 ? [] : this.entries.slice(0, at);
-    this.deps.onLookAdded?.(entry.label, above.filter((e) => e.enabled && isLook(e)).map((e) => e.label));
   }
 
   // ── Verbs (arrow fields: passed as callbacks from the templates) ────────────
@@ -504,32 +372,59 @@ export class ExtensionsSectionController {
     await this.mutate(entry.use, (dir) => this.deps.reorder(dir, order), () => entry.carries.styles);
   };
 
-  /** "Install from npm": the drafts → `add`. A cancelled trust gate keeps the draft. */
+  /**
+   * Choose a look from the gallery, in one step: the target is added (a
+   * built-in not listed yet) or switched on, moved to the old look's place in
+   * the list, and the old look goes — a built-in is removed, an npm or folder
+   * look only switched off. Refused while the book has two or more looks on
+   * (that setup is Advanced's to change) or when the card is already the look.
+   */
+  chooseLook = async (card: LookCard): Promise<void> => {
+    const looks = this.enabledLooks;
+    const old = looks[0];
+    if (looks.length > 1 || old?.use === card.use) return;
+    const listed = this.entries.some((e) => e.use === card.use);
+    await this.mutate(
+      card.use,
+      async (dir) => {
+        if (listed) await this.deps.setEnabled(dir, card.use, true);
+        else await this.deps.add(dir, card.use);
+        if (!old) return true;
+        // Every `use` once (what `reorder` insists on), the target where the old look is.
+        const order = this.entries.map((e) => e.use).filter((u) => u !== card.use);
+        order.splice(order.indexOf(old.use), 0, card.use);
+        await this.deps.reorder(dir, order);
+        if (old.kind === "bundled") await this.deps.remove(dir, old.use);
+        else await this.deps.setEnabled(dir, old.use, false);
+        return true;
+      },
+      () => true,
+      `Couldn't switch to ${card.label}. ${old ? `Your book still uses ${old.label}. ` : ""}`,
+    );
+  };
+
+  /** Tick or untick a built-in extra: on adds it (or switches a listed one on); off removes it. */
+  setExtra = async (b: BundledExtensionInfo, on: boolean): Promise<void> => {
+    const listed = this.entries.find((e) => e.use === b.use);
+    if (on ? listed?.enabled : !listed) return;
+    await this.mutate(
+      b.use,
+      (dir) => (!on ? this.deps.remove(dir, b.use) : listed ? this.deps.setEnabled(dir, b.use, true) : this.deps.add(dir, b.use)),
+      () => false,
+    );
+  };
+
+  /** "npm package" → `add`. A cancelled trust gate keeps the draft. */
   addNpm = async (): Promise<void> => {
     const name = this.npmName.trim();
-    const exportName = this.npmExport.trim() || undefined;
     if (!name) {
       this.error = "Enter an npm package name (e.g. markdown-it-highlightjs).";
       return;
     }
-    const added = await this.mutate(name, (dir) => this.deps.add(dir, name, exportName), carriesStyles);
+    const added = await this.mutate(name, (dir) => this.deps.add(dir, name), carriesStyles);
     if (!added) return;
     this.npmName = "";
-    this.npmExport = "";
     this.announceAdded(added);
-  };
-
-  /** Add a bundled feature or look — writes its name, nothing to install. */
-  addBundled = async (b: BundledExtensionInfo): Promise<void> => {
-    const added = await this.mutate(b.use, (dir) => this.deps.add(dir, b.use), carriesStyles);
-    if (added) this.announceAdded(added);
-  };
-
-  /** Add an npm search result (#246) — the same specifier add path as
-   *  `addBundled`; the package name IS the specifier `ext add` takes. */
-  addSearched = async (match: NpmExtensionMatch): Promise<void> => {
-    const added = await this.mutate(match.name, (dir) => this.deps.add(dir, match.name), carriesStyles);
-    if (added) this.announceAdded(added);
   };
 
   /** A folder or plugin file from the native picker, referenced in place. */
@@ -553,7 +448,7 @@ export class ExtensionsSectionController {
   importUrl = async (): Promise<void> => {
     const url = this.url.trim();
     if (!url) {
-      this.error = "Enter a URL (a .css file or an extension folder).";
+      this.error = "Enter a web address (a .css file or an extension folder).";
       return;
     }
     this.importWarnings = [];
@@ -562,6 +457,11 @@ export class ExtensionsSectionController {
     this.url = "";
     this.announceImported(result);
   };
+
+  /** After a successful add (the list is already reloaded): surface the host's non-fatal warnings. */
+  private announceAdded(entry: ProjectExtensionEntry): void {
+    if (entry.warnings?.length) this.notice = entry.warnings.join(" ");
+  }
 
   private announceImported(result: ExtensionImportResult): void {
     this.importWarnings = result.warnings.map((w) => w.message);

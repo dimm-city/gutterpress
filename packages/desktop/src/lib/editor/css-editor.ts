@@ -170,7 +170,7 @@ export const pagedMediaCompletions: readonly PagedMediaCompletion[] = [
   { label: "@right-middle", apply: "@right-middle {\n\tcontent: \"\";\n}", type: "atrule", detail: "Margin box" },
   { label: "@right-bottom", apply: "@right-bottom {\n\tcontent: \"\";\n}", type: "atrule", detail: "Margin box" },
   // ── Page-context properties with value hints ─────────────────────────────
-  // No `size`: the page size is the manifest's (Book setup > Details), and a
+  // No `size`: the page size is the manifest's (Book setup > Book), and a
   // `size` in a stylesheet is ignored and reported by the CSS check.
   { label: "margin", apply: "margin: 20mm;", type: "property", detail: "20mm" },
   { label: "marks", apply: "marks: crop cross;", type: "property", detail: "crop cross" },

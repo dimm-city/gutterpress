@@ -15,17 +15,17 @@ export const PRESET_CHOICES: Array<{ id: PresetChoice; label: string; descriptio
   {
     id: "dtrpg",
     label: "DriveThruRPG print",
-    description: "US Letter (8.5 × 11 in), set up for DriveThruRPG's print rules.",
+    description: "8.5 × 11 in plus bleed, set up for DriveThruRPG",
   },
   {
     id: "book",
     label: "Trade paperback",
-    description: "6 × 9 in. No print-service rules.",
+    description: "6 × 9 in",
   },
   {
     id: "custom",
-    label: "Other size",
-    description: "A common size (Letter, A4, Digest…) or one you type.",
+    label: "Another size",
+    description: "Letter, A4, Digest… or your own",
   },
 ];
 

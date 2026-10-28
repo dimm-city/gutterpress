@@ -1,6 +1,6 @@
 /**
- * DetailsSectionController — the single owner of the Details section's state
- * + logic (title, authors, chapters, page size, publish targets).
+ * DetailsSectionController — the single owner of the Book tab's state + logic
+ * (title, authors, page size and margins, publish targets, chapters).
  *
  * Details saves as you go — there is no Save button. A choice (preset,
  * target, chapter order, remove author) commits at once; a text field (title,
@@ -15,6 +15,9 @@
  * value is typed), so a change to them is never a side effect of an unrelated
  * edit; margins a book does not set yet are shown as its stylesheets give them
  * and recorded in the manifest the first time the author changes one.
+ *
+ * Chapters are named by their first `# ` heading (`readFirstHeading`, read
+ * after load, best-effort), else by the file name made readable.
  *
  * Publish targets: a manifest with no `targets:` key shows the preset's
  * default (dtrpg → DriveThruRPG) and keeps following the preset until the
@@ -49,6 +52,7 @@ import {
   buildSourceList,
   moveEntry,
   naturalOrder,
+  readableFileName,
   setIncluded,
   toManifestFiles,
   type SourceFileEntry,
@@ -68,6 +72,9 @@ export interface DetailsSectionDeps {
   /** List the project's markdown files (project-relative paths) — the
    *  universe the chapters include/exclude list is built from. */
   listMarkdownFiles: (projectDir: string) => Promise<string[]>;
+  /** A chapter file's first `# ` heading, or null when it has none. Best-effort:
+   *  a rejection (a missing file) just leaves the file name. */
+  readFirstHeading?: (projectDir: string, path: string) => Promise<string | null>;
   /** Which of the print tools (`qpdf`/`gs`) are missing on this computer.
    *  Best-effort: a rejection just means no tool note is shown. */
   listMissingPrintTools?: () => Promise<string[]>;
@@ -93,7 +100,7 @@ export class DetailsSectionController {
   // ── Public rune state (read by the template; mutated only via methods) ──────
   /** The manifest subset as last read/saved from disk. */
   fields = $state<ProjectConfigFields>({});
-  /** The save badge: idle until something is written, then saving → saved. */
+  /** The Book setup header's Saving… / Saved: idle until something is written. */
   detailsSaveStatus = $state<"idle" | "saving" | "saved">("idle");
   /** Last load/save error, or null. */
   detailsError = $state<string | null>(null);
@@ -104,6 +111,8 @@ export class DetailsSectionController {
   /** The chapters list: every project markdown file, ordered, each row
    *  included or excluded (the DnD editor's model — see source-files.ts). */
   sourceFiles = $state<SourceFileEntry[]>([]);
+  /** Each chapter's first `# ` heading, by path, once read. */
+  titles = $state<Record<string, string>>({});
   /** Editable publish-target selection (ADR 0008) — the destinations this
    *  book is validated against. */
   targetsDraft = $state<string[]>([]);
@@ -169,7 +178,8 @@ export class DetailsSectionController {
       ]);
       this.fields = f;
       this.titleDraft = f.title ?? "";
-      this.authorsDraft = f.authors ?? [];
+      // One field to type into even when the book names no author yet.
+      this.authorsDraft = f.authors?.length ? f.authors : [""];
       await this.loadPageSetup(projectDir);
       this.targetsExplicit = f.targets !== undefined;
       this.targetsDraft = f.targets ?? defaultTargetsFor(this.pageSetup?.preset ?? null);
@@ -183,6 +193,7 @@ export class DetailsSectionController {
       this.sourceFiles = buildSourceList(this.allMarkdownFiles, f.sourceFiles ?? null);
       // Last: every field a commit diffs is now this book's.
       this.loadedDir = projectDir;
+      void this.loadTitles(projectDir);
       // Independent + best-effort: the tool probe must never fail the load.
       void this.deps
         .listMissingPrintTools?.()
@@ -195,6 +206,17 @@ export class DetailsSectionController {
     } catch (e) {
       this.detailsError = e instanceof Error ? e.message : String(e);
     }
+  }
+
+  /** A chapter's name: its first heading, else its file name made readable. */
+  chapterTitle = (path: string): string => this.titles[path] ?? readableFileName(path);
+
+  private async loadTitles(projectDir: string): Promise<void> {
+    const read = this.deps.readFirstHeading;
+    if (!read) return;
+    const paths = this.sourceFiles.map((e) => e.path);
+    const found = await Promise.all(paths.map((p) => read(projectDir, p).catch(() => null)));
+    this.titles = Object.fromEntries(paths.flatMap((p, i) => (found[i] ? [[p, found[i]]] : [])));
   }
 
   // ── Page size and margins (#357) ────────────────────────────────────────────
@@ -419,8 +441,9 @@ export class DetailsSectionController {
         if (reset) this.marginsReset = true;
       }
       // The drafts stay as typed, so the author can retry; the error says why.
-      this.detailsError = e instanceof Error ? e.message : String(e);
-      this.deps.onError?.(`Could not save details: ${this.detailsError}`);
+      const reason = e instanceof Error ? e.message : String(e);
+      this.detailsError = `Couldn't save: ${reason.replace(/[.\s]+$/, "")}. Your changes are still here; try again.`;
+      this.deps.onError?.(`Could not save details: ${reason}`);
       this.detailsSaveStatus = "idle";
       return false;
     }

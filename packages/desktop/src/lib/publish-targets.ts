@@ -41,7 +41,7 @@ export const PUBLISH_TARGET_CHOICES: PublishTargetChoice[] = [
 /**
  * The targets a book designed for a preset validates against by default
  * (mirrors the lib presets' `defaultTargets`: dtrpg → [dtrpg]; else none).
- * Shared by the new-book wizard and Book setup > Details.
+ * Shared by the new-book wizard and Book setup > Book.
  */
 export function defaultTargetsFor(preset: string | null): string[] {
   return preset === "dtrpg" ? ["dtrpg"] : [];
