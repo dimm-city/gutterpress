@@ -1434,8 +1434,8 @@ function sanitizeBookSubPath(subPath: unknown): string {
 }
 
 // remote:diagnoseProject, remote:testRemoteAccess, remote:connectGenericHost,
-// remote:disconnectHost, remote:listConnections, remote:forgeTokenUrl,
-// remote:sync, remote:cloneRepository are SvelteKit server routes
+// remote:disconnectHost, remote:listConnections, remote:sync,
+// remote:cloneRepository are SvelteKit server routes
 // (src/routes/api/remote/*). cloneRepository is a
 // bound closure on remoteHooksImpl above (it needs mainWindow, which the
 // route's separate Vite bundle can't reach directly).

@@ -38,14 +38,13 @@
   import type { OutlineEntry } from "#lib/preview-client.ts";
   import type { ProjectCapabilities } from "#lib/platform/contract.ts";
   import type { ToastController } from "#lib/components/Toast.svelte";
-  import { HIDE_BOOKS_TAB, shownTabId, showTabStrip, visibleTabIds } from "#lib/left-panel-tabs.ts";
+  import { HIDE_BOOKS_TAB, shownTabId, visibleTabIds } from "#lib/left-panel-tabs.ts";
 
   export type PanelTab = "projects" | "toc" | "files" | "media";
 
   let {
     open = $bindable(false),
     activeTab = $bindable<PanelTab>("projects"),
-    readerMode = false,
     width = $bindable(300),
     // Project context
     projectDir = null,
@@ -75,9 +74,6 @@
   }: {
     open?: boolean;
     activeTab?: PanelTab;
-    /** Reader (Settings → App): only Books and TOC — Files and Media are for
-     *  editing. A remembered hidden tab shows the first visible one instead. */
-    readerMode?: boolean;
     /** Panel width in px, user-resizable (clamped 300–480, narrowed only when
      *  the window can't spare that — see widthBounds()), persisted. */
     width?: number;
@@ -230,16 +226,12 @@
     { id: "media", label: "Media", icon: "image", title: "Media library" },
   ];
 
-  const visibleTabs = $derived(TABS.filter((t) => visibleTabIds(readerMode).includes(t.id)));
-  /** The tab actually shown: the active one, unless reader mode or the
-   *  temporary Books-tab hiding (#lib/left-panel-tabs) hides it. */
+  const visibleTabs = TABS.filter((t) => visibleTabIds().includes(t.id));
+  /** The tab actually shown: the active one, unless the temporary Books-tab
+   *  hiding (#lib/left-panel-tabs) hides it. */
   const shownTab = $derived<PanelTab>(
     shownTabId(activeTab, visibleTabs.map((t) => t.id)),
   );
-
-  /** One visible tab (reader role: just the TOC) needs no strip — the panel
-   *  shows it directly under its own heading. */
-  const stripShown = $derived(showTabStrip(visibleTabs.map((t) => t.id)));
 
   // ── APG tabs keyboard pattern ─────────────────────────────────────────────
   // Roving tabindex: active tab = 0, others = -1, all = -1 when panel is closed.
@@ -313,7 +305,6 @@
     onkeydown={onResizeKeydown}
   ></div>
   <!-- Tab list — APG tabs pattern: roving tabindex, ArrowLeft/Right/Home/End -->
-  {#if stripShown}
   <div class="panel-tabs" role="tablist" aria-label="Panel tabs" onkeydown={onTablistKeydown} tabindex="-1">
     {#each visibleTabs as tab (tab.id)}
       <button
@@ -334,7 +325,6 @@
       </button>
     {/each}
   </div>
-  {/if}
 
   <!-- Tab panels: inert when closed so no focusable descendants are reachable by Tab -->
   <!-- inert lives on the <aside> itself (covers tabs + resize handle + body in
@@ -347,11 +337,11 @@
       id="panel-content-toc"
       class="tab-panel"
       class:visible={shownTab === "toc"}
-      role={stripShown ? "tabpanel" : "region"}
-      aria-labelledby={stripShown ? "panel-tab-toc" : "panel-heading-toc"}
+      role="tabpanel"
+      aria-labelledby="panel-tab-toc"
       aria-hidden={shownTab !== "toc"}
     >
-      <h2 class="panel-heading" id="panel-heading-toc">Table of contents</h2>
+      <h2 class="panel-heading">Table of contents</h2>
       {#if outline.length === 0}
         <div class="empty-tab">
           <Icon name="list" size={24} />

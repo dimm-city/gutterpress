@@ -290,9 +290,8 @@
 .app-btn-ghost:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
 
 /**
- * Sub-tab strip (Settings, Troubleshooting): the underline tab-bar recipe.
- * Horizontal padding stays with the consumer (the full-window Settings sheet
- * pads its bar; embedded surfaces don't).
+ * Sub-tab strip (Troubleshooting): the underline tab-bar recipe. Horizontal
+ * padding stays with the consumer.
  */
 .app-tab-bar {
   display: flex;

@@ -1,60 +1,33 @@
 /**
  * Left-panel tab visibility (#lib/left-panel-tabs): the temporary hiding of
- * the Books tab, reader mode, and the fallback for a remembered hidden tab.
+ * the Books tab, and the fallback for a remembered hidden tab.
  */
 import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
-import { HIDE_BOOKS_TAB, shownTabId, showTabStrip, visibleTabIds } from "../../src/lib/left-panel-tabs";
+import { HIDE_BOOKS_TAB, shownTabId, visibleTabIds } from "../../src/lib/left-panel-tabs";
 
 describe("visibleTabIds", () => {
   test("Books is hidden while the temporary flag is set", () => {
     expect(HIDE_BOOKS_TAB).toBe(true);
-    expect(visibleTabIds(false)).toEqual(["toc", "files", "media"]);
+    expect(visibleTabIds()).toEqual(["toc", "files", "media"]);
   });
 
   test("with the flag off, every tab is back in its original order", () => {
-    expect(visibleTabIds(false, false)).toEqual(["projects", "toc", "files", "media"]);
-  });
-
-  test("reader mode keeps only TOC (Books too when un-hidden)", () => {
-    expect(visibleTabIds(true)).toEqual(["toc"]);
-    expect(visibleTabIds(true, false)).toEqual(["projects", "toc"]);
-  });
-});
-
-describe("showTabStrip", () => {
-  test("reader role shows no tab strip: the lone TOC panel is shown directly", () => {
-    expect(showTabStrip(visibleTabIds(true))).toBe(false);
-  });
-
-  test("author role keeps the strip", () => {
-    expect(showTabStrip(visibleTabIds(false))).toBe(true);
-  });
-
-  test("LeftPanel draws the strip only when stripShown, and labels the bare TOC panel by its heading", () => {
-    const src = readFileSync(new URL("../../src/lib/components/LeftPanel.svelte", import.meta.url), "utf8");
-    expect(src).toMatch(/\{#if stripShown\}\s*<div class="panel-tabs"/);
-    expect(src).toContain('role={stripShown ? "tabpanel" : "region"}');
-    expect(src).toContain('id="panel-heading-toc"');
+    expect(visibleTabIds(false)).toEqual(["projects", "toc", "files", "media"]);
   });
 });
 
 describe("shownTabId", () => {
   test("an active visible tab is shown as-is", () => {
-    expect(shownTabId("files", visibleTabIds(false))).toBe("files");
+    expect(shownTabId("files", visibleTabIds())).toBe("files");
   });
 
   test("a remembered Books tab shows the first visible tab while Books is hidden", () => {
-    expect(shownTabId("projects", visibleTabIds(false))).toBe("toc");
-  });
-
-  test("a remembered Files/Media tab in reader mode falls back to the first visible tab", () => {
-    expect(shownTabId("media", visibleTabIds(true, false))).toBe("projects");
-    expect(shownTabId("files", visibleTabIds(true))).toBe("toc");
+    expect(shownTabId("projects", visibleTabIds())).toBe("toc");
   });
 
   test("un-hiding Books restores a remembered Books selection", () => {
-    expect(shownTabId("projects", visibleTabIds(false, false))).toBe("projects");
+    expect(shownTabId("projects", visibleTabIds(false))).toBe("projects");
   });
 });
 

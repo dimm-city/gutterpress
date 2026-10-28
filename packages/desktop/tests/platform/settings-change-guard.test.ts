@@ -99,7 +99,7 @@ test("useSettings().set() with an unchanged previewBg does not re-trigger the si
   expect(applied).toEqual([currentBg]);
 
   // An unrelated section change must not re-trigger the sink either.
-  settings.set({ advanced: { fileWatcherInterval: settings.current.advanced.fileWatcherInterval + 1 } });
+  settings.set({ versionHistory: { autoSyncMinutes: settings.current.versionHistory.autoSyncMinutes + 1 } });
   readBg();
   expect(applied).toEqual([currentBg]);
 
@@ -125,9 +125,9 @@ test("useSettings() no longer exposes a subscribe() method (ARCH #61 — the man
 test("onSettingsChange: fires on set() with the fully-merged current settings", () => {
   const settings = useSettings();
   const seen: number[] = [];
-  const off = onSettingsChange((s) => seen.push(s.advanced.fileWatcherInterval));
-  const next = settings.current.advanced.fileWatcherInterval + 2;
-  settings.set({ advanced: { fileWatcherInterval: next } });
+  const off = onSettingsChange((s) => seen.push(s.versionHistory.autoSyncMinutes));
+  const next = settings.current.versionHistory.autoSyncMinutes + 2;
+  settings.set({ versionHistory: { autoSyncMinutes: next } });
   expect(seen).toEqual([next]);
   off();
 });
@@ -135,11 +135,11 @@ test("onSettingsChange: fires on set() with the fully-merged current settings", 
 test("onSettingsChange: unsubscribe stops further notifications", () => {
   const settings = useSettings();
   const seen: unknown[] = [];
-  const off = onSettingsChange((s) => seen.push(s.advanced.fileWatcherInterval));
-  settings.set({ advanced: { fileWatcherInterval: settings.current.advanced.fileWatcherInterval + 1 } });
+  const off = onSettingsChange((s) => seen.push(s.versionHistory.autoSyncMinutes));
+  settings.set({ versionHistory: { autoSyncMinutes: settings.current.versionHistory.autoSyncMinutes + 1 } });
   expect(seen.length).toBe(1);
   off();
-  settings.set({ advanced: { fileWatcherInterval: settings.current.advanced.fileWatcherInterval + 1 } });
+  settings.set({ versionHistory: { autoSyncMinutes: settings.current.versionHistory.autoSyncMinutes + 1 } });
   expect(seen.length).toBe(1);
 });
 
@@ -149,9 +149,9 @@ test("onSettingsChange: pairs with settingsChangeGuard to skip unrelated changes
   const sink = settingsChangeGuard<string>((bg) => applied.push(bg));
   const off = onSettingsChange((s) => sink(s.appearance.previewBg));
   const bg = settings.current.appearance.previewBg;
-  settings.set({ advanced: { fileWatcherInterval: settings.current.advanced.fileWatcherInterval + 1 } });
+  settings.set({ versionHistory: { autoSyncMinutes: settings.current.versionHistory.autoSyncMinutes + 1 } });
   expect(applied).toEqual([bg]); // first notify seeds the guard
-  settings.set({ advanced: { fileWatcherInterval: settings.current.advanced.fileWatcherInterval + 1 } });
+  settings.set({ versionHistory: { autoSyncMinutes: settings.current.versionHistory.autoSyncMinutes + 1 } });
   expect(applied).toEqual([bg]); // unrelated change: guard suppresses
   settings.set({ appearance: { previewBg: "#0a0b0c" } });
   expect(applied).toEqual([bg, "#0a0b0c"]);

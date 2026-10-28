@@ -68,9 +68,9 @@
     toast = null,
     onEditRawCss,
     onClose,
-    onOpenAccounts,
     onVersionHistoryEnabled,
     onBackupSetUp,
+    onProjectFilesChanged,
     triggerEl,
   }: {
     projectDir: string | null;
@@ -84,13 +84,12 @@
     onEditRawCss?: (cssPath: string) => void;
     /** Close the view — return to the workspace. */
     onClose?: () => void;
-    /** Open the app Settings view on the Accounts tab (the parent closes
-     *  this view first). Used by the Backup tab's guidance. */
-    onOpenAccounts?: () => void;
     /** The Backup tab just turned on version history: re-read the project's classification. */
     onVersionHistoryEnabled?: (projectDir: string) => void;
-    /** The Backup tab just set up online backup: re-read the project's classification. */
+    /** The Backup tab just set up or connected online backup: re-read the project's state. */
     onBackupSetUp?: (projectDir: string) => void;
+    /** The Backup tab just switched to another copy: the book's files changed on disk. */
+    onProjectFilesChanged?: () => void;
     /** The control that opened the view, for focus restore on close. */
     triggerEl?: HTMLElement | null;
   } = $props();
@@ -327,9 +326,8 @@
       {/if}
 
       {#if activeTab === "connections"}
-        <!-- This project's online backup. Accounts/credentials stay global
-             in Settings → Accounts; onOpenAccounts routes there. -->
-        <ProjectConnectionsSection {projectDir} {onOpenAccounts} {onVersionHistoryEnabled} {onBackupSetUp} />
+        <!-- This book's backup: connecting its GitHub account or server happens here, in place. -->
+        <ProjectConnectionsSection {projectDir} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} />
       {/if}
     {/if}
   </div>

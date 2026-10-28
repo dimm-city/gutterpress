@@ -6,7 +6,8 @@
    * a sign-in error (the device flow's success overwrites the stale token, so
    * no disconnect step). Then the tools for the OPEN book — no folder picker:
    * the routes only ever accept the open book, so a picker offering any folder
-   * would make every button 403 — either Repair online backup (swap in a fresh
+   * would make every button 403 — Test the connection (a read-only probe of
+   * the online copy), then either Repair online backup (swap in a fresh
    * history, keep files, save and back up) or Scorched earth (back up the whole
    * folder, empty it, download a fresh copy, copy the backed-up files back on
    * top, and — as the final step, whether or not the reset worked — close the
@@ -14,13 +15,13 @@
    *
    * PWA-clean (§8): all host work through `api.*`; the GitHub
    * device flow through `getPlatform()` (the interactive-connect seam
-   * ConnectionsSettings uses).
+   * GitHubConnect uses).
    */
   import { onMount } from "svelte";
   import { api } from "#lib/api.ts";
   import { getPlatform } from "#lib/platform/index.ts";
   import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
-  import type { DeviceCodeInfo, RemoteConnection } from "#lib/platform/contract.ts";
+  import type { DeviceCodeInfo, RemoteAccessResult, RemoteConnection } from "#lib/platform/contract.ts";
   import { cancelInlineConfirm, requestInlineConfirm, type InlineConfirmState } from "#lib/dialog.ts";
 
   let {
@@ -78,6 +79,44 @@
   });
 
   // ── Open-book tools ───────────────────────────────────────────────────────
+  // Test the connection: read-only, so it runs on one click with no confirm.
+  let testing = $state(false);
+  let testResult = $state<string | null>(null);
+  let testOk = $state(false);
+
+  async function testConnection() {
+    const dir = projectDir;
+    if (!dir || testing) return;
+    testing = true;
+    testResult = null;
+    try {
+      const { remoteUrl } = await api.remote.diagnoseProjectRemote(dir);
+      const result = remoteUrl ? await api.remote.testRemoteAccess(remoteUrl) : null;
+      testOk = !!result?.ok;
+      testResult = result ? testLabel(result) : "This book has no online copy to test.";
+    } catch (e) {
+      testOk = false;
+      testResult = testLabel({ ok: false, reason: "unknown", message: friendlyHostError(e instanceof Error ? e.message : String(e)) });
+    } finally {
+      testing = false;
+    }
+  }
+
+  function testLabel(result: RemoteAccessResult): string {
+    if (result.ok) {
+      const branch = result.defaultBranch ? ` Main version: ${result.defaultBranch}.` : "";
+      return `Working — Gutterpress reached the online copy.${branch}`;
+    }
+    // Defence in depth: the lib's messages are URL-free by construction, but a
+    // raw transport string could slip through the catch path — hide any URL
+    // (which may carry credentials) and keep the message a readable length.
+    const safe = result.message
+      .replace(/https?:\/\/\S+/g, "(address hidden)")
+      .slice(0, 200)
+      .trim();
+    return safe || "The connection test failed. See the Logs tab for details.";
+  }
+
   let running = $state<"repair" | "scorched" | null>(null);
   let confirm = $state<InlineConfirmState>({});
   let message = $state<string | null>(null);
@@ -145,6 +184,15 @@
   {:else}
     <p class="hint">Open the book whose backup is failing, then come back here.</p>
   {/if}
+
+  <section class="tool">
+    <h3>Test the connection</h3>
+    <p class="hint">Checks whether Gutterpress can reach this book's online copy. Nothing is changed or uploaded.</p>
+    <button class="app-btn-primary" onclick={() => void testConnection()} disabled={!projectDir || testing || running !== null}>
+      {testing ? "Testing…" : "Test the connection"}
+    </button>
+    {#if testResult}<p class="result" class:error={!testOk} role="status">{testResult}</p>{/if}
+  </section>
 
   <section class="tool">
     <h3>Repair online backup</h3>

@@ -832,10 +832,6 @@ export const api = {
     listHostConnections: () =>
       post<HostConnectionInfo[]>('/api/remote/list-connections'),
 
-    /** Token-settings deep link for recognized forges; null when unknown. */
-    forgeTokenUrl: (host: string) =>
-      post<string | null>('/api/remote/forge-token-url', { host }),
-
     /** Snapshot-first sync of the project to its online repository. */
     syncChanges: (projectDir: string, message?: string) =>
       post<SyncOutcome>('/api/remote/sync', {

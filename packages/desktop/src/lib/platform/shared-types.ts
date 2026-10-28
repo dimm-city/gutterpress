@@ -121,22 +121,15 @@ export type WorkspaceMode = "editor" | "viewer";
 export type ReadLayout = "single" | "spread";
 
 // ── User settings (#45) ───────────────────────────────────────────────────
-
-export type WorkspaceRole = "reader" | "author";
+//
+// Keys with no control in Settings (#442: previewBg, defaultZoom, the overlay
+// look) are still read; a power user can edit them in app-settings.json.
 
 export interface AppSettings {
-  /**
-   * Reader or author (Settings → App). A reader only reads: the workspace
-   * stays in Read and the toolbar hides Edit/Read, Setup and Publish. Default
-   * reader — everyone starts with the simplest screen and opts into writing.
-   */
-  workspace: {
-    role: WorkspaceRole;
-  };
   editor: {
     /**
      * Mark every line with a Problems entry in the editor, plus the CSS lint
-     * gutter and the unusual-character boxes (Settings → Editor, "Highlight
+     * gutter and the unusual-character boxes (Settings → Appearance, "Mark
      * problems in the editor", #383). Default ON.
      */
     highlightProblems: boolean;
@@ -196,13 +189,6 @@ export interface AppSettings {
      * `ProjectState.splitPaneRatio` snapshot overrides it at project-open.
      */
     splitRatio: number;
-    /**
-     * Right-click (or Shift+F10) context menu over the paginated preview
-     * (inline-editing plan §4.5). Default true — an explicit-invocation
-     * affordance, not seamless WYSIWYG, so the UX contract's opt-in rule for
-     * the latter does not apply here.
-     */
-    contextMenu: boolean;
   };
   updates: {
     /** Release stream for desktop update checks (see UpdateChannel above). */
@@ -218,11 +204,9 @@ export interface AppSettings {
   versionHistory: {
     /**
      * Write editor changes to disk on their own, 500ms after the last edit
-     * (Settings → Saving, "Save edits automatically"). Off: edits wait for
+     * (Settings → Saving, "Save changes automatically"). Off: edits wait for
      * Save / Ctrl+S (leaving the file asks Save / Don't Save / Cancel), so
-     * the Save button means something. Lives in this section because this
-     * section is the Saving group's storage — its one Reset restores every
-     * switch there. Default ON.
+     * the Save button means something. Default ON.
      */
     autoSave: boolean;
     /**
@@ -249,10 +233,6 @@ export interface AppSettings {
     /** Optional commit author email. Empty means use existing repo config, then Gutterpress default. */
     authorEmail: string;
   };
-  advanced: {
-    fileWatcherInterval: number;
-    logLevel: "error" | "warn" | "info" | "debug";
-  };
 }
 
 /**
@@ -261,9 +241,6 @@ export interface AppSettings {
  * value instead of redeclaring it.
  */
 export const DEFAULT_SETTINGS: AppSettings = {
-  workspace: {
-    role: "reader",
-  },
   editor: {
     highlightProblems: true,
   },
@@ -287,7 +264,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     // Matches DEFAULT_SPLIT_RATIO in src/lib/editor/preview-layout.ts so the
     // durable default and the double-click reset target agree (#103).
     splitRatio: 0.42,
-    contextMenu: true,
   },
   updates: {
     channel: "stable",
@@ -302,10 +278,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   gitIdentity: {
     authorName: "",
     authorEmail: "",
-  },
-  advanced: {
-    fileWatcherInterval: 300,
-    logLevel: "warn",
   },
 };
 
