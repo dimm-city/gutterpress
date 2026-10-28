@@ -54,7 +54,7 @@ Each destination you ticked has its own step:
   in your book's `manifest.yaml`; the plugin handles its own sign-in.
 
 Click **Save settings** to keep a destination's settings with your book. Keys are stored on your
-computer only. You can also add accounts under Settings → Accounts → **Publishing accounts**.
+computer only. Settings → **Accounts** lists the saved keys; **Remove** deletes one.
 
 ## Preflight
 

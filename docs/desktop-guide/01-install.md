@@ -34,22 +34,14 @@ To check that the file is the one we published, compare it with `SHA256SUMS.txt`
 ## The start screen
 
 Gutterpress opens on the start screen. The first time, it says **Welcome to Gutterpress**; after
-that it offers **Open your book** to carry on where you left off. Its tabs are **Books**,
-**Settings**, **Help** and **Troubleshooting**.
+that it offers **Open your book** to carry on where you left off. Its tabs are **Books**, **Help**
+and **Troubleshooting**, and the **Settings** button at the top opens
+[Settings](10-settings.md#settings).
 
 On first launch the app copies the user guide and some example books into a `Gutterpress` folder
 in your Documents folder. They are listed under **Discovered** on the Books tab: open one to look
 around.
 
 ![The start screen on first launch, with the Books tab open](images/start-screen.jpg)
-
-## Switch to Author
-
-A new install starts as a **Reader**: just the pages, with Edit, Setup and Publish out of the
-way. Creating a book switches you to **Author**. To switch by hand, open the **Settings** tab
-and under **App → How you use Gutterpress** choose **Author** — "Write and set up your book,
-then publish it."
-
-![Settings, App tab: How you use Gutterpress, with Author selected](images/settings-author.jpg)
 
 Next: [create a new book, or open one](02-books.md).
