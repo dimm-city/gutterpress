@@ -119,7 +119,7 @@
     onDismiss?: () => void;
     /** Open Settings, its own sheet over this screen. */
     onOpenSettings?: () => void;
-    /** Close the open book (Troubleshooting → Sync's Scorched earth ends with it). */
+    /** Close the open book (Troubleshooting → Sync's Start over from the online copy ends with it). */
     onCloseBook?: () => Promise<boolean>;
   } = $props();
 

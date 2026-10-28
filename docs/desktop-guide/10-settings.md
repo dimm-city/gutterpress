@@ -20,9 +20,11 @@ is nothing to save.
   previous versions** and **Back up online automatically** (see
   [Keep versions and back up your work](09-versions-and-backup.md)).
 - **Your name and email** — saved with each version, so a book's history shows who changed what.
+  Left empty, a version uses the name and email in the book's own Git settings, or else
+  "gutterpress".
 - **Accounts** — the accounts saved on this computer: **GitHub** (with **Connect GitHub…** or
   **Disconnect**), then any publishing keys and Git servers, each with **Remove**. Publishing
-  accounts are added when you [publish](08-publish.md), and another Git server is added in the
+  accounts are added when you [publish](08-publish.md); to back up to another Git server, see the
   book's **Setup → Backup**.
 
 ![Settings: Appearance, Saving, your name and email, and Accounts](images/settings.jpg)

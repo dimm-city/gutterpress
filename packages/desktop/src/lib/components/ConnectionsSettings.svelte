@@ -170,7 +170,7 @@
   {/each}
   {#if removeError}<p class="error" role="alert">{removeError}</p>{/if}
 {/if}
-<p class="hint">Publishing accounts are added when you publish. Another Git server is added in the book's Setup &gt; Backup.</p>
+<p class="hint">Publishing accounts are added when you publish. To back up to another Git server, see the book's Setup &gt; Backup.</p>
 </div>
 
 <style>

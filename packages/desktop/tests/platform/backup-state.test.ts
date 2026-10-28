@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { backupState, onlineCopyName } from "../../src/lib/backup-state";
+import { backupFromOutcome, backupState, onlineCopyName, readyView } from "../../src/lib/backup-state";
 import type { ProjectRemoteDiagnosis } from "../../src/lib/platform/contract";
 
 type Diag = Pick<ProjectRemoteDiagnosis, "classification" | "guidance" | "remoteUrl">;
@@ -37,5 +37,58 @@ describe("onlineCopyName", () => {
 
   test("drops a user name in the address", () => {
     expect(onlineCopyName("https://ada@dev.azure.com/org/proj/_git/book")).toBe("dev.azure.com/org/proj/_git/book");
+  });
+});
+
+describe("readyView: never claims a backup without evidence", () => {
+  const now = Date.parse("2026-10-28T12:00:00Z");
+  const copy = "git.example.com/team/book";
+
+  test("nothing known: names the online copy, with no check mark", () => {
+    const on = readyView(copy, null, true, now);
+    expect(on).toEqual({ headline: `Online copy: ${copy}`, detail: "Gutterpress backs it up while you work.", ok: false, action: null });
+    expect(on.headline).not.toMatch(/backed up/i);
+    for (const state of ["idle", "connect", "local"] as const) {
+      expect(readyView(copy, { state, lastSyncAt: null }, true, now).headline).toBe(`Online copy: ${copy}`);
+    }
+  });
+
+  test("automatic backup off: says so and offers a backup now", () => {
+    const off = readyView(copy, null, false, now);
+    expect(off.detail).toBe("Automatic backup is off, so this book is backed up only when you ask.");
+    expect(off.action).toBe("back-up");
+  });
+
+  test("a finished backup is named with its time", () => {
+    const v = readyView(copy, { state: "synced", lastSyncAt: "2026-10-28T11:58:00Z" }, true, now);
+    expect(v).toMatchObject({ headline: `Backed up online to ${copy} · last backup 2 mins ago`, ok: true, action: null });
+    // "synced" with no time is not evidence.
+    expect(readyView(copy, { state: "synced", lastSyncAt: null }, true, now).ok).toBe(false);
+  });
+
+  test("a failure says why and offers the way on", () => {
+    expect(readyView(copy, { state: "offline", lastSyncAt: null }, true, now)).toMatchObject({
+      headline: `Couldn't back up to ${copy}: you're offline.`,
+      action: "try-again",
+    });
+    expect(readyView(copy, { state: "auth", lastSyncAt: null }, true, now).action).toBe("sign-in");
+    const err = readyView(copy, { state: "error", lastSyncAt: null, message: "The server said no." }, false, now);
+    expect(err).toMatchObject({ headline: `Couldn't back up to ${copy}.`, detail: "The server said no.", ok: false, action: "try-again" });
+  });
+
+  test("a backup in progress offers nothing to click", () => {
+    expect(readyView(copy, { state: "syncing", lastSyncAt: null }, false, now)).toMatchObject({ headline: `Backing up to ${copy}…`, action: null });
+  });
+});
+
+describe("backupFromOutcome", () => {
+  const at = "2026-10-28T12:00:00Z";
+  test("synced and up to date both count as a finished backup", () => {
+    expect(backupFromOutcome({ status: "synced", message: "", mergedRemoteChanges: false }, at)).toEqual({ state: "synced", lastSyncAt: at });
+    expect(backupFromOutcome({ status: "up-to-date", message: "" }, at)).toEqual({ state: "synced", lastSyncAt: at });
+  });
+  test("a failure keeps its kind and message", () => {
+    expect(backupFromOutcome({ status: "error", message: "No." }, at)).toEqual({ state: "error", lastSyncAt: at, message: "No." });
+    expect(backupFromOutcome({ status: "offline", message: "Off." }, at).state).toBe("offline");
   });
 });

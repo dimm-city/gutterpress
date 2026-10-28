@@ -11,21 +11,28 @@
    *   connect-github — the online copy is on GitHub: connect GitHub here.
    *   connect-server — the online copy is on another server: a token for THAT
    *                    server, whose address comes from the book, never typed.
-   *   ready          — backing up works; with two or more copies (git
-   *                    branches), the copy switcher (#273).
+   *   ready          — access is set up. What it says about the last
+   *                    backup comes from the host's last status (the status
+   *                    bar's source, live) or a backup run here (`readyView`),
+   *                    never from the setup alone. Back up now / Try again run
+   *                    the same sync as the status bar's Back up now; a
+   *                    rejected sign-in gets the connect step again. With two
+   *                    or more copies (git branches), the copy switcher (#273).
    *   own-tools      — an SSH (or other non-https) address.
    *
    * Connection diagnostics and the connection test live in Troubleshooting →
    * Sync, where a failing backup is looked into.
    *
-   * PWA-clean (§8): api.* routes only.
+   * PWA-clean (§8): api.* routes, plus getPlatform() for the sync-status stream.
    */
   import { onMount, tick } from "svelte";
   import { api } from "#lib/api.ts";
   import { friendlyHostError } from "#lib/errors.ts";
   import { useSettings } from "#lib/settings.svelte.ts";
   import { suggestRepositoryName } from "#lib/backup-repo-name.ts";
-  import { backupState, onlineCopyName } from "#lib/backup-state.ts";
+  import { backupFromOutcome, backupState, onlineCopyName, readyView, type LastBackup } from "#lib/backup-state.ts";
+  import { combinedFilesMessage, keptBothMessage } from "#lib/routes/sync-controller.svelte.ts";
+  import { getPlatform } from "#lib/platform/index.ts";
   import GitHubConnect from "#lib/components/GitHubConnect.svelte";
   import Icon from "#lib/components/Icon.svelte";
   import type { ProjectRemoteDiagnosis, RemoteConnection, RemoteRepository } from "#lib/platform/contract.ts";
@@ -78,6 +85,14 @@
   let serverUser = $state("");
   let serverToken = $state("");
 
+  // ready: the last backup — the host's last status, kept live, or one run here.
+  let lastBackup = $state<LastBackup | null>(null);
+  const ready = $derived(
+    diag?.remoteUrl
+      ? readyView(onlineCopyName(diag.remoteUrl), lastBackup, settings.current.versionHistory.autoSync, Date.now())
+      : null,
+  );
+
   // ready: the copy this book is on (#273).
   let copies = $state<{ current: string | null; branches: string[]; remoteOnly: string[] } | null>(null);
   /** The online check failed, so the list may be missing copies made elsewhere. */
@@ -86,6 +101,9 @@
 
   onMount(() => {
     void load();
+    return getPlatform().onSyncStatus((status) => {
+      if (status.projectDir === projectDir && status.source !== "versions") lastBackup = status;
+    });
   });
 
   async function load() {
@@ -102,8 +120,11 @@
       loading = false;
     }
     if (situation === "local-only") await loadBackupContext(projectDir);
-    // Not awaited: the online check can take a while offline, and nothing waits on the list.
-    if (situation === "ready") void loadCopies(projectDir);
+    if (situation === "ready") {
+      lastBackup = await api.sync.getStatus(projectDir).catch(() => null);
+      // Not awaited: the online check can take a while offline, and nothing waits on the list.
+      void loadCopies(projectDir);
+    }
   }
 
   // What the set-up form needs: whether GitHub is connected, and the book's
@@ -205,6 +226,7 @@
       serverUser = "";
       onBackupSetUp?.(dir);
       await load();
+      forgetRejectedSignIn();
       return `Connected to ${result.host}.`;
     });
 
@@ -216,7 +238,35 @@
       }
       onBackupSetUp?.(dir);
       await load();
+      forgetRejectedSignIn();
       return null;
+    });
+
+  // A sign-in that was just checked and saved answers the last backup's
+  // "didn't accept the saved sign-in"; with automatic backup off nothing else would.
+  function forgetRejectedSignIn() {
+    if (lastBackup?.state === "auth") lastBackup = null;
+  }
+
+  // The status bar's Back up now, run from here: the same sync, its result shown in the headline.
+  const backUpNow = () =>
+    act(async (dir) => {
+      lastBackup = { state: "syncing", lastSyncAt: null };
+      const at = () => new Date().toISOString();
+      try {
+        const outcome = await api.remote.syncChanges(dir);
+        lastBackup = backupFromOutcome(outcome, at());
+        if (outcome.filesChanged || (outcome.status === "synced" && outcome.mergedRemoteChanges)) onProjectFilesChanged?.();
+        if (outcome.status !== "synced" && outcome.status !== "up-to-date") return null;
+        const kept = [
+          outcome.combinedFiles?.length ? combinedFilesMessage(outcome.combinedFiles) : null,
+          outcome.keptBothFiles?.length ? keptBothMessage(outcome.keptBothFiles) : null,
+        ].filter(Boolean);
+        return kept.length ? kept.join(" ") : null;
+      } catch (e) {
+        lastBackup = { state: "error", lastSyncAt: at(), message: friendlyHostError(e instanceof Error ? e.message : String(e)) };
+        return null;
+      }
     });
 
   /**
@@ -247,6 +297,24 @@
 
   const githubRepo = $derived(diag?.remoteUrl ? onlineCopyName(diag.remoteUrl).replace(/^[^/]*\//, "") : "");
 </script>
+
+{#snippet serverForm(host: string, tokenUrl: string | null)}
+  <label class="field">
+    <span class="lbl">Username (optional)</span>
+    <input class="input" bind:value={serverUser} autocomplete="username" spellcheck="false" />
+  </label>
+  <label class="field">
+    <span class="lbl">Access token</span>
+    <!-- "new-password" actually suppresses autofill/save prompts; browsers ignore "off" on password fields. -->
+    <input class="input" type="password" bind:value={serverToken} autocomplete="new-password" />
+  </label>
+  <button class="link" onclick={() => void api.shell.openExternal(tokenUrl ?? OTHER_SERVER_GUIDE).catch(() => {})}>
+    {tokenUrl ? `Create a token on ${host}` : "How to make an access token"} <Icon name="external-link" size={11} />
+  </button>
+  <button class="app-btn-primary" onclick={connectServer} disabled={busy || !serverToken.trim()}>
+    {busy ? "Checking…" : "Connect"}
+  </button>
+{/snippet}
 
 <section class="backup" bind:this={sectionEl} tabindex="-1">
   {#if loading}
@@ -323,31 +391,24 @@
       <GitHubConnect primary onConnected={githubConnected} />
     {:else if situation === "connect-server"}
       <p class="headline">This book's online copy is on {diag.remoteHost}. Connect it to back the book up.</p>
-      <label class="field">
-        <span class="lbl">Username (optional)</span>
-        <input class="input" bind:value={serverUser} autocomplete="username" spellcheck="false" />
-      </label>
-      <label class="field">
-        <span class="lbl">Access token</span>
-        <!-- "new-password" actually suppresses autofill/save prompts; browsers ignore "off" on password fields. -->
-        <input class="input" type="password" bind:value={serverToken} autocomplete="new-password" />
-      </label>
-      {#if diag.tokenSettingsUrl}
-        <button class="link" onclick={() => diag?.tokenSettingsUrl && void api.shell.openExternal(diag.tokenSettingsUrl).catch(() => {})}>
-          Create a token on {diag.remoteHost} <Icon name="external-link" size={11} />
+      {@render serverForm(diag.remoteHost ?? "", diag.tokenSettingsUrl)}
+    {:else if situation === "ready" && ready}
+      <p class="headline" class:ok={ready.ok}>
+        {#if ready.ok}<Icon name="circle-check" size={15} />{/if}
+        {ready.headline}
+      </p>
+      <p class="hint">{ready.detail}</p>
+      {#if ready.action === "back-up" || ready.action === "try-again"}
+        <button class="ghost" onclick={backUpNow} disabled={busy}>
+          {ready.action === "try-again" ? "Try again" : "Back up now"}
         </button>
+      {:else if ready.action === "sign-in"}
+        {#if diag.provider === "github"}
+          <GitHubConnect primary onConnected={githubConnected} />
+        {:else}
+          {@render serverForm(diag.remoteHost ?? "", diag.tokenSettingsUrl)}
+        {/if}
       {/if}
-      <button class="app-btn-primary" onclick={connectServer} disabled={busy || !serverToken.trim()}>
-        {busy ? "Checking…" : "Connect"}
-      </button>
-    {:else if situation === "ready"}
-      <p class="headline ok">
-        <Icon name="circle-check" size={15} />
-        Backed up online to {onlineCopyName(diag.remoteUrl ?? "")}
-      </p>
-      <p class="hint">
-        {settings.current.versionHistory.autoSync ? "Gutterpress backs it up while you work." : "Automatic backup is off in Settings."}
-      </p>
       <!-- Vocabulary: "copy", never "branch". -->
       {#if copies && copies.branches.length >= 2}
         {@const onlineOnly = new Set(copies.remoteOnly)}
@@ -367,15 +428,15 @@
         {/if}
       {/if}
     {:else if diag.remoteProtocol === "ssh"}
-      <p class="headline">
-        This book's online copy uses an SSH address (git@…). Gutterpress can't back up over SSH: use your usual
-        Git tool, or switch the book to its https:// address.
+      <p class="headline">This book's online copy uses an SSH address (git@…).</p>
+      <p class="hint">
+        Gutterpress can't back up over SSH. Keep backing up with your usual Git tool, or give the book its https://
+        address with that tool and come back here to connect it:
       </p>
+      <code>git remote set-url origin https://…</code>
     {:else}
-      <p class="headline">
-        This book's online copy is at {diag.remoteUrl}. Gutterpress backs up only to https:// addresses: use your
-        usual Git tool.
-      </p>
+      <p class="headline">This book's online copy is at {diag.remoteUrl}.</p>
+      <p class="hint">Gutterpress backs up only to https:// addresses. Keep backing up with your usual Git tool.</p>
     {/if}
 
     {#if actionError}<p class="error" role="alert" bind:this={errorEl} tabindex="-1">{actionError}</p>{/if}
@@ -397,6 +458,7 @@
   .check { display: flex; gap: 6px; align-items: center; font-size: 13px; }
   .copy-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
   .copy-row select { width: auto; }
+  code { font-family: var(--app-font-mono); font-size: 12px; color: var(--app-text-secondary); }
   .link {
     padding: 0;
     border: 0;

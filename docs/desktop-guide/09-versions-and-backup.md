@@ -61,16 +61,20 @@ Backup** says in one line where the book is kept, and offers the one next step:
 - **Saved on this computer only.** The book has versions but no online copy yet: see
   [Set up online backup for a book you started here](#set-up-online-backup-for-a-book-you-started-here).
 - **This book's online copy is on GitHub: …. Connect GitHub to back it up.** Click **Connect
-  GitHub…** and enter the code it shows on the GitHub page that opens (**Copy code** copies it).
-  The book backs up as soon as you are connected. A book you opened with
+  GitHub…** and enter the code it shows on the GitHub page that opens (**Copy code** copies it;
+  **Open GitHub again** reopens the page). The book backs up as soon as you are connected. A book you opened with
   [Open from GitHub](02-books.md#open-a-book-from-github) is already connected.
 - **This book's online copy is on git.example.com. Connect it to back the book up.** See
   [Back up to another Git server](#back-up-to-another-git-server).
-- **Backed up online to ….** Gutterpress backs the book up while you work (or the tab says
-  **Automatic backup is off in Settings.**). When the book has more than one copy, **Copy you're
-  working on** shows which: choose another and click **Switch** to work on it.
-- **This book's online copy uses an SSH address (git@…).** Gutterpress can't back up over SSH:
-  use your usual Git tool, or switch the book to its https:// address.
+- **Online copy: ….** The book is connected to its online copy. Once a backup has run, the line
+  says how it went: **Backed up online to … · last backup 2 mins ago**, or **Couldn't back up to
+  …** with the reason and **Try again** (or, when the server no longer accepts the saved sign-in,
+  the connect step again). With automatic backup off, it says so and offers **Back up now**. When
+  the book has more than one copy, **Copy you're working on** shows which: choose another and
+  click **Switch** to work on it.
+- **This book's online copy uses an SSH address (git@…).** Gutterpress can't back up over SSH.
+  Keep backing up with your usual Git tool, or give the book its https:// address with that tool
+  (`git remote set-url origin https://…`) and come back to connect it.
 
 GitHub can also be connected in Settings → **Accounts**, which lists every account saved on this
 computer, each with **Remove**.
@@ -122,7 +126,7 @@ on the server:
 3. Create an access token on that server, paste it under **Access token** (with your **Username**
    if the server needs one) and click **Connect**. The token is checked with the server before it
    is saved. For a server Gutterpress recognises, **Create a token on …** opens the page that
-   makes one.
+   makes one; for any other, **How to make an access token** opens this section.
 
 Where each server makes its tokens:
 

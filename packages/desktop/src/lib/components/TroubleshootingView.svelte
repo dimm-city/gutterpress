@@ -36,7 +36,7 @@
     initialTab?: TroubleshootingTab;
     /** Element-id namespace for the tab/panel aria wiring. */
     idPrefix?: string;
-    /** The open book, if any — Sync's Scorched earth closes it when it is in the reset folder. */
+    /** The open book, if any — Sync's Start over from the online copy closes it when it is in the reset folder. */
     projectDir?: string | null;
     onCloseBook?: () => Promise<boolean>;
     /** Diagnostics → Updates: the manual update check and the host's update state. */
