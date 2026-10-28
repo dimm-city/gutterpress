@@ -126,7 +126,7 @@ const TALL = [360, 40, 720, 720];           // Publish / Where your work is kept
 
 console.log("desktop-screenshots: start screen and new book");
 await screen("start-screen", async () => {}, { crop: CENTRE, width: 760 });
-await screen("settings", () => click(".landing button:has-text('Settings')"), { crop: [370, 50, 700, 620], width: 700 });
+await screen("settings", () => click(".landing button:has-text('Settings')"), { crop: [370, 50, 700, 670], width: 700 });
 await press("Escape");
 await wait(800);
 await screen("new-book-name", async () => {
