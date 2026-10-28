@@ -188,13 +188,11 @@ describe("new command — preset choice (ADR 0008)", () => {
         "612",
         "--page-height",
         "792",
-        "--page-tolerance",
-        "1.5",
       ],
     });
 
     expect(captured?.preset).toBe("custom");
-    expect(captured?.customPage).toEqual({ width: 612, height: 792, tolerance: 1.5 });
+    expect(captured?.customPage).toEqual({ width: 612, height: 792 });
   });
 
   test("a non-numeric --page-width errors (exit 2) before scaffoldProject is called", async () => {

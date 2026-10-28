@@ -225,12 +225,14 @@ test("setPageSetup treats an empty page: key as no block", async () => {
   }
 });
 
-test("setPageSetup keeps a hand-set tolerance and the manifest's comments", async () => {
+test("setPageSetup drops an older book's tolerance and keeps the manifest's comments", async () => {
   const dir = await book("", ["# keep this comment", "preset: custom", "page:", "  width: 432", "  height: 648", "  tolerance: 2"]);
   try {
     const setup = await setPageSetup(dir, { size: { preset: "custom", page: LETTER } });
-    expect(setup.bounds).toEqual({ ...LETTER, tolerance: 2 });
-    expect(await manifestOf(dir)).toContain("# keep this comment");
+    expect(setup.bounds).toEqual({ ...LETTER, tolerance: 0.5 });
+    const manifest = await manifestOf(dir);
+    expect(manifest).toContain("# keep this comment");
+    expect(manifest).not.toContain("tolerance");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

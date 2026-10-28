@@ -207,7 +207,6 @@ preset: book
 page:
   width: 432
   height: 648
-  tolerance: 0.5
   margin:
     top: 61.2
     bottom: 61.2

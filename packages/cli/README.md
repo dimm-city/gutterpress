@@ -162,7 +162,6 @@ gutterpress new <name> [--kind <id>] [options]
   --targets <ids>          Publish targets recorded in the manifest (comma-separated: dtrpg, itch; or "none") — default: the preset's
   --page-width <pt>        Trim width in points, 72pt = 1in (required with --preset custom; optional override otherwise)
   --page-height <pt>       Trim height in points, 72pt = 1in (required with --preset custom; optional override otherwise)
-  --page-tolerance <pt>    Allowed trim deviation when validating a built PDF (default: 0.5)
   --git                    Initialise local version history (default: true; use --no-git to skip)
   --no-git
 ```

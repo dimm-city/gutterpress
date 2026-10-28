@@ -17,4 +17,3 @@ chapters:
 page:
   width: 432   # 6in
   height: 648  # 9in
-  tolerance: 0.5

@@ -8,13 +8,12 @@ The `pdf.print.page-size` check verifies that every page in your PDF matches the
 configured dimensions. For DTRPG products, the standard size is 621 x 810
 points (8.625" x 11.25").
 
-Configure tolerance in your manifest:
+The preset sets the size; a book printed at another size sets its own in the manifest:
 
 ```yaml
 page:
   width: 621
   height: 810
-  tolerance: 0.5
 ```
 
 ## Color Compliance

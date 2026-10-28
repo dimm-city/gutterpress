@@ -48,10 +48,11 @@ is always what is rendered.
 
 ## Page geometry
 
-CSS `@page` is the real page geometry — it is what the engine lays out and what
-Chromium prints. The manifest's `page:` block (`width`, `height`, `tolerance`)
-states the **expected** trim size for validation; changing it does not resize
-anything. To change the page, change `@page` in the stylesheet that owns it.
+The manifest owns the page geometry: `preset:` and the `page:` block (`width`,
+`height`, `margin`, in points). The build writes them as the `@page` size and
+margins after every stylesheet, so a stylesheet's own `@page` size never wins.
+Without `page.margin`, the stylesheets' `@page` margins apply. To change the
+page, change the manifest, not a stylesheet.
 
 ## Removed manifest fields
 

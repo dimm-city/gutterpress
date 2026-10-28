@@ -129,6 +129,12 @@ describe("readOldSpellings", () => {
     expect(out).toEqual({ title: "T" });
   });
 
+  test("page.tolerance is dropped and the rest of page stays", () => {
+    const out = read({ title: "T", page: { width: 612, height: 792, tolerance: 2 } as GutterpressManifest["page"] });
+    expect(out).toEqual({ title: "T", page: { width: 612, height: 792 } });
+    expect(notices().join("\n")).toContain("page.tolerance (the preset sets it)");
+  });
+
   test("the manifest's own checks win over translated old entries", () => {
     const out = read({
       checks: { "pdf.print.bleed": "error" },

@@ -7,7 +7,7 @@
  *
  *  - the size: `preset:` (dtrpg / book / custom — which also carries the
  *    print rules that go with the preset) and, for `custom` (or an explicit
- *    override), `page: { width, height, tolerance }` in points. These are
+ *    override), `page: { width, height }` in points. These are
  *    the size the book prints at AND the validation bounds the built PDF is
  *    checked against: the markdown assembly writes them as the `@page { size }`
  *    after every stylesheet (`pageGeometryCss`, lib/markdown/assemble.ts), so
@@ -52,8 +52,6 @@ export interface CustomPageOptions {
   width: number;
   /** Trim height in points (72pt = 1in). */
   height: number;
-  /** Allowed deviation in points when validating a built PDF. Default 0.5. */
-  tolerance?: number;
 }
 
 /** A page size in points. */
@@ -97,17 +95,15 @@ export interface PageSetup {
 }
 
 /**
- * Write the manifest's `page:` bounds. `tolerance` defaults to whatever the
- * block already carries, so re-sizing a book never silently resets a
- * hand-tuned tolerance. The block's other keys stay as written; a `page:`
- * that is not a map is replaced.
+ * Write the manifest's `page:` bounds. A `tolerance` an older book carries
+ * goes (the preset sets it); the block's other keys stay as written; a
+ * `page:` that is not a map is replaced.
  */
 export function writePageBounds(doc: Document, page: CustomPageOptions): void {
-  const tolerance = page.tolerance ?? numberAt(doc, ["page", "tolerance"]);
   ensurePageMap(doc);
   doc.setIn(["page", "width"], page.width);
   doc.setIn(["page", "height"], page.height);
-  if (tolerance !== undefined) doc.setIn(["page", "tolerance"], tolerance);
+  doc.deleteIn(["page", "tolerance"]);
 }
 
 /** Remove the bounds a preset owns and nothing else; a `page:` left empty goes too. */
@@ -183,7 +179,7 @@ function manifestGeometry(
   const base = preset ? PRESETS[preset].page : null;
   const width = numberAt(doc, ["page", "width"]) ?? base?.width;
   const height = numberAt(doc, ["page", "height"]) ?? base?.height;
-  const tolerance = numberAt(doc, ["page", "tolerance"]) ?? base?.tolerance ?? 0.5;
+  const tolerance = base?.tolerance ?? 0.5;
   const bounds = width !== undefined && height !== undefined ? { width, height, tolerance } : null;
   const presetSizeOverridden =
     base !== null && (numberAt(doc, ["page", "width"]) !== undefined || numberAt(doc, ["page", "height"]) !== undefined);
@@ -253,7 +249,7 @@ export async function readPageSetup(projectDir: string): Promise<PageSetup> {
 /**
  * Change a book's page geometry in the manifest. The size mirrors what the
  * wizard records — `dtrpg` / `book` carry their own bounds (the `page:` block's
- * width, height and tolerance are removed so they cannot shadow them; its
+ * width and height are removed so they cannot shadow them; its
  * other keys stay), `custom` records the typed trim. The margins go to
  * `page.margin`, validated against the size being written, else the recorded
  * one; `margins: null` removes `page.margin`. Nothing is written unless the

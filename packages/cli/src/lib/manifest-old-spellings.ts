@@ -18,7 +18,8 @@
  *   validate.source.<tool>: <path>   -> dropped: the config file is found by
  *                                       its usual name in the book's folder
  *                                       or a folder above it
- *   ink.*, validate thresholds,
+ *   ink.*, page.tolerance,
+ *   validate thresholds,
  *   validate.enabled, lint.configPath,
  *   and the keys
  *   0.11.22 already ignored           -> dropped: the preset and the publish
@@ -43,6 +44,7 @@ export interface OldSpellings {
     heuristics?: Record<string, unknown>;
   } | null;
   ink?: unknown;
+  page?: GutterpressManifest["page"] & { tolerance?: unknown };
 }
 
 /** `validate.source.<tool>` -> the check id that tool's config fed. */
@@ -74,7 +76,10 @@ function isObject(v: unknown): v is Record<string, unknown> {
  */
 export function readOldSpellings(raw: GutterpressManifest & OldSpellings): GutterpressManifest {
   const { source, lint, validate, ink, ...manifest } = raw;
-  if (source === undefined && lint === undefined && validate === undefined && ink === undefined) return raw;
+  const tolerance = isObject(raw.page) && "tolerance" in raw.page;
+  if (source === undefined && lint === undefined && validate === undefined && ink === undefined && !tolerance) {
+    return raw;
+  }
 
   if (isObject(source) && source.assets !== undefined) {
     throw new UsageError(
@@ -142,6 +147,12 @@ export function readOldSpellings(raw: GutterpressManifest & OldSpellings): Gutte
   }
 
   if (ink !== undefined) dropped.push("ink (the preset and the publish target set it)");
+
+  if (tolerance) {
+    const { tolerance: _, ...page } = raw.page!;
+    manifest.page = page;
+    dropped.push("page.tolerance (the preset sets it)");
+  }
 
   if (Object.keys(checks).length > 0) manifest.checks = { ...checks, ...manifest.checks };
 
