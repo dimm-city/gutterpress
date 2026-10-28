@@ -249,7 +249,7 @@ async function declaredSnippetsFolder(entry: ProjectExtensionEntry): Promise<str
 }
 
 /** An extension's declared markers, or undefined when it has none or fails
- *  to load (load errors are reported by the Looks & features tab and Problems). */
+ *  to load (load errors are reported by Book setup's Advanced tab and Problems). */
 async function declaredMarkers(
   entry: ProjectExtensionEntry,
   projectDir: string,

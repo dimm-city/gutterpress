@@ -219,7 +219,7 @@ export interface AssembleBookHtmlOptions {
  * `@page` cannot shadow the manifest (the print-safety check reports one), and
  * neither can an `@page` margin once the manifest has margins. Left out of the
  * manifest, margins stay the stylesheets' business — a look's design — else
- * the 1in default `defaultPageMarginCss` writes; Setup > Details records
+ * the 1in default `defaultPageMarginCss` writes; Setup > Book records
  * `page.margin` the first time an author changes one.
  *
  * Margins are written for both page sides, so a look's own `@page :left` or

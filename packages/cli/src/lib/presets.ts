@@ -115,7 +115,7 @@ export const DTRPG_PRESET: VendorPreset = {
     // manifest `page.gutter` still merges over it.
     gutter: 36,
     // No preset margins: a book's margins are its own (`page.margin`, which
-    // Setup > Details writes) or its stylesheets'. Listed so a manifest value
+    // Setup > Book writes) or its stylesheets'. Listed so a manifest value
     // merges in — resolveConfig only merges keys a preset has.
     margin: undefined,
   },

@@ -336,7 +336,7 @@ describe("online backup", () => {
   });
   test("synced with automatic backup off: no cadence promise; names the switch", () => {
     const s = sync("synced", { canSync: true, automatic: false });
-    expect(s.detail).toContain("Settings → Saving → Keep this book backed up online");
+    expect(s.detail).toContain("Settings → Saving → Back up online automatically");
     expect(s.detail).not.toContain("uploaded");
   });
   test("offline: automatic on promises a retry; off does not", () => {
@@ -361,7 +361,7 @@ describe("online backup", () => {
     expect(ids(on)).toEqual(["syncNow", "pullNow"]);
     const off = sync("idle", { canSync: true, automatic: false });
     expect(off.status).toBe("Automatic online backup is off.");
-    expect(off.detail).toContain("Settings → Saving → Keep this book backed up online");
+    expect(off.detail).toContain("Settings → Saving → Back up online automatically");
   });
   test("Get latest sits beside Back up now and is offered in the same states", () => {
     for (const state of ["synced", "idle", "offline", "error", "syncing"] as const) {

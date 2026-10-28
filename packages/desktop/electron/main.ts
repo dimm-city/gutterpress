@@ -824,7 +824,7 @@ function createWindow() {
     e.preventDefault();
     closeGateStarted = true;
     void (async () => {
-      // "Save edits automatically" off with unsaved edits: ask Save / Don't
+      // "Save changes automatically" off with unsaved edits: ask Save / Don't
       // Save / Cancel BEFORE the gate starts, so its flush watchdog never runs
       // while the author is reading the prompt. The dirty report is only a
       // hint; when it is wrong the gate simply saves, as it always has.

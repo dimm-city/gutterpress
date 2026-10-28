@@ -44,13 +44,13 @@
     canSnapshot = false as boolean | null,
     /** Current save phase from the editor buffer. */
     savePhase = "clean" as "clean" | "dirty" | "saving" | "error",
-    /** Settings → Saving "Save edits automatically". Off, a dirty buffer is
+    /** Settings → Saving "Save changes automatically". Off, a dirty buffer is
      *  waiting for the author's Save, not about to save itself — so it reads
      *  "Unsaved changes", never "Saving…". */
     autoSave = true,
     /** Settings → Saving "Keep previous versions": Gutterpress makes versions itself. */
     autoVersions = true,
-    /** Settings → Saving "Keep this book backed up online". */
+    /** Settings → Saving "Back up online automatically". */
     autoBackup = true,
     /** Whether a manual force-save is in progress. */
     forceSaving = false,

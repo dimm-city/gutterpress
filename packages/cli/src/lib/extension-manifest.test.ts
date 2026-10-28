@@ -88,7 +88,7 @@ describe("extension-manifest", () => {
             snippets: "snippets",
             components: "components.yaml",
             preview: "preview.png",
-            // Read by nothing since the Design tab reads every enabled look's
+            // Read by nothing since Book setup reads every enabled look's
             // `:root`; a package that still declares it loads with it dropped.
             tokensFile: "../tokens.css",
           },

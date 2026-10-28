@@ -29,7 +29,7 @@ export interface EditorBufferOptions {
    *  loop) — not a user setting (#274); a test-only override. */
   saveDelayMs?: number;
   /** Whether an edit saves itself after `saveDelayMs` (Settings → Saving,
-   *  "Save edits automatically"). Read each time a save would be scheduled,
+   *  "Save changes automatically"). Read each time a save would be scheduled,
    *  so a change applies from the next edit. When it returns false, edits
    *  stay pending until {@link EditorBuffer.flush}. Default: on. */
   autoSave?: () => boolean;

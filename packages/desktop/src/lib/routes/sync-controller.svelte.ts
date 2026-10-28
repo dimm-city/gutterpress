@@ -45,7 +45,7 @@ export interface SyncControllerDeps {
   onSyncCompleted: (mergedRemoteChanges: boolean, filesChanged: boolean) => void;
   /** Remote changes landed on disk: buffer reconcile + re-lint (in the component). */
   onFilesChanged: () => void;
-  /** Settings → Saving "Keep this book backed up online". Decides whether a
+  /** Settings → Saving "Back up online automatically". Decides whether a
    *  failure toast may promise an automatic retry. Defaults to on. */
   autoBackup?: () => boolean;
   /**

@@ -1,7 +1,7 @@
 /* =============================================================================
    Zine — gutterpress built-in theme (theme.css)
    High-contrast, punchy, photocopier-friendly. Change the :root tokens from the book's own stylesheet.
-   The page SIZE comes from the manifest (Setup > Details), so it is deliberately not set here.
+   The page SIZE comes from the manifest (Setup > Book), so it is deliberately not set here.
    ============================================================================= */
 
 :root {

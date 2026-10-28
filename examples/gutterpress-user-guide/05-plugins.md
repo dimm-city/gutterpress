@@ -836,7 +836,7 @@ extensions:
 
 ## Error Handling
 
-Gutterpress **fails the build** on extension errors --- a final PDF must never silently omit formatting you configured. The live preview is the one exception: an extension that cannot load is skipped with a loud warning (and a "Needs install" state in the desktop's Looks & features tab) so one broken entry does not blank the whole preview.
+Gutterpress **fails the build** on extension errors --- a final PDF must never silently omit formatting you configured. The live preview is the one exception: an extension that cannot load is skipped with a loud warning (and "Not downloaded yet" or "Couldn't load" beside it in Book setup's Advanced tab) so one broken entry does not blank the whole preview.
 
 @section
 

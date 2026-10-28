@@ -7,7 +7,7 @@ language: en
 # US Letter, 8.5 × 11 in, with no print-service rules (the same shape the
 # Paper template writes). For A4, set width 595 and height 842. The margins
 # are in points (72 = 1 in): top, bottom, inside (the binding edge), outside.
-# Change the size and the margins under Setup > Details.
+# Change the size and the margins under Setup > Book.
 preset: custom
 page:
   width: 612

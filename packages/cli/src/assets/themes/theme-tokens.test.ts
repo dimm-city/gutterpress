@@ -62,7 +62,7 @@ describe("built-in theme tokens", () => {
   });
 
   // The page geometry is the book's, not the look's: size and margins come
-  // from the manifest (`preset:` / `page:`, which Setup > Details edits) and
+  // from the manifest (`preset:` / `page:`, which Setup > Book edits) and
   // the templates record each look's old margins there. No theme sets a page
   // size or a page margin, and none defines a page-margin token.
   test.each(themeNames)("%s sets no @page size or margin and defines no page-margin token", (name) => {

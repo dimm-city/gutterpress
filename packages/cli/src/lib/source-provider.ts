@@ -926,7 +926,7 @@ export async function restoreVersionWithBackup(
 
 // ── Copies / copy switching (#273) ────────────────────────────────────────────
 //
-// A project can hold several copies of itself (git branches). Settings → Saving
+// A project can hold several copies of itself (git branches). Book setup → Backup
 // lets the author see which one is open and switch to another. A copy counts
 // whether or not it exists locally yet: one that so far lives only on the
 // remote is switched to by creating the local branch from it, which is what
