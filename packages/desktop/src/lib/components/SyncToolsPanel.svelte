@@ -8,7 +8,8 @@
    * the routes only ever accept the open book, so a picker offering any folder
    * would make every button 403 — Test the connection (a read-only probe of
    * the online copy), then either Repair online backup (swap in a fresh
-   * history, keep files, save and back up) or Scorched earth (back up the whole
+   * history, keep files, save and back up) or Start over from the online copy
+   * (`api.remote.scorchedEarth`: back up the whole
    * folder, empty it, download a fresh copy, copy the backed-up files back on
    * top, and — as the final step, whether or not the reset worked — close the
    * book, so the app holds no stale state from before the reset).
@@ -206,14 +207,14 @@
   </section>
 
   <section class="tool danger">
-    <h3>Scorched earth</h3>
+    <h3>Start over from the online copy</h3>
     <p class="hint">The last resort. Copies the whole folder to a backup, deletes everything in it, downloads a fresh copy from online, then copies your files from the backup back on top (everything except the old history). Your files win; files only the online copy has stay. The backup is never deleted. If that book is open, it is closed at the end.</p>
     <button
       class="danger-btn"
       onclick={() => void run("scorched")}
       onblur={() => (confirm = cancelInlineConfirm(confirm, "scorched"))}
       disabled={!projectDir || running !== null}
-    >{running === "scorched" ? "Working…" : confirm["scorched"] ? "Really start over from online?" : "Scorched earth"}</button>
+    >{running === "scorched" ? "Working…" : confirm["scorched"] ? "Really start over from the online copy?" : "Start over from the online copy"}</button>
   </section>
 
   {#if message}<p class="result" role="status">{message}</p>{/if}

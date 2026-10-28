@@ -90,7 +90,10 @@
 
   <section class="group" aria-labelledby="settings-identity">
     <h2 id="settings-identity">Your name and email</h2>
-    <p class="hint">Saved with each version, so a book's history shows who changed what.</p>
+    <p class="hint">
+      Saved with each version, so a book's history shows who changed what. Left empty, a version uses the name and
+      email in the book's own Git settings, or else "gutterpress".
+    </p>
     <div class="field">
       <label for="settings-name">Name</label>
       <input id="settings-name" type="text" autocomplete="name" value={s.gitIdentity.authorName} onchange={(e) => settings.set({ gitIdentity: { authorName: e.currentTarget.value } })} />
@@ -131,7 +134,9 @@
   .radios input { margin: 0; accent-color: var(--app-accent); }
 
   /* The switch: a native checkbox, so it keeps the keyboard and the
-     accessibility of one; the thumb's side says on or off, not colour alone. */
+     accessibility of one; the thumb's side says on or off, not colour alone.
+     Off is an outline and a muted thumb (as in Fluent), so the control keeps
+     3:1 against the page in both themes (WCAG 1.4.11); on is a filled track. */
   input[role="switch"] {
     appearance: none;
     flex-shrink: 0;
@@ -139,24 +144,24 @@
     width: 36px;
     height: 20px;
     margin: 0;
-    border: 1px solid var(--app-border);
+    border: 1px solid var(--app-text-muted);
     border-radius: 10px;
-    background: var(--app-border);
+    background: transparent;
     cursor: pointer;
   }
   input[role="switch"]::before {
     content: "";
     position: absolute;
-    top: 1px;
-    left: 1px;
-    width: 16px;
-    height: 16px;
+    top: 3px;
+    left: 3px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
-    background: var(--app-text-on-accent);
+    background: var(--app-text-muted);
     transition: transform 0.15s;
   }
   input[role="switch"]:checked { background: var(--app-focus-ring); border-color: var(--app-focus-ring); }
-  input[role="switch"]:checked::before { transform: translateX(16px); }
+  input[role="switch"]:checked::before { top: 1px; left: 1px; width: 16px; height: 16px; background: var(--app-text-on-accent); transform: translateX(16px); }
   input[role="switch"]:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   input[role="switch"]:disabled { opacity: 0.45; cursor: default; }
 

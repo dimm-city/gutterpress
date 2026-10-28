@@ -2,7 +2,8 @@
   /**
    * GitHubConnect — the one "Connect GitHub…" control (Settings → Accounts,
    * and Book setup → Backup). It runs GitHub's device flow in place: the
-   * browser opens, the code to enter is shown with Copy code and Cancel, and
+   * browser opens, the code to enter is shown with Copy code, Open GitHub
+   * again (for a page closed by mistake) and Cancel, and
    * `onConnected` fires once the credential is stored. The Open-from-GitHub
    * dialog keeps its own steps.
    *
@@ -95,6 +96,9 @@
     <p class="gh-code">
       Enter this code on the GitHub page that opened: <strong class="user-code">{code.userCode}</strong>
       <button bind:this={copyBtn} class="app-btn app-btn-ghost" onclick={copyCode}>{copied ? "Copied" : "Copy code"}</button>
+      <button class="app-btn app-btn-ghost" onclick={() => code && api.shell.openExternal(code.verificationUri).catch(() => {})}>
+        Open GitHub again
+      </button>
       <button class="app-btn app-btn-ghost" onclick={cancel}>Cancel</button>
     </p>
   {/if}
