@@ -1,22 +1,19 @@
 ---
 title: Add plugins and formatting extras
-description: Turn on the built-in formatting extras, find and install plugins from npm, pick their versions, and keep them up to date.
+description: Turn on the built-in formatting extras, add plugins from npm or a folder, keep them up to date, and set the order they load in.
 ---
 
 # Add plugins and formatting extras
 
 Plugins add new markdown to your book: highlights, callouts, footnote styles, a game's components
-and more. Open **Setup → Looks & features**. The list at the top is everything your book uses,
-looks and features together, each with a badge for what it adds (**Look**, **Feature**,
-**Snippets**, **Components**, and **Styles** for a component library's own styling). Under it,
-**Add** has three tabs: **Built in**, **Search** and
-**Advanced**.
+and more. Six of them are built in; the rest come from npm or a folder, on the **Advanced** tab of
+**Setup**.
 
 ## Turn on a formatting extra
 
-Six extras are built in, with nothing to download. On the **Built in** tab, under **Features**,
-click **Add** next to one, and it works straight away (footnotes, tables and definition lists are
-always on):
+Six extras are built in, with nothing to download. Open **Setup → Look** and scroll to **Extras**:
+tick one and it works straight away, untick it to take it out again (footnotes, tables and
+definition lists are always on):
 
 | Extra | Type |
 | --- | --- |
@@ -27,38 +24,44 @@ always on):
 | Callouts | `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]` |
 | Math | `$E = mc^2$` in a line, or `$$` ... `$$` on lines of their own |
 
-![Looks & features, Built in: a feature and a look in the list, and the formatting extras, each with Add](images/book-settings-extensions.jpg)
+When your book also uses plugins from elsewhere, a line under the extras says how many and links
+to Advanced.
 
-## Find and install a plugin
+## Add a plugin from npm or a folder
 
-1. Open the **Search** tab. It searches npm for looks and features other authors have shared.
-2. Type what you are looking for (for example `emoji` or `task lists`) and click **Search**.
-3. Click **Add** on the one you want.
+Open **Setup → Advanced**. Under **Add an extension**:
 
-![Looks & features, Search: results from npm for "emoji", each with Add](images/extensions-search.jpg)
+- type a package's name in **npm package** (with a version if you want one, such as
+  `markdown-it-highlightjs@4.3.0`) and click **Add**. Gutterpress downloads it, checks it, keeps a
+  copy inside your book, and adds it to the list; your book then builds from that copy, even
+  offline. **Find extensions** opens the [Find plugins](https://gutterpress.dimm.city/plugins/)
+  page, which lists looks and plugins on npm;
+- **Add a folder or file…** adds a plugin you have on your computer, used where it is;
+- **Import a .zip or .css file…**, or a **Web address** and **Import**, copies a look or plugin into
+  your book's `extensions` folder.
 
-Gutterpress downloads it, checks it, keeps a copy inside your book, and adds it to the list. Your
-book then builds from that copy, even offline. You can also browse the same search on the
-[Find plugins](https://gutterpress.dimm.city/plugins/) page.
+Plugins from npm, folders and the web run with full access to your computer: only add ones you
+trust.
 
-If you know the package's name, open **Advanced**, type it under **Install from npm** (with a
-version if you want one, such as `markdown-it-highlightjs@4.3.0`) and click **Install**.
-**Add a folder or plugin file...** adds a plugin you have on your computer.
+![Book setup, Advanced tab: the extension list and the ways to add one](images/book-settings-extensions.jpg)
 
-## Choose a version and stay up to date
+## Keep plugins working and up to date
 
-Each installed plugin in the list has a **Version** menu; pick a version to switch to it. If the
-new version fails to download or load, your book keeps the old one.
+The **Extensions** list on the Advanced tab is everything your book uses, looks and extras
+included, in the order they load: one lower in the list wins where two disagree, and your own
+stylesheet always comes last. Each row says what it is and where it comes from, and has:
 
-- **Check for updates** asks npm for newer versions. A plugin with one shows the new version and
-  an **Update** button.
-- **Include pre-release versions** adds alpha, beta and release-candidate versions to the menus
-  and the update check. It is off by default and applies to every book.
-- **Install** (or **Reinstall**) appears when a plugin's copy is missing or won't load.
-- Each plugin can be turned off, moved up or down (a plugin lower in the list runs after the ones
-  above it), or removed with the trash icon, which deletes its downloaded copy.
+- a checkbox to use it or not, **↑** and **↓** to move it, and **Remove** (which deletes an npm
+  plugin's downloaded copy);
+- **Version x is available.** and **Update**, when npm has a newer version. Gutterpress asks npm
+  once each time you open the Advanced tab;
+- **Couldn't load.** with **Show details**, when it fails, and **Install** or **Reinstall** for an
+  npm plugin whose copy is missing or broken (or **Check again** for anything else). A plugin
+  that works says nothing.
 
-The [plugins chapter](https://gutterpress.dimm.city/docs/plugins/) covers ordering plugins and
-writing your own.
+To use a particular version, add it with its version (`name@1.2.0`) or change the version in
+`manifest.yaml`; the command line's `gutterpress ext` does the same. The
+[plugins chapter](https://gutterpress.dimm.city/docs/plugins/) covers ordering plugins and writing
+your own.
 
 Next: [save a PDF](07-export-pdf.md).

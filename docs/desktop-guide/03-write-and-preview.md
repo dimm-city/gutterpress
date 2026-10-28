@@ -124,7 +124,7 @@ The preview shows your book's pages exactly as they will print, and updates as y
   - **Where the lines come from.** The bleed and the safe lines come only from your project's print
     settings: `page.width` and `page.height`, `page.bleed`, `page.safe`, `page.artSafe` and
     `page.gutter` in `manifest.yaml`, or your preset's values. The **Page margins** layer shows your
-    own choice: the margins from Book setup > Details (`page.margin`), or a stylesheet's `@page`
+    own choice: the margins from Book setup > Book (`page.margin`), or a stylesheet's `@page`
     margins for a book that has not set its own. They place your text and never move the printer's
     lines, and no stylesheet or plugin can hide or restyle the overlays. A DriveThruRPG (`dtrpg`) file already
     contains 0.125in of bleed on the top, bottom and outer edges (none on the binding edge), so the

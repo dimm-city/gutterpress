@@ -20,7 +20,7 @@ of the status bar ("Books — open the start screen") to get back to it from a b
    Zine, Technical doc or Academic), so the new book is styled from the first page.
 4. **Print & save:**
    - Under **What size should the pages be?** choose **DriveThruRPG print** (US Letter),
-     **Trade paperback** (6 × 9 in), or **Other size** and then a size (US Letter, Trade
+     **Trade paperback** (6 × 9 in), or **Another size** and then a size (US Letter, Trade
      paperback, Digest, A4, A5, or your own width and height). The Zine and Technical document
      templates start on their own size (Digest and US Letter).
    - Under **Check the finished PDF against a print service's rules?** tick DriveThruRPG and/or
