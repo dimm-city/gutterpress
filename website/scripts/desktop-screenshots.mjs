@@ -126,7 +126,12 @@ const TALL = [360, 40, 720, 720];           // Publish / Where your work is kept
 
 console.log("desktop-screenshots: start screen and new book");
 await screen("start-screen", async () => {}, { crop: CENTRE, width: 760 });
-await screen("settings", () => click(".landing button:has-text('Settings')"), { crop: [370, 50, 700, 450], width: 700 });
+// A fresh profile is a Reader, who has no Edit, Setup or Publish: choose Author here, so every
+// screen after this one shows them. The radio by value: both role descriptions mention "Author".
+await screen("settings", async () => {
+  await click(".landing button:has-text('Settings')");
+  await click("input[name='settings-role'][value='author']");
+}, { crop: [370, 50, 700, 590], width: 700 });
 await press("Escape");
 await wait(800);
 await screen("new-book-name", async () => {

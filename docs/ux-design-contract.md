@@ -118,10 +118,11 @@ gutterpress/
 ├── Publish workflow                           SHIPPED  (PublishWizard + Connections, #35; see §6 for
 │                                                        proposed deltas: preflight checklist, history)
 ├── Book setup                                 SHIPPED  (ProjectSettingsView, the toolbar's Setup
-│   │                                                    button; title "Book setup"; tabs Book /
-│   │                                                    Look / Extensions / Backup, Advanced set
-│   │                                                    apart at the right; one Saving…/Saved in
-│   │                                                    the header; every tab saves as you go; #442)
+│   │                                                    button, hidden for a Reader; title
+│   │                                                    "Book setup"; tabs Book / Look /
+│   │                                                    Extensions / Backup, Advanced set apart
+│   │                                                    at the right; one Saving…/Saved in the
+│   │                                                    header; every tab saves as you go; #442)
 │   ├── Book (id `book`)                       SHIPPED  (DetailsSection: title, authors, page size,
 │   │                                                    margins, print checks, then chapters by
 │   │                                                    title with "Not in the book" below, then
@@ -154,8 +155,9 @@ gutterpress/
 ├── Media panel                                SHIPPED  (MediaPanel, #47)
 ├── Crash recovery                             SHIPPED  (RecoveryOverlay / CrashRecoveryDialog)
 ├── Settings                                   SHIPPED  (SettingsView: one page in its own sheet,
-│                                                        no tabs — Appearance, Saving, and
-│                                                        Accounts… (opens Accounts);
+│                                                        no tabs — How you use Gutterpress
+│                                                        (Reader or Author), Appearance, Saving,
+│                                                        and Accounts… (opens Accounts);
 │                                                        opened by the status-bar gear, Ctrl+, and
 │                                                        the start screen's Settings button; it
 │                                                        never reads the open book, so it is the
@@ -449,8 +451,15 @@ buttons.
   header, each opening its own page. It always opens on **Books** — picking or
   continuing a book is the screen's job. A missing name/email is raised by
   the workspace's standing identity banner, whose button opens Accounts with
-  the cursor in Name. There is no Reader/Author role: every author has Edit,
-  Setup and Publish in the toolbar; a reader uses the toolbar's Read.
+  the cursor in Name. The **Create a new book** card is shown in both roles;
+  creating a book sets the role to Author, so the new book opens with Edit,
+  Setup and Publish in the toolbar (no toast: the toolbar is the
+  confirmation). The role is the first group in Settings, **How you use
+  Gutterpress**: **Reader** (the default for a fresh profile) shows just the
+  pages — the workspace stays in Read, the toolbar has no Edit/Read, Setup or
+  Publish (removed, not disabled), Focus has no Edit/Read switch, and the left
+  panel has the table of contents only, without Files or Media; **Author**
+  shows everything. Settings and Accounts are the same in both.
   `NewProjectWizard`: template first (**4 built-in templates** — Book, Zine,
   Technical document, Academic paper — plus custom templates, save-as-template,
   import-from-folder); each template lists its look (Clean book, Zine,
@@ -502,7 +511,7 @@ buttons.
   fields commit when you leave them or press Enter; pending edits are saved
   when you switch tabs or close the panel. A commit writes only what changed
   (a title edit never rewrites the page size or `targets:`).
-- Settings is one page with no tabs (Appearance, Saving, Accounts…), reached
+- Settings is one page with no tabs (How you use Gutterpress, Appearance, Saving, Accounts…), reached
   from the status bar's settings button, `Cmd/Ctrl+,` and the start screen;
   your name and email and every account are a page of their own (Accounts).
   Any further regrouping is a PROPOSED delta.
@@ -1293,7 +1302,6 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 | Reintroducing stylelint or any bundler-hostile dep for editor lint | Breaks `bun build --compile` (docs/architecture-rules.md §3) | Extend `printsafe.ts` |
 | A Gutterpress-specific plugin API, hosted plugin marketplace, or fake granular permissions UI | Contradicts docs/architecture-rules.md §5 and the unsandboxed runtime | §9's plain-package model and one honest full-privilege confirmation |
 | Settings with more than a page of choices, or tabs inside Settings | Overwhelming; "where did X go?" | One short Settings page; a choice earns a place only when many authors need it (#442) |
-| A global mode that hides features (a Reader/Author role) | Authors lose Setup and Publish without knowing why | Every author sees every feature; Read is a view, not a role (#442) |
 | Status badges, or switches beside checkboxes, in Book setup | Noise; two controls for one meaning | Silence is success: a row speaks only when it needs attention; checkboxes for items of a set, switches only in Settings (#442) |
 
 ---

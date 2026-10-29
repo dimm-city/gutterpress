@@ -14,6 +14,10 @@ does the **Settings** button at the top of the start screen; the **?** next to t
 Settings is one page, the same whether a book is open or not. Every change applies at once: there
 is nothing to save.
 
+- **How you use Gutterpress** — **Reader** or **Author**. A new install starts as a **Reader**:
+  just the pages, with Edit, Setup and Publish out of the way, and only the table of contents in
+  the left panel. **Author** is for writing and setting up your book, then publishing it. Creating
+  a book switches you to Author.
 - **Appearance** — the **Theme** (**Match system**, **Light** or **Dark**), and **Mark problems
   in the editor**, which underlines the lines the Problems list mentions.
 - **Saving** — **Save changes automatically** (when it's off, press Ctrl+S to save), **Keep
@@ -22,7 +26,7 @@ is nothing to save.
 - **Accounts** — **Accounts…** opens the [Accounts](#accounts) page, where your name and email
   and every account Gutterpress uses are kept.
 
-![Settings: Appearance, Saving and Accounts](images/settings.jpg)
+![Settings: How you use Gutterpress, Appearance, Saving and Accounts](images/settings.jpg)
 
 ## Accounts
 
