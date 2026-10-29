@@ -492,7 +492,10 @@
     gap: 12px;
   }
   .brand-left { display: flex; align-items: center; gap: 12px; }
-  .brand-right { display: flex; align-items: center; gap: 10px; }
+  /* Wraps onto a second row when the update chip joins Accounts, Settings and
+     What's new, rather than squeezing each one onto two lines. */
+  .brand-right { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; }
+  .brand-right > *, .brand-version { white-space: nowrap; }
   .brand-icon-btn {
     background: none;
     border: 0;
