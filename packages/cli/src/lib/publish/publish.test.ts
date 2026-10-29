@@ -818,6 +818,57 @@ test("connectPublishProvider verifies the pasted key and only then stores it", a
   }
 });
 
+test("connectPublishProvider with no book (the desktop's Accounts page) verifies the key the same way, without reading a manifest", async () => {
+  // No manifest anywhere: the store lives in a bare folder, and no projectDir is passed.
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-publish-nobook-"));
+  try {
+    const seen: string[] = [];
+    const fetchFn = (async (_url: unknown, init?: RequestInit) => {
+      const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+      seen.push(auth);
+      return new Response("{}", { status: auth.includes("good-key") ? 200 : 401 });
+    }) as typeof globalThis.fetch;
+    const deps = await depsFor(dir, { fetch: fetchFn, env: { BUTLER_API_KEY: "env-key" } });
+    await deps.tokenStore.set("itch.io", { host: "itch.io", kind: "token", token: "old-working-key", createdAt: 1 });
+
+    // A rejected key leaves the saved one as it was.
+    await expect(
+      connectPublishProvider({ providerId: "itch", token: "bad-key" }, deps),
+    ).rejects.toThrow(/didn't accept the API key/);
+    expect((await deps.tokenStore.get("itch.io"))?.token).toBe("old-working-key");
+    expect(seen.pop()).toContain("bad-key");
+
+    // An accepted one replaces it, as a named account too.
+    await connectPublishProvider({ providerId: "itch", token: "good-key" }, deps);
+    expect((await deps.tokenStore.get("itch.io"))?.token).toBe("good-key");
+    await connectPublishProvider({ providerId: "itch", token: "good-key", account: "Studio" }, deps);
+    expect((await deps.tokenStore.get("itch.io#Studio"))?.username).toBe("Studio");
+
+    // The same refusals as with a book.
+    await expect(connectPublishProvider({ providerId: "kdp", token: "x" }, deps)).rejects.toThrow(/needs no API key/);
+    await expect(connectPublishProvider({ providerId: "gdrive", token: "x" }, deps)).rejects.toThrow(/connects through your browser/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a Shopify key added with no book is saved unchecked: the store's address is a book setting", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-publish-nobook-"));
+  try {
+    let calls = 0;
+    const fetchFn = (async (_url: unknown, _init?: RequestInit) => {
+      calls++;
+      return new Response("{}", { status: 401 });
+    }) as typeof globalThis.fetch;
+    const deps = await depsFor(dir, { fetch: fetchFn });
+    await connectPublishProvider({ providerId: "shopify", token: "shpat_x" }, deps);
+    expect((await deps.tokenStore.get("shopify"))?.token).toBe("shpat_x");
+    expect(calls).toBe(0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("connectPublishProvider refuses guided providers and empty tokens", async () => {
   const dir = await tempProject(MANIFEST);
   try {

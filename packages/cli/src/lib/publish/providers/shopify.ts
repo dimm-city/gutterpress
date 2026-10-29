@@ -202,6 +202,10 @@ export const shopifyProvider: PublishProvider = {
           "No Shopify access token found. Connect Shopify (or set SHOPIFY_ADMIN_TOKEN) first.",
       };
     }
+    // The store's address is a book setting. With none (a key added on the
+    // desktop's Accounts page, before any book) there is nothing to ask yet:
+    // the key is checked when a book with a store is published.
+    if (!readConfig(req).shop) return { ok: true, source: resolved.source };
     try {
       // adminGraphQL enforces the myshopify.com shop-domain gate.
       await adminGraphQL(req, "{ shop { name } }");

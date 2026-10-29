@@ -818,6 +818,10 @@ export const api = {
         args,
       ),
 
+    /** The page where a recognised Git server makes access tokens, else null. */
+    forgeTokenUrl: (host: string) =>
+      post<{ url: string | null }>('/api/remote/forge-token-url', { host }),
+
     /** Forget the stored connection for a host. */
     disconnectHost: (host: string) =>
       post<{ ok: boolean }>('/api/remote/disconnect-host', { host }),
@@ -892,11 +896,12 @@ export const api = {
      * Store + verify an API key for a provider. The token travels once, to the
      * host; the response is redacted and the key never comes back. An optional
      * `account` label stores a NAMED credential (a user can keep several per
-     * provider); empty stores the default.
+     * provider); empty stores the default. `projectDir` is null with no book
+     * (the Accounts page): the check then reads no manifest settings.
      */
-    connect: (projectDir: string, providerId: string, token: string, account?: string) =>
+    connect: (projectDir: string | null, providerId: string, token: string, account?: string) =>
       post<{ connected: boolean; providerId: string }>('/api/publish/connect', {
-        projectDir,
+        ...(projectDir ? { projectDir } : {}),
         providerId,
         token,
         ...(account ? { account } : {}),
