@@ -150,8 +150,11 @@ writeFileSync(
   join(userDataDir, "gutterpress-prefs.json"),
   JSON.stringify({ lastProjectDir: bookDir, leftPanel: { open: true, activeTab: "toc", width: 300 } }),
 );
-// No app-settings.json on purpose: Edit is the default for a profile with no
-// saved choice, so leaving it unseeded drives exactly what a first-time writer gets — the
+// The drives write and publish, so they run as an author (the app defaults
+// to a reader, who has no editor).
+writeFileSync(join(userDataDir, "app-settings.json"), JSON.stringify({ workspace: { role: "author" } }));
+// No saved Edit/Read mode on purpose: Edit is the default for a profile with no
+// saved choice, so leaving it unseeded drives exactly what a first-time author gets — the
 // workspace in Edit mode BEFORE any book is open, the state the toggle path
 // never reaches (and the CONTROL below fails if that default regresses).
 appArgv.push(`--user-data-dir=${userDataDir}`);

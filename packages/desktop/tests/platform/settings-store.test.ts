@@ -35,6 +35,15 @@ test("mergeSettings patches one field in a section, preserving sibling fields", 
   expect(merged.gitIdentity.authorEmail).toBe(DEFAULT_SETTINGS.gitIdentity.authorEmail);
 });
 
+test("a fresh profile is a Reader; mergeSettings changes the role and nothing else", () => {
+  expect(DEFAULT_SETTINGS.workspace.role).toBe("reader");
+
+  const merged = mergeSettings(DEFAULT_SETTINGS, { workspace: { role: "author" } } as DeepPartialSettings);
+
+  expect(merged.workspace.role).toBe("author");
+  expect({ ...merged, workspace: DEFAULT_SETTINGS.workspace }).toEqual(DEFAULT_SETTINGS);
+});
+
 test("mergeSettings patches preview.splitRatio, preserving sibling preview fields (#103)", () => {
   const merged = mergeSettings(DEFAULT_SETTINGS, {
     preview: { splitRatio: 0.3 },
@@ -203,6 +212,14 @@ test("readSettings deep-merges a stored partial over DEFAULT_SETTINGS", async ()
   expect(s.appearance).toEqual(DEFAULT_SETTINGS.appearance);
 });
 
+test("readSettings keeps a saved Author role; a file with no role is a Reader", async () => {
+  const saved = makeStore({ readFileImpl: async () => JSON.stringify({ workspace: { role: "author" } }) });
+  expect((await saved.store.readSettings()).workspace.role).toBe("author");
+
+  const older = makeStore({ readFileImpl: async () => JSON.stringify({ appearance: { theme: "dark" } }) });
+  expect((await older.store.readSettings()).workspace.role).toBe("reader");
+});
+
 test("readSettings loads a file still carrying keys deleted from the schema, dropping them (#274, #384, #442)", async () => {
   const { store, renames } = makeStore({
     readFileImpl: async () =>
@@ -211,8 +228,7 @@ test("readSettings loads a file still carrying keys deleted from the schema, dro
         editor: { fontSize: 18, autoSaveDelay: 2500, crashRecovery: false },
         versionHistory: { autoSnapshotMinutes: 30, autoSave: false },
         appearance: { theme: "dark" },
-        // The Reader/Author role, the dead developer knobs and the right-click switch (#442).
-        workspace: { role: "reader" },
+        // The dead developer knobs and the right-click switch (#442).
         advanced: { fileWatcherInterval: 300, logLevel: "warn" },
         preview: { contextMenu: false, mode: "viewer" },
       }),
@@ -227,7 +243,6 @@ test("readSettings loads a file still carrying keys deleted from the schema, dro
   // The removed keys do not survive the merge.
   expect(s.editor).toEqual(DEFAULT_SETTINGS.editor);
   expect(s.versionHistory).not.toHaveProperty("autoSnapshotMinutes");
-  expect(s).not.toHaveProperty("workspace");
   expect(s).not.toHaveProperty("advanced");
   expect(s.preview).not.toHaveProperty("contextMenu");
   expect(s.preview.mode).toBe("viewer");

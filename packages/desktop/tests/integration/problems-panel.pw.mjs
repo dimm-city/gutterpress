@@ -92,8 +92,11 @@ if (!existsSync(target)) fail(`no ${target} — run \`npm run build && npm run e
 const isMainJs = target.endsWith(".js");
 const electronBin = isMainJs ? require_("electron") : target;
  fakeHome = mkdtempSync(join(tmpdir(), "gutterpress-problems-home-"));
+// The drive edits, so it runs as an author (the app defaults to a reader, who
+// has no editor and so no Problems badge).
 const userDataDir = join(fakeHome, "user-data");
 mkdirSync(userDataDir, { recursive: true });
+writeFileSync(join(userDataDir, "app-settings.json"), JSON.stringify({ workspace: { role: "author" } }));
 const appArgv = [...(isMainJs ? [target] : []), `--remote-debugging-port=${PORT}`, `--user-data-dir=${userDataDir}`, "--no-sandbox"];
 
 // xvfb is a Linux-only headless fallback; Windows/macOS never have DISPLAY.

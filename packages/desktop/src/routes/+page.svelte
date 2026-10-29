@@ -1050,7 +1050,13 @@
   // (before the deriveds that read it) so it is initialised ahead of them.
   // A local $state that `setMode` writes through to settings and `modeSink`
   // below reads back on load.
-  let mode = $state<WorkspaceMode>(settings.current.preview.mode);
+  // Reader or author (Settings → How you use Gutterpress). A reader only
+  // reads: the workspace stays in Read, and the toolbar hides Edit/Read, Setup
+  // and Publish. The author's saved Edit/Read choice is kept untouched underneath.
+  let readerMode = $derived(settings.current.workspace.role === "reader");
+  const effectiveMode = (s: typeof settings.current): WorkspaceMode =>
+    s.workspace.role === "reader" ? "viewer" : s.preview.mode;
+  let mode = $state<WorkspaceMode>(effectiveMode(settings.current));
   // Focus: a SESSION-ONLY toggle layered on top of Edit or Read (see
   // focus-mode.ts). It hides the chrome and nothing else — it never touches
   // `mode` or the persisted left-panel setting, so leaving it restores exactly
@@ -1499,8 +1505,9 @@
   // independent async starts: when settings land LAST, the project-open path
   // already ran `ensureEditorFile()` while the workspace still looked like
   // viewer mode, and nothing else would ever load the editor component.
-  // Push the derived view mode to the viewer the way setMode does, or the
-  // pages stay in the old column count until the next full render.
+  // A role change (Settings → How you use Gutterpress) arrives here too, and
+  // it changes the derived view mode: push it to the viewer the way setMode
+  // does, or the pages stay in the old column count until the next full render.
   const modeSink = settingsChangeGuard<WorkspaceMode>((m) => {
     mode = m;
     zoomView.applyViewMode(viewMode);
@@ -1534,7 +1541,7 @@
     onSettingsChange((s) => {
       previewBgSink(s.appearance.previewBg);
       splitRatioSink(s.preview.splitRatio);
-      modeSink(s.preview.mode);
+      modeSink(effectiveMode(s));
       autoSaveSink(s.versionHistory.autoSave);
       readLayoutSink(s.preview.readLayout);
       marginOverlaySink(
@@ -1804,6 +1811,7 @@
    * already has a file; go-to-source places its own caret).
    */
   function openEditorPane(opts: { focus?: boolean; ensureFile?: boolean } = {}) {
+    if (readerMode) return;
     const { focus = true, ensureFile = true } = opts;
     if (mode === "viewer") setMode("editor");
     loadEditorModule();
@@ -2133,7 +2141,7 @@
       if (event.type === "ready") {
         initialReplayComplete = true;
         // Settings first: whether the editor opens with the book depends on
-        // the saved Edit/Read choice, not the in-memory default.
+        // the saved reader/author choice, not the in-memory default.
         if (!initialFileLaunchSeen) void _loadSettings().then(() => startup.run());
         return;
       }
@@ -2784,6 +2792,7 @@
    */
   function setMode(next: WorkspaceMode): void {
     if (next === mode) return;
+    if (next === "editor" && readerMode) return;
     settings.set({ preview: { mode: next } });
     mode = next;
     zoomView.applyViewMode(viewMode);
@@ -3069,6 +3078,7 @@
   {#if inFocus}
     <FocusBar
       view={focusView}
+      {readerMode}
       onSelectView={(v) => { contextMenu.close(); selectFocusView(v); }}
       onExit={() => setFocus(false, true)}
       {pageNav}
@@ -3104,6 +3114,7 @@
     {publishHints}
     publishWarning={lifecycle.saveWarning}
     showProjectSettings={toolbarProjectOpen}
+    {readerMode}
     onOpenProjectSettings={openProjectConfig}
     {focus}
     onToggleFocus={() => setFocus(!focus)}
@@ -3116,6 +3127,7 @@
       bind:open={leftPanelOpen}
       bind:width={leftPanelWidth}
       bind:activeTab={leftPanelTab}
+      {readerMode}
       projectDir={lifecycle.currentDir}
       projectDisplayName={lifecycle.currentFolderDisplayName}
       projectCapabilities={projectSession.projectCapabilities}
@@ -3652,6 +3664,9 @@
   bind:this={newProjectWizardRef}
   onCreated={(projectDir) => {
     invalidateDiscoveredProjects(); // the new book must show up in lists now
+    // Creating a book is authoring: a reader who creates one becomes an
+    // author, so the new book opens with Edit, Setup and Publish in reach.
+    if (settings.current.workspace.role === "reader") settings.set({ workspace: { role: "author" } });
     return openProjectPath(projectDir);
   }}
   onClosed={() => {

@@ -120,9 +120,10 @@ describe("savedAccount", () => {
 const read = (rel: string) => fs.readFileSync(path.resolve(__dirname, "../..", rel), "utf8");
 
 describe("wiring", () => {
-  test("Settings keeps Appearance, Saving and the Accounts… row; the name and email moved to Accounts, above GitHub", () => {
+  test("Settings keeps How you use Gutterpress, Appearance, Saving and the Accounts… row; the name and email moved to Accounts, above GitHub", () => {
     const settings = read("src/lib/components/SettingsView.svelte");
     expect(settings.match(/<h2 id="settings-[a-z]+">[^<]+/g)).toEqual([
+      '<h2 id="settings-role">How you use Gutterpress',
       '<h2 id="settings-appearance">Appearance',
       '<h2 id="settings-saving">Saving',
       '<h2 id="settings-accounts">Accounts',

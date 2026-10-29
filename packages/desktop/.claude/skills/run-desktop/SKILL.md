@@ -56,7 +56,7 @@ Useful selectors: `[aria-label='Book setup']` (toolbar button; the panel it open
 
 ## Gotchas
 - Opening a book = typing its path into the welcome screen's "Search your books" box + Enter (the native folder dialog can't be driven).
-- A fresh profile opens a book in **Edit** with the left panel open (closed if the window is narrow). A saved Read/Edit or panel choice wins on later launches, so delete `GP_HOME` for a first-run view.
+- A fresh profile opens a book in **Read** (no editor: the app defaults to the Reader role) with the left panel open (closed if the window is narrow). To drive the editor, seed `$GP_HOME/.config/Electron/app-settings.json` with `{"workspace":{"role":"author"}}` before the run, as the integration drives do. A saved Read/Edit or panel choice wins on later launches, so delete `GP_HOME` for a first-run view.
 - `HOME` is set to `/tmp/gphome` (override with `GP_HOME`) so recents/settings don't leak between runs.
 - Settings, Help and Book setup are full-screen pages that cover the workspace (the workspace is inert underneath); Esc or the X (`Close this screen`, on Settings `Close settings`) closes them. The start screen opens Settings from its header's `button:has-text('Settings')`.
 - The `New book` button is only visible while the left panel is open (already open on a fresh profile; the toggle closes it).

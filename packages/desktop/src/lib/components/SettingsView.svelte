@@ -2,14 +2,15 @@
   /**
    * SettingsView — the app's Settings: one page in the shared AppView layer,
    * the same from the start screen and over a book (it never reads the open
-   * book). Three groups; every control applies at once. Your name and email
-   * and every account have their own page (AccountsView), which the last
-   * group opens.
+   * book). Four groups; every control applies at once. The first, Reader or
+   * Author, decides how much of the app shows. Your name and email and every
+   * account have their own page (AccountsView), which the last group opens.
    */
   import AppView from "#lib/components/AppView.svelte";
   import { useSettings } from "#lib/settings.svelte.ts";
   import { setThemeMode, type ThemeMode } from "#lib/theme.svelte.ts";
   import { getPlatform } from "#lib/platform/index.ts";
+  import type { WorkspaceRole } from "#lib/platform/shared-types.ts";
 
   let {
     onClose,
@@ -23,6 +24,10 @@
   const settings = useSettings();
   const s = $derived(settings.current);
 
+  const ROLES: Array<{ value: WorkspaceRole; label: string; hint: string }> = [
+    { value: "reader", label: "Reader", hint: "Just the pages. Edit, Setup and Publish stay out of the way. Creating a book switches you to Author." },
+    { value: "author", label: "Author", hint: "Write and set up your book, then publish it." },
+  ];
   const THEMES: Array<{ value: ThemeMode; label: string }> = [
     { value: "system", label: "Match system" },
     { value: "light", label: "Light" },
@@ -56,6 +61,23 @@
 {/snippet}
 
 <AppView title="Settings" icon="settings" measure={640} {onClose} closeLabel="Close settings" closeTitle="Close (Esc)">
+  <!-- The one choice that decides how much of the app shows. Reader is the
+       default; creating a book switches to Author; it is remembered. -->
+  <section class="group" aria-labelledby="settings-role">
+    <h2 id="settings-role">How you use Gutterpress</h2>
+    <div class="radios roles" role="radiogroup" aria-labelledby="settings-role">
+      {#each ROLES as r (r.value)}
+        <label>
+          <input type="radio" name="settings-role" value={r.value} checked={s.workspace.role === r.value} onchange={() => settings.set({ workspace: { role: r.value } })} />
+          <span class="row-text">
+            <span class="role-title">{r.label}</span>
+            <span class="hint">{r.hint}</span>
+          </span>
+        </label>
+      {/each}
+    </div>
+  </section>
+
   <section class="group" aria-labelledby="settings-appearance">
     <h2 id="settings-appearance">Appearance</h2>
     <fieldset class="row">
@@ -111,6 +133,11 @@
   .radios { display: flex; gap: 16px; }
   .radios label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
   .radios input { margin: 0; accent-color: var(--app-accent); }
+  /* Reader / Author: stacked, each with its description under the name. */
+  .radios.roles { flex-direction: column; gap: 10px; }
+  .radios.roles label { align-items: flex-start; }
+  .radios.roles input { margin-top: 2px; }
+  .role-title { font-size: 13px; color: var(--app-text); }
 
   /* The switch: a native checkbox, so it keeps the keyboard and the
      accessibility of one; the thumb's side says on or off, not colour alone.
