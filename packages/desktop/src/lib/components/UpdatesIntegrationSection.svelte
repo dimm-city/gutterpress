@@ -237,11 +237,7 @@
   .row-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .row-hint { font-size: 11px; line-height: 1.3; color: var(--app-text-muted); }
   .row select {
-    background: var(--app-surface-sunken);
-    border: 1px solid var(--app-control-border);
-    color: var(--app-text-secondary);
     padding: 5px 8px;
-    border-radius: 6px;
     font-size: 13px;
     min-width: 160px;
   }

@@ -544,20 +544,10 @@
   .filter,
   .field input,
   .field select {
-    background: var(--app-surface-sunken);
-    border: 1px solid var(--app-border);
-    color: var(--app-text-secondary);
     padding: 8px 10px;
-    border-radius: 6px;
     font-size: 13px;
     width: 100%;
     box-sizing: border-box;
-  }
-  .filter:focus,
-  .field input:focus,
-  .field select:focus {
-    outline: none;
-    border-color: var(--app-focus-ring);
   }
   .field {
     display: flex;

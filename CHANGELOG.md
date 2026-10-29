@@ -79,6 +79,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   switch, the export-name field and the stylesheet list. `gutterpress ext`
   and the manifest still do all of them. A publishing key is added in
   Publish; "Test the connection" moved to Troubleshooting > Sync.
+- **Text fields can be seen (#447).** Every text field, select and text area
+  in the desktop app takes its look from one shared rule, and its edge now
+  stands out at 3:1 or more against every background in both themes (it was
+  about 1.3:1, so an empty Name or Email field was close to invisible).
 - **`gutterpress new` no longer insists on `--preset`.** Every starter
   template carries a preset, so leaving the flag out keeps the template's;
   the flag overrides it. `--kind theme` is `--kind look`, the word the rest of

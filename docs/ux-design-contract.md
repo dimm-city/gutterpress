@@ -1018,11 +1018,17 @@ they are validated by usability testing, not by a wall-clock CI gate.
 | Large text / headings | 3:1 |
 | UI controls / focus indicators | 3:1 |
 | Meaningful icons (error/warning/success) | 3:1 (non-text contrast, SC 1.4.11) |
+| Text field / select edge | 3:1 against every surface it sits on, both themes (#447) |
 
 - Light + dark mode (SHIPPED, #48); auto-detect `prefers-color-scheme`, user
   override. `prefers-contrast: more`: remove decorative shadows, increase
   border weight, focus ring → 3px solid.
 - No color-only state indication: icon + label accompany color, always.
+- Text fields, selects and text areas take their fill, edge
+  (`--app-field-border`), corners, text colour and focus ring from ONE
+  zero-specificity rule in `theme.css`, as primary buttons take theirs from
+  `.app-btn-primary`. A component sets only a field's layout; a control
+  meant to look different (a toolbar picker) says so in its own class.
 
 ### Keyboard navigation
 

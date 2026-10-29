@@ -211,14 +211,6 @@
     min-width: 0;
     padding: 5px 8px;
     font-size: 12px;
-    border-radius: 6px;
-    border: 1px solid var(--app-border);
-    background: var(--app-surface-sunken);
-    color: var(--app-text);
-  }
-  .file-select:focus-visible {
-    outline: 2px solid var(--app-focus-ring);
-    outline-offset: 1px;
   }
 
   .toolbar-btn {

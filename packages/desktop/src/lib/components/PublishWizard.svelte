@@ -780,27 +780,17 @@
      higher-specificity label rule competes — no !important needed. */
   .field-hint { font-weight: 400; color: var(--app-text-muted); font-size: 11px; }
   .field input {
-    background: var(--app-surface-sunken);
-    border: 1px solid var(--app-border);
-    color: var(--app-text-secondary);
     padding: 8px 10px;
-    border-radius: 6px;
     font-size: 14px;
     width: 100%;
     box-sizing: border-box;
   }
-  .field input:focus { outline: none; border-color: var(--app-focus-ring); }
   .field select {
-    background: var(--app-surface-sunken);
-    border: 1px solid var(--app-border);
-    color: var(--app-text-secondary);
     padding: 8px 10px;
-    border-radius: 6px;
     font-size: 14px;
     width: 100%;
     box-sizing: border-box;
   }
-  .field select:focus { outline: none; border-color: var(--app-focus-ring); }
   .optional { font-style: italic; color: var(--app-text-muted); font-weight: 400; }
   .key-row { display: flex; gap: 8px; }
   .key-row input { flex: 1; min-width: 0; }
