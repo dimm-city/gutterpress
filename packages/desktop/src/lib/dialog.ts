@@ -94,6 +94,9 @@ export interface DialogOptions {
   labelledBy?: string;
 }
 
+/** Open dialogs, oldest first: the last one is on top. */
+const openDialogs: HTMLElement[] = [];
+
 export function dialogBehavior(node: HTMLElement, options: DialogOptions) {
   let opts = options;
   const doc = node.ownerDocument;
@@ -116,6 +119,19 @@ export function dialogBehavior(node: HTMLElement, options: DialogOptions) {
     trapFocus(e, node);
   }
   node.addEventListener("keydown", onKeydown);
+
+  // A click that removes its own button (Add, Remove, Create…) drops focus to
+  // <body>, outside every dialog, where the listener above never hears Escape
+  // or Tab. The dialog on top takes the key back, and focus with it.
+  function onDocumentKeydown(e: KeyboardEvent) {
+    if (openDialogs[openDialogs.length - 1] !== node) return;
+    const active = doc.activeElement;
+    if (active && active !== doc.body && active !== doc.documentElement) return;
+    node.focus();
+    onKeydown(e);
+  }
+  openDialogs.push(node);
+  doc.addEventListener("keydown", onDocumentKeydown);
 
   // Defer initial focus one microtask so snippet/children content has mounted.
   queueMicrotask(() => {
@@ -141,6 +157,8 @@ export function dialogBehavior(node: HTMLElement, options: DialogOptions) {
     },
     destroy() {
       node.removeEventListener("keydown", onKeydown);
+      doc.removeEventListener("keydown", onDocumentKeydown);
+      openDialogs.splice(openDialogs.indexOf(node), 1);
       const restore = opts.triggerEl ?? previouslyFocused;
       restore?.focus?.();
     },

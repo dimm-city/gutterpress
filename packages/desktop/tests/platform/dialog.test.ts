@@ -136,6 +136,47 @@ describe("dialogBehavior action", () => {
     handle?.destroy?.();
   });
 
+  test("focus dropped to <body> (a clicked button removed): the dialog on top still hears Escape", () => {
+    const { doc, dialog, first, key } = setup();
+    let closed = 0;
+    const handle = dialogBehavior(dialog, { onClose: () => closed++ });
+    first.focus();
+    first.remove(); // as when Add / Remove replaces the button that was clicked
+    doc.body.dispatchEvent(key("Escape"));
+    expect(closed).toBe(1);
+    expect(doc.activeElement).toBe(dialog);
+    handle?.destroy?.();
+  });
+
+  test("with two dialogs open, a lost-focus Escape closes only the one on top", () => {
+    const { doc, dialog, key } = setup();
+    const top = doc.createElement("div");
+    top.appendChild(doc.createElement("button"));
+    doc.body.appendChild(top);
+    let below = 0;
+    let above = 0;
+    const lower = dialogBehavior(dialog, { onClose: () => below++ });
+    const upper = dialogBehavior(top, { onClose: () => above++ });
+    (doc.activeElement as HTMLElement | null)?.blur?.();
+    doc.body.dispatchEvent(key("Escape"));
+    expect([below, above]).toEqual([0, 1]);
+    upper?.destroy?.(); // hands focus back to what opened it
+    (doc.activeElement as HTMLElement | null)?.blur?.();
+    doc.body.dispatchEvent(key("Escape"));
+    expect([below, above]).toEqual([1, 1]);
+    lower?.destroy?.();
+  });
+
+  test("a key pressed where focus legitimately sits outside the dialog is left alone", () => {
+    const { doc, dialog, trigger, key } = setup();
+    let closed = 0;
+    const handle = dialogBehavior(dialog, { onClose: () => closed++ });
+    trigger.focus();
+    trigger.dispatchEvent(key("Escape"));
+    expect(closed).toBe(0);
+    handle?.destroy?.();
+  });
+
   test("non-Escape keys do not invoke onClose", () => {
     const { dialog, first, key } = setup();
     let closed = 0;
