@@ -21,7 +21,10 @@
  *      note; deleting an online revision offers "this computer only" and
  *      "everywhere"; one holding versions found nowhere else asks a second
  *      time, naming how many, and the second call carries `discard: true`.
- *   4. A Reader sees no status control, Get latest or Back up now.
+ *   4. Once backing up can work (the diagnosis is stubbed as ready), "If
+ *      backing up keeps failing" holds Test connection, Repair the online
+ *      copy, Start over from the online copy and Sign in again, collapsed.
+ *   5. A Reader sees no status control, Get latest or Back up now.
  *
  * Screenshots: <os tmpdir>/online-copy-{bar,tab,rename,delete,reader}.png.
  *
@@ -221,6 +224,13 @@ await evalJs(`(() => {
   const current = () => state.revisions.find((r) => r.current)?.name ?? null;
   window.fetch = async (input, init) => {
     const path = new URL(typeof input === "string" ? input : input.url, location.href).pathname;
+    if (window.__diagnoseReady && path === "/api/remote/diagnose-project") {
+      return json({
+        classification: { type: "local-git-folder", path: "/book", repoRoot: "/book", subPath: "", hasRemote: true },
+        remoteUrl: "https://github.com/ada/harbor-lights.git", remoteHost: "github.com", remoteProtocol: "https",
+        credentialPresent: true, provider: "github", tokenSettingsUrl: null, canSync: true, guidance: "ready-to-sync",
+      });
+    }
     if (!/^\\/api\\/vcs\\/(list-revisions|create-revision|rename-revision|delete-revision|switch-branch)$/.test(path)) return real(input, init);
     const body = init?.body ? JSON.parse(init.body) : {};
     state.calls.push({ path: path.slice("/api/vcs/".length), body });
@@ -342,14 +352,35 @@ check(await evalJs(`window.__revisions.calls.filter((c) => c.path === 'delete-re
 await rowButton("editors-pass", "Switch");
 check(await waitFor(`document.querySelector('.revisions .item-list li:has(.mine) .item-label')?.textContent.trim() === 'editors-pass'`), "Switch opens an online-only revision");
 
-// ── 12. a Reader sees none of it ─────────────────────────────────────────────
-await evalJs(`document.querySelector('#project-settings-panel')?.closest('[role="dialog"]')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
+// ── 12. once backing up can work: the tools for when it keeps failing ────────
+const closeDialog = () => evalJs(`document.querySelector('[role="dialog"]')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
+await closeDialog();
 check(await waitFor(`!document.querySelector('#project-settings-panel')`), "Book setup closed");
+await evalJs(`window.__diagnoseReady = true; true`);
+await click(".status-bar .status-control");
+check(await waitFor(`!!document.querySelector('#project-settings-panel details.failing')`), "the failing-tools disclosure is there once backing up can work");
+const failing = await evalJs(`(() => {
+  const d = document.querySelector('#project-settings-panel details.failing');
+  return {
+    open: d.open,
+    summary: d.querySelector('summary').textContent.trim(),
+    buttons: [...d.querySelectorAll('button')].map((b) => b.textContent.trim()),
+    headline: document.querySelector('#project-settings-panel .headline')?.textContent.trim(),
+  };
+})()`);
+log(`ready tab: ${JSON.stringify(failing)}`);
+check(!failing.open && failing.summary === "If backing up keeps failing", "it is collapsed by default");
+check(failing.buttons.join("|") === "Test connection|Repair the online copy|Start over from the online copy|Sign in again", "it holds the four tools");
+check(/^Online copy: github\.com\/ada\/harbor-lights$/.test(failing.headline), `the status names the online copy without claiming a backup (${failing.headline})`);
+await closeDialog();
+check(await waitFor(`!document.querySelector('#project-settings-panel')`), "Book setup closed again");
+
+// ── 13. a Reader sees none of it ─────────────────────────────────────────────
 await click('.status-bar button[aria-label="Settings"]');
 check(await waitFor(`!!document.querySelector('input[name="settings-role"][value="reader"]')`), "Settings opened");
 await click('input[name="settings-role"][value="reader"]');
 await evalJs(`document.querySelector('input[name="settings-role"][value="reader"]').dispatchEvent(new Event('change', { bubbles: true })); true`);
-await evalJs(`document.querySelector('[role="dialog"]')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
+await closeDialog();
 check(await waitFor(`!document.querySelector('input[name="settings-role"]')`), "Settings closed");
 check(await waitFor(`!document.querySelector('.status-bar .status-control')`), "a Reader has no status control");
 const readerBar = await evalJs(`[...document.querySelectorAll('.status-bar button')].map((b) => b.getAttribute('aria-label') ?? b.textContent.trim())`);
