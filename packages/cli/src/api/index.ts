@@ -276,7 +276,6 @@ export {
   listRevisions,
   createRevision,
   revisionNameFrom,
-  listLocalBranches,
   switchBranch,
   SWITCH_BRANCH_SNAPSHOT_MESSAGE,
 } from "../lib/source-provider.ts";
@@ -285,7 +284,6 @@ export type {
   ListHistoryOptions,
   HistoryPage,
   UnversionedChanges,
-  LocalBranches,
   Revision,
   RevisionList,
   CreateRevisionOptions,

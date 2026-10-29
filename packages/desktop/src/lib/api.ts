@@ -754,11 +754,6 @@ export const api = {
       post<{ changedFiles: number | null; stale: boolean }>('/api/vcs/unversioned-changes', { projectDir }),
     saveSnapshot: (projectDir: string, message?: string) =>
       post<SnapshotEntry>('/api/vcs/save-snapshot', { projectDir, message }),
-    /** The project's revisions (git branches) and which one is open;
-     *  `null` when the source has nothing to switch between (#273).
-     *  @deprecated Use `listRevisions`; removed once its callers have moved over. */
-    listBranches: (projectDir: string) =>
-      post<{ current: string | null; branches: string[]; remoteOnly: string[] } | null>('/api/vcs/list-branches', { projectDir }),
     /** Switch the project's working tree to another revision (#273). */
     switchBranch: (projectDir: string, branch: string) =>
       post<{ current: string; changedFiles: string[] }>('/api/vcs/switch-branch', { projectDir, branch }),
@@ -813,16 +808,6 @@ export const api = {
     /** Classify the project's remote situation for the environment panel. */
     diagnoseProjectRemote: (projectDir: string) =>
       post<ProjectRemoteDiagnosis>('/api/remote/diagnose-project', { projectDir }),
-
-    /** Fetch every remote branch so the revision list sees revisions made elsewhere
-     *  (#273). Best-effort: `refreshed: false` with the `reason` when the check
-     *  could not run, so the list can say it may be incomplete.
-     *  @deprecated `listRevisions(dir, { refresh: true })` does this; removed once its callers have moved over. */
-    refreshCopies: (projectDir: string) =>
-      post<{ refreshed: boolean; reason?: 'no-remote' | 'auth' | 'offline' }>(
-        '/api/remote/refresh-copies',
-        { projectDir },
-      ),
 
     /** Explicit, user-initiated remote probe (the git ls-remote equivalent). */
     testRemoteAccess: (url: string) =>

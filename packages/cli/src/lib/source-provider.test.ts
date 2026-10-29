@@ -16,7 +16,6 @@ import {
   countUnversionedChanges,
   snapshotStagingMarkerPath,
   resolveGitAuthor,
-  listLocalBranches,
   listRevisions,
   createRevision,
   revisionNameFrom,
@@ -1011,75 +1010,6 @@ test("withRepoLock: the queue map is reclaimed to empty once all ops settle (B4)
 
 // ── Local branches / revision switching (#273) ───────────────────────────────
 
-test("listLocalBranches returns null for a plain folder — nothing to switch between", async () => {
-  const dir = await tempDir();
-  try {
-    expect(await listLocalBranches(dir)).toBeNull();
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("listLocalBranches lists every local revision and which one is current", async () => {
-  const dir = await tempDir();
-  try {
-    await initProject(dir);
-    await git.branch({ fs, dir, ref: "second-revision" });
-    const result = await listLocalBranches(dir);
-    expect(result).not.toBeNull();
-    expect(result!.current).toBe("main");
-    expect(result!.branches.slice().sort()).toEqual(["main", "second-revision"]);
-    expect(result!.remoteOnly).toEqual([]);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("listLocalBranches lists a revision that exists only on the remote, and marks it", async () => {
-  const dir = await tempDir();
-  try {
-    await initProject(dir);
-    // Remote names come from config, not from the ref path: without this,
-    // `refs/remotes/origin/a/b` is ambiguous between remote "origin" and
-    // remote "origin/a". A fetched revision always implies a configured remote.
-    await git.addRemote({ fs, dir, remote: "origin", url: "https://example.invalid/p.git" });
-    const head = await git.resolveRef({ fs, dir, ref: "main" });
-    // A revision that was only ever fetched: a remote-tracking ref with no
-    // refs/heads/ counterpart. This is the case that used to be invisible.
-    await git.writeRef({
-      fs,
-      dir,
-      ref: "refs/remotes/origin/online-revision",
-      value: head,
-      force: true,
-    });
-    // One that exists both places must not be listed twice or marked online-only.
-    await git.branch({ fs, dir, ref: "shared-revision" });
-    await git.writeRef({
-      fs,
-      dir,
-      ref: "refs/remotes/origin/shared-revision",
-      value: head,
-      force: true,
-    });
-    // The remote's own HEAD symref is not a revision.
-    await git.writeRef({
-      fs,
-      dir,
-      ref: "refs/remotes/origin/HEAD",
-      value: head,
-      force: true,
-    });
-
-    const result = await listLocalBranches(dir);
-    expect(result).not.toBeNull();
-    expect(result!.branches).toEqual(["main", "online-revision", "shared-revision"]);
-    expect(result!.remoteOnly).toEqual(["online-revision"]);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
 test("switchBranch checks out another local revision and preserves an in-progress edit with a safety snapshot", async () => {
   const dir = await tempDir();
   try {
@@ -1162,8 +1092,8 @@ test("switchBranch checks out a revision that exists only on the remote, creatin
       await git.getConfig({ fs, dir, path: "branch.online-revision.remote" }),
     ).toBe("origin");
     // It is no longer reported as online-only, because it is now local too.
-    const listed = await listLocalBranches(dir);
-    expect(listed!.remoteOnly).not.toContain("online-revision");
+    const listed = await listRevisions(dir);
+    expect(listed!.revisions.find((r) => r.name === "online-revision")!.where).not.toBe("online-only");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

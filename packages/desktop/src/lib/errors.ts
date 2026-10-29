@@ -28,7 +28,7 @@ function isMissingManifestError(msg: string): boolean {
  * screen. Pure string classification — no host coupling.
  */
 export function friendlyFolderError(msg: string): string {
-  if (/has two (versions|takes) of a setting/i.test(msg)) {
+  if (/has two takes of a setting/i.test(msg)) {
     return "Getting the latest changes left two takes of a setting in this book's manifest.yaml. Open the file, keep the one you want and delete the marker lines, then try again.";
   }
   const yamlPosition = msg.match(
@@ -60,7 +60,7 @@ export function friendlyPreviewError(raw: string): FriendlyPreviewError {
   const details = friendlyHostError(raw)
     .replace(/^Preview server failed to start:\s*/i, "")
     .trim();
-  if (/has two (versions|takes) of a setting/i.test(details)) {
+  if (/has two takes of a setting/i.test(details)) {
     return {
       title: "This book's settings have two takes.",
       message:

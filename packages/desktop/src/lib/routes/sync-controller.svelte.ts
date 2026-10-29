@@ -88,7 +88,7 @@ interface StreamedStatus extends LastBackup {
 function outcomeState(outcome: SyncOutcome): SyncState {
   if (outcome.status === "synced" || outcome.status === "up-to-date") {
     // A get-latest pass leaves this computer's own versions unsent.
-    return "pushDeferred" in outcome && outcome.pushDeferred ? "unsent" : "synced";
+    return outcome.status === "up-to-date" && outcome.pushDeferred ? "unsent" : "synced";
   }
   return outcome.status === "auth" || outcome.status === "offline" ? outcome.status : "error";
 }

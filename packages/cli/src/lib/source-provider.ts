@@ -929,26 +929,6 @@ export async function restoreVersionWithBackup(
 // change the online copy too, so they need its transport.
 
 /**
- * The project's revisions (git branches) and which one is currently open.
- * @deprecated Use {@link RevisionList} from {@link listRevisions}; kept until
- * the desktop's callers have moved over.
- */
-export interface LocalBranches {
-  /** Name of the branch HEAD points to, or `null` on a detached/unborn HEAD. */
-  current: string | null;
-  /**
-   * Every revision the project can switch to, sorted: local branches
-   * (`refs/heads/*`) plus revisions that so far exist only on a remote.
-   */
-  branches: string[];
-  /**
-   * The subset of {@link branches} with no local ref yet. Switching to one of
-   * these creates the local revision from the remote and tracks it.
-   */
-  remoteOnly: string[];
-}
-
-/**
  * One revision (git branch) of a book, as the author sees it (#448): where it
  * is kept, and whether this computer has versions the online copy lacks.
  */
@@ -1084,20 +1064,6 @@ export async function listRevisions(dir: string): Promise<RevisionList | null> {
     }),
   );
   return { current, revisions };
-}
-
-/**
- * The project's revisions (git branches) and which one is open.
- * @deprecated Use {@link listRevisions}; kept until the desktop's callers have moved over.
- */
-export async function listLocalBranches(dir: string): Promise<LocalBranches | null> {
-  const list = await listRevisions(dir);
-  if (!list) return null;
-  return {
-    current: list.current,
-    branches: list.revisions.map((r) => r.name),
-    remoteOnly: list.revisions.filter((r) => r.where === "online-only").map((r) => r.name),
-  };
 }
 
 /** A revision name as the author typed it, made usable: trimmed, spaces become hyphens. */

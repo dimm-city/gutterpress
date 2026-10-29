@@ -216,7 +216,7 @@
           "Name of the new revision",
           "Create revision",
           () => void create(),
-          `It starts from your book as it is now (any unsaved work is saved as a version first) and opens it.${hasOnlineCopy ? " It goes online the next time you back up." : ""}`,
+          `It starts from your book as it is now (work not in a version yet is saved as one first) and opens it.${hasOnlineCopy ? " It goes online the next time you back up." : ""}`,
         )}
       </div>
     {:else}

@@ -53,7 +53,7 @@ computer**.
 3. Confirm with **Yes, restore**. Gutterpress saves your current work as a version first, so
    nothing is lost.
 
-![Version history, each version with Restore this version](images/previous-versions.jpg)
+![Version history, each version with Restore this version](images/version-history.jpg)
 
 ## Your online copy
 
@@ -98,7 +98,7 @@ revision's name, says **You're working on this** for the open one, and says wher
 
 Each row's buttons:
 
-- **Switch** opens another revision. Gutterpress saves your unsaved work as a version first, and
+- **Switch** opens another revision. Gutterpress first saves any work not in a version yet, and
   the editor, the file tree and the preview show the revision you switched to. A revision that is
   only online is made on this computer first.
 - **Rename…** renames it. For an online revision it also renames it in the online copy, right away
@@ -110,9 +110,11 @@ Each row's buttons:
   more.
 
 **New revision…** asks for a name (spaces become hyphens), starts the revision from your book as it
-is now (saving unsaved work as a version first), and opens it. It goes online the next time you
+is now (saving any work not in a version yet first), and opens it. It goes online the next time you
 back up. If the online copy can't be checked, the list says so and shows the revisions on this
 computer.
+
+![Setup → Online copy: where the book is kept, its last version, and its revisions](images/online-copy.jpg)
 
 ### Set up an online copy for a book you started here
 

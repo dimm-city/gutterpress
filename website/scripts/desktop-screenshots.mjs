@@ -57,8 +57,9 @@ const snippets = {
 };
 for (const [name, body] of Object.entries(snippets)) writeFileSync(join(book, "snippets", name), body);
 
-// Version history, so "Where your work is kept" and Previous versions have
-// something to show. The fixture is test data, so plain git is fine here.
+// Version history and a second revision, so Book setup → Online copy and
+// Version history have something to show. The fixture is test data, so plain
+// git is fine here.
 const git = (...args) => {
   const r = spawnSync("git", args, {
     cwd: book,
@@ -75,6 +76,7 @@ git("commit", "-qam", "Edit Publishing");
 const ch1 = join(book, "01-getting-started.md");
 writeFileSync(ch1, readFileSync(ch1, "utf8").replace("## Installation", "![A map of the book](images/map.png)\n\n## Installation"));
 git("commit", "-qam", "Add a map");
+git("branch", "second-edition");
 
 // ── the app ─────────────────────────────────────────────────────────────
 
@@ -122,7 +124,7 @@ const wait = (ms) => page.waitForTimeout(ms);
 const CENTRE = [360, 60, 720, 560];        // a start-screen column
 const DIALOG = [450, 170, 540, 560];        // the new-book wizard
 const SETTINGS = [240, 0, 960, 900];        // a full-window settings page
-const TALL = [360, 40, 720, 720];           // Publish / Where your work is kept
+const TALL = [360, 40, 720, 720];           // Publish
 
 console.log("desktop-screenshots: start screen and new book");
 await screen("start-screen", async () => {}, { crop: CENTRE, width: 760 });
@@ -231,9 +233,13 @@ await screen("publish-format", async () => {
 await screen("publish-choose", () => click("button:text-is('Next')"), { crop: TALL, width: 760 });
 await press("Escape");
 await wait(800);
-await screen("where-your-work-is-kept", () => click("button:has-text('Edits saved')"), { crop: TALL, width: 760 });
-await screen("previous-versions", async () => {
-  await click("button:has-text('See previous versions')");
+// The status control opens Book setup → Online copy, with the revisions.
+await screen("online-copy", async () => {
+  await click(".status-control");
+  await wait(2000);
+}, { crop: SETTINGS, width: 960 });
+await screen("version-history", async () => {
+  await click("button:has-text('Version history')");
   await wait(2000);
 }, { width: 1200 });
 
