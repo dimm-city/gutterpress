@@ -667,16 +667,8 @@
   .field > span { font-size: 12px; color: var(--app-text-muted); font-weight: 500; }
   .optional { font-style: italic; color: var(--app-text-muted); font-weight: 400; }
   .field input[type="text"] {
-    background: var(--app-surface-sunken);
-    border: 1px solid var(--app-border);
-    color: var(--app-text-secondary);
     padding: 8px 10px;
-    border-radius: 6px;
     font-size: 14px;
-  }
-  .field input[type="text"]:focus {
-    outline: none;
-    border-color: var(--app-focus-ring);
   }
   .template-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   /* A card is a <label> around a visually hidden native radio, so the browser

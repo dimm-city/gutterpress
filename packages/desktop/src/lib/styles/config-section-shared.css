@@ -47,13 +47,11 @@
 
 :global(.config-panel .field) { display: flex; flex-direction: column; gap: 3px; }
 :global(.config-panel .lbl) { padding: 0; font-size: 13px; font-weight: 600; color: var(--app-text); }
-:global(.config-panel .input) {
-  background: var(--app-surface-sunken); border: 1px solid var(--app-border);
-  color: var(--app-text-secondary); padding: 7px 9px; border-radius: 5px;
+:global(.config-panel .input) { padding: 7px 9px;
   font-size: 13px; font-family: inherit; width: 100%; box-sizing: border-box;
 }
 /* The same 2px focus ring as Settings' fields and every button here. */
-:global(.config-panel .input:focus-visible), :global(.config-panel button:focus-visible) { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
+:global(.config-panel button:focus-visible) { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
 :global(.config-panel textarea.input) { resize: vertical; font-family: var(--app-font-mono); font-size: 12px; }
 :global(.config-panel .input.sharp) { width: auto; min-width: 0; flex: 1; }
 

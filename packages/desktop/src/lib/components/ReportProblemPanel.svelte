@@ -164,10 +164,6 @@
     box-sizing: border-box;
     width: 100%;
     padding: 6px 8px;
-    border: 1px solid var(--app-border);
-    border-radius: 6px;
-    background: var(--app-surface-sunken);
-    color: var(--app-text);
     font: inherit;
     font-size: 12px;
     resize: vertical;

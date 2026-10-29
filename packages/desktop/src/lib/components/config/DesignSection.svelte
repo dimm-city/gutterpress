@@ -182,11 +182,10 @@
   .control.font { align-items: stretch; }
   /* Native select chrome ignores the panel's palette (hard black border on a
      sunken-grey form); match the neighbouring .input instead. */
-  .control.font select { min-width: 0; padding: 7px 9px; background: var(--app-surface-sunken); border: 1px solid var(--app-border); color: var(--app-text-secondary); border-radius: 5px; font-size: 13px; font-family: inherit; }
-  .control.font select:focus-visible, .control.size input:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
+  .control.font select { min-width: 0; padding: 7px 9px; font-size: 13px; font-family: inherit; }
   .control.color { width: 258px; }
   .control.size { gap: 4px; }
-  .control.size input[type="number"] { width: 64px; padding: 5px 6px; background: var(--app-surface-sunken); border: 1px solid var(--app-border); color: var(--app-text-secondary); border-radius: 4px; font-size: 12px; }
+  .control.size input[type="number"] { width: 64px; padding: 5px 6px; font-size: 12px; }
   .unit { font-size: 11px; color: var(--app-text-muted); }
   /* The icon-only undo button's box: 12px icon + 5px padding + 1px border a side. */
   .undo-slot { flex: 0 0 24px; height: 24px; }

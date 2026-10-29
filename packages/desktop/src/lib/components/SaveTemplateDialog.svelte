@@ -120,15 +120,10 @@
   .setting-desc { font-size: 11px; line-height: 1.4; color: var(--app-text-muted); }
   .setting-col { flex-direction: column; gap: 6px; cursor: default; }
   .tpl-name {
-    background: var(--app-surface-sunken);
-    border: 1px solid var(--app-border);
-    color: var(--app-text-secondary);
     padding: 7px 10px;
-    border-radius: 6px;
     font-size: 13px;
     width: 100%;
     box-sizing: border-box;
   }
-  .tpl-name:focus { outline: none; border-color: var(--app-focus-ring); }
   .tpl-error { margin: 0; color: var(--app-error-text); font-size: 12px; }
 </style>

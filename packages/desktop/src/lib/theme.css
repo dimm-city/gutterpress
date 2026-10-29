@@ -58,6 +58,10 @@
   --app-border: #d4d4d8;
   --app-border-strong: #b8b8bf;
   --app-border-subtle: #e4e4e7;
+  /* A text field's edge — often all that shows an empty field is there, so
+     WCAG 1.4.11 (≥3:1, #447) holds on every surface a field sits on:
+     #7a7a84 → 4.25:1 #ffffff, 3.86:1 #f4f4f5, 3.60:1 #ececef, 3.35:1 #e4e4e7. */
+  --app-field-border: #7a7a84;
 
   /* Text */
   --app-text: #18181b;
@@ -169,6 +173,9 @@
   --app-border: #3a3a3a;
   --app-border-strong: #4a4a4a;
   --app-border-subtle: #303030;
+  /* ≥3:1 (#447): #858585 → 4.52:1 #1e1e1e, 4.10:1 #262626, 3.89:1 #2a2a2a,
+     3.42:1 #333333, 3.08:1 #3a3a3a. */
+  --app-field-border: #858585;
 
   /* Text */
   --app-text: #eeeeee;
@@ -288,6 +295,26 @@
 }
 .app-btn-ghost:not(:disabled):hover { background: var(--app-surface-hover); color: var(--app-text); }
 .app-btn-ghost:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+
+/**
+ * Text fields, selects and text areas — the ONE field look app-wide (#447):
+ * fill, edge, corners, text colour and focus ring. Zero specificity (`:where`),
+ * so a component sets only its layout (width, padding, font size) and never
+ * repeats these; a deliberately different control (a toolbar picker, the file
+ * tree's rename box) states its own look in its own class.
+ */
+:where(input:not([type]), input[type="text"], input[type="email"], input[type="password"],
+  input[type="url"], input[type="search"], input[type="number"], select, textarea) {
+  background: var(--app-surface-sunken);
+  border: 1px solid var(--app-field-border);
+  border-radius: 6px;
+  color: var(--app-text);
+}
+:where(input:not([type]), input[type="text"], input[type="email"], input[type="password"],
+  input[type="url"], input[type="search"], input[type="number"], select, textarea):focus-visible {
+  outline: 2px solid var(--app-focus-ring);
+  outline-offset: 1px;
+}
 
 /**
  * Sub-tab strip (Troubleshooting): the underline tab-bar recipe. Horizontal

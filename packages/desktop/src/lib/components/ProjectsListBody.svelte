@@ -565,18 +565,9 @@
   .location-input {
     flex: 1;
     min-width: 0;
-    background: var(--app-surface-sunken);
-    border: 1px solid var(--app-border);
-    color: var(--app-text-secondary);
     padding: 6px 8px;
-    border-radius: 5px;
     font-size: 12px;
     font-family: inherit;
-  }
-  .location-input:focus {
-    outline: 2px solid var(--app-focus-ring);
-    outline-offset: -1px;
-    border-color: var(--app-focus-ring);
   }
   .browse-btn {
     flex-shrink: 0;

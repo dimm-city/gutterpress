@@ -65,26 +65,16 @@
   .size-field { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
   .size-field > span { font-size: 12px; color: var(--app-text-muted); font-weight: 500; }
   .size-field select {
-    background: var(--app-surface-sunken);
-    border: 1px solid var(--app-border);
-    color: var(--app-text-secondary);
     padding: 7px 8px;
-    border-radius: 6px;
     font-size: 13px;
   }
-  .size-field select:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .custom-page { display: flex; align-items: flex-end; gap: 8px; margin-top: 2px; }
   .page-field { display: flex; flex-direction: column; gap: 4px; }
   .page-field > span { font-size: 11px; color: var(--app-text-muted); }
   .page-field input {
     width: 90px;
-    background: var(--app-surface-sunken);
-    border: 1px solid var(--app-border);
-    color: var(--app-text-secondary);
     padding: 6px 8px;
-    border-radius: 6px;
     font-size: 13px;
   }
-  .page-field input:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .page-times { color: var(--app-text-muted); font-size: 13px; padding-bottom: 8px; }
 </style>

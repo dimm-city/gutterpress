@@ -47,6 +47,5 @@
   @import "../styles/dialog-shell.css";
   .text-prompt { width: min(440px, 92vw); }
   label { display: grid; gap: 7px; padding: 18px; color: var(--app-text-secondary); font-size: 13px; }
-  input, select { width: 100%; padding: 8px 10px; color: var(--app-text); background: var(--app-control-bg); border: 1px solid var(--app-border); border-radius: 5px; font: inherit; }
-  input:focus, select:focus { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
+  input, select { width: 100%; padding: 8px 10px; font: inherit; }
 </style>

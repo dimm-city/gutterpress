@@ -167,12 +167,7 @@
 
   .field { display: grid; grid-template-columns: 120px minmax(0, 320px); align-items: center; gap: 16px; font-size: 13px; color: var(--app-text-secondary); }
   .field input {
-    background: var(--app-surface-sunken);
-    border: 1px solid var(--app-control-border);
-    color: var(--app-text);
     padding: 6px 8px;
-    border-radius: 6px;
     font: inherit;
   }
-  .field input:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
 </style>
