@@ -104,7 +104,8 @@ gutterpress ext search footnote
 Publishing one is `npm publish` with `"gutterpress"` in your package's
 `keywords` --- there is no index to be added to. A plain markdown-it plugin
 needs no Gutterpress keyword at all: the ecosystem's own `markdown-it-plugin`
-tag already finds it, and it works here unchanged.
+tag already finds it, and it works here unchanged. The desktop app runs the
+same search (below), and labels a package tagged `gutterpress-look` as a Look.
 
 The desktop app shows the same list under **Book setup &rarr; Extensions**: one row per entry, in order, each with a checkbox to turn it on or off, what it carries (Extra, Look, Styles, Snippets, Components) and where it comes from (built in, npm, folder), and the same reorder and remove actions.
 
@@ -113,8 +114,8 @@ The desktop app shows the same list under **Book setup &rarr; Extensions**: one 
 Install an npm plugin from the desktop app under **Book setup &rarr; Extensions**, or with the standalone CLI. Under the list of what your book already uses, **Add an extension** offers:
 
 - **Built-in extras** --- the built-in formatting extras your book does not use yet, each with what to type and an **Add** button. An extra you add joins the list above, and its **Remove** puts it back here.
-- **npm package** --- type a package name (add `@version` for an exact version) and click **Add**. **Find extensions** opens the website's plugin finder, which lists the packages on npm tagged `gutterpress` or `markdown-it-plugin`.
-- **Add a folder or file...** to use a plugin from disk where it is, and the **Import a .zip or .css file...** and **Web address** importers.
+- **Find one on npm** --- the same search as `gutterpress ext search`: type a word and press Enter (or click **Search**; with nothing typed it lists the most relevant packages tagged `gutterpress` or `markdown-it-plugin`). Each result shows the package's name and description, **Look** or **Extra** when its keywords say, and **Add**, or **Added** when your book already lists it.
+- **Other ways to add** --- an **Exact name** (add `@version` for an exact version), for a package search does not find, such as a private one; **Add a folder or file...** to use a plugin from disk where it is; and the **Import a .zip or .css file...** and **Web address** importers.
 
 The CLI equivalent:
 
