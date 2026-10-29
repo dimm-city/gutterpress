@@ -2,9 +2,10 @@
   /**
    * TwoVersionsPanel — one decision at a time (#407).
    *
-   * After a sync kept two versions of a passage, the file holds both inside
-   * marker lines. This card sits above the editor and asks ONE question
-   * about ONE passage: which version to keep. Three buttons answer it; a
+   * After getting the latest changes kept two takes of a passage (yours and
+   * the online copy's), the file holds both inside marker lines. This card
+   * sits above the editor and asks ONE question about ONE passage: which take
+   * to keep. Three buttons answer it; a
    * count with arrows moves to the other passages; the editor (and, through
    * it, the preview's two rendered boxes) scrolls to the passage in question
    * as the card changes, so the comparison happens where the text already
@@ -105,13 +106,13 @@
   onMount(reveal);
 </script>
 
-<section class="tv-panel" aria-label="Two versions of this {noun}">
+<section class="tv-panel" aria-label="Two takes of this {noun}">
   {#if block}
     {@const labels = labelsFor(block)}
     <p class="tv-question" role="status" aria-live="polite">
       <span class="tv-icon"><Icon name="columns-2" size={15} /></span>
       <span class="tv-question-text">
-        This {noun} was changed both here and online. Which version do you want to keep?
+        This {noun} was changed both here and in the online copy. Which take do you want to keep?
       </span>
       {#if blocks.length > 1}
         <span class="tv-nav">
@@ -126,7 +127,7 @@
       {/if}
     </p>
     {#if spacingOnly}
-      <p class="tv-note">The two versions differ only in spacing or line breaks — either one reads the same.</p>
+      <p class="tv-note">The two takes differ only in spacing or line breaks — either one reads the same.</p>
     {/if}
     <div class="tv-actions">
       <button class="tv-btn" bind:this={firstButton} onclick={() => void choose("yours")}>{labels.yours}</button>
@@ -142,20 +143,20 @@
     {#if compareOpen}
       <div class="tv-columns" class:stacked={isCss}>
         <div class="tv-col">
-          <div class="tv-col-label" id="tv-yours">Your version</div>
+          <div class="tv-col-label" id="tv-yours">Your take</div>
           {#if sideText(block.yours)}
             <!-- One line: inside <pre>, whitespace between runs would be text. -->
             <pre class="tv-text" class:mono={isCss} aria-labelledby="tv-yours">{#each runs?.yours ?? [] as run}{#if run.changed}<mark>{run.text}</mark>{:else}{run.text}{/if}{/each}</pre>
           {:else}
-            <p class="tv-empty" aria-labelledby="tv-yours">Nothing — your version has no text here.</p>
+            <p class="tv-empty" aria-labelledby="tv-yours">Nothing — your take has no text here.</p>
           {/if}
         </div>
         <div class="tv-col">
-          <div class="tv-col-label" id="tv-online">Online version</div>
+          <div class="tv-col-label" id="tv-online">Online take</div>
           {#if sideText(block.online)}
             <pre class="tv-text" class:mono={isCss} aria-labelledby="tv-online">{#each runs?.online ?? [] as run}{#if run.changed}<mark>{run.text}</mark>{:else}{run.text}{/if}{/each}</pre>
           {:else}
-            <p class="tv-empty" aria-labelledby="tv-online">Nothing — the online version has no text here.</p>
+            <p class="tv-empty" aria-labelledby="tv-online">Nothing — the online take has no text here.</p>
           {/if}
         </div>
       </div>

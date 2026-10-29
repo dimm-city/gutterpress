@@ -1,104 +1,72 @@
 <script lang="ts">
   /**
    * StatusBar — slim bottom bar hosting the start-screen (Books) button, the
-   * book switcher, the sync status pill, the save indicator and the settings
-   * and help buttons.
+   * book switcher, the one status control and the settings and help buttons.
    *
    * Layout (left → right):
-   *   [folder → start screen Books] [book switcher] ··· [sync pill] [save indicator] | [settings] [help]
+   *   [folder → start screen Books] [book switcher] ··· [Get latest] [Back up now] [status] | [settings] [help]
    *
-   * The save indicator opens the "Where your work is kept" view (which needs the
-   * sync pill's live state). It shows only for an open folder book, and the `|`
-   * divider only with it. The Problems badge stays on the editor toolbar.
+   * The status control is one line for saving AND the online copy ("Saved ·
+   * Backed up"); clicking it opens Book setup → Online copy, the one place the
+   * rest lives. Get latest and Back up now sit beside it only while automatic
+   * backing up is off. A reader sees none of this: they get the latest on their
+   * own. The words come from the pure `statusLine` (#lib/save-status); the live
+   * state comes from the sync controller. The Problems badge stays on the editor
+   * toolbar.
    *
    * PWA-clean: all host work via api.* routes (CLAUDE.md §8).
    * No node: builtins or gutterpress value imports.
    */
-  import SyncStatusPill from "#lib/components/SyncStatusPill.svelte";
   import BookSwitcher from "#lib/components/BookSwitcher.svelte";
   import Icon from "#lib/components/Icon.svelte";
-  import { api } from "#lib/api.ts";
-  import SaveStatusView from "#lib/components/SaveStatusView.svelte";
-  import { saveIndicator, saveStatusCopy, type SaveStatusActionId } from "#lib/save-status.ts";
-  import { onDestroy, tick } from "svelte";
-  import type { SyncState } from "#lib/platform/contract.ts";
-  import type { ManualBackup } from "#lib/routes/sync-controller.svelte.ts";
+  import { statusLine } from "#lib/save-status.ts";
+  import type { LastBackup } from "#lib/backup-state.ts";
   import type { ProjectBookEntry } from "#lib/routes/project-session-controller.svelte.ts";
 
   let {
     /** Currently-open project directory. Bar is shown when non-null. */
     projectDir = null as string | null,
-    /** Source mode — the sync pill only shows for folder sources. */
+    /** Source mode — the status control only shows for folder sources. */
     sourceMode = "folder" as "folder" | "url",
-    /** Whether the project has sync capability (canSync). */
+    /** Whether the book can back up (an https online copy with a saved sign-in). */
     canSync = false,
-    /** Whether the project's repo has a configured remote at all (any protocol),
-     *  even when Gutterpress can't auto-sync it (SSH, or HTTPS with no stored
-     *  credential). Lets the "Online copy" row say syncing simply isn't set up —
-     *  rather than "Kept on this computer", which wrongly implies no remote when
-     *  one is in fact configured (user feedback). */
+    /** Whether the book has an online copy at all (any address), even one Gutterpress
+     *  can't back up to: an unknown state is then "Saved", not "Saved on this computer". */
     hasRemote = false,
-    /** Whether the project keeps local version history (canSnapshot) — true for
-     *  any local-git project even without a syncable remote. Drives the pill so
-     *  local-only projects still get a clickable "Version history" affordance. */
-    canSnapshot = false as boolean | null,
     /** Current save phase from the editor buffer. */
     savePhase = "clean" as "clean" | "dirty" | "saving" | "error",
     /** Settings → Saving "Save changes automatically". Off, a dirty buffer is
      *  waiting for the author's Save, not about to save itself — so it reads
      *  "Unsaved changes", never "Saving…". */
     autoSave = true,
-    /** Settings → Saving "Keep previous versions": Gutterpress makes versions itself. */
-    autoVersions = true,
     /** Settings → Saving "Back up online automatically". */
     autoBackup = true,
     /** Whether a manual force-save is in progress. */
     forceSaving = false,
-    /** Whether a manual force-sync is in progress. */
+    /** Whether a manual Back up now is in progress. */
     forceSyncing = false,
+    /** A reader sees no status control, no Get latest and no Back up now. */
+    readerMode = false,
     /** Books in the open project's repo; switcher shows only when > 1. */
     books = [] as ProjectBookEntry[],
     /** The book the session currently targets. */
     activeBookDir = null as string | null,
+    /** The online copy's last word for the open book (the host's stream or the last Back up now). */
+    backup = null as LastBackup | null,
+    /** Why automatic versions keep failing, once the host has said so (only while they are on: a failing safety net you turned off isn't news). */
+    versionsProblem = null as { message: string | null } | null,
     /** Called with a book's folder path when the author switches books. */
     onSwitchBook = undefined as ((path: string) => void) | undefined,
-    /** Called when the sync pill needs the reconnect flow. */
-    onReconnect = undefined as (() => void) | undefined,
-    /** Called when the author clicks "Connect to sync online" in the summary
-     *  (the `connect` state: an HTTPS remote Gutterpress isn't connected to).
-     *  Routes to the same connect/reconnect flow as the pill. */
-    onConnectOnline = undefined as (() => void) | undefined,
-    /** Called when the sync/git status pill is clicked in a quiet state —
-     *  receives the project's operation-log path (or null) to view the log. */
-    onShowLog = undefined as ((logFilePath: string | null) => void) | undefined,
-    /** Called when the author clicks "Save now". */
-    onForceSave = undefined as (() => void) | undefined,
-    /** Called when the author confirms "Repair online backup" in the dialog. */
-    onRepair = undefined as (() => void | Promise<void>) | undefined,
-    /** Called when the author clicks "Back up now" in the dialog. */
+    /** Called when the author clicks "Back up now". */
     onForceSync = undefined as (() => void | Promise<void>) | undefined,
     /** Called for "Get latest": bring in the online changes without sending any. */
     onGetLatest = undefined as (() => void | Promise<void>) | undefined,
     /** A "Get latest" is in progress. */
     gettingLatest = false,
-    /** The last check found changes online this copy has not got. */
+    /** The last check found changes online this computer has not got. */
     updatesAvailable = false,
-    /** Outcome of the last manual "Back up now" (manual backups bypass the
-     *  host orchestrator, the only emitter of the status stream). */
-    manualBackup = null as ManualBackup | null,
-    /** Called when the author clicks "Save a version now" in the summary.
-     *  Resolves when the version is saved (or rejects on failure) so the
-     *  summary can refresh its "latest version" line and the parent can show
-     *  the single confirmation toast. */
-    onSaveVersion = undefined as (() => Promise<"saved" | "unchanged">) | undefined,
-    /** Called when the author clicks "Turn on version history" for a plain
-     *  folder. Resolves once the folder has history (and the page re-classified
-     *  it), rejects on failure after showing its own toast. */
-    onEnableVersionHistory = undefined as (() => Promise<void>) | undefined,
-    /** Called for "See previous versions" — opens the activity view. */
-    onShowVersions = undefined as (() => void) | undefined,
-    /** Called for the online-backup rows that only explain: opens Book setup → Backup. */
-    onOpenBookConnections = undefined as (() => void) | undefined,
+    /** Called when the status control is clicked: opens Book setup → Online copy. */
+    onOpenOnlineCopy = undefined as (() => void) | undefined,
     onOpenSettings = undefined as (() => void) | undefined,
     onOpenHelp = undefined as (() => void) | undefined,
     /** Called by the folder button: opens the start screen's Books tab. */
@@ -108,309 +76,52 @@
     sourceMode?: "folder" | "url";
     canSync?: boolean;
     hasRemote?: boolean;
-    canSnapshot?: boolean | null;
-    autoVersions?: boolean;
     autoBackup?: boolean;
     savePhase?: "clean" | "dirty" | "saving" | "error";
     autoSave?: boolean;
     forceSaving?: boolean;
     forceSyncing?: boolean;
+    readerMode?: boolean;
     books?: ProjectBookEntry[];
     activeBookDir?: string | null;
+    backup?: LastBackup | null;
+    versionsProblem?: { message: string | null } | null;
     onSwitchBook?: (path: string) => void;
-    onReconnect?: () => void;
-    onConnectOnline?: () => void;
-    onShowLog?: (logFilePath: string | null) => void;
-    onForceSave?: () => void;
     onForceSync?: () => void | Promise<void>;
     onGetLatest?: () => void | Promise<void>;
     gettingLatest?: boolean;
     updatesAvailable?: boolean;
-    onRepair?: () => void | Promise<void>;
-    manualBackup?: ManualBackup | null;
-    onSaveVersion?: () => Promise<"saved" | "unchanged">;
-    onEnableVersionHistory?: () => Promise<void>;
-    onShowVersions?: () => void;
-    onOpenBookConnections?: () => void;
+    onOpenOnlineCopy?: () => void;
     onOpenSettings?: () => void;
     onOpenHelp?: () => void;
     onOpenBooks?: () => void;
   } = $props();
 
-  // ── "Where your work is kept" view ──────────────────────────────────────────
-  // The editor toolbar's save indicator opens a view that explains Saving / Versions /
-  // Online backup separately and reconciles them ("saved, but not in a version
-  // yet"). The words come from the pure `saveStatusCopy` (#lib/save-status);
-  // this block only gathers the facts: the bar's own props, the live sync state
-  // from the pill, and two lazily fetched version facts (newest version time
-  // and how many files changed since — the PWA-clean api.vcs routes). No
-  // $effect: fetches are event-driven (open / after an action / a save landing
-  // while open), per CLAUDE.md §8.
-  let summaryOpen = $state(false);
-  let saveBtnEl = $state<HTMLButtonElement | null>(null);
-  let latestVersionAt = $state<number | null>(null);
-  let changedFiles = $state<number | null>(null);
-  let stale = $state(false);
-  // The host said automatic versions keep failing (a `source: "versions"` status).
-  // Which book the flag belongs to; shown only for the open book and only while
-  // automatic versions are on (a failing safety net you turned off isn't news).
-  let versionsProblemDir = $state<string | null>(null);
-  let versionsProblem = $derived(versionsProblemDir === projectDir && autoVersions);
-  // Newest-wins sequencing for the version-facts requests, and the project the
-  // dialog was opened for (closing it if the project changes underneath).
-  let factsSeq = 0;
-  let factsAt = 0;
-  let dialogDir: string | null = null;
-  let versionsLoad = $state<"loading" | "ready" | "error">("loading");
-  // Backup state: the newest of the status stream's last event (the pill) and
-  // the last manual "Back up now", each only for the book it was about, so
-  // book A's "backed up" never shows on book B.
-  let pillStatus = $state<{ dir: string | null; state: SyncState; at: string | null; seenAt: number }>({
-    dir: null,
-    state: "idle",
-    at: null,
-    seenAt: 0,
-  });
-  let live = $derived.by((): { state: SyncState; at: string | null } => {
-    const p = pillStatus.dir === projectDir ? pillStatus : null;
-    const m = manualBackup && manualBackup.dir === projectDir ? manualBackup : null;
-    if (m && (!p || Date.parse(m.at) >= p.seenAt)) return { state: m.state, at: m.at };
-    return p ? { state: p.state, at: p.at } : { state: "idle", at: null };
-  });
-  let liveSyncState = $derived(live.state);
-  let lastSyncAt = $derived(live.at);
-  let savingVersion = $state(false);
-  // "Save a version now" found nothing new (a calm result, not a failure).
-  let nothingNew = $state(false);
-  let nowMs = $state(Date.now());
-  // "Repair online backup" asks once ("armed") before it runs; the dialog's
-  // Online backup section shows what it does and the Repair now / Cancel pair.
-  let repairPhase = $state<"idle" | "armed" | "running">("idle");
-
-  let copy = $derived(
-    saveStatusCopy({
+  // The status control: only for an open folder book, and never for a reader.
+  let showStatus = $derived(!!projectDir && sourceMode === "folder" && !readerMode);
+  // Manual mode: automatic backing up is off but the book can back up, so the
+  // bar offers Get latest and Back up now beside the control.
+  let showManualSync = $derived(showStatus && canSync && !autoBackup);
+  let line = $derived(
+    statusLine({
       savePhase,
       autoSave,
       forceSaving,
-      versions: {
-        enabled: canSnapshot,
-        automatic: autoVersions,
-        load: versionsLoad,
-        lastVersionAt: latestVersionAt,
-        changedFiles,
-        stale,
-        savingVersion,
-        problem: versionsProblem,
-        nothingNew,
-      },
-      online: {
-        state: liveSyncState,
-        canSync,
-        hasRemote,
-        automatic: autoBackup,
-        lastSyncAt,
-        syncing: forceSyncing,
-        pulling: gettingLatest,
-        updatesAvailable,
-        repair: repairPhase,
-      },
-      now: nowMs,
+      versionsProblem,
+      backup,
+      hasRemote,
+      backingUp: forceSyncing,
     }),
   );
 
-  // The save phase the version facts were read at: while the dialog is open a
-  // landed save changes "N files not in a version yet", so a cheap timer
-  // re-reads once the phase has moved (and never otherwise).
-  let factsPhase: typeof savePhase = "clean";
-  let refreshTimer: ReturnType<typeof setInterval> | null = null;
-
-  async function fetchVersionFacts() {
-    const dir = projectDir;
-    if (!dir || !canSnapshot) return;
-    const seq = ++factsSeq;
-    factsPhase = savePhase;
-    factsAt = Date.now();
-    nowMs = factsAt;
-    try {
-      const [page, pending] = await Promise.all([
-        api.vcs.listSnapshotsPage(dir, { limit: 1 }),
-        api.vcs.unversionedChanges(dir),
-      ]);
-      // A newer request (or another project) superseded this one: drop it.
-      if (seq !== factsSeq || projectDir !== dir) return;
-      latestVersionAt = page.entries[0]?.timestamp ?? null;
-      changedFiles = pending.changedFiles;
-      stale = pending.stale;
-      if ((changedFiles ?? 0) > 0 || stale) nothingNew = false;
-      versionsLoad = "ready";
-    } catch {
-      // Non-fatal: the dialog says it couldn't check, rather than guessing.
-      if (seq === factsSeq && projectDir === dir) versionsLoad = "error";
-    }
-  }
-
-  function stopRefresh() {
-    if (refreshTimer) clearInterval(refreshTimer);
-    refreshTimer = null;
-  }
-  function openSummary() {
-    summaryOpen = true;
-    nothingNew = false;
-    dialogDir = projectDir;
-    versionsLoad = "loading";
-    latestVersionAt = null;
-    changedFiles = null;
-    stale = false;
-    void fetchVersionFacts();
-    stopRefresh();
-    refreshTimer = setInterval(() => {
-      nowMs = Date.now();
-      // The book changed underneath the dialog: close rather than show its facts.
-      if (projectDir !== dialogDir) {
-        closeSummary();
-        return;
-      }
-      const phaseSettled = savePhase !== factsPhase && (savePhase === "clean" || savePhase === "error");
-      if (phaseSettled || Date.now() - factsAt > 15_000) void fetchVersionFacts();
-    }, 2000);
-  }
-  function closeSummary() {
-    summaryOpen = false;
-    if (repairPhase === "armed") repairPhase = "idle";
-    stopRefresh();
-    factsSeq++; // any in-flight lookup is now stale
-  }
-  /** Open or close the view from the save indicator, which gets focus back
-   *  when it closes. */
-  function toggleSummary() {
-    if (summaryOpen) closeSummary();
-    else openSummary();
-  }
-  onDestroy(stopRefresh);
-
-  /** A backup pass finished or changed state while the dialog is open: a sync
-   *  can make a version, so re-read the version facts too. */
-  function onPillState(state: SyncState, at: string | null | undefined) {
-    const changed = state !== pillStatus.state || (at ?? null) !== pillStatus.at;
-    pillStatus = { dir: projectDir, state, at: at ?? null, seenAt: Date.now() };
-    // A completed backup pass makes a version first, so it also proves the
-    // automatic-version safety net works again.
-    if (state === "synced") versionsProblemDir = null;
-    if (changed && summaryOpen) void fetchVersionFacts();
-  }
-
-  async function repairNow() {
-    if (repairPhase === "running") return;
-    repairPhase = "running";
-    try {
-      await onRepair?.();
-    } finally {
-      repairPhase = "idle";
-    }
-    if (manualBackup?.state === "synced") versionsProblemDir = null;
-    if (summaryOpen) void fetchVersionFacts();
-  }
-
-  /** "Back up now": wait for the outcome, then re-read the version facts (a
-   *  backup pass can make a version) and clear a stale version warning. */
-  async function backUpNow() {
-    await onForceSync?.();
-    if (manualBackup?.state === "synced") versionsProblemDir = null;
-    if (summaryOpen) void fetchVersionFacts();
-  }
-
-  async function saveVersionNow() {
-    if (!onSaveVersion || savingVersion) return;
-    savingVersion = true;
-    try {
-      const outcome = await onSaveVersion();
-      nothingNew = outcome === "unchanged";
-      versionsProblemDir = null;
-      await fetchVersionFacts();
-    } catch {
-      // The parent surfaces the failure toast; keep the dialog calm.
-    } finally {
-      savingVersion = false;
-    }
-  }
-
-  async function enableHistory() {
-    if (!onEnableVersionHistory) return;
-    try {
-      await onEnableVersionHistory();
-      versionsLoad = "loading";
-      // canSnapshot flips through props after the page re-classifies.
-      await tick();
-      await fetchVersionFacts();
-    } catch {
-      // The parent surfaces the failure toast.
-    }
-  }
-
-  function onSummaryAction(id: SaveStatusActionId) {
-    switch (id) {
-      case "save":
-        onForceSave?.();
-        break;
-      case "saveVersion":
-        void saveVersionNow();
-        break;
-      case "viewVersions":
-        closeSummary();
-        onShowVersions?.();
-        break;
-      case "enableVersionHistory":
-        void enableHistory();
-        break;
-      case "connect":
-        closeSummary();
-        onConnectOnline?.();
-        break;
-      case "syncNow":
-        void backUpNow();
-        break;
-      case "pullNow":
-        void onGetLatest?.();
-        break;
-      case "repair":
-        repairPhase = "armed";
-        break;
-      case "repairCancel":
-        repairPhase = "idle";
-        break;
-      case "repairNow":
-        void repairNow();
-        break;
-      case "openBookConnections":
-        closeSummary();
-        onOpenBookConnections?.();
-        break;
-    }
-  }
-
-  // Show the status pill for any folder project that can sync OR keep local
-  // version history. canSync projects get sync status; local-only projects get
-  // the "Version history on" label (both open the operation log on click).
-  let showSync = $derived(
-    !!projectDir && sourceMode === "folder" && (canSync || canSnapshot),
-  );
-  // Manual mode: automatic online backup is off but the book can sync, so the
-  // bar offers Get latest and Back up now beside the pill.
-  let showManualSync = $derived(showSync && canSync && !autoBackup);
-
   // Book switcher: only when the open repo actually has more than one book.
-  // Save indicator: only for an open folder book (the save state is the editor
-  // buffer's), so with nothing open there is neither it nor its divider.
-  let showSave = $derived(!!projectDir && sourceMode === "folder");
-  let indicator = $derived(saveIndicator({ savePhase, autoSave, forceSaving }));
-
   let showBookSwitcher = $derived(!!projectDir && sourceMode === "folder" && books.length > 1);
 
 </script>
 
 <div class="status-bar" role="status" aria-label="Application status">
-  <!-- Left cluster: [folder → start screen Books] [book switcher]. Syncing and
-       saving are grouped at the far right, next to settings and help. -->
+  <!-- Left cluster: [folder → start screen Books] [book switcher]. The online
+       copy and saving are grouped at the far right, next to settings and help. -->
   <div class="status-left">
     <button
       class="status-icon-btn"
@@ -427,55 +138,40 @@
     {/if}
   </div>
 
-  <!-- Right cluster: [sync pill] [save indicator] -->
+  <!-- Right cluster: [Get latest] [Back up now] [status control] -->
   <div class="status-right">
-    {#if showSync}
-      {#key projectDir}
-        <SyncStatusPill
-          {projectDir}
-          onReconnect={onReconnect}
-          onDetails={onShowLog}
-          onSyncState={onPillState}
-          versionsAlert={versionsProblem}
-          onVersionsProblem={() => (versionsProblemDir = projectDir)}
-        />
-      {/key}
-      {#if showManualSync}
-        <!-- Automatic online backup is off: the author gets and sends changes
-             on demand. Get latest never sends anything back. -->
-        <button
-          type="button"
-          class="status-icon-btn manual-sync"
-          class:has-updates={updatesAvailable}
-          onclick={() => void onGetLatest?.()}
-          disabled={gettingLatest || forceSyncing}
-          title={updatesAvailable ? "New changes are online — get them (your changes stay on this computer)" : "Get latest: bring in changes from online without sending yours"}
-          aria-label={updatesAvailable ? "Get latest — new changes are online" : "Get latest"}
-        ><Icon name="arrow-down-to-line" size={14} />{#if updatesAvailable}<span class="manual-sync-text">{gettingLatest ? "Getting…" : "New online"}</span>{/if}</button>
-        <button
-          type="button"
-          class="status-icon-btn"
-          onclick={() => void backUpNow()}
-          disabled={gettingLatest || forceSyncing}
-          title="Back up now: send your changes online (it gets the latest first)"
-          aria-label="Back up now"
-        ><Icon name="cloud-upload" size={14} /></button>
-      {/if}
-    {/if}
-    {#if showSave}
-      <span class="divider" aria-hidden="true"></span>
+    {#if showManualSync}
+      <!-- Automatic backing up is off: the author gets and sends changes on
+           demand. Get latest never sends anything back. -->
       <button
-        bind:this={saveBtnEl}
         type="button"
-        class="save-indicator {indicator.cls}"
-        aria-haspopup="dialog"
-        onclick={toggleSummary}
-        title={indicator.title}
-      ><Icon name={indicator.icon} size={13} /><span class="save-text" aria-live="polite" aria-atomic="true">{indicator.label}</span></button>
+        class="status-icon-btn"
+        class:has-updates={updatesAvailable}
+        onclick={() => void onGetLatest?.()}
+        disabled={gettingLatest || forceSyncing}
+        title={updatesAvailable ? "New changes are online — get them (your changes stay on this computer)" : "Get latest: bring in changes from the online copy without sending yours"}
+        aria-label={updatesAvailable ? "Get latest — new changes are online" : "Get latest"}
+      ><Icon name="arrow-down-to-line" size={14} />{#if updatesAvailable}<span>{gettingLatest ? "Getting…" : "New online"}</span>{/if}</button>
+      <button
+        type="button"
+        class="status-icon-btn"
+        onclick={() => void onForceSync?.()}
+        disabled={gettingLatest || forceSyncing}
+        title="Back up now: send your versions to the online copy (it gets the latest first)"
+        aria-label="Back up now"
+      ><Icon name="cloud-upload" size={14} /></button>
+    {/if}
+    {#if showStatus}
+      <button
+        type="button"
+        class="status-control {line.tone}"
+        onclick={() => onOpenOnlineCopy?.()}
+        title={line.title}
+      ><Icon name={line.icon} size={13} /><span class="status-text" aria-live="polite" aria-atomic="true">{line.text}</span></button>
     {/if}
   </div>
 
-  <div class="shell-actions" class:divided={showSave} aria-label="Application actions">
+  <div class="shell-actions" class:divided={showStatus} aria-label="Application actions">
     <button class="status-icon-btn" onclick={() => onOpenSettings?.()} title="Settings (Ctrl+,)" aria-label="Settings">
       <Icon name="settings" size={14} />
     </button>
@@ -484,10 +180,6 @@
     </button>
   </div>
 </div>
-
-{#if summaryOpen}
-  <SaveStatusView {copy} triggerEl={saveBtnEl ?? undefined} onAction={onSummaryAction} onClose={closeSummary} />
-{/if}
 
 <style>
   .status-bar {
@@ -500,7 +192,7 @@
        part of it — ProblemsPanel renders that as its own row directly above. */
     position: relative;
     z-index: var(--app-z-popover);
-    /* The save summary and book switcher open upward out of the bar. */
+    /* The book switcher opens upward out of the bar. */
     overflow: visible;
   }
 
@@ -515,7 +207,7 @@
     min-width: 0;
   }
 
-  /* ── Right cluster (sync, save) ──────────────────────────────────────── */
+  /* ── Right cluster (Get latest, Back up now, status control) ─────────── */
   .status-right {
     display: flex;
     align-items: center;
@@ -527,7 +219,7 @@
     margin-left: auto;
   }
 
-  /* ── Bare icon button (Books, settings, help) ───────────────────────────────────── */
+  /* ── Bare icon button (Books, Get latest, Back up now, settings, help) ─ */
   .status-icon-btn {
     display: inline-flex;
     align-items: center;
@@ -552,13 +244,9 @@
     outline: 2px solid var(--app-focus-ring);
     outline-offset: 1px;
   }
-  /* Manual sync: a little room from the pill; with changes waiting online the
-     Get latest button names them and takes the accent. */
-  .manual-sync {
-    margin-left: 6px;
+  /* With changes waiting online the Get latest button names them and takes the accent. */
+  .status-icon-btn.has-updates {
     gap: 4px;
-  }
-  .manual-sync.has-updates {
     color: var(--app-link);
     font-size: 11px;
     font-weight: 600;
@@ -567,21 +255,17 @@
     cursor: default;
   }
 
-  /* Narrow (the app's single-pane layout): the sync pill drops out. */
-  @media screen and (max-width: 820px) {
-    .status-right :global(.sync-pill) {
-      display: none;
-    }
-  }
-
-  /* The save state: a button that opens "Where your work is kept". Resting
-     is calm but readable; in flight is italic; an error uses the error token. */
-  .save-indicator {
+  /* The one status control: a button that opens Book setup → Online copy.
+     Resting is calm but readable; in flight is italic; what needs the author
+     takes the warning token and a failed save the error token (the icon's
+     shape says the same). */
+  .status-control {
     display: inline-flex;
     align-items: center;
     gap: 5px;
+    min-width: 0;
+    max-width: 340px;
     font-size: 11px;
-    white-space: nowrap;
     background: transparent;
     border: none;
     padding: 2px 6px;
@@ -589,14 +273,20 @@
     cursor: pointer;
     color: var(--app-text-secondary);
   }
-  .save-indicator:hover { color: var(--app-text); background: var(--app-surface-hover); }
-  .save-indicator:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
-  .save-indicator.saving { font-style: italic; }
-  .save-indicator.save-error { color: var(--app-error-text); font-weight: 600; }
+  .status-control :global(svg) { flex-shrink: 0; }
+  .status-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .status-control:hover { color: var(--app-text); background: var(--app-surface-hover); }
+  .status-control:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
+  .status-control.pending { font-style: italic; }
+  .status-control.warn { color: var(--app-warning-text); }
+  .status-control.error { color: var(--app-error-text); font-weight: 600; }
+  /* Narrow (the app's single-pane layout): the line gives way to the buttons. */
+  @media screen and (max-width: 820px) {
+    .status-control { max-width: 160px; }
+  }
 
-  /* A `|` between status-bar groups: around the book switcher and on both
-     sides of the save indicator. Rendered only beside the item it separates,
-     so a hidden switcher or indicator leaves no stray line. */
+  /* A `|` between status-bar groups: around the book switcher. Rendered only
+     beside the item it separates, so a hidden switcher leaves no stray line. */
   .divider {
     align-self: stretch;
     width: 1px;
@@ -611,8 +301,8 @@
     padding: 0 10px 0 8px;
     flex: 0 0 auto;
   }
-  /* The `|` between the save indicator and settings/help: only when the
-     indicator is shown, so an empty right side has no stray divider. */
+  /* The `|` between the status control and settings/help: only when the
+     control is shown, so an empty right side has no stray divider. */
   .shell-actions.divided {
     border-left: 1px solid var(--app-border);
   }

@@ -9,7 +9,7 @@
    *   Your name and email — saved with each version; same settings keys and
    *                    save-on-change as before, moved here from Settings.
    *   GitHub         — Connect (the device flow, GitHubConnect), then Test
-   *                    connection, Reconnect… (an expired sign-in that makes
+   *                    sign-in, Sign in again… (an expired sign-in that makes
    *                    every backup fail; the flow's success replaces the
    *                    saved one) and Disconnect.
    *   Other Git servers — GitLab, Gitea, Forgejo, Bitbucket, Azure Repos or
@@ -21,7 +21,7 @@
    * each saved account an Edit that opens the same form under its row. Edit
    * replaces the stored secret: a saved token is never read back or shown, so
    * it is pasted again, and the form drops it the moment it is saved. The
-   * in-task connects stay where the task is (Book setup → Backup, the Publish
+   * in-task sign-ins stay where the task is (Book setup → Online copy, the Publish
    * wizard), and they save to the same store.
    *
    * Everything here reads REDACTED entries only (host/username/label — never
@@ -29,7 +29,7 @@
    * host, a publishing account through the provider route and the account's
    * name (the redacted listing does not expose the store's compound key).
    * Entries whose ciphertext no longer decrypts (OS keyring changed —
-   * HostConnectionInfo.unreadable) say "Needs reconnecting" instead of
+   * HostConnectionInfo.unreadable) say "Needs signing in again" instead of
    * silently looking healthy; Edit is the way back.
    *
    * PWA-clean (§8): api.* routes and getPlatform() only.
@@ -167,7 +167,7 @@
     await keepFocus();
   }
 
-  // ── GitHub: Test connection (read-only, so one click, no confirm) ───────────
+  // ── GitHub: Test sign-in (read-only, so one click, no confirm) ──────────────
   let testing = $state(false);
   let testResult = $state<string | null>(null);
   let testOk = $state(false);
@@ -213,7 +213,7 @@
     <span class="acct-name">{name}</span>
     <span class="acct-detail">
       {detail}
-      {#if unreadable}<span class="warn">Needs reconnecting</span>{/if}
+      {#if unreadable}<span class="warn">Needs signing in again</span>{/if}
     </span>
     {#if !confirmRemove[id]}
       <button class="app-btn app-btn-ghost" onclick={() => toggleForm(id)} aria-expanded={open === id}>{edit}</button>
@@ -238,8 +238,8 @@
   <section class="group" aria-labelledby="accounts-identity">
     <h2 id="accounts-identity">Your name and email</h2>
     <p class="hint">
-      Saved with each version, so a book's history shows who changed what. Left empty, a version uses the name and
-      email in the book's own Git settings, or else "gutterpress".
+      Saved with each version, so the version history shows who changed what. Left empty, a version uses the name and
+      email already set for Git on this computer, or else "gutterpress".
     </p>
     <div class="field">
       <label for="accounts-name">Name</label>
@@ -261,13 +261,13 @@
       {#if github?.connected}
         <div class="acct">
           <span class="acct-detail">{github.username ? `Connected as @${github.username}` : "Connected"}</span>
-          {@render removable("github.com", "Disconnect GitHub? Books stop backing up until you connect again.", "Disconnect", () => api.remote.disconnectGitHub())}
+          {@render removable("github.com", "Disconnect GitHub? Books stop backing up until you sign in again.", "Disconnect", () => api.remote.disconnectGitHub())}
         </div>
         {#if removeError?.id === "github.com"}<p class="error" role="alert">{removeError.text}</p>{/if}
         <div class="acct-more">
-          <GitHubConnect label="Reconnect…" onConnected={() => void reconnected()}>
+          <GitHubConnect label="Sign in again…" onConnected={() => void reconnected()}>
             <button class="app-btn app-btn-ghost" onclick={() => void testGitHub()} disabled={testing}>
-              {testing ? "Testing…" : "Test connection"}
+              {testing ? "Testing…" : "Test sign-in"}
             </button>
           </GitHubConnect>
           {#if testResult}<p class="result" class:error={!testOk} role="status">{testResult}</p>{/if}
@@ -283,7 +283,7 @@
       <h2 id="accounts-servers">Other Git servers</h2>
       <p class="hint">GitLab, Gitea, Forgejo, Bitbucket, Azure Repos, or any server with an https:// address. Books on it back up with the token saved here.</p>
       {#each groups.servers as server (server.host)}
-        {@render line(`server:${server.host}`, server.host, server.username, server.unreadable, "Edit", "Remove this server? Books that back up there stop until you connect it again.", () => api.remote.disconnectHost(server.host))}
+        {@render line(`server:${server.host}`, server.host, server.username, server.unreadable, "Edit", "Remove this server? Books that back up there stop until you sign in to it again.", () => api.remote.disconnectHost(server.host))}
         {#if open === `server:${server.host}`}
           <div class="form edit" use:keepInView>
             <GitServerForm
@@ -314,7 +314,7 @@
       <h2 id="accounts-publishing">Publishing</h2>
       <p class="hint">Keys that let Gutterpress publish a book for you: {addableNames}.</p>
       {#each groups.publishing as acct (acct.key)}
-        {@render line(`publishing:${acct.key}`, acct.provider.label, acct.label, acct.unreadable, acct.provider.connectKind === "oauth" ? "Reconnect…" : "Edit", acct.provider.connectKind === "oauth" ? "Remove this sign-in?" : "Remove this key?", () => api.publish.disconnect(acct.provider.id, acct.account || undefined))}
+        {@render line(`publishing:${acct.key}`, acct.provider.label, acct.label, acct.unreadable, acct.provider.connectKind === "oauth" ? "Sign in again…" : "Edit", acct.provider.connectKind === "oauth" ? "Remove this sign-in?" : "Remove this key?", () => api.publish.disconnect(acct.provider.id, acct.account || undefined))}
         {#if open === `publishing:${acct.key}`}
           <div class="form edit" use:keepInView>
             <PublishKeyForm
@@ -364,7 +364,7 @@
   h2 { margin: 0 0 2px; font-size: 15px; font-weight: 600; color: var(--app-text); }
   /* Wraps, so a long Remove question takes its own line instead of crushing the row. */
   .acct { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 32px; font-size: 13px; }
-  /* GitHub's second line: Test connection, Reconnect…. */
+  /* GitHub's second line: Test sign-in, Sign in again…. */
   .acct-more { display: flex; flex-direction: column; gap: 8px; }
   /* Also GitHubConnect's row: its children are this component's markup, so these rules reach them. */
   .acct-name { min-width: 120px; color: var(--app-text); font-weight: 600; font-size: 13px; }

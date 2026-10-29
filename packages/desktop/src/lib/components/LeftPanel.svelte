@@ -70,7 +70,6 @@
     onOpenUrl,
     onOpenBook,
     onNewProject,
-    onSyncReconnect,
     onPanelStateChange,
   }: {
     open?: boolean;
@@ -107,7 +106,6 @@
     onOpenUrl?: (url: string) => void;
     onOpenBook?: () => void;
     onNewProject?: () => void;
-    onSyncReconnect?: () => void;
     /** Called whenever tab or width changes, or the panel closes itself (Esc,
      *  scrim), so the parent can persist the state. */
     onPanelStateChange?: () => void;

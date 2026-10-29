@@ -32,8 +32,9 @@ bulleted and numbered lists, and a heading picker. Its **Insert** menu adds a la
 table, an image or a [snippet](04-snippets.md).
 
 **Save** (Ctrl+S) saves now; it turns blue when there are unsaved changes. Edits are also saved
-automatically unless you turn that off in Settings → Saving. The indicator in the status bar
-reads **Edits saved**, **Saving…** or **Unsaved changes**.
+automatically unless you turn that off in Settings → Saving. The status control in the
+status bar starts with **Saved** (for example **Saved on this computer**) and reads **Saving…**
+or **Unsaved changes** while edits are not written yet; [more on it here](09-versions-and-backup.md#the-status-control).
 
 ### Pick a class from a list
 

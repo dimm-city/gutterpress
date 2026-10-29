@@ -6,7 +6,7 @@ description: Open Book setup to set the title, authors, page size, margins and c
 # Change your book's design
 
 Click **Setup** (the wrench) in the toolbar to open **Book setup**. Its tabs are **Book**, **Look**,
-**Extensions** and **Backup**, with **Advanced** set apart on the right. Close it with the X or Esc.
+**Extensions** and **Online copy**, with **Advanced** set apart on the right. Close it with the X or Esc.
 Every change is saved as you make it: there is no Save button, and the top of Book setup says
 **Saving…** and then **Saved**.
 

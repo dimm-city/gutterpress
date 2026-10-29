@@ -18,7 +18,7 @@
  *      offending line scrolled into view.
  *   5. At 700px window width the toolbar still has zero pairwise overlaps
  *      (getBoundingClientRect audit of every visible toolbar control), and the
- *      status bar still shows its save-state text and the Problems badge (#316),
+ *      status bar still shows its status-control text and the Problems badge (#316),
  *      and the left-panel drawer stops at the status bar's top edge (#307).
  *
  * Screenshots: <os tmpdir>/problems-panel-{wide,narrow}.png.
@@ -456,8 +456,8 @@ await evalJs(`document.querySelector('#mobile-tab-markdown')?.click(); true`);
 await sleep(600);
 
 // ── 9. #316: the save state keeps its words at 700px ─────────────────────────
-// "Edits saved" (in the status bar since 0.11.16) must not collapse to a bare
-// icon at this width; the Problems control on the editor toolbar is a compact
+// The status control's line ("Saved on this computer", in the status bar) must
+// not collapse to a bare icon at this width; the Problems control on the editor toolbar is a compact
 // badge (icon + count, no text label) with an accessible name that carries the
 // breakdown.
 const bar = await evalJs(`(() => {
@@ -466,8 +466,8 @@ const bar = await evalJs(`(() => {
     return !!el && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none';
   };
   return {
-    saveText: document.querySelector('.status-bar .save-text')?.textContent?.trim() ?? null,
-    saveTextShown: shown('.status-bar .save-text'),
+    saveText: document.querySelector('.status-bar .status-text')?.textContent?.trim() ?? null,
+    saveTextShown: shown('.status-bar .status-text'),
     stripShown: shown('.toggle-strip'),
     stripCountShown: shown('.toggle-strip .error-count, .toggle-strip .warning-count'),
     stripHasText: /problems/i.test(document.querySelector('.toggle-strip')?.textContent ?? ''),

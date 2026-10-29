@@ -1,12 +1,12 @@
 <script lang="ts">
   /**
    * GitHubConnect — the one "Connect GitHub…" control (Accounts, where a
-   * connected account's is "Reconnect…", and Book setup → Backup). It runs
+   * connected account's is "Sign in again…", and Book setup → Online copy). It runs
    * GitHub's device flow in place: the
    * browser opens, the code to enter is shown with Copy code, Open GitHub
    * again (for a page closed by mistake) and Cancel, and
-   * `onConnected` fires once the credential is stored (a reconnect's replaces
-   * the saved one). The Open-from-GitHub dialog keeps its own steps.
+   * `onConnected` fires once the credential is stored (a second sign-in
+   * replaces the saved one). The Open-from-GitHub dialog keeps its own steps.
    *
    * PWA-clean (§8): api.* routes + getPlatform() only.
    */
@@ -22,7 +22,7 @@
     onConnected,
     children,
   }: {
-    /** The button is the screen's next step (Backup), not one row among others (Accounts). */
+    /** The button is the screen's next step (Online copy), not one row among others (Accounts). */
     primary?: boolean;
     label?: string;
     onConnected?: () => void;

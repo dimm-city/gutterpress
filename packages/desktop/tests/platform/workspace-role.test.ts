@@ -13,6 +13,7 @@ const read = (rel: string) => readFileSync(new URL(`../../src/${rel}`, import.me
 const settingsView = read("lib/components/SettingsView.svelte");
 const toolbar = read("lib/components/AppToolbar.svelte");
 const focusBar = read("lib/components/FocusBar.svelte");
+const statusBar = read("lib/components/StatusBar.svelte");
 const page = read("routes/+page.svelte");
 
 describe("Settings", () => {
@@ -59,6 +60,19 @@ describe("a Reader's toolbar", () => {
   });
 });
 
+describe("a Reader's status bar and online copy", () => {
+  test("has no status control, Get latest or Back up now, and the flag reaches it", () => {
+    expect(statusBar).toContain('let showStatus = $derived(!!projectDir && sourceMode === "folder" && !readerMode);');
+    expect(statusBar).toContain("let showManualSync = $derived(showStatus && canSync && !autoBackup);");
+    expect(page).toMatch(/<StatusBar[\s\S]*?\{readerMode\}[\s\S]*?\/>/);
+  });
+
+  test("hears no online toast: no new-changes prompt, no combined-passage toast", () => {
+    expect(page).toContain('isReader: () => settings.current.workspace.role === "reader"');
+    expect(page).toMatch(/if \(readerMode\) return;\s*if \(status\.state === "syncing"\) identityNoticeArmed = true;\s*syncController\.applyConvergeReport/);
+  });
+});
+
 describe("the workspace", () => {
   test("a Reader's mode is always Read; an Author's is their saved choice", () => {
     expect(page).toContain('let readerMode = $derived(settings.current.workspace.role === "reader");');
@@ -84,12 +98,11 @@ describe("the workspace", () => {
 });
 
 describe("what stays for both roles", () => {
-  test("Accounts, the start screen, the New book buttons and the status bar never read the role", () => {
+  test("Accounts, the start screen and the New book buttons never read the role", () => {
     for (const file of [
       "lib/components/AccountsView.svelte",
       "lib/components/WelcomeLanding.svelte",
       "lib/components/ProjectsListBody.svelte",
-      "lib/components/StatusBar.svelte",
     ]) {
       expect(read(file)).not.toMatch(/readerMode|workspace\.role/);
     }

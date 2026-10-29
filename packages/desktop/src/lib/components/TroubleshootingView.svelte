@@ -6,8 +6,8 @@
    * check and update channel beside the app version, system + tool status,
    * copyable report, Linux desktop integration), Logs (the app's diagnostic
    * logs) and Report a problem (the diagnostic bundle + prefilled GitHub issue). The Help tab
-   * carries guidance only; a stuck online backup is fixed in Book setup →
-   * Backup, an expired sign-in in Accounts.
+   * carries guidance only; a stuck backing up is fixed in Book setup →
+   * Online copy, an expired sign-in in Accounts.
    *
    * Reuses SettingsView's sub-tab pattern (TABS, tablist keys, tabpanel with
    * `idPrefix`). Owns its api.doctor load for Diagnostics.

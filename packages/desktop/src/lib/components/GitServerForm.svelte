@@ -9,8 +9,8 @@
    * GitServerForm — the one "connect a Git server" form: the server's address
    * (asked, or already known), an optional username and the access token. The
    * server checks them (api.remote.connectGenericHost) before anything is
-   * saved, so a wrong token never reaches the store. Book setup → Backup uses
-   * it for the server the book names, with that book's repository as the check;
+   * saved, so a wrong token never reaches the store. Book setup → Online copy uses
+   * it for the server the book names, with that book's online copy as the check;
    * the Accounts page adds a server with it and edits a saved one — saving
    * again replaces the saved username and token (a saved token is never read
    * back, so it is pasted again).
@@ -40,7 +40,7 @@
     host?: string;
     /** The username already saved for this server (Edit). */
     username?: string;
-    /** A repository on the server to check the token against (Backup: this book's). */
+    /** This book's online copy on the server, to check the token against (Online copy tab). */
     repoUrl?: string;
     /** Where the server makes tokens, when the caller knows it; otherwise the guide that lists where each server does. */
     tokenUrl?: string | null;
@@ -107,7 +107,7 @@
     <input bind:this={tokenEl} bind:value={token} type="password" autocomplete="new-password" />
   </label>
   <button type="button" class="link" onclick={() => void api.shell.openExternal(tokenUrl ?? OTHER_SERVER_GUIDE).catch(() => {})}>
-    {tokenUrl ? `Create a token on ${host}` : "How to make an access token"} <Icon name="external-link" size={11} />
+    {tokenUrl ? `Create an access token on ${host}` : "How to make an access token"} <Icon name="external-link" size={11} />
   </button>
   <div class="actions">
     <button type="submit" class="app-btn app-btn-primary" disabled={busy || !host || !token.trim()}>

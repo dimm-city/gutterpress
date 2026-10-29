@@ -47,6 +47,55 @@ contract and those documents conflict, the architecture documents win.**
 
 ---
 
+## Vocabulary (what an Author reads)
+
+Gutterpress keeps an author's work safe without the author learning how. They meet
+four ideas, each one they already know from other apps, and one place to look. Git's
+words never reach an Author (UI, toasts, Help, the desktop guide): *commit, branch,
+push, pull, merge, remote, repository, snapshot, sync, HEAD, clone*. Two exceptions:
+"(GitHub calls it a repository)", once, where the author must act on github.com; and
+the commands an author pastes into their own Git tool (the SSH hint). Where this
+section and the vocabulary review in #448 differ, this section wins.
+
+| Idea | What the author sees | Familiar from | Underneath |
+|---|---|---|---|
+| **Saved** | "Saved" | Google Docs, Word AutoSave | file write |
+| **Version history** | a list of earlier versions of the book; go back to any one | Version history in Google Docs and Word | commits |
+| **Online copy** | the book kept online, up to date on its own; collaborators' changes arrive on their own | Dropbox, Google Drive | a remote (GitHub or a Git server) |
+| **Revisions** | separate lines of work in the same book ("Second edition", "Editor's pass") that you can start, switch, rename and delete; each says whether it is also online | a revised edition of a book | branches |
+
+| Use | Never | Notes |
+|---|---|---|
+| **Saved**, Saving…, Couldn't save | — | typing written to this computer |
+| **version**, **Save a version**, **Version history** | snapshot, commit, restore point, history (alone), previous versions | **Version history** is the one name: status link, view title, Book setup, Help. The Settings switch is **Keep version history**; turning it on for a plain folder is **Turn on version history**. |
+| **Restore this version** | revert, checkout | going back to a version |
+| **online copy** | online backup (noun), remote, repository, online repository/address/location | the book kept online |
+| **Back up** / **Backed up** / **Backing up…** / **Not backed up yet** | sync, push, upload | "Backed up" is shown only when a pass sent your work or there was nothing to send. |
+| **Get latest** | pull, fetch, sync | bring changes from the online copy |
+| **revision**, **New revision…**, **Revision you're working on** | branch, copy (for a branch), version (for a branch) | "copy" means only the online copy |
+| **take**: "Two takes of a passage were kept in chapter-02.md — yours and the online copy's" | two versions, your version, online version | one side of a passage changed in two places. Buttons stay "Keep yours / Keep online / Keep both". The on-disk markers `<<<<<<< your version` / `>>>>>>> online version` and `name.online.ext` stay (a file format in existing books). |
+| **sign-in**, **Sign in again** | connection, reconnect, token (except "access token" where a writer pastes one) | |
+| **safety folder** | full copy of the folder, backup (for it) | Start over's kept folder |
+| **Recover** (crash recovery) | Restore (now means a version) | |
+
+The messages Gutterpress writes into a book's history show on github.com. The Version
+history timeline recognises every spelling ever written, forever, and labels the
+history-start versions "First version":
+
+| Moment | Message |
+|---|---|
+| automatic | "Automatic version" |
+| first version | "First version" |
+| Save a version | "Saved a version" |
+| before backing up | "Automatic version before backing up" |
+| before restoring | "Automatic version before restoring" |
+| before switching revision | "Saved before switching revision" |
+| repair | "Repaired the online copy" |
+| before deleting | "Before deleting X" |
+| an edit saved during a backup | "Saved the edit you made while backing up" |
+
+---
+
 ## Vision Statement
 
 Gutterpress transforms markdown into beautifully paginated PDFs with zero layout
@@ -120,7 +169,7 @@ gutterpress/
 ├── Book setup                                 SHIPPED  (ProjectSettingsView, the toolbar's Setup
 │   │                                                    button, hidden for a Reader; title
 │   │                                                    "Book setup"; tabs Book / Look /
-│   │                                                    Extensions / Backup, Advanced set apart
+│   │                                                    Extensions / Online copy, Advanced set apart
 │   │                                                    at the right; one Saving…/Saved in the
 │   │                                                    header; every tab saves as you go; #442)
 │   ├── Book (id `book`)                       SHIPPED  (DetailsSection: title, authors, page size,
@@ -137,13 +186,18 @@ gutterpress/
 │   │                                                    each with what to type, an npm search,
 │   │                                                    then exact-name, folder, .zip/.css and
 │   │                                                    web-address adds)
-│   ├── Backup (id `backup`)                   SHIPPED  (ProjectConnectionsSection: one sentence for
+│   ├── Online copy (id `online-copy`)         SHIPPED  (ProjectConnectionsSection: one sentence for
 │   │                                                    the book's situation and at most one
 │   │                                                    primary action; GitHub or the book's own
-│   │                                                    server connect in place; the copy switcher;
-│   │                                                    once set up, Test connection (this book's
-│   │                                                    repository), Repair online backup and
-│   │                                                    Start over from the online copy)
+│   │                                                    server sign-in in place; "Saved · last
+│   │                                                    version …" with Save a version and Version
+│   │                                                    history…; Revisions (RevisionsList: switch,
+│   │                                                    new, rename, delete, each saying where it
+│   │                                                    is kept); and, collapsed, "If backing up
+│   │                                                    keeps failing": Test connection (this
+│   │                                                    book's online copy), Repair the online
+│   │                                                    copy, Start over from the online copy and
+│   │                                                    Sign in again; #448)
 │   └── Advanced (id `advanced`)               SHIPPED  (the ONE advanced path: Open manifest.yaml,
 │                                                        the Stylesheets list (StylesSection: the
 │                                                        manifest's `styles:` in order, each with
@@ -151,7 +205,9 @@ gutterpress/
 │                                                        .css files to add), and every design
 │                                                        setting (DesignSection))
 ├── Project source / version history / GitHub  SHIPPED  (#12–#16, the Node-native git layer; AdvancedSetupDialog,
-│                                                        GitHubDialog, sync status)
+│                                                        GitHubDialog; the status bar's one status
+│                                                        control, Authors only; Version history view;
+│                                                        #448)
 ├── Media panel                                SHIPPED  (MediaPanel, #47)
 ├── Crash recovery                             SHIPPED  (RecoveryOverlay / CrashRecoveryDialog)
 ├── Settings                                   SHIPPED  (SettingsView: one page in its own sheet,
@@ -170,7 +226,7 @@ gutterpress/
 │                                                        opens a compact inline form: Your name
 │                                                        and email (moved from Settings; same
 │                                                        keys, saved on change); GitHub (Connect,
-│                                                        or Test connection / Reconnect… /
+│                                                        or Test sign-in / Sign in again… /
 │                                                        Disconnect); Other Git servers (Add,
 │                                                        Edit, Remove — host, optional username,
 │                                                        token, checked with the server first);
@@ -180,7 +236,7 @@ gutterpress/
 │                                                        Edit, Remove). Edit replaces the stored
 │                                                        secret; it is never shown. Opened by the
 │                                                        start screen's Accounts button, Settings
-│                                                        and Book setup → Backup, and by the
+│                                                        and Book setup → Online copy, and by the
 │                                                        missing name & email notice with the
 │                                                        cursor in Name, over whichever opened it)
 ├── Visual layout editor                       PROPOSED (#37 — milestone placeholder; sub-issues first)
@@ -195,10 +251,10 @@ Settings: app appearance and print theme are deliberately separated
 concepts; do not merge them back. The Accounts page is the one place to manage every
 connection — connect, edit and disconnect GitHub, other Git servers, publishing keys and
 Google Drive — and the author's name and email. The task that needs a connection still
-offers it in place, saving to the same store: a book's GitHub or Git server in its Backup
-tab, a publishing key in Publish. Where those forms match the Accounts ones they are one
-component (GitHubConnect, GitServerForm). A backup that keeps failing is fixed in the
-book's Backup tab; Troubleshooting holds Logs, Diagnostics and Report a problem only.
+offers it in place, saving to the same store: a book's GitHub or Git server in its Online
+copy tab, a publishing key in Publish. Where those forms match the Accounts ones they are one
+component (GitHubConnect, GitServerForm). Backing up that keeps failing is fixed in the
+book's Online copy tab; Troubleshooting holds Logs, Diagnostics and Report a problem only.
 Diagnostics puts the update check and the update channel menu on the Desktop version line
 (no separate Updates section). One name
 per surface: the toolbar button, the page title and the docs all say "Book
@@ -414,30 +470,46 @@ Rules (shipped + refinements):
 Anti-patterns: toolbars that obscure content on scroll; unlabeled icon-only
 buttons.
 
-### 3. Saving and copies
+### 3. Saving, versions and revisions
 
 - **Auto-save is SHIPPED and works as follows** (do not respecify): a FIXED
   debounced disk save 500ms after the last edit (`EditorBuffer`) and an
   ALWAYS-ON crash-recovery draft 1000ms after the last edit, plus explicit
   `Cmd/Ctrl+S` / toolbar Save. Neither delay is a user setting (#274), but
   auto-save itself is an on/off switch, default on: Settings → Saving, "Save
-  edits automatically" (owner request 2026-09-25 — with no way to turn it
+  changes automatically" (owner request 2026-09-25 — with no way to turn it
   off, the Save button had nothing to do). Off, edits wait for Save /
   `Cmd/Ctrl+S`, the toolbar Save stays lit while anything is unsaved, the
   status bar reads "Unsaved changes", and the preview updates on save.
   Leaving a file with unsaved edits (switching files, books or projects,
   closing the project or the window) asks a native Save / Don't Save /
   Cancel — the one modal in the saving flow, and only when auto-save is
-  off. The save indicator itself stays subtle (no modal) — see
+  off. The status control itself stays subtle (no modal) — see
   Anti-Patterns.
-- **Switching copies is SHIPPED in Settings → Saving** (#273): the Saving &
-  recovery group names the local copy (git branch) the open project is on
-  and, only when more than one exists locally, offers a picker to switch —
-  local copies only, never a remote checkout or a create. Author-facing
-  vocabulary says "copy", never "branch". The switch takes a version of any
-  in-progress edit first, so nothing is lost and nothing is ever forced; the
-  editor/file tree/preview then show the new copy the same way they pick up
-  any other external change.
+- **One status control, Authors only, is SHIPPED** (#448): the status bar's one
+  line combines saving and the online copy — "Saving…", "Saved on this
+  computer", "Saved · Backed up", "Saved · Backing up…", "Saved · Offline —
+  backs up when you're back", "Saved · Sign in to back up", "Saved · Backing up
+  paused", "Saved · Not backed up yet", "Couldn't save", "Versions need
+  attention" — with a shape (check, cloud, warning, error) carrying the tone, not
+  colour alone. Clicking it opens Book setup → Online copy, the one place for
+  versions, revisions and the online copy. With automatic backing up off, Get
+  latest and Back up now stay beside it and "New changes are online for this
+  book." stays a toast with Get latest. A Reader sees none of it: no control, no
+  buttons, no online toasts (a Reader gets the latest changes automatically).
+- **Revisions are SHIPPED in Book setup → Online copy** (#448, which replaced
+  #273's switcher in Settings → Saving): the list names each revision, marks
+  the one the author is working on, and says where each is kept (Online; Online
+  · not backed up yet; Only on this computer; Only online). Switch (saves a
+  version of in-progress edits first; an online-only revision is made on this
+  computer first), Rename… and Delete… (never the open one) act at once, and
+  say what they do before they do it: an online revision is renamed or deleted
+  in the online copy too, when the author asks, and a revision holding
+  versions found nowhere else asks a second time. New revision… starts from
+  what is open now, switches to it, and goes online with the next backup.
+  Author-facing vocabulary says "revision", never "branch"; "copy" means only
+  the online copy. The editor/file tree/preview show the new revision the same
+  way they pick up any other external change.
 ### 4. Onboarding — progressive disclosure
 
 **Status: PARTIAL** (#25 wizard + templates, #27 project finder,
