@@ -133,8 +133,9 @@ gutterpress/
 │   │                                                    manifest's ordered list: checkbox, move,
 │   │                                                    Remove), then Add an extension: the
 │   │                                                    built-in extras the book does not list,
-│   │                                                    each with what to type, then npm, folder,
-│   │                                                    .zip/.css and web-address adds)
+│   │                                                    each with what to type, an npm search,
+│   │                                                    then exact-name, folder, .zip/.css and
+│   │                                                    web-address adds)
 │   ├── Backup (id `backup`)                   SHIPPED  (ProjectConnectionsSection: one sentence for
 │   │                                                    the book's situation and at most one
 │   │                                                    primary action; GitHub or the book's own
@@ -763,16 +764,28 @@ label, its kind and source in words ("Look · built in", "Extra · npm
 attention: "Version x is available." with Update, "Not downloaded yet." with
 Install, "Couldn't load." with Show details and Check again. Updates are
 checked once when the tab opens, never at project load. Below the list, one
-*Add an extension* area, in two parts: the **built-in extras** the book does
+*Add an extension* area, in three parts. The **built-in extras** the book does
 not list yet (Highlight, Callouts, Math…), each with what to type and an Add
-button, and then an npm package name, a folder or file referenced in place, a
-`.zip`/`.css` import and a web address (§11). A built-in extra is never shown
-twice: while the book lists it, it is a row of the list; Remove puts it back
-among the ones to add. (Footnotes, tables and definition lists need no
-extension and are always on, which the area says.) No status badges, no
-version picker, no npm search (the website's plugin finder and `gutterpress
-ext search` cover it) and no pre-release switch (`gutterpress ext add
-name@version`).
+button. **Find one on npm** is the way to a published extension: a search box
+whose results are the lib's `searchNpmExtensions` (what `gutterpress ext
+search` prints — packages tagged `gutterpress` or `markdown-it-plugin`),
+asked only when the author submits it (Enter or Search; with nothing typed it
+lists the most relevant), never at project load or on a keystroke. npm
+filters by keyword and only ranks by the words, so a typed search keeps the
+results whose name, description or keywords mention every word. Each result
+is the package name, its description, its kind when npm's keywords say (a
+`gutterpress-look` package is a Look, a plain markdown-it plugin an Extra) and
+an Add that is the same add as typing the name — or "Added" when the book
+lists it. No results, being offline and any other failure are one plain line
+under the box ("No extensions found for …", "Couldn't reach the npm
+registry…"), never a toast. **Other ways to add** are an exact npm name or
+`name@version` (for a package search cannot find, such as a private one), a
+folder or file referenced in place, a `.zip`/`.css` import and a web address
+(§11). A built-in extra is never shown twice: while the book lists it, it is
+a row of the list; Remove puts it back among the ones to add. (Footnotes,
+tables and definition lists need no extension and are always on, which the
+area says.) No status badges, no version picker and no pre-release switch
+(`gutterpress ext add name@version`).
 
 Refinements (PROPOSED): link each plugin to its npm page for
 author/version/last-published metadata; surface load errors inline.

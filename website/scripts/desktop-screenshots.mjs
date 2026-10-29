@@ -188,7 +188,8 @@ await screen("book-settings-page", async () => {
 }, { crop: SETTINGS, width: 960 });
 // The demo book lists no extensions, so choose a look: Look then shows the
 // look's six settings beside the sample page. Extensions then adds an extra
-// to the list, and Advanced shows the stylesheets above every design setting.
+// to the list and searches npm, and Advanced shows the stylesheets above every
+// design setting.
 await screen("book-settings-design", async () => {
   await click("[role=tab]:has-text('Look')");
   await click("input[name='book-look'][value='clean-book']");
@@ -199,6 +200,13 @@ await screen("book-settings-extensions", async () => {
   await click("[role=tab]:has-text('Extensions')");
   await click("button[aria-label='Add Highlight']");
   await wait(1500);
+}, { crop: SETTINGS, width: 960 });
+// npm answers over the network, so this screen needs the internet.
+await screen("extensions-search", async () => {
+  await page.fill("#search-npm", "emoji");
+  await press("Enter");
+  await wait(6000);
+  await page.locator("h4:has-text('Find one on npm')").evaluate((el) => el.scrollIntoView({ block: "start" }));
 }, { crop: SETTINGS, width: 960 });
 await screen("book-settings-advanced", () => click("[role=tab]:has-text('Advanced')"), { crop: SETTINGS, width: 960 });
 // Take both out again, so the preview in the shots below is unchanged. A

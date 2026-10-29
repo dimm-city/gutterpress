@@ -1,6 +1,6 @@
 ---
 title: Add plugins and formatting extras
-description: Turn on the built-in formatting extras, add plugins from npm or a folder, keep them up to date, and set the order they load in.
+description: Turn on the built-in formatting extras, find plugins on npm or add them from a folder, keep them up to date, and set the order they load in.
 ---
 
 # Add plugins and formatting extras
@@ -26,15 +26,26 @@ again (footnotes, tables and definition lists are always on):
 | Callouts | `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]` |
 | Math | `$E = mc^2$` in a line, or `$$` ... `$$` on lines of their own |
 
-## Add a plugin from npm or a folder
+## Find a plugin on npm
 
-On **Setup → Extensions**, under **Add an extension → From npm, a folder or a web address**:
+Looks and plugins other authors have published are on npm. On **Setup → Extensions**, under **Add an
+extension → Find one on npm**, type a word (such as `footnote` or `emoji`) and press Enter or click
+**Search**; with nothing typed, **Search** lists the most relevant ones. Each result shows the
+package's name, what it does, and whether it is a **Look** or an **Extra** when that is known.
+**Add** downloads it, checks it, keeps a copy inside your book, and adds it to **Your extensions**;
+your book then builds from that copy, even offline. A package your book already uses says **Added**.
+If nothing matches, it says **No extensions found for** what you typed; if npm cannot be reached, it
+says so under the box and you can search again.
 
-- type a package's name in **npm package** (with a version if you want one, such as
-  `markdown-it-highlightjs@4.3.0`) and click **Add**. Gutterpress downloads it, checks it, keeps a
-  copy inside your book, and adds it to the list; your book then builds from that copy, even
-  offline. **Find extensions** opens the [Find plugins](https://gutterpress.dimm.city/plugins/)
-  page, which lists looks and plugins on npm;
+![Book setup, Extensions tab: searching npm for plugins](images/extensions-search.jpg)
+
+## Add a plugin from elsewhere
+
+Under **Add an extension → Other ways to add**:
+
+- type a package's **Exact name** (with a version if you want one, such as
+  `markdown-it-highlightjs@4.3.0`) and click **Add**, for a package that search does not find, such
+  as a private one;
 - **Add a folder or file…** adds a plugin you have on your computer, used where it is;
 - **Import a .zip or .css file…**, or a **Web address** and **Import**, copies a look or plugin into
   your book's `extensions` folder.
