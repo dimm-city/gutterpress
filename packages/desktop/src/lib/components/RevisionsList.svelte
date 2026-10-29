@@ -124,7 +124,15 @@
   <form class="name-form" onsubmit={(e) => { e.preventDefault(); submit(); }}>
     <label class="field">
       <span class="lbl">{label}</span>
-      <input class="input" bind:value={typed} spellcheck="false" autocomplete="off" disabled={working} />
+      <!-- Escape cancels the form; it does not close Book setup under it. -->
+      <input
+        class="input"
+        bind:value={typed}
+        spellcheck="false"
+        autocomplete="off"
+        disabled={working}
+        onkeydown={(e) => { if (e.key === "Escape") { e.stopPropagation(); pending = null; } }}
+      />
     </label>
     {#if kept && kept !== typed}<p class="hint">It will be called "{kept}".</p>{/if}
     {#if note}<p class="hint">{note}</p>{/if}
@@ -147,12 +155,12 @@
             <span class="item-caption">{whereLabel(r)}</span>
             <span class="item-actions">
               {#if !r.current}
-                <button class="ghost small" onclick={() => void switchTo(r.name)} disabled={working || disabled}>Switch</button>
+                <button class="ghost small" aria-label="Switch to {r.name}" onclick={() => void switchTo(r.name)} disabled={working || disabled}>Switch</button>
               {/if}
               {#if r.where !== "online-only"}
-                <button class="ghost small" onclick={() => open({ kind: "rename", revision: r }, r.name)} disabled={working || disabled}>Rename…</button>
+                <button class="ghost small" aria-label="Rename {r.name}" onclick={() => open({ kind: "rename", revision: r }, r.name)} disabled={working || disabled}>Rename…</button>
                 {#if !r.current}
-                  <button class="ghost small" onclick={() => open({ kind: "delete", revision: r, everywhere: false, lost: null })} disabled={working || disabled}>Delete…</button>
+                  <button class="ghost small" aria-label="Delete {r.name}" onclick={() => open({ kind: "delete", revision: r, everywhere: false, lost: null })} disabled={working || disabled}>Delete…</button>
                 {/if}
               {/if}
             </span>

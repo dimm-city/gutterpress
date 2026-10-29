@@ -275,12 +275,16 @@
 
   // The page's Back up now, run from here; the sync controller's `backup` is the headline.
   const backUpNow = () =>
-    act(async () => {
+    act(async (dir) => {
       running = "back-up";
-      await onBackUpNow?.();
-      running = null;
+      try {
+        await onBackUpNow?.();
+      } finally {
+        running = null;
+      }
+      // A pass can send a new revision online and make a version.
       revisionsEl?.refresh();
-      if (projectDir) void loadFacts(projectDir);
+      void loadFacts(dir);
       return null;
     });
 

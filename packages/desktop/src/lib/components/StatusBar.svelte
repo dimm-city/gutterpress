@@ -39,8 +39,6 @@
      *  waiting for the author's Save, not about to save itself — so it reads
      *  "Unsaved changes", never "Saving…". */
     autoSave = true,
-    /** Settings → Saving "Keep version history": Gutterpress makes versions itself. */
-    autoVersions = true,
     /** Settings → Saving "Back up online automatically". */
     autoBackup = true,
     /** Whether a manual force-save is in progress. */
@@ -55,7 +53,7 @@
     activeBookDir = null as string | null,
     /** The online copy's last word for the open book (the host's stream or the last Back up now). */
     backup = null as LastBackup | null,
-    /** Why automatic versions keep failing, once the host has said so. */
+    /** Why automatic versions keep failing, once the host has said so (only while they are on: a failing safety net you turned off isn't news). */
     versionsProblem = null as { message: string | null } | null,
     /** Called with a book's folder path when the author switches books. */
     onSwitchBook = undefined as ((path: string) => void) | undefined,
@@ -78,7 +76,6 @@
     sourceMode?: "folder" | "url";
     canSync?: boolean;
     hasRemote?: boolean;
-    autoVersions?: boolean;
     autoBackup?: boolean;
     savePhase?: "clean" | "dirty" | "saving" | "error";
     autoSave?: boolean;
@@ -105,13 +102,12 @@
   // Manual mode: automatic backing up is off but the book can back up, so the
   // bar offers Get latest and Back up now beside the control.
   let showManualSync = $derived(showStatus && canSync && !autoBackup);
-  // A failing safety net you turned off isn't news.
   let line = $derived(
     statusLine({
       savePhase,
       autoSave,
       forceSaving,
-      versionsProblem: autoVersions ? versionsProblem : null,
+      versionsProblem,
       backup,
       hasRemote,
       backingUp: forceSyncing,

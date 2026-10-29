@@ -541,6 +541,9 @@
     onReviewCombined: () => openProblemsList(),
   });
 
+  // Why the book's automatic versions keep failing: only news while they are on.
+  const versionsProblem = $derived(settings.current.versionHistory.autoSnapshot ? syncController.versionsProblem : null);
+
   // ── Project session capability state (#12) ───────────────────────────────────
   // The classification wiring (source detection → capabilities → subPath →
   // prefs hint) lives in the ProjectSessionController. The component
@@ -3505,7 +3508,6 @@
     hasRemote={projectSession.projectHasRemote}
     savePhase={editorSavePhase}
     autoSave={settings.current.versionHistory.autoSave}
-    autoVersions={settings.current.versionHistory.autoSnapshot}
     autoBackup={settings.current.versionHistory.autoSync}
     {forceSaving}
     forceSyncing={syncController.forceSyncing}
@@ -3513,7 +3515,7 @@
     books={projectSession.books}
     activeBookDir={projectSession.activeBookDir}
     backup={syncController.backup}
-    versionsProblem={syncController.versionsProblem}
+    {versionsProblem}
     onSwitchBook={(path) => void switchBook(path)}
     onForceSync={() => syncController.handleForceSync()}
     onGetLatest={() => syncController.handleGetLatest()}
@@ -3584,7 +3586,7 @@
     onBackupSetUp={(dir) => { void projectSession.classify(dir); void syncController.refreshSyncDiag(dir); }}
     onProjectFilesChanged={onSnapshotRestored}
     backup={syncController.backup}
-    versionsProblem={syncController.versionsProblem}
+    {versionsProblem}
     onBackUpNow={() => syncController.handleForceSync()}
     onRepair={() => syncController.handleRepair()}
     onSaveVersion={saveVersion}
