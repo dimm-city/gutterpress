@@ -54,12 +54,12 @@ This project follows [Semantic Versioning](https://semver.org/).
   preset's 0.5pt. The `asset.font.approved-files` check, which nothing could
   switch on, is gone.
 - **Settings and Book setup, redesigned (#442).** Settings is one page with
-  no tabs: Appearance, Saving and Accounts. It opens in its own sheet from
-  the status-bar gear, Ctrl+, or the start screen's new Settings button, and
-  looks the same with or without a book open. The Reader/Author choice is
-  gone, so every author has Setup and Publish from the first launch. So are
-  the preview, overlay-colour, zoom, file-watcher and log-level options and
-  every Reset button.
+  no tabs: How you use Gutterpress (Reader or Author), Appearance, Saving and
+  Accounts. It opens in its own sheet from the status-bar gear, Ctrl+, or the
+  start screen's new Settings button, and looks the same with or without a
+  book open. Reader shows just the pages and Author adds Edit, Setup and
+  Publish; creating a book switches to Author. The preview, overlay-colour,
+  zoom, file-watcher and log-level options and every Reset button are gone.
   - **Accounts** is a page of its own. It opens from the start screen's
     Accounts button, Settings and Book setup → Backup, and is the one place
     for who you are and what Gutterpress signs in to, for every book:
