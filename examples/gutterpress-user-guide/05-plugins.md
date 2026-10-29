@@ -104,17 +104,18 @@ gutterpress ext search footnote
 Publishing one is `npm publish` with `"gutterpress"` in your package's
 `keywords` --- there is no index to be added to. A plain markdown-it plugin
 needs no Gutterpress keyword at all: the ecosystem's own `markdown-it-plugin`
-tag already finds it, and it works here unchanged.
+tag already finds it, and it works here unchanged. The desktop app runs the
+same search (below), and labels a package tagged `gutterpress-look` as a Look.
 
-The desktop app shows the same list under **Project settings &rarr; Extensions**: one row per entry, in order, each with a badge for what it carries (Markdown, Styles, Snippets, Components) and the same enable/disable, reorder and remove actions.
+The desktop app shows the same list under **Book setup &rarr; Extensions**: one row per entry, in order, each with a checkbox to turn it on or off, what it carries (Extra, Look, Styles, Snippets, Components) and where it comes from (built in, npm, folder), and the same reorder and remove actions.
 
 ## Installing npm Plugins
 
-Install an npm plugin from the desktop app under **Project settings &rarr; Extensions**, or with the standalone CLI. Under the list of what your book already uses (with each package's **Version** menu and **Update** button), the **Add** area has three tabs:
+Install an npm plugin from the desktop app under **Book setup &rarr; Extensions**, or with the standalone CLI. Under the list of what your book already uses, **Add an extension** offers:
 
-- **Built in** --- the built-in formatting extras and looks, each with **Add**.
-- **Search** --- packages on npm tagged `gutterpress` or `markdown-it-plugin`. The list loads the first time you open the tab, so it never slows opening a book; type a word and press Enter to narrow it, then **Add** a package. The new entry joins the list above.
-- **Advanced** --- **Install from npm** by package name (add `@version` for an exact version, and an export name for packages with named plugin functions), **Add a folder or plugin file...** to use one from disk where it is, and the `.zip`, `.css` and URL importers.
+- **Built-in extras** --- the built-in formatting extras your book does not use yet, each with what to type and an **Add** button. An extra you add joins the list above, and its **Remove** puts it back here.
+- **Find one on npm** --- the same search as `gutterpress ext search`: type a word and press Enter (or click **Search**; with nothing typed it lists the most relevant packages tagged `gutterpress` or `markdown-it-plugin`). Each result shows the package's name and description, **Look** or **Extra** when its keywords say, and **Add**, or **Added** when your book already lists it.
+- **Other ways to add** --- an **Exact name** (add `@version` for an exact version), for a package search does not find, such as a private one; **Add a folder or file...** to use a plugin from disk where it is; and the **Import a .zip or .css file...** and **Web address** importers.
 
 The CLI equivalent:
 
@@ -186,7 +187,7 @@ files --- and it does not need you to do anything:
   error says the extensions are not installed yet and to connect to the
   internet; the book still opens without them. If a download fails for another
   reason, a warning says which one and why. Either way the extension's row
-  under **Project settings &rarr; Extensions** reads **Needs install**, and its
+  under **Book setup &rarr; Extensions** reads **Not downloaded yet.**, and its
   **Install** button tries again.
   The preview checks again every time it redraws the book, so a pin that
   changes while the book is open (you edit `manifest.yaml`, **Get latest**
@@ -252,23 +253,16 @@ with `ext add` and a restore do the same). Commit the manifest; the new download
 stays out of git, and a clone fetches it from the new pin. To move to a specific version instead of the latest, or to go back,
 run `ext add name@x.y.z`.
 
-The desktop app does the same under **Project settings &rarr; Extensions**: opening
-the tab checks npm once, an entry with a newer version shows it with an
-**Update** button, and *Check for updates* re-checks.
-
-Every npm package there also has a **Version** menu listing its published
-versions, newest first. Choosing one is `ext add name@version`: Gutterpress
-downloads, verifies and load-tests it, and only then moves the pin. If that
-fails, a message says why and the book keeps the version --- and the downloaded
-copy --- it had. The menu lists stable releases only; switch on **Include
-pre-release versions** (`-alpha`, `-beta`, `-rc`) to see the rest and to have
-the update check count them as newer. That switch is an app preference, shared
-by all your books, and off by default. The version a book pins is always
-listed, even a pre-release.
+The desktop app does the same under **Book setup &rarr; Extensions**: opening
+the tab checks npm once, and an entry with a newer version says **Version x is
+available.** with an **Update** button. If that fails, a message says why and the
+book keeps the version --- and the downloaded copy --- it had. The app updates to
+the latest stable release; to pin another version, run `ext add name@version`.
 
 If a book's pin names a version whose downloaded copy is missing --- a changed
-`manifest.yaml`, or a copy that was deleted or is broken --- its row says **Needs
-install** with an **Install** button that downloads exactly the pinned version.
+`manifest.yaml`, or a copy that was deleted or is broken --- its row says **Not
+downloaded yet.** (or **Couldn't load.**) with an **Install** (or **Reinstall**)
+button that downloads exactly the pinned version.
 
 `ext outdated` exits 1 when a package is behind, so a CI step can watch a
 book's pins without updating anything.
@@ -470,8 +464,8 @@ previews a book. Only a publish loads it. What `publish` receives:
   (`format: "html"`). The book picks it with `format: pdf` (the default) or
   `format: html` in the plugin's settings.
 - `context.settings`: the book's `publish.<package-name>` section in
-  `manifest.yaml`, without the two keys Gutterpress reads itself, `format`
-  and `credential`.
+  `manifest.yaml`, without the keys Gutterpress reads itself: `format`,
+  `credential` and `enabled` (whether the Publish wizard ticks it).
 - `context.project`: the book's folder, title and authors.
 - `context.log(message)`: a progress line. Write progress here, never with
   `console.log`: standard output carries `--json` results.
@@ -822,7 +816,7 @@ extensions:
   - gutterpress-gfm-alerts
 ```
 
-**Project settings &rarr; Extensions** in the desktop writes exactly this entry.
+**Book setup &rarr; Extensions** in the desktop writes exactly this entry.
 
 > **Callouts are bundled:** `gutterpress-gfm-alerts` (the **Callouts** feature
 > in the desktop) renders each `> [!NOTE]`-style alert as a `.gp-alert` box
@@ -836,7 +830,7 @@ extensions:
 
 ## Error Handling
 
-Gutterpress **fails the build** on extension errors --- a final PDF must never silently omit formatting you configured. The live preview is the one exception: an extension that cannot load is skipped with a loud warning (and "Not downloaded yet" or "Couldn't load" beside it in Book setup's Advanced tab) so one broken entry does not blank the whole preview.
+Gutterpress **fails the build** on extension errors --- a final PDF must never silently omit formatting you configured. The live preview is the one exception: an extension that cannot load is skipped with a loud warning (and "Not downloaded yet" or "Couldn't load" beside it in Book setup's Extensions tab) so one broken entry does not blank the whole preview.
 
 @section
 
@@ -848,7 +842,7 @@ Gutterpress **fails the build** on extension errors --- a final PDF must never s
 | `"plugins/x.js" looks like a path; write it as "./plugins/x.js"` | A path must start with `./`, `../` or `/`; anything else is read as an npm name. |
 | `"markdown-it-mark" is bundled with Gutterpress ... drop "@3.0.0"` | Bundled names always resolve to the built-in copy and cannot be pinned. |
 | `Plugin file not found: ...` | Check the path (relative to `manifest.yaml`) and that the file exists |
-| `` Extension "foo" not found. Install it with `gutterpress ext add foo` `` | Run that, or add it from Project settings &rarr; Extensions. A pinned entry whose copy is missing is downloaded automatically by `build`, `validate`, `preflight`, `preview` and when the desktop opens the book. An entry with no exact version (`foo`, `foo@^1`, `foo@latest`) is never downloaded for you and reads "is not pinned to an exact version": `ext add` downloads it and pins it |
+| `` Extension "foo" not found. Install it with `gutterpress ext add foo` `` | Run that, or add it from Book setup &rarr; Extensions. A pinned entry whose copy is missing is downloaded automatically by `build`, `validate`, `preflight`, `preview` and when the desktop opens the book. An entry with no exact version (`foo`, `foo@^1`, `foo@latest`) is never downloaded for you and reads "is not pinned to an exact version": `ext add` downloads it and pins it |
 | `Plugin "foo" does not export a valid plugin function` | Ensure the default export is a function, or select its named function with `export:` |
 | `Plugin "foo" does not export a plugin function named "bar"` | Fix the `export:` name to one the package really exports |
 

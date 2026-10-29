@@ -17,16 +17,28 @@ export const LEFT_PANEL_TAB_IDS: readonly LeftPanelTabId[] = ["projects", "toc",
  */
 export const HIDE_BOOKS_TAB = true;
 
-/** The tabs shown, in display order. */
-export function visibleTabIds(hideBooks: boolean = HIDE_BOOKS_TAB): LeftPanelTabId[] {
-  return LEFT_PANEL_TAB_IDS.filter((id) => !(hideBooks && id === "projects"));
+/** Reader mode (Settings → How you use Gutterpress) keeps only Books and TOC: Files and Media are for editing. */
+export function visibleTabIds(readerMode: boolean, hideBooks: boolean = HIDE_BOOKS_TAB): LeftPanelTabId[] {
+  return LEFT_PANEL_TAB_IDS.filter((id) => (readerMode ? id === "projects" || id === "toc" : true)).filter(
+    (id) => !(hideBooks && id === "projects"),
+  );
 }
 
 /**
  * The tab actually shown: the active one, or the first visible tab when the
- * active (remembered) one is hidden — a remembered Books while it is hidden.
- * The stored value is left alone, so un-hiding restores the author's choice.
+ * active (e.g. remembered) one is hidden — a remembered Files/Media in reader
+ * mode, or a remembered Books while it is hidden. The stored value is left
+ * alone, so un-hiding restores the author's choice.
  */
 export function shownTabId(active: LeftPanelTabId, visible: readonly LeftPanelTabId[]): LeftPanelTabId {
   return visible.includes(active) ? active : (visible[0] ?? active);
+}
+
+/**
+ * Whether the tab strip is drawn at all. A strip of one tab chooses nothing:
+ * in reader role only the TOC is left, and the TOC panel carries its own
+ * "Table of contents" heading, so the panel shows it directly with no strip.
+ */
+export function showTabStrip(visible: readonly LeftPanelTabId[]): boolean {
+  return visible.length > 1;
 }

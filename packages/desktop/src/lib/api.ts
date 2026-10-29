@@ -130,6 +130,8 @@ export type {
   BundledExtensionInfo,
   ExtensionImportResult,
   ExtensionImportWarning,
+  NpmExtensionMatch,
+  ExtensionSearchResult,
   ExtensionUpdatesResult,
   ProjectStyle,
   RecoveryEntry,
@@ -153,6 +155,7 @@ import type {
   ExtensionValidationResult,
   BundledExtensionInfo,
   ExtensionImportResult,
+  ExtensionSearchResult,
   ExtensionUpdatesResult,
   ProjectStyle,
   RecoveryEntry,
@@ -270,7 +273,7 @@ export interface ClassCatalogEntry {
 }
 
 /** Static publish-provider metadata (no project needed) — used by the
- *  Settings → Accounts tab to classify + label stored credentials. */
+ *  Accounts page to classify + label stored credentials. */
 export interface PublishProviderStaticInfo {
   id: string;
   label: string;
@@ -380,8 +383,6 @@ export const api = {
     read: (logPath: string) => post<string | null>('/api/log/read', { logPath }),
     /** List the app's diagnostic log files (newest first). */
     list: () => post<LogFileEntry[]>('/api/log/list', {}),
-    /** Open the logs folder in the OS file manager. */
-    openFolder: () => post<{ ok: boolean }>('/api/log/open-folder', {}),
     /** Delete every log file the list shows. */
     prune: () => post<{ removed: number }>('/api/log/prune', {}),
   },
@@ -594,7 +595,7 @@ export const api = {
    * styles, a feature is one that carries markdown, a component library
    * carries both — every one is a `use` specifier in the manifest's
    * `extensions:` list, and `list` returns them all in cascade order. Book
-   * setup's Look and Advanced tabs show that list with this one verb set; `use`
+   * setup's Look and Extensions tabs show that list with this one verb set; `use`
    * is the stable ref every mutating call takes.
    */
   extension: {
@@ -631,7 +632,9 @@ export const api = {
       post<ExtensionValidationResult[]>('/api/extension/validate', { projectDir }),
     /** The bundled extensions (markdown features and looks) an author can turn on with no install (static). */
     bundled: () => get<BundledExtensionInfo[]>('/api/extension/bundled'),
-    /** Each pinned npm extension against npm's latest, on demand (the Advanced tab, never project load). A network failure is data (`ok: false`), never a thrown error. */
+    /** Search npm for extensions (#246), on demand: the Extensions tab's search, never project load. A network/parse failure is data (`ok: false`), never a thrown error. */
+    search: (query: string) => post<ExtensionSearchResult>('/api/extension/search', { query }),
+    /** Each pinned npm extension against npm's latest, on demand (the Extensions tab, never project load). A network failure is data (`ok: false`), never a thrown error. */
     outdated: (projectDir: string) =>
       post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir }),
     /** A configured extension's stylesheets, concatenated (a bundled look's inlined css, or the entry's folder) — for a sample thumbnail and the design settings. */
@@ -889,14 +892,17 @@ export const api = {
      * Store + verify an API key for a provider. The token travels once, to the
      * host; the response is redacted and the key never comes back. An optional
      * `account` label stores a NAMED credential (a user can keep several per
-     * provider); empty stores the default.
+     * provider); empty stores the default. `projectDir` is null with no book
+     * (the Accounts page): the check then reads no manifest settings, so
+     * Shopify's check takes its store address as `shop` (not stored).
      */
-    connect: (projectDir: string, providerId: string, token: string, account?: string) =>
+    connect: (projectDir: string | null, providerId: string, token: string, account?: string, shop?: string) =>
       post<{ connected: boolean; providerId: string }>('/api/publish/connect', {
-        projectDir,
+        ...(projectDir ? { projectDir } : {}),
         providerId,
         token,
         ...(account ? { account } : {}),
+        ...(shop ? { shop } : {}),
       }),
 
     /** Forget a stored key for a provider (the default, or a named `account`). */
@@ -906,8 +912,13 @@ export const api = {
         ...(account ? { account } : {}),
       }),
 
-    /** Write NON-SECRET provider settings into the manifest's publish section. */
-    setConfig: (projectDir: string, providerId: string, values: Record<string, string>) =>
+    /**
+     * Save NON-SECRET provider settings. The host files each where it belongs:
+     * the team's (destinations ticked as `enabled: true`, targets, folders) in
+     * the manifest's publish section, only the person's own (their account, a
+     * folder outside the book) in their private settings. An empty string clears.
+     */
+    setConfig: (projectDir: string, providerId: string, values: Record<string, string | boolean>) =>
       post<Record<string, Record<string, unknown>>>('/api/publish/set-config', {
         projectDir,
         providerId,

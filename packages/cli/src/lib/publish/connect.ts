@@ -4,7 +4,9 @@
  * that keeps the credential store safe:
  *
  *   1. Resolve the request (manifest parse) BEFORE touching the store — a
- *      broken manifest can't leave a half-stored key.
+ *      broken manifest can't leave a half-stored key. With no book (a key added
+ *      from the desktop's Accounts page) there is no manifest to read: the
+ *      request carries no settings, except the Shopify store address passed in.
  *   2. Verify the PASTED token, not whatever `resolvePublishCredential` would
  *      pick: the trial deps clear the env (so an exported BUTLER_API_KEY
  *      can't shadow the paste) and overlay the candidate on a read-only view
@@ -16,7 +18,7 @@ import type { HostCredential, TokenStore } from "../remote-auth/token-store.ts";
 import { revokeGoogleCredential } from "./google-auth.ts";
 import { publishProviderFor } from "./registry.ts";
 import { resolvePublishRequest } from "./run-publish.ts";
-import { publishCredentialKey, type PublishDeps } from "./types.ts";
+import { publishCredentialKey, type PublishDeps, type PublishRequest } from "./types.ts";
 
 /** A TokenStore view that answers `key` with `candidate`, delegating the rest. */
 function overlayStore(
@@ -36,7 +38,8 @@ function overlayStore(
 }
 
 export interface ConnectPublishProviderOptions {
-  projectDir: string;
+  /** The book whose manifest settings the check reads; omit to connect with no book open. */
+  projectDir?: string;
   providerId: string;
   /** The pasted API key. NEVER log this. */
   token: string;
@@ -47,6 +50,12 @@ export interface ConnectPublishProviderOptions {
    */
   account?: string;
   manifestPath?: string;
+  /**
+   * With no `projectDir` only: Shopify's store address (`publish.shopify.shop`
+   * in a book's manifest), which its key check needs. Used for the check and
+   * never stored; ignored when a book supplies its own settings.
+   */
+  shop?: string;
 }
 
 /**
@@ -97,14 +106,27 @@ export async function connectPublishProvider(
     createdAt: Date.now(),
   };
 
-  const req = await resolvePublishRequest(
-    {
-      projectDir: options.projectDir,
-      providerId: info.id,
-      ...(options.manifestPath ? { manifestPath: options.manifestPath } : {}),
-    },
-    deps,
-  );
+  const shop = (options.shop ?? "").trim();
+  if (!options.projectDir && info.id === "shopify" && !shop) {
+    // Shopify's key can only be checked against a store; the manifest's wording
+    // ("publish.shopify.shop") would mean nothing to a writer with no book open.
+    throw new Error("Enter your Shopify store's address (like my-store.myshopify.com) to check the key.");
+  }
+  const req: PublishRequest = options.projectDir
+    ? await resolvePublishRequest(
+        {
+          projectDir: options.projectDir,
+          providerId: info.id,
+          ...(options.manifestPath ? { manifestPath: options.manifestPath } : {}),
+        },
+        deps,
+      )
+    : {
+        project: { projectDir: "", title: "", authors: [] },
+        config: shop ? { shop } : {},
+        artifact: { path: "", format: info.format },
+        deps,
+      };
   const trialDeps: PublishDeps = {
     ...deps,
     env: {}, // the pasted key must be the one verified — no env shadowing

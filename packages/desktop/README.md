@@ -290,8 +290,8 @@ Behavior:
   a code-signed app. Checks still run against GitHub Releases using the selected
   Stable/Beta/Alpha channel. The update banner opens that exact release so the
   user can download its DMG manually.
-- **Update channels:** Troubleshooting → Diagnostics → Updates offers Stable (default), Beta,
-  and Alpha. Channels are inclusive downward — Beta also receives stable
+- **Update channels:** The menu beside the Desktop version (Troubleshooting →
+  Diagnostics) offers Stable (default), Beta, and Alpha. Channels are inclusive downward — Beta also receives stable
   releases, Alpha receives everything. Release tags must use `-beta.N` /
   `-alpha.N` prerelease suffixes (enforced by the release workflow):
   electron-updater hardcodes alpha/beta as its known channels, and any other

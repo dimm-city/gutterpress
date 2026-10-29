@@ -125,7 +125,18 @@ export type ReadLayout = "single" | "spread";
 // Keys with no control in Settings (#442: previewBg, defaultZoom, the overlay
 // look) are still read; a power user can edit them in app-settings.json.
 
+export type WorkspaceRole = "reader" | "author";
+
 export interface AppSettings {
+  /**
+   * Reader or author (Settings → How you use Gutterpress). A reader only
+   * reads: the workspace stays in Read and the toolbar hides Edit/Read, Setup
+   * and Publish. Default reader — everyone starts with the simplest screen and
+   * opts into writing.
+   */
+  workspace: {
+    role: WorkspaceRole;
+  };
   editor: {
     /**
      * Mark every line with a Problems entry in the editor, plus the CSS lint
@@ -234,6 +245,9 @@ export interface AppSettings {
  * value instead of redeclaring it.
  */
 export const DEFAULT_SETTINGS: AppSettings = {
+  workspace: {
+    role: "reader",
+  },
   editor: {
     highlightProblems: true,
   },

@@ -262,7 +262,7 @@
           "type": "object",
           "description": "A folder on this computer — where the desktop's Publish builds the book before sending it anywhere else (default: `dist` inside the book)",
           "properties": {
-            "dir": { "type": "string", "description": "Output folder, relative to the book or absolute. Default: dist" },
+            "dir": { "type": "string", "description": "Output folder inside the book, relative to it (default: dist). The desktop app keeps a folder outside the book in the person's own settings, not here; an absolute path written here still works." },
             "format": { "type": "string", "enum": ["pdf", "html"], "description": "Which build to save (default: pdf)" }
           },
           "additionalProperties": true
@@ -271,6 +271,7 @@
           "type": "object",
           "description": "itch.io publishing (uploaded with butler)",
           "properties": {
+            "enabled": { "type": "boolean", "description": "Whether the desktop app's Publish view ticks this destination for the book. The team decides where the book is published, so this is shared; each person connects their own account." },
             "target": {
               "type": "string",
               "description": "itch.io project as user/game (the butler push target)",
@@ -284,7 +285,7 @@
             },
             "credential": {
               "type": "string",
-              "description": "Label of the saved credential to use when more than one is stored for this provider. Not a secret — just a reference into the host credential store. Empty or absent uses the default credential."
+              "description": "Label of the saved credential to use when more than one is stored for this provider. Not a secret — just a reference into the host credential store. Empty or absent uses the default credential. The desktop app keeps this choice in the person's own settings, not here; a value written here still applies to a book that has none (older books, the CLI)."
             }
           }
         },
@@ -292,6 +293,7 @@
           "type": "object",
           "description": "DriveThruRPG guided publishing (export package + open the publisher hub)",
           "properties": {
+            "enabled": { "type": "boolean", "description": "Whether the desktop app's Publish view ticks this destination for the book. The team decides where the book is published, so this is shared; each person connects their own account." },
             "productUrl": {
               "type": "string",
               "description": "Existing product page URL, when updating a published title"
@@ -301,12 +303,15 @@
         "kdp": {
           "type": "object",
           "description": "Amazon KDP guided publishing (export package + open kdp.amazon.com)",
-          "properties": {}
+          "properties": {
+            "enabled": { "type": "boolean", "description": "Whether the desktop app's Publish view ticks this destination for the book. The team decides where the book is published, so this is shared; each person connects their own account." }
+          }
         },
         "azure-swa": {
           "type": "object",
           "description": "Azure Static Web Apps deployment of the HTML export",
           "properties": {
+            "enabled": { "type": "boolean", "description": "Whether the desktop app's Publish view ticks this destination for the book. The team decides where the book is published, so this is shared; each person connects their own account." },
             "env": {
               "type": "string",
               "description": "Deploy environment",
@@ -314,7 +319,7 @@
             },
             "credential": {
               "type": "string",
-              "description": "Label of the saved credential to use when more than one is stored for this provider."
+              "description": "Label of the saved credential to use when more than one is stored for this provider. The desktop app keeps this choice in the person's own settings, not here; a value written here still applies to a book that has none (older books, the CLI)."
             }
           }
         },
@@ -322,6 +327,7 @@
           "type": "object",
           "description": "Shopify product publishing (Admin GraphQL API)",
           "properties": {
+            "enabled": { "type": "boolean", "description": "Whether the desktop app's Publish view ticks this destination for the book. The team decides where the book is published, so this is shared; each person connects their own account." },
             "shop": {
               "type": "string",
               "description": "Store domain, e.g. my-store.myshopify.com"
@@ -337,7 +343,7 @@
             },
             "credential": {
               "type": "string",
-              "description": "Label of the saved credential to use when more than one is stored for this provider."
+              "description": "Label of the saved credential to use when more than one is stored for this provider. The desktop app keeps this choice in the person's own settings, not here; a value written here still applies to a book that has none (older books, the CLI)."
             }
           }
         },
@@ -345,6 +351,7 @@
           "type": "object",
           "description": "Google Drive publishing (uploads the finished PDF or zipped HTML export to a Drive folder)",
           "properties": {
+            "enabled": { "type": "boolean", "description": "Whether the desktop app's Publish view ticks this destination for the book. The team decides where the book is published, so this is shared; each person connects their own account." },
             "folder": {
               "type": "string",
               "description": "Drive folder name to find-or-create at My Drive root. Ignored once folderId is recorded.",
@@ -356,7 +363,7 @@
             },
             "credential": {
               "type": "string",
-              "description": "Label of the saved credential to use when more than one Google account is connected. Not a secret — just a reference into the host credential store. Empty or absent uses the default credential."
+              "description": "Label of the saved credential to use when more than one Google account is connected. Not a secret — just a reference into the host credential store. Empty or absent uses the default credential. The desktop app keeps this choice in the person's own settings, not here; a value written here still applies to a book that has none (older books, the CLI)."
             },
             "format": {
               "type": "string",

@@ -2,10 +2,13 @@
  * PublishSectionController — the single owner of the Publish section's (#35)
  * provider-card state + logic.
  *
- * Centralises the provider cards, the per-provider settings/token/artifact
- * drafts, the busy/error flags, and the run results. Credentials go straight
- * to the host credential store via `connect` and only redacted status comes
- * back; the manifest holds non-secret settings. Runs are long
+ * Centralises the provider cards, the per-provider settings drafts, the
+ * busy/error flags, and the run results. Accounts are managed in one place, the
+ * Accounts page: the wizard shows PublishKeyForm (the same form and routes) to
+ * add or replace one, and this controller only records which saved account the
+ * book uses. It writes non-secret settings through `setConfig`; the host sorts
+ * each value into the manifest (shared) or this person's private settings (their
+ * account, Drive folder, an output folder outside the book). Runs are long
  * (butler/swa uploads) — one provider at a time (`publishBusyId`).
  *
  * Single-owner discipline mirrors `DesignSectionController`
@@ -14,8 +17,8 @@
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
  * (§8): the reactive `projectDir` accessor, the `api.publish.*` /
- * `api.dialog.*` / `api.shell.*` host calls, and the `onSaved` / `onConnected`
- * / `onPublished` callbacks (the panel wires these to toasts).
+ * `api.dialog.*` / `api.shell.*` host calls, and the `onSaved` / `onPublished`
+ * callbacks (the panel wires these to toasts).
  * `PublishProviderCard` / `PublishRunResult` are type-only imports — ZERO
  * `node:*` / lib value imports.
  */
@@ -24,8 +27,6 @@ import type {
   PublishProviderCard,
   PublishRunResult,
   PublishDestination,
-  GoogleConnectStartResult,
-  GoogleConnectResult,
 } from "#lib/platform/contract.ts";
 import type { PreflightRow } from "#lib/preflight.ts";
 
@@ -41,23 +42,8 @@ export interface PublishSectionDeps {
   setConfig: (
     projectDir: string,
     providerId: string,
-    values: Record<string, string>,
+    values: Record<string, string | boolean>,
   ) => Promise<unknown>;
-  connect: (
-    projectDir: string,
-    providerId: string,
-    token: string,
-    account?: string,
-  ) => Promise<{ connected: boolean; providerId: string }>;
-  disconnect: (providerId: string, account?: string) => Promise<unknown>;
-  /**
-   * #221 D10 — the Google Drive OAuth connect trio (mirrors the platform
-   * adapter's `connectGoogleStart`/`Wait`/`Cancel`, driven directly rather
-   * than through `api.publish.*` — see PublishWizard's oauth branch).
-   */
-  connectGoogleStart: (account?: string) => Promise<GoogleConnectStartResult>;
-  connectGoogleWait: () => Promise<GoogleConnectResult>;
-  connectGoogleCancel: () => Promise<{ ok: boolean }>;
   /** #221 — provider-neutral destination (folder) picker. */
   listDestinations: (projectDir: string, providerId: string) => Promise<PublishDestination[]>;
   createDestination: (
@@ -73,8 +59,6 @@ export interface PublishSectionDeps {
   openExternal: (url: string) => Promise<unknown>;
   /** Fired after Save settings succeeds (the panel wires this to a toast). */
   onSaved?: () => void;
-  /** Fired after Connect succeeds. */
-  onConnected?: () => void;
   /** Fired after a non-dry-run Publish succeeds; `guided` selects the copy. */
   onPublished?: (guided: boolean) => void;
 }
@@ -86,18 +70,6 @@ export class PublishSectionController {
   publishBusyId = $state<string | null>(null);
   publishResults = $state<Record<string, PublishRunResult>>({});
   publishConfigDrafts = $state<Record<string, Record<string, string>>>({});
-  publishTokenDrafts = $state<Record<string, string>>({});
-  // Account-label draft when ADDING a new named credential (the picker's
-  // "Add another account" flow). Empty stores/uses the default credential.
-  publishAccountDrafts = $state<Record<string, string>>({});
-
-  // ── OAuth connect (#221 D10, gdrive) ─────────────────────────────────────
-  // The auth URL the browser was (or should be) sent to, per provider — set
-  // while a connect is in flight so the UI can offer "open the sign-in page
-  // again"; cleared on success, failure, or cancel. `publishBusyId === id`
-  // doubles as "an oauth connect is in flight" (the SAME single-provider-busy
-  // lock every other publish intent already uses).
-  googleAuthUrls = $state<Record<string, string>>({});
 
   // ── Destinations picker (#221) — provider-neutral (gdrive: folders) ──────
   publishDestinations = $state<Record<string, PublishDestination[]>>({});
@@ -118,17 +90,6 @@ export class PublishSectionController {
   preflightError = $state<string | null>(null);
 
   private readonly deps: PublishSectionDeps;
-  /**
-   * Generation counter for `connectGoogleOAuth`. Cancelling an
-   * in-flight attempt clears `publishBusyId` right away, but that attempt's own
-   * await on `connectGoogleWait()` is still pending — its `catch`/`finally`
-   * settle LATE. Without this guard, a cancel immediately followed by a fresh
-   * connect lets the OLD attempt's late settlement stomp the NEW one (wrong
-   * `publishError`, `publishBusyId` nulled out from under the new attempt).
-   * Each `connectGoogleOAuth` call captures the post-increment value; only the
-   * MOST RECENT attempt's side effects are allowed to land.
-   */
-  private googleConnectGeneration = 0;
 
   constructor(deps: PublishSectionDeps) {
     this.deps = deps;
@@ -152,14 +113,6 @@ export class PublishSectionController {
       ...this.publishConfigDrafts,
       [providerId]: { ...this.publishConfigDrafts[providerId], [key]: value },
     };
-  };
-
-  setPublishTokenDraft = (providerId: string, value: string): void => {
-    this.publishTokenDrafts = { ...this.publishTokenDrafts, [providerId]: value };
-  };
-
-  setPublishAccountDraft = (providerId: string, value: string): void => {
-    this.publishAccountDrafts = { ...this.publishAccountDrafts, [providerId]: value };
   };
 
   /**
@@ -213,19 +166,55 @@ export class PublishSectionController {
 
   /**
    * Choose which format this book publishes to a multi-format provider
-   * (#221 — gdrive only), written immediately to
-   * `publish.<id>.format` the same way `selectCredential` writes the
-   * credential choice, so the wizard's other format-dependent UI (the
-   * folder picker step, the artifact picker) sees it right away.
+   * (#221 — gdrive only), written immediately to `publish.<id>.format` (a
+   * choice the whole team shares), so the wizard's other format-dependent UI
+   * (the folder picker step, the artifact picker) sees it right away.
    */
   selectFormat = (providerId: string, format: "pdf" | "html"): Promise<void> =>
     this.applyConfig(providerId, { format });
 
+  /** The destinations the team ticked for this book, as the cards report them (`publish.<id>.enabled` in the manifest). */
+  get tickedDestinations(): string[] {
+    return this.publishCards.filter((c) => c.config.enabled === "true").map((c) => c.id);
+  }
+
   /**
-   * Choose which SAVED credential this book uses for a provider (book-level
-   * selection, written to the manifest's `publish.<id>.credential`). An empty
-   * `account` clears it back to the default credential. Reused automatically —
-   * the account itself lives in the user-scoped store, so nothing is re-entered.
+   * Remember which destinations this book publishes to. Where a book is
+   * published is the team's decision, so each tick is saved in the manifest
+   * (`publish.<id>.enabled`) and a teammate who opens the book finds the same
+   * destinations ticked, needing only their own accounts. `chosen` maps a
+   * provider id to ticked or not; only the ones that differ from what the
+   * cards say are written, so nothing is rewritten when nothing changed.
+   * Resolves false (the reason is on `publishError`) when a write fails.
+   */
+  saveDestinations = async (chosen: Record<string, boolean>): Promise<boolean> => {
+    const projectDir = this.deps.projectDir();
+    if (!projectDir || this.publishBusyId) return false;
+    const ticked = this.tickedDestinations;
+    const changed = Object.entries(chosen).filter(([id, on]) => ticked.includes(id) !== on);
+    if (changed.length === 0) return true;
+    this.publishBusyId = "destinations";
+    this.publishError = null;
+    try {
+      for (const [id, on] of changed) await this.deps.setConfig(projectDir, id, { enabled: on ? true : "" });
+      await this.loadPublish();
+      return true;
+    } catch (e) {
+      this.publishError = e instanceof Error ? e.message : String(e);
+      return false;
+    } finally {
+      this.publishBusyId = null;
+    }
+  };
+
+  /**
+   * Choose which SAVED account this book publishes with. The choice is this
+   * person's own, so the host keeps it in their private settings for the book,
+   * never in the manifest a team shares. An empty `account` clears it back to
+   * the default account. Also what follows adding or replacing an account in
+   * the wizard: the account just saved is the one the book uses. Reused
+   * automatically — the account itself lives in the user-scoped store, so
+   * nothing is re-entered.
    */
   selectCredential = async (providerId: string, account: string): Promise<void> => {
     const projectDir = this.deps.projectDir();
@@ -236,9 +225,8 @@ export class PublishSectionController {
       await this.deps.setConfig(projectDir, providerId, { credential: account });
       await this.loadPublish();
       // Switching the saved account this book uses must refresh the
-      // destinations picker the same way connectPublish/connectGoogleOAuth do,
-      // or the PREVIOUS account's folder list keeps showing until the wizard
-      // step is re-entered.
+      // destinations picker, or the PREVIOUS account's folder list keeps
+      // showing until the wizard step is re-entered.
       await this.loadDestinationsIfPickerAvailable(providerId);
     } catch (e) {
       this.publishError = e instanceof Error ? e.message : String(e);
@@ -248,10 +236,10 @@ export class PublishSectionController {
   };
 
   /**
-   * Write pending settings drafts to the manifest — the one draft-flush
-   * implementation Save/Connect/Publish all share, so a fix to draft handling
-   * can't diverge between them. On failure the draft is KEPT (the author's
-   * typed values must survive the error) and the error propagates.
+   * Save pending settings drafts — the one draft-flush implementation
+   * Save/Publish share, so a fix to draft handling can't diverge between
+   * them. On failure the draft is KEPT (the author's typed values must
+   * survive the error) and the error propagates.
    */
   private async flushPublishDraft(providerId: string): Promise<void> {
     const projectDir = this.deps.projectDir();
@@ -279,43 +267,7 @@ export class PublishSectionController {
     }
   };
 
-  connectPublish = async (providerId: string): Promise<void> => {
-    const projectDir = this.deps.projectDir();
-    if (!projectDir || this.publishBusyId) return;
-    const token = (this.publishTokenDrafts[providerId] ?? "").trim();
-    if (!token) {
-      this.publishError = "Paste an API key first.";
-      return;
-    }
-    const account = (this.publishAccountDrafts[providerId] ?? "").trim();
-    this.publishBusyId = providerId;
-    this.publishError = null;
-    try {
-      // Unsaved settings (e.g. the Shopify store domain) are needed to verify
-      // the key — save them first.
-      await this.flushPublishDraft(providerId);
-      await this.deps.connect(projectDir, providerId, token, account || undefined);
-      this.publishTokenDrafts = { ...this.publishTokenDrafts, [providerId]: "" };
-      this.publishAccountDrafts = { ...this.publishAccountDrafts, [providerId]: "" };
-      // A NAMED account just added → make this book use it (book-level
-      // selection). The default (unnamed) credential needs no manifest write.
-      if (account) {
-        await this.deps.setConfig(projectDir, providerId, { credential: account });
-      }
-      await this.loadPublish();
-      await this.loadDestinationsIfPickerAvailable(providerId);
-      this.deps.onConnected?.();
-    } catch (e) {
-      this.publishError = e instanceof Error ? e.message : String(e);
-      // Settings may have been written before the failure — resync the cards
-      // so the panel shows what's actually on disk.
-      await this.loadPublish();
-    } finally {
-      this.publishBusyId = null;
-    }
-  };
-
-  /** After a successful connect, populate the folder picker immediately
+  /** After the account changes, populate the folder picker immediately
    *  (#221) so the wizard doesn't need a manual step-revisit to show it —
    *  provider-neutral: a no-op for any provider without `destinations`. */
   private async loadDestinationsIfPickerAvailable(providerId: string): Promise<void> {
@@ -323,94 +275,9 @@ export class PublishSectionController {
     if (card?.connected && card.destinations) await this.loadDestinations(providerId);
   }
 
-  disconnectPublish = async (providerId: string, account?: string): Promise<void> => {
-    if (this.publishBusyId) return;
-    this.publishBusyId = providerId;
-    this.publishError = null;
-    try {
-      await this.deps.disconnect(providerId, account);
-      await this.loadPublish();
-    } catch (e) {
-      this.publishError = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.publishBusyId = null;
-    }
-  };
-
-  /**
-   * #221 D10 — connect an oauth provider (gdrive) via the browser consent
-   * flow instead of a pasted key. Reuses the SAME account draft the
-   * paste-a-key "Add another account" flow uses (`publishAccountDrafts`), so
-   * one input serves both connect kinds. `publishBusyId` is set for the
-   * WHOLE attempt (Start through Wait) so the wizard shows one continuous
-   * busy state, matching `connectPublish`'s existing lock semantics.
-   */
-  connectGoogleOAuth = async (providerId: string): Promise<void> => {
-    const projectDir = this.deps.projectDir();
-    if (!projectDir || this.publishBusyId) return;
-    const account = (this.publishAccountDrafts[providerId] ?? "").trim();
-    // This attempt owns `generation` for its whole lifetime.
-    // Cancel clears `publishBusyId` right away while this same await chain is
-    // still pending — if a NEW connect starts before this one settles, every
-    // side effect below (including the catch/finally) must become a no-op
-    // rather than stomp the newer attempt's state.
-    const generation = ++this.googleConnectGeneration;
-    const isCurrent = () => generation === this.googleConnectGeneration;
-    this.publishBusyId = providerId;
-    this.publishError = null;
-    try {
-      // Unsaved settings (e.g. a chosen folder) are needed before the first
-      // publish, but connecting itself has none to flush yet — kept for
-      // symmetry with connectPublish in case a future oauth provider adds one.
-      await this.flushPublishDraft(providerId);
-      const { authUrl } = await this.deps.connectGoogleStart(account || undefined);
-      if (!isCurrent()) return;
-      this.googleAuthUrls = { ...this.googleAuthUrls, [providerId]: authUrl };
-      await this.deps.connectGoogleWait();
-      if (!isCurrent()) return;
-      this.publishAccountDrafts = { ...this.publishAccountDrafts, [providerId]: "" };
-      // A NAMED account just connected → make this book use it (book-level
-      // selection), same as the paste-a-key flow.
-      if (account) {
-        await this.deps.setConfig(projectDir, providerId, { credential: account });
-      }
-      await this.loadPublish();
-      await this.loadDestinationsIfPickerAvailable(providerId);
-      this.deps.onConnected?.();
-    } catch (e) {
-      if (!isCurrent()) return; // a newer attempt has since taken over — stay quiet
-      this.publishError = e instanceof Error ? e.message : String(e);
-    } finally {
-      if (isCurrent()) {
-        this.googleAuthUrls = { ...this.googleAuthUrls, [providerId]: "" };
-        this.publishBusyId = null;
-      }
-    }
-  };
-
-  /** Cancel an in-flight oauth connect (the dialog's Cancel button). */
-  cancelGoogleOAuth = async (providerId: string): Promise<void> => {
-    try {
-      await this.deps.connectGoogleCancel();
-    } finally {
-      this.googleAuthUrls = { ...this.googleAuthUrls, [providerId]: "" };
-      if (this.publishBusyId === providerId) this.publishBusyId = null;
-    }
-  };
-
-  /** "Open the sign-in page again" — the browser didn't auto-open, or the
-   *  author closed the tab. */
-  reopenGoogleAuthUrl = (providerId: string): void => {
-    const url = this.googleAuthUrls[providerId];
-    if (!url) return;
-    void this.deps.openExternal(url).catch((e) => {
-      this.publishError = e instanceof Error ? e.message : String(e);
-    });
-  };
-
   // ── Destinations picker (#221) ───────────────────────────────────────────
   /** Load the folder list for a provider's picker (called on entering setup
-   *  once connected, and after a successful connect). */
+   *  once connected, and after the account changes). */
   loadDestinations = async (providerId: string): Promise<void> => {
     const projectDir = this.deps.projectDir();
     if (!projectDir || this.destinationsBusyId[providerId]) return;
@@ -432,7 +299,8 @@ export class PublishSectionController {
   };
 
   /** Pick an existing destination — writes `{folderId, folder}` via the same
-   *  non-secret settings path the free-text `folder` config field uses. */
+   *  settings path the free-text `folder` config field uses (a folder in this
+   *  person's own Drive, so the host keeps it private). */
   selectDestination = (providerId: string, destination: PublishDestination): Promise<void> =>
     this.applyConfig(providerId, { folderId: destination.id, folder: destination.title });
 

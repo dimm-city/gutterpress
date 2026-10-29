@@ -70,14 +70,6 @@
     }
   }
 
-  async function openFolder() {
-    try {
-      await api.log.openFolder();
-    } catch {
-      errorMessage = "The logs folder couldn't be opened.";
-    }
-  }
-
   async function clearLogs() {
     const { state, confirmed } = requestInlineConfirm(clearConfirm, "clear");
     clearConfirm = state;
@@ -134,9 +126,6 @@
       title="Reload the log list"
     >
       <Icon name="refresh-cw" size={14} /> Refresh
-    </button>
-    <button class="toolbar-btn" onclick={() => void openFolder()} title="Open the logs folder">
-      <Icon name="folder-open" size={14} /> Open folder
     </button>
     <button
       class="toolbar-btn"

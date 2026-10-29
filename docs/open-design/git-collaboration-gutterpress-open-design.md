@@ -172,7 +172,7 @@ gutterpress ext add markdown-it-emoji@3.0.0 ./books/core-book --export full
 
 Gutterpress resolves and integrity-checks the package graph, vendors exact runtime dependencies beneath `books/core-book/extensions/npm/`, and writes the entry back pinned (`markdown-it-highlightjs@4.3.0`). Commit the manifest change (the pin); the managed tree is gitignored and is downloaded again from the pin on a fresh clone. Do not replace this with a shared `node_modules`, a package-manager install, or a hand-copied vendor directory.
 
-`gutterpress ext list|remove|enable|disable` cover the rest of the list from the terminal; the desktop's Book setup › Advanced tab is the same list.
+`gutterpress ext list|remove|enable|disable` cover the rest of the list from the terminal; the desktop's Book setup › Extensions tab is the same list.
 
 ## Share the Open Design plugin through Git
 

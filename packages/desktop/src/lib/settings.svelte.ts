@@ -108,12 +108,6 @@ function set(patch: DeepPartial<AppSettings>): void {
   api.app.setSettings(patch as Record<string, unknown>).catch(() => {});
 }
 
-/** Reset one section to its defaults and persist. */
-function resetSection(section: keyof AppSettings): void {
-  const defaults = structuredClone(DEFAULT_SETTINGS[section]);
-  set({ [section]: defaults } as DeepPartial<AppSettings>);
-}
-
 /**
  * The settings store handle. `current` is the reactive `AppSettings` proxy;
  * read `useSettings().current.appearance.previewBg` etc.
@@ -127,7 +121,6 @@ export function useSettings() {
       return state.loaded;
     },
     set,
-    resetSection,
   };
 }
 

@@ -53,9 +53,9 @@ interface BookExtensions {
   extensions: ResolvedExtensionConfig[];
 }
 
-/** The two manifest keys core reads from a `publish.<id>` section; a plugin
+/** The manifest keys core reads from a `publish.<id>` section; a plugin
  *  gets the rest. */
-const RESERVED_SETTINGS = new Set(["format", "credential"]);
+const RESERVED_SETTINGS = new Set(["format", "credential", "enabled"]);
 
 const isBuiltIn = (id: string) => listPublishProviders().some((p) => p.id === id);
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));

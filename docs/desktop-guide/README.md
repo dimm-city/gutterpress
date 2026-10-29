@@ -9,6 +9,10 @@ The Gutterpress app is an editor, a live preview of your book's printed pages, a
 turn it into a PDF and publish it, in one window. It is self-contained: there is nothing else to
 install. These guides walk through doing things in it, one task per page.
 
+**Change one setting first.** A new install starts in **Reader** mode, which shows just the pages.
+To write and set up a book, open Settings (the gear at the right of the status bar, or Ctrl+,), and
+under **How you use Gutterpress** choose **Author**. Creating a book does it for you.
+
 ## How-to guides
 
 1. [Install the app and open it for the first time](01-install.md)

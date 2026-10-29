@@ -38,6 +38,7 @@
   import FocusBar from "#lib/components/FocusBar.svelte";
   import ProjectSettingsView from "#lib/components/ProjectSettingsView.svelte";
   import SettingsView from "#lib/components/SettingsView.svelte";
+  import AccountsView from "#lib/components/AccountsView.svelte";
   import EditorToolbar from "#lib/components/EditorToolbar.svelte";
   import type { ToolbarAction, ToolbarPayload } from "#lib/components/EditorToolbar.svelte";
   import SnippetPicker from "#lib/components/SnippetPicker.svelte";
@@ -225,20 +226,12 @@
     listProviders: (dir) => api.publish.listProviders(dir),
     preflight: (dir, providerIds) => api.publish.preflight(dir, providerIds),
     setConfig: (dir, providerId, values) => api.publish.setConfig(dir, providerId, values),
-    connect: (dir, providerId, token, account) => api.publish.connect(dir, providerId, token, account),
-    disconnect: (providerId, account) => api.publish.disconnect(providerId, account),
-    // #221 — oauth connect trio goes through getPlatform() (the narrow
-    // adapter seam for interactive OAuth connects), not api.publish.*.
-    connectGoogleStart: (account) => getPlatform().connectGoogleStart(account),
-    connectGoogleWait: () => getPlatform().connectGoogleWait(),
-    connectGoogleCancel: () => getPlatform().connectGoogleCancel(),
     // #221 — provider-neutral destinations picker.
     listDestinations: (dir, providerId) => api.publish.listDestinations(dir, providerId),
     createDestination: (dir, providerId, name) => api.publish.createDestination(dir, providerId, name),
     run: (dir, providerId, options) => api.publish.run(dir, providerId, options),
     openExternal: (url) => api.shell.openExternal(url),
     onSaved: () => toast?.success?.("Publish settings saved."),
-    onConnected: () => toast?.success?.("Connected — the key is stored securely on this computer."),
     onPublished: (guided) =>
       toast?.success?.(guided ? "Upload package ready — follow the checklist to finish." : "Published!"),
   });
@@ -371,13 +364,10 @@
   }
   /**
    * Settings: its own sheet (AppView), the same over a book and over the start
-   * screen; closing it returns the author exactly where they were. `focus`
-   * opens it with the cursor in Name (the missing name & email banner).
+   * screen; closing it returns the author exactly where they were.
    */
   let settingsOpen = $state(false);
-  let settingsFocus = $state<"name" | undefined>(undefined);
-  function openSettings(focus?: "name"): void {
-    settingsFocus = focus;
+  function openSettings(): void {
     settingsOpen = true;
   }
   function toggleSettings(): void {
@@ -386,13 +376,27 @@
   }
   function closeSettings(): void {
     settingsOpen = false;
+    if (landingVisible) landingRef?.focusLayer();
+  }
+  /**
+   * Accounts: its own sheet too, opened from the start screen, Settings, Book
+   * setup → Backup and the missing name & email banner (which opens it with
+   * the cursor in Name), over whichever opened it; closing it returns there.
+   */
+  let accountsOpen = $state(false);
+  let accountsFocus = $state<"name" | undefined>(undefined);
+  function closeAccounts(): void {
+    accountsOpen = false;
+    accountsFocus = undefined;
     // A GitHub connect or a removed key may have changed whether the open book can back up.
     onConnectDialogClosed();
+    // ...and which accounts the Publish wizard underneath can use.
+    if (publishOpen) void publishController.loadPublish();
   }
   /**
    * No author name/email yet: what a project with version history keeps would
    * be attributed to a placeholder, so the workspace carries a persistent notice
-   * with a one-click route to Settings, cursor in Name. It clears itself the moment
+   * with a one-click route to Accounts, cursor in Name. It clears itself the moment
    * both fields are filled.
    *
    * It waits until that is about to matter: the open project HAS version
@@ -1046,7 +1050,13 @@
   // (before the deriveds that read it) so it is initialised ahead of them.
   // A local $state that `setMode` writes through to settings and `modeSink`
   // below reads back on load.
-  let mode = $state<WorkspaceMode>(settings.current.preview.mode);
+  // Reader or author (Settings → How you use Gutterpress). A reader only
+  // reads: the workspace stays in Read, and the toolbar hides Edit/Read, Setup
+  // and Publish. The author's saved Edit/Read choice is kept untouched underneath.
+  let readerMode = $derived(settings.current.workspace.role === "reader");
+  const effectiveMode = (s: typeof settings.current): WorkspaceMode =>
+    s.workspace.role === "reader" ? "viewer" : s.preview.mode;
+  let mode = $state<WorkspaceMode>(effectiveMode(settings.current));
   // Focus: a SESSION-ONLY toggle layered on top of Edit or Read (see
   // focus-mode.ts). It hides the chrome and nothing else — it never touches
   // `mode` or the persisted left-panel setting, so leaving it restores exactly
@@ -1103,8 +1113,8 @@
   let editorView = $state<"editor" | "activity">("editor");
   let projectSettingsOpen = $state(false);
 
-  /** One button → the whole Book setup view (book, look, backup,
-   *  advanced), covering the workspace. */
+  /** One button → the whole Book setup view (book, look, extensions,
+   *  backup, advanced), covering the workspace. */
   function openProjectConfig(): void {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
     projectSettingsTab = "book";
@@ -1113,16 +1123,16 @@
 
   // Book setup opens on Book; the save-status dialog and Settings > Saving
   // send writers to its Backup tab to see how an online backup gets set up.
-  let projectSettingsTab = $state<"book" | "backup" | "advanced">("book");
+  let projectSettingsTab = $state<"book" | "extensions" | "backup">("book");
   function openBookConnections(): void {
     openProjectConfig();
     projectSettingsTab = "backup";
   }
-  // A failed extension download's toast sends writers to Advanced, where the
+  // A failed extension download's toast sends writers to Extensions, where the
   // row's Install button retries it.
   function openBookExtensions(): void {
     openProjectConfig();
-    projectSettingsTab = "advanced";
+    projectSettingsTab = "extensions";
   }
 
   function closeProjectSettings(): void {
@@ -1131,7 +1141,7 @@
 
   /**
    * Open one of the book's files (absolute path) in the shared editor and
-   * reveal it: Book setup's Advanced › Files (the manifest, the stylesheet).
+   * reveal it: Book setup's Advanced (Open manifest.yaml, a stylesheet's Open).
    * Flips `editorView` back to "editor" so the author lands on the file.
    */
   async function openFileInEditor(absPath: string): Promise<void> {
@@ -1495,8 +1505,9 @@
   // independent async starts: when settings land LAST, the project-open path
   // already ran `ensureEditorFile()` while the workspace still looked like
   // viewer mode, and nothing else would ever load the editor component.
-  // Push the derived view mode to the viewer the way setMode does, or the
-  // pages stay in the old column count until the next full render.
+  // A role change (Settings → How you use Gutterpress) arrives here too, and
+  // it changes the derived view mode: push it to the viewer the way setMode
+  // does, or the pages stay in the old column count until the next full render.
   const modeSink = settingsChangeGuard<WorkspaceMode>((m) => {
     mode = m;
     zoomView.applyViewMode(viewMode);
@@ -1530,7 +1541,7 @@
     onSettingsChange((s) => {
       previewBgSink(s.appearance.previewBg);
       splitRatioSink(s.preview.splitRatio);
-      modeSink(s.preview.mode);
+      modeSink(effectiveMode(s));
       autoSaveSink(s.versionHistory.autoSave);
       readLayoutSink(s.preview.readLayout);
       marginOverlaySink(
@@ -1800,6 +1811,7 @@
    * already has a file; go-to-source places its own caret).
    */
   function openEditorPane(opts: { focus?: boolean; ensureFile?: boolean } = {}) {
+    if (readerMode) return;
     const { focus = true, ensureFile = true } = opts;
     if (mode === "viewer") setMode("editor");
     loadEditorModule();
@@ -2129,7 +2141,7 @@
       if (event.type === "ready") {
         initialReplayComplete = true;
         // Settings first: whether the editor opens with the book depends on
-        // the saved Edit/Read choice, not the in-memory default.
+        // the saved reader/author choice, not the in-memory default.
         if (!initialFileLaunchSeen) void _loadSettings().then(() => startup.run());
         return;
       }
@@ -2448,7 +2460,7 @@
       // The start screen and Settings own the rest of the keyboard while they
       // are up (their own Esc handling); workspace shortcuts must not act on
       // the inert UI behind them.
-      if (landingVisible || settingsOpen) return;
+      if (landingVisible || settingsOpen || accountsOpen) return;
       // Esc leaves Focus, but ONLY when nothing else wants the key: an open
       // dialog/menu/popover, the find bar, or a handler that already consumed
       // it (editor, context menu) keeps Esc. An Esc pressed inside the preview
@@ -2503,8 +2515,8 @@
       // Only active when a preview URL is loaded.
       if (!lifecycle.previewUrl) return;
       if (e.defaultPrevented) return;
-      // Never page/zoom the preview from behind the start screen or Settings.
-      if (landingVisible || settingsOpen) return;
+      // Never page/zoom the preview from behind the start screen, Settings or Accounts.
+      if (landingVisible || settingsOpen || accountsOpen) return;
       // Don't intercept when focus is in a form control or the CodeMirror
       // editor (#38) — preview-nav keys (arrows, Home/End, +/-/=, f) must
       // never hijack editing. Shared guard: #lib/a11y isEditableTarget.
@@ -2780,6 +2792,7 @@
    */
   function setMode(next: WorkspaceMode): void {
     if (next === mode) return;
+    if (next === "editor" && readerMode) return;
     settings.set({ preview: { mode: next } });
     mode = next;
     zoomView.applyViewMode(viewMode);
@@ -3022,7 +3035,7 @@
 <!-- inert while the start screen or Book setup is up: the workspace keeps
       rendering (a stylesheet written from Book setup re-renders the preview
       live) but never accepts interaction underneath the layer. -->
-<div class="app-root" inert={landingVisible || settingsOpen || projectSettingsOpen || publishOpen} use:activity.track={activityStages}>
+<div class="app-root" inert={landingVisible || settingsOpen || accountsOpen || projectSettingsOpen || publishOpen} use:activity.track={activityStages}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}
@@ -3052,7 +3065,7 @@
     <span class="identity-banner-msg">
       Add your name and email so the changes you save are credited to you.
     </span>
-    <button class="identity-action" onclick={() => openSettings("name")}>
+    <button class="identity-action" onclick={() => { accountsFocus = "name"; accountsOpen = true; }}>
       Add your name &amp; email
     </button>
     <button class="identity-dismiss" onclick={() => (identityNoticeDismissed = true)}>
@@ -3065,6 +3078,7 @@
   {#if inFocus}
     <FocusBar
       view={focusView}
+      {readerMode}
       onSelectView={(v) => { contextMenu.close(); selectFocusView(v); }}
       onExit={() => setFocus(false, true)}
       {pageNav}
@@ -3100,6 +3114,7 @@
     {publishHints}
     publishWarning={lifecycle.saveWarning}
     showProjectSettings={toolbarProjectOpen}
+    {readerMode}
     onOpenProjectSettings={openProjectConfig}
     {focus}
     onToggleFocus={() => setFocus(!focus)}
@@ -3112,6 +3127,7 @@
       bind:open={leftPanelOpen}
       bind:width={leftPanelWidth}
       bind:activeTab={leftPanelTab}
+      {readerMode}
       projectDir={lifecycle.currentDir}
       projectDisplayName={lifecycle.currentFolderDisplayName}
       projectCapabilities={projectSession.projectCapabilities}
@@ -3571,7 +3587,7 @@
   onCheckForUpdates={() => updateController.check()}
   onDismiss={() => dismissLanding()}
   onOpenSettings={() => openSettings()}
-  onCloseBook={() => lifecycle.stopPreview()}
+  onOpenAccounts={() => (accountsOpen = true)}
 />
 {#if projectSettingsOpen}
   <!-- Book setup (manifest), in the shared AppView layer. Mounted fresh per
@@ -3595,10 +3611,16 @@
       const last = syncController.lastManual;
       return last && last.dir === lifecycle.currentDir ? { state: last.state, lastSyncAt: last.at } : null;
     }}
+    onRepair={() => syncController.handleRepair()}
+    onCloseBook={() => lifecycle.stopPreview()}
+    onOpenAccounts={() => (accountsOpen = true)}
   />
 {/if}
 {#if settingsOpen}
-  <SettingsView onClose={closeSettings} focus={settingsFocus} />
+  <SettingsView onClose={closeSettings} onOpenAccounts={() => (accountsOpen = true)} />
+{/if}
+{#if accountsOpen}
+  <AccountsView onClose={closeAccounts} focus={accountsFocus} />
 {/if}
 
 {#if openBookOpen}
@@ -3629,6 +3651,7 @@
     onShowInFolder={(path) => void api.shell.showInFolder(path).catch(() => {})}
     triggerEl={publishBtnEl}
     onClose={() => (publishOpen = false)}
+    onManageAccounts={() => (accountsOpen = true)}
     onNavigate={(entry) => {
       // A preflight "Go to" — close the wizard, then reveal the finding
       // in the editor via the shared Problems-panel navigation affordance.
@@ -3641,6 +3664,9 @@
   bind:this={newProjectWizardRef}
   onCreated={(projectDir) => {
     invalidateDiscoveredProjects(); // the new book must show up in lists now
+    // Creating a book is authoring: a reader who creates one becomes an
+    // author, so the new book opens with Edit, Setup and Publish in reach.
+    if (settings.current.workspace.role === "reader") settings.set({ workspace: { role: "author" } });
     return openProjectPath(projectDir);
   }}
   onClosed={() => {

@@ -1,11 +1,12 @@
 <script lang="ts">
   /**
-   * GitHubConnect — the one "Connect GitHub…" control (Settings → Accounts,
-   * and Book setup → Backup). It runs GitHub's device flow in place: the
+   * GitHubConnect — the one "Connect GitHub…" control (Accounts, where a
+   * connected account's is "Reconnect…", and Book setup → Backup). It runs
+   * GitHub's device flow in place: the
    * browser opens, the code to enter is shown with Copy code, Open GitHub
    * again (for a page closed by mistake) and Cancel, and
-   * `onConnected` fires once the credential is stored. The Open-from-GitHub
-   * dialog keeps its own steps.
+   * `onConnected` fires once the credential is stored (a reconnect's replaces
+   * the saved one). The Open-from-GitHub dialog keeps its own steps.
    *
    * PWA-clean (§8): api.* routes + getPlatform() only.
    */
@@ -17,13 +18,15 @@
 
   let {
     primary = false,
+    label = "Connect GitHub…",
     onConnected,
     children,
   }: {
-    /** The button is the screen's next step (Backup), not one row among others (Settings). */
+    /** The button is the screen's next step (Backup), not one row among others (Accounts). */
     primary?: boolean;
+    label?: string;
     onConnected?: () => void;
-    /** What sits before the button on its row (Settings: the name and status). */
+    /** What sits before the button on its row (Accounts: the name, status and the row's other buttons). */
     children?: Snippet;
   } = $props();
 
@@ -89,7 +92,7 @@
   <div class="gh-row">
     {@render children?.()}
     <button bind:this={connectBtn} class="app-btn {primary ? 'app-btn-primary' : 'app-btn-ghost'}" onclick={connect} disabled={busy}>
-      {busy ? "Waiting for GitHub…" : "Connect GitHub…"}
+      {busy ? "Waiting for GitHub…" : label}
     </button>
   </div>
   {#if code}

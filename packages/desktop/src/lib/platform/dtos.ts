@@ -13,7 +13,7 @@
  * imports from `./contract` (that would create a cycle; `contract.ts` is the
  * one that imports FROM this file, not the reverse).
  */
-import type { ProjectSource, ProjectCapabilities } from "gutterpress";
+import type { ProjectSource, ProjectCapabilities, NpmExtensionMatch } from "gutterpress";
 
 // ── Unsaved-changes / recovery types (#44) ────────────────────────────────────
 //
@@ -158,7 +158,7 @@ export interface ProjectExtensionEntry {
   author?: string;
   /** Preview image path relative to the extension folder, when declared. */
   preview?: string | null;
-  /** What it declares — the Advanced tab names each kind in its row caption. */
+  /** What it declares — the Extensions tab names each kind in its row caption. */
   carries: ExtensionCarries;
   /** Absolute folder its metadata was read from. Absent for a bundled name,
    *  a bare JS file, an uninstalled npm entry, or a missing path. */
@@ -201,6 +201,21 @@ export interface ExtensionImportResult {
   warnings: ExtensionImportWarning[];
 }
 
+// ── Extension search (#246) — npm ────────────────────────────────────────────
+// One npm package the registry returned for the `gutterpress` /
+// `markdown-it-plugin` keywords, re-exported (not re-declared) so a
+// search-list consumer doesn't need a second import.
+export type { NpmExtensionMatch };
+
+/**
+ * Result of searching npm. A fetch/parse failure is DATA (`ok: false`), never
+ * a thrown error or an HTTP 500 — the search route always resolves, and the
+ * Extensions tab shows `message` as one quiet line under the search box.
+ */
+export type ExtensionSearchResult =
+  | { ok: true; matches: NpmExtensionMatch[]; total: number }
+  | { ok: false; message: string };
+
 // ── Extension updates — npm ──────────────────────────────────────────────────
 // Mirrors the lib's `ExtensionUpdateCheck` (packages/cli/src/lib/
 // extension-manager.ts) — defined locally so the SPA never value-imports the
@@ -219,7 +234,7 @@ export interface ExtensionUpdateCheck {
 
 /**
  * Result of checking npm for updates. A fetch failure is DATA (`ok: false`),
- * never a thrown error or an HTTP 500: the Advanced tab shows one quiet line
+ * never a thrown error or an HTTP 500: the Extensions tab shows one quiet line
  * and the list itself is never blocked by the network.
  */
 export type ExtensionUpdatesResult =

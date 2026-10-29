@@ -97,8 +97,9 @@ gutterpress/
 ├── Welcome / start screen                     SHIPPED  (WelcomeLanding: Books / Help /
 │                                                        Troubleshooting tabs — continue card +
 │                                                        recents/favorites/discovered via
-│                                                        ProjectsListBody, and in-app help; a
-│                                                        Settings button in the header)
+│                                                        ProjectsListBody, and in-app help;
+│                                                        Accounts and Settings buttons in the
+│                                                        header)
 ├── New project wizard / templates             SHIPPED  (NewProjectWizard, #25; templates from the
 │                                                        shared lib scaffolding — see Onboarding)
 ├── Open dialog (recents/favorites, URLs)      SHIPPED  (#10, #27)
@@ -117,49 +118,89 @@ gutterpress/
 ├── Publish workflow                           SHIPPED  (PublishWizard + Connections, #35; see §6 for
 │                                                        proposed deltas: preflight checklist, history)
 ├── Book setup                                 SHIPPED  (ProjectSettingsView, the toolbar's Setup
-│   │                                                    button; title "Book setup"; tabs Book /
-│   │                                                    Look / Backup, Advanced set apart at the
-│   │                                                    right; one Saving…/Saved in the header;
-│   │                                                    every tab saves as you go; #442)
+│   │                                                    button, hidden for a Reader; title
+│   │                                                    "Book setup"; tabs Book / Look /
+│   │                                                    Extensions / Backup, Advanced set apart
+│   │                                                    at the right; one Saving…/Saved in the
+│   │                                                    header; every tab saves as you go; #442)
 │   ├── Book (id `book`)                       SHIPPED  (DetailsSection: title, authors, page size,
 │   │                                                    margins, print checks, then chapters by
 │   │                                                    title with "Not in the book" below, then
 │   │                                                    Save as template)
 │   ├── Look (id `look`)                       SHIPPED  (LookSection: Choose a look (a one-choice
 │   │                                                    gallery), Adjust the look (six brand
-│   │                                                    settings beside a live sample), Extras
-│   │                                                    (the built-in features as checkboxes))
+│   │                                                    settings beside a live sample))
+│   ├── Extensions (id `extensions`)           SHIPPED  (ExtensionsSection: Your extensions (the
+│   │                                                    manifest's ordered list: checkbox, move,
+│   │                                                    Remove), then Add an extension: the
+│   │                                                    built-in extras the book does not list,
+│   │                                                    each with what to type, an npm search,
+│   │                                                    then exact-name, folder, .zip/.css and
+│   │                                                    web-address adds)
 │   ├── Backup (id `backup`)                   SHIPPED  (ProjectConnectionsSection: one sentence for
 │   │                                                    the book's situation and at most one
 │   │                                                    primary action; GitHub or the book's own
-│   │                                                    server connect in place; the copy switcher)
-│   └── Advanced (id `advanced`)               SHIPPED  (the ONE advanced path: Open manifest.yaml /
-│                                                        the stylesheet, the ordered extensions
-│                                                        list (ExtensionsSection) with npm, folder,
-│                                                        .zip/.css and web-address adds, and every
-│                                                        design setting (DesignSection))
+│   │                                                    server connect in place; the copy switcher;
+│   │                                                    once set up, Test connection (this book's
+│   │                                                    repository), Repair online backup and
+│   │                                                    Start over from the online copy)
+│   └── Advanced (id `advanced`)               SHIPPED  (the ONE advanced path: Open manifest.yaml,
+│                                                        the Stylesheets list (StylesSection: the
+│                                                        manifest's `styles:` in order, each with
+│                                                        move, Open and Remove, and the book's other
+│                                                        .css files to add), and every design
+│                                                        setting (DesignSection))
 ├── Project source / version history / GitHub  SHIPPED  (#12–#16, the Node-native git layer; AdvancedSetupDialog,
 │                                                        GitHubDialog, sync status)
 ├── Media panel                                SHIPPED  (MediaPanel, #47)
 ├── Crash recovery                             SHIPPED  (RecoveryOverlay / CrashRecoveryDialog)
 ├── Settings                                   SHIPPED  (SettingsView: one page in its own sheet,
-│                                                        no tabs — Appearance, Saving, Your name
-│                                                        and email, Accounts; opened by the
-│                                                        status-bar gear, Ctrl+, and the start
-│                                                        screen's Settings button; it never reads
-│                                                        the open book, so it is the same
-│                                                        everywhere; #442)
+│                                                        no tabs — How you use Gutterpress
+│                                                        (Reader or Author), Appearance, Saving,
+│                                                        and Accounts… (opens Accounts);
+│                                                        opened by the status-bar gear, Ctrl+, and
+│                                                        the start screen's Settings button; it
+│                                                        never reads the open book, so it is the
+│                                                        same everywhere; #442)
+├── Accounts                                   SHIPPED  (AccountsView: one page in its own sheet, like
+│                                                        Settings — the one place to manage every
+│                                                        connection, saved on this computer and
+│                                                        used by every book. Groups, each listing
+│                                                        what is saved with one Add button that
+│                                                        opens a compact inline form: Your name
+│                                                        and email (moved from Settings; same
+│                                                        keys, saved on change); GitHub (Connect,
+│                                                        or Test connection / Reconnect… /
+│                                                        Disconnect); Other Git servers (Add,
+│                                                        Edit, Remove — host, optional username,
+│                                                        token, checked with the server first);
+│                                                        Publishing (a key for each provider that
+│                                                        takes one, with an optional account
+│                                                        name, and Google Drive's sign-in: Add,
+│                                                        Edit, Remove). Edit replaces the stored
+│                                                        secret; it is never shown. Opened by the
+│                                                        start screen's Accounts button, Settings
+│                                                        and Book setup → Backup, and by the
+│                                                        missing name & email notice with the
+│                                                        cursor in Name, over whichever opened it)
 ├── Visual layout editor                       PROPOSED (#37 — milestone placeholder; sub-issues first)
 └── AI Assistant                               PROPOSED (#36)
 ```
 
 Document theming (looks, design tokens, stylesheets) and features (plugins)
-live in **Book setup** — the Look tab chooses a look, adjusts its brand
-settings and turns the extras on; Advanced holds everything else — not app
+live in **Book setup** — the Look tab chooses a look and adjusts its brand
+settings, the Extensions tab holds the extension list and turns the extras on,
+and Advanced holds the stylesheets and every design setting — not app
 Settings: app appearance and print theme are deliberately separated
-concepts; do not merge them back. Forms live where their task happens: a
-publishing key is added in Publish, a book's Git server is connected in its
-Backup tab, and Settings > Accounts only lists what is stored, with Remove. One name
+concepts; do not merge them back. The Accounts page is the one place to manage every
+connection — connect, edit and disconnect GitHub, other Git servers, publishing keys and
+Google Drive — and the author's name and email. The task that needs a connection still
+offers it in place, saving to the same store: a book's GitHub or Git server in its Backup
+tab, a publishing key in Publish. Where those forms match the Accounts ones they are one
+component (GitHubConnect, GitServerForm). A backup that keeps failing is fixed in the
+book's Backup tab; Troubleshooting holds Logs, Diagnostics and Report a problem only.
+Diagnostics puts the update check and the update channel menu on the Desktop version line
+(no separate Updates section). One name
 per surface: the toolbar button, the page title and the docs all say "Book
 setup"; the status-bar gear, the shortcut and the page all say "Settings".
 
@@ -406,12 +447,19 @@ buttons.
 
 - `WelcomeLanding`: three tabs — **Books** (continue card with live
   pre-render status + recents / favorites / discovered projects), **Help**
-  and **Troubleshooting** — and a **Settings** button in the header, which
-  opens Settings as its own page. It always opens on **Books** — picking or
+  and **Troubleshooting** — and **Accounts** and **Settings** buttons in the
+  header, each opening its own page. It always opens on **Books** — picking or
   continuing a book is the screen's job. A missing name/email is raised by
-  the workspace's standing identity banner, whose button opens Settings with
-  the cursor in Name. There is no Reader/Author role: every author has Edit,
-  Setup and Publish in the toolbar; a reader uses the toolbar's Read.
+  the workspace's standing identity banner, whose button opens Accounts with
+  the cursor in Name. The **Create a new book** card is shown in both roles;
+  creating a book sets the role to Author, so the new book opens with Edit,
+  Setup and Publish in the toolbar (no toast: the toolbar is the
+  confirmation). The role is the first group in Settings, **How you use
+  Gutterpress**: **Reader** (the default for a fresh profile) shows just the
+  pages — the workspace stays in Read, the toolbar has no Edit/Read, Setup or
+  Publish (removed, not disabled), Focus has no Edit/Read switch, and the left
+  panel has the table of contents only, without Files or Media; **Author**
+  shows everything. Settings and Accounts are the same in both.
   `NewProjectWizard`: template first (**4 built-in templates** — Book, Zine,
   Technical document, Academic paper — plus custom templates, save-as-template,
   import-from-folder); each template lists its look (Clean book, Zine,
@@ -454,19 +502,19 @@ buttons.
   the Dev persona's "no escape hatches" pain point and would **regress
   shipped, ungated features** (#30 plugins, #32 themes).
 - Book setup's **Book and Look tabs are core to a good first PDF and are
-  never gated**. Its **Advanced** tab is the one advanced path for npm, folder
-  and web extensions, their order, every design setting and the files behind
-  them; the other tabs link to it and never repeat its controls.
+  never gated**. Its **Extensions** tab is the one place for the extension
+  list — the built-in extras, npm, folder and web extensions, and their order
+  — and its **Advanced** tab is the one place for the stylesheets, every
+  design setting and the manifest; the other tabs link to them and never
+  repeat their controls.
 - **Every Book setup tab saves as you go; there is no Save button.** Text
   fields commit when you leave them or press Enter; pending edits are saved
   when you switch tabs or close the panel. A commit writes only what changed
   (a title edit never rewrites the page size or `targets:`).
-- Settings tabs are the shipped **App / Editor / Saving / Accounts**; the
-  former "Advanced" ("for developers") tab is a section on Editor, and the
-  whole surface lives on the start screen's Settings tab rather than in a
-  window of its own (one settings surface, reached from the status bar's
-  settings button or `Cmd/Ctrl+,`). Any further regrouping is a PROPOSED
-  delta.
+- Settings is one page with no tabs (How you use Gutterpress, Appearance, Saving, Accounts…), reached
+  from the status bar's settings button, `Cmd/Ctrl+,` and the start screen;
+  your name and email and every account are a page of their own (Accounts).
+  Any further regrouping is a PROPOSED delta.
 
 Anti-patterns: full-screen onboarding carousels; auto-advancing tours; empty
 workspaces with no guidance; requiring account creation (there are no
@@ -543,7 +591,38 @@ navigation UI and a Problems-panel entry with the page number.
 detail lives in `docs/publishing.md`. Shipped: toolbar **Publish** button →
 `PublishWizard` (choose destinations → one setup step per destination →
 publish), five built-in providers, saved named credentials (`safeStorage`) with
-an account picker, Settings → **Accounts** tab.
+an account picker, the **Accounts** page.
+
+**Shared vs private (binding):** the team decides where a book is published,
+so that is saved in the **manifest** (`publish:`) and travels with the book:
+the destinations ticked in the wizard (`publish.<id>.enabled`), each one's
+settings (itch.io target and channel, Shopify store and product, Azure
+environment, DriveThruRPG product URL, the **Google Drive folder**, the format)
+and the output folder when it is **inside the book** (saved relative to it,
+`dist` by default). A teammate who opens the book finds the same destinations
+ticked and the settings filled in; the only thing they do is connect their own
+account. What is one person's own stays on their computer, in private settings
+keyed to the book (`publish-selections.json` in the app's user-data folder,
+never in the manifest): **which of their saved accounts the book publishes
+with**, and an **output folder outside the book** (a personal override; an
+absolute path is never written to the manifest). Precedence when publishing:
+the private value, then the manifest, then the default. The host files each
+value where it belongs when it is saved (the renderer never decides), and an
+older book's account or absolute in-book folder is moved on the next save of
+it; opening the wizard rewrites nothing. Detail and the full table:
+`docs/publishing.md`.
+
+**One place for accounts (binding):** the **Accounts** page is where accounts
+are managed. The wizard lists the provider's saved accounts, lets the author
+pick one for this book, and adds or replaces one in place with the Accounts
+page's own `PublishKeyForm` (a key, or the Google sign-in) through the same
+`api.publish.connect` route; it keeps no key-entry markup or drafts of its own.
+A **Manage accounts** link opens the Accounts page over the wizard (removal
+lives there only, with its confirm), and the wizard reloads when it closes.
+A teammate whose account is not connected sees, for each destination the book
+uses, one step: connect (the form is right in the step) or pick one of their
+saved accounts (**Choose an account…**); they never re-enter the team's
+settings.
 
 **Provider model (binding):** providers are **built into the lib's publish
 registry** (`packages/cli/src/lib/publish/`) — they are *not plugins* and there
@@ -624,7 +703,7 @@ no-unaccepted-mutations constraint below stands.
 Binding constraints (regardless of final design):
 
 - **Off by default.** AI activates only after the user enables it and
-  configures a provider (Settings → Accounts). With AI off, all AI entry
+  configures a provider (Accounts). With AI off, all AI entry
   points (toolbar button, `/ai`, chat panel) are **hidden**, not greyed out;
   the drawer, if reached, shows a one-card empty state ("Connect a provider
   to enable AI").
@@ -693,12 +772,12 @@ Proposed refinements (file issues):
   and badge the count above N matches.
 - "Visual Mode" toggle → belongs to #37 (see §5).
 
-### 9. Extensions (one list: looks, features, component libraries) — on screen: Look and Advanced
+### 9. Extensions (one list: looks, features, component libraries) — on screen: Look and Extensions
 
 **Status: SHIPPED** (one manifest list, `extensions:`, since #265; shown
 since #442 as Book setup → **Look** for the main path — a look chosen from a
-gallery and the built-in features as Extras — and Book setup → **Advanced**
-for the list itself, `ExtensionsSection`). This section is rewritten around
+gallery — and, as its own **Extensions** tab, the list itself and everything
+that adds to it, `ExtensionsSection`). This section is rewritten around
 the actual plugin model; the original "app store" concept is **rejected** as
 incompatible with docs/architecture-rules.md §5 unless a future ADR changes
 that rule.
@@ -720,7 +799,7 @@ The model (binding, from docs/architecture-rules.md §5 and #265):
 - Build/export/validate **fail fast** on any plugin load error, identifying
   the offending manifest entry — a final artifact never silently omits
   author-configured formatting. Live preview **degrades and reports loudly**
-  ("Not downloaded yet." with Install on the Advanced row); every skip is
+  ("Not downloaded yet." with Install on the Extensions row); every skip is
   surfaced.
 - **List order is load order and cascade order.** A later entry runs after
   earlier ones and sees their output, and its CSS wins ties; the project's
@@ -733,19 +812,36 @@ one-choice gallery of thumbnails (the built-in looks and any npm or folder
 look in the list), and choosing replaces the book's look in place in
 `extensions:` — a built-in look is removed, an npm or folder look switched
 off — with no toast; a book with two enabled looks gets a notice and the way
-to Advanced instead of a guess. *Extras* lists the built-in features as
-checkboxes, each with what to type. **Advanced** is the list itself: the
+to the Extensions tab instead of a guess. **Extensions** is the list itself
+and the only place its entries are changed: *Your extensions* shows the
 manifest's `extensions:` entries in order, each row a checkbox (on/off), the
 label, its kind and source in words ("Look · built in", "Extra · npm
 3.0.0"), move up/down and Remove. A row says something only when it needs
 attention: "Version x is available." with Update, "Not downloaded yet." with
 Install, "Couldn't load." with Show details and Check again. Updates are
 checked once when the tab opens, never at project load. Below the list, one
-Add area: an npm package name, a folder or file referenced in place, a
-`.zip`/`.css` import and a web address (§11). No status badges, no version
-picker, no npm search (the website's plugin finder and `gutterpress ext
-search` cover it) and no pre-release switch (`gutterpress ext add
-name@version`).
+*Add an extension* area, in three parts. The **built-in extras** the book does
+not list yet (Highlight, Callouts, Math…), each with what to type and an Add
+button. **Find one on npm** is the way to a published extension: a search box
+whose results are the lib's `searchNpmExtensions` (what `gutterpress ext
+search` prints — packages tagged `gutterpress` or `markdown-it-plugin`),
+asked only when the author submits it (Enter or Search; with nothing typed it
+lists the most relevant), never at project load or on a keystroke. npm
+filters by keyword and only ranks by the words, so a typed search keeps the
+results whose name, description or keywords mention every word. Each result
+is the package name, its description, its kind when npm's keywords say (a
+`gutterpress-look` package is a Look, a plain markdown-it plugin an Extra) and
+an Add that is the same add as typing the name — or "Added" when the book
+lists it. No results, being offline and any other failure are one plain line
+under the box ("No extensions found for …", "Couldn't reach the npm
+registry…"), never a toast. **Other ways to add** are an exact npm name or
+`name@version` (for a package search cannot find, such as a private one), a
+folder or file referenced in place, a `.zip`/`.css` import and a web address
+(§11). A built-in extra is never shown twice: while the book lists it, it is
+a row of the list; Remove puts it back among the ones to add. (Footnotes,
+tables and definition lists need no extension and are always on, which the
+area says.) No status badges, no version picker and no pre-release switch
+(`gutterpress ext add name@version`).
 
 Refinements (PROPOSED): link each plugin to its npm page for
 author/version/last-published metadata; surface load errors inline.
@@ -803,8 +899,8 @@ adjusted on Book setup's **Look** tab) with PROPOSED refinements tracked in
 **#106**.
 
 Shipped: the Look tab's gallery offers the built-in looks (bundled names:
-nothing is copied) and any npm or folder look already in the list; Advanced
-adds a look from npm, a folder referenced in place, or a **folder, ZIP, CSS
+nothing is copied) and any npm or folder look already in the list; the
+Extensions tab adds a look from npm, a folder referenced in place, or a **folder, ZIP, CSS
 file or URL** import (`extension-import.ts`, reached through server routes).
 Every gallery card shows a **rendered thumbnail** of its CSS over a fixed
 sample; there is no hover preview.
@@ -844,8 +940,19 @@ stylesheet, which wins, with each variable's name, a per-row "Use the look's
 value", and Undo changes for the visit. Derived labels are plain words
 (`--fs-display` → "Display size"); a look labels its own extra tokens with
 `@label`. A compound value (`1pt solid …`) is edited as text, never as a
-bare number. The book's stylesheets are listed in the manifest's `styles:`
-(Advanced › Open manifest.yaml); there is no stylesheet list on screen.
+bare number. The book's stylesheets are the manifest's `styles:` list, shown
+on **Advanced › Stylesheets** with the extension list's rows: the path, move
+up/down, **Open** (the file opens in the editor and Book setup closes) and
+**Remove**, in load order ("a later one wins where two disagree"; they load
+after every extension). Remove takes a stylesheet off `styles:` and never
+deletes the file, and the last one has no Remove — an empty `styles:` falls
+back to `styles/book.css`, else the first `.css` the book has, so the list
+would show it again. **Add a stylesheet** offers the book's other `.css`
+files (its folder, `styles/` and `css/`, and a repository's shared ones) to
+add at the end of the list. A book with no stylesheet says so and offers
+**Create styles/book.css**, the file the first design edit creates too.
+**Open manifest.yaml** sits at the top of Advanced, since the manifest is not
+a stylesheet.
 
 There is **no apply and no revert**: a look is an ordinary list entry
 (enable/disable, reorder, remove — the same verbs `gutterpress ext`
@@ -1195,7 +1302,6 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 | Reintroducing stylelint or any bundler-hostile dep for editor lint | Breaks `bun build --compile` (docs/architecture-rules.md §3) | Extend `printsafe.ts` |
 | A Gutterpress-specific plugin API, hosted plugin marketplace, or fake granular permissions UI | Contradicts docs/architecture-rules.md §5 and the unsandboxed runtime | §9's plain-package model and one honest full-privilege confirmation |
 | Settings with more than a page of choices, or tabs inside Settings | Overwhelming; "where did X go?" | One short Settings page; a choice earns a place only when many authors need it (#442) |
-| A global mode that hides features (a Reader/Author role) | Authors lose Setup and Publish without knowing why | Every author sees every feature; Read is a view, not a role (#442) |
 | Status badges, or switches beside checkboxes, in Book setup | Noise; two controls for one meaning | Silence is success: a row speaks only when it needs attention; checkboxes for items of a set, switches only in Settings (#442) |
 
 ---

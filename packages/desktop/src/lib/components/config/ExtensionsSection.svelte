@@ -1,13 +1,20 @@
 <script lang="ts">
   /**
-   * Advanced › Extensions (#243, #265): ONE list of the manifest's
+   * Book setup › Extensions (#243, #265): ONE list of the manifest's
    * `extensions:` entries in load order, owned by `ExtensionsSectionController`,
    * then one Add area. Every row has the model's verbs and nothing else: a
    * checkbox to use it, its kinds and source in words, move up/down, Remove.
    * A row speaks only when something needs attention — a newer npm version
    * (Update), or a load failure (Show details, and Install / Reinstall /
-   * Check again). Looks and the built-in extras are chosen on the Look tab;
-   * this is the one place for npm, folders, web addresses and the order.
+   * Check again). This is the one place for the built-in extras (those the
+   * book does not list are offered to Add, each with what to type), finding
+   * a published extension on npm, folders, web addresses and the order; the
+   * book's look is chosen on the Look tab.
+   *
+   * Search: the box asks npm when the author submits it (Enter or Search),
+   * never at project load or on a keystroke. Each result is a name, its
+   * description, its kind when npm's keywords say (`searchKindLabel`) and Add
+   * — or "Added" when the book lists it. A failure is one quiet line.
    *
    * Updates: showing this list (its mount — never project load) asks npm once
    * for each pinned entry's latest. A failed check is one quiet line.
@@ -15,7 +22,7 @@
   import { onMount } from "svelte";
   import Icon from "#lib/components/Icon.svelte";
   import { api } from "#lib/api.ts";
-  import { extensionProblem, extensionSourceLabel, carriedKinds } from "./config-helpers";
+  import { extensionProblem, extensionSourceLabel, carriedKinds, describeSegments, searchKindLabel } from "./config-helpers";
   import type { ExtensionsSectionController } from "#lib/routes/extensions-section-controller.svelte.ts";
 
   let { controller }: { controller: ExtensionsSectionController } = $props();
@@ -29,9 +36,9 @@
   });
 </script>
 
-<section class="block" aria-labelledby="advanced-extensions">
-  <h3 id="advanced-extensions">Extensions</h3>
-  <p class="hint">Listed in the order they load: one lower in the list wins where two disagree. Your stylesheet always comes last.</p>
+<section class="block" aria-labelledby="extensions-list">
+  <h3 id="extensions-list">Your extensions</h3>
+  <p class="hint">Extensions add things you can type, like callouts or math, and extra looks. They load in this order: one lower in the list wins where two disagree. Your stylesheet always comes last.</p>
   {#if controller.error}
     <p class="error" role="alert">{controller.error}</p>
   {/if}
@@ -52,18 +59,18 @@
   {#if controller.entries.length === 0}
     <p class="muted">This book has no extensions yet.</p>
   {:else}
-    <ul class="ext-list">
+    <ul class="item-list">
       {#each controller.entries as e, i (e.use)}
         {@const problem = extensionProblem(e, controller.validation, controller.validating)}
         {@const newer = controller.updateFor(e)}
         <li>
-          <div class="ext-row">
+          <div class="item-row">
             <label class="ext-use">
               <input type="checkbox" checked={e.enabled} disabled={controller.busy !== null} onchange={() => controller.toggle(e)} aria-label={`Use ${e.label}`} />
-              <span class="ext-label" title={e.use}>{e.label}</span>
+              <span class="item-label" title={e.use}>{e.label}</span>
             </label>
-            <span class="ext-caption">{[carriedKinds(e).join(", "), extensionSourceLabel(e)].filter(Boolean).join(" · ")}</span>
-            <span class="ext-actions">
+            <span class="item-caption">{[carriedKinds(e).join(", "), extensionSourceLabel(e)].filter(Boolean).join(" · ")}</span>
+            <span class="item-actions">
               <button class="move" onclick={() => controller.move(e, -1)} disabled={i === 0 || controller.busy !== null} title="Move up" aria-label={`Move ${e.label} up`}>
                 <Icon name="chevron-up" size={14} />
               </button>
@@ -101,13 +108,63 @@
       <p class="muted update-failed">Couldn't check npm for updates.</p>
     {/if}
   {/if}
+</section>
 
-  <h4 class="subhead">Add an extension</h4>
+<section class="block" aria-labelledby="extensions-add">
+  <h3 id="extensions-add">Add an extension</h3>
+  {#if controller.unlistedExtras.length > 0}
+    <h4 class="subhead">Built-in extras</h4>
+    <p class="hint">Footnotes, tables and definition lists are always on.</p>
+    <ul class="add-list extras">
+      {#each controller.unlistedExtras as x (x.use)}
+        <li>
+          <span class="add-name">{x.label}</span>
+          <!-- What it does and what to type, the "what to type" set in code type. -->
+          <span class="extra-desc">{#each describeSegments(x.description) as seg}{#if seg.code}<code>{seg.text}</code>{:else}{seg.text}{/if}{/each}</span>
+          <button class="ghost small" onclick={() => controller.addExtra(x)} disabled={controller.busy !== null} aria-label={`Add ${x.label}`}>{controller.busy === x.use ? "Adding…" : "Add"}</button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+
+  <h4 class="subhead">Find one on npm</h4>
+  <p class="hint">Looks and extras other authors have shared. Search with nothing typed to see the most relevant.</p>
   <div class="add-row">
-    <label class="add-label" for="add-npm">npm package</label>
-    <input id="add-npm" class="input" type="text" bind:value={controller.npmName} onkeydown={(e) => { if (e.key === "Enter") controller.addNpm(); }} />
-    <button class="ghost small" onclick={controller.addNpm} disabled={controller.busy !== null}>{controller.busy !== null && controller.busy === controller.npmName.trim() ? "Adding…" : "Add"}</button>
+    <label class="add-label" for="search-npm">Search npm</label>
+    <input id="search-npm" class="input" type="text" placeholder="a word, like footnote or emoji" bind:value={controller.searchQuery} onkeydown={(e) => { if (e.key === "Enter") controller.runSearch(); }} />
+    <button class="ghost small" onclick={controller.runSearch} disabled={controller.search.status === "loading"}>Search</button>
     <button class="link" onclick={() => api.shell.openExternal(PLUGIN_FINDER_URL).catch(() => {})}>Find extensions <Icon name="external-link" size={12} /></button>
+  </div>
+  {#if controller.search.status === "loading"}
+    <p class="muted search-status" role="status">Searching npm…</p>
+  {:else if controller.search.status === "error"}
+    <p class="notice" role="status">{controller.search.message}</p>
+  {:else if controller.search.status === "ready" && controller.searchResults.length === 0}
+    <p class="muted search-status" role="status">{controller.search.query ? `No extensions found for "${controller.search.query}".` : "No extensions found on npm."}</p>
+  {:else if controller.searchResults.length > 0}
+    <ul class="add-list results" aria-label="Search results">
+      {#each controller.searchResults as m (m.name)}
+        {@const kind = searchKindLabel(m)}
+        <li>
+          <div class="result-main">
+            <span class="result-head"><span class="result-name">{m.name}</span>{#if kind}<span class="result-kind">{kind}</span>{/if}</span>
+            {#if m.description}<span class="result-desc" title={m.description}>{m.description}</span>{/if}
+          </div>
+          {#if m.added}
+            <span class="result-added">Added</span>
+          {:else}
+            <button class="ghost small" onclick={() => controller.addSearched(m)} disabled={controller.busy !== null} aria-label={`Add ${m.name}`}>{controller.busy === m.name ? "Adding…" : "Add"}</button>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+  {/if}
+
+  <h4 class="subhead">Other ways to add</h4>
+  <div class="add-row">
+    <label class="add-label" for="add-npm">Exact name</label>
+    <input id="add-npm" class="input" type="text" placeholder="name or name@version, for a package search can't find" bind:value={controller.npmName} onkeydown={(e) => { if (e.key === "Enter") controller.addNpm(); }} />
+    <button class="ghost small" onclick={controller.addNpm} disabled={controller.busy !== null}>{controller.busy !== null && controller.busy === controller.npmName.trim() ? "Adding…" : "Add"}</button>
   </div>
   <div class="row">
     <button class="ghost small" onclick={controller.addLocal} disabled={controller.busy !== null} title="It is used where it is, not copied">
@@ -128,17 +185,8 @@
 <style>
   @import "../../styles/config-section-shared.css";
 
-  /* The list: one row per entry, top-to-bottom = load order. */
-  .ext-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-  .ext-list li { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }
-  .ext-row { display: flex; align-items: center; gap: 10px; }
+  /* The list rows are the shared item rows (config-section-shared.css); a row's checkbox and its notes are this list's own. */
   .ext-use { display: flex; align-items: center; gap: 8px; min-width: 0; cursor: pointer; }
-  .ext-label { font-size: 13px; font-weight: 600; color: var(--app-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ext-caption { flex: 1; min-width: 0; font-size: 12px; color: var(--app-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ext-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
-  /* 24 px targets with no border (WCAG 2.5.8). */
-  .ext-actions .move { width: 24px; height: 24px; padding: 0; justify-content: center; border: 0; background: transparent; color: var(--app-text-muted); }
-  .ext-actions .move:hover:not(:disabled) { color: var(--app-text); background: var(--app-surface-hover); }
   .ext-note { margin: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-left: 24px; font-size: 12px; color: var(--app-text-secondary); }
   .ext-note.problem > span { color: var(--app-warning-text); }
 
@@ -147,6 +195,22 @@
   /* "Show details" on a failing row. */
   .status-raw > summary { font-size: 12px; color: var(--app-text-muted); cursor: pointer; user-select: none; }
   .status-raw > pre { margin: 4px 0 0; padding: 6px; font-size: 11px; color: var(--app-text-muted); background: var(--app-control-bg); border: 1px solid var(--app-border); border-radius: 4px; white-space: pre-wrap; word-break: break-word; }
+
+  /* ── Built-in extras: name, what to type, Add ── */
+  .extras .add-name { flex: none; width: 120px; }
+  .extra-desc { flex: 1; min-width: 0; font-size: 12px; color: var(--app-text-muted); line-height: 1.4; }
+  .extra-desc code { font-family: var(--app-font-mono); font-size: 12px; color: var(--app-text); }
+
+  /* ── Search results: name and kind, the description under it, then Add (or Added) ── */
+  .search-status { font-size: 12px; }
+  .results li { align-items: flex-start; }
+  .result-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .result-head { display: flex; align-items: baseline; gap: 8px; }
+  .result-name { font-size: 13px; font-weight: 600; color: var(--app-text); overflow-wrap: anywhere; }
+  .result-kind { font-size: 12px; color: var(--app-text-muted); }
+  .result-desc { font-size: 12px; line-height: 1.4; color: var(--app-text-muted); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  /* Where Add was: the same width, so a row does not change size when it is added. */
+  .result-added { flex-shrink: 0; min-width: 46px; padding: 5px 0; font-size: 12px; text-align: center; color: var(--app-text-muted); }
 
   .add-row { align-items: center; }
   .add-label { flex-shrink: 0; width: 96px; font-size: 12.5px; color: var(--app-text-secondary); }

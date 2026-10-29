@@ -154,6 +154,9 @@ try {
       showLandingAtStartup: false,
     }),
   );
+  // The drive exports, so it runs as an author (the app defaults to a
+  // reader, who has no editor and no Problems list).
+  writeFileSync(join(userDataDir, "app-settings.json"), JSON.stringify({ workspace: { role: "author" } }));
 
   const args = [
     ...(isMainJs ? [target] : []),

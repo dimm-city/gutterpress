@@ -2,7 +2,7 @@ import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 // Each pinned npm extension against npm's `latest`, fetched ON DEMAND when Book setup's
-// Advanced tab opens — never at project load, never by the
+// Extensions tab opens — never at project load, never by the
 // loader/build/preview paths (a book builds offline from its vendored copy).
 // A fetch failure is DATA, not a 500: the tab shows one quiet line and the
 // extension list itself is never blocked by the network. Updating is the

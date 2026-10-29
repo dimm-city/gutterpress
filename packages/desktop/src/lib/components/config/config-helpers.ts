@@ -1,6 +1,6 @@
 /**
- * Pure, presentation-only helpers for Book setup's Look and Advanced tabs and
- * the extensions controller.
+ * Pure, presentation-only helpers for Book setup's Look, Extensions and
+ * Advanced tabs and their controllers.
  *
  * Browser-safe strings/derivations with no host coupling — only `import type`
  * from `#lib/platform/dtos.ts`, so this module stays PWA-clean (§8). Kept out of
@@ -11,6 +11,7 @@
 import type {
   ProjectExtensionEntry,
   ExtensionValidationResult,
+  NpmExtensionMatch,
 } from "#lib/platform/dtos.ts";
 
 /**
@@ -35,7 +36,7 @@ breakwater. Mara counted them from the window, the way her father had taught her
 }
 
 /**
- * Where an entry comes from, in words for its Advanced row caption: "built in"
+ * Where an entry comes from, in words for its Extensions row caption: "built in"
  * for a bundled name, "npm 1.2.3" (or "npm" while unpinned) for a package, and
  * "folder" or "file" and the path as written — minus a leading `./` — for one
  * the author owns (`folder extensions/clean-book`, `file plugins/x.js`).
@@ -57,7 +58,7 @@ export function isLook(entry: ProjectExtensionEntry): boolean {
 
 /**
  * Each kind of thing an extension carries, in words and a fixed order, for its
- * Advanced row caption — the list shows a look, an extra and a component
+ * Extensions row caption — the list shows a look, an extra and a component
  * library side by side, and these say which is which. A component library's
  * styles read "Styles", not "Look" (`isLook`).
  */
@@ -70,6 +71,32 @@ export function carriedKinds(entry: ProjectExtensionEntry): string[] {
     ...(c.components ? ["Components"] : []),
     ...(c.publish ? ["Publish destination"] : []),
   ];
+}
+
+/**
+ * What a search result is, in a word, when npm's keywords say so: a package
+ * tagged `gutterpress-look` is a look, and a plain markdown-it plugin (found
+ * by the ecosystem's own keyword) is an extra. A Gutterpress extension tagged
+ * neither — a component library, or a look with extras — says nothing rather
+ * than guess.
+ */
+export function searchKindLabel(match: NpmExtensionMatch): "Look" | "Extra" | null {
+  if (match.keywords.includes("gutterpress-look")) return "Look";
+  return match.kind === "markdown-it" ? "Extra" : null;
+}
+
+/**
+ * Does a search result mention every word the author typed, in its name,
+ * description or keywords? npm's `keywords:` is a filter but its text is only
+ * a ranking hint, so a nonsense word still comes back with the 900 most
+ * relevant tagged packages; without this, "No extensions found" could never
+ * be true. Words match inside other words (`list` finds `task-lists`); an
+ * empty query keeps everything (the most relevant).
+ */
+export function searchMatchesQuery(match: NpmExtensionMatch, query: string): boolean {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const text = [match.name, match.description ?? "", ...match.keywords].join(" ").toLowerCase();
+  return words.every((w) => text.includes(w));
 }
 
 /**
@@ -105,22 +132,19 @@ export function addedBuiltInIds(entries: ProjectExtensionEntry[]): Set<string> {
 }
 
 /**
- * The full `use` order after moving `entry` one slot up (`delta` -1) or down
- * (+1) — the complete order (every entry exactly once) the lib's
- * `reorderExtensions` insists on. Returns null when the move is impossible:
- * `entry` is not in the list, or is already at the edge it would move past.
+ * `order` after moving `item` one slot up (`delta` -1) or down (+1): the whole
+ * list, every item exactly once, which is what the lib's `reorderExtensions`
+ * and a rewrite of the manifest's `styles:` both take. Returns null when the
+ * move is impossible: `item` is not in the list, or is already at the edge it
+ * would move past.
  */
-export function orderAfterMove(
-  entries: ProjectExtensionEntry[],
-  entry: ProjectExtensionEntry,
-  delta: -1 | 1,
-): string[] | null {
-  const order = entries.map((e) => e.use);
-  const at = order.indexOf(entry.use);
+export function orderAfterMove(order: string[], item: string, delta: -1 | 1): string[] | null {
+  const at = order.indexOf(item);
   const to = at + delta;
   if (at < 0 || to < 0 || to >= order.length) return null;
-  [order[at], order[to]] = [order[to]!, order[at]!];
-  return order;
+  const next = [...order];
+  [next[at], next[to]] = [next[to]!, next[at]!];
+  return next;
 }
 
 /** The lib's "Not installed — …" / "Not pinned — …" notices on an npm entry

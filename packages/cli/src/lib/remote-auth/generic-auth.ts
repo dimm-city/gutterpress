@@ -136,6 +136,11 @@ export async function connectGenericHost(
   if (!host) {
     throw new Error("Enter your Git server's web address (like https://git.example.com).");
   }
+  // GitHub signs in through its own flow; a pasted token saved under its
+  // address would replace that sign-in.
+  if (host === GITHUB_HOST) {
+    throw new Error("GitHub has its own sign-in. Use Connect GitHub instead of a Git server.");
+  }
   const token = input.token?.trim();
   if (!token) {
     throw new Error("Paste an access token from your Git server to connect.");

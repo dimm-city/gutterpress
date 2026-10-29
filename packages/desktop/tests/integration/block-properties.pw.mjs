@@ -79,6 +79,7 @@ writeFileSync(
   join(userDataDir, "gutterpress-prefs.json"),
   JSON.stringify({ lastProjectDir: bookDir, leftPanel: { open: true, activeTab: "toc", width: 260 } }),
 );
+writeFileSync(join(userDataDir, "app-settings.json"), JSON.stringify({ workspace: { role: "author" } }));
 appArgv.push(`--user-data-dir=${userDataDir}`);
 
 const useXvfb = process.platform === "linux" && !process.env.DISPLAY;

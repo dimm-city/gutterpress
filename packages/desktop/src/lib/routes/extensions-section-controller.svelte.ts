@@ -4,10 +4,10 @@
  * cascade order) and ONE verb set (add, remove, toggle, move). Two tabs read
  * it:
  *   - **Look** shows it the way an author thinks of it: one look, chosen from
- *     a gallery (`galleryLooks`, `chooseLook`), and the built-in extras
- *     ticked on or off (`extras`, `setExtra`);
- *   - **Advanced** shows the list itself, with every verb, the npm update
- *     check, and the ways to add an extension from elsewhere.
+ *     a gallery (`galleryLooks`, `chooseLook`);
+ *   - **Extensions** shows the list itself, with every verb, the npm update
+ *     check, and the ways to add one: a built-in extra the book does not list
+ *     yet (`unlistedExtras`, `addExtra`), or one from elsewhere.
  *
  * A look is an extension that carries styles and no markdown (`isLook`); an
  * extra carries markdown; a component library carries both. The list order
@@ -21,13 +21,19 @@
  * Adding is one verb with several ways to NAME the extension, which differ
  * only in what the host does with the name:
  *   - a bundled name (a look or an extra, written as-is; nothing is copied) or
- *     an npm specifier (`addNpm` — downloaded, verified, vendored, pinned,
- *     behind the native trust gate, so a null result means "the author
- *     cancelled");
+ *     an npm specifier (`addNpm` by exact name, `addSearched` from a search
+ *     result — downloaded, verified, vendored, pinned, behind the native
+ *     trust gate, so a null result means "the author cancelled");
  *   - `addLocal` — a folder or plugin file from the native picker,
  *     referenced in place, never copied;
  *   - `importFile` / `importUrl` — a `.zip`, `.css`, or URL package the host
  *     validates and lands in `extensions/<id>/` (#106).
+ *
+ * Search: `runSearch` asks npm, on submit and never at project load, for
+ * packages tagged `gutterpress` or `markdown-it-plugin` (the lib's
+ * `searchNpmExtensions`, what `gutterpress ext search` prints). A failure is
+ * `search.message`, one quiet line, never `error`; `searchResults` marks the
+ * packages the book already lists, so each reads "Added" instead of Add.
  *
  * Updates: `checkUpdates` asks npm once for each pinned entry's latest, and
  * `update` re-pins one; `install` (a row whose downloaded copy is missing or
@@ -54,10 +60,12 @@ import type {
   ExtensionValidationResult,
   BundledExtensionInfo,
   ExtensionImportResult,
+  ExtensionSearchResult,
   ExtensionUpdateCheck,
   ExtensionUpdatesResult,
+  NpmExtensionMatch,
 } from "#lib/platform/dtos.ts";
-import { addedBuiltInIds, isLook, orderAfterMove, sampleSrcdoc } from "#lib/components/config/config-helpers.ts";
+import { addedBuiltInIds, isLook, orderAfterMove, sampleSrcdoc, searchMatchesQuery } from "#lib/components/config/config-helpers.ts";
 
 export interface ExtensionsSectionDeps {
   /** The open project directory (reactive prop), or null when none is open. */
@@ -66,7 +74,9 @@ export interface ExtensionsSectionDeps {
   list: (projectDir: string) => Promise<ProjectExtensionEntry[]>;
   /** The bundled extensions (markdown extras and looks), static. */
   bundled: () => Promise<BundledExtensionInfo[]>;
-  /** Each pinned npm entry against npm's latest. A fetch/parse failure comes back as `{ ok: false }` data, never a rejection. */
+  /** Search npm for extensions. A fetch/parse failure comes back as `{ ok: false }` data, never a rejection. */
+  search: (query: string) => Promise<ExtensionSearchResult>;
+  /** Each pinned npm entry against npm's latest. Same data-not-rejection contract as `search`. */
   outdated: (projectDir: string) => Promise<ExtensionUpdatesResult>;
   validate: (projectDir: string) => Promise<ExtensionValidationResult[]>;
   /** Add by specifier. Null when the author cancelled the native npm trust gate. */
@@ -114,13 +124,27 @@ export class ExtensionsSectionController {
   bundled = $state<BundledExtensionInfo[]>([]);
   /**
    * Update check — each pinned npm entry against npm's latest. Run once when
-   * the Advanced tab is first shown (never at project load); a failure is one
+   * the Extensions tab is first shown (never at project load); a failure is one
    * quiet line, never a modal.
    */
   updates = $state<{
     status: "idle" | "loading" | "ready" | "error";
     checks: ExtensionUpdateCheck[];
   }>({ status: "idle", checks: [] });
+  /**
+   * npm search — run ON DEMAND when the author submits the box, never at
+   * project load; a failure is one quiet `message`, never a modal, and never
+   * blocks the rest of the tab.
+   */
+  search = $state<{
+    status: "idle" | "loading" | "ready" | "error";
+    /** The query the current `matches` are for. */
+    query: string;
+    matches: NpmExtensionMatch[];
+    message: string | null;
+  }>({ status: "idle", query: "", matches: [], message: null });
+  /** The search box's draft text (bound by the view). */
+  searchQuery = $state("");
   /** Last load-test result per `use`. */
   validation = $state<Record<string, ExtensionValidationResult>>({});
   validating = $state(false);
@@ -149,7 +173,7 @@ export class ExtensionsSectionController {
   }
 
   // ── Derivations (getters so bun unit tests need only the $state shim) ─────
-  /** The enabled looks, in cascade order: one in practice; more is an Advanced setup. */
+  /** The enabled looks, in cascade order: one in practice; more is an Extensions setup. */
   get enabledLooks(): ProjectExtensionEntry[] {
     return this.entries.filter((e) => e.enabled && isLook(e));
   }
@@ -193,16 +217,21 @@ export class ExtensionsSectionController {
     return [...cards.filter((c) => inUse.has(c.use)), ...cards.filter((c) => !inUse.has(c.use))];
   }
 
-  /** The built-in extras (bundled, not looks), each ticked when listed and on. */
-  get extras(): Array<BundledExtensionInfo & { on: boolean }> {
-    return this.bundled
-      .filter((b) => !b.look)
-      .map((b) => ({ ...b, on: this.entries.some((e) => e.use === b.use && e.enabled) }));
+  /** The built-in extras (bundled, not looks) the book does not list: what the Add area offers. A listed one is a row of the list. */
+  get unlistedExtras(): BundledExtensionInfo[] {
+    return this.bundled.filter((b) => !b.look && !this.entries.some((e) => e.use === b.use));
   }
 
-  /** Listed extensions that are neither looks nor built-in extras: they are set up in Advanced only. */
-  get otherExtensionsCount(): number {
-    return this.entries.filter((e) => !isLook(e) && e.kind !== "bundled").length;
+  /**
+   * The search results, each marked when the book already lists the package.
+   * An npm entry's `use` is `name@version`, so it is matched by package NAME;
+   * any other entry by the whole `use`.
+   */
+  get searchResults(): Array<NpmExtensionMatch & { added: boolean }> {
+    return this.search.matches.map((m) => ({
+      ...m,
+      added: this.entries.some((e) => (e.kind === "npm" ? e.name === m.name : e.use === m.name)),
+    }));
   }
 
   /** The newer version npm has for an entry, or null (not npm, not checked, or current). */
@@ -234,7 +263,7 @@ export class ExtensionsSectionController {
     }
   };
 
-  /** Load-test every entry; also the Advanced tab's Check again. */
+  /** Load-test every entry; also the Extensions tab's Check again. */
   validateExtensions = async (): Promise<void> => {
     const projectDir = this.deps.projectDir();
     if (!projectDir) return;
@@ -246,6 +275,26 @@ export class ExtensionsSectionController {
       this.error = e instanceof Error ? e.message : String(e);
     } finally {
       this.validating = false;
+    }
+  };
+
+  /**
+   * Search npm. An empty query lists the most relevant packages; a typed one
+   * keeps the results that mention it (`searchMatchesQuery`). Refuses to
+   * pile up a second in-flight search; a failure lands in `search.message`,
+   * not `this.error` — it must never block or blank the rest of the tab.
+   */
+  runSearch = async (): Promise<void> => {
+    if (this.search.status === "loading") return;
+    const query = this.searchQuery.trim();
+    this.search = { status: "loading", query, matches: this.search.matches, message: null };
+    try {
+      const result = await this.deps.search(query);
+      this.search = result.ok
+        ? { status: "ready", query, matches: result.matches.filter((m) => searchMatchesQuery(m, query)), message: null }
+        : { status: "error", query, matches: [], message: result.message };
+    } catch (e) {
+      this.search = { status: "error", query, matches: [], message: e instanceof Error ? e.message : String(e) };
     }
   };
 
@@ -367,7 +416,7 @@ export class ExtensionsSectionController {
 
   /** Move `entry` one slot up (-1) or down (+1) in the list. */
   move = async (entry: ProjectExtensionEntry, delta: -1 | 1): Promise<void> => {
-    const order = orderAfterMove(this.entries, entry, delta);
+    const order = orderAfterMove(this.entries.map((e) => e.use), entry.use, delta);
     if (!order) return;
     await this.mutate(entry.use, (dir) => this.deps.reorder(dir, order), () => entry.carries.styles);
   };
@@ -377,7 +426,7 @@ export class ExtensionsSectionController {
    * built-in not listed yet) or switched on, moved to the old look's place in
    * the list, and the old look goes — a built-in is removed, an npm or folder
    * look only switched off. Refused while the book has two or more looks on
-   * (that setup is Advanced's to change) or when the card is already the look.
+   * (that setup is the Extensions tab's to change) or when the card is already the look.
    */
   chooseLook = async (card: LookCard): Promise<void> => {
     const looks = this.enabledLooks;
@@ -403,28 +452,33 @@ export class ExtensionsSectionController {
     );
   };
 
-  /** Tick or untick a built-in extra: on adds it (or switches a listed one on); off removes it. */
-  setExtra = async (b: BundledExtensionInfo, on: boolean): Promise<void> => {
-    const listed = this.entries.find((e) => e.use === b.use);
-    if (on ? listed?.enabled : !listed) return;
-    await this.mutate(
-      b.use,
-      (dir) => (!on ? this.deps.remove(dir, b.use) : listed ? this.deps.setEnabled(dir, b.use, true) : this.deps.add(dir, b.use)),
-      () => false,
-    );
+  /** Add a built-in extra to the list: by its bundled name, so nothing is installed or copied. */
+  addExtra = async (b: BundledExtensionInfo): Promise<void> => {
+    await this.mutate(b.use, (dir) => this.deps.add(dir, b.use), carriesStyles);
   };
 
-  /** "npm package" → `add`. A cancelled trust gate keeps the draft. */
+  /** Add an npm package by name (or `name@version`): the one add path of the typed name and a search result. */
+  private addPackage(name: string): Promise<ProjectExtensionEntry | null | undefined> {
+    return this.mutate(name, (dir) => this.deps.add(dir, name), carriesStyles);
+  }
+
+  /** "Add by exact name" → `add`. A cancelled trust gate keeps the draft. */
   addNpm = async (): Promise<void> => {
     const name = this.npmName.trim();
     if (!name) {
       this.error = "Enter an npm package name (e.g. markdown-it-highlightjs).";
       return;
     }
-    const added = await this.mutate(name, (dir) => this.deps.add(dir, name), carriesStyles);
+    const added = await this.addPackage(name);
     if (!added) return;
     this.npmName = "";
     this.announceAdded(added);
+  };
+
+  /** Add a search result: the package name IS the specifier `ext add` takes. */
+  addSearched = async (match: NpmExtensionMatch): Promise<void> => {
+    const added = await this.addPackage(match.name);
+    if (added) this.announceAdded(added);
   };
 
   /** A folder or plugin file from the native picker, referenced in place. */

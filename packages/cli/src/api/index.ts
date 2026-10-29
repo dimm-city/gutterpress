@@ -510,6 +510,7 @@ export type { PublishAccountSelection } from "../lib/publish/selections.ts";
 
 export {
   readPublishSettings,
+  savePublishSettings,
   setPublishProviderConfig,
 } from "../lib/publish/manifest-publish.ts";
 

@@ -5,7 +5,9 @@ import type {
   ExtensionValidationResult,
   BundledExtensionInfo,
   ExtensionImportResult,
+  ExtensionSearchResult,
   ExtensionUpdatesResult,
+  NpmExtensionMatch,
 } from "../../src/lib/platform/dtos";
 import { sampleSrcdoc, carriedKinds } from "../../src/lib/components/config/config-helpers";
 
@@ -51,6 +53,11 @@ const BUILTIN_CLEAN: BundledExtensionInfo = { use: "clean-book", label: "Clean B
 const BUILTIN_ZINE: BundledExtensionInfo = { use: "zine", label: "Zine", description: "d", look: true };
 const BUNDLED = [REC_MARK, REC_SUB, BUILTIN_CLEAN, BUILTIN_ZINE];
 
+// What npm search finds: a Gutterpress package (the one the book may already
+// list) and a plain markdown-it plugin.
+const FOUND_DC: NpmExtensionMatch = { name: "dimm-city-components", version: "1.2.0", description: "Components", kind: "gutterpress", keywords: ["gutterpress"] };
+const FOUND_OTHER: NpmExtensionMatch = { name: "markdown-it-emoji", version: "3.0.0", kind: "markdown-it", keywords: ["markdown-it-plugin"] };
+
 interface Harness {
   ctrl: ExtensionsSectionController;
   projectDir: string | null;
@@ -67,6 +74,8 @@ interface Harness {
   importFileResult: ExtensionImportResult | null;
   afterLookChange: ReturnType<typeof spy>;
   updatesResult: ExtensionUpdatesResult;
+  searchResult: ExtensionSearchResult;
+  failSearch: boolean;
 }
 
 function make(
@@ -75,6 +84,7 @@ function make(
     entries: ProjectExtensionEntry[];
     bundled: BundledExtensionInfo[];
     updatesResult: ExtensionUpdatesResult;
+    searchResult: ExtensionSearchResult;
   }> = {},
 ): Harness {
   const afterLookChange = spy();
@@ -92,6 +102,8 @@ function make(
     addLocalResult: null,
     importFileResult: null,
     updatesResult: over.updatesResult ?? { ok: true, checks: [] },
+    searchResult: over.searchResult ?? { ok: true, matches: [FOUND_DC, FOUND_OTHER], total: 2 },
+    failSearch: false,
   } as Harness;
   const record = (name: string, ...args: unknown[]) => h.calls.push({ name, args });
   const named = (n: string) => h.calls.filter((c) => c.name === n);
@@ -104,6 +116,11 @@ function make(
       return Promise.resolve(h.entries);
     },
     bundled: () => Promise.resolve(h.bundled),
+    search: (query) => {
+      record("search", query);
+      if (h.failSearch) return Promise.reject(new Error("search blew up"));
+      return Promise.resolve(h.searchResult);
+    },
     outdated: (dir) => {
       record("outdated", dir);
       return Promise.resolve(h.updatesResult);
@@ -191,7 +208,10 @@ test("initial public rune state matches the panel defaults", () => {
   expect(ctrl.entries).toEqual([]);
   expect(ctrl.bundled).toEqual([]);
   expect(ctrl.galleryLooks).toEqual([]);
-  expect(ctrl.extras).toEqual([]);
+  expect(ctrl.unlistedExtras).toEqual([]);
+  expect(ctrl.search).toEqual({ status: "idle", query: "", matches: [], message: null });
+  expect(ctrl.searchQuery).toBe("");
+  expect(ctrl.searchResults).toEqual([]);
   expect(ctrl.validation).toEqual({});
   expect(ctrl.validating).toBe(false);
   expect(ctrl.error).toBeNull();
@@ -325,6 +345,134 @@ test("a failed verb surfaces error, does not refresh, and clears busy", async ()
   await h.ctrl.addNpm();
   expect(h.ctrl.error).toContain("add failed");
   expect(h.afterLookChange.calls.length).toBe(0);
+  expect(h.ctrl.busy).toBeNull();
+});
+
+// ── Search: npm (#246) ────────────────────────────────────────────────────────
+
+test("loading the list never searches — npm is only asked when the author submits", async () => {
+  const h = make();
+  await h.ctrl.loadExtensions();
+  expect(h.ctrl.search.status).toBe("idle");
+  expect(named(h, "search")).toEqual([]);
+});
+
+test("runSearch asks npm for the trimmed query and keeps the matches with the query they are for", async () => {
+  const h = make();
+  h.ctrl.searchQuery = "  emoji  ";
+  await h.ctrl.runSearch();
+  expect(named(h, "search").map((c) => c.args)).toEqual([["emoji"]]);
+  expect(h.ctrl.search).toEqual({ status: "ready", query: "emoji", matches: [FOUND_OTHER], message: null });
+});
+
+test("npm ranks by the words but filters only by keyword, so a typed search keeps only what mentions them; nothing typed keeps all", async () => {
+  const h = make();
+  h.ctrl.searchQuery = "emoji";
+  await h.ctrl.runSearch();
+  expect(h.ctrl.search.matches).toEqual([FOUND_OTHER]); // dimm-city-components says nothing of emoji
+  h.ctrl.searchQuery = "zzzz";
+  await h.ctrl.runSearch();
+  expect(h.ctrl.search).toEqual({ status: "ready", query: "zzzz", matches: [], message: null });
+  h.ctrl.searchQuery = "";
+  await h.ctrl.runSearch();
+  expect(h.ctrl.search.matches).toEqual([FOUND_DC, FOUND_OTHER]);
+});
+
+test("a search with nothing typed asks for the most relevant (an empty query)", async () => {
+  const h = make();
+  await h.ctrl.runSearch();
+  expect(named(h, "search").map((c) => c.args)).toEqual([[""]]);
+});
+
+test("a search that finds nothing is a ready state with no matches, for the view's empty message", async () => {
+  const h = make({ searchResult: { ok: true, matches: [], total: 0 } });
+  h.ctrl.searchQuery = "zzzz";
+  await h.ctrl.runSearch();
+  expect(h.ctrl.search).toEqual({ status: "ready", query: "zzzz", matches: [], message: null });
+  expect(h.ctrl.searchResults).toEqual([]);
+});
+
+test("an `ok: false` search is one quiet message in search.message, not ctrl.error, and drops the old matches", async () => {
+  const h = make();
+  await h.ctrl.runSearch();
+  h.searchResult = { ok: false, message: "Couldn't reach the npm registry. Check your connection and try again." };
+  await h.ctrl.runSearch();
+  expect(h.ctrl.search).toEqual({
+    status: "error",
+    query: "",
+    matches: [],
+    message: "Couldn't reach the npm registry. Check your connection and try again.",
+  });
+  expect(h.ctrl.error).toBeNull();
+});
+
+test("a search that throws is the same quiet message", async () => {
+  const h = make();
+  h.failSearch = true;
+  await h.ctrl.runSearch();
+  expect(h.ctrl.search).toEqual({ status: "error", query: "", matches: [], message: "search blew up" });
+  expect(h.ctrl.error).toBeNull();
+});
+
+test("runSearch refuses a second call while one is loading", async () => {
+  const h = make();
+  const first = h.ctrl.runSearch();
+  expect(h.ctrl.search.status).toBe("loading");
+  const second = h.ctrl.runSearch();
+  await Promise.all([first, second]);
+  expect(named(h, "search").length).toBe(1);
+  expect(h.ctrl.search.status).toBe("ready");
+});
+
+test("searchResults marks the packages the book lists, matching an npm entry by NAME not by its pin, and keeps them in the list", async () => {
+  const h = make({
+    entries: [entry({ use: "dimm-city-components@1.1.0", kind: "npm", name: "dimm-city-components", carries: MARKDOWN })],
+  });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.runSearch();
+  expect(h.ctrl.searchResults.map((m) => [m.name, m.added])).toEqual([
+    ["dimm-city-components", true],
+    ["markdown-it-emoji", false],
+  ]);
+});
+
+test("addSearched adds the package by name, the way the typed name does, and the result then reads as added", async () => {
+  const h = make({ entries: [] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.runSearch();
+  h.ctrl.npmName = "draft";
+  await h.ctrl.addSearched(FOUND_OTHER);
+  expect(named(h, "add").map((c) => c.args)).toEqual([["/proj", "markdown-it-emoji", undefined]]);
+  expect(h.ctrl.entries.map((e) => e.use)).toEqual(["markdown-it-emoji"]);
+  expect(h.ctrl.searchResults.map((m) => [m.name, m.added])).toEqual([
+    ["dimm-city-components", false],
+    ["markdown-it-emoji", true],
+  ]);
+  expect(h.ctrl.saveStatus).toBe("saved");
+  // The typed name's draft is not the search's to clear.
+  expect(h.ctrl.npmName).toBe("draft");
+});
+
+test("addSearched keeps the installer's warnings as the tab's notice", async () => {
+  const h = make({ entries: [] });
+  h.addWarnings = ["Skipped an optional dependency."];
+  await h.ctrl.addSearched(FOUND_DC);
+  expect(h.ctrl.notice).toBe("Skipped an optional dependency.");
+});
+
+test("a cancelled trust gate or a failed add leaves the result to add again", async () => {
+  const h = make({ entries: [] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.runSearch();
+  h.cancelAdd = true;
+  await h.ctrl.addSearched(FOUND_DC);
+  expect(h.ctrl.entries).toEqual([]);
+  expect(h.ctrl.error).toBeNull();
+  h.cancelAdd = false;
+  h.failAdd = true;
+  await h.ctrl.addSearched(FOUND_DC);
+  expect(h.ctrl.error).toBe("add failed");
+  expect(h.ctrl.searchResults.every((m) => !m.added)).toBe(true);
   expect(h.ctrl.busy).toBeNull();
 });
 
@@ -643,7 +791,7 @@ test("chooseLook on a book with no look adds it and moves nothing", async () => 
   expect(h.ctrl.enabledLooks.map((e) => e.use)).toEqual(["zine"]);
 });
 
-test("chooseLook is refused with two looks on (Advanced's to change), and choosing the look in use does nothing", async () => {
+test("chooseLook is refused with two looks on (the Extensions tab's to change), and choosing the look in use does nothing", async () => {
   const h = make({ entries: [CLEAN, LOOK_B] });
   await h.ctrl.loadExtensions();
   await h.ctrl.chooseLook({ use: "academic", label: "Academic", description: "d", from: null });
@@ -666,42 +814,44 @@ test("a failed chooseLook says the book still uses its look", async () => {
   expect(named(h, "remove")).toEqual([]);
 });
 
-test("extras: every built-in extra, ticked when listed and on", async () => {
-  const h = make({ entries: [FEATURE, { ...SUB, enabled: false }] });
+test("unlistedExtras: the built-in extras the book does not list, whether or not they are on; never a look", async () => {
+  const h = make({ entries: [FEATURE, { ...SUB, enabled: false }, CLEAN] });
   await h.ctrl.loadExtensions();
-  expect(h.ctrl.extras.map((x) => [x.use, x.on])).toEqual([
-    ["markdown-it-mark", true],
-    ["markdown-it-sub", false],
-  ]);
+  // Highlight and the switched-off Subscript are rows of the list; the rest is for the Add area.
+  expect(h.ctrl.unlistedExtras).toEqual([]);
+  const book = make({ entries: [FEATURE, CLEAN] });
+  await book.ctrl.loadExtensions();
+  expect(book.ctrl.unlistedExtras.map((x) => x.use)).toEqual(["markdown-it-sub"]);
+  const none = make({ entries: [] });
+  await none.ctrl.loadExtensions();
+  expect(none.ctrl.unlistedExtras.map((x) => x.use)).toEqual(["markdown-it-mark", "markdown-it-sub"]);
 });
 
-test("setExtra: ticking adds the extra, or switches a listed one on; unticking removes it", async () => {
-  const h = make({ entries: [{ ...FEATURE, enabled: false }] });
+test("addExtra adds the built-in by its bundled name, moves it out of the Add area and into the list; nothing to refresh", async () => {
+  const h = make({ entries: [FEATURE] });
   await h.ctrl.loadExtensions();
-  await h.ctrl.setExtra(REC_SUB, true);
-  await h.ctrl.setExtra(REC_MARK, true);
-  expect(named(h, "add").map((c) => c.args[1])).toEqual(["markdown-it-sub"]);
-  expect(named(h, "setEnabled").map((c) => c.args.slice(1))).toEqual([["markdown-it-mark", true]]);
-  await h.ctrl.setExtra(REC_MARK, false);
-  expect(named(h, "remove").map((c) => c.args[1])).toEqual(["markdown-it-mark"]);
-  expect(h.ctrl.extras.map((x) => [x.use, x.on])).toEqual([
-    ["markdown-it-mark", false],
-    ["markdown-it-sub", true],
-  ]);
-  // An extra is not a look: nothing to refresh.
+  await h.ctrl.addExtra(REC_SUB);
+  expect(named(h, "add").map((c) => c.args.slice(1))).toEqual([["markdown-it-sub", undefined]]);
+  expect(h.ctrl.entries.map((e) => e.use)).toEqual(["markdown-it-mark", "markdown-it-sub"]);
+  expect(h.ctrl.unlistedExtras).toEqual([]);
+  expect(h.ctrl.saveStatus).toBe("saved");
   expect(h.afterLookChange.calls.length).toBe(0);
 });
 
-test("setExtra does nothing when the extra is already as asked", async () => {
+test("removing a built-in extra from the list offers it in the Add area again", async () => {
   const h = make({ entries: [FEATURE] });
   await h.ctrl.loadExtensions();
-  await h.ctrl.setExtra(REC_MARK, true);
-  await h.ctrl.setExtra(REC_SUB, false);
-  expect(h.calls.filter((c) => ["add", "remove", "setEnabled"].includes(c.name))).toEqual([]);
+  expect(h.ctrl.unlistedExtras.map((x) => x.use)).toEqual(["markdown-it-sub"]);
+  await h.ctrl.remove(FEATURE);
+  expect(h.ctrl.unlistedExtras.map((x) => x.use)).toEqual(["markdown-it-mark", "markdown-it-sub"]);
 });
 
-test("otherExtensionsCount counts what is neither a look nor a built-in extra", async () => {
-  const h = make({ entries: [LOOK_A, FEATURE, BOTH, NPM_LOOK, BROKEN] });
+test("a failed addExtra says why and leaves the list as it was", async () => {
+  const h = make({ entries: [FEATURE] });
   await h.ctrl.loadExtensions();
-  expect(h.ctrl.otherExtensionsCount).toBe(2); // the component library and the broken folder
+  h.failAdd = true;
+  await h.ctrl.addExtra(REC_SUB);
+  expect(h.ctrl.error).toBe("add failed");
+  expect(h.ctrl.saveStatus).toBe("idle");
+  expect(h.ctrl.entries.map((e) => e.use)).toEqual(["markdown-it-mark"]);
 });

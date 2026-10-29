@@ -175,9 +175,9 @@ test("publishes a pdf: outputDir is the PDF's folder, and the context carries th
   expect(fetchCalls).toBe(0);
 });
 
-test("settings omit the two keys core reads: format and credential", async () => {
+test("settings omit the keys core reads: format, credential and enabled", async () => {
   await writePackage("pub", publisher("gp-demo"), RECORDING_PUBLISH);
-  await writeManifest("extensions:\n  - ./pub\npublish:\n  gp-demo:\n    format: pdf\n    credential: work\n    dest: somewhere\n");
+  await writeManifest("extensions:\n  - ./pub\npublish:\n  gp-demo:\n    format: pdf\n    credential: work\n    enabled: true\n    dest: somewhere\n");
   await withPdf();
 
   expect((await runPublish({ projectDir: dir, providerId: "gp-demo" }, deps())).ok).toBe(true);
