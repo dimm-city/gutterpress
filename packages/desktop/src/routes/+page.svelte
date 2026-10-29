@@ -107,6 +107,7 @@
     friendlyPdfError,
     friendlyHostError,
     friendlyPreviewError,
+    unwrapRouteError,
   } from "#lib/errors.ts";
   import {
     PersistenceFailureNotifier,
@@ -2997,7 +2998,7 @@
       const msg = e instanceof Error ? e.message : String(e);
       // Local copy of the lib's isNoChangesError (the SPA can't import it).
       if (/nothing new to save/i.test(msg)) return "unchanged";
-      toast?.error(friendlyHostError(msg));
+      toast?.error(friendlyHostError(unwrapRouteError(msg)));
       throw e;
     }
   }

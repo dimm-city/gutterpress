@@ -21,7 +21,7 @@
    */
   import { onMount } from "svelte";
   import { api, type Revision, type RevisionList } from "#lib/api.ts";
-  import { friendlyHostError } from "#lib/errors.ts";
+  import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
   import { revisionNameFrom } from "#lib/revision-name.ts";
 
   let {
@@ -91,7 +91,7 @@
       await load();
       onChanged?.();
     } catch (e) {
-      error = friendlyHostError(e instanceof Error ? e.message : String(e));
+      error = friendlyHostError(unwrapRouteError(e instanceof Error ? e.message : String(e)));
     } finally {
       working = false;
     }

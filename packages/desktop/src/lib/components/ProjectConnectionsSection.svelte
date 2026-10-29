@@ -207,7 +207,7 @@
       message = await run(projectDir);
       if (message) done = message;
     } catch (e) {
-      actionError = friendlyHostError(e instanceof Error ? e.message : String(e));
+      actionError = friendlyHostError(unwrapRouteError(e instanceof Error ? e.message : String(e)));
     } finally {
       busy = false;
     }

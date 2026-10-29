@@ -200,7 +200,7 @@ online automatically** in Settings. The status bar then shows two buttons next t
   stay on this computer.
 - **Back up now** gets the latest first, then sends your versions.
 
-Both buttons are also in **Setup → Online copy**. While automatic backing up is off, Gutterpress
+**Back up now** is also in **Setup → Online copy**. While automatic backing up is off, Gutterpress
 checks for new changes in the online copy every few minutes and when you come back to the window.
 When it finds some, a message says **New changes are online for this book**, with a **Get
 latest** button. In Reader mode none of this shows: a reader gets the latest changes on their own.
