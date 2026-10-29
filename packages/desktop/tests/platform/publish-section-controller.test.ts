@@ -31,14 +31,11 @@ const CARD: PublishProviderCard = {
 interface Harness {
   ctrl: PublishSectionController;
   onSaved: ReturnType<typeof spy>;
-  onConnected: ReturnType<typeof spy>;
   onPublished: ReturnType<typeof spy>;
   projectDir: string | null;
   cards: PublishProviderCard[];
   setConfigCalls: Array<{ dir: string; providerId: string; values: Record<string, string> }>;
-  connectCalls: Array<{ dir: string; providerId: string; token: string }>;
   runResult: PublishRunResult;
-  failConnect: boolean;
   preflightRows: PreflightRow[];
   preflightCalls: Array<{ dir: string; providerIds: string[] }>;
   failPreflight: boolean;
@@ -46,18 +43,14 @@ interface Harness {
 
 function make(over: Partial<{ noProject: boolean; cards: PublishProviderCard[] }> = {}): Harness {
   const onSaved = spy();
-  const onConnected = spy();
   const onPublished = spy();
   const h = {
     onSaved,
-    onConnected,
     onPublished,
     projectDir: over.noProject ? null : "/proj",
     cards: over.cards ?? [CARD],
     setConfigCalls: [],
-    connectCalls: [],
     runResult: { ok: true, providerId: "itch", issues: [] },
-    failConnect: false,
     preflightRows: [],
     preflightCalls: [],
     failPreflight: false,
@@ -74,20 +67,9 @@ function make(over: Partial<{ noProject: boolean; cards: PublishProviderCard[] }
       h.setConfigCalls.push({ dir, providerId, values });
       return Promise.resolve({});
     },
-    connect: (dir, providerId, token) => {
-      h.connectCalls.push({ dir, providerId, token });
-      if (h.failConnect) return Promise.reject(new Error("bad key"));
-      h.cards = h.cards.map((c) => (c.id === providerId ? { ...c, connected: true } : c));
-      return Promise.resolve({ connected: true, providerId });
-    },
-    disconnect: (providerId) => {
-      h.cards = h.cards.map((c) => (c.id === providerId ? { ...c, connected: false } : c));
-      return Promise.resolve({ ok: true });
-    },
     run: () => Promise.resolve(h.runResult),
     openExternal: () => Promise.resolve({ ok: true }),
     onSaved: () => onSaved(),
-    onConnected: () => onConnected(),
     onPublished: (guided) => onPublished(guided),
   });
   return h;
@@ -100,7 +82,6 @@ test("initial public rune state matches the panel defaults", () => {
   expect(ctrl.publishBusyId).toBeNull();
   expect(ctrl.publishResults).toEqual({});
   expect(ctrl.publishConfigDrafts).toEqual({});
-  expect(ctrl.publishTokenDrafts).toEqual({});
 });
 
 test("loadPublish populates the provider cards", async () => {
@@ -115,12 +96,10 @@ test("loadPublish no-ops without a project dir", async () => {
   expect(h.ctrl.publishCards).toEqual([]);
 });
 
-test("setPublishConfigDraft/setPublishTokenDraft update the per-provider draft maps", () => {
+test("setPublishConfigDraft updates the per-provider draft map", () => {
   const h = make();
   h.ctrl.setPublishConfigDraft("itch", "project", "my-book");
   expect(h.ctrl.publishConfigDrafts).toEqual({ itch: { project: "my-book" } });
-  h.ctrl.setPublishTokenDraft("itch", "secret-key");
-  expect(h.ctrl.publishTokenDrafts).toEqual({ itch: "secret-key" });
 });
 
 test("savePublishConfig flushes the draft, reloads cards, and fires onSaved", async () => {
@@ -138,46 +117,6 @@ test("savePublishConfig is a no-op when there is no pending draft (no host call)
   await h.ctrl.savePublishConfig("itch");
   expect(h.setConfigCalls.length).toBe(0);
   expect(h.onSaved.calls.length).toBe(1); // still "saved" — reload + callback run either way
-});
-
-test("connectPublish rejects a blank token without calling the host", async () => {
-  const h = make();
-  await h.ctrl.connectPublish("itch");
-  expect(h.ctrl.publishError).toContain("Paste an API key first.");
-  expect(h.connectCalls.length).toBe(0);
-});
-
-test("connectPublish flushes settings first, connects, clears the token draft, and fires onConnected", async () => {
-  const h = make();
-  h.ctrl.setPublishConfigDraft("itch", "project", "my-book");
-  h.ctrl.setPublishTokenDraft("itch", "  secret  ");
-  await h.ctrl.connectPublish("itch");
-  expect(h.setConfigCalls.length).toBe(1);
-  expect(h.connectCalls).toEqual([{ dir: "/proj", providerId: "itch", token: "secret" }]);
-  expect(h.ctrl.publishTokenDrafts).toEqual({ itch: "" });
-  expect(h.onConnected.calls.length).toBe(1);
-  expect(h.ctrl.publishCards.find((c) => c.id === "itch")?.connected).toBe(true);
-});
-
-test("a failed connect resyncs cards from disk (the resync's own loadPublish clears publishError — pre-existing behavior, preserved verbatim)", async () => {
-  const h = make();
-  h.failConnect = true;
-  h.ctrl.setPublishTokenDraft("itch", "bad-key");
-  await h.ctrl.connectPublish("itch");
-  // `catch` sets publishError, then immediately calls loadPublish() as a
-  // resync — and loadPublish unconditionally resets publishError=null before
-  // its own (successful) fetch. The "bad key" message is therefore
-  // clobbered by the time this settles. This characterizes that behavior
-  // rather than asserting the ideal one.
-  expect(h.ctrl.publishError).toBeNull();
-  expect(h.onConnected.calls.length).toBe(0);
-  expect(h.ctrl.publishCards).toEqual([CARD]); // resynced, still disconnected
-});
-
-test("disconnectPublish disconnects and reloads", async () => {
-  const h = make({ cards: [{ ...CARD, connected: true }] });
-  await h.ctrl.disconnectPublish("itch");
-  expect(h.ctrl.publishCards.find((c) => c.id === "itch")?.connected).toBe(false);
 });
 
 test("runPublish (dry run) does not flush drafts, and does not fire onPublished even on success", async () => {
@@ -226,11 +165,6 @@ test("runPublish forwards the artifact the wizard just built, and omits it when 
     listProviders: () => Promise.resolve(h.cards),
     preflight: () => Promise.resolve([]),
     setConfig: () => Promise.resolve({}),
-    connect: () => Promise.resolve({ connected: true, providerId: "itch" }),
-    disconnect: () => Promise.resolve({ ok: true }),
-    connectGoogleStart: () => Promise.resolve({ authUrl: "https://x" }),
-    connectGoogleWait: () => Promise.resolve({ ok: true }),
-    connectGoogleCancel: () => Promise.resolve({ ok: true }),
     listDestinations: () => Promise.resolve([]),
     createDestination: () => Promise.resolve({ id: "d", title: "d" }),
     run: (_dir, _providerId, options) => {
@@ -339,7 +273,7 @@ test("runPreflight records the error, clears rows, but still marks ran (so the g
   expect(h.ctrl.preflightBusy).toBe(false);
 });
 
-// ── Google OAuth connect + destinations picker (#221 C1/C2/C3) ─────────────
+// ── Account choice + destinations picker (#221 C2/C3) ───────────────────────
 
 const GDRIVE_DEST_CARD: PublishProviderCard = {
   ...CARD,
@@ -349,83 +283,96 @@ const GDRIVE_DEST_CARD: PublishProviderCard = {
   destinations: { label: "Drive folder", canCreate: true },
 } as PublishProviderCard;
 
-/** A deferred promise a test can resolve/reject on its own schedule — used
- *  to simulate `connectGoogleWait()` staying pending across a cancel. */
-function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void } {
-  let resolve!: (v: T) => void;
-  let reject!: (e: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
+test("selectCredential records the chosen account through setConfig alone, and clears it with an empty one", async () => {
+  const h = make({ cards: [{ ...CARD, savedAccounts: [{ account: "Studio", label: "Studio", createdAt: 1 }], selectedAccount: "" }] });
+  await h.ctrl.selectCredential("itch", "Studio");
+  await h.ctrl.selectCredential("itch", "");
+  // The controller never decides where it is kept: the host keeps the account
+  // in the person's private settings for the book, not in the manifest.
+  expect(h.setConfigCalls).toEqual([
+    { dir: "/proj", providerId: "itch", values: { credential: "Studio" } },
+    { dir: "/proj", providerId: "itch", values: { credential: "" } },
+  ]);
+  expect(h.ctrl.publishBusyId).toBeNull();
+});
 
-/** Flush the microtask queue so an async function's synchronous-until-first-await
- *  chain of internal awaits has had a chance to fully unwind, without waiting on
- *  a real timer (setTimeout would also work, but this keeps the test instant). */
-async function flushMicrotasks(): Promise<void> {
-  for (let i = 0; i < 10; i++) await Promise.resolve();
-}
+test("picking an output folder sends the path exactly as picked; the host files it as shared or private", async () => {
+  const h = make({ cards: [{ ...CARD, id: "local", credentialRequired: false, fields: [{ key: "dir", label: "Folder" }] }] });
+  h.ctrl.setPublishConfigDraft("local", "dir", "/proj/exports");
+  await h.ctrl.savePublishConfig("local");
+  h.ctrl.setPublishConfigDraft("local", "dir", "/Users/ada/Dropbox/Books");
+  await h.ctrl.savePublishConfig("local");
+  expect(h.setConfigCalls.map((c) => c.values)).toEqual([{ dir: "/proj/exports" }, { dir: "/Users/ada/Dropbox/Books" }]);
+});
 
-test("connectGoogleOAuth: a stale attempt's late catch/finally must not stomp a newer attempt (#221 C1)", async () => {
-  const waits: Array<{ resolve: () => void; reject: (e: unknown) => void }> = [];
-  const ctrl = new PublishSectionController({
+test("a chosen Drive folder is written as {folderId, folder} through setConfig (the team's destination, so shared)", async () => {
+  const h = make();
+  await h.ctrl.selectDestination("gdrive", { id: "F1", title: "My Books" });
+  expect(h.setConfigCalls).toEqual([{ dir: "/proj", providerId: "gdrive", values: { folderId: "F1", folder: "My Books" } }]);
+});
+
+test("saveDestinations writes only the ticks that changed, as publish.<id>.enabled, then reloads", async () => {
+  const shopify = { ...CARD, id: "shopify", config: { enabled: "true" } };
+  const gdrive = { ...CARD, id: "gdrive", config: {} };
+  const h = make({ cards: [CARD, shopify, gdrive] });
+  await h.ctrl.loadPublish();
+
+  // itch newly ticked, shopify unticked, gdrive still unticked (unchanged).
+  expect(await h.ctrl.saveDestinations({ itch: true, shopify: false, gdrive: false })).toBe(true);
+  expect(h.setConfigCalls).toEqual([
+    { dir: "/proj", providerId: "itch", values: { enabled: true } },
+    { dir: "/proj", providerId: "shopify", values: { enabled: "" } },
+  ]);
+  expect(h.ctrl.publishBusyId).toBeNull();
+});
+
+test("tickedDestinations lists the destinations the manifest has ticked, so a teammate sees them ticked", async () => {
+  const ticked = { ...CARD, id: "shopify", config: { enabled: "true" } };
+  const h = make({ cards: [CARD, ticked, { ...CARD, id: "gdrive", config: { enabled: "false" } }] });
+  expect(h.ctrl.tickedDestinations).toEqual([]);
+  await h.ctrl.loadPublish();
+  expect(h.ctrl.tickedDestinations).toEqual(["shopify"]);
+});
+
+test("saveDestinations does not touch the manifest when nothing changed", async () => {
+  const h = make({ cards: [{ ...CARD, config: { enabled: "true" } }] });
+  await h.ctrl.loadPublish();
+  expect(await h.ctrl.saveDestinations({ itch: true })).toBe(true);
+  expect(h.setConfigCalls.length).toBe(0);
+});
+
+test("saveDestinations reports a failed write and keeps the reason", async () => {
+  const h = make();
+  await h.ctrl.loadPublish();
+  const failing = new PublishSectionController({
     projectDir: () => "/proj",
-    listProviders: () => Promise.resolve([GDRIVE_DEST_CARD]),
+    listProviders: () => Promise.resolve(h.cards),
     preflight: () => Promise.resolve([]),
-    setConfig: () => Promise.resolve({}),
-    connect: () => Promise.reject(new Error("not used")),
-    disconnect: () => Promise.resolve({ ok: true }),
-    connectGoogleStart: () => Promise.resolve({ authUrl: "https://accounts.google.com/o/oauth2/auth" }),
-    connectGoogleWait: () => {
-      const d = deferred<void>();
-      waits.push(d);
-      return d.promise;
-    },
-    connectGoogleCancel: () => Promise.resolve({ ok: true }),
+    setConfig: () => Promise.reject(new Error("manifest is read-only")),
     listDestinations: () => Promise.resolve([]),
     createDestination: () => Promise.reject(new Error("not used")),
     run: () => Promise.reject(new Error("not used")),
-    pickPdfFile: () => Promise.resolve(null),
-    openDirectory: () => Promise.resolve(null),
     openExternal: () => Promise.resolve({ ok: true }),
   });
-
-  // Attempt 1: start, then let it reach connectGoogleWait().
-  const attempt1 = ctrl.connectGoogleOAuth("gdrive");
-  expect(ctrl.publishBusyId).toBe("gdrive"); // set synchronously, before any await
-  await flushMicrotasks();
-  expect(waits.length).toBe(1);
-
-  // Cancel it — busy/authUrl clear immediately; attempt1's own await on
-  // connectGoogleWait() (waits[0]) is still pending.
-  await ctrl.cancelGoogleOAuth("gdrive");
-  expect(ctrl.publishBusyId).toBeNull();
-
-  // Immediately start attempt 2 (the exact repro: cancel, then click Connect
-  // again right away).
-  const attempt2 = ctrl.connectGoogleOAuth("gdrive");
-  await flushMicrotasks();
-  expect(waits.length).toBe(2);
-  expect(ctrl.publishBusyId).toBe("gdrive");
-
-  // Now attempt1's promise settles LATE (the cancelled flow finally rejecting).
-  waits[0]!.reject(new Error("Google sign-in was canceled."));
-  await attempt1;
-
-  // Attempt 2's state must be completely undisturbed by attempt 1's late
-  // settlement — this is the exact bug: publishError getting stomped with
-  // "canceled", and publishBusyId nulled out from under attempt 2.
-  expect(ctrl.publishBusyId).toBe("gdrive");
-  expect(ctrl.publishError).toBeNull();
-
-  // Let attempt 2 resolve normally — it owns the final state.
-  waits[1]!.resolve();
-  await attempt2;
-  expect(ctrl.publishBusyId).toBeNull();
-  expect(ctrl.publishError).toBeNull();
+  await failing.loadPublish();
+  expect(await failing.saveDestinations({ itch: true })).toBe(false);
+  expect(failing.publishError).toBe("manifest is read-only");
+  expect(failing.publishBusyId).toBeNull();
 });
+
+test("the controller holds no key or account-name drafts: accounts are added in the Accounts page's own form", () => {
+  const { ctrl } = make();
+  const names = Object.getOwnPropertyNames(ctrl);
+  for (const gone of ["publishTokenDrafts", "publishAccountDrafts", "connectPublish", "disconnectPublish", "connectGoogleOAuth"]) {
+    expect(names).not.toContain(gone);
+  }
+});
+
+/** Flush the microtask queue so an async function's chain of internal awaits has
+ *  had a chance to fully unwind, without waiting on a real timer. */
+async function flushMicrotasks(): Promise<void> {
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+}
 
 test("selectCredential triggers a destinations reload for the newly selected account (#221 C2)", async () => {
   const listDestinationsCalls: Array<{ dir: string; providerId: string }> = [];
@@ -434,11 +381,6 @@ test("selectCredential triggers a destinations reload for the newly selected acc
     listProviders: () => Promise.resolve([{ ...GDRIVE_DEST_CARD, connected: true }]),
     preflight: () => Promise.resolve([]),
     setConfig: () => Promise.resolve({}),
-    connect: () => Promise.reject(new Error("not used")),
-    disconnect: () => Promise.resolve({ ok: true }),
-    connectGoogleStart: () => Promise.reject(new Error("not used")),
-    connectGoogleWait: () => Promise.reject(new Error("not used")),
-    connectGoogleCancel: () => Promise.resolve({ ok: true }),
     listDestinations: (dir, providerId) => {
       listDestinationsCalls.push({ dir, providerId });
       return Promise.resolve([]);
@@ -457,8 +399,8 @@ test("selectCredential triggers a destinations reload for the newly selected acc
 test("selectCredential does not reload destinations for a provider without a picker", async () => {
   const listDestinationsCalls: unknown[] = [];
   const h = make();
-  // The default CARD (itch) has no `destinations` — no-op, matching
-  // connectPublish/connectGoogleOAuth's own loadDestinationsIfPickerAvailable.
+  // The default CARD (itch) has no `destinations` — no-op, as
+  // a reload of the cards alone.
   h.ctrl = new PublishSectionController({
     projectDir: () => h.projectDir,
     listProviders: () => Promise.resolve(h.cards),
@@ -467,11 +409,6 @@ test("selectCredential does not reload destinations for a provider without a pic
       h.setConfigCalls.push({ dir, providerId, values });
       return Promise.resolve({});
     },
-    connect: () => Promise.reject(new Error("not used")),
-    disconnect: () => Promise.resolve({ ok: true }),
-    connectGoogleStart: () => Promise.reject(new Error("not used")),
-    connectGoogleWait: () => Promise.reject(new Error("not used")),
-    connectGoogleCancel: () => Promise.resolve({ ok: true }),
     listDestinations: () => {
       listDestinationsCalls.push(true);
       return Promise.resolve([]);
@@ -493,11 +430,6 @@ test("destinationsError and destinationsBusyId are keyed PER PROVIDER — an err
     listProviders: () => Promise.resolve([]),
     preflight: () => Promise.resolve([]),
     setConfig: () => Promise.resolve({}),
-    connect: () => Promise.reject(new Error("not used")),
-    disconnect: () => Promise.resolve({ ok: true }),
-    connectGoogleStart: () => Promise.reject(new Error("not used")),
-    connectGoogleWait: () => Promise.reject(new Error("not used")),
-    connectGoogleCancel: () => Promise.resolve({ ok: true }),
     listDestinations: (dir, providerId) => {
       if (providerId === "gdrive-a" && providerAShouldFail) {
         return Promise.reject(new Error("provider A boom"));
@@ -531,11 +463,6 @@ test("destinationsBusyId's single-flight guard is per-provider, not global", asy
     listProviders: () => Promise.resolve([]),
     preflight: () => Promise.resolve([]),
     setConfig: () => Promise.resolve({}),
-    connect: () => Promise.reject(new Error("not used")),
-    disconnect: () => Promise.resolve({ ok: true }),
-    connectGoogleStart: () => Promise.reject(new Error("not used")),
-    connectGoogleWait: () => Promise.reject(new Error("not used")),
-    connectGoogleCancel: () => Promise.resolve({ ok: true }),
     listDestinations: (dir, providerId) => {
       calls.push(providerId);
       if (providerId === "gdrive-a") {

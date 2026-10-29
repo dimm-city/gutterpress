@@ -912,8 +912,13 @@ export const api = {
         ...(account ? { account } : {}),
       }),
 
-    /** Write NON-SECRET provider settings into the manifest's publish section. */
-    setConfig: (projectDir: string, providerId: string, values: Record<string, string>) =>
+    /**
+     * Save NON-SECRET provider settings. The host files each where it belongs:
+     * the team's (destinations ticked as `enabled: true`, targets, folders) in
+     * the manifest's publish section, only the person's own (their account, a
+     * folder outside the book) in their private settings. An empty string clears.
+     */
+    setConfig: (projectDir: string, providerId: string, values: Record<string, string | boolean>) =>
       post<Record<string, Record<string, unknown>>>('/api/publish/set-config', {
         projectDir,
         providerId,

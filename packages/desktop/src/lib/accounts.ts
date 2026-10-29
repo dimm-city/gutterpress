@@ -81,15 +81,34 @@ export function groupAccounts(entries: HostConnectionInfo[], providers: PublishP
 }
 
 /**
+ * What PublishKeyForm needs of a provider: the Accounts page passes its static
+ * listing, the Publish wizard its provider card.
+ */
+export interface KeyFormProvider {
+  id: string;
+  label: string;
+  tokenUrl?: string | null;
+  hint?: string | null;
+  connectKind?: "token" | "oauth" | null;
+}
+
+/** What to tell the author above the form that replaces a saved key or sign-in (a saved key is never shown). */
+export function replaceHint(provider: Pick<KeyFormProvider, "connectKind">): string {
+  return provider.connectKind === "oauth"
+    ? "Sign in again to replace the saved sign-in."
+    : "Your saved key can't be shown. Paste the key again to replace it.";
+}
+
+/**
  * The saved account that adding `account` for `providerId` would replace, if
  * any. The store keys names case-insensitively ("Studio" is "studio"), so
  * the match ignores case too.
  */
-export function savedAccount(
-  publishing: PublishAccount[],
+export function savedAccount<T extends { provider: { id: string }; account: string }>(
+  publishing: T[],
   providerId: string,
   account: string,
-): PublishAccount | undefined {
+): T | undefined {
   const wanted = account.trim().toLowerCase();
   return publishing.find((a) => a.provider.id === providerId && a.account.toLowerCase() === wanted);
 }

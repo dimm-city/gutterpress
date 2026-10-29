@@ -1,6 +1,6 @@
 import path from 'node:path';
-import { handlePublishErrors } from '../_hooks';
-import { defineRoute, getHostServices, loadLib, requireContainedOrPicked, requireProjectDir } from '../../_lib/route';
+import { handlePublishErrors, publishDeps } from '../_hooks';
+import { defineRoute, loadLib, requireContainedOrPicked, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
@@ -66,7 +66,7 @@ export const POST: RequestHandler = defineRoute<{
           ...(body.dryRun ? { dryRun: true } : {}),
         },
         {
-          tokenStore: getHostServices().remote.tokenStore,
+          ...(await publishDeps()),
           onProgress: (line: string) => {
             log.push(line);
             if (log.length > 500) log.shift();

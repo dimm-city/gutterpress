@@ -226,20 +226,12 @@
     listProviders: (dir) => api.publish.listProviders(dir),
     preflight: (dir, providerIds) => api.publish.preflight(dir, providerIds),
     setConfig: (dir, providerId, values) => api.publish.setConfig(dir, providerId, values),
-    connect: (dir, providerId, token, account) => api.publish.connect(dir, providerId, token, account),
-    disconnect: (providerId, account) => api.publish.disconnect(providerId, account),
-    // #221 — oauth connect trio goes through getPlatform() (the narrow
-    // adapter seam for interactive OAuth connects), not api.publish.*.
-    connectGoogleStart: (account) => getPlatform().connectGoogleStart(account),
-    connectGoogleWait: () => getPlatform().connectGoogleWait(),
-    connectGoogleCancel: () => getPlatform().connectGoogleCancel(),
     // #221 — provider-neutral destinations picker.
     listDestinations: (dir, providerId) => api.publish.listDestinations(dir, providerId),
     createDestination: (dir, providerId, name) => api.publish.createDestination(dir, providerId, name),
     run: (dir, providerId, options) => api.publish.run(dir, providerId, options),
     openExternal: (url) => api.shell.openExternal(url),
     onSaved: () => toast?.success?.("Publish settings saved."),
-    onConnected: () => toast?.success?.("Connected — the key is stored securely on this computer."),
     onPublished: (guided) =>
       toast?.success?.(guided ? "Upload package ready — follow the checklist to finish." : "Published!"),
   });
@@ -398,6 +390,8 @@
     accountsFocus = undefined;
     // A GitHub connect or a removed key may have changed whether the open book can back up.
     onConnectDialogClosed();
+    // ...and which accounts the Publish wizard underneath can use.
+    if (publishOpen) void publishController.loadPublish();
   }
   /**
    * No author name/email yet: what a project with version history keeps would
@@ -3645,6 +3639,7 @@
     onShowInFolder={(path) => void api.shell.showInFolder(path).catch(() => {})}
     triggerEl={publishBtnEl}
     onClose={() => (publishOpen = false)}
+    onManageAccounts={() => (accountsOpen = true)}
     onNavigate={(entry) => {
       // A preflight "Go to" — close the wizard, then reveal the finding
       // in the editor via the shared Problems-panel navigation affordance.

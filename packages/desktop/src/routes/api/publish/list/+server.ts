@@ -1,12 +1,14 @@
-import { handlePublishErrors } from '../_hooks';
-import { defineRoute, getHostServices, loadLib, requireProjectDir } from '../../_lib/route';
+import { handlePublishErrors, publishDeps } from '../_hooks';
+import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
  * Provider cards for the Publish panel: static info (incl. the provider's
  * declared settings fields) + redacted connection status + the project's
- * non-secret `publish.*` manifest settings. The built-ins first, then the
- * book's publishing plugins (experimental, #381), each marked `experimental`.
+ * non-secret `publish.*` settings as this person sees them: the manifest's,
+ * with their own private values for the book laid over it. The built-ins
+ * first, then the book's publishing plugins (experimental, #381), each marked
+ * `experimental`.
  */
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   // In `validate`, not `call` — see publish/run's note on handlePublishErrors.
@@ -16,11 +18,13 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   call: async ({ body }) =>
     handlePublishErrors('publish:list', async () => {
       const lib = await loadLib();
-      const settings = await lib.readPublishSettings(body.projectDir);
+      const deps = await publishDeps();
+      const settings = await lib.readPublishSettings(body.projectDir, deps.selections);
       const cards = await Promise.all(
         (await lib.listBookPublishProviders({ projectDir: body.projectDir })).map(async (info) => {
           const raw = settings[info.id] ?? {};
-          // Book-level selected account (manifest `publish.<id>.credential`);
+          // The saved account this book publishes with (the person's private
+          // choice, else an older book's manifest `publish.<id>.credential`);
           // "" = the default credential. It's a selection reference, NOT a
           // provider setting, so it's excluded from the rendered config fields.
           const selectedAccount =
@@ -28,19 +32,17 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
           const config: Record<string, string> = {};
           for (const [k, v] of Object.entries(raw)) {
             if (k === 'credential') continue;
-            if (typeof v === 'string' || typeof v === 'number') config[k] = String(v);
+            if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') config[k] = String(v);
           }
           // "connected" (env var or stored key) is evaluated for the SELECTED
           // account — the same shared definition the CLI's --list uses.
           const status = await lib.publishConnectionStatus(
             info,
-            { tokenStore: getHostServices().remote.tokenStore, credentialAccount: selectedAccount },
+            { tokenStore: deps.tokenStore, credentialAccount: selectedAccount },
             selectedAccount,
           );
           // Redacted saved credentials for the picker (default + named).
-          const savedAccounts = await lib.listPublishAccounts(info, {
-            tokenStore: getHostServices().remote.tokenStore,
-          });
+          const savedAccounts = await lib.listPublishAccounts(info, { tokenStore: deps.tokenStore });
           return {
             id: info.id,
             label: info.label,

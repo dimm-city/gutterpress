@@ -1,15 +1,17 @@
 <script lang="ts">
   /**
-   * PublishKeyForm — adds or replaces one publishing account without a book
-   * open (the Accounts page): a key pasted for itch.io, Azure Static Web Apps
+   * PublishKeyForm — adds or replaces one publishing account, the same way
+   * wherever it is shown (the Accounts page, and the Publish wizard's setup
+   * step for a destination): a key pasted for itch.io, Azure Static Web Apps
    * or Shopify, checked with the provider before it is saved
    * (api.publish.connect with no project), or Google Drive's browser sign-in
-   * (connectGoogleStart/Wait/Cancel). The Publish wizard keeps its own entry,
-   * which also picks the account a book uses.
+   * (connectGoogleStart/Wait/Cancel). It saves the account and says which one
+   * (onConnected); picking the account a book uses is the caller's.
    *
    * Shopify's check needs the store's address, which a book keeps in its own
-   * settings and no book is open here: the form asks for it, uses it for the
-   * check only and does not save it.
+   * settings and which is not read here: the form asks for it (the wizard
+   * fills in the one it knows), uses it for the check only and does not save
+   * it.
    *
    * A new account may be given a name, so several can be kept for one
    * provider; saving under a name that already exists replaces that key, which
@@ -19,11 +21,11 @@
    *
    * PWA-clean (§8): api.* routes and getPlatform() only.
    */
-  import { onMount, tick } from "svelte";
-  import { api, type PublishProviderStaticInfo } from "#lib/api.ts";
+  import { onMount, tick, untrack } from "svelte";
+  import { api } from "#lib/api.ts";
   import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
   import { getPlatform } from "#lib/platform/index.ts";
-  import { savedAccount, type PublishAccount } from "#lib/accounts.ts";
+  import { savedAccount, type KeyFormProvider } from "#lib/accounts.ts";
   import Icon from "#lib/components/Icon.svelte";
 
   let {
@@ -31,31 +33,34 @@
     account = "",
     askAccount = false,
     saved = [],
+    store: knownStore = "",
     hint,
     submitLabel = "Add",
     takeFocus = false,
     onConnected,
     onCancel,
   }: {
-    provider: PublishProviderStaticInfo;
+    provider: KeyFormProvider;
     /** The account being replaced (Edit): "" is the default account. */
     account?: string;
     /** Ask for an optional name for the account (Add). */
     askAccount?: boolean;
     /** The accounts already saved, so a name that would replace one says so. */
-    saved?: PublishAccount[];
+    saved?: Array<{ provider: { id: string }; account: string; label: string }>;
+    /** Shopify's store address, when the caller already knows it (the book's own setting). */
+    store?: string;
     /** What to tell the author before the fields; the provider's own hint when left out. */
     hint?: string;
     submitLabel?: string;
     /** Put the cursor in the field to fill first when the form appears. */
     takeFocus?: boolean;
-    /** The account is saved. */
-    onConnected: () => void | Promise<void>;
+    /** The account is saved: its name ("" is the default account). */
+    onConnected: (account: string) => void | Promise<void>;
     onCancel?: () => void;
   } = $props();
 
   let typedAccount = $state("");
-  let store = $state("");
+  let store = $state(untrack(() => knownStore));
   let token = $state("");
   let busy = $state(false);
   let error = $state<string | null>(null);
@@ -94,7 +99,7 @@
     try {
       await api.publish.connect(null, provider.id, token, name || undefined, needsStore ? store.trim() : undefined);
       token = ""; // the key has done its job: never keep it in state
-      await onConnected();
+      await onConnected(name);
     } catch (e) {
       error = failed(e);
       tokenEl?.focus();
@@ -114,7 +119,7 @@
       signInUrl = authUrl;
       void tick().then(() => cancelEl?.focus());
       await getPlatform().connectGoogleWait();
-      if (mine === attempt) await onConnected();
+      if (mine === attempt) await onConnected(name);
     } catch (e) {
       if (mine === attempt) error = failed(e);
     } finally {

@@ -40,7 +40,7 @@
   import GitServerForm from "#lib/components/GitServerForm.svelte";
   import PublishKeyForm from "#lib/components/PublishKeyForm.svelte";
   import { api, type PublishProviderStaticInfo } from "#lib/api.ts";
-  import { groupAccounts, providersWithKeys } from "#lib/accounts.ts";
+  import { groupAccounts, providersWithKeys, replaceHint } from "#lib/accounts.ts";
   import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
   import { useSettings } from "#lib/settings.svelte.ts";
   import type { HostConnectionInfo, RemoteConnection } from "#lib/platform/contract.ts";
@@ -320,7 +320,7 @@
             <PublishKeyForm
               provider={acct.provider}
               account={acct.account}
-              hint={acct.provider.connectKind === "oauth" ? "Sign in again to replace the saved sign-in." : "Your saved key can't be shown. Paste the key again to replace it."}
+              hint={replaceHint(acct.provider)}
               submitLabel="Save"
               takeFocus
               onConnected={() => afterSave("publishing", acct.provider.connectKind === "oauth" ? `Connected ${acct.provider.label}.` : `Saved your ${acct.provider.label} key.`)}
