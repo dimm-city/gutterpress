@@ -107,20 +107,31 @@ browserTest("wheel passes through the indicator card to the iframe while Cancel 
 
     const spinner = await centerOf(page, ".card");
     await page.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: spinner.x, y: spinner.y });
-    await page.send("Input.dispatchMouseEvent", {
-      type: "mouseWheel",
-      x: spinner.x,
-      y: spinner.y,
-      deltaX: 0,
-      deltaY: 320,
-    });
     // Wait for the scroll to propagate, not for a fixed 100ms. Under CI load
     // that sleep expired before the wheel reached the iframe and the assertion
     // read scrollY === 0 — the exact "Expected: > 0, Received: 0" this test
-    // failed with. Polling the condition is also FASTER in the common case,
-    // and a wheel that genuinely does not pass through still fails here, with
-    // a timeout naming this wait.
-    await waitFor(page, `${FRAME}.contentWindow.scrollY > 0`, 10_000);
+    // failed with. And send the wheel again until it lands: on a cold Chrome
+    // (the first launch on a fresh CI machine, where this is the desktop
+    // suite's only browser) one wheel can be dropped before the page is ready
+    // for it, which timed this test out. A wheel the card swallows never
+    // scrolls the iframe however often it is sent, so that still fails here,
+    // with a timeout naming this wait.
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      await page.send("Input.dispatchMouseEvent", {
+        type: "mouseWheel",
+        x: spinner.x,
+        y: spinner.y,
+        deltaX: 0,
+        deltaY: 320,
+      });
+      try {
+        await waitFor(page, `${FRAME}.contentWindow.scrollY > 0`, 750);
+        break;
+      } catch (e) {
+        if (Date.now() > deadline) throw e;
+      }
+    }
     expect(await page.evaluate<number>(`${FRAME}.contentWindow.scrollY`)).toBeGreaterThan(0);
 
     await page.evaluate(`document.querySelector(".cancel").addEventListener("click", () => {
