@@ -23,6 +23,7 @@ import {
   capabilitiesFor,
   detectProjectSource,
   findEnclosingRepoDir,
+  syncRemoteFor,
 } from "./project-source.ts";
 import { createFileLogger } from "./remote-auth/operation-log.ts";
 import { EXTENSIONS_DIR, LEGACY_PLUGINS_DIR, VENDORED_NPM_DIR } from "./plugin-vendor.ts";
@@ -44,7 +45,7 @@ type GitCache = Record<string, unknown>;
 
 /** One entry in a project's version history (a Git commit, abstracted). */
 export interface SnapshotEntry {
-  /** Opaque revision id (a commit SHA for the local-git provider). */
+  /** Opaque version id (a commit SHA for the local-git provider). */
   id: string;
   /** Author-supplied or auto-generated snapshot message. */
   message: string;
@@ -148,6 +149,10 @@ export interface SourceProvider {
   listHistoryPage(projectDir: string, options?: ListHistoryOptions): Promise<HistoryPage>;
   restore(options: RestoreSnapshotOptions): Promise<void>;
 }
+
+/** What every version operation says about a plain folder. */
+export const NO_VERSION_HISTORY =
+  "This book isn't keeping version history yet. Turn on version history first.";
 
 const DEFAULT_AUTHOR = "gutterpress";
 const DEFAULT_EMAIL = "noreply@gutterpress.local";
@@ -481,8 +486,8 @@ class LocalFolderSourceProvider implements SourceProvider {
     // source must still never nest a repo.
     if ((await findEnclosingRepoDir(dir)) !== undefined) {
       throw new Error(
-        "This folder is already inside a versioned book, so gutterpress " +
-          "won't create a separate history here.",
+        "This folder is already inside a book that keeps version history, so " +
+          "Gutterpress won't start a separate one here.",
       );
     }
     return withRepoLock(dir, async () => {
@@ -508,11 +513,7 @@ class LocalFolderSourceProvider implements SourceProvider {
   }
 
   snapshot(): Promise<SnapshotEntry> {
-    return Promise.reject(
-      new Error(
-        "This book has no version history yet. Enable version history first.",
-      ),
-    );
+    return Promise.reject(new Error(NO_VERSION_HISTORY));
   }
 
   listHistory(): Promise<SnapshotEntry[]> {
@@ -524,11 +525,7 @@ class LocalFolderSourceProvider implements SourceProvider {
   }
 
   restore(): Promise<void> {
-    return Promise.reject(
-      new Error(
-        "This book has no version history yet. Enable version history first.",
-      ),
-    );
+    return Promise.reject(new Error(NO_VERSION_HISTORY));
   }
 }
 
@@ -694,7 +691,7 @@ export async function snapshotWorkingTreeUnlocked(
   if (workdirClean && !staleStaging) {
     logger.debug("snapshot", "no changes — skipping");
     throw new Error(
-      "No changes since the last snapshot — there is nothing new to save.",
+      "Nothing new to save — your last version already has everything.",
     );
   }
   // A stale marker with a clean WORKDIR↔STAGE walk is ambiguous: either (a)
@@ -754,7 +751,7 @@ export async function snapshotWorkingTreeUnlocked(
  * swallow the expected clean-tree rejection without string-matching itself.
  */
 export function isNoChangesError(e: unknown): boolean {
-  return e instanceof Error && /no changes since the last snapshot/i.test(e.message);
+  return e instanceof Error && /nothing new to save/i.test(e.message);
 }
 
 /** What "Save a version" would capture in the open book right now. */
@@ -851,8 +848,7 @@ export interface RestoreVersionResult {
 }
 
 /** Message recorded on the automatic pre-restore safety snapshot. */
-export const RESTORE_BACKUP_MESSAGE =
-  "Automatic backup before restoring an earlier version";
+export const RESTORE_BACKUP_MESSAGE = "Automatic version before restoring";
 
 // ── Automatic snapshots (RC1-3) ───────────────────────────────────────────────
 
@@ -861,7 +857,7 @@ export const RESTORE_BACKUP_MESSAGE =
  * history UI groups consecutive entries carrying EXACTLY this message, so the
  * string is a contract — change it only with a matching UI update.
  */
-export const AUTO_SNAPSHOT_MESSAGE = "Automatic snapshot";
+export const AUTO_SNAPSHOT_MESSAGE = "Automatic version";
 
 // Host-timer cadence policy (auto-snapshot / auto-sync delays, isGitInternalPath)
 // lives in `host-policy.ts` — a cohesive, Git-free policy module the CLI and
@@ -883,11 +879,7 @@ export async function restoreVersionWithBackup(
 ): Promise<RestoreVersionResult> {
   const { projectDir, id, authorName, authorEmail } = options;
   const source = await detectProjectSource(projectDir);
-  if (source.type !== "local-git-folder") {
-    throw new Error(
-      "This book has no version history yet. Enable version history first.",
-    );
-  }
+  if (source.type !== "local-git-folder") throw new Error(NO_VERSION_HISTORY);
   const provider = new LocalGitSourceProvider(source);
   const repoDir = gitScopeFor(source);
   // One lock span for the whole backup+restore sequence so nothing can slip
@@ -913,10 +905,9 @@ export async function restoreVersionWithBackup(
       // version history — and keep the underlying failure on `cause`.
       throw new Error(
         backupId
-          ? "The restore could not be completed, but your work is safe — it was " +
-            `automatically saved as a backup snapshot (${backupId.slice(0, 7)}) ` +
-            "and appears in your version history."
-          : "The restore could not be completed. Your book files were not changed.",
+          ? "Going back to that version didn't finish, but your work is safe — it was " +
+            "saved as an automatic version and appears in your version history."
+          : "Going back to that version didn't finish. Your book files were not changed.",
         { cause },
       );
     }
@@ -924,32 +915,35 @@ export async function restoreVersionWithBackup(
   });
 }
 
-// ── Copies / copy switching (#273) ────────────────────────────────────────────
+// ── Revisions (#273, #448) ───────────────────────────────────────────────────
 //
-// A project can hold several copies of itself (git branches). Book setup → Backup
-// lets the author see which one is open and switch to another. A copy counts
-// whether or not it exists locally yet: one that so far lives only on the
-// remote is switched to by creating the local branch from it, which is what
-// `git checkout <name>` does for a remote-tracking branch. Listing only the
-// local ones made the picker look broken — the copy you went looking for was
-// simply absent, with nothing to distinguish that from a bug.
+// A book can hold several revisions of itself (git branches): separate lines of
+// work such as "Second edition". Book setup → Online copy lists them, says where
+// each is kept, and starts, switches, renames and deletes them. A revision counts
+// whether or not it exists on this computer yet: one that so far lives only in
+// the online copy is switched to by creating the local branch from it, which is
+// what `git checkout <name>` does for a remote-tracking branch.
 //
-// The author-facing word is "copy"; "branch" stays in this module and the
-// route names only.
+// The author-facing word is "revision"; "branch" stays in this module and the
+// route names only. Renaming and deleting live in remote-auth/revisions.ts: they
+// change the online copy too, so they need its transport.
 
-/** The project's copies (git branches) and which one is currently open. */
+/**
+ * The project's revisions (git branches) and which one is currently open.
+ * @deprecated Use {@link RevisionList} from {@link listRevisions}; kept until
+ * the desktop's callers have moved over.
+ */
 export interface LocalBranches {
   /** Name of the branch HEAD points to, or `null` on a detached/unborn HEAD. */
   current: string | null;
   /**
-   * Every copy the project can switch to, sorted: local branches
-   * (`refs/heads/*`) plus copies that so far exist only on a remote.
+   * Every revision the project can switch to, sorted: local branches
+   * (`refs/heads/*`) plus revisions that so far exist only on a remote.
    */
   branches: string[];
   /**
    * The subset of {@link branches} with no local ref yet. Switching to one of
-   * these creates the local copy from the remote and tracks it; the UI uses
-   * this only to say so before it happens.
+   * these creates the local revision from the remote and tracks it.
    */
   remoteOnly: string[];
 }
@@ -979,7 +973,7 @@ export interface SwitchBranchOptions {
   projectDir: string;
   /** Branch name to check out — local, or one that so far exists only on a remote. */
   branch: string;
-  /** Identity recorded on the automatic pre-switch safety snapshot, if one is taken. */
+  /** Identity recorded on the automatic pre-switch safety version, if one is taken. */
   authorName?: string;
   authorEmail?: string;
 }
@@ -993,66 +987,215 @@ export interface SwitchBranchResult {
    * content of (a diff of the old HEAD's tree against the new branch's tree,
    * computed before the checkout runs). The host uses this to drop crash-
    * recovery drafts for these paths — see recovery.ts's header: a draft taken
-   * on the copy just left behind must never be offered over a DIFFERENT copy's
-   * version of the same file.
+   * on the revision just left behind must never be offered over a DIFFERENT
+   * revision's version of the same file.
    */
   changedFiles: string[];
 }
 
-/** Snapshot message for the safety snapshot {@link switchBranch} takes before checking out, when the working tree has changes. */
-export const SWITCH_BRANCH_SNAPSHOT_MESSAGE = "Saved before switching copy";
+/** Version message for the safety version {@link switchBranch} and {@link createRevision} save when the working tree has unsaved work. */
+export const SWITCH_BRANCH_SNAPSHOT_MESSAGE = "Saved before switching revision";
 
-/**
- * List the project's copies (git branches) and which one is open, for a
- * `local-git-folder` project. Returns `null` for any other source type —
- * there is nothing to switch between, and the caller (the Saving settings row)
- * hides the whole control on `null` rather than showing an error.
- *
- * Copies that exist only on a remote are included: they are as real to the
- * author as the local ones, and {@link switchBranch} creates the local branch
- * on the way in.
- */
-export async function listLocalBranches(dir: string): Promise<LocalBranches | null> {
-  const source = await detectProjectSource(dir);
-  if (source.type !== "local-git-folder") return null;
-  const repoDir = gitScopeFor(source);
-  const [local, current, remotes] = await Promise.all([
-    git.listBranches({ fs, dir: repoDir }),
+/** Where each revision of a book is, read from refs only (no network, no history walk). */
+export interface RevisionRefs {
+  /** The revision HEAD points to, or `null` on a detached/unborn HEAD. */
+  current: string | null;
+  /** Revision name → tip, for `refs/heads/*`. */
+  local: Map<string, string>;
+  /** Revision name → the online copy's tip as this computer last saw it, for the sync remote's tracking refs. Empty without a remote. */
+  online: Map<string, string>;
+}
+
+export async function readRevisionRefs(dir: string): Promise<RevisionRefs> {
+  const [names, current, remote] = await Promise.all([
+    git.listBranches({ fs, dir }),
     // An unborn/detached HEAD (no commits yet, or a mid-restore artifact) has
     // no current branch name — treat that as "unknown" rather than throwing.
-    git.currentBranch({ fs, dir: repoDir, fullname: false }).catch(() => undefined),
-    // A repo with no remote configured is the normal offline case, not an error.
-    git.listRemotes({ fs, dir: repoDir }).catch(() => []),
+    git.currentBranch({ fs, dir, fullname: false }).catch(() => undefined),
+    syncRemoteFor(dir),
   ]);
-  const localNames = new Set(local);
-  const remoteOnly = new Set<string>();
-  for (const { remote } of remotes) {
-    const names = await git
-      .listBranches({ fs, dir: repoDir, remote })
-      .catch(() => [] as string[]);
-    for (const name of names) {
-      // The remote's own HEAD pointer is a symref, not a copy to switch to.
-      if (name === "HEAD") continue;
-      if (!localNames.has(name)) remoteOnly.add(name);
-    }
-  }
+  const tips = async (branches: string[], prefix: string) =>
+    new Map(
+      await Promise.all(
+        branches.map(
+          async (name) => [name, await git.resolveRef({ fs, dir, ref: `${prefix}${name}` })] as const,
+        ),
+      ),
+    );
+  // The remote's own HEAD pointer is a symref, not a revision.
+  const onlineNames = remote
+    ? (await git.listBranches({ fs, dir, remote: remote.remote }).catch(() => [] as string[])).filter(
+        (name) => name !== "HEAD",
+      )
+    : [];
   return {
     current: current ?? null,
-    branches: [...localNames, ...remoteOnly].sort(),
-    remoteOnly: [...remoteOnly].sort(),
+    local: await tips(names, "refs/heads/"),
+    online: await tips(onlineNames, `refs/remotes/${remote?.remote}/`),
   };
 }
 
+/** Longest history walk a comparison between two tips makes before it gives up and answers "not provably". */
+const ANCESTRY_DEPTH = 1000;
+
 /**
- * Resolve a copy name to the commit it points at, and the remote it came from
- * when it has no local ref yet.
+ * True when every version of `tip` is also in `inTip` (it is `inTip`, or an
+ * earlier version of it). Tips are compared first; the walk is bounded (see the
+ * note in remote-auth/sync.ts on unbounded `isDescendent` walks), and a walk
+ * that runs out or meets a missing object answers false.
+ */
+export async function isContained(
+  dir: string,
+  tip: string,
+  inTip: string,
+  cache: GitCache,
+): Promise<boolean> {
+  if (tip === inTip) return true;
+  return git
+    .isDescendent({ fs, dir, cache, oid: inTip, ancestor: tip, depth: ANCESTRY_DEPTH })
+    .catch(() => false);
+}
+
+/**
+ * The book's revisions and where each is kept, for a `local-git-folder`
+ * project; `null` for any other source (nothing to switch between — the caller
+ * hides the whole control rather than showing an error).
+ *
+ * Reads refs only: "online" is what this computer last heard from the online
+ * copy (the refresh fetch keeps it current), so this never touches the network.
+ */
+export async function listRevisions(dir: string): Promise<RevisionList | null> {
+  const source = await detectProjectSource(dir);
+  if (source.type !== "local-git-folder") return null;
+  const repoDir = gitScopeFor(source);
+  const { current, local, online } = await readRevisionRefs(repoDir);
+  const cache: GitCache = {};
+  const names = [...new Set([...local.keys(), ...online.keys()])].sort((a, b) => a.localeCompare(b));
+  const revisions = await Promise.all(
+    names.map(async (name): Promise<Revision> => {
+      const here = local.get(name);
+      const there = online.get(name);
+      return {
+        name,
+        current: name === current,
+        where: here && there ? "online" : here ? "this-computer" : "online-only",
+        notBackedUp: Boolean(here && there && !(await isContained(repoDir, here, there, cache))),
+      };
+    }),
+  );
+  return { current, revisions };
+}
+
+/**
+ * The project's revisions (git branches) and which one is open.
+ * @deprecated Use {@link listRevisions}; kept until the desktop's callers have moved over.
+ */
+export async function listLocalBranches(dir: string): Promise<LocalBranches | null> {
+  const list = await listRevisions(dir);
+  if (!list) return null;
+  return {
+    current: list.current,
+    branches: list.revisions.map((r) => r.name),
+    remoteOnly: list.revisions.filter((r) => r.where === "online-only").map((r) => r.name),
+  };
+}
+
+/** A revision name as the author typed it, made usable: trimmed, spaces become hyphens. */
+export function revisionNameFrom(input: string): string {
+  return input.trim().replace(/\s+/g, "-");
+}
+
+// What git refuses in a branch name (check-ref-format), plus "/" so one name can
+// never be a folder of another, and the characters Windows refuses in a file name.
+const UNUSABLE_REVISION_NAME = /[\u0000- \u007f~^:?*[\\/<>"|]|\.\.|@\{|^[-.]|\.$|\.lock$|^@$/;
+const REVISION_NAME_MAX = 100;
+
+/**
+ * Refuse, in plain words, a name a new revision can't have: empty, one git
+ * refuses, or one already used on this computer or in the online copy (letters
+ * compared without case, so two names never collide on a case-insensitive disk).
+ * `name` is already through {@link revisionNameFrom}.
+ */
+export async function assertFreeRevisionName(repoDir: string, name: string): Promise<void> {
+  if (!name) throw new Error("Give the revision a name.");
+  if (name.length > REVISION_NAME_MAX || UNUSABLE_REVISION_NAME.test(name)) {
+    throw new Error(
+      `"${name}" can't be a revision name. Use plain words, numbers and dashes, up to ${REVISION_NAME_MAX} characters.`,
+    );
+  }
+  const { local, online } = await readRevisionRefs(repoDir);
+  const taken = (names: Iterable<string>) => [...names].find((n) => n.toLowerCase() === name.toLowerCase());
+  const here = taken(local.keys());
+  if (here) throw new Error(`There's already a revision called "${here}". Pick a different name.`);
+  const there = taken(online.keys());
+  if (there) {
+    throw new Error(
+      `"${there}" is already a revision in the online copy. Switch to it, or pick a different name.`,
+    );
+  }
+}
+
+/** Inputs for {@link createRevision}. */
+export interface CreateRevisionOptions {
+  projectDir: string;
+  /** The name as typed; spaces become hyphens (see {@link revisionNameFrom}). */
+  name: string;
+  /** Identity recorded on the safety version, if one is taken. */
+  authorName?: string;
+  authorEmail?: string;
+}
+
+/**
+ * Save a version of unsaved work, so nothing the author typed is lost (the
+ * clean-tree rejection is expected and swallowed). Caller holds the repo lock.
+ */
+async function saveUnsavedWork(
+  options: { projectDir: string; repoDir: string; authorName?: string; authorEmail?: string },
+  cache: GitCache,
+): Promise<void> {
+  try {
+    await snapshotWorkingTreeUnlocked({
+      projectDir: options.projectDir,
+      repoRoot: options.repoDir,
+      message: SWITCH_BRANCH_SNAPSHOT_MESSAGE,
+      authorName: options.authorName,
+      authorEmail: options.authorEmail,
+      cache,
+    });
+  } catch (e) {
+    if (!isNoChangesError(e)) throw e;
+  }
+}
+
+/**
+ * Start a new revision from what the book is now, and open it. Unsaved work is
+ * saved as a version first, so the new revision starts from it. The revision
+ * goes online with the next backup, which sends the open revision.
+ */
+export async function createRevision(options: CreateRevisionOptions): Promise<{ current: string }> {
+  const { projectDir, authorName, authorEmail } = options;
+  const source = await detectProjectSource(projectDir);
+  if (source.type !== "local-git-folder") throw new Error(NO_VERSION_HISTORY);
+  const repoDir = gitScopeFor(source);
+  const name = revisionNameFrom(options.name);
+  return withRepoLock(repoDir, async () => {
+    await assertFreeRevisionName(repoDir, name);
+    await saveUnsavedWork({ projectDir, repoDir, authorName, authorEmail }, {});
+    await git.branch({ fs, dir: repoDir, ref: name, checkout: true });
+    return { current: name };
+  });
+}
+
+/**
+ * Resolve a revision name to the version it points at, and the remote it came
+ * from when it has no local ref yet.
  *
  * `resolveRef`'s search path is `<ref>`, `refs/<ref>`, `refs/tags/<ref>`,
  * `refs/heads/<ref>`, `refs/remotes/<ref>`, `refs/remotes/<ref>/HEAD` — note
- * that it never reaches `refs/remotes/<remote>/<ref>`. A copy that has only
+ * that it never reaches `refs/remotes/<remote>/<ref>`. A revision that has only
  * ever existed online therefore has to be looked up per-remote.
  */
-async function resolveCopy(
+async function resolveRevision(
   repoDir: string,
   branch: string,
 ): Promise<{ oid: string; remote?: string }> {
@@ -1068,7 +1211,7 @@ async function resolveCopy(
     if (oid) return { oid, remote };
   }
   throw new Error(
-    `Couldn't find a copy named "${branch}" — it may have been renamed or deleted.`,
+    `Couldn't find a revision named "${branch}" — it may have been renamed or deleted.`,
   );
 }
 
@@ -1122,15 +1265,15 @@ async function diffCommitPaths(
 }
 
 /**
- * Switch the project's working tree to another local copy (git branch).
+ * Switch the project's working tree to another revision (git branch).
  *
  * Safety, in order (see the issue's "what the switch has to take care of"):
- *  1. If the working tree has uncommitted changes, snapshot them first (so
- *     nothing the author typed is lost) and tolerate the expected
- *     "no changes" rejection when it doesn't.
+ *  1. If the working tree has unsaved work, save a version of it first (so
+ *     nothing the author typed is lost); the expected "nothing new" rejection
+ *     is tolerated.
  *  2. Check out the target branch WITHOUT `force` — isomorphic-git then
  *     refuses (CheckoutConflictError) rather than silently overwriting a
- *     working-tree file that moved after the snapshot above, which is
+ *     working-tree file that moved after the version above, which is
  *     reported as a friendly error instead of a forced checkout.
  *  3. Report every path the checkout touched so the host can drop stale
  *     crash-recovery drafts for them (see {@link SwitchBranchResult}).
@@ -1144,35 +1287,20 @@ export async function switchBranch(
 ): Promise<SwitchBranchResult> {
   const { projectDir, branch, authorName, authorEmail } = options;
   const source = await detectProjectSource(projectDir);
-  if (source.type !== "local-git-folder") {
-    throw new Error(
-      "This book has no version history yet. Enable version history first.",
-    );
-  }
+  if (source.type !== "local-git-folder") throw new Error(NO_VERSION_HISTORY);
   const repoDir = gitScopeFor(source);
   return withRepoLock(repoDir, async () => {
     const cache: GitCache = {};
-    try {
-      await snapshotWorkingTreeUnlocked({
-        projectDir,
-        repoRoot: repoDir,
-        message: SWITCH_BRANCH_SNAPSHOT_MESSAGE,
-        authorName,
-        authorEmail,
-        cache,
-      });
-    } catch (e) {
-      if (!isNoChangesError(e)) throw e;
-    }
+    await saveUnsavedWork({ projectDir, repoDir, authorName, authorEmail }, cache);
     const fromOid = await git
       .resolveRef({ fs, dir: repoDir, ref: "HEAD" })
       .catch(() => undefined);
-    // A copy that exists only on a remote resolves through its remote ref;
+    // A revision that exists only on a remote resolves through its remote ref;
     // checkout then creates the local branch and sets it to track the remote
     // one, which is isomorphic-git's documented behaviour for a ref with no
     // local branch. `remote` is passed explicitly so a remote that isn't
     // named "origin" works too — checkout would otherwise assume origin.
-    const { oid: toOid, remote } = await resolveCopy(repoDir, branch);
+    const { oid: toOid, remote } = await resolveRevision(repoDir, branch);
     try {
       await git.checkout({
         fs,
@@ -1185,7 +1313,7 @@ export async function switchBranch(
     } catch (e) {
       if (isCheckoutConflictError(e)) {
         throw new Error(
-          "Couldn't switch copies — some files changed on disk right as the switch " +
+          "Couldn't switch revisions — some files changed on disk right as the switch " +
             "started. Try again.",
           { cause: e },
         );

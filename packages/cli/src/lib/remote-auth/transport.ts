@@ -346,7 +346,8 @@ export async function guardTrackingRef<T>(
 
 /**
  * Fetch the tracked branch's online tip. Returns `null` when the online
- * repository has no such branch yet (a freshly created empty repo).
+ * copy has no such revision yet (a freshly created empty repo, or a revision
+ * started on this computer).
  */
 export async function fetchRemoteTip(
   dir: string,
@@ -392,6 +393,11 @@ export async function fetchRemoteTip(
     // instead of lying.
     const code = (e as { code?: string })?.code;
     if (code === "NoRefspecError") return null;
+    // The online copy has other revisions but not this one: it was started on
+    // this computer and its first backup creates it online.
+    if (code === "NotFoundError" && (e as { data?: { what?: string } }).data?.what === branch) {
+      return null;
+    }
     if (
       code === "NotFoundError" ||
       (e as { data?: { statusCode?: number } })?.data?.statusCode === 404
@@ -406,6 +412,27 @@ export async function fetchRemoteTip(
     }
     throw e;
   }
+}
+
+/**
+ * The online copy's tip for `branch` as the server advertises it right now.
+ * Reads refs only (`listServerRefs`: no objects downloaded, no history walked,
+ * nothing written); `undefined` when the online copy has no such revision.
+ */
+export async function serverTip(
+  transport: RemoteTransport,
+  branch: string,
+  http: typeof httpNode,
+): Promise<string | undefined> {
+  const refs = await git.listServerRefs({
+    http,
+    url: transport.url,
+    prefix: `refs/heads/${branch}`,
+    ...onAuthFor(transport.credential),
+    // One shot: never loop on a rejected credential.
+    ...(transport.credential ? { onAuthFailure: () => ({ cancel: true }) } : {}),
+  });
+  return refs.find((r) => r.ref === `refs/heads/${branch}`)?.oid;
 }
 
 /** First 8 chars of an oid for diagnostic log lines (null-safe). */
