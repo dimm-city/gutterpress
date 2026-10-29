@@ -19,23 +19,47 @@ is nothing to save.
 - **Saving** — **Save changes automatically** (when it's off, press Ctrl+S to save), **Keep
   previous versions** and **Back up online automatically** (see
   [Keep versions and back up your work](09-versions-and-backup.md)).
-- **Your name and email** — saved with each version, so a book's history shows who changed what.
-  Left empty, a version uses the name and email in the book's own Git settings, or else
-  "gutterpress".
-- **Accounts** — **Accounts…** opens the [Accounts](#accounts) page.
+- **Accounts** — **Accounts…** opens the [Accounts](#accounts) page, where your name and email
+  and every account Gutterpress uses are kept.
 
-![Settings: Appearance, Saving, your name and email, and Accounts](images/settings.jpg)
+![Settings: Appearance, Saving and Accounts](images/settings.jpg)
 
 ## Accounts
 
-The **Accounts** page lists the accounts saved on this computer, which every book uses. Open it
-with the **Accounts** button at the top of the start screen, or **Accounts…** in Settings.
+The **Accounts** page is the one place for who you are and every account Gutterpress connects to.
+They are saved on this computer, and every book uses them. Open it with the **Accounts** button at
+the top of the start screen, or **Accounts…** in Settings; the **Add your name & email** notice
+over a book opens it with the cursor in **Name**.
 
+Each group lists what is saved, and has one **Add** button that opens a small form in place. Click
+**Edit** beside a saved account to replace its token or key. For safety a saved token is never
+shown, so paste the new one again; it is cleared from the page as soon as it is saved. **Remove**
+asks once more before it deletes an account.
+
+- **Your name and email** — saved with each version, so a book's history shows who changed what.
+  Left empty, a version uses the name and email in the book's own Git settings, or else
+  "gutterpress". They save as you type.
 - **GitHub** — **Connect GitHub…** signs you in. Once you are connected, **Test connection** checks
   that GitHub still accepts your sign-in, **Reconnect…** signs you in again (do this when backups
   stop with a sign-in error) and **Disconnect** removes it.
-- Publishing keys and Git servers, each with **Remove**. Publishing accounts are added when you
-  [publish](08-publish.md); to back up to another Git server, see the book's **Setup → Backup**.
+- **Other Git servers** — GitLab, Gitea, Forgejo, Bitbucket, Azure Repos or any server with an
+  https:// address. **Add a Git server…** asks for the **Server address**, your **Username** if
+  the server needs one and an **Access token**; the token is checked with the server before it is
+  saved. **Create a token on …** opens the page where that server makes one, when Gutterpress
+  recognises it (for any other, **How to make an access token** opens
+  [the guide](09-versions-and-backup.md#back-up-to-another-git-server)). **Edit** replaces the
+  username and token. A book whose online copy is on that server then backs up with them.
+- **Publishing** — a key for each destination that takes one (itch.io, Azure Static Web Apps and
+  Shopify), and your Google Drive sign-in. **Add a publishing account…** asks which one, then for
+  its **API key** (**Create a key on …** opens the page that makes it) and, if you want to keep
+  more than one for the same destination, an **Account name**. The key is checked with the
+  destination before it is saved, except Shopify's, which is checked when you publish because it
+  needs your store's address from the book. For Google Drive, **Connect Google Drive** opens your
+  browser to choose your account and click **Allow**; **Reconnect…** does it again. You can also
+  add a key from a book's [Publish](08-publish.md) steps, which then use it.
+
+An account that says **Needs reconnecting** can no longer be read (this happens when the computer's
+keychain changes): **Edit** it, or **Reconnect…** for Google Drive, to save it again.
 
 ## Updates
 

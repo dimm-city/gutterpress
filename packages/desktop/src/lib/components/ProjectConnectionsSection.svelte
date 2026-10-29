@@ -41,6 +41,7 @@
   import { backupState, onlineCopyName, readyView, type LastBackup } from "#lib/backup-state.ts";
   import { getPlatform } from "#lib/platform/index.ts";
   import GitHubConnect from "#lib/components/GitHubConnect.svelte";
+  import GitServerForm, { OTHER_SERVER_GUIDE } from "#lib/components/GitServerForm.svelte";
   import Icon from "#lib/components/Icon.svelte";
   import type { ToastController } from "#lib/components/Toast.svelte";
   import type { ProjectRemoteDiagnosis, RemoteAccessResult, RemoteConnection, RemoteRepository } from "#lib/platform/contract.ts";
@@ -75,9 +76,6 @@
     toast?: ToastController | null;
   } = $props();
 
-  const OTHER_SERVER_GUIDE =
-    "https://gutterpress.dimm.city/docs/desktop/versions-and-backup/#back-up-to-another-git-server";
-
   const settings = useSettings();
 
   let loading = $state(true);
@@ -103,10 +101,6 @@
   let reposLoading = $state(false);
   let reposError = $state<string | null>(null);
   let chosenRepo = $state("");
-
-  // connect-server.
-  let serverUser = $state("");
-  let serverToken = $state("");
 
   // ready: the last backup — the host's last status, kept live, or one run here.
   let lastBackup = $state<LastBackup | null>(null);
@@ -235,18 +229,10 @@
       return `Online backup is on. Your book was copied to ${result.repository.fullName} on GitHub${result.repository.private ? " (private)" : ""}.`;
     });
 
-  const connectServer = () =>
+  // The server accepted the token (GitServerForm checked it against this book's repository
+  // and saved it): the book is now set up to back up there.
+  const serverConnected = (result: { host: string }) =>
     act(async (dir) => {
-      if (!diag?.remoteHost) return null;
-      const result = await api.remote.connectGenericHost({
-        host: diag.remoteHost,
-        ...(serverUser.trim() ? { username: serverUser.trim() } : {}),
-        token: serverToken,
-        // Checked against this book's repository: proves access to it, not just to the server.
-        ...(diag.remoteUrl ? { repoUrl: diag.remoteUrl } : {}),
-      });
-      serverToken = ""; // the token has done its job — never keep it in state
-      serverUser = "";
       onBackupSetUp?.(dir);
       await load();
       forgetRejectedSignIn();
@@ -392,24 +378,6 @@
   const githubRepo = $derived(diag?.remoteUrl ? onlineCopyName(diag.remoteUrl).replace(/^[^/]*\//, "") : "");
 </script>
 
-{#snippet serverForm(host: string, tokenUrl: string | null)}
-  <label class="field">
-    <span class="lbl">Username (optional)</span>
-    <input class="input" bind:value={serverUser} autocomplete="username" spellcheck="false" />
-  </label>
-  <label class="field">
-    <span class="lbl">Access token</span>
-    <!-- "new-password" actually suppresses autofill/save prompts; browsers ignore "off" on password fields. -->
-    <input class="input" type="password" bind:value={serverToken} autocomplete="new-password" />
-  </label>
-  <button class="link" onclick={() => void api.shell.openExternal(tokenUrl ?? OTHER_SERVER_GUIDE).catch(() => {})}>
-    {tokenUrl ? `Create a token on ${host}` : "How to make an access token"} <Icon name="external-link" size={11} />
-  </button>
-  <button class="app-btn-primary" onclick={connectServer} disabled={busy || !serverToken.trim()}>
-    {busy ? "Checking…" : "Connect"}
-  </button>
-{/snippet}
-
 <section class="backup" bind:this={sectionEl} tabindex="-1">
   {#if loading}
     <p class="hint">Checking this book's backup…</p>
@@ -485,7 +453,7 @@
       <GitHubConnect primary onConnected={githubConnected} />
     {:else if situation === "connect-server"}
       <p class="headline">This book's online copy is on {diag.remoteHost}. Connect it to back the book up.</p>
-      {@render serverForm(diag.remoteHost ?? "", diag.tokenSettingsUrl)}
+      <GitServerForm host={diag.remoteHost ?? ""} tokenUrl={diag.tokenSettingsUrl} repoUrl={diag.remoteUrl} onConnected={serverConnected} />
     {:else if situation === "ready" && ready}
       <p class="headline" class:ok={ready.ok}>
         {#if ready.ok}<Icon name="circle-check" size={15} />{/if}
@@ -500,7 +468,7 @@
         {#if diag.provider === "github"}
           <GitHubConnect primary onConnected={githubConnected} />
         {:else}
-          {@render serverForm(diag.remoteHost ?? "", diag.tokenSettingsUrl)}
+          <GitServerForm host={diag.remoteHost ?? ""} tokenUrl={diag.tokenSettingsUrl} repoUrl={diag.remoteUrl} onConnected={serverConnected} />
         {/if}
       {/if}
       <!-- Vocabulary: "copy", never "branch". -->

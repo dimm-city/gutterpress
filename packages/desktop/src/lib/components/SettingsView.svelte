@@ -2,8 +2,9 @@
   /**
    * SettingsView — the app's Settings: one page in the shared AppView layer,
    * the same from the start screen and over a book (it never reads the open
-   * book). Four groups; every control applies at once. The accounts have
-   * their own page (AccountsView), which the last group opens.
+   * book). Three groups; every control applies at once. Your name and email
+   * and every account have their own page (AccountsView), which the last
+   * group opens.
    */
   import AppView from "#lib/components/AppView.svelte";
   import { useSettings } from "#lib/settings.svelte.ts";
@@ -13,13 +14,10 @@
   let {
     onClose,
     onOpenAccounts,
-    focus,
   }: {
     onClose: () => void;
     /** Open the Accounts page in place of this one. */
     onOpenAccounts: () => void;
-    /** Open with the cursor in this field (the "Add your name & email" banner). */
-    focus?: "name";
   } = $props();
 
   const settings = useSettings();
@@ -57,15 +55,7 @@
   </div>
 {/snippet}
 
-<AppView
-  title="Settings"
-  icon="settings"
-  measure={640}
-  {onClose}
-  closeLabel="Close settings"
-  closeTitle="Close (Esc)"
-  initialFocus={focus === "name" ? "#settings-name" : undefined}
->
+<AppView title="Settings" icon="settings" measure={640} {onClose} closeLabel="Close settings" closeTitle="Close (Esc)">
   <section class="group" aria-labelledby="settings-appearance">
     <h2 id="settings-appearance">Appearance</h2>
     <fieldset class="row">
@@ -90,26 +80,10 @@
     {@render toggle("settings-autosync", "Back up online automatically", s.versionHistory.autoSnapshot ? "For books with an online backup." : "Turn on Keep previous versions first.", s.versionHistory.autoSync, setAutoSync, !s.versionHistory.autoSnapshot)}
   </section>
 
-  <section class="group" aria-labelledby="settings-identity">
-    <h2 id="settings-identity">Your name and email</h2>
-    <p class="hint">
-      Saved with each version, so a book's history shows who changed what. Left empty, a version uses the name and
-      email in the book's own Git settings, or else "gutterpress".
-    </p>
-    <div class="field">
-      <label for="settings-name">Name</label>
-      <input id="settings-name" type="text" autocomplete="name" value={s.gitIdentity.authorName} onchange={(e) => settings.set({ gitIdentity: { authorName: e.currentTarget.value } })} />
-    </div>
-    <div class="field">
-      <label for="settings-email">Email</label>
-      <input id="settings-email" type="email" autocomplete="email" value={s.gitIdentity.authorEmail} onchange={(e) => settings.set({ gitIdentity: { authorEmail: e.currentTarget.value } })} />
-    </div>
-  </section>
-
   <section class="group" aria-labelledby="settings-accounts">
     <h2 id="settings-accounts">Accounts</h2>
     <div class="row">
-      <span class="hint">GitHub, publishing keys and Git servers, used by every book.</span>
+      <span class="hint">Your name and email, GitHub, Git servers and publishing accounts, used by every book.</span>
       <button class="app-btn" onclick={onOpenAccounts}>Accounts…</button>
     </div>
   </section>
@@ -169,10 +143,4 @@
   input[role="switch"]:checked::before { top: 1px; left: 1px; width: 16px; height: 16px; background: var(--app-text-on-accent); transform: translateX(16px); }
   input[role="switch"]:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   input[role="switch"]:disabled { opacity: 0.45; cursor: default; }
-
-  .field { display: grid; grid-template-columns: 120px minmax(0, 320px); align-items: center; gap: 16px; font-size: 13px; color: var(--app-text-secondary); }
-  .field input {
-    padding: 6px 8px;
-    font: inherit;
-  }
 </style>

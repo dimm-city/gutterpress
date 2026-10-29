@@ -54,7 +54,8 @@ Each destination you ticked has its own step:
   in your book's `manifest.yaml`; the plugin handles its own sign-in.
 
 Click **Save settings** to keep a destination's settings with your book. Keys are stored on your
-computer only. The [Accounts](10-settings.md#accounts) page lists the saved keys; **Remove** deletes one.
+computer only. You can also add, replace or remove a key, or sign in to Google Drive, without
+opening a book, on the [Accounts](10-settings.md#accounts) page, under **Publishing**.
 
 ## Preflight
 

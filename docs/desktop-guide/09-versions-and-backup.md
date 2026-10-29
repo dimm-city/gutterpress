@@ -77,8 +77,8 @@ Backup** says in one line where the book is kept, and offers the one next step:
   Keep backing up with your usual Git tool, or give the book its https:// address with that tool
   (`git remote set-url origin https://…`) and come back to connect it.
 
-GitHub can also be connected on the [Accounts](10-settings.md#accounts) page, which lists every
-account saved on this computer, each with **Remove**.
+GitHub and other Git servers can also be connected, edited and removed on the
+[Accounts](10-settings.md#accounts) page, which lists every account saved on this computer.
 
 ### Set up online backup for a book you started here
 
@@ -128,6 +128,9 @@ on the server:
    if the server needs one) and click **Connect**. The token is checked with the server before it
    is saved. For a server Gutterpress recognises, **Create a token on …** opens the page that
    makes one; for any other, **How to make an access token** opens this section.
+
+To save a server's token before you open a book, use **Add a Git server…** under **Other Git
+servers** on the [Accounts](10-settings.md#accounts) page; **Edit** there replaces it later.
 
 Where each server makes its tokens:
 

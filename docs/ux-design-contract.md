@@ -154,20 +154,33 @@ gutterpress/
 ├── Media panel                                SHIPPED  (MediaPanel, #47)
 ├── Crash recovery                             SHIPPED  (RecoveryOverlay / CrashRecoveryDialog)
 ├── Settings                                   SHIPPED  (SettingsView: one page in its own sheet,
-│                                                        no tabs — Appearance, Saving, Your name
-│                                                        and email, and Accounts… (opens Accounts);
+│                                                        no tabs — Appearance, Saving, and
+│                                                        Accounts… (opens Accounts);
 │                                                        opened by the status-bar gear, Ctrl+, and
 │                                                        the start screen's Settings button; it
 │                                                        never reads the open book, so it is the
 │                                                        same everywhere; #442)
 ├── Accounts                                   SHIPPED  (AccountsView: one page in its own sheet, like
-│                                                        Settings — every account saved on this
-│                                                        computer, used by every book: GitHub
-│                                                        (Connect, or Test connection / Reconnect… /
-│                                                        Disconnect), publishing keys and Git servers
-│                                                        (Remove); opened by the start screen's
-│                                                        Accounts button, Settings and Book setup →
-│                                                        Backup, over whichever opened it)
+│                                                        Settings — the one place to manage every
+│                                                        connection, saved on this computer and
+│                                                        used by every book. Groups, each listing
+│                                                        what is saved with one Add button that
+│                                                        opens a compact inline form: Your name
+│                                                        and email (moved from Settings; same
+│                                                        keys, saved on change); GitHub (Connect,
+│                                                        or Test connection / Reconnect… /
+│                                                        Disconnect); Other Git servers (Add,
+│                                                        Edit, Remove — host, optional username,
+│                                                        token, checked with the server first);
+│                                                        Publishing (a key for each provider that
+│                                                        takes one, with an optional account
+│                                                        name, and Google Drive's sign-in: Add,
+│                                                        Edit, Remove). Edit replaces the stored
+│                                                        secret; it is never shown. Opened by the
+│                                                        start screen's Accounts button, Settings
+│                                                        and Book setup → Backup, and by the
+│                                                        missing name & email notice with the
+│                                                        cursor in Name, over whichever opened it)
 ├── Visual layout editor                       PROPOSED (#37 — milestone placeholder; sub-issues first)
 └── AI Assistant                               PROPOSED (#36)
 ```
@@ -177,13 +190,16 @@ live in **Book setup** — the Look tab chooses a look and adjusts its brand
 settings, the Extensions tab holds the extension list and turns the extras on,
 and Advanced holds the stylesheets and every design setting — not app
 Settings: app appearance and print theme are deliberately separated
-concepts; do not merge them back. Forms live where their task happens: a
-publishing key is added in Publish, a book's Git server is connected in its
-Backup tab, and the Accounts page only lists what is stored, with Remove (and, for GitHub,
-Test connection and Reconnect…). A backup that keeps failing is fixed in the book's Backup
-tab; Troubleshooting holds Logs, Diagnostics and Report a problem only. Diagnostics
-puts the update check and the update channel menu on the Desktop version line (no
-separate Updates section). One name per surface: the toolbar button, the page title and the docs all say "Book
+concepts; do not merge them back. The Accounts page is the one place to manage every
+connection — connect, edit and disconnect GitHub, other Git servers, publishing keys and
+Google Drive — and the author's name and email. The task that needs a connection still
+offers it in place, saving to the same store: a book's GitHub or Git server in its Backup
+tab, a publishing key in Publish. Where those forms match the Accounts ones they are one
+component (GitHubConnect, GitServerForm). A backup that keeps failing is fixed in the
+book's Backup tab; Troubleshooting holds Logs, Diagnostics and Report a problem only.
+Diagnostics puts the update check and the update channel menu on the Desktop version line
+(no separate Updates section). One name
+per surface: the toolbar button, the page title and the docs all say "Book
 setup"; the status-bar gear, the shortcut and the page all say "Settings".
 
 ### Navigation model
@@ -432,7 +448,7 @@ buttons.
   and **Troubleshooting** — and **Accounts** and **Settings** buttons in the
   header, each opening its own page. It always opens on **Books** — picking or
   continuing a book is the screen's job. A missing name/email is raised by
-  the workspace's standing identity banner, whose button opens Settings with
+  the workspace's standing identity banner, whose button opens Accounts with
   the cursor in Name. There is no Reader/Author role: every author has Edit,
   Setup and Publish in the toolbar; a reader uses the toolbar's Read.
   `NewProjectWizard`: template first (**4 built-in templates** — Book, Zine,
@@ -486,9 +502,9 @@ buttons.
   fields commit when you leave them or press Enter; pending edits are saved
   when you switch tabs or close the panel. A commit writes only what changed
   (a title edit never rewrites the page size or `targets:`).
-- Settings is one page with no tabs (Appearance, Saving, Your name and
-  email, Accounts…), reached from the status bar's settings button,
-  `Cmd/Ctrl+,` and the start screen; the accounts are a page of their own.
+- Settings is one page with no tabs (Appearance, Saving, Accounts…), reached
+  from the status bar's settings button, `Cmd/Ctrl+,` and the start screen;
+  your name and email and every account are a page of their own (Accounts).
   Any further regrouping is a PROPOSED delta.
 
 Anti-patterns: full-screen onboarding carousels; auto-advancing tours; empty

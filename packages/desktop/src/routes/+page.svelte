@@ -372,13 +372,10 @@
   }
   /**
    * Settings: its own sheet (AppView), the same over a book and over the start
-   * screen; closing it returns the author exactly where they were. `focus`
-   * opens it with the cursor in Name (the missing name & email banner).
+   * screen; closing it returns the author exactly where they were.
    */
   let settingsOpen = $state(false);
-  let settingsFocus = $state<"name" | undefined>(undefined);
-  function openSettings(focus?: "name"): void {
-    settingsFocus = focus;
+  function openSettings(): void {
     settingsOpen = true;
   }
   function toggleSettings(): void {
@@ -390,19 +387,22 @@
     if (landingVisible) landingRef?.focusLayer();
   }
   /**
-   * Accounts: its own sheet too, opened from the start screen, Settings and
-   * Book setup → Backup, over whichever opened it; closing it returns there.
+   * Accounts: its own sheet too, opened from the start screen, Settings, Book
+   * setup → Backup and the missing name & email banner (which opens it with
+   * the cursor in Name), over whichever opened it; closing it returns there.
    */
   let accountsOpen = $state(false);
+  let accountsFocus = $state<"name" | undefined>(undefined);
   function closeAccounts(): void {
     accountsOpen = false;
+    accountsFocus = undefined;
     // A GitHub connect or a removed key may have changed whether the open book can back up.
     onConnectDialogClosed();
   }
   /**
    * No author name/email yet: what a project with version history keeps would
    * be attributed to a placeholder, so the workspace carries a persistent notice
-   * with a one-click route to Settings, cursor in Name. It clears itself the moment
+   * with a one-click route to Accounts, cursor in Name. It clears itself the moment
    * both fields are filled.
    *
    * It waits until that is about to matter: the open project HAS version
@@ -3062,7 +3062,7 @@
     <span class="identity-banner-msg">
       Add your name and email so the changes you save are credited to you.
     </span>
-    <button class="identity-action" onclick={() => openSettings("name")}>
+    <button class="identity-action" onclick={() => { accountsFocus = "name"; accountsOpen = true; }}>
       Add your name &amp; email
     </button>
     <button class="identity-dismiss" onclick={() => (identityNoticeDismissed = true)}>
@@ -3611,10 +3611,10 @@
   />
 {/if}
 {#if settingsOpen}
-  <SettingsView onClose={closeSettings} onOpenAccounts={() => (accountsOpen = true)} focus={settingsFocus} />
+  <SettingsView onClose={closeSettings} onOpenAccounts={() => (accountsOpen = true)} />
 {/if}
 {#if accountsOpen}
-  <AccountsView onClose={closeAccounts} />
+  <AccountsView onClose={closeAccounts} focus={accountsFocus} />
 {/if}
 
 {#if openBookOpen}
