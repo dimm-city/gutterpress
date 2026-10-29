@@ -73,13 +73,13 @@ gutterpress ext disable clean-book ./my-book   # keep it listed, stop loading it
 gutterpress ext remove clean-book ./my-book    # or drop the entry
 ```
 
-The desktop app's **Project settings &rarr; Extensions** tab is the same list,
+The desktop app's **Book setup &rarr; Extensions** tab is the same list,
 looks and features together: add a look, move entries up or down, switch one
 off, or remove it. There is no separate apply or revert step --- a look is
 just an entry, and the snapshot history versions the manifest change like any
-other edit. The **Design** tab beside it shows the tokens of every look you
-have switched on and saves your changes to `styles/book.css`; the looks
-themselves are never edited.
+other edit. The **Look** tab adjusts six of the settings of the look you have
+switched on, and **Advanced** shows every one; both save your changes to
+`styles/book.css`, and the looks themselves are never edited.
 
 Bundled looks define the full token set (see below) so you only need to
 override the tokens you want to change. This guide's own project (the one

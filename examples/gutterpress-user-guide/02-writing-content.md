@@ -94,7 +94,7 @@ Core Gutterpress emits a plain `<blockquote>`. The left border and tinted backgr
 ## Math {#math}
 
 Turn on the bundled **Math** feature (`gutterpress-math` under `extensions:`,
-or **Project settings &rarr; Extensions** in the desktop; see
+or **Book setup &rarr; Extensions** in the desktop; see
 [Chapter 5](#ch-plugins)) and write LaTeX math the way every LaTeX author
 already does: `$...$` inside a line, `$$...$$` on lines of its own.
 
