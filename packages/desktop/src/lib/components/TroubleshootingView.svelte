@@ -2,10 +2,10 @@
   /**
    * TroubleshootingView — the start screen's Troubleshooting tab: the
    * sub-tabbed home for everything a writer needs when something is wrong or
-   * support asks "which version?". Diagnostics (versions, system + tool
-   * status, copyable report, plus the update check, update channel and Linux
-   * desktop integration), Logs (the app's diagnostic logs) and Report a
-   * problem (the diagnostic bundle + prefilled GitHub issue). The Help tab
+   * support asks "which version?". Diagnostics (versions with the update
+   * check and update channel beside the app version, system + tool status,
+   * copyable report, Linux desktop integration), Logs (the app's diagnostic
+   * logs) and Report a problem (the diagnostic bundle + prefilled GitHub issue). The Help tab
    * carries guidance only; a stuck online backup is fixed in Book setup →
    * Backup, an expired sign-in in Accounts.
    *
@@ -17,8 +17,9 @@
   import type { DoctorDiagnostics } from "#lib/api.ts";
   import LogsPanel from "#lib/components/LogsPanel.svelte";
   import ReportProblemPanel from "#lib/components/ReportProblemPanel.svelte";
-  import UpdatesIntegrationSection from "#lib/components/UpdatesIntegrationSection.svelte";
+  import AppImageIntegrationSection from "#lib/components/AppImageIntegrationSection.svelte";
   import type { UpdaterAvailableAction } from "#lib/platform/index.ts";
+  import { useSettings } from "#lib/settings.svelte.ts";
   import { sanitizeTroubleshootingTab, type TroubleshootingTab } from "#lib/troubleshooting-tabs.ts";
 
   let {
@@ -37,13 +38,15 @@
     idPrefix?: string;
     /** The open book, if any — Diagnostics' Open terminal and the problem report use it. */
     projectDir?: string | null;
-    /** Diagnostics → Updates: the manual update check and the host's update state. */
+    /** Diagnostics → Desktop version: the manual update check and the host's update state. */
     onCheckForUpdates?: () => void;
     checkingUpdates?: boolean;
     updateReadyVersion?: string | null;
     updateAvailableVersion?: string | null;
     updateAvailableAction?: UpdaterAvailableAction | null;
   } = $props();
+
+  const settings = useSettings();
 
   // ── Tabs ────────────────────────────────────────────────────────────────────
   const TABS: Array<{ id: TroubleshootingTab; label: string }> = [
@@ -123,7 +126,7 @@
     if (!data) return;
     const lines = [
       `Gutterpress desktop ${data.desktopVersion}`,
-      `lib ${data.libVersion}  ·  electron ${data.electronVersion}  ·  chromium ${data.chromeVersion}  ·  node ${data.platform.node}`,
+      `electron ${data.electronVersion}  ·  chromium ${data.chromeVersion}  ·  node ${data.platform.node}`,
       `platform: ${osLabel(data.platform.os)} ${data.platform.arch} (${data.platform.release})`,
       `CLI config directory: ${data.configDir}`,
       ``,
@@ -215,8 +218,32 @@
       <p class="intro">Which version you're running, whether an update is available, and whether your computer has what Gutterpress needs. Copy the details to share when you ask for help.</p>
 
       <section class="versions">
-        <div><strong>Desktop:</strong> {data.desktopVersion}</div>
-        <div><strong>Lib:</strong> {data.libVersion}</div>
+        <div class="desktop-line">
+          <span><strong>Desktop:</strong> {data.desktopVersion}</span>
+          {#if onCheckForUpdates}
+            <button class="app-btn app-btn-ghost" onclick={onCheckForUpdates} disabled={checkingUpdates}>
+              {checkingUpdates ? "Checking…" : "Check now"}
+            </button>
+          {/if}
+          <select
+            aria-label="Update channel"
+            value={settings.current.updates.channel}
+            onchange={(e) => settings.set({ updates: { channel: (e.currentTarget as HTMLSelectElement).value as "stable" | "beta" | "alpha" } })}
+          >
+            <option value="stable">Stable — recommended</option>
+            <option value="beta">Beta — early releases</option>
+            <option value="alpha">Alpha — experimental builds</option>
+          </select>
+        </div>
+        <p class="update-note">
+          {#if updateReadyVersion}
+            Update v{updateReadyVersion} is ready to apply. Use the update button at the top of this screen.
+          {:else if updateAvailableVersion}
+            Update v{updateAvailableVersion} is available. Use the update button at the top of this screen to download it{updateAvailableAction === "open-release" ? " from GitHub" : ""}.
+          {:else}
+            Gutterpress checks for updates automatically.
+          {/if}
+        </p>
         <div>
           <strong>Runtime:</strong>
           Electron {data.electronVersion} · Chromium {data.chromeVersion} · Node {data.platform.node}
@@ -228,13 +255,7 @@
         <div><strong>CLI config directory:</strong> <code>{data.configDir}</code></div>
       </section>
 
-      <UpdatesIntegrationSection
-        {onCheckForUpdates}
-        {checkingUpdates}
-        {updateReadyVersion}
-        {updateAvailableVersion}
-        {updateAvailableAction}
-      />
+      <AppImageIntegrationSection />
 
       <section class="tools">
         <h3>Optional system tools</h3>
@@ -323,6 +344,9 @@
 
   .versions { font-size: 13px; line-height: 1.7; margin-bottom: 18px; }
   .versions strong { color: var(--app-text-muted); font-weight: 500; min-width: 80px; display: inline-block; }
+  .desktop-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+  .desktop-line :is(button, select) { height: 26px; padding: 0 10px; font-size: 12px; }
+  .update-note { margin: 0 0 4px; font-size: 12px; line-height: 1.4; color: var(--app-text-muted); }
   .tools h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; color: var(--app-text-muted); letter-spacing: 0.5px; }
   .tools .hint { font-size: 12px; color: var(--app-text-muted); margin: 0 0 12px; }
   .tools ul { list-style: none; margin: 0; padding: 0; }

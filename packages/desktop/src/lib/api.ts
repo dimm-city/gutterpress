@@ -380,8 +380,6 @@ export const api = {
     read: (logPath: string) => post<string | null>('/api/log/read', { logPath }),
     /** List the app's diagnostic log files (newest first). */
     list: () => post<LogFileEntry[]>('/api/log/list', {}),
-    /** Open the logs folder in the OS file manager. */
-    openFolder: () => post<{ ok: boolean }>('/api/log/open-folder', {}),
     /** Delete every log file the list shows. */
     prune: () => post<{ removed: number }>('/api/log/prune', {}),
   },

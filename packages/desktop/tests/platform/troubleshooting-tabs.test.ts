@@ -45,16 +45,30 @@ describe("About tab folded into Troubleshooting → Diagnostics", () => {
     expect(read("src/routes/+page.svelte")).not.toContain('"about"');
   });
 
-  test("Diagnostics renders versions, the update check/channel and desktop integration", () => {
+  test("Diagnostics puts the update check and channel on the Desktop version line", () => {
     const view = read("src/lib/components/TroubleshootingView.svelte");
-    expect(view).toContain("data.desktopVersion");
-    expect(view).toContain("data.libVersion");
-    expect(view).toContain("<UpdatesIntegrationSection");
-    const section = read("src/lib/components/UpdatesIntegrationSection.svelte");
-    expect(section).toContain('id="set-update-channel"');
-    expect(section).toContain("s.updates.channel");
-    expect(section).toContain("appImage?.supported");
-    expect(section).toContain("onCheckForUpdates");
+    const line = view.slice(view.indexOf('class="desktop-line"'));
+    const desktopLine = line.slice(0, line.indexOf("</div>"));
+    expect(desktopLine).toContain("data.desktopVersion");
+    expect(desktopLine).toContain("onCheckForUpdates");
+    expect(desktopLine).toContain('aria-label="Update channel"');
+    expect(desktopLine).toContain("settings.current.updates.channel");
+    // No separate Updates section, no Lib line (the report text drops it too).
+    expect(view).not.toContain("<h3>Updates</h3>");
+    expect(view).not.toContain("Reset");
+    expect(view).not.toContain("libVersion");
+  });
+
+  test("Linux desktop integration stays in its own component, shown only where supported", () => {
+    expect(read("src/lib/components/TroubleshootingView.svelte")).toContain("<AppImageIntegrationSection");
+    expect(fs.existsSync(path.join(root, "src/lib/components/UpdatesIntegrationSection.svelte"))).toBe(false);
+    expect(read("src/lib/components/AppImageIntegrationSection.svelte")).toContain("appImage?.supported");
+  });
+
+  test("Logs has no Open folder button and nothing behind it", () => {
+    expect(read("src/lib/components/LogsPanel.svelte")).not.toContain("openFolder");
+    expect(read("src/lib/api.ts")).not.toContain("open-folder");
+    expect(fs.existsSync(path.join(root, "src/routes/api/log/open-folder"))).toBe(false);
   });
 
   test("Settings no longer carries the update channel or desktop integration", () => {

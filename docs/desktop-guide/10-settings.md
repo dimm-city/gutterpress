@@ -42,11 +42,11 @@ with the **Accounts** button at the top of the start screen, or **Accounts…** 
 Gutterpress checks for updates itself and shows **Update available** with a **Download** button,
 then **Update ready — Restart & update** once it has downloaded. On a Mac, the update downloads
 from GitHub for you to install. To check yourself, open the start screen's **Troubleshooting** tab,
-then **Diagnostics**, and click **Check now**. Diagnostics also shows which version you're running.
+then **Diagnostics**, and click **Check now** beside the version you're running.
 
-The **Update channel**, also under Troubleshooting → Diagnostics, is **Stable — recommended**
-unless you choose **Beta** or **Alpha** for early builds. On Linux, the same place has **Add to
-application menu**, which adds the AppImage to your desktop's menu.
+The channel menu beside **Check now** is **Stable — recommended** unless you choose **Beta** or
+**Alpha** for early builds. On Linux, Diagnostics also has **Add to application menu**, which adds
+the AppImage to your desktop's menu.
 
 ## Get help or report a problem
 

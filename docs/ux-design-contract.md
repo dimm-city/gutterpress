@@ -173,8 +173,9 @@ concepts; do not merge them back. Forms live where their task happens: a
 publishing key is added in Publish, a book's Git server is connected in its
 Backup tab, and the Accounts page only lists what is stored, with Remove (and, for GitHub,
 Test connection and Reconnect…). A backup that keeps failing is fixed in the book's Backup
-tab; Troubleshooting holds Logs, Diagnostics and Report a problem only. One name
-per surface: the toolbar button, the page title and the docs all say "Book
+tab; Troubleshooting holds Logs, Diagnostics and Report a problem only. Diagnostics
+puts the update check and the update channel menu on the Desktop version line (no
+separate Updates section). One name per surface: the toolbar button, the page title and the docs all say "Book
 setup"; the status-bar gear, the shortcut and the page all say "Settings".
 
 ### Navigation model
