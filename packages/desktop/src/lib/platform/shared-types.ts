@@ -759,6 +759,22 @@ export interface VersionFileChange {
   text: boolean;
 }
 
+/** One revision of a book (mirrors the lib's `Revision`, #448). */
+export interface Revision {
+  name: string;
+  current: boolean;
+  where: "online" | "this-computer" | "online-only";
+  notBackedUp: boolean;
+}
+
+/** The book's revisions (mirrors the lib's `RevisionList`) plus whether the online copy was checked just now. */
+export interface RevisionList {
+  current: string | null;
+  revisions: Revision[];
+  /** The refresh from the online copy ran and succeeded; false = the list is what this computer last knew. */
+  checkedOnline: boolean;
+}
+
 /** A history entry with what it changed and where it is kept (#408). */
 export interface VersionEntry extends SnapshotEntry {
   changes: VersionFileChange[];

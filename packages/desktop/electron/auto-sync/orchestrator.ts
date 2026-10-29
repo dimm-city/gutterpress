@@ -63,10 +63,10 @@ export interface SyncStatusPayload {
   state:
     | "idle"
     | "syncing"
-    // "synced" — the sync completed. It covers BOTH lib outcomes: work was
-    // sent, or there was nothing to send. The renderer draws them
-    // identically ("Everything is in sync"), so there is no second state.
+    // "synced" — the online copy has every version this computer has.
     | "synced"
+    // "unsent" — the pass finished, but this computer has versions the online copy lacks.
+    | "unsent"
     | "offline"
     | "auth"
     | "error"

@@ -65,6 +65,8 @@ export type {
   VersionEntry,
   VersionFileChange,
   CompareRow,
+  Revision,
+  RevisionList,
   RemoteConnection,
   RemoteRepository,
   BackupTarget,
@@ -94,6 +96,8 @@ import type {
   VersionEntry,
   VersionFileChange,
   CompareRow,
+  Revision,
+  RevisionList,
   RemoteConnection,
   RemoteRepository,
   BackupTarget,
@@ -757,6 +761,20 @@ export const api = {
     /** Switch the project's working tree to another local copy (#273). */
     switchBranch: (projectDir: string, branch: string) =>
       post<{ current: string; changedFiles: string[] }>('/api/vcs/switch-branch', { projectDir, branch }),
+    /** The book's revisions and where each is kept (#448); `null` without version history.
+     *  `refresh` checks the online copy first (best-effort; see `checkedOnline`). */
+    listRevisions: (projectDir: string, options?: { refresh?: boolean }) =>
+      post<RevisionList | null>('/api/vcs/list-revisions', { projectDir, ...options }),
+    /** Start a new revision from what is open now and switch to it (#448). */
+    createRevision: (projectDir: string, name: string) =>
+      post<{ current: string }>('/api/vcs/create-revision', { projectDir, name }),
+    /** Rename a revision; an online one is renamed in the online copy too (#448). */
+    renameRevision: (projectDir: string, from: string, to: string) =>
+      post<{ current: string | null; name: string }>('/api/vcs/rename-revision', { projectDir, from, to }),
+    /** Delete a revision that is not open (#448). Without `discard`, a revision holding versions
+     *  found nowhere else is not deleted: the result says how many would be lost. */
+    deleteRevision: (projectDir: string, name: string, options?: { everywhere?: boolean; discard?: boolean }) =>
+      post<{ deleted: true } | { deleted: false; versionsOnlyHere: number }>('/api/vcs/delete-revision', { projectDir, name, ...options }),
   },
 
   remote: {

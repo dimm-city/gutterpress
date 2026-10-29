@@ -954,6 +954,26 @@ export interface LocalBranches {
   remoteOnly: string[];
 }
 
+/**
+ * One revision (git branch) of a book, as the author sees it (#448): where it
+ * is kept, and whether this computer has versions the online copy lacks.
+ */
+export interface Revision {
+  name: string;
+  /** The revision open on this computer. */
+  current: boolean;
+  /** On this computer and in the online copy; only on this computer; only in the online copy. */
+  where: "online" | "this-computer" | "online-only";
+  /** `where === "online"` and this computer has versions the online copy lacks (refs only, no network). */
+  notBackedUp: boolean;
+}
+
+/** The book's revisions, sorted by name, and which one is open (`null` on a detached/unborn HEAD). */
+export interface RevisionList {
+  current: string | null;
+  revisions: Revision[];
+}
+
 /** Inputs for {@link switchBranch}. */
 export interface SwitchBranchOptions {
   projectDir: string;

@@ -283,6 +283,8 @@ export type {
   HistoryPage,
   UnversionedChanges,
   LocalBranches,
+  Revision,
+  RevisionList,
   SwitchBranchOptions,
   SwitchBranchResult,
 } from "../lib/source-provider.ts";

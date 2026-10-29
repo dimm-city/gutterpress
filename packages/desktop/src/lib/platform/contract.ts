@@ -74,6 +74,8 @@ import type {
   VersionEntry,
   VersionFileChange,
   CompareRow,
+  Revision,
+  RevisionList,
   RestoreVersionResult,
   PreviewStartResult,
   BuildResult,
@@ -129,6 +131,8 @@ export type {
   VersionEntry,
   VersionFileChange,
   CompareRow,
+  Revision,
+  RevisionList,
   RestoreVersionResult,
   PreviewStartResult,
   BuildResult,
@@ -225,10 +229,12 @@ export type { SharedProjectRemoteDiagnosis as ProjectRemoteDiagnosis };
 export type SyncState =
   | "idle"
   | "syncing"
-  // "synced" — the sync completed, whether or not it had anything to send.
-  // The lib's SyncOutcome still distinguishes "synced" from "up-to-date"
-  // (manual Sync toasts that difference); the ambient pill never did.
+  // "synced" — the last pass finished and the online copy has every version
+  // this computer has (it sent them, or there was nothing to send).
   | "synced"
+  // "unsent" — the last pass finished, but this computer has versions the
+  // online copy lacks (a get-latest-only pass, or automatic backing up is off).
+  | "unsent"
   | "offline"
   | "auth"
   | "error"
