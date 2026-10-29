@@ -847,7 +847,7 @@ export const api = {
       post<{ available: boolean; reason?: 'no-remote' | 'auth' | 'offline' }>('/api/remote/check-updates', { projectDir }),
 
     /**
-     * "Repair online backup": replace the book's broken history with a fresh
+     * "Repair the online copy": replace the book's broken history with a fresh
      * download of the online copy, keep every file on this computer, restore
      * files that exist only online, then save a version and back up. The old
      * history is kept aside, never deleted.

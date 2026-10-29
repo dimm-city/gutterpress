@@ -464,7 +464,7 @@ describe("syncProject", () => {
 // autosave fires 500 ms after the last keystroke — so an edit routinely lands
 // on disk after the pre-sync snapshot committed the tree and before the merge
 // ends in a checkout. Whatever the checkout writes over that edit is gone: it
-// was never in a commit, so no "Previous versions" entry holds it.
+// was never in a commit, so no "Version history" entry holds it.
 //
 // Every test below asserts the same rule from a different angle: an edit that
 // reaches disk mid-sync must still be there afterwards, and must be reachable

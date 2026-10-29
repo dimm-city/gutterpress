@@ -27,7 +27,7 @@
  * in the file inside standard git conflict markers; a clashing binary keeps
  * BOTH versions as two files (ours, plus theirs as a `.online` sibling,
  * reported so the host can name the pair); an edit always survives a
- * deletion. Every version is reachable in history — "Previous versions" IS
+ * deletion. Every version is reachable in history — "Version history" IS
  * the safety net.
  *
  * Failure model: offline → friendly retry-later (the snapshot

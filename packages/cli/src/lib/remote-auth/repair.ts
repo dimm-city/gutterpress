@@ -1,5 +1,5 @@
 /**
- * Repair online backup — the ONE recovery for a book whose `.git` no longer
+ * Repair the online copy — the ONE recovery for a book whose `.git` no longer
  * works with its online copy (a damaged object or index, a lost branch, "no
  * history in common", an interrupted merge). One fixed sequence, no diagnosis:
  * download the online history, move the old `.git` aside (kept), put the fresh

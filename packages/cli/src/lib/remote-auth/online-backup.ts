@@ -1,5 +1,5 @@
 /**
- * Set up online backup for a book that started on this computer (#358).
+ * Set up an online copy for a book that started on this computer (#358).
  *
  * A book made in the app with version history on is a local isomorphic-git
  * repo with no remote. This connects it to GitHub in one operation:
