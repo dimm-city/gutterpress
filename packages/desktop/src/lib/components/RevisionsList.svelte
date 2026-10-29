@@ -120,13 +120,14 @@
   const kept = $derived(revisionNameFrom(typed));
 </script>
 
-{#snippet nameField(label: string, action: string, submit: () => void)}
+{#snippet nameField(label: string, action: string, submit: () => void, note = "")}
   <form class="name-form" onsubmit={(e) => { e.preventDefault(); submit(); }}>
     <label class="field">
       <span class="lbl">{label}</span>
       <input class="input" bind:value={typed} spellcheck="false" autocomplete="off" disabled={working} />
     </label>
     {#if kept && kept !== typed}<p class="hint">It will be called "{kept}".</p>{/if}
+    {#if note}<p class="hint">{note}</p>{/if}
     <div class="row">
       <button type="submit" class="app-btn-primary" disabled={working || !kept}>{working ? "Working…" : action}</button>
       <button type="button" class="ghost" onclick={() => (pending = null)} disabled={working}>Cancel</button>
@@ -158,13 +159,14 @@
           </div>
           {#if pending?.kind === "rename" && pending.revision.name === r.name}
             <div class="inline-form">
-              {@render nameField("New name", "Rename", () => void rename(r.name))}
-              {#if r.where === "online"}
-                <p class="hint">
-                  This also renames it in the online copy. Anyone else working on "{r.name}" keeps the old name until
-                  they switch to "{kept || "…"}".
-                </p>
-              {/if}
+              {@render nameField(
+                "New name",
+                "Rename",
+                () => void rename(r.name),
+                r.where === "online"
+                  ? `This also renames it in the online copy. Anyone else working on "${r.name}" keeps the old name until they switch to "${kept || "…"}".`
+                  : "",
+              )}
             </div>
           {:else if pending?.kind === "delete" && pending.revision.name === r.name}
             {@const p = pending}
@@ -202,10 +204,12 @@
     {/if}
     {#if pending?.kind === "new"}
       <div class="inline-form">
-        {@render nameField("Name of the new revision", "Create revision", () => void create())}
-        <p class="hint">
-          It starts from your book as it is now (any unsaved work is saved as a version first) and opens it.{hasOnlineCopy ? " It goes online the next time you back up." : ""}
-        </p>
+        {@render nameField(
+          "Name of the new revision",
+          "Create revision",
+          () => void create(),
+          `It starts from your book as it is now (any unsaved work is saved as a version first) and opens it.${hasOnlineCopy ? " It goes online the next time you back up." : ""}`,
+        )}
       </div>
     {:else}
       <button class="ghost self-start" onclick={() => open({ kind: "new" })} disabled={working || disabled}>New revision…</button>
@@ -221,13 +225,13 @@
   h3 { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--app-text); }
   .mine { flex-shrink: 0; font-size: 11px; font-weight: 600; color: var(--app-success-text); }
   .item-caption { white-space: normal; }
-  .item-actions { gap: 4px; }
+  .revisions .item-actions { gap: 4px; }
   .item-row { flex-wrap: wrap; }
   .inline-form, .name-form { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
   .inline-form { padding: 4px 0 2px; }
   .name-form .field { align-self: stretch; max-width: 420px; }
   .inline-form .row { flex-wrap: wrap; }
   .warn { margin: 0; font-size: 12px; color: var(--app-warning-text); }
-  .danger { color: var(--app-error-text); border-color: var(--app-error-text); }
+  .revisions .danger { color: var(--app-error-text); border-color: var(--app-error-text); }
   .self-start { align-self: flex-start; }
 </style>
