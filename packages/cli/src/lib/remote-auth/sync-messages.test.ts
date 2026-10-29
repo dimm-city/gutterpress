@@ -10,7 +10,7 @@ import { SYNC_LATE_EDIT_MESSAGE, SYNC_SNAPSHOT_MESSAGE } from "./sync-messages.t
  * version-control vocabulary (the SSH hint's `git@…` address is the one thing
  * a writer is told to look at).
  */
-const AUTHOR_COPY = Object.entries(messages).filter(
+const AUTHOR_COPY = Object.entries(messages as Record<string, unknown>).filter(
   (entry): entry is [string, string] => typeof entry[1] === "string",
 );
 

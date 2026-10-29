@@ -143,14 +143,14 @@ async function reachOnline(
  * or remove it. `ref` must exist on this computer even when removing (it only
  * names what to send): a local revision, or the online copy's tracking ref.
  */
-function sendRef(
+async function sendRef(
   dir: string,
   { transport, http }: Online,
   ref: string,
   remoteName: string,
   remove = false,
-): Promise<unknown> {
-  return git.push({
+): Promise<void> {
+  await git.push({
     fs,
     http,
     dir,
@@ -160,6 +160,9 @@ function sendRef(
     delete: remove,
     ...onAuthFor(transport.credential),
   });
+  // The push forgets the tracking ref under a doubled slash, which a ref kept in
+  // packed-refs (as other Git tools leave them) never matches: name it properly.
+  if (remove) await git.deleteRef({ fs, dir, ref: `refs/remotes/${transport.remote}/${remoteName}` });
 }
 
 /**

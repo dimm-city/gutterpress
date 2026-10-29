@@ -1510,9 +1510,11 @@ const syncSettingsHooksImpl: SyncSettingsHooks = {
     if (enabled && watchedDir) {
       autoSync.schedule(watchedDir);
     }
-    // When disabling, cancel all timers for the open project.
+    // When disabling, cancel all timers for the open project, and say whether
+    // versions are now waiting to go online (no pass will).
     if (!enabled && watchedDir) {
       autoSync.cancelTimer(watchedDir);
+      void autoSync.reportUnsent(watchedDir);
     }
     return { ok: true, autoSync: enabled };
   },

@@ -499,6 +499,35 @@ describe("deleteRevision", () => {
   });
 });
 
+describe("a book whose tracking refs were packed by other Git tools", () => {
+  /** Move every loose tracking ref into `packed-refs`, the way `git gc` leaves them. */
+  function packTrackingRefs(projectDir: string) {
+    const dir = path.join(projectDir, ".git", "refs", "remotes", "origin");
+    const names = fs.readdirSync(dir).filter((name) => name !== "HEAD"); // HEAD is a pointer, not packed
+    const lines = names.map((name) => `${fs.readFileSync(path.join(dir, name), "utf8").trim()} refs/remotes/origin/${name}`);
+    fs.writeFileSync(path.join(projectDir, ".git", "packed-refs"), `# pack-refs with: peeled fully-peeled sorted\n${lines.join("\n")}\n`);
+    for (const name of names) fs.rmSync(path.join(dir, name));
+  }
+
+  test("deleting everywhere and renaming leave no stale online-only row behind", async () => {
+    const h = await setupClone();
+    try {
+      await backedUpRevision(h, "Gone");
+      await backedUpRevision(h, "Old name");
+      packTrackingRefs(h.projectDir);
+      expect(await listed(h)).toEqual(["Gone:online", "main:online", "Old-name:online"]);
+
+      await deleteRevision({ projectDir: h.projectDir, name: "Gone", everywhere: true });
+      await renameRevision({ projectDir: h.projectDir, from: "Old-name", to: "New name" });
+
+      expect(await serverBranches(h)).toEqual(["New-name", "main"]);
+      expect(await listed(h)).toEqual(["main:online", "New-name:online"]);
+    } finally {
+      await h.cleanup();
+    }
+  });
+});
+
 describe("renameRevision names", () => {
   test("refuses a name already used here or online, and an unusable one", async () => {
     const h = await setupClone();
