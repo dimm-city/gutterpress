@@ -382,7 +382,7 @@ checks:
 ```
 
 #### `publish` (object)
-Non-secret publish settings per provider (`itch`, `drivethrurpg`, `kdp`, `azure-swa`, `shopify`, `gdrive`), keyed by the same id `gutterpress publish --provider <id>` takes. API keys and tokens are **never** stored here — they live in the host credential store. See [publishing.md](./publishing.md).
+Non-secret publish settings per provider (`itch`, `drivethrurpg`, `kdp`, `azure-swa`, `shopify`, `gdrive`), keyed by the same id `gutterpress publish --provider <id>` takes. API keys and tokens are **never** stored here — they live in the host credential store. Everything here is the team's: `enabled: true` marks a destination the book publishes to, and `local.dir` is a folder inside the book, relative to it. Which saved account you publish with, and an output folder outside the book, stay in your own settings on your computer. See [publishing.md](./publishing.md).
 
 ---
 

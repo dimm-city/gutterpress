@@ -101,6 +101,22 @@ This project follows [Semantic Versioning](https://semver.org/).
   Gone from the app: the extension version picker, the pre-release switch
   and the export-name field. `gutterpress ext` and the manifest still do
   them.
+- **Publishing: the team's settings live in the book, your account on your
+  computer.** The Publish wizard saves where the book is published in its
+  manifest, so everyone who opens it sees the same destinations ticked:
+  - the destinations ticked;
+  - the itch project, the Shopify store, the Azure environment and the
+    DriveThruRPG product;
+  - the Google Drive folder and the format.
+
+  Each person only connects or picks their own account. The wizard uses the
+  accounts saved on the Accounts page, and adds or replaces one with the same
+  form. Which of your accounts a book uses stays on your computer, keyed to
+  the book. Older books that recorded it in the manifest still publish, and
+  the next change moves it out. Fixed: choosing an output folder wrote your
+  computer's full path into the manifest. A folder inside the book is now
+  saved relative to it (`dist`), and a folder outside it is kept on your
+  computer only.
 - **The mouse wheel scrolls the preview.** The wheel and trackpad move the
   preview as far as you turn them, like any page. The page-flip that took
   them over (#301) is gone: it cancelled the scroll, did nothing for the

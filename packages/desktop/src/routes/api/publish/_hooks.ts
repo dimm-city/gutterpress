@@ -19,8 +19,8 @@ let selections: { file: string; store: InstanceType<LibModule['PublishSelections
 /**
  * The deps every publish route hands the lib: the credential store, and this
  * person's PRIVATE publish settings for each book (`userData/publish-selections.json`,
- * `0600`): the saved account a book publishes with, a Google Drive folder, an
- * output folder outside the book. They are read over the manifest's values and
+ * `0600`): the saved account a book publishes with, and an output folder
+ * outside the book. They are read over the manifest's values and
  * never written into the manifest (see the lib's `savePublishSettings`). One
  * store for the process, so its writes queue behind one another.
  */
