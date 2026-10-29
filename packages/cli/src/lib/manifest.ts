@@ -80,12 +80,12 @@ export async function loadManifestWithPath(
   for (const p of candidates) {
     if (existsSync(p) && statSync(p).isFile()) {
       const raw = await readFile(p, "utf8");
-      // A sync that found a setting edited both here and online leaves both
-      // versions in the file (`remote-auth/converge-merge.ts`). That is not
+      // Getting the latest changes found a setting edited both here and online and
+      // left both takes in the file (`remote-auth/converge-merge.ts`). That is not
       // "invalid YAML at line 1": say what happened and what to do.
       if (raw.split(/\r?\n/).includes(TWO_VERSIONS_OPEN)) {
         throw new UsageError(
-          `"${p}" has two versions of a setting — yours and the online version — left by a sync. Open it, keep the one you want and delete the marker lines.`
+          `"${p}" has two takes of a setting — yours and the online copy's — left by getting the latest changes. Open it, keep the one you want and delete the marker lines.`
         );
       }
       try {

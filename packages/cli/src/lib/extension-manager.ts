@@ -710,7 +710,7 @@ async function vendorNpmExtension(
   const warnings = [...installed.warnings];
   await finalizeNpmPluginInstall(installed).catch((error) => {
     warnings.push(
-      `The extension was installed, but an old backup could not be removed: ` +
+      `The extension was installed, but an old download could not be removed: ` +
         `${error instanceof Error ? error.message : String(error)}`,
     );
   });

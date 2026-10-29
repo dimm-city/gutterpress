@@ -30,9 +30,11 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; branch: st
     } finally {
       getHostServices().vcs.resumeTimers?.(body.projectDir);
     }
-    // Crash-recovery drafts are keyed by absolute file path, not by copy —
+    // The open revision changed, so whether versions wait to go online may have too.
+    getHostServices().vcs.refreshOnlineStatus?.(body.projectDir);
+    // Crash-recovery drafts are keyed by absolute file path, not by revision —
     // drop the ones for files the checkout just changed so a draft taken on
-    // the copy just left behind can never be offered over the NEW copy's
+    // the revision just left behind can never be offered over the NEW revision's
     // version of the same file (recovery.ts's header documents the rule).
     // Best-effort: a failure here must never turn an already-successful
     // switch into a reported error.
@@ -42,5 +44,5 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; branch: st
     );
     return result;
   },
-  onError: (e) => friendlyVcsError(e, 'switchBranch', 'vcs/switch-branch'),
+  onError: (e) => friendlyVcsError(e, 'vcs/switch-branch'),
 });

@@ -1,64 +1,65 @@
 /**
- * Author-language copy for sync (never raw git words). Extracted from sync.ts
- * so the transport and orchestrator modules share ONE source of these
- * strings — their exact wording is part of the observable contract (the host
- * renders them verbatim).
+ * Author-language copy for backing up and getting the latest — never sync,
+ * push, pull, repository, branch or snapshot. Extracted from sync.ts so the
+ * transport and orchestrator modules share ONE source of these strings — their
+ * exact wording is part of the observable contract (the host renders them
+ * verbatim).
  */
 
-export const MSG_UP_TO_DATE = "Everything is in sync.";
+export const MSG_UP_TO_DATE = "You're up to date with the online copy.";
 export const MSG_UP_TO_DATE_PULLED =
-  "Everything is in sync. The latest online changes were downloaded to this computer.";
+  "You're up to date. The latest changes from the online copy were downloaded to this computer.";
 export const MSG_SYNCED = "Your changes are online.";
 export const MSG_SYNCED_MERGED =
   "Your changes are online, combined with changes from the online copy.";
 export const MSG_OFFLINE =
-  "Your changes are saved on this computer. Gutterpress couldn't reach the online repository — try syncing again when you're back online.";
+  "Your changes are saved on this computer. Gutterpress couldn't reach the online copy — try again when you're back online.";
 export const MSG_AUTH =
-  "The online repository didn't accept the saved connection. Reconnect and try again.";
+  "The online copy didn't accept the saved sign-in. Sign in again and try again.";
 // No literal scheme tokens ("http://") in this copy: the desktop's Advanced
 // Setup dialog redacts anything matching /https?:\/\/\S+/, which would garble
 // the message. Say "https", never "https://".
 export const MSG_INSECURE_TRANSPORT =
-  "This book's online address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Switch the address to a secure one (starting with https), or to a local loopback address for a server on this computer, to sync.";
+  "This book's online copy is at an address that isn't secure, so the saved sign-in wasn't sent — sign-ins are never sent over an insecure address. Switch the address to a secure one (starting with https), or to a local loopback address for a server on this computer, to back up.";
 export const MSG_BUSY =
-  "The online copy is changing very quickly right now. Your work is saved on this computer — try Sync again in a moment.";
+  "The online copy is changing very quickly right now. Your work is saved on this computer — try again in a moment.";
 /**
- * The book's own version history is unreadable — a damaged or missing
- * `.git`. Says the three things that are actually true and useful: the writing
- * is safe, the HISTORY is what broke, and (sync always has a remote, so this
- * always applies here) Repair online backup is the way back.
+ * The book's own versions are unreadable — a damaged or missing `.git`. Says
+ * the three things that are actually true and useful: the writing is safe, the
+ * VERSIONS are what broke, and (backing up always has an online copy, so this
+ * always applies here) "Repair the online copy" is the way back.
  */
 export const MSG_HISTORY_UNREADABLE =
-  "This book's version history can't be read, so syncing can't continue. Your writing is safe — every file is still here on this computer. Use Repair online backup (in Where your work is kept) to get history and syncing working again.";
-// Two DIFFERENT causes produce "no common history", and the message must not
-// assert one of them: the online address may point at a different book, or
-// this book's own history may have been lost and started over. Naming both
-// beats sending a writer whose history is gone to inspect a correct address.
+  "This book's versions can't be read, so backing up can't continue. Your writing is safe — every file is still here on this computer. Use \"Repair the online copy\" (in Book setup → Online copy) to get versions and backing up working again.";
+// Two DIFFERENT causes produce "no versions in common", and the message must
+// not assert one of them: the online copy's address may point at a different
+// book, or this book's own versions may have been lost and started over. Naming
+// both beats sending a writer whose versions are gone to inspect a correct address.
 export const MSG_UNRELATED =
-  "This book and the online copy have no history in common, so they can't be combined. Either the online address points at a different book, or this book's own history was lost and started over. Your writing is safe — every file is still here on this computer. Check the online address; if it is correct, use Repair online backup (in Where your work is kept).";
+  "This book and the online copy have no versions in common, so they can't be combined. Either the online copy's address points at a different book, or this book's own versions were lost and started over. Your writing is safe — every file is still here on this computer. Check the online copy's address; if it is correct, use \"Repair the online copy\" (in Book setup → Online copy).";
 export const MSG_NO_REMOTE =
-  "This book isn't connected to an online repository yet.";
+  "This book doesn't have an online copy yet.";
 export const MSG_SSH_REMOTE =
-  "This book's online address uses SSH (git@…), which Gutterpress can't sync to. Switch it to the web (HTTPS) address to sync from here.";
+  "This book's online copy uses an SSH address (git@…), which Gutterpress can't back up to. Switch it to the web (HTTPS) address to back up from here.";
 export const MSG_NO_BRANCH =
-  "This book's version history isn't on a named branch, so it can't be synced right now.";
-// The two messages below are recorded VERBATIM as commit messages, so a
+  "This book isn't on a named revision, so it can't be backed up right now.";
+// The two messages below are recorded VERBATIM as version messages, so a
 // writer sees them raw on github.com and classified in the desktop's
-// Previous versions timeline (version-timeline.ts matches them as literal
+// Version history timeline (version-timeline.ts matches them as literal
 // strings — including every superseded spelling, which existing history
 // keeps forever). Rename only with a matching timeline entry, and never into
 // version-control vocabulary.
-/** Message recorded on the automatic pre-sync snapshot (D5 invariant).
- *  Pre-0.10.1 history carries the old spelling "Snapshot before syncing". */
-export const SYNC_SNAPSHOT_MESSAGE = "Automatic backup of your work";
+/** Message recorded on the automatic version saved before backing up (D5 invariant).
+ *  Older history carries the spellings "Automatic backup of your work" and,
+ *  before 0.10.1, "Snapshot before syncing". */
+export const SYNC_SNAPSHOT_MESSAGE = "Automatic version before backing up";
 /**
  * Message recorded when an edit reached disk while the fetch was in flight —
- * after the pre-sync snapshot, before the merge (see the re-snapshot in
- * `syncProject`). Distinct wording so the race is legible in history; the
- * copy is already writer-voiced, so it deliberately stays unchanged (every
- * rename permanently grows the timeline's superseded-spelling list).
+ * after the pre-backup version, before the merge (see the re-snapshot in
+ * `syncProject`). Distinct wording so the race is legible in history. Older
+ * history carries the spelling "Saved the edit you made while syncing".
  */
-export const SYNC_LATE_EDIT_MESSAGE = "Saved the edit you made while syncing";
+export const SYNC_LATE_EDIT_MESSAGE = "Saved the edit you made while backing up";
 
 /**
  * The keep-both sibling contract, kept HERE rather than in converge-merge.ts

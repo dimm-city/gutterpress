@@ -35,5 +35,5 @@ export const POST: RequestHandler = defineRoute<{
     if (source.type !== 'local-git-folder') return page;
     return { ...page, entries: await lib.describeVersions(body.projectDir, page.entries) };
   },
-  onError: (e) => friendlyVcsError(e, 'listSnapshotsPage', 'vcs/list-snapshots-page'),
+  onError: (e) => friendlyVcsError(e, 'vcs/list-snapshots-page'),
 });

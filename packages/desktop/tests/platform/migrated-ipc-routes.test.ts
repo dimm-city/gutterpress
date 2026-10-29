@@ -164,7 +164,7 @@ describe("POST /api/remote/clone-repository", () => {
     );
     expect(status).toBe(500);
     expect(message).toBe(
-      "The online repository operation could not be completed. See the app log for details.",
+      "Couldn't finish that with the online copy. See the app log for details.",
     );
   });
 });

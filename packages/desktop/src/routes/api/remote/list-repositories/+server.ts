@@ -7,7 +7,7 @@ export const POST: RequestHandler = defineRoute<Record<string, never>>({
     handleRemoteErrors('remote:listRepositories', async () => {
       const credential = await getHostServices().remote.tokenStore.get(getHostServices().remote.GITHUB_HOST);
       if (!credential) {
-        throw new Error('Connect GitHub first to see your repositories.');
+        throw new Error('Connect GitHub first to see your online copies.');
       }
       const lib = await loadLib();
       return lib.listGitHubRepositories(credential);

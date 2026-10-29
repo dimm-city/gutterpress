@@ -447,7 +447,7 @@ export async function scaffoldProject(
       const { findEnclosingRepoDir } = await import("./project-source.ts");
       const enclosingRepoDir = await findEnclosingRepoDir(projectDir);
       versionHistoryError = enclosingRepoDir
-        ? `This book was added to ${path.basename(enclosingRepoDir)}'s shared version history; save a snapshot to record it.`
+        ? `This book was added to ${path.basename(enclosingRepoDir)}'s shared version history; save a version to record it.`
         : e instanceof Error
           ? e.message
           : String(e);

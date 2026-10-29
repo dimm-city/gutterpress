@@ -195,7 +195,7 @@ describe("syncProject", () => {
       const outcome = await syncProject({ projectDir: h.projectDir });
       expect(outcome.status).toBe("up-to-date");
       if (outcome.status !== "up-to-date") throw new Error("unreachable");
-      expect(outcome.message).toBe("Everything is in sync.");
+      expect(outcome.message).toBe("You're up to date with the online copy.");
     } finally {
       await h.cleanup();
     }
@@ -445,7 +445,7 @@ describe("syncProject", () => {
       });
       expect(outcome.status).toBe("error");
       if (outcome.status !== "error") throw new Error("unreachable");
-      expect(outcome.message).toContain("try Sync again in a moment");
+      expect(outcome.message).toContain("try again in a moment");
       // The snapshot protected the work; nothing was lost or left dirty.
       expect(outcome.snapshotId).toBeDefined();
       expect(await isClean(h.projectDir)).toBe(true);
@@ -560,7 +560,7 @@ describe("an edit that lands on disk mid-sync is never discarded", () => {
       const snapshotId = "snapshotId" in outcome ? outcome.snapshotId : undefined;
       expect(snapshotId).toBeDefined();
       const snap = await git.readCommit({ fs, dir: h.projectDir, oid: snapshotId! });
-      expect(snap.commit.message.trim()).toBe("Saved the edit you made while syncing");
+      expect(snap.commit.message.trim()).toBe("Saved the edit you made while backing up");
       expect(outcome.status).toBe("synced");
     } finally {
       await h.cleanup();
@@ -789,7 +789,7 @@ describe("sync convergence policy", () => {
         const outcome = await syncProject({ projectDir: h.projectDir });
         expect(outcome.status).toBe("error");
         if (outcome.status !== "error") throw new Error("unreachable");
-        expect(outcome.message).toContain("no history in common");
+        expect(outcome.message).toContain("no versions in common");
         // NOTHING was merged or committed — the local history is untouched.
         expect(await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" })).toBe(before);
       } finally {
@@ -1288,7 +1288,7 @@ describe("syncProject retry budget (BUG 6)", () => {
       });
       expect(outcome.status).toBe("error");
       if (outcome.status !== "error") throw new Error("unreachable");
-      expect(outcome.message).toContain("try Sync again in a moment");
+      expect(outcome.message).toContain("try again in a moment");
       expect(outcome.snapshotId).toBeDefined();
       expect(await isClean(h.projectDir)).toBe(true);
       // The loop is BOUNDED: it tried exactly `attempts` times, no more.
@@ -1342,7 +1342,7 @@ describe("syncProject — a history that cannot be read", () => {
     ["`.git/HEAD` emptied", (d: string) => fs.writeFileSync(path.join(d, ".git", "HEAD"), "")],
     ["`.git` removed entirely", (d: string) => fs.rmSync(path.join(d, ".git"), { recursive: true, force: true })],
   ] as const) {
-    test(`${label}: says the history can't be read, never "try again"`, async () => {
+    test(`${label}: says the versions can't be read, never "try again"`, async () => {
       const h = await setupClone();
       try {
         await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nUnsaved work.\n");
@@ -1354,9 +1354,9 @@ describe("syncProject — a history that cannot be read", () => {
         if (outcome.status !== "error") throw new Error("unreachable");
         expect(outcome.message).toBe(MSG_HISTORY_UNREADABLE);
         // The three things the message promises are all true.
-        expect(outcome.message).toContain("version history can't be read");
+        expect(outcome.message).toContain("versions can't be read");
         expect(outcome.message).toContain("Your writing is safe");
-        expect(outcome.message).toContain("Repair online backup");
+        expect(outcome.message).toContain("Repair the online copy");
         expect(outcome.message).not.toContain("try again");
         // And the book really IS intact — that is what makes it honest.
         expect(await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8")).toContain(
@@ -1369,7 +1369,7 @@ describe("syncProject — a history that cannot be read", () => {
   }
 });
 
-test("a damaged object file (masked by isomorphic-git as a TypeError) says the history can't be read", async () => {
+test("a damaged object file (masked by isomorphic-git as a TypeError) says the versions can't be read", async () => {
   // 0.11.6 field report: pako throws a STRING for a damaged object and
   // isomorphic-git's wrapper crashes assigning `err.caller` to it, so the
   // failure reached the writer as a bare "merge failed". HEAD, its commit
@@ -2004,7 +2004,7 @@ describe("sync diagnostics", () => {
       const result = await syncProject({ projectDir: h.projectDir });
       expect(result.status).toBe("error");
       expect(result.message).not.toContain("different");
-      expect(result.message).toContain("Syncing didn't complete");
+      expect(result.message).toContain("Backing up didn't finish");
     } finally { mergeSpy?.mockRestore(); await h.cleanup(); }
   });
 

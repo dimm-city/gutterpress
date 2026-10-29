@@ -498,7 +498,7 @@ describe("loadManifestWithPath explicit-path behavior (finding #12)", () => {
     );
   });
 
-  test("a manifest a sync left with two versions of a setting says so instead of reporting a YAML position", async () => {
+  test("a manifest left with two takes of a setting says so instead of reporting a YAML position", async () => {
     const dir = await mkdtemp(join(tmpdir(), "gutterpress-manifest-two-versions-"));
     dirsToClean.push(dir);
     const manifestPath = join(dir, "manifest.yaml");
@@ -509,7 +509,7 @@ describe("loadManifestWithPath explicit-path behavior (finding #12)", () => {
 
     await expect(loadManifestWithPath(dir)).rejects.toThrow(UsageError);
     await expect(loadManifestWithPath(dir)).rejects.toThrow(
-      `"${manifestPath}" has two versions of a setting — yours and the online version — left by a sync.`
+      `"${manifestPath}" has two takes of a setting — yours and the online copy's — left by getting the latest changes.`
     );
   });
 

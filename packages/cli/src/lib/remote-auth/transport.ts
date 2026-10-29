@@ -83,9 +83,9 @@ export class InsecureTransportError extends Error {
     // No literal scheme tokens ("http://") in this copy: the desktop redacts
     // anything matching /https?:\/\/\S+/, which would garble the message.
     super(
-      "This online address isn't secure, so the saved connection wasn't sent — " +
-        "connections are never sent over an insecure address. Switch the address " +
-        "to a secure one (starting with https) to sync with a saved connection.",
+      "This online copy's address isn't secure, so the saved sign-in wasn't sent — " +
+        "sign-ins are never sent over an insecure address. Switch the address " +
+        "to a secure one (starting with https) to use a saved sign-in.",
     );
     this.name = "InsecureTransportError";
   }
@@ -230,7 +230,7 @@ export function failureOutcome(
   return {
     status: "error",
     message:
-      "Syncing didn't complete. Your work is saved on this computer — please try again.",
+      "Backing up didn't finish. Your work is saved on this computer — please try again.",
     ...base,
   };
 }
@@ -403,7 +403,7 @@ export async function fetchRemoteTip(
       (e as { data?: { statusCode?: number } })?.data?.statusCode === 404
     ) {
       const err = new Error(
-        "The online repository couldn't be accessed with the saved connection. Reconnect and try again.",
+        "The online copy couldn't be reached with the saved sign-in. Sign in again and try again.",
         { cause: e },
       ) as Error & { code: string; data: { statusCode: number } };
       err.code = "HttpError";

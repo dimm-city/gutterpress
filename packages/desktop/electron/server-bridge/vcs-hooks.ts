@@ -6,19 +6,26 @@
 
 export interface VcsHooks {
   operationLogPath: (slug: string) => string;
-  /** A fresh folder for one "Repair online backup" to keep the old `.git` in. */
+  /** A fresh folder for one "Repair the online copy" to keep the old `.git` in. */
   repairBackupDir: (slug: string) => string;
   /**
    * Pause the auto-snapshot debounce and `dir`'s auto-sync periodic timer
-   * (#273 — around a copy switch's checkout, so neither fires against the
+   * (#273 — around a revision switch's checkout, so neither fires against the
    * mid-switch working tree or pushes/commits the wrong branch). Optional:
-   * only `vcs/switch-branch` calls it, and a fake without it is a no-op via
+   * only the revision routes call it, and a fake without it is a no-op via
    * `?.()`.
    */
   pauseTimers?: (dir: string) => void;
   /** Re-arm the timers {@link pauseTimers} paused, once the switch settles
    *  (success or failure) — see its doc comment. */
   resumeTimers?: (dir: string) => void;
+  /**
+   * The open revision, or the versions saved on it, may have changed (a version
+   * saved, another revision opened): re-check whether versions are waiting to go
+   * online and tell the status bar. Refs only, no network; optional like
+   * {@link pauseTimers}.
+   */
+  refreshOnlineStatus?: (dir: string) => void;
   /**
    * "Look at this version" (#408): render version `id` of the open book
    * read-only, from a scratch copy of its files, and return the preview URL

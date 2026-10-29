@@ -26,5 +26,5 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; id: string
     const lib = await loadLib();
     return lib.compareVersionFile(body.projectDir, body.id, body.path);
   },
-  onError: (e) => friendlyVcsError(e, 'compareFile', 'vcs/compare-file'),
+  onError: (e) => friendlyVcsError(e, 'vcs/compare-file'),
 });
