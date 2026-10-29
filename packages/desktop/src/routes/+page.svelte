@@ -457,7 +457,7 @@
       if (lifecycle.currentDir !== dir) return;
       versionPreview = { id, url, label };
       versionSide = "then";
-      // A narrow window shows one pane at a time, and the Versions view
+      // A narrow window shows one pane at a time, and the Version history view
       // occupies the editor pane: take the author to the preview, where the
       // version now is — the mirror of openProblem's switch to the editor.
       if (isNarrow) {
@@ -803,7 +803,7 @@
   // The extension download is pushed from the host while `startPreview` is
   // pending (no replay), so subscribe before any open can start.
   onMount(() => getPlatform().onRestoreProgress((event) => lifecycle.onRestoreProgress(event)));
-  // With automatic online backup off, look for new online changes now and then
+  // With automatic backing up off, look for new online changes now and then
   // and prompt (SyncController.checkForUpdates).
   onMount(() => syncController.watchForUpdates());
 
@@ -1312,7 +1312,7 @@
   let externalChange = $derived(buffer?.externalChange ?? null);
   let externalFileName = $derived(editorFilePath ? basenameOf(editorFilePath) : "");
 
-  // ── Two versions after a sync (#407) ──────────────────────────────────────
+  // ── Two takes after getting the latest (#407) ──────────────────────────────────────
   // Passages the converge merge left with both versions, read from the live
   // buffer so a choice removes its passage from the panel at once. A choice
   // is an ordinary editor edit: it goes through the mounted CodeMirror view
@@ -1341,7 +1341,7 @@
 
   /**
    * The last passage in this file is settled: hand focus back to the text;
-   * point at the next file that still holds two versions, if any (the
+   * point at the next file that still holds two takes, if any (the
    * Problems list knows them); and, for a stylesheet that had kept the
    * preview from starting, try the preview again once the choice is saved.
    */
@@ -1357,13 +1357,13 @@
       // Long enough to be read and taken; not so long that it is still
       // claiming "this file" after the author has moved on by hand.
       toast?.show(
-        `All settled in this file. ${files.size === 1 ? "One more file has" : `${files.size} more files have`} two versions.`,
+        `All settled in this file. ${files.size === 1 ? "One more file has" : `${files.size} more files have`} two takes.`,
         "info",
         10_000,
         { label: "Next file", onClick: () => openProblem(next) },
       );
     }
-    // A stylesheet or the manifest with two versions takes the preview down;
+    // A stylesheet or the manifest with two takes takes the preview down;
     // with the file settled, the preview comes back without a trip to the
     // error card's button.
     if (lifecycle.previewError) {
@@ -1377,7 +1377,7 @@
   function keepVersion(block: TwoVersionsBlock, choice: TwoVersionsChoice): void {
     applyTwoVersionsEdits([resolveTwoVersions(block, choice)]);
     const kept =
-      choice === "yours" ? "Kept your version" : choice === "online" ? "Kept the online version" : "Kept both versions";
+      choice === "yours" ? "Kept yours" : choice === "online" ? "Kept the online one" : "Kept both";
     // Undo reverses the LAST choice, so only the last choice's message
     // offers it: a stack of two, each saying Undo, would undo the wrong one.
     if (keptToast !== null) toast?.dismiss(keptToast);
@@ -1973,7 +1973,7 @@
    */
   function openProblem(p: ProblemEntry) {
     if (!p.filePath || !lifecycle.currentDir) return;
-    // A Two versions entry opens its file under the two-versions panel,
+    // A Two takes entry opens its file under the two-takes panel,
     // which is that file's own list of these problems: closing the Problems
     // list keeps the editor from being squeezed between the two.
     if (p.source === "source.sync.merge-markers") problemsOpen = false;
@@ -3257,7 +3257,7 @@
             />
             {/if}
             {#if editorFilePath && twoVersionsBlocks.length > 0}
-              <!-- Passages with two versions after a sync (#407): pick, right
+              <!-- Passages with two takes after getting the latest (#407): pick, right
                    above the text they rewrite. Shown in Focus too — the
                    markers are in the text either way, and this is the way
                    to settle them. Keyed on the file: another file's card

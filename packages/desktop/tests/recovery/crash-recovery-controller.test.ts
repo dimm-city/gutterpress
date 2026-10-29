@@ -154,7 +154,7 @@ test("restore() read failure toasts and re-offers the still-safe recovery item",
   ctrl.items = [ITEM];
   await ctrl.restore(ITEM);
   expect(ctrl.items).toEqual([ITEM]);
-  expect(deps.toastError.calls).toEqual([["Could not restore: friendly: disk error"]]);
+  expect(deps.toastError.calls).toEqual([["Could not recover: friendly: disk error"]]);
 });
 
 test("reset during a recovery read prevents the stale project from restoring or opening", async () => {

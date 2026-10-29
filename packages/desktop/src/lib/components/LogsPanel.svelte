@@ -99,7 +99,7 @@
 <div class="logs-panel">
   <p class="logs-lede">
     These are Gutterpress's diagnostic logs — what the app did while checking
-    for updates, syncing, saving versions, and repairing. When something needs
+    for updates, backing up, saving versions, and repairing. When something needs
     investigating, copy a log and paste it into your message. Logs never
     contain your sign-in details.
   </p>
@@ -155,7 +155,7 @@
     <p class="logs-empty" aria-live="polite">Loading logs…</p>
   {:else if files.length === 0}
     <p class="logs-empty">
-      No logs yet — they appear once a book has synced, saved a version, or
+      No logs yet — they appear once a book has backed up, saved a version, or
       been repaired.
     </p>
   {:else}

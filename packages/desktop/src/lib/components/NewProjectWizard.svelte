@@ -603,8 +603,8 @@
         <label class="checkbox">
           <input type="checkbox" bind:checked={useVersionHistory} disabled={creating} />
           <span>
-            Keep a history of my changes
-            <em class="optional">(lets you go back to earlier versions — recommended)</em>
+            Keep version history
+            <em class="optional">(lets you go back to any earlier version — recommended)</em>
           </span>
         </label>
       {/if}
