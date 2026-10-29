@@ -4,9 +4,9 @@
  * `.config-panel` ancestor class lives on ProjectSettingsView's tabpanel body.
  *
  * Each section owns its OWN domain-specific CSS in its own `<style>` block
- * (plain Svelte scoping, no `:global` needed — see e.g. `ExtensionsSection.svelte`'s
- * `.ext-list`/`.thumb`). Only the primitives multiple sections genuinely
- * share — block/field chrome, buttons, inputs, status pills — live here ONCE,
+ * (plain Svelte scoping, no `:global` needed — see e.g. `LookSection.svelte`'s
+ * `.card`/`.thumb`). Only the primitives multiple sections genuinely
+ * share — block/field chrome, buttons, inputs, the item rows — live here ONCE,
  * pulled into each section with:
  *
  *   <style>
@@ -29,9 +29,9 @@
  * (`.primary`, `.error`, `.row`, …) app-wide the way a bare `:global(.primary)`
  * would.
  *
- * Domain-only primitives (the extension rows, look cards, chapter rows,
- * design tokens, publish cards, …) are NOT here — they live in each
- * owning section's own `<style>` block, scoped normally.
+ * Domain-only primitives (look cards, chapter rows, design tokens, …) are
+ * NOT here — they live in each owning section's own `<style>` block, scoped
+ * normally.
  */
 
 :global(.config-panel .block) { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--app-border-subtle); }
@@ -74,3 +74,20 @@
 
 :global(.config-panel .add-row) { display: flex; gap: 6px; }
 :global(.config-panel .add-row .input) { flex: 1; }
+
+/* The item list: the extensions (Extensions) and the stylesheets (Advanced) are
+   rows of one look — a label, a caption, and the verbs: move up/down, Remove. */
+:global(.config-panel .item-list) { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+:global(.config-panel .item-list li) { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }
+:global(.config-panel .item-row) { display: flex; align-items: center; gap: 10px; }
+:global(.config-panel .item-label) { font-size: 13px; font-weight: 600; color: var(--app-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:global(.config-panel .item-caption) { flex: 1; min-width: 0; font-size: 12px; color: var(--app-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:global(.config-panel .item-actions) { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+/* 24 px targets with no border (WCAG 2.5.8). */
+:global(.config-panel .item-actions .move) { width: 24px; height: 24px; padding: 0; justify-content: center; border: 0; background: transparent; color: var(--app-text-muted); }
+:global(.config-panel .item-actions .move:hover:not(:disabled)) { color: var(--app-text); background: var(--app-surface-hover); }
+
+/* The Add area's rows: what can be added (its name, and maybe what to type) and its Add button. */
+:global(.config-panel .add-list) { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+:global(.config-panel .add-list li) { display: flex; align-items: center; gap: 8px; }
+:global(.config-panel .add-name) { flex: 1; min-width: 0; font-size: 13px; color: var(--app-text); overflow-wrap: anywhere; }

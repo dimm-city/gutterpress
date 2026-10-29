@@ -1,15 +1,15 @@
 <script lang="ts">
   /**
    * Book setup › Look: how the book looks, top to bottom — *Choose a look*
-   * (a single-choice gallery of thumbnails), *Adjust the look* (six brand
-   * settings beside a live sample page) and *Extras* (the built-in things an
-   * author can type, ticked on or off). Developer-shaped controls are on the
-   * Advanced tab only; this tab links there.
+   * (a single-choice gallery of thumbnails) and *Adjust the look* (six brand
+   * settings beside a live sample page). The extension list (several looks,
+   * npm, folders) is the Extensions tab and every design setting is Advanced;
+   * this tab links to both.
    *
-   * It reads two controllers: `ExtensionsSectionController` for the looks,
-   * the extras and the thumbnails, and `DesignSectionController` for the
-   * brand settings and the sample. Both write as they go; the Book setup
-   * header says Saving… / Saved.
+   * It reads two controllers: `ExtensionsSectionController` for the looks
+   * and the thumbnails, and `DesignSectionController` for the brand settings
+   * and the sample. Both write as they go; the Book setup header says
+   * Saving… / Saved.
    *
    * Choosing: the gallery is a radio group, so arrowing through it selects
    * each card in turn. The choice is written once the selection has rested
@@ -19,7 +19,7 @@
   import { onDestroy, tick } from "svelte";
   import Icon from "#lib/components/Icon.svelte";
   import ColorField from "./ColorField.svelte";
-  import { describeSegments, extensionProblem } from "./config-helpers";
+  import { extensionProblem } from "./config-helpers";
   import { firstFontFamily, PRINT_SAFE_FONT_STACKS, SHARED_TOKEN_LABELS } from "#lib/style-tokens.ts";
   import type { StyleToken } from "#lib/platform/dtos.ts";
   import type { ExtensionsSectionController, LookCard } from "#lib/routes/extensions-section-controller.svelte.ts";
@@ -28,12 +28,12 @@
   let {
     extensions,
     design,
-    onOpenAdvanced,
+    onOpenTab,
   }: {
     extensions: ExtensionsSectionController;
     design: DesignSectionController;
-    /** Show the Advanced tab — at "All design settings" for `"design"`. */
-    onOpenAdvanced: (at?: "design") => void;
+    /** Show the Extensions tab, or the Advanced tab — at "All design settings" for `"design"`. */
+    onOpenTab: (tab: "extensions" | "advanced", at?: "design") => void;
   } = $props();
 
   // Once, as the tab opens: the cards keep this order while it is open.
@@ -186,8 +186,8 @@
     <legend><h3>Choose a look</h3></legend>
     {#if looks.length > 1}
       <div class="notice-box">
-        <p>This book combines {looks.length} looks: {looks.map((e) => e.label).join(", ")}. Change them in Advanced.</p>
-        <button class="ghost small" onclick={() => onOpenAdvanced()}>Open Advanced</button>
+        <p>This book combines {looks.length} looks: {looks.map((e) => e.label).join(", ")}. Change them in Extensions.</p>
+        <button class="ghost small" onclick={() => onOpenTab("extensions")}>Open Extensions</button>
       </div>
     {:else if looks.length === 0 && !pending}
       <p class="hint">Choose a look for your book.</p>
@@ -210,7 +210,7 @@
             {#if isSelected}<span class="card-check"><Icon name="check" size={15} /></span>{/if}
           </span>
           {#if card.from}<span class="card-note">{card.from}</span>{/if}
-          {#if broken(card)}<span class="card-note warn">Couldn't load. See Advanced.</span>{/if}
+          {#if broken(card)}<span class="card-note warn">Couldn't load. See Extensions.</span>{/if}
         </label>
       {/each}
     </div>
@@ -232,7 +232,7 @@
     {:else if design.brandTokens.length === 0}
       <div class="notice-box">
         <p>This look has no quick settings. You'll find all of its settings in Advanced.</p>
-        <button class="ghost small" onclick={() => onOpenAdvanced("design")}>Open Advanced</button>
+        <button class="ghost small" onclick={() => onOpenTab("advanced", "design")}>Open Advanced</button>
       </div>
     {:else}
       <div class="adjust">
@@ -245,7 +245,7 @@
               <button class="ghost small keep" onclick={() => answerReset(false)} onkeydown={keepOnEscape}>Keep mine</button>
             {:else}
               <button class="ghost small reset" onclick={askReset} disabled={!design.brandOverridden}>Reset to the look's settings</button>
-              <button class="link" onclick={() => onOpenAdvanced("design")}>All settings in Advanced <Icon name="arrow-right" size={12} /></button>
+              <button class="link" onclick={() => onOpenTab("advanced", "design")}>All settings in Advanced <Icon name="arrow-right" size={12} /></button>
             {/if}
           </div>
         </div>
@@ -259,31 +259,6 @@
     {/if}
   </section>
 {/if}
-
-<section class="block">
-  <fieldset class="group">
-    <legend><h3>Extras</h3></legend>
-    <p class="hint">Extra things you can type. Footnotes, tables and definition lists are always on.</p>
-    <ul class="extras">
-      {#each extensions.extras as x (x.use)}
-        <li>
-          <label>
-            <input type="checkbox" checked={x.on} disabled={extensions.busy !== null} onchange={(e) => extensions.setExtra(x, e.currentTarget.checked)} />
-            <span class="extra-name">{x.label}</span>
-            <!-- What it does and what to type, the "what to type" set in code type. -->
-            <span class="extra-desc">{#each describeSegments(x.description) as seg}{#if seg.code}<code>{seg.text}</code>{:else}{seg.text}{/if}{/each}</span>
-          </label>
-        </li>
-      {/each}
-    </ul>
-    {#if extensions.otherExtensionsCount > 0}
-      <p class="hint">
-        This book also uses {extensions.otherExtensionsCount} {extensions.otherExtensionsCount === 1 ? "extension" : "extensions"} set up in
-        <button class="link" onclick={() => onOpenAdvanced()}>Advanced <Icon name="arrow-right" size={12} /></button>
-      </p>
-    {/if}
-  </fieldset>
-</section>
 
 <style>
   @import "../../styles/config-section-shared.css";
@@ -339,14 +314,6 @@
   .sample-frame { height: 300px; overflow: hidden; border: 1px solid var(--app-border); border-radius: 6px; background: #fff; }
   .sample-frame iframe { border: 0; width: 400px; height: 375px; transform: scale(0.8); transform-origin: top left; }
   .sample figcaption { font-size: 11.5px; color: var(--app-text-muted); }
-
-  /* ── Extras ── */
-  .extras { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-  .extras label { display: grid; grid-template-columns: auto 120px minmax(0, 1fr); align-items: baseline; gap: 8px; cursor: pointer; }
-  .extras input { margin: 0; align-self: center; }
-  .extra-name { font-size: 13px; color: var(--app-text); }
-  .extra-desc { font-size: 12px; color: var(--app-text-muted); line-height: 1.4; }
-  .extra-desc code { font-family: var(--app-font-mono); font-size: 12px; color: var(--app-text); }
 
   @media (max-width: 760px) {
     .adjust { grid-template-columns: minmax(0, 1fr); }

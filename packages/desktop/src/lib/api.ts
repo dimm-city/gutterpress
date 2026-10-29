@@ -592,7 +592,7 @@ export const api = {
    * styles, a feature is one that carries markdown, a component library
    * carries both — every one is a `use` specifier in the manifest's
    * `extensions:` list, and `list` returns them all in cascade order. Book
-   * setup's Look and Advanced tabs show that list with this one verb set; `use`
+   * setup's Look and Extensions tabs show that list with this one verb set; `use`
    * is the stable ref every mutating call takes.
    */
   extension: {
@@ -629,7 +629,7 @@ export const api = {
       post<ExtensionValidationResult[]>('/api/extension/validate', { projectDir }),
     /** The bundled extensions (markdown features and looks) an author can turn on with no install (static). */
     bundled: () => get<BundledExtensionInfo[]>('/api/extension/bundled'),
-    /** Each pinned npm extension against npm's latest, on demand (the Advanced tab, never project load). A network failure is data (`ok: false`), never a thrown error. */
+    /** Each pinned npm extension against npm's latest, on demand (the Extensions tab, never project load). A network failure is data (`ok: false`), never a thrown error. */
     outdated: (projectDir: string) =>
       post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir }),
     /** A configured extension's stylesheets, concatenated (a bundled look's inlined css, or the entry's folder) — for a sample thumbnail and the design settings. */

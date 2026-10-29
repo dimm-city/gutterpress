@@ -144,6 +144,16 @@ test("loadDesign clears cssPath when there are no styles", async () => {
   expect(h.ctrl.cssName).toBe("");
 });
 
+test("loadDesign takes only a stylesheet the book uses: a shared file it merely could use is not its own", async () => {
+  const h = make();
+  h.styles = [{ path: "/shared/styles/house.css", displayName: "../shared/styles/house.css", active: false }];
+  await h.ctrl.loadDesign();
+  expect(h.ctrl.cssPath).toBeNull();
+  expect(h.ctrl.cssName).toBe("");
+  // So the first edit creates the book's own stylesheet instead of writing into the shared one.
+  expect(await h.ctrl.ensureStylesheet()).toBe("/proj/styles/book.css");
+});
+
 test("setToken marks the section saving and dirty but does not write until the debounce fires", async () => {
   const h = make();
   await h.ctrl.loadDesign();

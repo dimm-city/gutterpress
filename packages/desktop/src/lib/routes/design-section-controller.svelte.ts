@@ -240,14 +240,15 @@ export class DesignSectionController {
         this.deps.listExtensions(projectDir).catch(() => []),
       ]);
       // A book with no stylesheet of its own yet still shows its looks'
-      // settings; the first edit creates one (`ensureStylesheet`).
-      const active = list.find((x) => x.active) ?? list[0];
+      // settings; the first edit creates one (`ensureStylesheet`). A file the
+      // book only could use (a shared one) is not its stylesheet.
+      const active = list.find((x) => x.active);
       this.cssPath = active?.path ?? null;
       this.cssName = active?.displayName ?? "";
       this.activeStyles = list.filter((x) => x.active).map((x) => x.displayName);
       // Every enabled look in cascade order, then the book's own sheet, which
       // loads after all of them. A look whose CSS can't be read (a missing
-      // folder) contributes nothing here; Advanced's extension list reports it.
+      // folder) contributes nothing here; the Extensions tab reports it.
       const looks = extensions.filter((e) => e.enabled && e.carries.styles);
       const sheets = await Promise.all([
         ...looks.map((e) => this.deps.readCss(projectDir, e.use).catch(() => "")),

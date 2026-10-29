@@ -158,7 +158,7 @@ export interface ProjectExtensionEntry {
   author?: string;
   /** Preview image path relative to the extension folder, when declared. */
   preview?: string | null;
-  /** What it declares — the Advanced tab names each kind in its row caption. */
+  /** What it declares — the Extensions tab names each kind in its row caption. */
   carries: ExtensionCarries;
   /** Absolute folder its metadata was read from. Absent for a bundled name,
    *  a bare JS file, an uninstalled npm entry, or a missing path. */
@@ -219,7 +219,7 @@ export interface ExtensionUpdateCheck {
 
 /**
  * Result of checking npm for updates. A fetch failure is DATA (`ok: false`),
- * never a thrown error or an HTTP 500: the Advanced tab shows one quiet line
+ * never a thrown error or an HTTP 500: the Extensions tab shows one quiet line
  * and the list itself is never blocked by the network.
  */
 export type ExtensionUpdatesResult =

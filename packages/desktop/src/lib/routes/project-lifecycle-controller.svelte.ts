@@ -172,7 +172,7 @@ export interface ProjectLifecycleDeps {
   dismissLanding: (runPendingRecoveryScan?: boolean) => void;
   /** The live toast surface, or null when unavailable. */
   toast: () => ProjectLifecycleToast | null;
-  /** Open Book setup on its Advanced tab (where a missing extension's Install button is). */
+  /** Open Book setup on its Extensions tab (where a missing extension's Install button is). */
   openExtensions?: () => void;
   /** Clear stale problems/log-path state for the project a new open targets. */
   clearStaleProjectState: () => void;
@@ -445,7 +445,7 @@ export class ProjectLifecycleController {
   /**
    * Say what opening the book downloaded, through the toast every other
    * ambient notice uses. A failed download is not an open failure: the book
-   * opens and the extension's row in Book setup › Advanced is the way to retry.
+   * opens and the extension's row in Book setup › Extensions is the way to retry.
    */
   private announceRestore(restore: ProjectLifecycleRestore | undefined): void {
     if (!restore) return;

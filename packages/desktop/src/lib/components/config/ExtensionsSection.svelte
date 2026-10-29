@@ -1,13 +1,15 @@
 <script lang="ts">
   /**
-   * Advanced › Extensions (#243, #265): ONE list of the manifest's
+   * Book setup › Extensions (#243, #265): ONE list of the manifest's
    * `extensions:` entries in load order, owned by `ExtensionsSectionController`,
    * then one Add area. Every row has the model's verbs and nothing else: a
    * checkbox to use it, its kinds and source in words, move up/down, Remove.
    * A row speaks only when something needs attention — a newer npm version
    * (Update), or a load failure (Show details, and Install / Reinstall /
-   * Check again). Looks and the built-in extras are chosen on the Look tab;
-   * this is the one place for npm, folders, web addresses and the order.
+   * Check again). This is the one place for the built-in extras (those the
+   * book does not list are offered to Add, each with what to type), npm,
+   * folders, web addresses and the order; the book's look is chosen on the
+   * Look tab.
    *
    * Updates: showing this list (its mount — never project load) asks npm once
    * for each pinned entry's latest. A failed check is one quiet line.
@@ -15,7 +17,7 @@
   import { onMount } from "svelte";
   import Icon from "#lib/components/Icon.svelte";
   import { api } from "#lib/api.ts";
-  import { extensionProblem, extensionSourceLabel, carriedKinds } from "./config-helpers";
+  import { extensionProblem, extensionSourceLabel, carriedKinds, describeSegments } from "./config-helpers";
   import type { ExtensionsSectionController } from "#lib/routes/extensions-section-controller.svelte.ts";
 
   let { controller }: { controller: ExtensionsSectionController } = $props();
@@ -29,9 +31,9 @@
   });
 </script>
 
-<section class="block" aria-labelledby="advanced-extensions">
-  <h3 id="advanced-extensions">Extensions</h3>
-  <p class="hint">Listed in the order they load: one lower in the list wins where two disagree. Your stylesheet always comes last.</p>
+<section class="block" aria-labelledby="extensions-list">
+  <h3 id="extensions-list">Your extensions</h3>
+  <p class="hint">Extensions add things you can type, like callouts or math, and extra looks. They load in this order: one lower in the list wins where two disagree. Your stylesheet always comes last.</p>
   {#if controller.error}
     <p class="error" role="alert">{controller.error}</p>
   {/if}
@@ -52,18 +54,18 @@
   {#if controller.entries.length === 0}
     <p class="muted">This book has no extensions yet.</p>
   {:else}
-    <ul class="ext-list">
+    <ul class="item-list">
       {#each controller.entries as e, i (e.use)}
         {@const problem = extensionProblem(e, controller.validation, controller.validating)}
         {@const newer = controller.updateFor(e)}
         <li>
-          <div class="ext-row">
+          <div class="item-row">
             <label class="ext-use">
               <input type="checkbox" checked={e.enabled} disabled={controller.busy !== null} onchange={() => controller.toggle(e)} aria-label={`Use ${e.label}`} />
-              <span class="ext-label" title={e.use}>{e.label}</span>
+              <span class="item-label" title={e.use}>{e.label}</span>
             </label>
-            <span class="ext-caption">{[carriedKinds(e).join(", "), extensionSourceLabel(e)].filter(Boolean).join(" · ")}</span>
-            <span class="ext-actions">
+            <span class="item-caption">{[carriedKinds(e).join(", "), extensionSourceLabel(e)].filter(Boolean).join(" · ")}</span>
+            <span class="item-actions">
               <button class="move" onclick={() => controller.move(e, -1)} disabled={i === 0 || controller.busy !== null} title="Move up" aria-label={`Move ${e.label} up`}>
                 <Icon name="chevron-up" size={14} />
               </button>
@@ -101,8 +103,25 @@
       <p class="muted update-failed">Couldn't check npm for updates.</p>
     {/if}
   {/if}
+</section>
 
-  <h4 class="subhead">Add an extension</h4>
+<section class="block" aria-labelledby="extensions-add">
+  <h3 id="extensions-add">Add an extension</h3>
+  {#if controller.unlistedExtras.length > 0}
+    <h4 class="subhead">Built-in extras</h4>
+    <p class="hint">Footnotes, tables and definition lists are always on.</p>
+    <ul class="add-list extras">
+      {#each controller.unlistedExtras as x (x.use)}
+        <li>
+          <span class="add-name">{x.label}</span>
+          <!-- What it does and what to type, the "what to type" set in code type. -->
+          <span class="extra-desc">{#each describeSegments(x.description) as seg}{#if seg.code}<code>{seg.text}</code>{:else}{seg.text}{/if}{/each}</span>
+          <button class="ghost small" onclick={() => controller.addExtra(x)} disabled={controller.busy !== null} aria-label={`Add ${x.label}`}>{controller.busy === x.use ? "Adding…" : "Add"}</button>
+        </li>
+      {/each}
+    </ul>
+    <h4 class="subhead">From npm, a folder or a web address</h4>
+  {/if}
   <div class="add-row">
     <label class="add-label" for="add-npm">npm package</label>
     <input id="add-npm" class="input" type="text" bind:value={controller.npmName} onkeydown={(e) => { if (e.key === "Enter") controller.addNpm(); }} />
@@ -128,17 +147,8 @@
 <style>
   @import "../../styles/config-section-shared.css";
 
-  /* The list: one row per entry, top-to-bottom = load order. */
-  .ext-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-  .ext-list li { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }
-  .ext-row { display: flex; align-items: center; gap: 10px; }
+  /* The list rows are the shared item rows (config-section-shared.css); a row's checkbox and its notes are this list's own. */
   .ext-use { display: flex; align-items: center; gap: 8px; min-width: 0; cursor: pointer; }
-  .ext-label { font-size: 13px; font-weight: 600; color: var(--app-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ext-caption { flex: 1; min-width: 0; font-size: 12px; color: var(--app-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ext-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
-  /* 24 px targets with no border (WCAG 2.5.8). */
-  .ext-actions .move { width: 24px; height: 24px; padding: 0; justify-content: center; border: 0; background: transparent; color: var(--app-text-muted); }
-  .ext-actions .move:hover:not(:disabled) { color: var(--app-text); background: var(--app-surface-hover); }
   .ext-note { margin: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-left: 24px; font-size: 12px; color: var(--app-text-secondary); }
   .ext-note.problem > span { color: var(--app-warning-text); }
 
@@ -147,6 +157,11 @@
   /* "Show details" on a failing row. */
   .status-raw > summary { font-size: 12px; color: var(--app-text-muted); cursor: pointer; user-select: none; }
   .status-raw > pre { margin: 4px 0 0; padding: 6px; font-size: 11px; color: var(--app-text-muted); background: var(--app-control-bg); border: 1px solid var(--app-border); border-radius: 4px; white-space: pre-wrap; word-break: break-word; }
+
+  /* ── Built-in extras: name, what to type, Add ── */
+  .extras .add-name { flex: none; width: 120px; }
+  .extra-desc { flex: 1; min-width: 0; font-size: 12px; color: var(--app-text-muted); line-height: 1.4; }
+  .extra-desc code { font-family: var(--app-font-mono); font-size: 12px; color: var(--app-text); }
 
   .add-row { align-items: center; }
   .add-label { flex-shrink: 0; width: 96px; font-size: 12.5px; color: var(--app-text-secondary); }

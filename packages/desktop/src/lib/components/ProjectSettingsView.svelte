@@ -12,25 +12,29 @@
    * The children carry no state — the `api.*` calls live in the controllers
    * under `#lib/routes/*-section-controller.svelte.ts`.
    *
-   * Tabs Book · Look · Backup, and Advanced set apart at the right; three
-   * controllers (no `$effect`: data loads on mount + after mutations):
+   * Tabs Book · Look · Extensions · Backup, and Advanced set apart at the
+   * right; four controllers (no `$effect`: data loads on mount + after
+   * mutations):
    *   1. Book     — title, authors, page size and margins, print checks,
    *                 chapters (`DetailsSection`, `api.manifest.*`,
    *                 `api.pageSize.*`); flushed on tab switch and close.
    *   2. Look     — choose a look, adjust six brand settings beside a live
-   *                 sample, extras (`LookSection`: the extensions AND design
+   *                 sample (`LookSection`: the extensions AND design
    *                 controllers).
-   *   3. Backup (id `backup`) — this book's online copy
+   *   3. Extensions — the manifest's ordered extension list and the one Add
+   *                 area: built-in extras, npm, folders and web addresses
+   *                 (`ExtensionsSection`).
+   *   4. Backup (id `backup`) — this book's online copy
    *                 (`ProjectConnectionsSection`, self-loading — no controller).
-   *   4. Advanced — the one place for developer controls: the manifest and
-   *                 stylesheet files, the extension list with npm, folders and
-   *                 web addresses (`ExtensionsSection`), and every design
+   *   5. Advanced — the one place for developer controls: the manifest file,
+   *                 the stylesheet list (`StylesSection`), and every design
    *                 setting (`DesignSection`).
    *
    * Every write shows in the header's one Saving… / Saved. `afterLookChange`
-   * (a styles-carrying extension changed → reload the design settings) is the
-   * cross-section refresh hook; every other refresh is a section reloading
-   * its own state after its own mutation.
+   * and `afterChange` (a styles-carrying extension or a stylesheet changed →
+   * reload the design settings) are the cross-section refresh hooks; every
+   * other refresh is a section reloading its own state after its own
+   * mutation.
    *
    * The body carries the `.config-panel` class: the sections' shared chrome
    * (`#lib/styles/config-section-shared.css`, @imported per section) scopes
@@ -45,12 +49,14 @@
   import { joinPath } from "#lib/platform/paths.ts";
   import { DetailsSectionController } from "#lib/routes/details-section-controller.svelte.ts";
   import { ExtensionsSectionController } from "#lib/routes/extensions-section-controller.svelte.ts";
+  import { StylesSectionController } from "#lib/routes/styles-section-controller.svelte.ts";
   import { DesignSectionController } from "#lib/routes/design-section-controller.svelte.ts";
   import AppView from "#lib/components/AppView.svelte";
   import Tabs from "#lib/components/Tabs.svelte";
   import DetailsSection from "#lib/components/config/DetailsSection.svelte";
   import LookSection from "#lib/components/config/LookSection.svelte";
   import ExtensionsSection from "#lib/components/config/ExtensionsSection.svelte";
+  import StylesSection from "#lib/components/config/StylesSection.svelte";
   import DesignSection from "#lib/components/config/DesignSection.svelte";
   import { firstHeading } from "#lib/components/config/source-files.ts";
   import ProjectConnectionsSection from "#lib/components/ProjectConnectionsSection.svelte";
@@ -78,10 +84,10 @@
     /** The repo the open book belongs to — lets the pickers offer SHARED styles. */
     repoRoot?: string | null;
     /** Tab to open on. Read once at mount (the view is keyed per open). */
-    initialTab?: "book" | "backup" | "advanced";
+    initialTab?: "book" | "extensions" | "backup";
     toast?: ToastController | null;
     /** Open one of the book's files (absolute path) in the editor; the parent
-     *  closes this view first. Advanced › Files. */
+     *  closes this view first. Advanced › Open manifest.yaml, and a stylesheet's Open. */
     onOpenFile?: (path: string) => void;
     /** Close the view — return to the workspace. */
     onClose?: () => void;
@@ -150,7 +156,7 @@
     onError: (msg) => toast?.error?.(msg),
   });
 
-  // ── Extensions — ONE list (#265), read by Look and Advanced. A change to
+  // ── Extensions — ONE list (#265), read by Look and Extensions. A change to
   //    a look refreshes the design settings. ────────────────────────────────
   const extensions = new ExtensionsSectionController({
     projectDir: projectDirAccessor,
@@ -169,6 +175,16 @@
     afterLookChange: () => design.loadDesign(),
   });
 
+  // ── Stylesheets — the manifest's `styles:` list. The design settings follow
+  //    the book's first stylesheet, so any change reloads them. ──────────────
+  const styles = new StylesSectionController({
+    projectDir: projectDirAccessor,
+    listStyles: (dir) => api.project.listStyles(dir, repoRoot),
+    setActiveStyles: (dir, paths) => api.style.setActive(dir, paths),
+    createStylesheet: () => design.ensureStylesheet(),
+    afterChange: () => design.loadDesign(),
+  });
+
   // ── Lifecycle: load every section's data on mount ────────────────────────
   onMount(() => {
     let cancelled = false;
@@ -185,22 +201,23 @@
   async function loadAll(): Promise<void> {
     if (!projectDir) return;
     // Sections load in parallel — none depend on another.
-    await Promise.allSettled([details.loadDetails(), extensions.loadExtensions(), design.loadDesign()]);
+    await Promise.allSettled([details.loadDetails(), extensions.loadExtensions(), design.loadDesign(), styles.loadStyles()]);
   }
 
   const hasProject = $derived(!!projectDir);
 
   // ── The header's one Saving… / Saved, for every tab's writes ─────────────
   const saveStatus = $derived.by(() => {
-    const all = [details.detailsSaveStatus, design.designSaveStatus, extensions.saveStatus];
+    const all = [details.detailsSaveStatus, design.designSaveStatus, extensions.saveStatus, styles.saveStatus];
     return all.includes("saving") ? "Saving…" : all.includes("saved") ? "Saved" : "";
   });
 
   // ── Tabs (the start screen's strip; Advanced sits apart at the right) ────
-  type BookSetupTab = "book" | "look" | "backup" | "advanced";
+  type BookSetupTab = "book" | "look" | "extensions" | "backup" | "advanced";
   const TABS: Array<{ id: BookSetupTab; label: string }> = [
     { id: "book", label: "Book" },
     { id: "look", label: "Look" },
+    { id: "extensions", label: "Extensions" },
     { id: "backup", label: "Backup" },
     { id: "advanced", label: "Advanced" },
   ];
@@ -214,16 +231,16 @@
     activeTab = id;
   }
 
-  /** Look's links to Advanced: its top, or "All design settings". */
-  async function openAdvanced(at?: "design") {
-    selectTab("advanced");
+  /** Look's links to Extensions and Advanced: the tab's top, or Advanced's "All design settings". */
+  async function openTab(id: "extensions" | "advanced", at?: "design") {
+    selectTab(id);
     await tick();
     if (at === "design") {
       const heading = document.getElementById("all-design-settings");
       heading?.scrollIntoView({ block: "start" });
       heading?.focus({ preventScroll: true });
     } else {
-      document.getElementById("project-settings-tab-advanced")?.focus();
+      document.getElementById(`project-settings-tab-${id}`)?.focus();
     }
   }
 
@@ -245,19 +262,9 @@
     if (await flushAll()) onClose?.();
   }
 
-  // Advanced › Files.
-  async function openManifest() {
-    if (projectDir && (await flushAll())) onOpenFile?.(joinPath(projectDir, "manifest.yaml"));
-  }
-
-  /** A book without a stylesheet of its own gets one to open. */
-  async function openStylesheet() {
-    if (!(await flushAll())) return;
-    const path = await design.ensureStylesheet().catch((e: unknown) => {
-      toast?.error?.(`Couldn't create styles/book.css: ${e instanceof Error ? e.message : String(e)}`);
-      return null;
-    });
-    if (path) onOpenFile?.(path);
+  /** Advanced › Open manifest.yaml, and a stylesheet's Open. */
+  async function openFile(path: string) {
+    if (await flushAll()) onOpenFile?.(path);
   }
 
   // "Save as template…" (Book tab) — mounted fresh per open so its form
@@ -292,7 +299,11 @@
       {/if}
 
       {#if activeTab === "look"}
-        <LookSection {extensions} {design} onOpenAdvanced={openAdvanced} />
+        <LookSection {extensions} {design} onOpenTab={openTab} />
+      {/if}
+
+      {#if activeTab === "extensions"}
+        <ExtensionsSection controller={extensions} />
       {/if}
 
       {#if activeTab === "backup"}
@@ -303,17 +314,13 @@
       {#if activeTab === "advanced"}
         <section class="block">
           <h3>Advanced</h3>
-          <p class="hint">For extensions from npm or a folder, their order, every design setting, and the files behind them. Most books never need this tab.</p>
-        </section>
-        <section class="block" aria-labelledby="advanced-files">
-          <h3 id="advanced-files">Files</h3>
-          <div class="row files">
-            <button class="ghost small" onclick={openManifest}>Open manifest.yaml</button>
-            <button class="ghost small" onclick={openStylesheet}>Open {design.cssName || "styles/book.css"}</button>
+          <p class="hint">For your stylesheets, every design setting, and the manifest behind your book. Most books never need this tab.</p>
+          <div class="row">
+            <button class="ghost small" onclick={() => projectDir && openFile(joinPath(projectDir, "manifest.yaml"))}>Open manifest.yaml</button>
             <span class="hint">Opens the file in the editor.</span>
           </div>
         </section>
-        <ExtensionsSection controller={extensions} />
+        <StylesSection controller={styles} onOpen={openFile} />
         <DesignSection controller={design} />
       {/if}
     {/if}
@@ -344,5 +351,4 @@
   .save-status.saved { color: var(--app-success-text); }
 
   .empty, .loading { margin: 0; font-size: 13px; color: var(--app-text-muted); }
-  .files { flex-wrap: wrap; }
 </style>

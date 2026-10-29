@@ -191,7 +191,7 @@ test("initial public rune state matches the panel defaults", () => {
   expect(ctrl.entries).toEqual([]);
   expect(ctrl.bundled).toEqual([]);
   expect(ctrl.galleryLooks).toEqual([]);
-  expect(ctrl.extras).toEqual([]);
+  expect(ctrl.unlistedExtras).toEqual([]);
   expect(ctrl.validation).toEqual({});
   expect(ctrl.validating).toBe(false);
   expect(ctrl.error).toBeNull();
@@ -643,7 +643,7 @@ test("chooseLook on a book with no look adds it and moves nothing", async () => 
   expect(h.ctrl.enabledLooks.map((e) => e.use)).toEqual(["zine"]);
 });
 
-test("chooseLook is refused with two looks on (Advanced's to change), and choosing the look in use does nothing", async () => {
+test("chooseLook is refused with two looks on (the Extensions tab's to change), and choosing the look in use does nothing", async () => {
   const h = make({ entries: [CLEAN, LOOK_B] });
   await h.ctrl.loadExtensions();
   await h.ctrl.chooseLook({ use: "academic", label: "Academic", description: "d", from: null });
@@ -666,42 +666,44 @@ test("a failed chooseLook says the book still uses its look", async () => {
   expect(named(h, "remove")).toEqual([]);
 });
 
-test("extras: every built-in extra, ticked when listed and on", async () => {
-  const h = make({ entries: [FEATURE, { ...SUB, enabled: false }] });
+test("unlistedExtras: the built-in extras the book does not list, whether or not they are on; never a look", async () => {
+  const h = make({ entries: [FEATURE, { ...SUB, enabled: false }, CLEAN] });
   await h.ctrl.loadExtensions();
-  expect(h.ctrl.extras.map((x) => [x.use, x.on])).toEqual([
-    ["markdown-it-mark", true],
-    ["markdown-it-sub", false],
-  ]);
+  // Highlight and the switched-off Subscript are rows of the list; the rest is for the Add area.
+  expect(h.ctrl.unlistedExtras).toEqual([]);
+  const book = make({ entries: [FEATURE, CLEAN] });
+  await book.ctrl.loadExtensions();
+  expect(book.ctrl.unlistedExtras.map((x) => x.use)).toEqual(["markdown-it-sub"]);
+  const none = make({ entries: [] });
+  await none.ctrl.loadExtensions();
+  expect(none.ctrl.unlistedExtras.map((x) => x.use)).toEqual(["markdown-it-mark", "markdown-it-sub"]);
 });
 
-test("setExtra: ticking adds the extra, or switches a listed one on; unticking removes it", async () => {
-  const h = make({ entries: [{ ...FEATURE, enabled: false }] });
+test("addExtra adds the built-in by its bundled name, moves it out of the Add area and into the list; nothing to refresh", async () => {
+  const h = make({ entries: [FEATURE] });
   await h.ctrl.loadExtensions();
-  await h.ctrl.setExtra(REC_SUB, true);
-  await h.ctrl.setExtra(REC_MARK, true);
-  expect(named(h, "add").map((c) => c.args[1])).toEqual(["markdown-it-sub"]);
-  expect(named(h, "setEnabled").map((c) => c.args.slice(1))).toEqual([["markdown-it-mark", true]]);
-  await h.ctrl.setExtra(REC_MARK, false);
-  expect(named(h, "remove").map((c) => c.args[1])).toEqual(["markdown-it-mark"]);
-  expect(h.ctrl.extras.map((x) => [x.use, x.on])).toEqual([
-    ["markdown-it-mark", false],
-    ["markdown-it-sub", true],
-  ]);
-  // An extra is not a look: nothing to refresh.
+  await h.ctrl.addExtra(REC_SUB);
+  expect(named(h, "add").map((c) => c.args.slice(1))).toEqual([["markdown-it-sub", undefined]]);
+  expect(h.ctrl.entries.map((e) => e.use)).toEqual(["markdown-it-mark", "markdown-it-sub"]);
+  expect(h.ctrl.unlistedExtras).toEqual([]);
+  expect(h.ctrl.saveStatus).toBe("saved");
   expect(h.afterLookChange.calls.length).toBe(0);
 });
 
-test("setExtra does nothing when the extra is already as asked", async () => {
+test("removing a built-in extra from the list offers it in the Add area again", async () => {
   const h = make({ entries: [FEATURE] });
   await h.ctrl.loadExtensions();
-  await h.ctrl.setExtra(REC_MARK, true);
-  await h.ctrl.setExtra(REC_SUB, false);
-  expect(h.calls.filter((c) => ["add", "remove", "setEnabled"].includes(c.name))).toEqual([]);
+  expect(h.ctrl.unlistedExtras.map((x) => x.use)).toEqual(["markdown-it-sub"]);
+  await h.ctrl.remove(FEATURE);
+  expect(h.ctrl.unlistedExtras.map((x) => x.use)).toEqual(["markdown-it-mark", "markdown-it-sub"]);
 });
 
-test("otherExtensionsCount counts what is neither a look nor a built-in extra", async () => {
-  const h = make({ entries: [LOOK_A, FEATURE, BOTH, NPM_LOOK, BROKEN] });
+test("a failed addExtra says why and leaves the list as it was", async () => {
+  const h = make({ entries: [FEATURE] });
   await h.ctrl.loadExtensions();
-  expect(h.ctrl.otherExtensionsCount).toBe(2); // the component library and the broken folder
+  h.failAdd = true;
+  await h.ctrl.addExtra(REC_SUB);
+  expect(h.ctrl.error).toBe("add failed");
+  expect(h.ctrl.saveStatus).toBe("idle");
+  expect(h.ctrl.entries.map((e) => e.use)).toEqual(["markdown-it-mark"]);
 });

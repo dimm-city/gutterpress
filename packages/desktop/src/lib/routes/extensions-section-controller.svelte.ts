@@ -4,10 +4,10 @@
  * cascade order) and ONE verb set (add, remove, toggle, move). Two tabs read
  * it:
  *   - **Look** shows it the way an author thinks of it: one look, chosen from
- *     a gallery (`galleryLooks`, `chooseLook`), and the built-in extras
- *     ticked on or off (`extras`, `setExtra`);
- *   - **Advanced** shows the list itself, with every verb, the npm update
- *     check, and the ways to add an extension from elsewhere.
+ *     a gallery (`galleryLooks`, `chooseLook`);
+ *   - **Extensions** shows the list itself, with every verb, the npm update
+ *     check, and the ways to add one: a built-in extra the book does not list
+ *     yet (`unlistedExtras`, `addExtra`), or one from elsewhere.
  *
  * A look is an extension that carries styles and no markdown (`isLook`); an
  * extra carries markdown; a component library carries both. The list order
@@ -114,7 +114,7 @@ export class ExtensionsSectionController {
   bundled = $state<BundledExtensionInfo[]>([]);
   /**
    * Update check — each pinned npm entry against npm's latest. Run once when
-   * the Advanced tab is first shown (never at project load); a failure is one
+   * the Extensions tab is first shown (never at project load); a failure is one
    * quiet line, never a modal.
    */
   updates = $state<{
@@ -149,7 +149,7 @@ export class ExtensionsSectionController {
   }
 
   // ── Derivations (getters so bun unit tests need only the $state shim) ─────
-  /** The enabled looks, in cascade order: one in practice; more is an Advanced setup. */
+  /** The enabled looks, in cascade order: one in practice; more is an Extensions setup. */
   get enabledLooks(): ProjectExtensionEntry[] {
     return this.entries.filter((e) => e.enabled && isLook(e));
   }
@@ -193,16 +193,9 @@ export class ExtensionsSectionController {
     return [...cards.filter((c) => inUse.has(c.use)), ...cards.filter((c) => !inUse.has(c.use))];
   }
 
-  /** The built-in extras (bundled, not looks), each ticked when listed and on. */
-  get extras(): Array<BundledExtensionInfo & { on: boolean }> {
-    return this.bundled
-      .filter((b) => !b.look)
-      .map((b) => ({ ...b, on: this.entries.some((e) => e.use === b.use && e.enabled) }));
-  }
-
-  /** Listed extensions that are neither looks nor built-in extras: they are set up in Advanced only. */
-  get otherExtensionsCount(): number {
-    return this.entries.filter((e) => !isLook(e) && e.kind !== "bundled").length;
+  /** The built-in extras (bundled, not looks) the book does not list: what the Add area offers. A listed one is a row of the list. */
+  get unlistedExtras(): BundledExtensionInfo[] {
+    return this.bundled.filter((b) => !b.look && !this.entries.some((e) => e.use === b.use));
   }
 
   /** The newer version npm has for an entry, or null (not npm, not checked, or current). */
@@ -234,7 +227,7 @@ export class ExtensionsSectionController {
     }
   };
 
-  /** Load-test every entry; also the Advanced tab's Check again. */
+  /** Load-test every entry; also the Extensions tab's Check again. */
   validateExtensions = async (): Promise<void> => {
     const projectDir = this.deps.projectDir();
     if (!projectDir) return;
@@ -367,7 +360,7 @@ export class ExtensionsSectionController {
 
   /** Move `entry` one slot up (-1) or down (+1) in the list. */
   move = async (entry: ProjectExtensionEntry, delta: -1 | 1): Promise<void> => {
-    const order = orderAfterMove(this.entries, entry, delta);
+    const order = orderAfterMove(this.entries.map((e) => e.use), entry.use, delta);
     if (!order) return;
     await this.mutate(entry.use, (dir) => this.deps.reorder(dir, order), () => entry.carries.styles);
   };
@@ -377,7 +370,7 @@ export class ExtensionsSectionController {
    * built-in not listed yet) or switched on, moved to the old look's place in
    * the list, and the old look goes — a built-in is removed, an npm or folder
    * look only switched off. Refused while the book has two or more looks on
-   * (that setup is Advanced's to change) or when the card is already the look.
+   * (that setup is the Extensions tab's to change) or when the card is already the look.
    */
   chooseLook = async (card: LookCard): Promise<void> => {
     const looks = this.enabledLooks;
@@ -403,15 +396,9 @@ export class ExtensionsSectionController {
     );
   };
 
-  /** Tick or untick a built-in extra: on adds it (or switches a listed one on); off removes it. */
-  setExtra = async (b: BundledExtensionInfo, on: boolean): Promise<void> => {
-    const listed = this.entries.find((e) => e.use === b.use);
-    if (on ? listed?.enabled : !listed) return;
-    await this.mutate(
-      b.use,
-      (dir) => (!on ? this.deps.remove(dir, b.use) : listed ? this.deps.setEnabled(dir, b.use, true) : this.deps.add(dir, b.use)),
-      () => false,
-    );
+  /** Add a built-in extra to the list: by its bundled name, so nothing is installed or copied. */
+  addExtra = async (b: BundledExtensionInfo): Promise<void> => {
+    await this.mutate(b.use, (dir) => this.deps.add(dir, b.use), carriesStyles);
   };
 
   /** "npm package" → `add`. A cancelled trust gate keeps the draft. */

@@ -1113,8 +1113,8 @@
   let editorView = $state<"editor" | "activity">("editor");
   let projectSettingsOpen = $state(false);
 
-  /** One button → the whole Book setup view (book, look, backup,
-   *  advanced), covering the workspace. */
+  /** One button → the whole Book setup view (book, look, extensions,
+   *  backup, advanced), covering the workspace. */
   function openProjectConfig(): void {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
     projectSettingsTab = "book";
@@ -1123,16 +1123,16 @@
 
   // Book setup opens on Book; the save-status dialog and Settings > Saving
   // send writers to its Backup tab to see how an online backup gets set up.
-  let projectSettingsTab = $state<"book" | "backup" | "advanced">("book");
+  let projectSettingsTab = $state<"book" | "extensions" | "backup">("book");
   function openBookConnections(): void {
     openProjectConfig();
     projectSettingsTab = "backup";
   }
-  // A failed extension download's toast sends writers to Advanced, where the
+  // A failed extension download's toast sends writers to Extensions, where the
   // row's Install button retries it.
   function openBookExtensions(): void {
     openProjectConfig();
-    projectSettingsTab = "advanced";
+    projectSettingsTab = "extensions";
   }
 
   function closeProjectSettings(): void {
@@ -1141,7 +1141,7 @@
 
   /**
    * Open one of the book's files (absolute path) in the shared editor and
-   * reveal it: Book setup's Advanced › Files (the manifest, the stylesheet).
+   * reveal it: Book setup's Advanced (Open manifest.yaml, a stylesheet's Open).
    * Flips `editorView` back to "editor" so the author lands on the file.
    */
   async function openFileInEditor(absPath: string): Promise<void> {

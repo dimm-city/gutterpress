@@ -47,7 +47,7 @@ Then Read the PNGs (`/tmp/shots/editor.png`, ...). Look at them; a blank frame i
 Commands: `shot name`, `click sel`, `fill sel | value`, `press Key`, `move x y` (hover), `wheel dx dy` (a real wheel at the pointer — `move` there first), `size w h`, `wait ms`,
 `text` (dump body text), `btns` (visible controls with x,y,w,h), `eval js`.
 Failed commands print `FAIL ...` and the script continues. Pass `""` as the book dir to stay on the welcome screen.
-Useful selectors: `[aria-label='Book setup']` (toolbar button; the panel it opens is the `.app-view` whose `h1.view-title` reads "Book setup", with tabs `#project-settings-tab-{book,look,backup,advanced}`; its close button is `[aria-label='Close this screen']`),
+Useful selectors: `[aria-label='Book setup']` (toolbar button; the panel it opens is the `.app-view` whose `h1.view-title` reads "Book setup", with tabs `#project-settings-tab-{book,look,extensions,backup,advanced}`; its close button is `[aria-label='Close this screen']`),
 `[aria-label='Settings']` (app settings, status bar), `[aria-label='Help']`, `button:has-text('Publish')`,
 `.toggle-strip` (the status-bar Problems badge: icon + count, aria-label "Problems: 2 errors, 1 warning"), `.editor-toolbar .save-btn` (editor Save), `button:has-text('New book')`.
 

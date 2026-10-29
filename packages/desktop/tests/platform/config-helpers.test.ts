@@ -79,20 +79,23 @@ const FEAT = entry({ use: "markdown-it-mark" });
 const LOOK_B = entry({ use: "./extensions/b", kind: "path", carries: { ...NONE, styles: true } });
 const ALL = [LOOK_A, FEAT, LOOK_B];
 
-test("orderAfterMove swaps an entry with its neighbour, keeping the rest in place", () => {
-  expect(orderAfterMove(ALL, LOOK_B, -1)).toEqual(["./extensions/a", "./extensions/b", "markdown-it-mark"]);
-  expect(orderAfterMove(ALL, LOOK_A, 1)).toEqual(["markdown-it-mark", "./extensions/a", "./extensions/b"]);
+const ORDER = ALL.map((e) => e.use);
+
+test("orderAfterMove swaps an item with its neighbour, keeping the rest in place", () => {
+  expect(orderAfterMove(ORDER, LOOK_B.use, -1)).toEqual(["./extensions/a", "./extensions/b", "markdown-it-mark"]);
+  expect(orderAfterMove(ORDER, LOOK_A.use, 1)).toEqual(["markdown-it-mark", "./extensions/a", "./extensions/b"]);
 });
 
-test("orderAfterMove lists every configured entry exactly once (what reorderExtensions insists on)", () => {
-  const order = orderAfterMove(ALL, LOOK_B, -1)!;
-  expect([...order].sort()).toEqual(ALL.map((e) => e.use).sort());
+test("orderAfterMove lists every item exactly once (what reorderExtensions insists on) and leaves its input alone", () => {
+  const order = orderAfterMove(ORDER, LOOK_B.use, -1)!;
+  expect([...order].sort()).toEqual([...ORDER].sort());
+  expect(ORDER).toEqual(["./extensions/a", "markdown-it-mark", "./extensions/b"]);
 });
 
-test("orderAfterMove returns null at the list's edge or for an entry not in it", () => {
-  expect(orderAfterMove(ALL, LOOK_A, -1)).toBeNull();
-  expect(orderAfterMove(ALL, LOOK_B, 1)).toBeNull();
-  expect(orderAfterMove([LOOK_A, LOOK_B], FEAT, 1)).toBeNull();
+test("orderAfterMove returns null at the list's edge or for an item not in it", () => {
+  expect(orderAfterMove(ORDER, LOOK_A.use, -1)).toBeNull();
+  expect(orderAfterMove(ORDER, LOOK_B.use, 1)).toBeNull();
+  expect(orderAfterMove([LOOK_A.use, LOOK_B.use], FEAT.use, 1)).toBeNull();
 });
 
 // ── carriedKinds: a row's kinds, in words ──────────────────────────────────
