@@ -19,6 +19,7 @@
  * host responses.
  */
 import type { HostCredential, TokenStore } from "../remote-auth/token-store.ts";
+import type { PublishSelectionsStore } from "./selections.ts";
 
 /**
  * One author-editable, NON-SECRET settings field (stored in the manifest's
@@ -138,8 +139,9 @@ export interface PublishPluginContext {
   /** The one build output validated for this run: a PDF file, or the
    *  website export directory. */
   artifact: PublishArtifact;
-  /** The manifest's `publish.<package-name>` section, minus the two keys core
-   *  reads from it: `format` (which build to publish) and `credential`. */
+  /** The manifest's `publish.<package-name>` section, minus the keys core
+   *  reads from it: `format` (which build to publish), `credential` and
+   *  `enabled` (whether the desktop's Publish view ticks it). */
   settings: Record<string, unknown>;
   /** Progress line sink. Use this, never `console.log`: stdout carries
    *  `--json` output. */
@@ -226,11 +228,19 @@ export interface PublishDeps {
    * keyed by a compound `<host>#<account>` for named accounts (see
    * {@link publishCredentialKey}); empty/undefined resolves the legacy
    * bare-host entry, so existing single-credential setups keep working. The
-   * orchestrator sets this from the effective selection (book manifest →
-   * project/global default); providers read it transparently via
-   * {@link resolvePublishCredential}.
+   * orchestrator sets this from the effective selection (the person's private
+   * choice for the book → the book manifest → this front-end default);
+   * providers read it transparently via {@link resolvePublishCredential}.
    */
   credentialAccount?: string;
+  /**
+   * The person's PRIVATE publishing values for a book (see
+   * {@link PublishSelectionsStore}): which saved account to use and an output
+   * folder outside the book. When given, they win over the manifest's
+   * `publish.<id>` values in every request. Absent (the CLI today): the
+   * manifest alone.
+   */
+  selections?: Pick<PublishSelectionsStore, "settings">;
 }
 
 /**

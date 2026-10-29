@@ -51,11 +51,16 @@ export interface ExtensionConfig {
  * The name (label) of the SAVED credential this book uses for a provider, when
  * the user keeps more than one (e.g. two itch.io accounts). It is NOT a secret
  * — just a reference into the host credential store's named entries; empty/
- * absent uses the default (bare-host) credential. This book-level choice
- * overrides any project/global default.
+ * absent uses the default (bare-host) credential. The desktop app keeps this
+ * choice (and an output folder outside the book) in the person's own private
+ * settings, which win over the manifest's; a value written here still applies
+ * to a book that has none (older books, the CLI) and overrides any front-end
+ * default. Everything else in a section is the team's, shared.
  */
 interface PublishSettings {
   itch?: {
+    /** Whether the desktop's Publish view ticks this destination for the book (the team's choice, shared). */
+    enabled?: boolean;
     /** itch.io project as `user/game` (the butler push target). */
     target?: string;
     /** butler channel name (default: "pdf"). */
@@ -64,17 +69,23 @@ interface PublishSettings {
     credential?: string;
   };
   drivethrurpg?: {
+    /** Whether the desktop's Publish view ticks this destination for the book (the team's choice, shared). */
+    enabled?: boolean;
     /** Existing product page URL, when updating a published title. */
     productUrl?: string;
   };
-  kdp?: Record<string, never>;
+  kdp?: { enabled?: boolean };
   "azure-swa"?: {
+    /** Whether the desktop's Publish view ticks this destination for the book (the team's choice, shared). */
+    enabled?: boolean;
     /** Deploy environment (default: "production"). */
     env?: string;
     /** Saved-credential label to use (see PublishSettings doc). */
     credential?: string;
   };
   shopify?: {
+    /** Whether the desktop's Publish view ticks this destination for the book (the team's choice, shared). */
+    enabled?: boolean;
     /** The store domain, e.g. `my-store.myshopify.com`. */
     shop?: string;
     /** Existing product GID/id to update instead of creating a new one. */
@@ -85,6 +96,8 @@ interface PublishSettings {
     credential?: string;
   };
   gdrive?: {
+    /** Whether the desktop's Publish view ticks this destination for the book (the team's choice, shared). */
+    enabled?: boolean;
     /** Display name of the target Drive folder; created at My Drive root if
      * missing. Default when unset: "Gutterpress". */
     folder?: string;
