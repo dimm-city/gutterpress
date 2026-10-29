@@ -42,6 +42,8 @@ export interface AutoSnapshotDeps {
   clearTimer?: (h: unknown) => void;
   /** Fires on every pending set (dir) / clear (null) so a caller can mirror it. */
   onPendingChanged?: (dir: string | null) => void;
+  /** Fires after an automatic version was saved in `dir` (the status may now say "not backed up yet"). */
+  onSnapshotSaved?: (dir: string) => void;
   /**
    * Fires once `run()`'s catch has failed {@link AUTO_SNAPSHOT_FAILURE_THRESHOLD}
    * times in a row for `dir`, and again on every subsequent multiple of the
@@ -170,6 +172,7 @@ export class AutoSnapshotScheduler {
       });
       // Success — the safety net is working again; clear any failure streak.
       this.consecutiveFailures = 0;
+      this.deps.onSnapshotSaved?.(dir);
     } catch (e) {
       const lib = await this.deps.loadLib().catch(() => null);
       if (lib?.isNoChangesError(e)) {

@@ -274,7 +274,8 @@ export class PreviewOpenController {
     // remote merely lacks a Gutterpress credential (the renderer offers a Connect
     // action), or "local" when there is no usable remote (version history
     // only). Isolated from the initial-sync flow below; canSync projects get
-    // their status from AutoSyncOrchestrator.run and ignore this branch.
+    // their status from AutoSyncOrchestrator.run (which, with automatic
+    // backing up off, reports "unsent"/"synced" itself) and ignore this branch.
     if (lib && source) void this.emitLocalStatusIfUnsynced(lib, openedDir, source);
 
     // Arm the initial sync for a classified project — see

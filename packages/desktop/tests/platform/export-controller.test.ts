@@ -404,6 +404,8 @@ test("the pre-export sync gate commits with the configured name + email", async 
     projectDir: "/book",
     authorName: "Ada Lovelace",
     authorEmail: "ada@example.com",
+    // Getting the latest changes only: an export never sends the book anywhere.
+    push: false,
   });
 });
 
@@ -441,22 +443,36 @@ test("mints the exportId and registers the active session before the gate's netw
   expect(sessionDuringGate?.id).toBeTruthy();
 });
 
-test("sends a pre-gate 'started' progress event with a syncing message before any gate work (M28)", async () => {
+test("sends a pre-gate 'started' event at once, and labels the wait only when it will get the latest changes (M28)", async () => {
   const h = makeHarness({
     sourceType: "local-git-folder",
     canSync: true,
     isOnline: true,
   });
   await h.controller.build({ input: "/book", out: "/out/book.pdf" });
-  // First event: the pre-gate one, minted before isConflictLatched/detectProjectSource
-  // even run. Still `state: "started"` (ExportProgressEvent's union is
-  // unchanged end-to-end) — distinguished by its message.
+  // First event: minted before any gate work, so Cancel is live. Still
+  // `state: "started"` (ExportProgressEvent's union is unchanged end-to-end).
   expect(h.progress[0]?.state).toBe("started");
-  expect(h.progress[0]?.message).toMatch(/sync/i);
-  // The real build-start "started" event follows, with no message.
-  const realStarted = h.progress.find((p, i) => i > 0 && p.state === "started");
+  expect(h.progress[0]?.message).toBeUndefined();
+  // Then the label for the wait, which only a book that gets the latest changes sees…
+  expect(h.progress[1]).toMatchObject({ state: "started", message: "Getting the latest changes…" });
+  // …and the real build-start "started" event, with no message.
+  const realStarted = h.progress.find((p, i) => i > 1 && p.state === "started");
   expect(realStarted).toBeDefined();
   expect(realStarted?.message).toBeUndefined();
+});
+
+test("a book that cannot get the latest changes is never told it is waiting for them", async () => {
+  for (const opts of [
+    { sourceType: "local-folder" },
+    { sourceType: "local-git-folder", canSync: false, isOnline: true },
+    { sourceType: "local-git-folder", canSync: true, isOnline: false },
+  ]) {
+    const h = makeHarness(opts);
+    await h.controller.build({ input: "/book", out: "/out/book.pdf" });
+    expect(h.progress.some((p) => /latest changes/i.test(p.message ?? ""))).toBe(false);
+    expect(h.syncArgs.length).toBe(0);
+  }
 });
 
 test("Cancel during the pre-export sync gate aborts before runBuild (M28)", async () => {

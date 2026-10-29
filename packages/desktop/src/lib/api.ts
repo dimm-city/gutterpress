@@ -754,11 +754,12 @@ export const api = {
       post<{ changedFiles: number | null; stale: boolean }>('/api/vcs/unversioned-changes', { projectDir }),
     saveSnapshot: (projectDir: string, message?: string) =>
       post<SnapshotEntry>('/api/vcs/save-snapshot', { projectDir, message }),
-    /** The project's local copies (git branches) and which one is open;
-     *  `null` when the source has nothing to switch between (#273). */
+    /** The project's revisions (git branches) and which one is open;
+     *  `null` when the source has nothing to switch between (#273).
+     *  @deprecated Use `listRevisions`; removed once its callers have moved over. */
     listBranches: (projectDir: string) =>
       post<{ current: string | null; branches: string[]; remoteOnly: string[] } | null>('/api/vcs/list-branches', { projectDir }),
-    /** Switch the project's working tree to another local copy (#273). */
+    /** Switch the project's working tree to another revision (#273). */
     switchBranch: (projectDir: string, branch: string) =>
       post<{ current: string; changedFiles: string[] }>('/api/vcs/switch-branch', { projectDir, branch }),
     /** The book's revisions and where each is kept (#448); `null` without version history.
@@ -813,9 +814,10 @@ export const api = {
     diagnoseProjectRemote: (projectDir: string) =>
       post<ProjectRemoteDiagnosis>('/api/remote/diagnose-project', { projectDir }),
 
-    /** Fetch every remote branch so the copy picker sees copies made elsewhere
+    /** Fetch every remote branch so the revision list sees revisions made elsewhere
      *  (#273). Best-effort: `refreshed: false` with the `reason` when the check
-     *  could not run, so the picker can say the list may be incomplete. */
+     *  could not run, so the list can say it may be incomplete.
+     *  @deprecated `listRevisions(dir, { refresh: true })` does this; removed once its callers have moved over. */
     refreshCopies: (projectDir: string) =>
       post<{ refreshed: boolean; reason?: 'no-remote' | 'auth' | 'offline' }>(
         '/api/remote/refresh-copies',
@@ -844,7 +846,7 @@ export const api = {
     listHostConnections: () =>
       post<HostConnectionInfo[]>('/api/remote/list-connections'),
 
-    /** Snapshot-first sync of the project to its online repository. */
+    /** Back up the project to its online copy. */
     syncChanges: (projectDir: string, message?: string) =>
       post<SyncOutcome>('/api/remote/sync', {
         projectDir,

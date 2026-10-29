@@ -53,6 +53,12 @@ interface FakeLibOptions {
   diagnoseThrows?: Error;
   /** The `gitIdentity` settings slice the orchestrator must honour. */
   gitIdentity?: { authorName?: string; authorEmail?: string };
+  /** `workspace.role` in the settings (default "author"). */
+  role?: "reader" | "author";
+  /** The open revision `lib.listRevisions` reports (`null`: no list; a throw if omitted). */
+  openRevision?: { where: "online" | "this-computer"; notBackedUp: boolean } | null;
+  /** The watched project dir (default DIR). */
+  watchedDir?: string;
 }
 
 function makeHarness(opts: FakeLibOptions = {}): Harness {
@@ -62,8 +68,9 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
   let clock = 1_700_000_000_000;
 
   const lib = {
-    autoSyncDelayMs: () =>
-      opts.autoSyncDelayMs === undefined ? 120_000 : opts.autoSyncDelayMs,
+    // The real policy: no policy at all means the defaults (on, every 2 minutes).
+    autoSyncDelayMs: (policy?: unknown) =>
+      policy === undefined || opts.autoSyncDelayMs === undefined ? 120_000 : opts.autoSyncDelayMs,
     detectProjectSource: async () => ({
       type: opts.sourceType ?? "local-git-folder",
       // The real lib always reports the enclosing repo root for a
@@ -86,6 +93,16 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
         : { status: "synced" };
       return r;
     },
+    listRevisions: async () =>
+      opts.openRevision === null
+        ? null
+        : {
+            current: "main",
+            revisions: [
+              { name: "other", current: false, where: "this-computer", notBackedUp: false },
+              ...(opts.openRevision ? [{ name: "main", current: true, ...opts.openRevision }] : []),
+            ],
+          },
     resolveLogger: () => ({ info: () => {}, error: () => {} }),
     AUTO_SYNC_PUSH_INTERVAL_MINUTES: 15,
   } as unknown as LibModule;
@@ -96,11 +113,12 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
     tokenStore: {} as AutoSyncOrchestratorDeps["tokenStore"],
     readSettings: async () => ({
       versionHistory: {} as never,
+      workspace: { role: opts.role ?? "author" },
       ...(opts.gitIdentity ? { gitIdentity: opts.gitIdentity } : {}),
     }),
     emit: (p) => emitted.push(p),
     now: () => clock,
-    getWatchedDir: () => DIR,
+    getWatchedDir: () => opts.watchedDir ?? DIR,
     operationLogPath: (slug) => `/logs/${slug}.log`,
   };
 
@@ -258,9 +276,9 @@ test("a successful run emits syncing then synced with a fake-clock timestamp", a
 });
 
 test("an 'up-to-date' outcome emits the same 'synced' state as a sending sync", async () => {
-  // The pill draws both identically ("Online backup in sync"), so there is
+  // Both mean the online copy has every version this computer has, so there is
   // ONE wire state. The lib's SyncOutcome still distinguishes them — that is
-  // what the manual-sync toast reads.
+  // what the manual toast reads.
   const h = makeHarness({
     syncProject: () => ({ status: "up-to-date", filesChanged: true }),
   });
@@ -278,7 +296,7 @@ test("an 'up-to-date' outcome emits the same 'synced' state as a sending sync", 
 // while auto-sync users only ever see a generic error pill.
 
 const INSECURE_MSG =
-  "This book's online address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Switch the address to a secure one (starting with https) to sync.";
+  "This book's online copy is at an address that isn't secure, so the saved sign-in wasn't sent — sign-ins are never sent over an insecure address. Switch the address to a secure one (starting with https) to back up.";
 
 test("an 'error' outcome carries the outcome's plain-language message on the emit", async () => {
   const h = makeHarness({
@@ -504,4 +522,134 @@ test("background sync errors include the technical log path", async () => {
     expect(failure?.logFile).toBe(h.syncArgs[0]?.logFile);
     expect(failure?.logFile).toMatch(/^\/logs\/.+\.log$/);
   }
+});
+
+// ── Honest "synced" (#448) ───────────────────────────────────────────────────
+//
+// "synced" means the online copy has every version this computer has. A
+// pull-only pass that held the push says "unsent" instead.
+
+test("a pull-only pass that held the push emits 'unsent', converge extras still forwarded", async () => {
+  const h = makeHarness({
+    syncProject: () => ({
+      status: "up-to-date",
+      pushDeferred: true,
+      filesChanged: true,
+      combinedFiles: ["chapter-01.md"],
+    }),
+  });
+  await h.orch.run(DIR);
+  expect(h.emitted.map((e) => e.state)).toEqual(["syncing", "unsent"]);
+  expect(h.emitted[1]).toMatchObject({ filesChanged: true, combinedFiles: ["chapter-01.md"] });
+});
+
+test("'up-to-date' without a held push and a sending pass both emit 'synced'", async () => {
+  for (const outcome of [{ status: "up-to-date" }, { status: "synced", mergedRemoteChanges: false }]) {
+    const h = makeHarness({ syncProject: () => outcome });
+    await h.orch.run(DIR);
+    expect(h.emitted.map((e) => e.state)).toEqual(["syncing", "synced"]);
+  }
+});
+
+// ── Readers always get the latest, and never send ────────────────────────────
+
+test("a reader's interval is armed even when automatic backing up is off", async () => {
+  const h = makeHarness({ role: "reader", autoSyncDelayMs: null });
+  await h.orch.armInterval(DIR);
+  expect(h.orch.getState(DIR)?.intervalHandle).toBeTruthy();
+  h.orch.cancelAll();
+});
+
+test("a reader's passes get the latest (push: false) every tick, with automatic backing up on or off", async () => {
+  const T0 = 1_700_000_000_000;
+  for (const autoSyncDelayMs of [undefined, null]) {
+    const h = makeHarness({ role: "reader", autoSyncDelayMs });
+    h.setClock(T0);
+    await h.orch.run(DIR); // the first tick of a session would push for an author
+    h.setClock(T0 + 20 * 60_000);
+    await h.orch.run(DIR); // and so would one past the push window
+    expect([0, 1].map((i) => pushFlagOf(h, i))).toEqual([false, false]);
+    // Events still emit: the renderer needs filesChanged to reload.
+    expect(h.emitted.map((e) => e.state)).toEqual(["syncing", "synced", "syncing", "synced"]);
+  }
+});
+
+test("a reader's pass that brought changes reports filesChanged", async () => {
+  const h = makeHarness({
+    role: "reader",
+    autoSyncDelayMs: null,
+    syncProject: () => ({ status: "up-to-date", filesChanged: true }),
+  });
+  await h.orch.run(DIR);
+  expect(h.emitted.find((e) => e.state === "synced")?.filesChanged).toBe(true);
+});
+
+test("runExitPush does nothing for a reader", async () => {
+  const h = makeHarness({ role: "reader" });
+  await h.orch.runExitPush(DIR);
+  expect(h.syncCalls.length).toBe(0);
+});
+
+test("runExitPush does nothing when automatic backing up is off", async () => {
+  const h = makeHarness({ autoSyncDelayMs: null });
+  await h.orch.runExitPush(DIR);
+  expect(h.syncCalls.length).toBe(0);
+});
+
+// ── Automatic backing up off: refs-only "unsent"/"synced" ────────────────────
+
+test("with automatic backing up off, the first run sends nothing and says whether versions are waiting", async () => {
+  const cases = [
+    [{ where: "online", notBackedUp: false }, "synced"],
+    [{ where: "online", notBackedUp: true }, "unsent"],
+    [{ where: "this-computer", notBackedUp: false }, "unsent"],
+  ] as const;
+  for (const [openRevision, state] of cases) {
+    const h = makeHarness({ autoSyncDelayMs: null, openRevision });
+    await h.orch.run(DIR);
+    await tick();
+    expect(h.syncCalls.length).toBe(0);
+    expect(h.emitted).toEqual([{ state, projectDir: DIR, lastSyncAt: null }]);
+    expect(h.orch.getState(DIR)?.inFlight).toBe(false);
+  }
+});
+
+test("reportUnsent reports the last pass time and re-reports after each saved version", async () => {
+  const h = makeHarness({ autoSyncDelayMs: null, openRevision: { where: "online", notBackedUp: true } });
+  h.orch.setLastSyncAt(DIR, "2026-01-01T00:00:00.000Z");
+  await h.orch.reportUnsent(DIR);
+  await h.orch.reportUnsent(DIR);
+  expect(h.emitted).toEqual([
+    { state: "unsent", projectDir: DIR, lastSyncAt: "2026-01-01T00:00:00.000Z" },
+    { state: "unsent", projectDir: DIR, lastSyncAt: "2026-01-01T00:00:00.000Z" },
+  ]);
+});
+
+test("reportUnsent stays quiet when passes report for themselves, the book cannot sync, or it is not the open book", async () => {
+  const quiet: FakeLibOptions[] = [
+    { autoSyncDelayMs: undefined, openRevision: { where: "this-computer", notBackedUp: false } }, // backing up is on
+    { autoSyncDelayMs: null, role: "reader", openRevision: { where: "this-computer", notBackedUp: false } },
+    { autoSyncDelayMs: null, canSync: false, openRevision: { where: "this-computer", notBackedUp: false } },
+    { autoSyncDelayMs: null, sourceType: "local-folder", openRevision: { where: "this-computer", notBackedUp: false } },
+    { autoSyncDelayMs: null, watchedDir: "/another-book", openRevision: { where: "this-computer", notBackedUp: false } },
+    { autoSyncDelayMs: null, openRevision: null }, // no revision list
+    { autoSyncDelayMs: null }, // no open revision (detached HEAD)
+  ];
+  for (const opts of quiet) {
+    const h = makeHarness(opts);
+    await h.orch.reportUnsent(DIR);
+    expect(h.emitted).toEqual([]);
+  }
+});
+
+test("reportUnsent waits out a pass in flight, and never throws", async () => {
+  const h = makeHarness({ autoSyncDelayMs: null, openRevision: { where: "this-computer", notBackedUp: false } });
+  expect(h.orch.acquire(DIR)).toBe(true);
+  await h.orch.reportUnsent(DIR);
+  expect(h.emitted).toEqual([]);
+  h.orch.release(DIR);
+
+  const broken = makeHarness({ autoSyncDelayMs: null, canSync: true, diagnoseThrows: new Error("keyring locked") });
+  await expect(broken.orch.reportUnsent(DIR)).resolves.toBeUndefined();
+  expect(broken.emitted).toEqual([]);
 });

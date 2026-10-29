@@ -59,6 +59,8 @@ interface FakeLibOptions {
   isNoChangesError?: (e: unknown) => boolean;
   /** Injected onSnapshotFailed dep (M39 failure-threshold signal). */
   onSnapshotFailed?: (dir: string, consecutiveFailures: number, error: unknown) => void;
+  /** Injected onSnapshotSaved dep (#448: the online status may now say "not backed up yet"). */
+  onSnapshotSaved?: (dir: string) => void;
   /** The `gitIdentity` settings slice the scheduler must honour. */
   gitIdentity?: { authorName?: string; authorEmail?: string };
   /** The repo root the fake classification reports (a nested book's enclosing repo). */
@@ -121,6 +123,7 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
     clearTimer: clock.clear,
     onPendingChanged: (d) => pendingChanges.push(d),
     ...(opts.onSnapshotFailed ? { onSnapshotFailed: opts.onSnapshotFailed } : {}),
+    ...(opts.onSnapshotSaved ? { onSnapshotSaved: opts.onSnapshotSaved } : {}),
   };
 
   return {
@@ -205,6 +208,22 @@ test("(c2) a partially configured identity passes only the filled-in field", asy
     logFile: "/logs/book.log",
     authorEmail: "ada@example.com",
   });
+});
+
+test("onSnapshotSaved fires after a version was saved, and not for a clean tree or a failure", async () => {
+  const saved: string[] = [];
+  const h = makeHarness({ onSnapshotSaved: (dir) => saved.push(dir) });
+  await h.sched.run(DIR);
+  expect(saved).toEqual([DIR]);
+
+  for (const snapshot of [
+    () => { throw new Error("nothing new"); },
+    () => { throw new Error("disk full"); },
+  ]) {
+    const quiet = makeHarness({ snapshot, isNoChangesError: (e) => (e as Error).message === "nothing new", onSnapshotSaved: (dir) => saved.push(dir) });
+    await quiet.sched.run(DIR);
+  }
+  expect(saved).toEqual([DIR]);
 });
 
 test("(d) run() swallows an isNoChangesError rejection without throwing", async () => {

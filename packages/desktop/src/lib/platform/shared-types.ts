@@ -571,6 +571,9 @@ export type SyncOutcome =
       // (both sides moved, the push was held). Mirrors the lib.
       combinedFiles?: string[];
       keptBothFiles?: KeptBothFile[];
+      // A pull-only pass that held the push: this computer has versions the
+      // online copy lacks. Mirrors the lib.
+      pushDeferred?: true;
     }
   | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
