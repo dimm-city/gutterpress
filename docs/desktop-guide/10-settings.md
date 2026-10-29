@@ -21,7 +21,7 @@ is nothing to save.
 - **Appearance** — the **Theme** (**Match system**, **Light** or **Dark**), and **Mark problems
   in the editor**, which underlines the lines the Problems list mentions.
 - **Saving** — **Save changes automatically** (when it's off, press Ctrl+S to save), **Keep
-  previous versions** and **Back up online automatically** (see
+  version history** and **Back up online automatically** (see
   [Keep versions and back up your work](09-versions-and-backup.md)).
 - **Accounts** — **Accounts…** opens the [Accounts](#accounts) page, where your name and email
   and every account Gutterpress uses are kept.
@@ -40,12 +40,12 @@ Each group lists what is saved, and has one **Add** button that opens a small fo
 shown, so paste the new one again; it is cleared from the page as soon as it is saved. **Remove**
 asks once more before it deletes an account.
 
-- **Your name and email** — saved with each version, so a book's history shows who changed what.
-  Left empty, a version uses the name and email in the book's own Git settings, or else
+- **Your name and email** — saved with each version, so the version history shows who changed what.
+  Left empty, a version uses the name and email already set for Git on this computer, or else
   "gutterpress". They save as you type.
-- **GitHub** — **Connect GitHub…** signs you in. Once you are connected, **Test connection** checks
-  that GitHub still accepts your sign-in, **Reconnect…** signs you in again (do this when backups
-  stop with a sign-in error) and **Disconnect** removes it.
+- **GitHub** — **Connect GitHub…** signs you in. Once you are connected, **Test sign-in** checks
+  that GitHub still accepts your sign-in, **Sign in again…** signs you in again (do this when
+  backing up stops with a sign-in error) and **Disconnect** removes it.
 - **Other Git servers** — GitLab, Gitea, Forgejo, Bitbucket, Azure Repos or any server with an
   https:// address. **Add a Git server…** asks for the **Server address**, your **Username** if
   the server needs one and an **Access token**; the token is checked with the server before it is
@@ -60,13 +60,13 @@ asks once more before it deletes an account.
   destination before it is saved. For Shopify, also enter your **Store address**
   (`your-store.myshopify.com`): it is used for the check only and not saved, because each book
   keeps its own store in its Publish settings. For Google Drive, **Connect Google Drive** opens your
-  browser to choose your account and click **Allow**; **Reconnect…** does it again. You can also
+  browser to choose your account and click **Allow**; **Sign in again…** does it again. You can also
   add a key from a book's [Publish](08-publish.md) steps, with this same form. Which account a book
   publishes with is picked there and remembered on this computer only; the book itself never names
   your account.
 
-An account that says **Needs reconnecting** can no longer be read (this happens when the computer's
-keychain changes): **Edit** it, or **Reconnect…** for Google Drive, to save it again.
+An account that says **Needs signing in again** can no longer be read (this happens when the computer's
+keychain changes): **Edit** it, or **Sign in again…** for Google Drive, to save it again.
 
 ## Updates
 

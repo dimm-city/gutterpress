@@ -1,7 +1,7 @@
-# Diagnosing a failed sync
+# Diagnosing a failed backup
 
-Sync logs are available through **Previous versions → Technical details**.
-Background sync errors also supply that log path to the status pill.
+The logs of backing up are available through **Version history → Technical details**.
+A background failure also supplies that log path to Version history.
 
 ## Collect one complete attempt
 

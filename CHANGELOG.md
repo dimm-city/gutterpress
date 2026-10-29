@@ -5,6 +5,24 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Keeping an author's work safe has one set of words and one place to look
+  (#448).** The status bar's save indicator, sync pill and "Where your work is
+  kept" sheet are one status control ("Saved · Backed up", "Saved · Not backed
+  up yet", "Saved · Sign in to back up", …) that opens Book setup → Online
+  copy, the renamed Backup tab. There an author sees where the book is kept in
+  one sentence with its one next step, saves a version, opens Version history
+  (the renamed Versions view, with Save a version at the top), manages
+  revisions (switch, new, rename, delete: separate lines of work in the same
+  book, each saying whether it is also in the online copy), and, collapsed, the
+  tools for when backing up keeps failing. Readers see no status control, Get
+  latest, Back up now or online toasts. Nothing an author reads says commit,
+  branch, push, pull, merge, remote, repository, snapshot, sync or clone any
+  more; Help no longer describes the removed conflict model, and the two sides
+  of an overlapping passage are "two takes". Settings' switch is now **Keep
+  version history**, and crash recovery's button is **Recover**.
+
 ## [0.11.23] - 2026-10-26
 
 ### Added
