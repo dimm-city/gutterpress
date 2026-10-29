@@ -17,11 +17,21 @@ function snap(over: Partial<SnapshotEntry> & { timestamp: number }): SnapshotEnt
 // superseded ones (existing history keeps old spellings forever, so both are
 // part of the string contract the timeline classifies).
 const AUTOMATIC_MESSAGES = [
-  "Automatic snapshot", // source-provider AUTO_SNAPSHOT_MESSAGE
-  "Automatic backup of your work", // sync-messages SYNC_SNAPSHOT_MESSAGE (0.10.1+)
+  "Automatic version", // source-provider AUTO_SNAPSHOT_MESSAGE
+  "Automatic version before backing up", // sync-messages SYNC_SNAPSHOT_MESSAGE
+  "Automatic version before restoring", // RESTORE_BACKUP_MESSAGE
+  "Saved before switching revision", // SWITCH_BRANCH_SNAPSHOT_MESSAGE
+  "Repaired the online copy", // repair REPAIR_SNAPSHOT_MESSAGE
+  "Saved the edit you made while backing up", // sync-messages SYNC_LATE_EDIT_MESSAGE
+  "Before deleting chapter-02.md", // fs/delete route (a prefix match)
+  // Superseded spellings:
+  "Automatic snapshot",
+  "Automatic backup of your work", // SYNC_SNAPSHOT_MESSAGE (0.10.1+)
   "Snapshot before syncing", // SYNC_SNAPSHOT_MESSAGE (pre-0.10.1 history)
-  "Saved the edit you made while syncing", // sync-messages SYNC_LATE_EDIT_MESSAGE
-  "Automatic backup before restoring an earlier version", // RESTORE_BACKUP_MESSAGE
+  "Saved the edit you made while syncing",
+  "Automatic backup before restoring an earlier version",
+  "Saved before switching copy",
+  "Repaired online backup",
   "Getting your changes ready to combine with the online version", // CONVERGE_PREPARE_MESSAGE
 ];
 const COMBINED_MESSAGES = [
@@ -29,14 +39,15 @@ const COMBINED_MESSAGES = [
   "Kept both versions of the files that can't be combined", // CONVERGE_RESTORE_MESSAGE
 ];
 const CREATED_MESSAGES = [
-  "Initial snapshot", // enable-version-history route
+  "First version", // enable-version-history route
+  "Initial snapshot", // enable-version-history route (superseded)
   "Created project", // project-scaffold (new project)
   "Set up as a gutterpress book", // project-scaffold (adopted folder)
 ];
 const ALL_MACHINE_MESSAGES = [...AUTOMATIC_MESSAGES, ...COMBINED_MESSAGES, ...CREATED_MESSAGES];
 
 describe("versionKind / versionLabel — writer-facing classification from message", () => {
-  test("every backup-style machine message (old and new spellings) is automatic", () => {
+  test("every automatic machine message (old and new spellings) is automatic", () => {
     for (const m of AUTOMATIC_MESSAGES) {
       expect(versionKind(m)).toBe("automatic");
       expect(versionLabel(m)).toBe("Automatic version");
@@ -46,14 +57,14 @@ describe("versionKind / versionLabel — writer-facing classification from messa
   test("the converge commits read as combined-with-the-online-copy", () => {
     for (const m of COMBINED_MESSAGES) {
       expect(versionKind(m)).toBe("combined");
-      expect(versionLabel(m)).toBe("Combined with the online backup");
+      expect(versionLabel(m)).toBe("Combined with the online copy");
     }
   });
 
-  test("history-start commits read as book creation", () => {
+  test("history-start versions read as the first version", () => {
     for (const m of CREATED_MESSAGES) {
       expect(versionKind(m)).toBe("created");
-      expect(versionLabel(m)).toBe("Book created");
+      expect(versionLabel(m)).toBe("First version");
     }
   });
 
@@ -70,14 +81,17 @@ describe("versionKind / versionLabel — writer-facing classification from messa
   });
 
   test("the save-a-version route's default note is machine copy, not an author note", () => {
-    // "Save a version now" with no note records "Saved snapshot" — a manual
-    // save (the writer clicked it), but the placeholder is never echoed.
-    expect(versionKind("Saved snapshot")).toBe("manual");
-    expect(versionDescription("Saved snapshot")).toBeNull();
+    // "Save a version" with no note records "Saved a version" (before 0.11.23,
+    // "Saved snapshot") — a manual save (the writer clicked it), but the
+    // placeholder is never echoed.
+    for (const m of ["Saved a version", "Saved snapshot"]) {
+      expect(versionKind(m)).toBe("manual");
+      expect(versionDescription(m)).toBeNull();
+    }
   });
 
   test("nothing a writer sees leaks the words snapshot/commit/git/merge/repo", () => {
-    for (const m of [...ALL_MACHINE_MESSAGES, "Saved snapshot", "hand note"]) {
+    for (const m of [...ALL_MACHINE_MESSAGES, "Saved a version", "Saved snapshot", "hand note"]) {
       const visible = `${versionLabel(m)} ${versionDescription(m) ?? ""}`;
       // "hand note" is the author's own text and may say anything; machine
       // rows must surface only the label.
@@ -90,14 +104,14 @@ describe("versionKind / versionLabel — writer-facing classification from messa
   });
 });
 
-describe("collapseAutomaticRuns — sync-heavy days fold into one expandable row", () => {
-  const auto = (ts: number, msg = "Snapshot before syncing") =>
+describe("collapseAutomaticRuns — busy days fold into one expandable row", () => {
+  const auto = (ts: number, msg = "Automatic version") =>
     snap({ timestamp: ts, message: msg });
 
-  test("2+ consecutive automatic backups become one auto-run row, entries preserved in order", () => {
+  test("2+ consecutive automatic versions become one auto-run row, entries preserved in order", () => {
     const entries = [
-      auto(3000, "Automatic backup of your work"),
-      auto(2000, "Automatic snapshot"),
+      auto(3000, "Automatic version before backing up"),
+      auto(2000, "Automatic version"),
       auto(1000),
     ];
     const rows = collapseAutomaticRuns(entries);
@@ -107,7 +121,7 @@ describe("collapseAutomaticRuns — sync-heavy days fold into one expandable row
     expect(rows[0]!.entries.map((e) => e.timestamp)).toEqual([3000, 2000, 1000]);
   });
 
-  test("a lone automatic backup stays an ordinary row", () => {
+  test("a lone automatic version stays an ordinary row", () => {
     const rows = collapseAutomaticRuns([auto(1000)]);
     expect(rows).toEqual([{ kind: "entry", key: "id-1000", entry: auto(1000) }]);
   });
@@ -126,7 +140,7 @@ describe("collapseAutomaticRuns — sync-heavy days fold into one expandable row
     expect(rows[3]!.entries.length).toBe(2);
   });
 
-  test("a run is keyed by its OLDEST entry, so the key survives newer backups prepending", () => {
+  test("a run is keyed by its OLDEST entry, so the key survives newer versions prepending", () => {
     const rows = collapseAutomaticRuns([auto(2000), auto(1000)]);
     const grown = collapseAutomaticRuns([auto(3000), auto(2000), auto(1000)]);
     if (rows[0]!.kind !== "auto-run" || grown[0]!.kind !== "auto-run") throw new Error("unreachable");
@@ -145,9 +159,9 @@ describe("autoRunSummary — the collapsed row's one-line story", () => {
 
   test("names the span oldest→newest and the count (entries arrive newest-first)", () => {
     const entries = [
-      snap({ timestamp: 4_000_000, message: "Automatic snapshot" }),
-      snap({ timestamp: 2_000_000, message: "Automatic snapshot" }),
-      snap({ timestamp: 1_000_000, message: "Automatic snapshot" }),
+      snap({ timestamp: 4_000_000, message: "Automatic version" }),
+      snap({ timestamp: 2_000_000, message: "Automatic version" }),
+      snap({ timestamp: 1_000_000, message: "Automatic version" }),
     ];
     expect(autoRunSummary(entries)).toBe(
       `Versions made automatically · ${at(1_000_000)}–${at(4_000_000)} · 3 times`,
@@ -156,8 +170,8 @@ describe("autoRunSummary — the collapsed row's one-line story", () => {
 
   test("a same-minute run shows the time once", () => {
     const entries = [
-      snap({ timestamp: 1_000_500, message: "Automatic snapshot" }),
-      snap({ timestamp: 1_000_000, message: "Automatic snapshot" }),
+      snap({ timestamp: 1_000_500, message: "Automatic version" }),
+      snap({ timestamp: 1_000_000, message: "Automatic version" }),
     ];
     expect(autoRunSummary(entries)).toBe(`Versions made automatically · ${at(1_000_000)} · 2 times`);
   });

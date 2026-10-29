@@ -1,19 +1,20 @@
 <script lang="ts">
   /**
-   * ProjectActivityView — the Versions view (#408): the writer-facing view
-   * of a book's version history, in the product's own words (version,
-   * backed up, online, this computer — never commit, push, pull).
+   * ProjectActivityView — the Version history view (#408): the writer-facing
+   * view of a book's versions, in the product's own words (version, backed
+   * up, online copy, this computer — never commit, push, pull), with Save a
+   * version at the top.
    *
    * Each version says what it changed (the host's `describeVersions`: files
-   * with a plain size hint) and whether it is backed up online or on this
-   * computer only. A changed text file opens as a read-only two-column
-   * compare (VersionCompareView). "Look at this version" asks the page to
-   * render the version read-only beside the live preview. When the book has
-   * an online copy, the top section lists what is online and not yet on
+   * with a plain size hint) and whether it is backed up or on this computer
+   * only. A changed text file opens as a read-only two-column compare
+   * (VersionCompareView). "Look at this version" asks the page to render the
+   * version read-only beside the live preview. When the book has an online
+   * copy, the top section lists what is in the online copy and not yet on
    * this computer, so Get latest is no longer a leap of faith.
    *
    * Restore: the host's `/api/vcs/restore-snapshot` route validates the
-   * snapshot id and snapshots the current state before restoring, so
+   * version id and saves the current state as a version before restoring, so
    * restoring can never lose the author's in-progress work. This view still
    * asks for a plain-language confirmation before calling it, shows a
    * busy state per row, and — on success — asks the parent to reconcile the
@@ -26,6 +27,7 @@
   import VersionCompareView from "#lib/components/VersionCompareView.svelte";
   import { api, type CompareRow, type VersionEntry, type VersionFileChange } from "#lib/api.ts";
   import { friendlyHostError } from "#lib/errors.ts";
+  import { NOTHING_NEW_NOTICE } from "#lib/save-status.ts";
   import {
     versionLabel,
     versionDescription,
@@ -41,6 +43,7 @@
     viewingId = null,
     onClose,
     onRestored,
+    onSaveVersion,
     onLookAt,
     onStopLooking,
   }: {
@@ -51,9 +54,11 @@
     /** The version the page is showing beside the live preview, if any. */
     viewingId?: string | null;
     onClose?: () => void;
-    /** Called after a snapshot is successfully restored, so the parent can
+    /** Called after a version is successfully restored, so the parent can
      * reload the editor buffer/preview from the (now-changed) disk state. */
     onRestored?: () => void;
+    /** Save a version now: the page saves and toasts (and reloads this list); resolves "unchanged" when there was nothing new. */
+    onSaveVersion?: () => Promise<"saved" | "unchanged">;
     /** "Look at this version": show it read-only beside the live preview. */
     onLookAt?: (id: string, label: string) => void;
     onStopLooking?: () => void;
@@ -71,7 +76,23 @@
   let logContent = $state("");
   let error = $state<string | null>(null);
 
-  // ── Online, not yet on this computer ────────────────────────────────────────
+  // ── Save a version ──────────────────────────────────────────────────────────
+  let savingVersion = $state(false);
+  let nothingNew = $state(false);
+
+  async function saveVersion() {
+    if (!onSaveVersion || savingVersion) return;
+    savingVersion = true;
+    try {
+      nothingNew = (await onSaveVersion()) === "unchanged";
+    } catch {
+      // The page shows the failure toast.
+    } finally {
+      savingVersion = false;
+    }
+  }
+
+  // ── In the online copy, not yet on this computer ────────────────────────────
   let online = $state<VersionEntry[]>([]);
   let onlineState = $state<"idle" | "checking" | "checked" | "unavailable">("idle");
 
@@ -103,8 +124,8 @@
     try {
       await api.vcs.restoreSnapshot(projectDir, id);
       restoreConfirmId = null;
-      // Reload so the new "restored to <version>" safety snapshot (and any
-      // remote-side commits) appear immediately.
+      // Reload so the new safety version (and any that came from the
+      // online copy) appear immediately.
       await loadHistory();
       onRestored?.();
     } catch (e) {
@@ -142,8 +163,8 @@
     }
   }
 
-  /** Re-fetch the version list (called by the parent after a sync completes
-   * — so newly-created versions appear without reopening the view). */
+  /** Re-fetch the version list (called by the parent after backing up or
+   * saving a version — so new versions appear without reopening the view). */
   export function refreshHistory() {
     void loadHistory();
     void loadOnline();
@@ -212,7 +233,7 @@
 </script>
 
 <!-- One version row (used at the top level of a day, inside a collapsed
-     automatic run, and in the online section — `online` rows cannot be
+     automatic run, and in the online copy section — `online` rows cannot be
      restored: Get latest brings them in). -->
 {#snippet versionRow(entry: VersionEntry, isOnline: boolean)}
   <li>
@@ -225,7 +246,7 @@
         <span class="meta">
           {when(entry.timestamp)}{entry.author ? ` · ${entry.author}` : ""}
           {#if !isOnline && entry.backedUp === true}<span class="badge">Backed up</span>{/if}
-          {#if !isOnline && entry.backedUp === false}<span class="badge local">On this computer only</span>{/if}
+          {#if !isOnline && entry.backedUp === false}<span class="badge local">Only on this computer</span>{/if}
         </span>
       </div>
       <div class="entry-actions">
@@ -315,15 +336,23 @@
 {:else}
 <div class="activity-view">
   <header class="activity-header">
-    <h2><Icon name="history" size={16} /> Versions</h2>
-    <button class="close" onclick={onClose} title="Close" aria-label="Close versions"><Icon name="x" size={14} /></button>
+    <h2><Icon name="history" size={16} /> Version history</h2>
+    <div class="header-actions">
+      {#if onSaveVersion}
+        <button class="ghost small" onclick={() => void saveVersion()} disabled={savingVersion}>
+          {savingVersion ? "Saving a version…" : "Save a version"}
+        </button>
+      {/if}
+      <button class="close" onclick={onClose} title="Close" aria-label="Close version history"><Icon name="x" size={14} /></button>
+    </div>
   </header>
 
   {#if error}<p class="error" role="alert">{error}</p>{/if}
+  {#if nothingNew}<p class="notice" role="status">{NOTHING_NEW_NOTICE}</p>{/if}
 
   {#if hasRemote && (onlineState === "checking" || online.length > 0 || onlineState === "unavailable")}
     <section class="activity-section online-section">
-      <h3 class="day-heading">Online, not yet on this computer</h3>
+      <h3 class="day-heading">In the online copy, not yet on this computer</h3>
       {#if onlineState === "checking"}
         <p class="muted">Checking what's online…</p>
       {:else if onlineState === "unavailable"}
@@ -350,7 +379,7 @@
         <ul class="history-list">
           {#each collapseAutomaticRuns(day.entries) as row (row.key)}
             {#if row.kind === "auto-run"}
-              <!-- 2+ consecutive automatic backups fold into one native
+              <!-- 2+ consecutive automatic versions fold into one native
                    disclosure — no expansion state to manage; restore still
                    operates on the individual entries inside. -->
               <li>
@@ -394,7 +423,9 @@
 
 <style>
   .activity-view { display: flex; flex-direction: column; gap: 14px; height: 100%; overflow: auto; background: var(--app-bg); color: var(--app-text-secondary); }
-  .activity-header { padding: 12px 16px; border-bottom: 1px solid var(--app-border); background: var(--app-surface-raised); display: flex; align-items: center; justify-content: space-between; }
+  .activity-header { padding: 12px 16px; border-bottom: 1px solid var(--app-border); background: var(--app-surface-raised); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .header-actions { display: flex; align-items: center; gap: 8px; }
+  .notice { margin: 0 16px; font-size: 12px; font-weight: 600; color: var(--app-text); }
   h2 { margin: 0; display: inline-flex; align-items: center; gap: 8px; font-size: 15px; color: var(--app-text); }
   .activity-section { padding: 0 16px 14px; display: flex; flex-direction: column; gap: 8px; }
   .online-section { padding-bottom: 6px; border-bottom: 1px solid var(--app-border); }

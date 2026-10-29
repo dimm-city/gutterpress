@@ -60,7 +60,7 @@ describe("shownTabId", () => {
 
 describe("status bar structure", () => {
   const src = readFileSync(new URL("../../src/lib/components/StatusBar.svelte", import.meta.url), "utf8");
-  const markup = src.slice(src.indexOf('<div class="status-bar"'), src.indexOf("{#if summaryOpen}"));
+  const markup = src.slice(src.indexOf('<div class="status-bar"'), src.indexOf("<style>"));
   const at = (needle: string) => {
     const i = markup.indexOf(needle);
     expect(i).toBeGreaterThan(-1);
@@ -73,10 +73,11 @@ describe("status bar structure", () => {
     expect(markup.indexOf('name="circle-help"')).toBeGreaterThan(at('class="status-right"'));
   });
 
-  test("right side: sync pill, save indicator, then settings and help last", () => {
+  test("right side: Get latest, Back up now, the one status control, then settings and help last", () => {
     const order = [
-      at("<SyncStatusPill"),
-      at('class="save-indicator'),
+      at('aria-label={updatesAvailable ? "Get latest'),
+      at('aria-label="Back up now"'),
+      at('class="status-control'),
       at('class="shell-actions"'),
       at('name="settings"'),
       at('name="circle-help"'),
@@ -84,16 +85,25 @@ describe("status bar structure", () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
-  test("the divider only renders with the save indicator", () => {
-    expect(markup).toContain("class:divided={showSave}");
+  test("there is one status control, and no second save indicator or sync pill", () => {
+    expect(markup.match(/class="status-control/g)).toHaveLength(1);
+    expect(markup).not.toContain("save-indicator");
+    expect(markup).not.toContain("SyncStatusPill");
   });
 
-  test("dividers sit on both sides of the book switcher and left of the save indicator", () => {
-    const divider = '<span class="divider" aria-hidden="true"></span>';
+  test("a reader gets no status control, Get latest or Back up now", () => {
+    expect(markup).toContain("{#if showStatus}");
+    expect(src).toContain("showStatus = $derived(!!projectDir && sourceMode === \"folder\" && !readerMode)");
+    expect(src).toContain("showManualSync = $derived(showStatus && canSync && !autoBackup)");
+  });
+
+  test("the divider only renders with the status control", () => {
+    expect(markup).toContain("class:divided={showStatus}");
+  });
+
+  test("dividers sit on both sides of the book switcher", () => {
     expect(markup).toMatch(
       /\{#if showBookSwitcher\}\s*<span class="divider" aria-hidden="true"><\/span>\s*<BookSwitcher[^\n]*\n\s*<span class="divider" aria-hidden="true"><\/span>\s*\{\/if\}/,
     );
-    const save = markup.indexOf("{#if showSave}");
-    expect(markup.indexOf(divider, save)).toBeLessThan(at('class="save-indicator'));
   });
 });
