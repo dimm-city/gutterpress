@@ -102,7 +102,7 @@ The left panel has three tabs:
 The preview shows your book's pages exactly as they will print, and updates as you type.
 
 - **Turn pages** with the buttons above the preview (first, previous, the page picker, next,
-  last), with a flick of the mouse wheel over the preview, or with the keys below.
+  last) or with the keys below. The mouse wheel and trackpad scroll the preview like any page.
 - **Zoom** with the menu at the top right of the preview: **Fit to width** or 25%–200%. The app
   remembers your zoom.
 - **Check the print overlays** with the **print overlays** button beside the zoom menu. It draws
