@@ -464,8 +464,8 @@ previews a book. Only a publish loads it. What `publish` receives:
   (`format: "html"`). The book picks it with `format: pdf` (the default) or
   `format: html` in the plugin's settings.
 - `context.settings`: the book's `publish.<package-name>` section in
-  `manifest.yaml`, without the two keys Gutterpress reads itself, `format`
-  and `credential`.
+  `manifest.yaml`, without the keys Gutterpress reads itself: `format`,
+  `credential` and `enabled` (whether the Publish wizard ticks it).
 - `context.project`: the book's folder, title and authors.
 - `context.log(message)`: a progress line. Write progress here, never with
   `console.log`: standard output carries `--json` results.

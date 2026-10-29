@@ -84,7 +84,10 @@ fields:
 
 ```yaml
 publish:
+  local:
+    dir: dist                     # a folder inside the book, relative to it (default: dist)
   itch:
+    enabled: true                 # the desktop's Publish view ticks this destination for the book
     target: your-user/your-book   # butler push target
     channel: pdf                  # default: pdf
   drivethrurpg:
@@ -101,6 +104,41 @@ publish:
     format: pdf                   # pdf (default) | html — the zipped website export
 ```
 
+### What is shared and what is private
+
+The team decides where a book is published, so that lives in the manifest and
+travels with the book. Each member only brings their own accounts; nobody
+edits publishing settings to start publishing.
+
+| Setting | Where | Why |
+|---|---|---|
+| Destinations ticked (`publish.<id>.enabled`) | manifest | where the book goes is a team decision; a teammate opens the book and finds the same ones ticked |
+| itch.io `target`, `channel` | manifest | |
+| Shopify `shop`, `productId`, `apiVersion` | manifest | |
+| Azure `env`; DriveThruRPG `productUrl` | manifest | |
+| Google Drive `folder`, `folderId`, and the `format` choice | manifest | the team's folder; each member reaches it through their own Google connection |
+| Local output folder `dir`, when it is inside the book | manifest, **relative to the book** (`dist`, `exports`) | means the same on every computer |
+| Which of your saved accounts the book publishes with (`credential`) | **private** | accounts are yours; a label in the manifest would name an account teammates don't have |
+| Local output folder, when it is outside the book | **private** | a personal override; an absolute path is never written to the manifest |
+
+"Inside the book" means inside the book's own folder. (A folder elsewhere in
+the same Git repository counts as outside: it is a personal choice, not the
+team's.)
+
+The private values are one JSON file per computer, keyed by the book's path:
+`publish-selections.json` (`0600`) in the desktop app's user-data folder. It
+holds labels and paths only, never a key. When the
+desktop app next saves one of these values it moves an older book's
+`credential` out of the manifest into that file and rewrites an absolute
+in-book `dir` as a relative path; opening the wizard rewrites nothing.
+
+**Precedence** when publishing, for each value: your private setting for the
+book, then the manifest, then the default. So a book whose manifest still
+carries a `credential` or an absolute `dir` keeps publishing, and your own
+choice wins over it. The CLI reads the manifest only (it has no private
+store yet), so `gutterpress publish` uses the manifest's `credential` and
+`dir`, or the defaults.
+
 Sections are keyed by the provider id — the same spelling as
 `--provider <id>`. Each provider declares its editable fields
 (`PublishProviderInfo.configFields`), which is what the desktop app's
@@ -108,8 +146,8 @@ settings form renders — adding a provider needs no UI changes.
 
 A publishing plugin's section is keyed by its package name (a scoped name is
 quoted: `"@scope/pkg":`) and handed to the plugin as `context.settings`
-without the two keys core reads from it, `format` (`pdf` | `html`) and
-`credential`. Plugins declare no `configFields`, so the desktop shows no
+without the keys core reads from it: `format` (`pdf` | `html`), `credential`
+and `enabled`. Plugins declare no `configFields`, so the desktop shows no
 settings form for them.
 
 **Secrets never live in the project.** API keys (and Google Drive's refresh
@@ -273,7 +311,9 @@ lib/publish/
                      Accounts page, the check reads no manifest settings; Shopify's
                      needs its store domain, which is passed as `shop` for the check
                      and never stored)
-  manifest-publish.ts readPublishSettings/setPublishProviderConfig (yaml round-trip)
+  manifest-publish.ts readPublishSettings/setPublishProviderConfig (yaml round-trip);
+                     savePublishSettings files each value as shared (manifest) or private
+  selections.ts      PublishSelectionsStore: one person's private values per book (account, outside folder)
   command-runner.ts  injectable child-process seam (secrets via env only)
   butler.ts          butler acquisition (BUTLER_PATH → PATH → cache → download)
   google-auth.ts     GoogleAuthProvider: loopback-redirect + PKCE OAuth connect, client id/secret resolution
@@ -310,7 +350,10 @@ touches the OS keychain (docs/architecture-rules.md §7-style host injection).
 The desktop app reaches the same code through `/api/publish/*` SvelteKit server
 routes (`list`, `connect`, `disconnect`, `set-config`, `run`) that share the
 remote-hooks host bridge; the renderer stays PWA-clean (§8) and only ever sees
-redacted credential status. `list` and `set-config` use the book's providers
+redacted credential status; they pass the lib the credential store and the
+private store (`userData/publish-selections.json`, `PublishDeps.selections`),
+and `set-config` is where each value is filed as shared or private. `list` and
+`set-config` use the book's providers
 (`listBookPublishProviders`: the built-ins, then its publishing plugins);
 `run` resolves a plugin through `runPublish`, so plugin code runs in the
 Electron main process, never the renderer.

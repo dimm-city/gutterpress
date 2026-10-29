@@ -57,7 +57,9 @@ asks once more before it deletes an account.
   (`your-store.myshopify.com`): it is used for the check only and not saved, because each book
   keeps its own store in its Publish settings. For Google Drive, **Connect Google Drive** opens your
   browser to choose your account and click **Allow**; **Reconnect…** does it again. You can also
-  add a key from a book's [Publish](08-publish.md) steps, which then use it.
+  add a key from a book's [Publish](08-publish.md) steps, with this same form. Which account a book
+  publishes with is picked there and remembered on this computer only; the book itself never names
+  your account.
 
 An account that says **Needs reconnecting** can no longer be read (this happens when the computer's
 keychain changes): **Edit** it, or **Reconnect…** for Google Drive, to save it again.

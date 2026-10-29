@@ -584,6 +584,37 @@ detail lives in `docs/publishing.md`. Shipped: toolbar **Publish** button →
 publish), five built-in providers, saved named credentials (`safeStorage`) with
 an account picker, the **Accounts** page.
 
+**Shared vs private (binding):** the team decides where a book is published,
+so that is saved in the **manifest** (`publish:`) and travels with the book:
+the destinations ticked in the wizard (`publish.<id>.enabled`), each one's
+settings (itch.io target and channel, Shopify store and product, Azure
+environment, DriveThruRPG product URL, the **Google Drive folder**, the format)
+and the output folder when it is **inside the book** (saved relative to it,
+`dist` by default). A teammate who opens the book finds the same destinations
+ticked and the settings filled in; the only thing they do is connect their own
+account. What is one person's own stays on their computer, in private settings
+keyed to the book (`publish-selections.json` in the app's user-data folder,
+never in the manifest): **which of their saved accounts the book publishes
+with**, and an **output folder outside the book** (a personal override; an
+absolute path is never written to the manifest). Precedence when publishing:
+the private value, then the manifest, then the default. The host files each
+value where it belongs when it is saved (the renderer never decides), and an
+older book's account or absolute in-book folder is moved on the next save of
+it; opening the wizard rewrites nothing. Detail and the full table:
+`docs/publishing.md`.
+
+**One place for accounts (binding):** the **Accounts** page is where accounts
+are managed. The wizard lists the provider's saved accounts, lets the author
+pick one for this book, and adds or replaces one in place with the Accounts
+page's own `PublishKeyForm` (a key, or the Google sign-in) through the same
+`api.publish.connect` route; it keeps no key-entry markup or drafts of its own.
+A **Manage accounts** link opens the Accounts page over the wizard (removal
+lives there only, with its confirm), and the wizard reloads when it closes.
+A teammate whose account is not connected sees, for each destination the book
+uses, one step: connect (the form is right in the step) or pick one of their
+saved accounts (**Choose an account…**); they never re-enter the team's
+settings.
+
 **Provider model (binding):** providers are **built into the lib's publish
 registry** (`packages/cli/src/lib/publish/`) — they are *not plugins* and there
 is no "publish plugin" category (docs/architecture-rules.md §5). New providers are code
