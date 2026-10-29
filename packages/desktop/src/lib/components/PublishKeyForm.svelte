@@ -7,6 +7,10 @@
    * (connectGoogleStart/Wait/Cancel). The Publish wizard keeps its own entry,
    * which also picks the account a book uses.
    *
+   * Shopify's check needs the store's address, which a book keeps in its own
+   * settings and no book is open here: the form asks for it, uses it for the
+   * check only and does not save it.
+   *
    * A new account may be given a name, so several can be kept for one
    * provider; saving under a name that already exists replaces that key, which
    * is how a key is edited (a saved key is never read back, so it is pasted
@@ -51,11 +55,13 @@
   } = $props();
 
   let typedAccount = $state("");
+  let store = $state("");
   let token = $state("");
   let busy = $state(false);
   let error = $state<string | null>(null);
   /** Google's sign-in page, while the browser is being waited on. */
   let signInUrl = $state<string | null>(null);
+  let storeEl = $state<HTMLInputElement>();
   let nameEl = $state<HTMLInputElement>();
   let tokenEl = $state<HTMLInputElement>();
   // The button that starts the sign-in is replaced by the waiting line's, and a removed
@@ -66,11 +72,13 @@
   let attempt = 0;
 
   const oauth = $derived(provider.connectKind === "oauth");
+  const needsStore = $derived(provider.id === "shopify");
+  const ready = $derived(!!token.trim() && (!needsStore || !!store.trim()));
   const name = $derived((askAccount ? typedAccount : account).trim());
   const replaces = $derived(askAccount ? savedAccount(saved, provider.id, name) : undefined);
 
   onMount(() => {
-    if (takeFocus) (tokenEl ?? nameEl)?.focus();
+    if (takeFocus) (storeEl ?? tokenEl ?? nameEl)?.focus();
     // A sign-in left waiting must not outlive the page.
     return () => {
       if (signInUrl) getPlatform().connectGoogleCancel().catch(() => {});
@@ -80,11 +88,11 @@
   const failed = (e: unknown) => friendlyHostError(unwrapRouteError(e instanceof Error ? e.message : String(e)));
 
   async function submit() {
-    if (busy || !token.trim()) return;
+    if (busy || !ready) return;
     busy = true;
     error = null;
     try {
-      await api.publish.connect(null, provider.id, token, name || undefined);
+      await api.publish.connect(null, provider.id, token, name || undefined, needsStore ? store.trim() : undefined);
       token = ""; // the key has done its job: never keep it in state
       await onConnected();
     } catch (e) {
@@ -129,6 +137,13 @@
 
 <form class="key-form" onsubmit={(e) => { e.preventDefault(); void (oauth ? signIn() : submit()); }}>
   {#if hint ?? provider.hint}<p class="hint">{hint ?? provider.hint}</p>{/if}
+  {#if needsStore}
+    <label class="field">
+      <span class="lbl">Store address</span>
+      <input bind:this={storeEl} bind:value={store} placeholder="your-store.myshopify.com" autocomplete="off" spellcheck="false" />
+    </label>
+    <p class="hint">Used to check the key, not saved. Each book keeps its own store in its Publish settings.</p>
+  {/if}
   {#if !oauth}
     <label class="field">
       <span class="lbl">API key</span>
@@ -160,7 +175,7 @@
     </div>
   {:else}
     <div class="actions">
-      <button bind:this={submitEl} type="submit" class="app-btn app-btn-primary" disabled={busy || (!oauth && !token.trim())}>
+      <button bind:this={submitEl} type="submit" class="app-btn app-btn-primary" disabled={busy || (!oauth && !ready)}>
         {oauth ? `Connect ${provider.label}` : busy ? "Checking…" : submitLabel}
       </button>
       {#if onCancel}<button type="button" class="app-btn app-btn-ghost" onclick={onCancel}>Cancel</button>{/if}

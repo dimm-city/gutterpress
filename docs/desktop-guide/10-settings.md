@@ -45,16 +45,17 @@ asks once more before it deletes an account.
 - **Other Git servers** — GitLab, Gitea, Forgejo, Bitbucket, Azure Repos or any server with an
   https:// address. **Add a Git server…** asks for the **Server address**, your **Username** if
   the server needs one and an **Access token**; the token is checked with the server before it is
-  saved. **Create a token on …** opens the page where that server makes one, when Gutterpress
-  recognises it (for any other, **How to make an access token** opens
-  [the guide](09-versions-and-backup.md#back-up-to-another-git-server)). **Edit** replaces the
-  username and token. A book whose online copy is on that server then backs up with them.
+  saved. **How to make an access token** opens
+  [the guide](09-versions-and-backup.md#back-up-to-another-git-server), which lists where each
+  server makes one. **Edit** replaces the username and token. A book whose online copy is on that
+  server then backs up with them.
 - **Publishing** — a key for each destination that takes one (itch.io, Azure Static Web Apps and
   Shopify), and your Google Drive sign-in. **Add a publishing account…** asks which one, then for
   its **API key** (**Create a key on …** opens the page that makes it) and, if you want to keep
   more than one for the same destination, an **Account name**. The key is checked with the
-  destination before it is saved, except Shopify's, which is checked when you publish because it
-  needs your store's address from the book. For Google Drive, **Connect Google Drive** opens your
+  destination before it is saved. For Shopify, also enter your **Store address**
+  (`your-store.myshopify.com`): it is used for the check only and not saved, because each book
+  keeps its own store in its Publish settings. For Google Drive, **Connect Google Drive** opens your
   browser to choose your account and click **Allow**; **Reconnect…** does it again. You can also
   add a key from a book's [Publish](08-publish.md) steps, which then use it.
 

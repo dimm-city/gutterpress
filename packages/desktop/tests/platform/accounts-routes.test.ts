@@ -1,18 +1,19 @@
 /**
- * The two routes the Accounts page leans on, against the REAL lib:
- *
- *  - `publish/connect` with no `projectDir` (no book open): the key is still
- *    verified with the provider and only then stored, a rejected one leaves
- *    the saved key alone, and a `projectDir` that is sent is still confined to
- *    the open project. Nothing here reaches the network (fetch is stubbed).
- *  - `remote/forge-token-url`: a lookup by address alone.
+ * `publish/connect` with no `projectDir` (no book open, as from the Accounts
+ * page), against the REAL lib: the key is still verified with the provider and
+ * only then stored, a rejected one leaves the saved key alone, Shopify's check
+ * takes its store address from the request, and a `projectDir` that is sent is
+ * still confined to the open project. Nothing here reaches the network (fetch
+ * is stubbed).
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { isHttpError } from "@sveltejs/kit";
 import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
 import { makeHostServices } from "../support/host-services-fake";
 import { POST as publishConnect } from "../../src/routes/api/publish/connect/+server";
-import { POST as forgeTokenUrl } from "../../src/routes/api/remote/forge-token-url/+server";
 
 interface Stored {
   token: string;
@@ -24,6 +25,7 @@ interface Stored {
 const realFetch = globalThis.fetch;
 let stored: Map<string, Stored>;
 let fetchCalls: string[];
+let fetchHeaders: Array<Record<string, string>>;
 
 function request(body: unknown): Request {
   return new Request("http://local.test", {
@@ -37,6 +39,7 @@ function request(body: unknown): Request {
 beforeEach(() => {
   stored = new Map();
   fetchCalls = [];
+  fetchHeaders = [];
   registerHostServices(
     makeHostServices({
       fsGuard: { projectRoots: () => [] as string[], readOnlyRoots: () => [] as string[] },
@@ -50,11 +53,13 @@ beforeEach(() => {
       },
     }),
   );
-  // itch.io accepts only "good-key".
+  // itch.io and Shopify accept only a key that says "good".
   globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
     fetchCalls.push(String(url));
-    const auth = (init?.headers as Record<string, string> | undefined)?.Authorization ?? "";
-    return new Response("{}", { status: auth.includes("good-key") ? 200 : 401 });
+    const headers = (init?.headers as Record<string, string> | undefined) ?? {};
+    fetchHeaders.push(headers);
+    const sent = `${headers.Authorization ?? ""}${headers["X-Shopify-Access-Token"] ?? ""}`;
+    return new Response("{}", { status: sent.includes("good") ? 200 : 401 });
   }) as typeof fetch;
 });
 
@@ -97,11 +102,46 @@ test("publish/connect with no book: a rejected key is not stored and leaves the 
   expect(stored.get("itch.io")?.token).toBe("old-key");
 });
 
-test("publish/connect with no book: a Shopify key is saved without a check, since the store is a book setting", async () => {
-  const res = await outcome(publishConnect({ request: request({ providerId: "shopify", token: "shpat_x" }) } as never));
-  expect(res.ok).toBe(true);
+test("publish/connect with no book: a Shopify key needs the store address, which is used for the check and never stored", async () => {
+  // No address (or one that isn't text): refused in plain words, nothing asked of Shopify or stored.
+  for (const shop of [undefined, "", 42]) {
+    const res = await outcome(publishConnect({ request: request({ providerId: "shopify", token: "good-key", shop }) } as never));
+    expect(res).toMatchObject({ ok: false, message: expect.stringContaining("store's address") });
+  }
   expect(fetchCalls).toEqual([]);
-  expect(stored.get("shopify")?.token).toBe("shpat_x");
+  expect(stored.size).toBe(0);
+
+  const res = await outcome(publishConnect({ request: request({ providerId: "shopify", token: "good-key", shop: "my-store.myshopify.com" }) } as never));
+  expect(res).toEqual({ ok: true, body: { connected: true, providerId: "shopify" } });
+  expect(fetchCalls).toHaveLength(1);
+  expect(fetchCalls[0]).toContain("https://my-store.myshopify.com/admin/api/");
+  expect(fetchHeaders[0]?.["X-Shopify-Access-Token"]).toBe("good-key");
+  expect(stored.get("shopify")?.token).toBe("good-key");
+  expect(JSON.stringify([...stored.values()])).not.toContain("myshopify");
+
+  // A rejected Shopify key is not stored over the saved one.
+  const bad = await outcome(publishConnect({ request: request({ providerId: "shopify", token: "bad-key", shop: "my-store.myshopify.com" }) } as never));
+  expect(bad.ok).toBe(false);
+  expect(stored.get("shopify")?.token).toBe("good-key");
+});
+
+test("publish/connect: `shop` is taken only with no projectDir; a book's own settings are used when one is sent", async () => {
+  const book = await mkdtemp(path.join(tmpdir(), "gutterpress-accounts-routes-"));
+  try {
+    await writeFile(path.join(book, "manifest.yaml"), "title: T\nauthors: [A]\n", "utf8"); // no Shopify store set
+    registerHostServices(
+      makeHostServices({
+        fsGuard: { projectRoots: () => [book], readOnlyRoots: () => [] as string[] },
+        remote: { tokenStore: { get: async () => null, set: async (k: string, c: Stored) => void stored.set(k, c), list: async () => [] } as never },
+      }),
+    );
+    const res = await outcome(publishConnect({ request: request({ projectDir: book, providerId: "shopify", token: "good-key", shop: "my-store.myshopify.com" }) } as never));
+    expect(res).toMatchObject({ ok: false, message: expect.stringContaining("Set the store first") });
+    expect(fetchCalls).toEqual([]);
+    expect(stored.size).toBe(0);
+  } finally {
+    await rm(book, { recursive: true, force: true });
+  }
 });
 
 test("publish/connect with no book still refuses a provider that needs no key, an empty key and Google Drive's pasted token", async () => {
@@ -120,14 +160,4 @@ test("publish/connect: a projectDir that is sent is still confined to the open p
   const res = await outcome(publishConnect({ request: request({ projectDir: "/somewhere/else", providerId: "itch", token: "good-key" }) } as never));
   expect(res).toMatchObject({ ok: false, status: 403 });
   expect(stored.size).toBe(0);
-});
-
-test("remote/forge-token-url answers with a recognised server's token page, else null", async () => {
-  const ask = async (body: unknown) => ((await (await forgeTokenUrl({ request: request(body) } as never)).json()) as { url: string | null }).url;
-  expect(await ask({ host: "gitlab.com" })).toBe("https://gitlab.com/-/user_settings/personal_access_tokens");
-  expect(await ask({ host: "https://Bitbucket.org/team/repo" })).toBe("https://bitbucket.org/account/settings/app-passwords/");
-  expect(await ask({ host: "git.example.com" })).toBeNull();
-  expect(await ask({ host: "github.com" })).toBeNull();
-  expect(await ask({ host: "" })).toBeNull();
-  expect(await ask({})).toBeNull();
 });

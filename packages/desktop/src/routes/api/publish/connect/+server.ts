@@ -10,9 +10,12 @@ import type { RequestHandler } from './$types';
  *
  * `projectDir` is optional: the Accounts page adds a key with no book open, and
  * then the check reads no manifest settings. When it is sent it is still
- * confined to the open project, as in every other publish route.
+ * confined to the open project, as in every other publish route. `shop`
+ * (Shopify's store address, which its check needs and a book's manifest would
+ * otherwise supply) is taken only when there is no `projectDir`, and is never
+ * stored.
  */
-export const POST: RequestHandler = defineRoute<{ projectDir?: string; providerId?: string; token?: string; account?: string }>({
+export const POST: RequestHandler = defineRoute<{ projectDir?: string; providerId?: string; token?: string; account?: string; shop?: string }>({
   // In `validate`, not `call` — see publish/run's note on handlePublishErrors.
   validate: async (raw) => {
     const body = raw as {
@@ -20,6 +23,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir?: string; providerI
       providerId?: unknown;
       token?: unknown;
       account?: unknown;
+      shop?: unknown;
     };
     return {
       ...(body.projectDir !== undefined
@@ -28,6 +32,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir?: string; providerI
       ...(typeof body.providerId === 'string' ? { providerId: body.providerId } : {}),
       ...(typeof body.token === 'string' ? { token: body.token } : {}),
       ...(typeof body.account === 'string' ? { account: body.account } : {}),
+      ...(body.projectDir === undefined && typeof body.shop === 'string' ? { shop: body.shop } : {}),
     };
   },
   call: async ({ body }) =>
@@ -46,6 +51,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir?: string; providerI
           providerId: body.providerId,
           token: body.token,
           ...(account ? { account } : {}),
+          ...(body.shop ? { shop: body.shop } : {}),
         },
         { tokenStore: getHostServices().remote.tokenStore },
       );

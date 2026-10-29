@@ -270,8 +270,9 @@ lib/publish/
   run-publish.ts     runPublish(): preflight → authenticate → upload
   connect.ts         connectPublishProvider(): verify the pasted key, THEN store
                      (`projectDir` is optional: with no book, as from the desktop's
-                     Accounts page, the check reads no manifest settings, so a
-                     Shopify key, whose store domain is one, is saved unchecked)
+                     Accounts page, the check reads no manifest settings; Shopify's
+                     needs its store domain, which is passed as `shop` for the check
+                     and never stored)
   manifest-publish.ts readPublishSettings/setPublishProviderConfig (yaml round-trip)
   command-runner.ts  injectable child-process seam (secrets via env only)
   butler.ts          butler acquisition (BUTLER_PATH → PATH → cache → download)

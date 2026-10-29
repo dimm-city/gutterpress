@@ -42,7 +42,7 @@
     username?: string;
     /** A repository on the server to check the token against (Backup: this book's). */
     repoUrl?: string;
-    /** Where the server makes tokens, when the caller knows (null: it has no page we know); left out, it is looked up. */
+    /** Where the server makes tokens, when the caller knows it; otherwise the guide that lists where each server does. */
     tokenUrl?: string | null;
     hint?: string;
     submitLabel?: string;
@@ -58,35 +58,14 @@
   let token = $state("");
   let busy = $state(false);
   let error = $state<string | null>(null);
-  let found = $state<string | null>(null);
   let addressEl = $state<HTMLInputElement>();
   let tokenEl = $state<HTMLInputElement>();
 
   const host = $derived((knownHost ?? address).trim());
-  const helpUrl = $derived(tokenUrl === undefined ? found : tokenUrl);
-  // "https://gitlab.com/team/repo" reads as "gitlab.com" in the link.
-  const hostName = $derived(host.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split("/")[0]);
 
   onMount(() => {
     if (takeFocus) (addressEl ?? tokenEl)?.focus();
-    void lookupHelp();
   });
-
-  /** Look up where this server makes tokens, once its address is known. */
-  async function lookupHelp() {
-    if (tokenUrl !== undefined) return;
-    const asked = host;
-    if (!asked) {
-      found = null;
-      return;
-    }
-    try {
-      const { url } = await api.remote.forgeTokenUrl(asked);
-      if (asked === host) found = url;
-    } catch {
-      found = null;
-    }
-  }
 
   async function submit() {
     if (busy || !host || !token.trim()) return;
@@ -115,7 +94,7 @@
   {#if knownHost === undefined}
     <label class="field">
       <span class="lbl">Server address</span>
-      <input bind:this={addressEl} bind:value={address} onchange={() => void lookupHelp()} placeholder="git.example.com" autocomplete="off" spellcheck="false" />
+      <input bind:this={addressEl} bind:value={address} placeholder="git.example.com" autocomplete="off" spellcheck="false" />
     </label>
   {/if}
   <label class="field">
@@ -127,8 +106,8 @@
     <!-- "new-password" actually suppresses autofill/save prompts; browsers ignore "off" on password fields. -->
     <input bind:this={tokenEl} bind:value={token} type="password" autocomplete="new-password" />
   </label>
-  <button type="button" class="link" onclick={() => void api.shell.openExternal(helpUrl ?? OTHER_SERVER_GUIDE).catch(() => {})}>
-    {helpUrl ? `Create a token on ${hostName}` : "How to make an access token"} <Icon name="external-link" size={11} />
+  <button type="button" class="link" onclick={() => void api.shell.openExternal(tokenUrl ?? OTHER_SERVER_GUIDE).catch(() => {})}>
+    {tokenUrl ? `Create a token on ${host}` : "How to make an access token"} <Icon name="external-link" size={11} />
   </button>
   <div class="actions">
     <button type="submit" class="app-btn app-btn-primary" disabled={busy || !host || !token.trim()}>
