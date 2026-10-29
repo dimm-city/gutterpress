@@ -38,6 +38,7 @@
   import FocusBar from "#lib/components/FocusBar.svelte";
   import ProjectSettingsView from "#lib/components/ProjectSettingsView.svelte";
   import SettingsView from "#lib/components/SettingsView.svelte";
+  import AccountsView from "#lib/components/AccountsView.svelte";
   import EditorToolbar from "#lib/components/EditorToolbar.svelte";
   import type { ToolbarAction, ToolbarPayload } from "#lib/components/EditorToolbar.svelte";
   import SnippetPicker from "#lib/components/SnippetPicker.svelte";
@@ -386,6 +387,15 @@
   }
   function closeSettings(): void {
     settingsOpen = false;
+    if (landingVisible) landingRef?.focusLayer();
+  }
+  /**
+   * Accounts: its own sheet too, opened from the start screen, Settings and
+   * Book setup → Backup, over whichever opened it; closing it returns there.
+   */
+  let accountsOpen = $state(false);
+  function closeAccounts(): void {
+    accountsOpen = false;
     // A GitHub connect or a removed key may have changed whether the open book can back up.
     onConnectDialogClosed();
   }
@@ -2448,7 +2458,7 @@
       // The start screen and Settings own the rest of the keyboard while they
       // are up (their own Esc handling); workspace shortcuts must not act on
       // the inert UI behind them.
-      if (landingVisible || settingsOpen) return;
+      if (landingVisible || settingsOpen || accountsOpen) return;
       // Esc leaves Focus, but ONLY when nothing else wants the key: an open
       // dialog/menu/popover, the find bar, or a handler that already consumed
       // it (editor, context menu) keeps Esc. An Esc pressed inside the preview
@@ -2503,8 +2513,8 @@
       // Only active when a preview URL is loaded.
       if (!lifecycle.previewUrl) return;
       if (e.defaultPrevented) return;
-      // Never page/zoom the preview from behind the start screen or Settings.
-      if (landingVisible || settingsOpen) return;
+      // Never page/zoom the preview from behind the start screen, Settings or Accounts.
+      if (landingVisible || settingsOpen || accountsOpen) return;
       // Don't intercept when focus is in a form control or the CodeMirror
       // editor (#38) — preview-nav keys (arrows, Home/End, +/-/=, f) must
       // never hijack editing. Shared guard: #lib/a11y isEditableTarget.
@@ -3022,7 +3032,7 @@
 <!-- inert while the start screen or Book setup is up: the workspace keeps
       rendering (a stylesheet written from Book setup re-renders the preview
       live) but never accepts interaction underneath the layer. -->
-<div class="app-root" inert={landingVisible || settingsOpen || projectSettingsOpen || publishOpen} use:activity.track={activityStages}>
+<div class="app-root" inert={landingVisible || settingsOpen || accountsOpen || projectSettingsOpen || publishOpen} use:activity.track={activityStages}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}
@@ -3571,7 +3581,7 @@
   onCheckForUpdates={() => updateController.check()}
   onDismiss={() => dismissLanding()}
   onOpenSettings={() => openSettings()}
-  onCloseBook={() => lifecycle.stopPreview()}
+  onOpenAccounts={() => (accountsOpen = true)}
 />
 {#if projectSettingsOpen}
   <!-- Book setup (manifest), in the shared AppView layer. Mounted fresh per
@@ -3595,10 +3605,16 @@
       const last = syncController.lastManual;
       return last && last.dir === lifecycle.currentDir ? { state: last.state, lastSyncAt: last.at } : null;
     }}
+    onRepair={() => syncController.handleRepair()}
+    onCloseBook={() => lifecycle.stopPreview()}
+    onOpenAccounts={() => (accountsOpen = true)}
   />
 {/if}
 {#if settingsOpen}
-  <SettingsView onClose={closeSettings} focus={settingsFocus} />
+  <SettingsView onClose={closeSettings} onOpenAccounts={() => (accountsOpen = true)} focus={settingsFocus} />
+{/if}
+{#if accountsOpen}
+  <AccountsView onClose={closeAccounts} />
 {/if}
 
 {#if openBookOpen}

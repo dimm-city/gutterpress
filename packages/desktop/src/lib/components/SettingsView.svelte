@@ -2,20 +2,22 @@
   /**
    * SettingsView — the app's Settings: one page in the shared AppView layer,
    * the same from the start screen and over a book (it never reads the open
-   * book). Four groups; every control applies at once. Accounts are listed
-   * here and added where they are needed (ConnectionsSettings).
+   * book). Four groups; every control applies at once. The accounts have
+   * their own page (AccountsView), which the last group opens.
    */
   import AppView from "#lib/components/AppView.svelte";
-  import ConnectionsSettings from "#lib/components/ConnectionsSettings.svelte";
   import { useSettings } from "#lib/settings.svelte.ts";
   import { setThemeMode, type ThemeMode } from "#lib/theme.svelte.ts";
   import { getPlatform } from "#lib/platform/index.ts";
 
   let {
     onClose,
+    onOpenAccounts,
     focus,
   }: {
     onClose: () => void;
+    /** Open the Accounts page in place of this one. */
+    onOpenAccounts: () => void;
     /** Open with the cursor in this field (the "Add your name & email" banner). */
     focus?: "name";
   } = $props();
@@ -106,7 +108,10 @@
 
   <section class="group" aria-labelledby="settings-accounts">
     <h2 id="settings-accounts">Accounts</h2>
-    <ConnectionsSettings />
+    <div class="row">
+      <span class="hint">GitHub, publishing keys and Git servers, used by every book.</span>
+      <button class="app-btn" onclick={onOpenAccounts}>Accounts…</button>
+    </div>
   </section>
 </AppView>
 

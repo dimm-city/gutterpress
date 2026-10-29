@@ -20,21 +20,30 @@
    *                    or more copies (git branches), the copy switcher (#273).
    *   own-tools      — an SSH (or other non-https) address.
    *
-   * Connection diagnostics and the connection test live in Troubleshooting →
-   * Sync, where a failing backup is looked into.
+   * Once access is set up (ready), the tools for a backup that keeps failing
+   * follow: Test connection (a read-only probe of this book's repository; the
+   * GitHub sign-in itself is tested in Accounts), Repair online backup (the
+   * status bar's repair, `onRepair`: a fresh history under the files, then a
+   * backup) and Start over from the online copy (`api.remote.scorchedEarth`:
+   * back up the whole folder, empty it, download a fresh copy, copy the
+   * backed-up files back on top, and — whether or not that worked — close the
+   * book, so the app holds no stale state; Book setup closes with it, so the
+   * outcome is a toast).
    *
    * PWA-clean (§8): api.* routes, plus getPlatform() for the sync-status stream.
    */
   import { onMount, tick } from "svelte";
   import { api } from "#lib/api.ts";
-  import { friendlyHostError } from "#lib/errors.ts";
+  import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
+  import { cancelInlineConfirm, requestInlineConfirm, type InlineConfirmState } from "#lib/dialog.ts";
   import { useSettings } from "#lib/settings.svelte.ts";
   import { suggestRepositoryName } from "#lib/backup-repo-name.ts";
   import { backupState, onlineCopyName, readyView, type LastBackup } from "#lib/backup-state.ts";
   import { getPlatform } from "#lib/platform/index.ts";
   import GitHubConnect from "#lib/components/GitHubConnect.svelte";
   import Icon from "#lib/components/Icon.svelte";
-  import type { ProjectRemoteDiagnosis, RemoteConnection, RemoteRepository } from "#lib/platform/contract.ts";
+  import type { ToastController } from "#lib/components/Toast.svelte";
+  import type { ProjectRemoteDiagnosis, RemoteAccessResult, RemoteConnection, RemoteRepository } from "#lib/platform/contract.ts";
 
   let {
     projectDir,
@@ -42,6 +51,10 @@
     onBackupSetUp,
     onProjectFilesChanged,
     onBackUpNow,
+    onRepair,
+    onCloseBook,
+    onOpenAccounts,
+    toast = null,
   }: {
     projectDir: string | null;
     /** Version history was just turned on: the parent re-reads the project's classification so the status bar catches up. */
@@ -52,6 +65,14 @@
     onProjectFilesChanged?: () => void;
     /** Back up now: the status bar's own backup (its toasts and editor refresh), and what it ended with. */
     onBackUpNow?: () => Promise<LastBackup | null>;
+    /** Repair online backup: the status bar's repair (its toasts and editor refresh). */
+    onRepair?: () => Promise<void>;
+    /** Close the open book: Start over from the online copy ends with it. */
+    onCloseBook?: () => Promise<boolean>;
+    /** Open the Accounts page, over this one. */
+    onOpenAccounts?: () => void;
+    /** Start over's outcome: Book setup closes with the book, so it is a toast. */
+    toast?: ToastController | null;
   } = $props();
 
   const OTHER_SERVER_GUIDE =
@@ -284,6 +305,90 @@
       return null;
     });
 
+  // ── A backup that keeps failing (ready) ────────────────────────────────────
+  // Test connection: read-only, so it runs on one click with no confirm.
+  let testing = $state(false);
+  let testResult = $state<string | null>(null);
+  let testOk = $state(false);
+
+  async function testConnection() {
+    if (!diag?.remoteUrl || testing) return;
+    testing = true;
+    testResult = null;
+    try {
+      const result = await api.remote.testRemoteAccess(diag.remoteUrl);
+      testOk = result.ok;
+      testResult = testLabel(result);
+    } catch (e) {
+      testOk = false;
+      testResult = testLabel({ ok: false, reason: "unknown", message: friendlyHostError(unwrapRouteError(e instanceof Error ? e.message : String(e))) });
+    } finally {
+      testing = false;
+    }
+  }
+
+  function testLabel(result: RemoteAccessResult): string {
+    if (result.ok) {
+      const branch = result.defaultBranch ? ` Main version: ${result.defaultBranch}.` : "";
+      return `Working — Gutterpress reached the online copy.${branch}`;
+    }
+    // Defence in depth: the lib's messages are URL-free by construction, but a
+    // raw transport string could slip through the catch path — hide any URL
+    // (which may carry credentials) and keep the message a readable length.
+    const safe = result.message
+      .replace(/https?:\/\/\S+/g, "(address hidden)")
+      .slice(0, 200)
+      .trim();
+    return safe || "The connection test failed. See Troubleshooting > Logs for details.";
+  }
+
+  // Repair and Start over arm in place and run on the second click.
+  let confirm = $state<InlineConfirmState>({});
+  let running = $state<"repair" | "start-over" | null>(null);
+
+  async function repair() {
+    const { state, confirmed } = requestInlineConfirm(confirm, "repair");
+    confirm = state;
+    if (!confirmed) return;
+    running = "repair";
+    await act(async () => {
+      await onRepair?.();
+      return null;
+    });
+    running = null;
+  }
+
+  async function startOver() {
+    const dir = projectDir;
+    // Read now: closing the book unmounts this view before the outcome is shown.
+    const notify = toast;
+    const { state, confirmed } = requestInlineConfirm(confirm, "start-over");
+    confirm = state;
+    if (!confirmed || !dir || busy) return;
+    busy = true;
+    running = "start-over";
+    let message: string | null = null;
+    let failure: string | null = null;
+    try {
+      const r = await api.remote.scorchedEarth(dir);
+      message = `Fresh copy downloaded${r.branch ? ` (${r.branch})` : ""} and your files copied back on top. A full copy of the folder as it was is kept at ${r.backupDir}. Open the book and back up to save the result online.`;
+    } catch (e) {
+      failure = `${unwrapRouteError(e instanceof Error ? e.message : String(e))} See Troubleshooting > Logs for details.`;
+    }
+    // The final step, whether or not the reset worked: close the book it reset.
+    let closed = false;
+    try {
+      closed = (await onCloseBook?.()) ?? false;
+    } catch {
+      closed = false;
+    }
+    busy = false;
+    running = null;
+    if (!closed) failure = `${failure ? `${failure} ` : ""}The book couldn't be closed. Close it before you keep working.`;
+    if (failure) notify?.error(failure);
+    else if (message) notify?.success(message);
+  }
+
   const githubRepo = $derived(diag?.remoteUrl ? onlineCopyName(diag.remoteUrl).replace(/^[^/]*\//, "") : "");
 </script>
 
@@ -416,6 +521,34 @@
           <p class="hint">Couldn't check online for other copies. This list shows the copies on this computer.</p>
         {/if}
       {/if}
+      <h3>If backing up keeps failing</h3>
+      <div class="tools">
+        <button class="ghost" onclick={() => void testConnection()} disabled={busy || testing}>
+          {testing ? "Testing…" : "Test connection"}
+        </button>
+        <span class="hint">Checks that Gutterpress can reach this book's online copy. Nothing is changed or uploaded.</span>
+        {#if testResult}<p class="result" class:failed={!testOk} role="status">{testResult}</p>{/if}
+        <button
+          class="ghost"
+          onclick={() => void repair()}
+          onblur={() => (confirm = cancelInlineConfirm(confirm, "repair"))}
+          disabled={busy}
+        >{running === "repair" ? "Repairing…" : confirm["repair"] ? "Really repair?" : "Repair online backup"}</button>
+        <span class="hint">Downloads a fresh copy of the online history and puts it under your files, which stay as they are. Then a version is saved and backed up.</span>
+        <button
+          class="ghost danger"
+          onclick={() => void startOver()}
+          onblur={() => (confirm = cancelInlineConfirm(confirm, "start-over"))}
+          disabled={busy}
+        >{running === "start-over" ? "Working…" : confirm["start-over"] ? "Really start over?" : "Start over from the online copy"}</button>
+        <span class="hint">The last resort. Keeps a full copy of the folder, downloads a fresh copy, then puts your files back on top. The book closes at the end.</span>
+      </div>
+      {#if onOpenAccounts && diag.provider === "github" && ready.action !== "sign-in"}
+        <p class="hint">
+          GitHub sign-in expired?
+          <button class="link" onclick={onOpenAccounts}>Reconnect it in Accounts</button>
+        </p>
+      {/if}
     {:else if diag.remoteProtocol === "ssh"}
       <p class="headline">This book's online copy uses an SSH address (git@…).</p>
       <p class="hint">
@@ -446,6 +579,12 @@
   .done { margin: 0; font-size: 13px; color: var(--app-success-text); }
   .check { display: flex; gap: 6px; align-items: center; font-size: 13px; }
   .copy-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  /* Each tool's button beside what it does, the buttons one column so the descriptions line up. */
+  .tools { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 12px; }
+  .tools .hint { margin: 0; }
+  .result { grid-column: 1 / -1; margin: 0; font-size: 12px; color: var(--app-text-secondary); overflow-wrap: anywhere; }
+  .result.failed { color: var(--app-error-text); }
+  .tools .danger { color: var(--app-error-text); border-color: var(--app-error-text); }
   .copy-row select { width: auto; }
   code { font-family: var(--app-font-mono); font-size: 12px; color: var(--app-text-secondary); }
   .link {

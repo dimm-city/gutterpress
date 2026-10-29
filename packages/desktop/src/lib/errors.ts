@@ -224,7 +224,7 @@ export interface FriendlyPublishError {
  * `r.text()` and throw `new Error(text)` verbatim — they never JSON.parse
  * it — so a `catch (e)` on any `api.*` call sees this raw `{"message": "…"}`
  * envelope as `e.message` instead of the message itself. Peel it back before
- * showing it (publish errors below; Troubleshooting → Sync) so an author is
+ * showing it (publish errors below; Book setup → Backup) so an author is
  * never shown a bare JSON blob.
  */
 export function unwrapRouteError(text: string): string {

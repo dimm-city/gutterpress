@@ -270,7 +270,7 @@ export interface ClassCatalogEntry {
 }
 
 /** Static publish-provider metadata (no project needed) — used by the
- *  Settings → Accounts tab to classify + label stored credentials. */
+ *  Accounts page to classify + label stored credentials. */
 export interface PublishProviderStaticInfo {
   id: string;
   label: string;

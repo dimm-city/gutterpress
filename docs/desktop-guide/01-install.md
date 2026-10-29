@@ -35,8 +35,8 @@ To check that the file is the one we published, compare it with `SHA256SUMS.txt`
 
 Gutterpress opens on the start screen. The first time, it says **Welcome to Gutterpress**; after
 that it offers **Open your book** to carry on where you left off. Its tabs are **Books**, **Help**
-and **Troubleshooting**, and the **Settings** button at the top opens
-[Settings](10-settings.md#settings).
+and **Troubleshooting**, and the **Accounts** and **Settings** buttons at the top open
+[Accounts](10-settings.md#accounts) and [Settings](10-settings.md#settings).
 
 On first launch the app copies the user guide and some example books into a `Gutterpress` folder
 in your Documents folder. They are listed under **Discovered** on the Books tab: open one to look

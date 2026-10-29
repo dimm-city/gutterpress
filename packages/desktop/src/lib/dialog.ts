@@ -184,7 +184,7 @@ export type InlineConfirmState = Readonly<Record<string, true>>;
  *
  * Pure and state-shape-only — the caller owns the actual `$state` and reacts
  * to `confirmed`. Kept in `dialog.ts` (not duplicated per-dialog) so
- * ConnectionsSettings' Remove and SnippetPicker's delete share one tested
+ * AccountsView's Remove and SnippetPicker's delete share one tested
  * implementation.
  */
 export function requestInlineConfirm(

@@ -4,9 +4,10 @@
    * sub-tabbed home for everything a writer needs when something is wrong or
    * support asks "which version?". Diagnostics (versions, system + tool
    * status, copyable report, plus the update check, update channel and Linux
-   * desktop integration), Logs (the app's diagnostic logs) and Sync (repair
-   * tools for a stuck online backup) and Report a problem (the diagnostic
-   * bundle + prefilled GitHub issue). The Help tab carries guidance only.
+   * desktop integration), Logs (the app's diagnostic logs) and Report a
+   * problem (the diagnostic bundle + prefilled GitHub issue). The Help tab
+   * carries guidance only; a stuck online backup is fixed in Book setup →
+   * Backup, an expired sign-in in Accounts.
    *
    * Reuses SettingsView's sub-tab pattern (TABS, tablist keys, tabpanel with
    * `idPrefix`). Owns its api.doctor load for Diagnostics.
@@ -16,7 +17,6 @@
   import type { DoctorDiagnostics } from "#lib/api.ts";
   import LogsPanel from "#lib/components/LogsPanel.svelte";
   import ReportProblemPanel from "#lib/components/ReportProblemPanel.svelte";
-  import SyncToolsPanel from "#lib/components/SyncToolsPanel.svelte";
   import UpdatesIntegrationSection from "#lib/components/UpdatesIntegrationSection.svelte";
   import type { UpdaterAvailableAction } from "#lib/platform/index.ts";
   import { sanitizeTroubleshootingTab, type TroubleshootingTab } from "#lib/troubleshooting-tabs.ts";
@@ -25,7 +25,6 @@
     initialTab = "logs",
     idPrefix = "troubleshooting",
     projectDir = null,
-    onCloseBook,
     onCheckForUpdates,
     checkingUpdates = false,
     updateReadyVersion = null,
@@ -36,9 +35,8 @@
     initialTab?: TroubleshootingTab;
     /** Element-id namespace for the tab/panel aria wiring. */
     idPrefix?: string;
-    /** The open book, if any — Sync's Start over from the online copy closes it when it is in the reset folder. */
+    /** The open book, if any — Diagnostics' Open terminal and the problem report use it. */
     projectDir?: string | null;
-    onCloseBook?: () => Promise<boolean>;
     /** Diagnostics → Updates: the manual update check and the host's update state. */
     onCheckForUpdates?: () => void;
     checkingUpdates?: boolean;
@@ -51,7 +49,6 @@
   const TABS: Array<{ id: TroubleshootingTab; label: string }> = [
     { id: "logs", label: "Logs" },
     { id: "diagnostics", label: "Diagnostics" },
-    { id: "sync", label: "Sync" },
     { id: "report", label: "Report a problem" },
   ];
   // Mounted fresh per visit; the initial value is the requested landing tab.
@@ -60,7 +57,6 @@
   let tabEls = $state<Record<TroubleshootingTab, HTMLButtonElement | undefined>>({
     diagnostics: undefined,
     logs: undefined,
-    sync: undefined,
     report: undefined,
   });
 
@@ -208,8 +204,6 @@
       <!-- Mounted only while this tab is active, so each visit re-lists (a
            sync may have written since). -->
       <LogsPanel />
-    {:else if activeTab === "sync"}
-      <SyncToolsPanel {projectDir} {onCloseBook} />
     {:else if activeTab === "report"}
       <ReportProblemPanel {projectDir} />
     {:else if loading}

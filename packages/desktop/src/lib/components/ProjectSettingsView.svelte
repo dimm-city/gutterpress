@@ -69,6 +69,9 @@
     onBackupSetUp,
     onProjectFilesChanged,
     onBackUpNow,
+    onRepair,
+    onCloseBook,
+    onOpenAccounts,
     triggerEl,
   }: {
     projectDir: string | null;
@@ -90,6 +93,12 @@
     onProjectFilesChanged?: () => void;
     /** The Backup tab's Back up now: the status bar's backup, and what it ended with. */
     onBackUpNow?: () => Promise<LastBackup | null>;
+    /** The Backup tab's Repair online backup: the status bar's repair. */
+    onRepair?: () => Promise<void>;
+    /** Close the book: the Backup tab's Start over from the online copy ends with it. */
+    onCloseBook?: () => Promise<boolean>;
+    /** Open the Accounts page, over this one. */
+    onOpenAccounts?: () => void;
     /** The control that opened the view, for focus restore on close. */
     triggerEl?: HTMLElement | null;
   } = $props();
@@ -288,7 +297,7 @@
 
       {#if activeTab === "backup"}
         <!-- This book's backup: connecting its GitHub account or server happens here, in place. -->
-        <ProjectConnectionsSection {projectDir} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} {onBackUpNow} />
+        <ProjectConnectionsSection {projectDir} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} {onBackUpNow} {onRepair} {onCloseBook} {onOpenAccounts} {toast} />
       {/if}
 
       {#if activeTab === "advanced"}

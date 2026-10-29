@@ -188,7 +188,7 @@
   {#if appImageNotice}
     <!-- role="status" so the confirmation is announced too — the error
          path below was already announced via role="alert" (matches
-         ConnectionsSettings.svelte's precedent). -->
+         AccountsView.svelte's precedent). -->
     <p class="row-notice" role="status">{appImageNotice}</p>
   {/if}
   {#if appImageError}

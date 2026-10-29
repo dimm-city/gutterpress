@@ -56,7 +56,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **Settings and Book setup, redesigned (#442).** Settings is one page with
   no tabs: Appearance, Saving, Your name and email, and Accounts. It opens
   in its own sheet from the status-bar gear, Ctrl+, or the start screen's
-  new Settings button, and looks the same with or without a book open. The
+  new Settings button, and looks the same with or without a book open.
+  Accounts is a page of its own, opened from the start screen's Accounts
+  button, Settings and Backup: every saved account, used by every book, with
+  Test connection and Reconnect… for GitHub. The
   Reader/Author choice is gone, so every author has Setup and Publish from
   the first launch. So are the preview, overlay-colour, zoom, file-watcher
   and log-level options and every Reset button. Book setup has the tabs
@@ -70,7 +73,9 @@ This project follows [Semantic Versioning](https://semver.org/).
     off.
   - **Backup** says in one sentence where the book is kept and offers the
     one next step. GitHub and the book's own Git server connect right there,
-    and the copy switcher moved here from Settings.
+    and the copy switcher moved here from Settings. Once the backup is set
+    up, Test connection, Repair online backup and Start over from the online
+    copy sit below it.
   - **Advanced** is the one place for npm, folder and web extensions and
     their order, every design setting, and buttons that open
     `manifest.yaml` and the book's stylesheet.
@@ -78,7 +83,8 @@ This project follows [Semantic Versioning](https://semver.org/).
   Gone from the app: the npm search, the version picker, the pre-release
   switch, the export-name field and the stylesheet list. `gutterpress ext`
   and the manifest still do all of them. A publishing key is added in
-  Publish; "Test the connection" moved to Troubleshooting > Sync.
+  Publish. Troubleshooting's Sync tab is gone: its tools moved to Backup and
+  Accounts.
 - **Text fields can be seen (#447).** Every text field, select and text area
   in the desktop app takes its look from one shared rule, and its edge now
   stands out at 3:1 or more against every background in both themes (it was

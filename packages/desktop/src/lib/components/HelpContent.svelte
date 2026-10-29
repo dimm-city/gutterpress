@@ -35,7 +35,7 @@
     <ul class="steps">
       <li><strong>Open from GitHub</strong> — click <em>Open from GitHub</em> on the welcome screen (from an open book, the folder button at the left of the status bar takes you there) to connect your GitHub account, choose a repository, and download a copy of the book to your computer.</li>
       <li><strong>Back up now</strong> — when your book is backed up online, click the save status in the bottom-right corner (it says <em>Edits saved</em>) to open <em>Where your work is kept</em>, then click <em>Back up now</em> under <em>Online backup</em>. If you're offline, your work stays saved on this computer and the backup catches up when you're back online. If your copy and the online copy both changed, Gutterpress lists each file that differs and lets you choose: keep your version, use the online version, or keep both copies.</li>
-      <li><strong>Other hosting services</strong> — if your book lives somewhere other than GitHub, open the gear icon in the bottom-right corner, then <em>Accounts</em>, to connect a Git server (such as Gitea or Forgejo).</li>
+      <li><strong>Other hosting services</strong> — if your book lives somewhere other than GitHub, open the book's <em>Setup</em>, then <em>Backup</em>, to connect its Git server (such as Gitea or Forgejo).</li>
     </ul>
   </section>
 

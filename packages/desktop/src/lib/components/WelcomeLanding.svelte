@@ -56,7 +56,7 @@
     errorBody = null,
     version = null,
     showAtStartup = true,
-    /** The open project dir (Troubleshooting's Sync tools and problem report act on it). */
+    /** The open project dir (Troubleshooting's problem report acts on it). */
     projectDir = null,
     /** A workspace is open behind the layer, so the landing can be closed to
      *  return to it (shows the X, and Esc dismisses). */
@@ -83,7 +83,7 @@
     onCheckForUpdates,
     onDismiss,
     onOpenSettings,
-    onCloseBook,
+    onOpenAccounts,
   }: {
     visible?: boolean;
     inactive?: boolean;
@@ -119,16 +119,16 @@
     onDismiss?: () => void;
     /** Open Settings, its own sheet over this screen. */
     onOpenSettings?: () => void;
-    /** Close the open book (Troubleshooting → Sync's Start over from the online copy ends with it). */
-    onCloseBook?: () => Promise<boolean>;
+    /** Open Accounts, its own sheet over this screen. */
+    onOpenAccounts?: () => void;
   } = $props();
 
   // ── Tabs (Books / Help / Troubleshooting) ──────────────────────────────
   // The landing is the app's front door: Books carries the continue card +
   // quick actions + book list; Help carries the how-to guidance;
   // Troubleshooting holds Diagnostics (versions, updates, desktop
-  // integration), Logs, Sync and Report a problem as sub-tabs. Settings is
-  // not a tab: it is its own sheet, opened from the brand row. The host can
+  // integration), Logs and Report a problem as sub-tabs. Settings and
+  // Accounts are not tabs: each is its own sheet, opened from the brand row. The host can
   // land on a specific tab (help button → "help").
   type LandingTab = "projects" | "help" | "troubleshooting";
   const LANDING_TABS: Array<{ id: LandingTab; label: string }> = [
@@ -277,6 +277,11 @@
                 : `Update available (v${updateAvailableVersion}) — ${updateAvailableAction === "open-release" ? "Download from GitHub" : "Download"}`}
             </button>
           {/if}
+          {#if onOpenAccounts}
+            <button type="button" class="settings-btn" onclick={() => onOpenAccounts?.()}>
+              <Icon name="circle-user" size={14} /> Accounts
+            </button>
+          {/if}
           {#if onOpenSettings}
             <button type="button" class="settings-btn" onclick={() => onOpenSettings?.()}>
               <Icon name="settings" size={14} /> Settings
@@ -416,7 +421,6 @@
           idPrefix="landing-troubleshooting"
           initialTab={troubleshootingTab}
           {projectDir}
-          {onCloseBook}
           {onCheckForUpdates}
           {checkingUpdates}
           {updateReadyVersion}

@@ -77,8 +77,8 @@ Backup** says in one line where the book is kept, and offers the one next step:
   Keep backing up with your usual Git tool, or give the book its https:// address with that tool
   (`git remote set-url origin https://…`) and come back to connect it.
 
-GitHub can also be connected in Settings → **Accounts**, which lists every account saved on this
-computer, each with **Remove**.
+GitHub can also be connected on the [Accounts](10-settings.md#accounts) page, which lists every
+account saved on this computer, each with **Remove**.
 
 ### Set up online backup for a book you started here
 
@@ -106,8 +106,8 @@ was. The common cases:
 - **The repository already has files** — online backup needs an empty one. Choose another, or
   create a new one.
 - **No internet connection** — nothing was changed; try again when you are back online.
-- **GitHub didn't accept the saved connection** — sign in again with Troubleshooting → **Sync** →
-  **Reconnect GitHub…**, then try again.
+- **GitHub didn't accept the saved connection** — sign in again with **Reconnect…** beside GitHub on
+  the [Accounts](10-settings.md#accounts) page, then try again.
 - **The copy didn't go through after the repository was created** — the empty repository is kept
   and selected; click **Try again** to use it.
 
@@ -136,8 +136,22 @@ Where each server makes its tokens:
 - **Bitbucket:** Personal settings > App passwords, with repository read and write.
 - **Azure Repos:** User settings > Personal access tokens, with Code read & write.
 
-If backing up keeps failing, Troubleshooting → **Sync** has **Test the connection**, which checks
-whether Gutterpress can reach the book's online copy without changing anything.
+### If backing up keeps failing
+
+Once a book's online backup is set up, **Setup → Backup** has three tools under **If backing up
+keeps failing**:
+
+- **Test connection** checks that Gutterpress can reach this book's online copy. Nothing is changed
+  or uploaded.
+- **Repair online backup** downloads a fresh copy of the online history and puts it under your
+  files, which stay as they are, then saves a version and backs it up.
+- **Start over from the online copy** is the last resort. It keeps a full copy of the book's folder,
+  downloads a fresh copy and puts your files back on top. The book closes at the end: open it again
+  and back up.
+
+Repair and Start over each ask once more before they run. If GitHub stopped accepting your sign-in,
+click **Reconnect…** beside GitHub on the [Accounts](10-settings.md#accounts) page; its **Test
+connection** checks the sign-in itself.
 
 ### Get and send changes yourself
 

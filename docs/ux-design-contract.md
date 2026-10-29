@@ -97,8 +97,9 @@ gutterpress/
 ├── Welcome / start screen                     SHIPPED  (WelcomeLanding: Books / Help /
 │                                                        Troubleshooting tabs — continue card +
 │                                                        recents/favorites/discovered via
-│                                                        ProjectsListBody, and in-app help; a
-│                                                        Settings button in the header)
+│                                                        ProjectsListBody, and in-app help;
+│                                                        Accounts and Settings buttons in the
+│                                                        header)
 ├── New project wizard / templates             SHIPPED  (NewProjectWizard, #25; templates from the
 │                                                        shared lib scaffolding — see Onboarding)
 ├── Open dialog (recents/favorites, URLs)      SHIPPED  (#10, #27)
@@ -132,7 +133,10 @@ gutterpress/
 │   ├── Backup (id `backup`)                   SHIPPED  (ProjectConnectionsSection: one sentence for
 │   │                                                    the book's situation and at most one
 │   │                                                    primary action; GitHub or the book's own
-│   │                                                    server connect in place; the copy switcher)
+│   │                                                    server connect in place; the copy switcher;
+│   │                                                    once set up, Test connection (this book's
+│   │                                                    repository), Repair online backup and
+│   │                                                    Start over from the online copy)
 │   └── Advanced (id `advanced`)               SHIPPED  (the ONE advanced path: Open manifest.yaml /
 │                                                        the stylesheet, the ordered extensions
 │                                                        list (ExtensionsSection) with npm, folder,
@@ -144,11 +148,19 @@ gutterpress/
 ├── Crash recovery                             SHIPPED  (RecoveryOverlay / CrashRecoveryDialog)
 ├── Settings                                   SHIPPED  (SettingsView: one page in its own sheet,
 │                                                        no tabs — Appearance, Saving, Your name
-│                                                        and email, Accounts; opened by the
-│                                                        status-bar gear, Ctrl+, and the start
-│                                                        screen's Settings button; it never reads
-│                                                        the open book, so it is the same
-│                                                        everywhere; #442)
+│                                                        and email, and Accounts… (opens Accounts);
+│                                                        opened by the status-bar gear, Ctrl+, and
+│                                                        the start screen's Settings button; it
+│                                                        never reads the open book, so it is the
+│                                                        same everywhere; #442)
+├── Accounts                                   SHIPPED  (AccountsView: one page in its own sheet, like
+│                                                        Settings — every account saved on this
+│                                                        computer, used by every book: GitHub
+│                                                        (Connect, or Test connection / Reconnect… /
+│                                                        Disconnect), publishing keys and Git servers
+│                                                        (Remove); opened by the start screen's
+│                                                        Accounts button, Settings and Book setup →
+│                                                        Backup, over whichever opened it)
 ├── Visual layout editor                       PROPOSED (#37 — milestone placeholder; sub-issues first)
 └── AI Assistant                               PROPOSED (#36)
 ```
@@ -159,7 +171,9 @@ settings and turns the extras on; Advanced holds everything else — not app
 Settings: app appearance and print theme are deliberately separated
 concepts; do not merge them back. Forms live where their task happens: a
 publishing key is added in Publish, a book's Git server is connected in its
-Backup tab, and Settings > Accounts only lists what is stored, with Remove. One name
+Backup tab, and the Accounts page only lists what is stored, with Remove (and, for GitHub,
+Test connection and Reconnect…). A backup that keeps failing is fixed in the book's Backup
+tab; Troubleshooting holds Logs, Diagnostics and Report a problem only. One name
 per surface: the toolbar button, the page title and the docs all say "Book
 setup"; the status-bar gear, the shortcut and the page all say "Settings".
 
@@ -406,8 +420,8 @@ buttons.
 
 - `WelcomeLanding`: three tabs — **Books** (continue card with live
   pre-render status + recents / favorites / discovered projects), **Help**
-  and **Troubleshooting** — and a **Settings** button in the header, which
-  opens Settings as its own page. It always opens on **Books** — picking or
+  and **Troubleshooting** — and **Accounts** and **Settings** buttons in the
+  header, each opening its own page. It always opens on **Books** — picking or
   continuing a book is the screen's job. A missing name/email is raised by
   the workspace's standing identity banner, whose button opens Settings with
   the cursor in Name. There is no Reader/Author role: every author has Edit,
@@ -461,12 +475,10 @@ buttons.
   fields commit when you leave them or press Enter; pending edits are saved
   when you switch tabs or close the panel. A commit writes only what changed
   (a title edit never rewrites the page size or `targets:`).
-- Settings tabs are the shipped **App / Editor / Saving / Accounts**; the
-  former "Advanced" ("for developers") tab is a section on Editor, and the
-  whole surface lives on the start screen's Settings tab rather than in a
-  window of its own (one settings surface, reached from the status bar's
-  settings button or `Cmd/Ctrl+,`). Any further regrouping is a PROPOSED
-  delta.
+- Settings is one page with no tabs (Appearance, Saving, Your name and
+  email, Accounts…), reached from the status bar's settings button,
+  `Cmd/Ctrl+,` and the start screen; the accounts are a page of their own.
+  Any further regrouping is a PROPOSED delta.
 
 Anti-patterns: full-screen onboarding carousels; auto-advancing tours; empty
 workspaces with no guidance; requiring account creation (there are no
@@ -543,7 +555,7 @@ navigation UI and a Problems-panel entry with the page number.
 detail lives in `docs/publishing.md`. Shipped: toolbar **Publish** button →
 `PublishWizard` (choose destinations → one setup step per destination →
 publish), five built-in providers, saved named credentials (`safeStorage`) with
-an account picker, Settings → **Accounts** tab.
+an account picker, the **Accounts** page.
 
 **Provider model (binding):** providers are **built into the lib's publish
 registry** (`packages/cli/src/lib/publish/`) — they are *not plugins* and there
@@ -624,7 +636,7 @@ no-unaccepted-mutations constraint below stands.
 Binding constraints (regardless of final design):
 
 - **Off by default.** AI activates only after the user enables it and
-  configures a provider (Settings → Accounts). With AI off, all AI entry
+  configures a provider (Accounts). With AI off, all AI entry
   points (toolbar button, `/ai`, chat panel) are **hidden**, not greyed out;
   the drawer, if reached, shows a one-card empty state ("Connect a provider
   to enable AI").

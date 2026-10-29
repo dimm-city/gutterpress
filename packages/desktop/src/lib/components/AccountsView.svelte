@@ -1,9 +1,18 @@
 <script lang="ts">
   /**
-   * Settings → Accounts: every stored credential, listed so the author can see
-   * and revoke it. Accounts are added where they are needed — GitHub here or in
-   * Book setup → Backup (GitHubConnect), publishing keys in the Publish wizard,
-   * another Git server in the book's Backup tab — so this list has no forms.
+   * AccountsView — the accounts saved on this computer, which every book uses:
+   * one page in the shared AppView layer, like Settings, the same from the
+   * start screen and over a book (it never reads the open book). Every stored
+   * credential is listed so the author can see and revoke it. Accounts are
+   * added where they are needed — GitHub here or in Book setup → Backup
+   * (GitHubConnect), publishing keys in the Publish wizard, another Git server
+   * in the book's Backup tab — so this page has no forms.
+   *
+   * GitHub also has Test connection, which lists the account's repositories
+   * with the saved sign-in (nothing is changed), and Reconnect…, for the
+   * expired sign-in that makes every backup fail: the device flow's success
+   * replaces the saved one, so there is no disconnect step. Whether a book's
+   * own repository can be reached is Book setup → Backup's Test connection.
    *
    * Everything here reads REDACTED entries only (host/username/label — never
    * token values). Removal deletes by the entry's RAW store key via
@@ -15,11 +24,14 @@
    * PWA-clean (§8): api.* routes only.
    */
   import { onMount, tick } from "svelte";
+  import AppView from "#lib/components/AppView.svelte";
   import GitHubConnect from "#lib/components/GitHubConnect.svelte";
   import { api, type PublishProviderStaticInfo } from "#lib/api.ts";
-  import { friendlyHostError } from "#lib/errors.ts";
+  import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
   import type { HostConnectionInfo, RemoteConnection } from "#lib/platform/contract.ts";
   import { requestInlineConfirm, cancelInlineConfirm, type InlineConfirmState } from "#lib/dialog.ts";
+
+  let { onClose }: { onClose: () => void } = $props();
 
   let loading = $state(true);
   let loadFailed = $state(false);
@@ -33,7 +45,7 @@
   let removing = $state<string | null>(null);
   let removeError = $state<string | null>(null);
   // A connect or a removal replaces the row holding focus; Escape only
-  // reaches the Settings sheet from inside it.
+  // reaches the sheet from inside it.
   let rootEl = $state<HTMLElement>();
 
   onMount(() => {
@@ -98,6 +110,7 @@
   }
   function keep(key: string) {
     confirmRemove = cancelInlineConfirm(confirmRemove, key);
+    void keepFocus();
   }
   async function remove(key: string) {
     if (removing) return;
@@ -108,10 +121,37 @@
       else await api.remote.disconnectHost(key);
       await load();
     } catch (e) {
-      removeError = friendlyHostError(e instanceof Error ? e.message : String(e));
+      removeError = friendlyHostError(unwrapRouteError(e instanceof Error ? e.message : String(e)));
     } finally {
       removing = null;
     }
+    await keepFocus();
+  }
+
+  // ── GitHub: Test connection (read-only, so one click, no confirm) ───────────
+  let testing = $state(false);
+  let testResult = $state<string | null>(null);
+  let testOk = $state(false);
+
+  async function testGitHub() {
+    testing = true;
+    testResult = null;
+    try {
+      await api.remote.listRemoteRepositories();
+      testOk = true;
+      testResult = `Working — Gutterpress reached GitHub${github?.username ? ` as @${github.username}` : ""}.`;
+    } catch (e) {
+      testOk = false;
+      testResult = friendlyHostError(unwrapRouteError(e instanceof Error ? e.message : String(e)));
+    } finally {
+      testing = false;
+    }
+  }
+
+  async function reconnected() {
+    await load();
+    testOk = true;
+    testResult = `Signed in to GitHub${github?.username ? ` as @${github.username}` : ""}. Books back up with the new sign-in.`;
     await keepFocus();
   }
 
@@ -133,7 +173,9 @@
   {/if}
 {/snippet}
 
+<AppView title="Accounts" icon="circle-user" measure={640} {onClose} closeLabel="Close accounts" closeTitle="Close (Esc)">
 <div class="accounts" bind:this={rootEl} tabindex="-1">
+<p class="hint">The accounts saved on this computer. Every book uses them.</p>
 {#if loading}
   <p class="hint">Loading your accounts…</p>
 {:else if loadFailed}
@@ -144,6 +186,14 @@
       <span class="acct-name">GitHub</span>
       <span class="acct-detail">{github.username ? `Connected as @${github.username}` : "Connected"}</span>
       {@render removable("github.com", "Disconnect GitHub? Books stop backing up until you connect again.", "Disconnect")}
+    </div>
+    <div class="acct-more">
+      <GitHubConnect label="Reconnect…" onConnected={() => void reconnected()}>
+        <button class="app-btn app-btn-ghost" onclick={() => void testGitHub()} disabled={testing}>
+          {testing ? "Testing…" : "Test connection"}
+        </button>
+      </GitHubConnect>
+      {#if testResult}<p class="result" class:error={!testOk} role="status">{testResult}</p>{/if}
     </div>
   {:else}
     <GitHubConnect onConnected={() => void load().then(keepFocus)}>
@@ -172,10 +222,14 @@
 {/if}
 <p class="hint">Publishing accounts are added when you publish. To back up to another Git server, see the book's Setup &gt; Backup.</p>
 </div>
+</AppView>
 
 <style>
   .accounts { display: flex; flex-direction: column; gap: 8px; outline: none; }
-  .acct { display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 13px; }
+  /* Wraps, so a long Remove question takes its own line instead of crushing the row. */
+  .acct { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 32px; font-size: 13px; }
+  /* GitHub's second line (Test connection, Reconnect…), under the status: past .acct-name and the gap. */
+  .acct-more { display: flex; flex-direction: column; gap: 8px; margin-left: 130px; }
   /* Also GitHubConnect's row: its children are this component's markup, so these rules reach them. */
   .acct-name { min-width: 120px; color: var(--app-text); font-weight: 600; font-size: 13px; }
   .acct-detail { flex: 1; min-width: 0; color: var(--app-text-muted); font-size: 13px; }
@@ -183,5 +237,7 @@
   .confirm { display: inline-flex; align-items: center; gap: 8px; color: var(--app-text-secondary); }
   .hint { margin: 0; font-size: 12px; line-height: 1.4; color: var(--app-text-muted); }
   .error { margin: 0; font-size: 12px; color: var(--app-error-text); }
+  .result { margin: 0; font-size: 12px; color: var(--app-text-secondary); overflow-wrap: anywhere; }
+  .result.error { color: var(--app-error-text); }
   .danger { background: transparent; color: var(--app-error-text); border-color: var(--app-error-text); }
 </style>

@@ -22,12 +22,20 @@ is nothing to save.
 - **Your name and email** — saved with each version, so a book's history shows who changed what.
   Left empty, a version uses the name and email in the book's own Git settings, or else
   "gutterpress".
-- **Accounts** — the accounts saved on this computer: **GitHub** (with **Connect GitHub…** or
-  **Disconnect**), then any publishing keys and Git servers, each with **Remove**. Publishing
-  accounts are added when you [publish](08-publish.md); to back up to another Git server, see the
-  book's **Setup → Backup**.
+- **Accounts** — **Accounts…** opens the [Accounts](#accounts) page.
 
 ![Settings: Appearance, Saving, your name and email, and Accounts](images/settings.jpg)
+
+## Accounts
+
+The **Accounts** page lists the accounts saved on this computer, which every book uses. Open it
+with the **Accounts** button at the top of the start screen, or **Accounts…** in Settings.
+
+- **GitHub** — **Connect GitHub…** signs you in. Once you are connected, **Test connection** checks
+  that GitHub still accepts your sign-in, **Reconnect…** signs you in again (do this when backups
+  stop with a sign-in error) and **Disconnect** removes it.
+- Publishing keys and Git servers, each with **Remove**. Publishing accounts are added when you
+  [publish](08-publish.md); to back up to another Git server, see the book's **Setup → Backup**.
 
 ## Updates
 
