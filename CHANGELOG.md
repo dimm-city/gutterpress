@@ -54,37 +54,59 @@ This project follows [Semantic Versioning](https://semver.org/).
   preset's 0.5pt. The `asset.font.approved-files` check, which nothing could
   switch on, is gone.
 - **Settings and Book setup, redesigned (#442).** Settings is one page with
-  no tabs: Appearance, Saving, Your name and email, and Accounts. It opens
-  in its own sheet from the status-bar gear, Ctrl+, or the start screen's
-  new Settings button, and looks the same with or without a book open.
-  Accounts is a page of its own, opened from the start screen's Accounts
-  button, Settings and Backup: every saved account, used by every book, with
-  Test connection and Reconnect… for GitHub. The
-  Reader/Author choice is gone, so every author has Setup and Publish from
-  the first launch. So are the preview, overlay-colour, zoom, file-watcher
-  and log-level options and every Reset button. Book setup has the tabs
-  Book, Look and Backup, with Advanced set apart:
-  - **Book** holds the title, authors, page size, margins, the print checks
-    and the chapters, listed by their titles, with the files left out
-    grouped under "Not in the book".
-  - **Look** chooses a look from a gallery, adjusts six brand settings
-    (fonts, text size, line spacing, text and accent colour) beside a live
-    sample page, and turns the extras (Highlight, Math, Callouts…) on and
-    off.
-  - **Backup** says in one sentence where the book is kept and offers the
-    one next step. GitHub and the book's own Git server connect right there,
-    and the copy switcher moved here from Settings. Once the backup is set
-    up, Test connection, Repair online backup and Start over from the online
-    copy sit below it.
-  - **Advanced** is the one place for npm, folder and web extensions and
-    their order, every design setting, and buttons that open
-    `manifest.yaml` and the book's stylesheet.
+  no tabs: Appearance, Saving and Accounts. It opens in its own sheet from
+  the status-bar gear, Ctrl+, or the start screen's new Settings button, and
+  looks the same with or without a book open. The Reader/Author choice is
+  gone, so every author has Setup and Publish from the first launch. So are
+  the preview, overlay-colour, zoom, file-watcher and log-level options and
+  every Reset button.
+  - **Accounts** is a page of its own. It opens from the start screen's
+    Accounts button, Settings and Book setup → Backup, and is the one place
+    for who you are and what Gutterpress signs in to, for every book:
+    - your name and email (moved from Settings);
+    - GitHub, with Test connection and Reconnect…;
+    - other Git servers (GitLab, Gitea, Bitbucket, Azure Repos), each
+      added, edited or removed;
+    - publishing keys (itch.io, Azure, Shopify) and Google Drive, each
+      added, edited or removed.
 
-  Gone from the app: the npm search, the version picker, the pre-release
-  switch, the export-name field and the stylesheet list. `gutterpress ext`
-  and the manifest still do all of them. A publishing key is added in
-  Publish. Troubleshooting's Sync tab is gone: its tools moved to Backup and
-  Accounts.
+    A key is checked with its service before it is saved. Backup and Publish
+    still connect in place.
+  - **Book setup** has the tabs Book, Look, Extensions and Backup, with
+    Advanced set apart:
+    - **Book** holds the title, authors, page size, margins, the print
+      checks and the chapters, listed by their titles, with the files left
+      out grouped under "Not in the book".
+    - **Look** chooses a look from a gallery, and adjusts six brand settings
+      (fonts, text size, line spacing, text and accent colour) beside a live
+      sample page.
+    - **Extensions** is the book's ordered list of looks and extras. Built-in
+      extras the book doesn't use (Callouts, Math…) are offered with what to
+      type. Published ones are found with a search of npm (with **Find
+      extensions** for the website's finder), or added by exact name, from a
+      folder, a .zip or .css file, or a web address.
+    - **Backup** says in one sentence where the book is kept and offers the
+      one next step. GitHub and the book's own Git server connect right
+      there, and the copy switcher moved here from Settings. Once the backup
+      is set up, Test connection, Repair online backup and Start over from
+      the online copy sit below it.
+    - **Advanced** lists the book's stylesheets in load order (move, Open,
+      Remove, or add another of the book's .css files), every design
+      setting, and a button that opens `manifest.yaml`.
+  - **Troubleshooting** is Logs, Diagnostics and Report a problem. Its Sync
+    tab is gone, and its tools moved to Backup and Accounts. Diagnostics
+    shows Check now and the update channel beside the version. The separate
+    Updates section, the Lib version and the Logs tab's Open folder are gone.
+
+  Gone from the app: the extension version picker, the pre-release switch
+  and the export-name field. `gutterpress ext` and the manifest still do
+  them.
+- **The mouse wheel scrolls the preview.** The wheel and trackpad move the
+  preview as far as you turn them, like any page. The page-flip that took
+  them over (#301) is gone: it cancelled the scroll, did nothing for the
+  first stretch, jumped a whole page, and then ignored the rest of the
+  gesture, so scrolling felt sticky and jumpy. The toolbar and the keys
+  still turn a page at a time.
 - **Text fields can be seen (#447).** Every text field, select and text area
   in the desktop app takes its look from one shared rule, and its edge now
   stands out at 3:1 or more against every background in both themes (it was
