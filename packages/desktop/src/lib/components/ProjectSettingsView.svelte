@@ -162,6 +162,7 @@
     projectDir: projectDirAccessor,
     list: (dir) => api.extension.list(dir),
     bundled: () => api.extension.bundled(),
+    search: (query) => api.extension.search(query),
     outdated: (dir) => api.extension.outdated(dir),
     validate: (dir) => api.extension.validate(dir),
     add: (dir, specifier, exportName) => api.extension.add(dir, specifier, exportName),

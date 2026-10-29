@@ -130,6 +130,8 @@ export type {
   BundledExtensionInfo,
   ExtensionImportResult,
   ExtensionImportWarning,
+  NpmExtensionMatch,
+  ExtensionSearchResult,
   ExtensionUpdatesResult,
   ProjectStyle,
   RecoveryEntry,
@@ -153,6 +155,7 @@ import type {
   ExtensionValidationResult,
   BundledExtensionInfo,
   ExtensionImportResult,
+  ExtensionSearchResult,
   ExtensionUpdatesResult,
   ProjectStyle,
   RecoveryEntry,
@@ -629,6 +632,8 @@ export const api = {
       post<ExtensionValidationResult[]>('/api/extension/validate', { projectDir }),
     /** The bundled extensions (markdown features and looks) an author can turn on with no install (static). */
     bundled: () => get<BundledExtensionInfo[]>('/api/extension/bundled'),
+    /** Search npm for extensions (#246), on demand: the Extensions tab's search, never project load. A network/parse failure is data (`ok: false`), never a thrown error. */
+    search: (query: string) => post<ExtensionSearchResult>('/api/extension/search', { query }),
     /** Each pinned npm extension against npm's latest, on demand (the Extensions tab, never project load). A network failure is data (`ok: false`), never a thrown error. */
     outdated: (projectDir: string) =>
       post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir }),

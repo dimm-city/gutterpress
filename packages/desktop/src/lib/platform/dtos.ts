@@ -13,7 +13,7 @@
  * imports from `./contract` (that would create a cycle; `contract.ts` is the
  * one that imports FROM this file, not the reverse).
  */
-import type { ProjectSource, ProjectCapabilities } from "gutterpress";
+import type { ProjectSource, ProjectCapabilities, NpmExtensionMatch } from "gutterpress";
 
 // ── Unsaved-changes / recovery types (#44) ────────────────────────────────────
 //
@@ -200,6 +200,21 @@ export interface ExtensionImportResult {
   entry: ProjectExtensionEntry;
   warnings: ExtensionImportWarning[];
 }
+
+// ── Extension search (#246) — npm ────────────────────────────────────────────
+// One npm package the registry returned for the `gutterpress` /
+// `markdown-it-plugin` keywords, re-exported (not re-declared) so a
+// search-list consumer doesn't need a second import.
+export type { NpmExtensionMatch };
+
+/**
+ * Result of searching npm. A fetch/parse failure is DATA (`ok: false`), never
+ * a thrown error or an HTTP 500 — the search route always resolves, and the
+ * Extensions tab shows `message` as one quiet line under the search box.
+ */
+export type ExtensionSearchResult =
+  | { ok: true; matches: NpmExtensionMatch[]; total: number }
+  | { ok: false; message: string };
 
 // ── Extension updates — npm ──────────────────────────────────────────────────
 // Mirrors the lib's `ExtensionUpdateCheck` (packages/cli/src/lib/

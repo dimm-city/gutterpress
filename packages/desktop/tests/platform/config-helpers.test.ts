@@ -7,8 +7,10 @@ import {
   orderAfterMove,
   carriedKinds,
   sampleSrcdoc,
+  searchKindLabel,
+  searchMatchesQuery,
 } from "../../src/lib/components/config/config-helpers";
-import type { ProjectExtensionEntry, ExtensionValidationResult } from "../../src/lib/api";
+import type { ProjectExtensionEntry, ExtensionValidationResult, NpmExtensionMatch } from "../../src/lib/api";
 
 const NONE = { markdown: false, styles: false, snippets: false, components: false };
 
@@ -96,6 +98,37 @@ test("orderAfterMove returns null at the list's edge or for an item not in it", 
   expect(orderAfterMove(ORDER, LOOK_A.use, -1)).toBeNull();
   expect(orderAfterMove(ORDER, LOOK_B.use, 1)).toBeNull();
   expect(orderAfterMove([LOOK_A.use, LOOK_B.use], FEAT.use, 1)).toBeNull();
+});
+
+// ── searchKindLabel: a search result's kind, when npm's keywords say ──────────
+
+const found = (over: Partial<NpmExtensionMatch>): NpmExtensionMatch => ({
+  name: "x", version: "1.0.0", kind: "gutterpress", keywords: ["gutterpress"], ...over,
+});
+
+test("searchKindLabel: a gutterpress-look package is a look, a plain markdown-it plugin an extra", () => {
+  expect(searchKindLabel(found({ keywords: ["gutterpress", "gutterpress-look"] }))).toBe("Look");
+  expect(searchKindLabel(found({ kind: "markdown-it", keywords: ["markdown-it-plugin"] }))).toBe("Extra");
+});
+
+test("searchKindLabel says nothing for a Gutterpress extension that is not tagged as a look, rather than guess", () => {
+  expect(searchKindLabel(found({ keywords: ["gutterpress", "markdown-it-plugin"] }))).toBeNull();
+  expect(searchKindLabel(found({}))).toBeNull();
+});
+
+test("searchMatchesQuery: every typed word must appear in the name, description or keywords, inside other words too", () => {
+  const m = found({ name: "markdown-it-task-lists", description: "Create GitHub-style task lists", keywords: ["markdown-it-plugin", "checkbox"] });
+  expect(searchMatchesQuery(m, "task")).toBe(true);
+  expect(searchMatchesQuery(m, "  TASK  list ")).toBe(true); // case and spacing do not matter; list is in lists
+  expect(searchMatchesQuery(m, "checkbox github")).toBe(true); // words from different fields
+  expect(searchMatchesQuery(m, "task emoji")).toBe(false); // all of them, not any
+  expect(searchMatchesQuery(m, "zzzzqqqq")).toBe(false);
+});
+
+test("searchMatchesQuery: nothing typed keeps everything, and a package with no description still matches its name", () => {
+  expect(searchMatchesQuery(found({}), "")).toBe(true);
+  expect(searchMatchesQuery(found({}), "   ")).toBe(true);
+  expect(searchMatchesQuery(found({ name: "gp-house" }), "house")).toBe(true);
 });
 
 // ── carriedKinds: a row's kinds, in words ──────────────────────────────────

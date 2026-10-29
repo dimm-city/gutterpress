@@ -7,22 +7,24 @@
    * A row speaks only when something needs attention — a newer npm version
    * (Update), or a load failure (Show details, and Install / Reinstall /
    * Check again). This is the one place for the built-in extras (those the
-   * book does not list are offered to Add, each with what to type), npm,
-   * folders, web addresses and the order; the book's look is chosen on the
-   * Look tab.
+   * book does not list are offered to Add, each with what to type), finding
+   * a published extension on npm, folders, web addresses and the order; the
+   * book's look is chosen on the Look tab.
+   *
+   * Search: the box asks npm when the author submits it (Enter or Search),
+   * never at project load or on a keystroke. Each result is a name, its
+   * description, its kind when npm's keywords say (`searchKindLabel`) and Add
+   * — or "Added" when the book lists it. A failure is one quiet line.
    *
    * Updates: showing this list (its mount — never project load) asks npm once
    * for each pinned entry's latest. A failed check is one quiet line.
    */
   import { onMount } from "svelte";
   import Icon from "#lib/components/Icon.svelte";
-  import { api } from "#lib/api.ts";
-  import { extensionProblem, extensionSourceLabel, carriedKinds, describeSegments } from "./config-helpers";
+  import { extensionProblem, extensionSourceLabel, carriedKinds, describeSegments, searchKindLabel } from "./config-helpers";
   import type { ExtensionsSectionController } from "#lib/routes/extensions-section-controller.svelte.ts";
 
   let { controller }: { controller: ExtensionsSectionController } = $props();
-
-  const PLUGIN_FINDER_URL = "https://gutterpress.dimm.city/plugins/";
 
   onMount(() => {
     if (controller.updates.status === "idle" && controller.entries.some((e) => e.kind === "npm")) {
@@ -120,13 +122,45 @@
         </li>
       {/each}
     </ul>
-    <h4 class="subhead">From npm, a folder or a web address</h4>
   {/if}
+
+  <h4 class="subhead">Find one on npm</h4>
+  <p class="hint">Looks and extras other authors have shared. Search with nothing typed to see the most relevant.</p>
   <div class="add-row">
-    <label class="add-label" for="add-npm">npm package</label>
-    <input id="add-npm" class="input" type="text" bind:value={controller.npmName} onkeydown={(e) => { if (e.key === "Enter") controller.addNpm(); }} />
+    <label class="add-label" for="search-npm">Search npm</label>
+    <input id="search-npm" class="input" type="text" placeholder="a word, like footnote or emoji" bind:value={controller.searchQuery} onkeydown={(e) => { if (e.key === "Enter") controller.runSearch(); }} />
+    <button class="ghost small" onclick={controller.runSearch} disabled={controller.search.status === "loading"}>Search</button>
+  </div>
+  {#if controller.search.status === "loading"}
+    <p class="muted search-status" role="status">Searching npm…</p>
+  {:else if controller.search.status === "error"}
+    <p class="notice" role="status">{controller.search.message}</p>
+  {:else if controller.search.status === "ready" && controller.searchResults.length === 0}
+    <p class="muted search-status" role="status">{controller.search.query ? `No extensions found for "${controller.search.query}".` : "No extensions found on npm."}</p>
+  {:else if controller.searchResults.length > 0}
+    <ul class="add-list results" aria-label="Search results">
+      {#each controller.searchResults as m (m.name)}
+        {@const kind = searchKindLabel(m)}
+        <li>
+          <div class="result-main">
+            <span class="result-head"><span class="result-name">{m.name}</span>{#if kind}<span class="result-kind">{kind}</span>{/if}</span>
+            {#if m.description}<span class="result-desc" title={m.description}>{m.description}</span>{/if}
+          </div>
+          {#if m.added}
+            <span class="result-added">Added</span>
+          {:else}
+            <button class="ghost small" onclick={() => controller.addSearched(m)} disabled={controller.busy !== null} aria-label={`Add ${m.name}`}>{controller.busy === m.name ? "Adding…" : "Add"}</button>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+  {/if}
+
+  <h4 class="subhead">Other ways to add</h4>
+  <div class="add-row">
+    <label class="add-label" for="add-npm">Exact name</label>
+    <input id="add-npm" class="input" type="text" placeholder="name or name@version, for a package search can't find" bind:value={controller.npmName} onkeydown={(e) => { if (e.key === "Enter") controller.addNpm(); }} />
     <button class="ghost small" onclick={controller.addNpm} disabled={controller.busy !== null}>{controller.busy !== null && controller.busy === controller.npmName.trim() ? "Adding…" : "Add"}</button>
-    <button class="link" onclick={() => api.shell.openExternal(PLUGIN_FINDER_URL).catch(() => {})}>Find extensions <Icon name="external-link" size={12} /></button>
   </div>
   <div class="row">
     <button class="ghost small" onclick={controller.addLocal} disabled={controller.busy !== null} title="It is used where it is, not copied">
@@ -163,9 +197,19 @@
   .extra-desc { flex: 1; min-width: 0; font-size: 12px; color: var(--app-text-muted); line-height: 1.4; }
   .extra-desc code { font-family: var(--app-font-mono); font-size: 12px; color: var(--app-text); }
 
+  /* ── Search results: name and kind, the description under it, then Add (or Added) ── */
+  .search-status { font-size: 12px; }
+  .results li { align-items: flex-start; }
+  .result-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .result-head { display: flex; align-items: baseline; gap: 8px; }
+  .result-name { font-size: 13px; font-weight: 600; color: var(--app-text); overflow-wrap: anywhere; }
+  .result-kind { font-size: 12px; color: var(--app-text-muted); }
+  .result-desc { font-size: 12px; line-height: 1.4; color: var(--app-text-muted); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  /* Where Add was: the same width, so a row does not change size when it is added. */
+  .result-added { flex-shrink: 0; min-width: 46px; padding: 5px 0; font-size: 12px; text-align: center; color: var(--app-text-muted); }
+
   .add-row { align-items: center; }
   .add-label { flex-shrink: 0; width: 96px; font-size: 12.5px; color: var(--app-text-secondary); }
-  .add-row .link { white-space: nowrap; }
 
 
   /* #106: non-fatal import warnings (print-safety, missing metadata, extra files). */

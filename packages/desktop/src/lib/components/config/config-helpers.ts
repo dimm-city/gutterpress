@@ -11,6 +11,7 @@
 import type {
   ProjectExtensionEntry,
   ExtensionValidationResult,
+  NpmExtensionMatch,
 } from "#lib/platform/dtos.ts";
 
 /**
@@ -70,6 +71,32 @@ export function carriedKinds(entry: ProjectExtensionEntry): string[] {
     ...(c.components ? ["Components"] : []),
     ...(c.publish ? ["Publish destination"] : []),
   ];
+}
+
+/**
+ * What a search result is, in a word, when npm's keywords say so: a package
+ * tagged `gutterpress-look` is a look, and a plain markdown-it plugin (found
+ * by the ecosystem's own keyword) is an extra. A Gutterpress extension tagged
+ * neither — a component library, or a look with extras — says nothing rather
+ * than guess.
+ */
+export function searchKindLabel(match: NpmExtensionMatch): "Look" | "Extra" | null {
+  if (match.keywords.includes("gutterpress-look")) return "Look";
+  return match.kind === "markdown-it" ? "Extra" : null;
+}
+
+/**
+ * Does a search result mention every word the author typed, in its name,
+ * description or keywords? npm's `keywords:` is a filter but its text is only
+ * a ranking hint, so a nonsense word still comes back with the 900 most
+ * relevant tagged packages; without this, "No extensions found" could never
+ * be true. Words match inside other words (`list` finds `task-lists`); an
+ * empty query keeps everything (the most relevant).
+ */
+export function searchMatchesQuery(match: NpmExtensionMatch, query: string): boolean {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const text = [match.name, match.description ?? "", ...match.keywords].join(" ").toLowerCase();
+  return words.every((w) => text.includes(w));
 }
 
 /**
