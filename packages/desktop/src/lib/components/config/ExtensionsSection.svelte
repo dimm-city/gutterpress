@@ -21,10 +21,13 @@
    */
   import { onMount } from "svelte";
   import Icon from "#lib/components/Icon.svelte";
+  import { api } from "#lib/api.ts";
   import { extensionProblem, extensionSourceLabel, carriedKinds, describeSegments, searchKindLabel } from "./config-helpers";
   import type { ExtensionsSectionController } from "#lib/routes/extensions-section-controller.svelte.ts";
 
   let { controller }: { controller: ExtensionsSectionController } = $props();
+
+  const PLUGIN_FINDER_URL = "https://gutterpress.dimm.city/plugins/";
 
   onMount(() => {
     if (controller.updates.status === "idle" && controller.entries.some((e) => e.kind === "npm")) {
@@ -130,6 +133,7 @@
     <label class="add-label" for="search-npm">Search npm</label>
     <input id="search-npm" class="input" type="text" placeholder="a word, like footnote or emoji" bind:value={controller.searchQuery} onkeydown={(e) => { if (e.key === "Enter") controller.runSearch(); }} />
     <button class="ghost small" onclick={controller.runSearch} disabled={controller.search.status === "loading"}>Search</button>
+    <button class="link" onclick={() => api.shell.openExternal(PLUGIN_FINDER_URL).catch(() => {})}>Find extensions <Icon name="external-link" size={12} /></button>
   </div>
   {#if controller.search.status === "loading"}
     <p class="muted search-status" role="status">Searching npm…</p>
@@ -210,6 +214,7 @@
 
   .add-row { align-items: center; }
   .add-label { flex-shrink: 0; width: 96px; font-size: 12.5px; color: var(--app-text-secondary); }
+  .add-row .link { white-space: nowrap; }
 
 
   /* #106: non-fatal import warnings (print-safety, missing metadata, extra files). */
