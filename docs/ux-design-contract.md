@@ -119,17 +119,22 @@ gutterpress/
 │                                                        proposed deltas: preflight checklist, history)
 ├── Book setup                                 SHIPPED  (ProjectSettingsView, the toolbar's Setup
 │   │                                                    button; title "Book setup"; tabs Book /
-│   │                                                    Look / Backup, Advanced set apart at the
-│   │                                                    right; one Saving…/Saved in the header;
-│   │                                                    every tab saves as you go; #442)
+│   │                                                    Look / Extensions / Backup, Advanced set
+│   │                                                    apart at the right; one Saving…/Saved in
+│   │                                                    the header; every tab saves as you go; #442)
 │   ├── Book (id `book`)                       SHIPPED  (DetailsSection: title, authors, page size,
 │   │                                                    margins, print checks, then chapters by
 │   │                                                    title with "Not in the book" below, then
 │   │                                                    Save as template)
 │   ├── Look (id `look`)                       SHIPPED  (LookSection: Choose a look (a one-choice
 │   │                                                    gallery), Adjust the look (six brand
-│   │                                                    settings beside a live sample), Extras
-│   │                                                    (the built-in features as checkboxes))
+│   │                                                    settings beside a live sample))
+│   ├── Extensions (id `extensions`)           SHIPPED  (ExtensionsSection: Your extensions (the
+│   │                                                    manifest's ordered list: checkbox, move,
+│   │                                                    Remove), then Add an extension: the
+│   │                                                    built-in extras the book does not list,
+│   │                                                    each with what to type, then npm, folder,
+│   │                                                    .zip/.css and web-address adds)
 │   ├── Backup (id `backup`)                   SHIPPED  (ProjectConnectionsSection: one sentence for
 │   │                                                    the book's situation and at most one
 │   │                                                    primary action; GitHub or the book's own
@@ -137,11 +142,12 @@ gutterpress/
 │   │                                                    once set up, Test connection (this book's
 │   │                                                    repository), Repair online backup and
 │   │                                                    Start over from the online copy)
-│   └── Advanced (id `advanced`)               SHIPPED  (the ONE advanced path: Open manifest.yaml /
-│                                                        the stylesheet, the ordered extensions
-│                                                        list (ExtensionsSection) with npm, folder,
-│                                                        .zip/.css and web-address adds, and every
-│                                                        design setting (DesignSection))
+│   └── Advanced (id `advanced`)               SHIPPED  (the ONE advanced path: Open manifest.yaml,
+│                                                        the Stylesheets list (StylesSection: the
+│                                                        manifest's `styles:` in order, each with
+│                                                        move, Open and Remove, and the book's other
+│                                                        .css files to add), and every design
+│                                                        setting (DesignSection))
 ├── Project source / version history / GitHub  SHIPPED  (#12–#16, the Node-native git layer; AdvancedSetupDialog,
 │                                                        GitHubDialog, sync status)
 ├── Media panel                                SHIPPED  (MediaPanel, #47)
@@ -166,8 +172,9 @@ gutterpress/
 ```
 
 Document theming (looks, design tokens, stylesheets) and features (plugins)
-live in **Book setup** — the Look tab chooses a look, adjusts its brand
-settings and turns the extras on; Advanced holds everything else — not app
+live in **Book setup** — the Look tab chooses a look and adjusts its brand
+settings, the Extensions tab holds the extension list and turns the extras on,
+and Advanced holds the stylesheets and every design setting — not app
 Settings: app appearance and print theme are deliberately separated
 concepts; do not merge them back. Forms live where their task happens: a
 publishing key is added in Publish, a book's Git server is connected in its
@@ -469,9 +476,11 @@ buttons.
   the Dev persona's "no escape hatches" pain point and would **regress
   shipped, ungated features** (#30 plugins, #32 themes).
 - Book setup's **Book and Look tabs are core to a good first PDF and are
-  never gated**. Its **Advanced** tab is the one advanced path for npm, folder
-  and web extensions, their order, every design setting and the files behind
-  them; the other tabs link to it and never repeat its controls.
+  never gated**. Its **Extensions** tab is the one place for the extension
+  list — the built-in extras, npm, folder and web extensions, and their order
+  — and its **Advanced** tab is the one place for the stylesheets, every
+  design setting and the manifest; the other tabs link to them and never
+  repeat their controls.
 - **Every Book setup tab saves as you go; there is no Save button.** Text
   fields commit when you leave them or press Enter; pending edits are saved
   when you switch tabs or close the panel. A commit writes only what changed
@@ -706,12 +715,12 @@ Proposed refinements (file issues):
   and badge the count above N matches.
 - "Visual Mode" toggle → belongs to #37 (see §5).
 
-### 9. Extensions (one list: looks, features, component libraries) — on screen: Look and Advanced
+### 9. Extensions (one list: looks, features, component libraries) — on screen: Look and Extensions
 
 **Status: SHIPPED** (one manifest list, `extensions:`, since #265; shown
 since #442 as Book setup → **Look** for the main path — a look chosen from a
-gallery and the built-in features as Extras — and Book setup → **Advanced**
-for the list itself, `ExtensionsSection`). This section is rewritten around
+gallery — and, as its own **Extensions** tab, the list itself and everything
+that adds to it, `ExtensionsSection`). This section is rewritten around
 the actual plugin model; the original "app store" concept is **rejected** as
 incompatible with docs/architecture-rules.md §5 unless a future ADR changes
 that rule.
@@ -733,7 +742,7 @@ The model (binding, from docs/architecture-rules.md §5 and #265):
 - Build/export/validate **fail fast** on any plugin load error, identifying
   the offending manifest entry — a final artifact never silently omits
   author-configured formatting. Live preview **degrades and reports loudly**
-  ("Not downloaded yet." with Install on the Advanced row); every skip is
+  ("Not downloaded yet." with Install on the Extensions row); every skip is
   surfaced.
 - **List order is load order and cascade order.** A later entry runs after
   earlier ones and sees their output, and its CSS wins ties; the project's
@@ -746,18 +755,23 @@ one-choice gallery of thumbnails (the built-in looks and any npm or folder
 look in the list), and choosing replaces the book's look in place in
 `extensions:` — a built-in look is removed, an npm or folder look switched
 off — with no toast; a book with two enabled looks gets a notice and the way
-to Advanced instead of a guess. *Extras* lists the built-in features as
-checkboxes, each with what to type. **Advanced** is the list itself: the
+to the Extensions tab instead of a guess. **Extensions** is the list itself
+and the only place its entries are changed: *Your extensions* shows the
 manifest's `extensions:` entries in order, each row a checkbox (on/off), the
 label, its kind and source in words ("Look · built in", "Extra · npm
 3.0.0"), move up/down and Remove. A row says something only when it needs
 attention: "Version x is available." with Update, "Not downloaded yet." with
 Install, "Couldn't load." with Show details and Check again. Updates are
 checked once when the tab opens, never at project load. Below the list, one
-Add area: an npm package name, a folder or file referenced in place, a
-`.zip`/`.css` import and a web address (§11). No status badges, no version
-picker, no npm search (the website's plugin finder and `gutterpress ext
-search` cover it) and no pre-release switch (`gutterpress ext add
+*Add an extension* area, in two parts: the **built-in extras** the book does
+not list yet (Highlight, Callouts, Math…), each with what to type and an Add
+button, and then an npm package name, a folder or file referenced in place, a
+`.zip`/`.css` import and a web address (§11). A built-in extra is never shown
+twice: while the book lists it, it is a row of the list; Remove puts it back
+among the ones to add. (Footnotes, tables and definition lists need no
+extension and are always on, which the area says.) No status badges, no
+version picker, no npm search (the website's plugin finder and `gutterpress
+ext search` cover it) and no pre-release switch (`gutterpress ext add
 name@version`).
 
 Refinements (PROPOSED): link each plugin to its npm page for
@@ -816,8 +830,8 @@ adjusted on Book setup's **Look** tab) with PROPOSED refinements tracked in
 **#106**.
 
 Shipped: the Look tab's gallery offers the built-in looks (bundled names:
-nothing is copied) and any npm or folder look already in the list; Advanced
-adds a look from npm, a folder referenced in place, or a **folder, ZIP, CSS
+nothing is copied) and any npm or folder look already in the list; the
+Extensions tab adds a look from npm, a folder referenced in place, or a **folder, ZIP, CSS
 file or URL** import (`extension-import.ts`, reached through server routes).
 Every gallery card shows a **rendered thumbnail** of its CSS over a fixed
 sample; there is no hover preview.
@@ -857,8 +871,19 @@ stylesheet, which wins, with each variable's name, a per-row "Use the look's
 value", and Undo changes for the visit. Derived labels are plain words
 (`--fs-display` → "Display size"); a look labels its own extra tokens with
 `@label`. A compound value (`1pt solid …`) is edited as text, never as a
-bare number. The book's stylesheets are listed in the manifest's `styles:`
-(Advanced › Open manifest.yaml); there is no stylesheet list on screen.
+bare number. The book's stylesheets are the manifest's `styles:` list, shown
+on **Advanced › Stylesheets** with the extension list's rows: the path, move
+up/down, **Open** (the file opens in the editor and Book setup closes) and
+**Remove**, in load order ("a later one wins where two disagree"; they load
+after every extension). Remove takes a stylesheet off `styles:` and never
+deletes the file, and the last one has no Remove — an empty `styles:` falls
+back to `styles/book.css`, else the first `.css` the book has, so the list
+would show it again. **Add a stylesheet** offers the book's other `.css`
+files (its folder, `styles/` and `css/`, and a repository's shared ones) to
+add at the end of the list. A book with no stylesheet says so and offers
+**Create styles/book.css**, the file the first design edit creates too.
+**Open manifest.yaml** sits at the top of Advanced, since the manifest is not
+a stylesheet.
 
 There is **no apply and no revert**: a look is an ordinary list entry
 (enable/disable, reorder, remove — the same verbs `gutterpress ext`

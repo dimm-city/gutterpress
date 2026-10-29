@@ -5,10 +5,10 @@ description: Open Book setup to set the title, authors, page size, margins and c
 
 # Change your book's design
 
-Click **Setup** (the wrench) in the toolbar to open **Book setup**. Its tabs are **Book**, **Look**
-and **Backup**, with **Advanced** set apart on the right. Close it with the X or Esc. Every change
-is saved as you make it: there is no Save button, and the top of Book setup says **Saving…** and
-then **Saved**.
+Click **Setup** (the wrench) in the toolbar to open **Book setup**. Its tabs are **Book**, **Look**,
+**Extensions** and **Backup**, with **Advanced** set apart on the right. Close it with the X or Esc.
+Every change is saved as you make it: there is no Save button, and the top of Book setup says
+**Saving…** and then **Saved**.
 
 ## Title, page and chapters
 
@@ -42,8 +42,9 @@ look your book has from elsewhere. The one your book uses comes first, with a ti
 to use it instead; Gutterpress saves the choice as soon as you stop, and the line under the
 pictures says what the look is like. A new book already has the look its template came with.
 
-A book that combines two looks (set up in **Advanced**) says so above the pictures, and its looks
-are changed in Advanced.
+A book that combines two looks (set up on the **Extensions** tab) says so above the pictures, and
+its looks are changed there. Formatting extras such as callouts and math are on the Extensions tab
+too: see [add plugins and formatting extras](06-plugins.md).
 
 ## Adjust the look
 
@@ -59,17 +60,24 @@ again; **Undo changes** in Advanced brings them back.
 
 ![Book setup, Look tab: the looks to choose from, and the six settings beside the sample page](images/book-settings-design.jpg)
 
-## Every setting, and the files behind them
+## Every setting, and your stylesheets
 
 **All settings in Advanced** opens the **Advanced** tab at **All design settings**: every setting
 your look has, grouped into **Fonts**, **Colors**, **Sizes & numbers** and **Other**, each with the
 CSS name you would use in a stylesheet. The undo arrow beside a value you changed earlier offers
 **Use the look's value**; **Undo changes** undoes the changes made since you opened Book setup.
 
-Under **Files**, **Open manifest.yaml** and **Open styles/book.css** (your stylesheet's own name)
-open those files in the editor. The manifest's `styles:` list is where the book's stylesheets are
-turned on or off. The [styling chapter](https://gutterpress.dimm.city/docs/styling-theming/) covers
+At the top of Advanced, **Open manifest.yaml** opens the book's manifest in the editor. Under
+**Stylesheets** are the book's own `.css` files, in the order they load: a later one wins where two
+disagree, and all of them load after your extensions. Each row has **↑** and **↓** to move it,
+**Open**, which opens the file in the editor, and **Remove**, which takes it off the list and never
+deletes the file. A book always keeps at least one stylesheet, so the last one has no Remove. Under
+**Add a stylesheet** are the other `.css` files in your book's folder and its `styles` folder:
+**Add** puts one at the end of the list. A book with no stylesheet says so and offers **Create
+styles/book.css**. The [styling chapter](https://gutterpress.dimm.city/docs/styling-theming/) covers
 what a stylesheet can do.
+
+![Book setup, Advanced tab: the stylesheets, and every design setting](images/book-settings-advanced.jpg)
 
 ## Change the page size and margins
 

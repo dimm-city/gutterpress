@@ -186,20 +186,24 @@ await screen("book-settings-page", async () => {
   await page.locator("#details-margin-outside").scrollIntoViewIfNeeded();
   await wait(600);
 }, { crop: SETTINGS, width: 960 });
-// The demo book lists no extensions, so choose a look and tick an extra: Look
-// then shows the look's six settings beside the sample page, and Advanced
-// lists both.
+// The demo book lists no extensions, so choose a look: Look then shows the
+// look's six settings beside the sample page. Extensions then adds an extra
+// to the list, and Advanced shows the stylesheets above every design setting.
 await screen("book-settings-design", async () => {
   await click("[role=tab]:has-text('Look')");
   await click("input[name='book-look'][value='clean-book']");
   await wait(2500); // a choice is written once it stops changing
-  await page.locator("label:has-text('Highlight') input[type=checkbox]").check();
-  await wait(1500);
   await page.locator(".app-view :text('Choose a look')").first().scrollIntoViewIfNeeded();
 }, { crop: SETTINGS, width: 960 });
-await screen("book-settings-extensions", () => click("[role=tab]:has-text('Advanced')"), { crop: SETTINGS, width: 960 });
+await screen("book-settings-extensions", async () => {
+  await click("[role=tab]:has-text('Extensions')");
+  await click("button[aria-label='Add Highlight']");
+  await wait(1500);
+}, { crop: SETTINGS, width: 960 });
+await screen("book-settings-advanced", () => click("[role=tab]:has-text('Advanced')"), { crop: SETTINGS, width: 960 });
 // Take both out again, so the preview in the shots below is unchanged. A
 // removed row takes the focus with it, so close with the X, not Esc.
+await click("[role=tab]:has-text('Extensions')");
 await click("[aria-label='Remove Highlight']");
 await click("[aria-label='Remove Clean book']");
 await wait(1500);
