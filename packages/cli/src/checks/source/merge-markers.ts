@@ -50,9 +50,9 @@ function withoutOnlineTag(relPath: string): string {
 
 const check: Check = {
   id: "source.sync.merge-markers",
-  name: "Combined Versions",
+  name: "Combined Takes",
   description:
-    "Finds passages and files still holding two versions (yours and the online version) after a sync",
+    "Finds passages and files still holding two takes (yours and the online copy's) after getting the latest changes",
   category: "source",
   phase: "pre-build",
   async run(ctx: CheckContext): Promise<CheckResult[]> {
@@ -92,7 +92,7 @@ const check: Check = {
               severity: "error",
               code: "two-versions-passage",
               message:
-                "This passage has two versions — yours and the online version. Choose one in the editor's Two versions panel, or keep the text you want and delete the marker lines.",
+                "This passage has two takes — yours and the online copy's. Choose one in the editor's Two takes panel, or keep the text you want and delete the marker lines.",
               file,
               line: i + 1,
             }),
@@ -106,7 +106,7 @@ const check: Check = {
                 severity: "error",
                 code: "leftover-version-marker",
                 message:
-                  "This marker line is left over from combining two versions — delete it.",
+                  "This marker line is left over from combining two takes — delete it.",
                 file,
                 line: i + 1,
               }),
@@ -137,7 +137,7 @@ const check: Check = {
             // business to settle, not a broken build.
             severity: "warning",
             code: "kept-both-versions",
-            message: `Two versions of ${withoutOnlineTag(rel)} are in your book — keep the one you want, then delete the other.`,
+            message: `Two takes of ${withoutOnlineTag(rel)} are in your book — keep the one you want, then delete the other.`,
             file: sibling,
           }),
         );

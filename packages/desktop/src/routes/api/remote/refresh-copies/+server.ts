@@ -3,15 +3,18 @@ import { defineRoute, getHostServices, loadLib, requireProjectDir } from '../../
 import type { RequestHandler } from './$types';
 
 /**
- * Fetch every branch the project's remote has, so Book setup → Backup's copy
- * picker lists copies created somewhere else (#273). Reads the network but
- * only ever writes remote-tracking refs — no local branch, no working-tree
- * change — so it is safe to call with unsaved work open.
+ * Fetch every branch the project's remote has, so the revision list shows
+ * revisions created somewhere else (#273). Reads the network but only ever
+ * writes remote-tracking refs — no local branch, no working-tree change — so it
+ * is safe to call with unsaved work open.
  *
  * Best-effort by contract: an older lib, no remote, no credential, or being
- * offline all resolve to `{ refreshed: false }`. The picker then lists
- * whatever is already on disk rather than showing an error over a control the
- * author never explicitly asked to sync.
+ * offline all resolve to `{ refreshed: false }`. The list then shows whatever
+ * is already on disk rather than an error over a control the author never
+ * explicitly asked to sync.
+ *
+ * @deprecated `vcs/list-revisions` with `refresh: true` does this; removed once
+ * the desktop's callers have moved over.
  */
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   validate: async (raw) => ({

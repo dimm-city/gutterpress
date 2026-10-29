@@ -17,7 +17,7 @@ export const POST: RequestHandler = defineRoute<{ owner?: string; repo?: string;
       }
       const credential = await getHostServices().remote.tokenStore.get(getHostServices().remote.GITHUB_HOST);
       if (!credential) {
-        throw new Error('Connect GitHub first to see your repositories.');
+        throw new Error('Connect GitHub first to see your online copies.');
       }
       const lib = await loadLib();
       return lib.listRepoBooks(credential, body.owner, body.repo, body.branch);

@@ -66,6 +66,7 @@ import {
   onAuthFor,
   repoDirFor,
   resolveTransport,
+  serverTip,
   setupErrorMessage,
   short,
   snapshotBeforeAction,
@@ -409,12 +410,15 @@ export async function syncProject(
           // the next push-enabled pass sends them. Everything this pass was
           // asked to do is done (remote work merged in, local work committed
           // and safe), so it reports through the up-to-date arm; the converge
-          // report rides along because a pull-only merge CAN combine files.
+          // report rides along because a pull-only merge CAN combine files, and
+          // `pushDeferred` says versions are waiting (the merge made the local
+          // tip contain the online one, so reaching here means it has more).
           if (!push) {
             logger.info("sync", `pull-only pass complete — push deferred`, { pulled });
             return {
               status: "up-to-date",
               message: pulled ? MSG_UP_TO_DATE_PULLED : MSG_UP_TO_DATE,
+              pushDeferred: true,
               ...convergeExtras(),
               ...base(),
             };
@@ -484,26 +488,25 @@ export async function syncProject(
 }
 
 /**
- * Fetch every branch the remote has, so the project's copy list reflects what
+ * Fetch every branch the remote has, so the book's revision list reflects what
  * exists online rather than only what this clone happened to fetch before.
  *
- * The copy picker reads refs off disk (`listLocalBranches`). That makes a
- * branch pushed from anywhere else — another machine, the web UI, an agent
- * opening a PR — invisible here until someone runs `git fetch` in a terminal,
- * which is precisely the thing this app exists to avoid. So the picker calls
- * this first.
+ * `listRevisions` reads refs off disk. That makes a branch pushed from anywhere
+ * else — another machine, the web UI, an agent opening a PR — invisible here
+ * until someone runs `git fetch` in a terminal, which is precisely the thing
+ * this app exists to avoid. So the revision list calls this first.
  *
  * Unlike `fetchRemoteTip` this deliberately does NOT use `singleBranch`: the
  * whole point is the branches we do not have yet. It only ever writes
  * remote-tracking refs (`refs/remotes/<remote>/*`) — no local branch, no
  * working-tree change, no merge — so it is safe to call on a dirty tree.
  * `prune` drops tracking refs for branches deleted online, so the list cannot
- * offer a copy that is gone.
+ * offer a revision that is gone.
  *
  * Best-effort by contract: offline, unauthenticated, or no remote at all
  * resolves to `{ refreshed: false, reason }` rather than throwing. A stale
  * list beats an error dialog over a control the author did not explicitly ask
- * to sync — but it reports WHY, because a picker that silently omits copies
+ * to sync — but it reports WHY, because a list that silently omits revisions
  * is indistinguishable from a broken one, which is the bug this whole
  * function exists to fix.
  */
@@ -575,15 +578,7 @@ export async function checkRemoteUpdates(options: {
       ...(options.tokenStore ? { tokenStore: options.tokenStore } : {}),
     });
     const branch = await currentBranchOrThrow(dir);
-    const refs = await git.listServerRefs({
-      http,
-      url: transport.url,
-      prefix: `refs/heads/${branch}`,
-      ...onAuthFor(transport.credential),
-      // One shot: never loop on a rejected credential.
-      ...(transport.credential ? { onAuthFailure: () => ({ cancel: true }) } : {}),
-    });
-    const remoteTip = refs.find((r) => r.ref === `refs/heads/${branch}`)?.oid;
+    const remoteTip = await serverTip(transport, branch, http);
     if (!remoteTip) return { available: false };
     const known = async (ref: string) => {
       try {

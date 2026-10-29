@@ -17,6 +17,9 @@ import {
   snapshotStagingMarkerPath,
   resolveGitAuthor,
   listLocalBranches,
+  listRevisions,
+  createRevision,
+  revisionNameFrom,
   switchBranch,
   SWITCH_BRANCH_SNAPSHOT_MESSAGE,
 } from "./source-provider";
@@ -57,10 +60,10 @@ test("local-folder provider rejects snapshot/restore before history is enabled",
     const provider = providerFor({ type: "local-folder", path: dir });
     await expect(
       provider.snapshot({ projectDir: dir, message: "x" }),
-    ).rejects.toThrow(/no version history yet/i);
+    ).rejects.toThrow(/isn't keeping version history yet/i);
     await expect(
       provider.restore({ projectDir: dir, id: "deadbeef" }),
-    ).rejects.toThrow(/no version history yet/i);
+    ).rejects.toThrow(/isn't keeping version history yet/i);
     expect(await provider.listHistory(dir)).toEqual([]);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -98,7 +101,7 @@ test("snapshot with no changes is rejected (no empty history entries)", async ()
     const provider = await initProject(dir);
     await expect(
       provider.snapshot({ projectDir: dir, message: "Nothing changed" }),
-    ).rejects.toThrow(/no changes/i);
+    ).rejects.toThrow(/nothing new to save/i);
     expect((await provider.listHistory(dir)).length).toBe(1);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -176,7 +179,7 @@ test("restoreVersionWithBackup rejects on a plain folder", async () => {
   try {
     await expect(
       restoreVersionWithBackup({ projectDir: dir, id: "deadbeef" }),
-    ).rejects.toThrow(/no version history yet/i);
+    ).rejects.toThrow(/isn't keeping version history yet/i);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -207,7 +210,7 @@ test("deleting a file (fs only) is a pending change and is recorded by snapshot"
   }
 });
 
-test("restore failure after a backup snapshot reports the backup in the error", async () => {
+test("restore failure after a safety version reports it in the error", async () => {
   const dir = await tempDir();
   try {
     const provider = await initProject(dir);
@@ -225,14 +228,14 @@ test("restore failure after a backup snapshot reports the backup in the error", 
     const err = caught as Error;
     // Author-facing: the work was auto-saved and lives in version history.
     expect(err.message).toMatch(/your work is safe/i);
-    expect(err.message).toMatch(/backup snapshot/i);
+    expect(err.message).toMatch(/saved as an automatic version/i);
     expect(err.message).toMatch(/version history/i);
+    expect(err.message).not.toMatch(/snapshot|restore/i);
     expect(err.cause).toBeDefined();
 
     // The backup commit really exists and contains the unsaved work.
     const history = await provider.listHistory(dir);
     expect(history[0]!.message).toBe(RESTORE_BACKUP_MESSAGE);
-    expect(err.message).toContain(history[0]!.id.slice(0, 7));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -249,7 +252,7 @@ test("automatic snapshot records changes under AUTO_SNAPSHOT_MESSAGE", async () 
       projectDir: dir,
       message: AUTO_SNAPSHOT_MESSAGE,
     });
-    expect(snap.message).toBe("Automatic snapshot");
+    expect(snap.message).toBe("Automatic version");
     const history = await provider.listHistory(dir);
     expect(history[0]!.message).toBe(AUTO_SNAPSHOT_MESSAGE);
   } finally {
@@ -366,7 +369,7 @@ test("automatic snapshot on a clean tree rejects with an isNoChangesError error"
     }
     // The host scheduler fires blindly and swallows exactly this rejection.
     expect(isNoChangesError(caught)).toBe(true);
-    // The guard kept history clean: no empty "Automatic snapshot" entry.
+    // The guard kept history clean: no empty "Automatic version" entry.
     expect((await provider.listHistory(dir)).length).toBe(1);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -432,7 +435,7 @@ test("countUnversionedChanges counts only the open book's folder inside a larger
 
 test("isNoChangesError is false for other errors", () => {
   expect(isNoChangesError(new Error("repository is corrupt"))).toBe(false);
-  expect(isNoChangesError("no changes since the last snapshot")).toBe(false);
+  expect(isNoChangesError("Nothing new to save")).toBe(false);
   expect(isNoChangesError(undefined)).toBe(false);
 });
 
@@ -457,7 +460,7 @@ test("initVersionHistory never git-inits inside an existing repo (hand-built sou
     const provider = providerFor({ type: "local-folder", path: inner });
     await expect(
       provider.initVersionHistory({ projectDir: inner }),
-    ).rejects.toThrow(/already inside a versioned book/i);
+    ).rejects.toThrow(/already inside a book that keeps version history/i);
     // No shadow repo was created.
     await expect(stat(gitDirFor(inner))).rejects.toThrow();
   } finally {
@@ -520,7 +523,7 @@ test("subfolder snapshot commits the WHOLE repo (a project is its git repo)", as
     // Nothing left pending — the whole tree was committed in one snapshot.
     await expect(
       bookA.snapshot({ projectDir: dirA, message: "nothing new" }),
-    ).rejects.toThrow(/no changes/i);
+    ).rejects.toThrow(/nothing new to save/i);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -593,7 +596,7 @@ test("concurrent snapshot calls on the same repo serialize coherently", async ()
     // tree and gets the friendly "no changes" rejection — never corruption.
     expect(results[0]!.status).toBe("fulfilled");
     expect(results[1]!.status).toBe("rejected");
-    expect(String((results[1] as PromiseRejectedResult).reason)).toMatch(/no changes/i);
+    expect(String((results[1] as PromiseRejectedResult).reason)).toMatch(/nothing new to save/i);
 
     // Repo is consistent: exactly one new commit, both files reachable in it.
     const history = await provider.listHistory(dir);
@@ -889,7 +892,7 @@ test("a clean tree with no stale marker still reports 'no changes'", async () =>
     const provider = await initProject(dir);
     await expect(
       provider.snapshot({ projectDir: dir, message: "nothing" }),
-    ).rejects.toThrow(/no changes since the last snapshot/i);
+    ).rejects.toThrow(/nothing new to save/i);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -1006,7 +1009,7 @@ test("withRepoLock: the queue map is reclaimed to empty once all ops settle (B4)
   expect(__repoLockQueueSizeForTests()).toBe(before);
 });
 
-// ── Local branches / copy switching (#273) ────────────────────────────────────
+// ── Local branches / revision switching (#273) ───────────────────────────────
 
 test("listLocalBranches returns null for a plain folder — nothing to switch between", async () => {
   const dir = await tempDir();
@@ -1017,49 +1020,49 @@ test("listLocalBranches returns null for a plain folder — nothing to switch be
   }
 });
 
-test("listLocalBranches lists every local copy and which one is current", async () => {
+test("listLocalBranches lists every local revision and which one is current", async () => {
   const dir = await tempDir();
   try {
     await initProject(dir);
-    await git.branch({ fs, dir, ref: "second-copy" });
+    await git.branch({ fs, dir, ref: "second-revision" });
     const result = await listLocalBranches(dir);
     expect(result).not.toBeNull();
     expect(result!.current).toBe("main");
-    expect(result!.branches.slice().sort()).toEqual(["main", "second-copy"]);
+    expect(result!.branches.slice().sort()).toEqual(["main", "second-revision"]);
     expect(result!.remoteOnly).toEqual([]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("listLocalBranches lists a copy that exists only on the remote, and marks it", async () => {
+test("listLocalBranches lists a revision that exists only on the remote, and marks it", async () => {
   const dir = await tempDir();
   try {
     await initProject(dir);
     // Remote names come from config, not from the ref path: without this,
     // `refs/remotes/origin/a/b` is ambiguous between remote "origin" and
-    // remote "origin/a". A fetched copy always implies a configured remote.
+    // remote "origin/a". A fetched revision always implies a configured remote.
     await git.addRemote({ fs, dir, remote: "origin", url: "https://example.invalid/p.git" });
     const head = await git.resolveRef({ fs, dir, ref: "main" });
-    // A copy that was only ever fetched: a remote-tracking ref with no
+    // A revision that was only ever fetched: a remote-tracking ref with no
     // refs/heads/ counterpart. This is the case that used to be invisible.
     await git.writeRef({
       fs,
       dir,
-      ref: "refs/remotes/origin/online-copy",
+      ref: "refs/remotes/origin/online-revision",
       value: head,
       force: true,
     });
     // One that exists both places must not be listed twice or marked online-only.
-    await git.branch({ fs, dir, ref: "shared-copy" });
+    await git.branch({ fs, dir, ref: "shared-revision" });
     await git.writeRef({
       fs,
       dir,
-      ref: "refs/remotes/origin/shared-copy",
+      ref: "refs/remotes/origin/shared-revision",
       value: head,
       force: true,
     });
-    // The remote's own HEAD symref is not a copy.
+    // The remote's own HEAD symref is not a revision.
     await git.writeRef({
       fs,
       dir,
@@ -1070,45 +1073,45 @@ test("listLocalBranches lists a copy that exists only on the remote, and marks i
 
     const result = await listLocalBranches(dir);
     expect(result).not.toBeNull();
-    expect(result!.branches).toEqual(["main", "online-copy", "shared-copy"]);
-    expect(result!.remoteOnly).toEqual(["online-copy"]);
+    expect(result!.branches).toEqual(["main", "online-revision", "shared-revision"]);
+    expect(result!.remoteOnly).toEqual(["online-revision"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("switchBranch checks out another local copy and preserves an in-progress edit with a safety snapshot", async () => {
+test("switchBranch checks out another local revision and preserves an in-progress edit with a safety snapshot", async () => {
   const dir = await tempDir();
   try {
     const provider = await initProject(dir);
-    await git.branch({ fs, dir, ref: "second-copy" });
-    // Diverge "second-copy" (bypassing switchBranch, which is what's under test).
-    await git.checkout({ fs, dir, ref: "second-copy" });
-    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nSecond copy's draft.\n");
-    await writeFile(path.join(dir, "chapter-02.md"), "# New chapter\n\nOnly on the second copy.\n");
-    await provider.snapshot({ projectDir: dir, message: "Second copy draft" });
+    await git.branch({ fs, dir, ref: "second-revision" });
+    // Diverge "second-revision" (bypassing switchBranch, which is what's under test).
+    await git.checkout({ fs, dir, ref: "second-revision" });
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nSecond revision's draft.\n");
+    await writeFile(path.join(dir, "chapter-02.md"), "# New chapter\n\nOnly on the second revision.\n");
+    await provider.snapshot({ projectDir: dir, message: "Second revision draft" });
     await git.checkout({ fs, dir, ref: "main" });
 
     // An in-progress, UNCOMMITTED edit on main — must survive the switch.
     await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nStill typing on main.\n");
 
-    const result = await switchBranch({ projectDir: dir, branch: "second-copy" });
-    expect(result.current).toBe("second-copy");
+    const result = await switchBranch({ projectDir: dir, branch: "second-revision" });
+    expect(result.current).toBe("second-revision");
     expect(result.changedFiles.slice().sort()).toEqual(
       [path.join(dir, "chapter-01.md"), path.join(dir, "chapter-02.md")].sort(),
     );
 
-    // Working tree now matches "second-copy".
+    // Working tree now matches "second-revision".
     expect(await readFile(path.join(dir, "chapter-01.md"), "utf-8")).toBe(
-      "# Hello\n\nSecond copy's draft.\n",
+      "# Hello\n\nSecond revision's draft.\n",
     );
     expect(await readFile(path.join(dir, "chapter-02.md"), "utf-8")).toBe(
-      "# New chapter\n\nOnly on the second copy.\n",
+      "# New chapter\n\nOnly on the second revision.\n",
     );
-    expect(await git.currentBranch({ fs, dir, fullname: false })).toBe("second-copy");
+    expect(await git.currentBranch({ fs, dir, fullname: false })).toBe("second-revision");
 
     // The uncommitted edit on main was snapshotted, not lost — switch back
-    // (a no-op safety snapshot, since second-copy's tree is clean) and confirm.
+    // (a no-op safety snapshot, since second-revision's tree is clean) and confirm.
     await switchBranch({ projectDir: dir, branch: "main" });
     expect(await readFile(path.join(dir, "chapter-01.md"), "utf-8")).toBe(
       "# Hello\n\nStill typing on main.\n",
@@ -1120,59 +1123,59 @@ test("switchBranch checks out another local copy and preserves an in-progress ed
   }
 });
 
-test("switchBranch checks out a copy that exists only on the remote, creating and tracking it locally", async () => {
+test("switchBranch checks out a revision that exists only on the remote, creating and tracking it locally", async () => {
   const dir = await tempDir();
   try {
     const provider = await initProject(dir);
     await git.addRemote({ fs, dir, remote: "origin", url: "https://example.invalid/p.git" });
-    // Build the copy's content, record where it lands, then remove the local
+    // Build the revision's content, record where it lands, then remove the local
     // branch so only the remote-tracking ref is left — exactly the shape of a
-    // copy you have fetched but never checked out.
-    await git.branch({ fs, dir, ref: "online-copy" });
-    await git.checkout({ fs, dir, ref: "online-copy" });
+    // revision you have fetched but never checked out.
+    await git.branch({ fs, dir, ref: "online-revision" });
+    await git.checkout({ fs, dir, ref: "online-revision" });
     await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nWritten online.\n");
-    await provider.snapshot({ projectDir: dir, message: "Online copy draft" });
-    const onlineOid = await git.resolveRef({ fs, dir, ref: "online-copy" });
+    await provider.snapshot({ projectDir: dir, message: "Online revision draft" });
+    const onlineOid = await git.resolveRef({ fs, dir, ref: "online-revision" });
     await git.checkout({ fs, dir, ref: "main" });
-    await git.deleteBranch({ fs, dir, ref: "online-copy" });
+    await git.deleteBranch({ fs, dir, ref: "online-revision" });
     await git.writeRef({
       fs,
       dir,
-      ref: "refs/remotes/origin/online-copy",
+      ref: "refs/remotes/origin/online-revision",
       value: onlineOid,
       force: true,
     });
-    expect(await git.listBranches({ fs, dir })).not.toContain("online-copy");
+    expect(await git.listBranches({ fs, dir })).not.toContain("online-revision");
 
-    const result = await switchBranch({ projectDir: dir, branch: "online-copy" });
+    const result = await switchBranch({ projectDir: dir, branch: "online-revision" });
 
-    expect(result.current).toBe("online-copy");
+    expect(result.current).toBe("online-revision");
     expect(result.changedFiles).toEqual([path.join(dir, "chapter-01.md")]);
     // The working tree really moved, and the local branch now exists.
     expect(await readFile(path.join(dir, "chapter-01.md"), "utf-8")).toBe(
       "# Hello\n\nWritten online.\n",
     );
-    expect(await git.listBranches({ fs, dir })).toContain("online-copy");
-    expect(await git.currentBranch({ fs, dir, fullname: false })).toBe("online-copy");
-    // Tracking is set, so the copy pushes and pulls where it came from.
+    expect(await git.listBranches({ fs, dir })).toContain("online-revision");
+    expect(await git.currentBranch({ fs, dir, fullname: false })).toBe("online-revision");
+    // Tracking is set, so the revision pushes and pulls where it came from.
     expect(
-      await git.getConfig({ fs, dir, path: "branch.online-copy.remote" }),
+      await git.getConfig({ fs, dir, path: "branch.online-revision.remote" }),
     ).toBe("origin");
     // It is no longer reported as online-only, because it is now local too.
     const listed = await listLocalBranches(dir);
-    expect(listed!.remoteOnly).not.toContain("online-copy");
+    expect(listed!.remoteOnly).not.toContain("online-revision");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("switchBranch gives a friendly error for a copy that no longer exists anywhere", async () => {
+test("switchBranch gives a friendly error for a revision that no longer exists anywhere", async () => {
   const dir = await tempDir();
   try {
     await initProject(dir);
     expect(
       switchBranch({ projectDir: dir, branch: "never-existed" }),
-    ).rejects.toThrow(/Couldn't find a copy named "never-existed"/);
+    ).rejects.toThrow(/Couldn't find a revision named "never-existed"/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -1182,9 +1185,9 @@ test("switchBranch takes no safety snapshot (and reports no changed files) when 
   const dir = await tempDir();
   try {
     const provider = await initProject(dir);
-    await git.branch({ fs, dir, ref: "second-copy" });
+    await git.branch({ fs, dir, ref: "second-revision" });
     const before = await provider.listHistory(dir);
-    const result = await switchBranch({ projectDir: dir, branch: "second-copy" });
+    const result = await switchBranch({ projectDir: dir, branch: "second-revision" });
     expect(result.changedFiles).toEqual([]);
     const after = await provider.listHistory(dir);
     expect(after.length).toBe(before.length);
@@ -1198,7 +1201,7 @@ test("switchBranch on a project with no version history is a friendly rejection"
   try {
     await expect(
       switchBranch({ projectDir: dir, branch: "main" }),
-    ).rejects.toThrow(/no version history yet/i);
+    ).rejects.toThrow(/isn't keeping version history yet/i);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -1211,7 +1214,7 @@ test("switchBranch surfaces a checkout conflict as a friendly error and never fo
     // never touches it (listWorkdirChanges prunes ignored paths) — it stays
     // untracked on disk. Built entirely with plumbing (readTree/writeBlob/
     // writeTree/commit) so main's own checkout/index is never touched — the
-    // ordinary way to reach this (checking "second-copy" out for real to
+    // ordinary way to reach this (checking "second-revision" out for real to
     // commit there) would itself stage "ignored.md", turning main's own next
     // checkout into a plain tracked-file delete instead of the untracked-file
     // conflict this test targets.
@@ -1227,7 +1230,7 @@ test("switchBranch surfaces a checkout conflict as a friendly error and never fo
     const blobOid = await git.writeBlob({
       fs,
       dir,
-      blob: new TextEncoder().encode("COMMITTED ON SECOND COPY\n"),
+      blob: new TextEncoder().encode("COMMITTED ON SECOND REVISION\n"),
     });
     const newTree = [
       ...tree.filter((e) => e.path !== "ignored.md"),
@@ -1237,7 +1240,7 @@ test("switchBranch surfaces a checkout conflict as a friendly error and never fo
     await git.commit({
       fs,
       dir,
-      ref: "refs/heads/second-copy",
+      ref: "refs/heads/second-revision",
       tree: newTreeOid,
       parent: [mainOid],
       message: "Track ignored.md here",
@@ -1245,8 +1248,8 @@ test("switchBranch surfaces a checkout conflict as a friendly error and never fo
     });
 
     await expect(
-      switchBranch({ projectDir: dir, branch: "second-copy" }),
-    ).rejects.toThrow(/couldn't switch copies/i);
+      switchBranch({ projectDir: dir, branch: "second-revision" }),
+    ).rejects.toThrow(/couldn't switch revisions/i);
 
     // Never forced: the untracked file on disk, and the current branch, are untouched.
     expect(await readFile(path.join(dir, "ignored.md"), "utf-8")).toBe("LOCAL ONLY\n");
@@ -1280,4 +1283,172 @@ test("whenGitIdle waits for running AND later-chained git work on every repo", a
 
 test("whenGitIdle resolves at once when nothing is queued", async () => {
   await whenGitIdle();
+});
+
+// ── Revisions (#448) ─────────────────────────────────────────────────────────
+
+/** A book with an online copy that this test never reaches: only its tracking refs are written. */
+async function initOnlineProject(dir: string) {
+  const provider = await initProject(dir);
+  await git.addRemote({ fs, dir, remote: "origin", url: "https://example.invalid/p.git" });
+  const trackAt = (name: string, value: string) =>
+    git.writeRef({ fs, dir, ref: `refs/remotes/origin/${name}`, value, force: true });
+  return { provider, trackAt };
+}
+
+test("revisionNameFrom trims and turns spaces into hyphens", () => {
+  expect(revisionNameFrom("  Second   edition ")).toBe("Second-edition");
+  expect(revisionNameFrom("Editor's pass")).toBe("Editor's-pass");
+  expect(revisionNameFrom("   ")).toBe("");
+});
+
+test("listRevisions is null for a plain folder", async () => {
+  const dir = await tempDir();
+  try {
+    expect(await listRevisions(dir)).toBeNull();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("listRevisions: with no online copy every revision is only on this computer", async () => {
+  const dir = await tempDir();
+  try {
+    await initProject(dir);
+    await git.branch({ fs, dir, ref: "Second-edition" });
+    expect(await listRevisions(dir)).toEqual({
+      current: "main",
+      revisions: [
+        { name: "main", current: true, where: "this-computer", notBackedUp: false },
+        { name: "Second-edition", current: false, where: "this-computer", notBackedUp: false },
+      ],
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("listRevisions reports where each revision is kept and what is not backed up yet, from refs alone", async () => {
+  const dir = await tempDir();
+  try {
+    const { provider, trackAt } = await initOnlineProject(dir);
+    const base = await git.resolveRef({ fs, dir, ref: "main" });
+
+    // "main": backed up (tips match), then this computer moves ahead by a saved version.
+    await trackAt("main", base);
+    expect((await listRevisions(dir))!.revisions[0]).toMatchObject({ name: "main", where: "online", notBackedUp: false });
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nMore.\n");
+    await provider.snapshot({ projectDir: dir, message: "More" });
+    // "behind": the online copy moved on without us (our tip is one of its versions).
+    await git.branch({ fs, dir, ref: "behind", object: base });
+    await trackAt("behind", await git.resolveRef({ fs, dir, ref: "main" }));
+    // "mine": only on this computer. "theirs": only in the online copy.
+    await git.branch({ fs, dir, ref: "mine" });
+    await trackAt("theirs", base);
+    // The online copy's own HEAD pointer is not a revision.
+    await trackAt("HEAD", base);
+
+    const list = await listRevisions(dir);
+    expect(list!.current).toBe("main");
+    expect(list!.revisions).toEqual([
+      { name: "behind", current: false, where: "online", notBackedUp: false },
+      { name: "main", current: true, where: "online", notBackedUp: true },
+      { name: "mine", current: false, where: "this-computer", notBackedUp: false },
+      { name: "theirs", current: false, where: "online-only", notBackedUp: false },
+    ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("listRevisions: versions that parted ways from the online copy are not backed up", async () => {
+  const dir = await tempDir();
+  try {
+    const { provider, trackAt } = await initOnlineProject(dir);
+    const base = await git.resolveRef({ fs, dir, ref: "main" });
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nMine.\n");
+    await provider.snapshot({ projectDir: dir, message: "Mine" });
+    // The online copy's main is a different child of the same first version.
+    const { commit } = await git.readCommit({ fs, dir, oid: base });
+    const theirs = await git.commit({
+      fs, dir, ref: "refs/heads/their-side", tree: commit.tree, parent: [base],
+      message: "Theirs", author: { name: "T", email: "t@example.com" },
+    });
+    await trackAt("main", theirs);
+    expect((await listRevisions(dir))!.revisions.find((r) => r.name === "main")!.notBackedUp).toBe(true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("createRevision starts from the current version, opens it, and saves unsaved work first", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nTyped but not saved.\n");
+
+    const result = await createRevision({ projectDir: dir, name: "  Second edition " });
+
+    expect(result).toEqual({ current: "Second-edition" });
+    expect(await git.currentBranch({ fs, dir, fullname: false })).toBe("Second-edition");
+    // The unsaved work became a version, and both revisions start from it.
+    const history = await provider.listHistory(dir);
+    expect(history[0]!.message).toBe(SWITCH_BRANCH_SNAPSHOT_MESSAGE);
+    expect(await git.resolveRef({ fs, dir, ref: "Second-edition" })).toBe(history[0]!.id);
+    expect(await git.resolveRef({ fs, dir, ref: "main" })).toBe(history[0]!.id);
+    expect(await readFile(path.join(dir, "chapter-01.md"), "utf-8")).toBe("# Hello\n\nTyped but not saved.\n");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("createRevision on a clean book makes no version", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    await createRevision({ projectDir: dir, name: "Editors pass" });
+    expect((await provider.listHistory(dir)).length).toBe(1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("createRevision refuses empty, unusable and taken names in plain words, changing nothing", async () => {
+  const dir = await tempDir();
+  try {
+    const { trackAt } = await initOnlineProject(dir);
+    await trackAt("elsewhere", await git.resolveRef({ fs, dir, ref: "main" }));
+    await git.branch({ fs, dir, ref: "Second-edition" });
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nUnsaved.\n");
+
+    const refused = async (name: string) =>
+      createRevision({ projectDir: dir, name }).then(() => "created", (e: Error) => e.message);
+
+    expect(await refused("   ")).toMatch(/give the revision a name/i);
+    for (const bad of ["a..b", "bad:name", "-lead", ".dot", "trail.", "x.lock", "has/slash", "a~b", "a^b", "q?", "s*r", "w[x", "b\\s", "a@{b", "@"]) {
+      expect(await refused(bad)).toMatch(/can't be a revision name/i);
+    }
+    expect(await refused("x".repeat(101))).toMatch(/can't be a revision name/i);
+    // Taken on this computer — also when only the letters' case differs.
+    expect(await refused("Second edition")).toMatch(/already a revision called "Second-edition"/i);
+    expect(await refused("second-EDITION")).toMatch(/already a revision called "Second-edition"/i);
+    expect(await refused("main")).toMatch(/already a revision called "main"/i);
+    // Taken in the online copy.
+    expect(await refused("elsewhere")).toMatch(/already a revision in the online copy/i);
+
+    // Nothing happened: still on main, and the refused names did not even save a version.
+    expect(await git.currentBranch({ fs, dir, fullname: false })).toBe("main");
+    expect((await providerFor(await detectProjectSource(dir)).listHistory(dir)).length).toBe(1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("createRevision on a plain folder is a friendly rejection", async () => {
+  const dir = await tempDir();
+  try {
+    await expect(createRevision({ projectDir: dir, name: "Second edition" })).rejects.toThrow(/turn on version history/i);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

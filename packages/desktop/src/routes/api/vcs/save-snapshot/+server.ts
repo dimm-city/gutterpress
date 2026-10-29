@@ -10,7 +10,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; message: s
     const projectDir = await requireProjectDir(body.projectDir, 'vcs/save-snapshot');
     const message = typeof body.message === 'string' && body.message.trim()
       ? body.message.trim()
-      : 'Saved snapshot';
+      : 'Saved a version';
     return { projectDir, message };
   },
   call: async ({ body }) => {
@@ -20,12 +20,14 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; message: s
     // whole repository, so a monorepo's books share one log file (matching the
     // lib's own buildRecoveryContext, which slugs the repo dir).
     const repoRoot = lib.repoRootForSource(source, body.projectDir);
-    return lib.providerFor(source).snapshot({
+    const saved = await lib.providerFor(source).snapshot({
       projectDir: body.projectDir,
       message: body.message,
       ...(await gitIdentityArgs()),
       logFile: getHostServices().vcs.operationLogPath(basename(repoRoot)),
     });
+    getHostServices().vcs.refreshOnlineStatus?.(body.projectDir);
+    return saved;
   },
-  onError: (e) => friendlyVcsError(e, 'saveSnapshot', 'vcs/save-snapshot'),
+  onError: (e) => friendlyVcsError(e, 'vcs/save-snapshot'),
 });

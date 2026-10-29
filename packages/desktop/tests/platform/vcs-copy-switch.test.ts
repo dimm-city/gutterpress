@@ -153,7 +153,7 @@ describe("POST /api/vcs/switch-branch", () => {
     fakeLib({
       switchBranch: async () => {
         order.push("switchBranch:throw");
-        throw new Error("no version history yet. Enable version history first.");
+        throw new Error("This book isn't keeping version history yet. Turn on version history first.");
       },
     });
 

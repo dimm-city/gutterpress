@@ -181,9 +181,20 @@ export async function startGitServer(
         req.url?.includes("/info/refs") &&
         req.url.includes("service=git-receive-pack")
       ) {
-        // Push ref advertisement. side-band-64k is REQUIRED in the cap list:
-        // isomorphic-git's push parses the report-status through a side-band
-        // demux, so a plain (non-side-band) response would parse as empty.
+        // Push ref advertisement: EVERY branch, like a real receive-pack, so a
+        // client can tell a new branch from an existing one and delete the
+        // latter. side-band-64k is REQUIRED in the cap list: isomorphic-git's
+        // push parses the report-status through a side-band demux, so a plain
+        // (non-side-band) response would parse as empty.
+        const caps = "report-status side-band-64k agent=git/test";
+        const heads = head ? await git.listBranches({ fs, ...repo }) : [];
+        const refLines = await Promise.all(
+          heads.map(
+            async (name) =>
+              `${await git.resolveRef({ fs, ...repo, ref: `refs/heads/${name}` })} refs/heads/${name}`,
+          ),
+        );
+        if (refLines.length === 0) refLines.push(`${ZERO_OID} capabilities^{}`);
         res.writeHead(200, {
           "content-type": "application/x-git-receive-pack-advertisement",
         });
@@ -191,11 +202,7 @@ export async function startGitServer(
           Buffer.concat([
             pkt("# service=git-receive-pack\n"),
             FLUSH,
-            pkt(
-              head
-                ? `${head} refs/heads/${branch}\0report-status side-band-64k agent=git/test\n`
-                : `${ZERO_OID} capabilities^{}\0report-status side-band-64k agent=git/test\n`,
-            ),
+            ...refLines.map((line, i) => pkt(i === 0 ? `${line}\0${caps}\n` : `${line}\n`)),
             FLUSH,
           ]),
         );

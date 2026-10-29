@@ -19,5 +19,5 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; id: string
     return { projectDir, id };
   },
   call: ({ body }) => getHostServices().vcs.openVersionPreview(body.projectDir, body.id),
-  onError: (e) => friendlyVcsError(e, 'openVersionPreview', 'vcs/open-version-preview'),
+  onError: (e) => friendlyVcsError(e, 'vcs/open-version-preview'),
 });

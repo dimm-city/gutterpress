@@ -319,7 +319,8 @@ test("fs/undo-delete: a token that is not one of ours is refused (410)", async (
 
 test("fs/delete: with version history, snapshots the working tree BEFORE deleting", async () => {
   const snapshotCalls: Array<{ projectDir: string; message: string }> = [];
-  registerHostServices(baseServices());
+  const statusChecks: string[] = [];
+  registerHostServices(baseServices({ vcs: { refreshOnlineStatus: (dir: string) => statusChecks.push(dir) } }));
   fakeLib({
     detectProjectSource: async () => ({ type: "local-git-folder" }),
     capabilitiesFor: () => ({ canSnapshot: true }),
@@ -343,9 +344,11 @@ test("fs/delete: with version history, snapshots the working tree BEFORE deletin
   expect(await exists(target)).toBe(false);
   expect(snapshotCalls).toHaveLength(1);
   expect(snapshotCalls[0]!.message).toBe("Before deleting chapter-01.md");
+  // The version it saved may be one the online copy lacks: the status is re-checked.
+  expect(statusChecks).toEqual([projectDir]);
 });
 
-test("fs/delete: a real 'no changes since last snapshot' rejection is swallowed and the delete proceeds", async () => {
+test("fs/delete: a real 'nothing new to save' rejection is swallowed and the delete proceeds", async () => {
   registerHostServices(baseServices());
   fakeLib({
     detectProjectSource: async () => ({ type: "local-git-folder" }),
@@ -354,10 +357,10 @@ test("fs/delete: a real 'no changes since last snapshot' rejection is swallowed 
       s?.type === "local-git-folder" ? s.repoRoot || d : d,
     providerFor: () => ({
       snapshot: async () => {
-        throw new Error("no changes since the last snapshot");
+        throw new Error("Nothing new to save — your last version already has everything.");
       },
     }),
-    isNoChangesError: (e: unknown) => e instanceof Error && /no changes since the last snapshot/i.test(e.message),
+    isNoChangesError: (e: unknown) => e instanceof Error && /nothing new to save/i.test(e.message),
   });
   const target = path.join(projectDir, "chapter-01.md");
   const res = await deleteRoute({
@@ -386,7 +389,7 @@ test("fs/delete: a REAL snapshot failure aborts the delete — nothing is delete
     deleteRoute({ request: request({ path: target, projectDir }) } as Parameters<typeof deleteRoute>[0]),
   );
   expect(status).toBe(500);
-  expect(String(message)).toContain("Could not save a safety snapshot");
+  expect(String(message)).toContain("Couldn't save a version before deleting");
   expect(await exists(target)).toBe(true);
 });
 

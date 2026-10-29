@@ -110,20 +110,20 @@ function friendlyCloneError(e: unknown): Error {
   // desktop redacts /https?:\/\/\S+/ matches, which would garble the message.)
   if (isInsecureTransportError(e)) {
     return new Error(
-      "That repository address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Use a secure address (starting with https), or a local loopback address for a server on this computer.",
+      "That address isn't secure, so the saved sign-in wasn't sent — sign-ins are never sent over an insecure address. Use a secure address (starting with https), or a local loopback address for a server on this computer.",
       { cause: e },
     );
   }
   const msg = e instanceof Error ? e.message : String(e);
   if (/401|403|auth|credential/i.test(msg)) {
     return new Error(
-      "GitHub didn't accept the connection for this repository. Reconnect GitHub and try again.",
+      "GitHub didn't accept the saved sign-in for this book. Sign in to GitHub again and try again.",
       { cause: e },
     );
   }
   if (/404|not found/i.test(msg)) {
     return new Error(
-      "That repository couldn't be found. It may have been renamed or you may no longer have access.",
+      "That online copy couldn't be found. It may have been renamed or you may no longer have access.",
       { cause: e },
     );
   }
@@ -160,11 +160,11 @@ export async function cloneRepository(
   try {
     parsed = new URL(options.url);
   } catch {
-    throw new Error("That repository address is not a valid web URL.");
+    throw new Error("That address is not a valid web address.");
   }
   if (!/^https?:$/.test(parsed.protocol)) {
     throw new Error(
-      "Only HTTPS repository addresses are supported. SSH addresses (git@…) can't be used here.",
+      "Only secure web (https) addresses are supported. SSH addresses (git@…) can't be used here.",
     );
   }
 

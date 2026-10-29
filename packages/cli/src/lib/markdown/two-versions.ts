@@ -141,8 +141,8 @@ function twoVersions(state: StateBlock, startLine: number, endLine: number, sile
   open.attrSet("class", "gp-two-versions");
   open.map = [startLine, closer + 1];
   open.block = true;
-  pushVersion(state, "yours", "Your version", startLine + 1, separator);
-  pushVersion(state, "online", "Online version", separator + 1, closer);
+  pushVersion(state, "yours", "Your take", startLine + 1, separator);
+  pushVersion(state, "online", "Online take", separator + 1, closer);
   const close = state.push("two_versions_close", "div", -1);
   close.block = true;
   state.parentType = oldParent;
