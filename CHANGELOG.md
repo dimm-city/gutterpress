@@ -422,6 +422,12 @@ This project follows [Semantic Versioning](https://semver.org/).
   versions could come back short with no **Show older versions**, and the next
   page could skip or repeat versions. Each version is now listed once, newest
   first, and **Show older versions** stays until the oldest.
+- **Version history counts every version in the online copy (#477).** After
+  changes were combined with the online copy's, the versions in the online
+  copy and not on this computer yet could be counted short: one dated before
+  the versions it builds on, such as a collaborator's with their clock behind,
+  was missed, and a long list stopped early. Each one is now counted once, and
+  none this computer already has.
 - **Long tables and overridden side breaks paginate the same in preview and
   print (#454).** The preview now lets Chromium repeat a table's header row on
   each page, as print does, instead of copying it in; the copies could fit a
