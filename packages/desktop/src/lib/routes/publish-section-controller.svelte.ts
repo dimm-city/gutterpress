@@ -30,6 +30,14 @@ import type {
   PublishDestinationStatus,
 } from "#lib/platform/contract.ts";
 import type { PreflightRow } from "#lib/preflight.ts";
+import {
+  bookValues,
+  hasOwnFolder,
+  pickValues,
+  promptFor,
+  statusFromCard,
+  type DestinationPrompt,
+} from "#lib/routes/destination-prompt.ts";
 
 export interface PublishSectionDeps {
   /** The open project directory (reactive prop), or null when none is open. */
@@ -65,23 +73,6 @@ export interface PublishSectionDeps {
   /** Fired after a non-dry-run Publish succeeds; `guided` selects the copy. */
   onPublished?: (guided: boolean) => void;
 }
-
-/** What a destination step says and where a pick is saved (#452). */
-export interface DestinationPrompt {
-  /** The plain-words status line, "" for none. */
-  message: string;
-  /** The destination the picker shows as chosen, "" when the person must choose. */
-  selected: string;
-  /** "book": a pick is the book's folder, saved in the manifest. "mine": it is
-   *  this person's own, saved in their private settings only. */
-  saveTo: "book" | "mine";
-  /** Offer "Use the book's folder" (drops this person's own). */
-  canUseBook: boolean;
-  /** Offer "Use a different folder just for me". */
-  canChooseOwn: boolean;
-}
-
-const SAVED_FOR_YOU = "It is saved for you only; the book keeps its folder for everyone else.";
 
 export class PublishSectionController {
   // ── Public rune state (read by the template; mutated only via methods) ──────
@@ -318,13 +309,10 @@ export class PublishSectionController {
   /** The host's status, or, until it has answered, what the card's settings
    *  imply (so a pick never replaces an existing book folder unasked). */
   private statusOf(providerId: string): PublishDestinationStatus {
-    const loaded = this.publishDestinationStatus[providerId];
-    if (loaded) return loaded;
-    const config = this.publishCards.find((c) => c.id === providerId)?.config ?? {};
-    if (config.folderId) {
-      return { state: "book", destination: { id: config.folderId, title: config.folder || config.folderId } };
-    }
-    return config.folder ? { state: "by-name", name: config.folder, several: false } : { state: "unset" };
+    return statusFromCard(
+      this.publishDestinationStatus[providerId],
+      this.publishCards.find((c) => c.id === providerId)?.config ?? {},
+    );
   }
 
   /**
@@ -334,55 +322,8 @@ export class PublishSectionController {
    * folder is gone, or who asks for a folder just for them, picks one saved in
    * their private settings only.
    */
-  destinationPrompt = (providerId: string): DestinationPrompt => {
-    const status = this.statusOf(providerId);
-    const book = { saveTo: "book" as const, canUseBook: false };
-    const mine = { saveTo: "mine" as const, canChooseOwn: false };
-    switch (status.state) {
-      case "unset":
-        return { ...book, message: "Saved with the book, so everyone publishes here.", selected: "", canChooseOwn: false };
-      case "mine": {
-        const own = status.destination.title;
-        const reach = status.book.reachable ? "." : ", which your Google account can't reach.";
-        return {
-          ...mine,
-          selected: status.destination.id,
-          canUseBook: status.book.reachable,
-          message:
-            own === status.book.title
-              ? `You publish to the folder '${own}' you chose for yourself.`
-              : `You publish to your own folder '${own}' instead of the book's '${status.book.title}'${reach}`,
-        };
-      }
-      case "unreachable": {
-        const why = status.mine
-          ? `Your own folder '${status.mine}' for this book can't be reached any more.`
-          : `This book publishes to the Drive folder '${status.book.title}', which your Google account can't reach.`;
-        return {
-          ...mine,
-          selected: "",
-          canUseBook: status.book.reachable,
-          message: `${why} Choose a folder you can reach. ${SAVED_FOR_YOU}`,
-        };
-      }
-    }
-    // The book's folder is reachable.
-    if (this.ownDestination[providerId]) {
-      return { ...mine, selected: "", canUseBook: true, message: `Choose a folder just for you. ${SAVED_FOR_YOU}` };
-    }
-    if (status.state === "book") {
-      return { ...book, message: "", selected: status.destination.id, canChooseOwn: true };
-    }
-    const byName = `Each person publishes to a folder named '${status.name}' in their own Drive.`;
-    return status.several
-      ? {
-          ...mine,
-          selected: "",
-          canUseBook: false,
-          message: `${byName} Several of yours have that name: choose the one you publish to. It is saved for you only.`,
-        }
-      : { ...book, message: byName, selected: status.destination?.id ?? "", canChooseOwn: true };
-  };
+  destinationPrompt = (providerId: string): DestinationPrompt =>
+    promptFor(this.statusOf(providerId), this.ownDestination[providerId] === true);
 
   /** Save a destination choice and reload where this person now publishes.
    *  The host files `folderId`/`folder` in the manifest and `myFolderId`/
@@ -396,14 +337,9 @@ export class PublishSectionController {
   /** Pick a destination, saved where {@link destinationPrompt} says. Replacing
    *  the book's folder for everyone waits on {@link confirmBookDestination}. */
   selectDestination = async (providerId: string, destination: PublishDestination): Promise<void> => {
-    if (this.destinationPrompt(providerId).saveTo === "mine") {
-      return this.saveDestination(providerId, { myFolderId: destination.id, myFolder: destination.title });
-    }
-    if (this.statusOf(providerId).state !== "unset") {
-      this.pendingDestination = { ...this.pendingDestination, [providerId]: destination };
-      return;
-    }
-    return this.saveDestination(providerId, { folderId: destination.id, folder: destination.title });
+    const values = pickValues(this.statusOf(providerId), this.ownDestination[providerId] === true, destination);
+    if (values) return this.saveDestination(providerId, values);
+    this.pendingDestination = { ...this.pendingDestination, [providerId]: destination };
   };
 
   /** "This changes the folder for everyone who publishes this book." — confirmed. */
@@ -411,7 +347,7 @@ export class PublishSectionController {
     const destination = this.pendingDestination[providerId];
     if (!destination) return;
     this.pendingDestination = { ...this.pendingDestination, [providerId]: undefined };
-    await this.saveDestination(providerId, { folderId: destination.id, folder: destination.title });
+    await this.saveDestination(providerId, bookValues(destination));
   };
 
   cancelBookDestination = (providerId: string): void => {
@@ -428,7 +364,7 @@ export class PublishSectionController {
   useBookDestination = async (providerId: string): Promise<void> => {
     const status = this.statusOf(providerId);
     this.ownDestination = { ...this.ownDestination, [providerId]: false };
-    if (status.state === "mine" || (status.state === "unreachable" && status.mine)) {
+    if (hasOwnFolder(status)) {
       await this.saveDestination(providerId, { myFolderId: "" });
     }
   };

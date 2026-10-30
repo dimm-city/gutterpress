@@ -1,6 +1,8 @@
 /**
  * A teammate who can't reach the book's Drive folder picks their own, saved to
- * their private settings only (#452). One test per case of the issue.
+ * their private settings only (#452). One test per case of the issue. The
+ * folder resolution lives in gdrive-folder.ts; it is driven here through the
+ * provider's own `destinationStatus` and `upload`, as the desktop and CLI do.
  *
  * The fake Drive mirrors the `drive.file` scope: each account sees only the
  * folders it created or opened through Gutterpress, and answers 404 for any
