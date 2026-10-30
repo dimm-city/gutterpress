@@ -30,8 +30,9 @@ export const POST: RequestHandler = defineRoute<{
       ...(typeof body.limit === 'number' ? { limit: body.limit } : {}),
       ...(typeof body.before === 'string' ? { before: body.before } : {}),
     });
-    // Each version says what it changed and whether it is backed up (#408);
-    // a plain folder has no versions to describe.
+    // Each version says whether it is backed up (#408); what it changed is
+    // asked for one version at a time (vcs/version-changes). A plain folder
+    // has no versions to describe.
     if (source.type !== 'local-git-folder') return page;
     return { ...page, entries: await lib.describeVersions(body.projectDir, page.entries) };
   },

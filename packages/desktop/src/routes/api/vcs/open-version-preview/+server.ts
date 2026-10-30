@@ -7,6 +7,7 @@ import type { RequestHandler } from './$types';
  * Version history's Pages (#408, #448): the host writes the version's files to a
  * scratch copy and renders it read-only through a second preview server;
  * the Version history screen shows the returned URL as the selected version's pages.
+ * `null` when a later open or close replaced this one before it started.
  */
 export const POST: RequestHandler = defineRoute<{ projectDir: string; id: string }>({
   validate: async (raw) => {
