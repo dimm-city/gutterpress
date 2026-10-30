@@ -59,7 +59,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   "Automatic version", "First version", "Saved a version", "Automatic version
   before backing up", "Automatic version before restoring", "Saved before
   switching revision", "Repaired the online copy" and "Saved the edit you made
-  while backing up"; Version history still recognises every earlier spelling.
+  while backing up"; combining with the online copy records "Combined your
+  changes with the online copy's" and "Kept both takes of the files that can't
+  be combined", no longer "the online version" and "both versions". Version
+  history still recognises every earlier spelling.
 - **Library:** `listLocalBranches` and its `LocalBranches` type are replaced by
   `listRevisions`, with `createRevision`, `renameRevision`, `deleteRevision` and
   `revisionNameFrom`; `SyncOutcome` gains `pushDeferred` on a get-latest pass

@@ -22,6 +22,8 @@ const AUTOMATIC_MESSAGES = new Set<string>([
   "Saved before switching revision",
   "Repaired the online copy",
   "Saved the edit you made while backing up",
+  // converge-merge CONVERGE_PREPARE_MESSAGE (pre-combine equalization)
+  "Getting your changes ready to combine with the online copy's changes",
   // Superseded spellings: existing history keeps them forever.
   "Automatic snapshot",
   "Automatic backup of your work",
@@ -30,7 +32,6 @@ const AUTOMATIC_MESSAGES = new Set<string>([
   "Automatic backup before restoring an earlier version",
   "Saved before switching copy",
   "Repaired online backup",
-  // converge-merge CONVERGE_PREPARE_MESSAGE (pre-combine equalization)
   "Getting your changes ready to combine with the online version",
 ]);
 
@@ -40,8 +41,11 @@ const BEFORE_DELETING = "Before deleting ";
 /** What a sync's merge recorded (converge-merge's commit messages). */
 const COMBINED_MESSAGES = new Set<string>([
   // CONVERGE_MERGE_MESSAGE
-  "Combined your changes with the online version",
+  "Combined your changes with the online copy's",
   // CONVERGE_RESTORE_MESSAGE (kept-both restore)
+  "Kept both takes of the files that can't be combined",
+  // Superseded spellings: existing history keeps them forever.
+  "Combined your changes with the online version",
   "Kept both versions of the files that can't be combined",
 ]);
 
