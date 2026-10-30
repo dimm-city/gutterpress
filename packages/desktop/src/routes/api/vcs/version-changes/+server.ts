@@ -4,9 +4,10 @@ import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
- * The files one version changed, each with a plain hint (#408): Version
- * history's Changed files for the selected version. Asked per version, not
- * per history page, so listing versions stays cheap. Read-only.
+ * The files one version changed, each with a plain hint (#408): what a
+ * Version history card lists once it scrolls into view (#484), and the
+ * selected version's Changed files. Asked per version, not per history page,
+ * so listing versions stays cheap. Read-only.
  */
 export const POST: RequestHandler = defineRoute<{ projectDir: string; id: string }>({
   validate: async (raw) => {

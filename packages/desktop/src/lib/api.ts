@@ -63,6 +63,8 @@ export type {
   FileStat,
   SnapshotEntry,
   VersionEntry,
+  OnlineVersionEntry,
+  VersionChanges,
   VersionFileChange,
   CompareRow,
   Revision,
@@ -94,7 +96,8 @@ import type {
   FileStat,
   SnapshotEntry,
   VersionEntry,
-  VersionFileChange,
+  OnlineVersionEntry,
+  VersionChanges,
   CompareRow,
   Revision,
   RevisionList,
@@ -758,12 +761,12 @@ export const api = {
       post<ProjectClassification>('/api/vcs/enable-version-history', { projectDir }),
     listSnapshotsPage: (projectDir: string, options?: { limit?: number; before?: string }) =>
       post<{ entries: VersionEntry[]; hasMore: boolean }>('/api/vcs/list-snapshots-page', { projectDir, ...options }),
-    /** Versions online that this computer has not got (#408). */
+    /** Versions online that this computer has not got, each with the files it changed (#408, #484). */
     onlineVersions: (projectDir: string) =>
-      post<{ entries: VersionEntry[]; reason?: 'no-remote' | 'auth' | 'offline' }>('/api/vcs/online-versions', { projectDir }),
+      post<{ entries: OnlineVersionEntry[]; reason?: 'no-remote' | 'auth' | 'offline' }>('/api/vcs/online-versions', { projectDir }),
     /** The files one version changed, each with a plain hint; `more` beyond the ones listed (#408). */
     versionChanges: (projectDir: string, id: string) =>
-      post<{ files: VersionFileChange[]; more: number }>('/api/vcs/version-changes', { projectDir, id }),
+      post<VersionChanges>('/api/vcs/version-changes', { projectDir, id }),
     /** One text file at a version beside the file as it is now, as aligned rows (#408). */
     compareFile: (projectDir: string, id: string, path: string) =>
       post<{ binary: true } | { binary: false; rows: CompareRow[] }>('/api/vcs/compare-file', { projectDir, id, path }),

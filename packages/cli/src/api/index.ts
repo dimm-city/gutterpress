@@ -300,7 +300,7 @@ export {
   exportVersionTree,
   VERSION_CHANGES_SHOWN,
 } from "../lib/version-changes.ts";
-export type { VersionEntry, VersionChanges, VersionFileChange, CompareRow } from "../lib/version-changes.ts";
+export type { VersionEntry, OnlineVersionEntry, VersionChanges, VersionFileChange, CompareRow } from "../lib/version-changes.ts";
 
 // ── Host-timer cadence policy (auto-snapshot / auto-sync delays) ──────────────
 export {

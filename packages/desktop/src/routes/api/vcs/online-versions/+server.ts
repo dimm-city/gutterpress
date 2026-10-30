@@ -4,8 +4,8 @@ import type { RequestHandler } from './$types';
 /**
  * What is online that this computer has not got (#408): fetches the book's
  * branch (refs only — nothing merged, nothing checked out) and describes
- * the versions above the merge base with the files each changed. Never
- * throws for the usual reasons; it reports why it could not tell.
+ * each version this computer hasn't got with the files it changed (#484).
+ * Never throws for the usual reasons; it reports why it could not tell.
  */
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   validate: async (raw) => ({

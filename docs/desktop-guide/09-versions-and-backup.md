@@ -31,8 +31,10 @@ stays on Ctrl+S (Cmd+S on a Mac) and the editor's Save button.
 Click the status control, then **Browse versions** in the Version history card (or click one of
 the versions listed there). **Version history** opens as a screen of its own:
 
-- The versions are listed on the left, newest first, grouped by day. Runs of automatic versions
-  fold into one line you can open. Click a version to select it.
+- The versions are listed on the left, newest first, grouped by day. Each one lists the files it
+  changed, such as `chapter-02.md · 3 paragraphs changed` (**and 3 more** when it changed more than
+  eight; **No changes** when it changed none). Runs of automatic versions fold into one line you
+  can open. Click a version to select it.
 - The selected version shows on the right, starting with **Changed files**: what it changed, each
   with a plain hint such as `chapter-02.md · 3 paragraphs changed`,
   `styles/book.css · 1 rule changed` or `art/cover.png · replaced`. Click a text file to see
@@ -40,9 +42,10 @@ the versions listed there). **Version history** opens as a screen of its own:
 - Click **Pages** to see the book as it was then, page by page; nothing on disk changes. Selecting
   another version goes back to its changed files, so you can click through versions quickly.
 - The first version of a book is labelled **First version**. When the book has an online copy,
-  each version says **Backed up** or **Only on this computer**, and a note at the top of the list
-  says how many versions are in the online copy and not on this computer yet; they come in the
-  next time the book backs up.
+  each version says **Backed up** or **Only on this computer**, and the versions in the online
+  copy that are not on this computer yet are listed at the top, under **Online, not yet on this
+  computer**: when each was saved, by whom, and the files it changed. They come in the next time
+  the book backs up.
 - Close Version history with **×** (or Esc) to go back to **Setup → Online copy**.
 
 ## Go back to an earlier version
@@ -51,7 +54,7 @@ the versions listed there). **Version history** opens as a screen of its own:
 2. Click **Restore this version** at the top.
 3. Click **Restore**. Gutterpress saves your current work as a version first, so nothing is lost.
 
-![Version history: the versions on the left, the selected one's changed files on the right](images/version-history.jpg)
+![Version history: the versions on the left, each with the files it changed, and the selected one's changed files on the right](images/version-history.jpg)
 
 ## Your online copy
 

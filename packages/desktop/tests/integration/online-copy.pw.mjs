@@ -24,6 +24,14 @@
  *      back. Pages renders the selected version only when asked; selecting
  *      another version goes back to its Changed files and closes those pages.
  *      Restore this version asks once; × and Escape return to Book setup.
+ *      As in 0.11.22 (#484), the versions in the online copy and not on this
+ *      computer yet are listed at the top, each with its name, time, author
+ *      and changed files (the online-versions call is STUBBED in the page; the
+ *      lib's answer is covered by version-changes.test.ts), and every card
+ *      lists its version's changed files ("02-beta.md · 1 paragraph changed",
+ *      "and 2 more", "No changes"), loaded as the card scrolls into view:
+ *      cards below the list's view are not asked for until scrolled to, and
+ *      selecting a card already listed asks the host for nothing more.
  *   4. New revision… sits above the list (and its name form opens there;
  *      Escape in it cancels the form, not Book setup), previews the name, creates it and lists it; Rename… of an online
  *      revision shows the "also renames it in the online copy" note; deleting
@@ -46,7 +54,8 @@
  *   7. A Reader sees no status control and no Sync, even in that state.
  *
  * Screenshots: <os tmpdir>/online-copy-{bar,bar-auto,bar-sync,bar-sync-updates,
- * bar-narrow,tab,filter,history,compare,history-pages,rename,delete,delete-online,failing,reader}.png.
+ * bar-narrow,tab,filter,history,history-online,compare,history-pages,rename,delete,delete-online,
+ * failing,reader}.png.
  *
  * Usage: node tests/integration/online-copy.pw.mjs [exe-or-main-js] [fixture-dir]
  * Exit 0 on pass, 1 on fail.
@@ -99,7 +108,18 @@ const git = (...args) => execFileSync("git", ["-c", "user.name=Ada", "-c", "user
 git("init", "-q", "-b", "main");
 git("add", "-A");
 git("commit", "-q", "-m", "First version");
-// A second version, so the screen has another one to select.
+// Enough versions that the list runs past the screen, so cards below it wait to be seen (#484).
+for (let i = 1; i <= 24; i++) {
+  writeFileSync(join(bookDir, "01-alpha.md"), `${readFileSync(join(bookDir, "01-alpha.md"), "utf8")}\nAlpha revision ${i}.\n`);
+  git("commit", "-q", "-am", `Revised alpha, pass ${i}`);
+}
+// A version that changed ten files (its card lists eight, "and 2 more") and one that changed none.
+mkdirSync(join(bookDir, "notes"));
+for (let i = 1; i <= 10; i++) writeFileSync(join(bookDir, "notes", `note-${String(i).padStart(2, "0")}.md`), `Note ${i}.\n`);
+git("add", "-A");
+git("commit", "-q", "-m", "Added research notes");
+git("commit", "-q", "--allow-empty", "-m", "Checked the proofs");
+// The newest version, so the screen has another one to select.
 writeFileSync(join(bookDir, "02-beta.md"), readFileSync(join(bookDir, "02-beta.md"), "utf8").replace("Beta opening paragraph.", "A tighter beta opening."));
 git("commit", "-q", "-am", "Tightened the opening");
 git("remote", "add", "origin", "https://github.com/ada/harbor-lights.git");
@@ -255,8 +275,24 @@ await evalJs(`(() => {
       { name: "side-project", current: false, where: "online-only", notBackedUp: false },
       { name: "appendix", current: false, where: "this-computer", notBackedUp: false },
     ],
+    /** The versions whose changes Version history asked the host for, in order (#484). */
+    changesAsked: [],
   };
   window.__revisions = state;
+  // What the online copy has that this computer hasn't got (#484): a collaborator's two versions.
+  const minutesAgo = (n) => Date.now() - n * 60000;
+  window.__online = {
+    entries: [
+      {
+        id: "c".repeat(40), message: "Wrote the gamma ending", timestamp: minutesAgo(5), author: "Grace", backedUp: true,
+        changes: [{ path: "03-gamma.md", kind: "changed", hint: "2 paragraphs changed", text: true }], moreChanges: 0,
+      },
+      {
+        id: "d".repeat(40), message: "Automatic version", timestamp: minutesAgo(20), author: "Grace", backedUp: true,
+        changes: Array.from({ length: 8 }, (_, i) => ({ path: \`art/plate-\${i + 1}.png\`, kind: "added", hint: "added", text: false })), moreChanges: 3,
+      },
+    ],
+  };
   const real = window.fetch.bind(window);
   const json = (v) => new Response(JSON.stringify(v), { status: 200, headers: { "content-type": "application/json" } });
   const current = () => state.revisions.find((r) => r.current)?.name ?? null;
@@ -269,6 +305,8 @@ await evalJs(`(() => {
         credentialPresent: true, provider: "github", tokenSettingsUrl: null, canSync: true, guidance: "ready-to-sync",
       });
     }
+    if (path === "/api/vcs/online-versions") return json(window.__online);
+    if (path === "/api/vcs/version-changes") state.changesAsked.push(JSON.parse(init.body).id);
     if (!/^\\/api\\/vcs\\/(list-revisions|create-revision|rename-revision|delete-revision|switch-branch)$/.test(path)) return real(input, init);
     const body = init?.body ? JSON.parse(init.body) : {};
     state.calls.push({ path: path.slice("/api/vcs/".length), body });
@@ -428,6 +466,56 @@ check(await waitFor(`!!document.querySelector('.vh .files .file')`), "the select
 check(await evalJs(`/^Changed files \\(1\\)$/.test(document.querySelector('.vh .tabs [role="tab"]').textContent.trim()) && !document.querySelector('.vh .pages, .vh iframe')`), "Changed files (1) is shown, and no pages are rendered");
 await sleep(400);
 await screenshot(join(tmpdir(), "online-copy-history.png"));
+
+// The versions in the online copy and not here yet: listed at the top, each with its changes (#484).
+check(await waitFor(`!!document.querySelector('.vh .online .online-ver')`), "the versions in the online copy and not on this computer yet are listed");
+const online = await evalJs(`(() => {
+  const list = document.querySelector('.vh .vh-list');
+  const section = list.querySelector('.online');
+  return {
+    heading: section.querySelector('h2').textContent.trim(),
+    atTop: list.firstElementChild === section,
+    rows: [...section.querySelectorAll('.online-ver')].map((r) => ({
+      title: r.querySelector('.ver-title')?.textContent.trim(),
+      note: r.querySelector('.ver-note')?.textContent.trim() ?? null,
+      meta: r.querySelector('.ver-meta')?.textContent.trim(),
+      files: [...r.querySelectorAll('.ver-file')].map((f) => f.textContent.trim()),
+    })),
+    selectable: section.querySelectorAll('button').length,
+    note: section.querySelector('.online-note')?.textContent.trim(),
+  };
+})()`);
+log(`online list: ${JSON.stringify(online)}`);
+check(online.heading === "Online, not yet on this computer" && online.atTop, "they sit at the top of the list, under Online, not yet on this computer");
+check(online.rows.length === 2 && online.rows[0].note === "Wrote the gamma ending" && /· Grace$/.test(online.rows[0].meta) && /\d/.test(online.rows[0].meta), `each says what it is, when and by whom (${JSON.stringify(online.rows[0])})`);
+check(online.rows[0].files.join("|") === "03-gamma.md · 2 paragraphs changed", `and the files it changed (${online.rows[0].files.join(" | ")})`);
+check(online.rows[1].title === "Automatic version" && online.rows[1].files.length === 9 && online.rows[1].files[8] === "and 3 more", `past eight files, "and N more" (${online.rows[1].files.join(" | ")})`);
+check(online.selectable === 0 && online.note === "They come in the next time this book backs up.", `nothing to select there; they come in with the next backup (${online.note})`);
+
+// Every card lists what its version changed, loaded as it comes into view (#484).
+const cardsListed = `[...document.querySelectorAll('.vh button.ver')].filter((b) => b.getClientRects().length).map((b) => ({
+  title: b.querySelector('.ver-note')?.textContent.trim() ?? b.querySelector('.ver-title').textContent.trim(),
+  files: b.querySelector('.ver-files:not(.pending)') ? [...b.querySelectorAll('.ver-file')].map((f) => f.textContent.trim()) : null,
+}))`;
+check(await waitFor(`${cardsListed}.slice(0, 4).every((c) => c.files)`), "the cards in view list the files their versions changed");
+await sleep(500);
+const cards = await evalJs(cardsListed);
+log(`cards: ${JSON.stringify(cards.map((c) => [c.title, c.files]))}`);
+const card = (title) => cards.find((c) => c.title === title) ?? {};
+check(card("Tightened the opening").files?.join("|") === "02-beta.md · 1 paragraph changed", `a card names each file and how much changed (${card("Tightened the opening").files})`);
+check(card("Checked the proofs").files?.join("|") === "No changes", `a version that changed nothing says No changes (${card("Checked the proofs").files})`);
+const notes = card("Added research notes").files ?? [];
+check(notes.length === 9 && notes[0] === "notes/note-01.md · added" && notes[8] === "and 2 more", `past eight files, "and N more" (${notes.join(" | ")})`);
+const waiting = cards.filter((c) => !c.files).length;
+const asked = await evalJs(`window.__revisions.changesAsked.length`);
+check(cards.length === 28 && waiting > 0 && card("First version").files === null && asked < cards.length, `cards below the view are not asked for yet (${waiting} of ${cards.length} waiting, ${asked} asked)`);
+await screenshot(join(tmpdir(), "online-copy-history-online.png"));
+await evalJs(`document.querySelector('.vh .vh-list').scrollTop = 1e6; true`);
+check(await waitFor(`${cardsListed}.at(-1).files?.length > 0`), "scrolled into view, the oldest card lists its files too");
+const oldest = (await evalJs(cardsListed)).at(-1);
+check(oldest.title === "First version" && oldest.files.includes("01-alpha.md · added") && oldest.files.includes("manifest.yaml · added"), `the first version added every file (${oldest.files.join(" | ")})`);
+await evalJs(`document.querySelector('.vh .vh-list').scrollTop = 0; true`);
+await sleep(300);
 // A text file opens line by line, and back.
 await click(".vh .files button.file");
 check(await waitFor(`!!document.querySelector('.vh .compare-view .columns')`), "a changed text file opens line by line");
@@ -442,8 +530,10 @@ const pagesUrl = await evalJs(`document.querySelector('.vh .pages iframe')?.src 
 await sleep(1500);
 await screenshot(join(tmpdir(), "online-copy-history-pages.png"));
 // Selecting another version goes back to Changed files, and the pages close.
+const askedBefore = await evalJs(`window.__revisions.changesAsked.length`);
 await evalJs(`document.querySelectorAll('.vh .ver')[1].click(); true`);
 check(await waitFor(`document.querySelectorAll('.vh .ver')[1]?.classList.contains('selected') && !!document.querySelector('.vh .files') && !document.querySelector('.vh .pages')`), "selecting another version shows its Changed files, not pages");
+check(await evalJs(`/This version changed nothing/.test(document.querySelector('.vh .files').textContent) && window.__revisions.changesAsked.length === ${askedBefore}`), "its card had listed its files, so selecting it asked the host for nothing more");
 if (pagesUrl) {
   let closed = false;
   for (let i = 0; i < 40 && !closed; i++) {
