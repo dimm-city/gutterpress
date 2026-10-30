@@ -857,6 +857,10 @@ export const api = {
     listHostConnections: () =>
       post<HostConnectionInfo[]>('/api/remote/list-connections'),
 
+    /** Token-settings deep link for recognized forges; null when unknown. */
+    forgeTokenUrl: (host: string) =>
+      post<string | null>('/api/remote/forge-token-url', { host }),
+
     /** Sync / Back up now: get the latest from the online copy, then back up. */
     syncChanges: (projectDir: string, message?: string) =>
       post<SyncOutcome>('/api/remote/sync', {

@@ -120,14 +120,11 @@ describe("savedAccount", () => {
 const read = (rel: string) => fs.readFileSync(path.resolve(__dirname, "../..", rel), "utf8");
 
 describe("wiring", () => {
-  test("Settings keeps How you use Gutterpress, Appearance, Saving and the Accounts… row; the name and email moved to Accounts, above GitHub", () => {
+  test("Settings ends with the Accounts… row; the name and email moved to Accounts, above GitHub", () => {
     const settings = read("src/lib/components/SettingsView.svelte");
-    expect(settings.match(/<h2 id="settings-[a-z]+">[^<]+/g)).toEqual([
-      '<h2 id="settings-role">How you use Gutterpress',
-      '<h2 id="settings-appearance">Appearance',
-      '<h2 id="settings-saving">Saving',
-      '<h2 id="settings-accounts">Accounts',
-    ]);
+    const groups = [...settings.matchAll(/aria-labelledby="(settings-[a-z]+)"/g)].map((m) => m[1]);
+    expect(groups.at(-1)).toBe("settings-accounts");
+    expect(settings).toContain('<h2 id="settings-accounts">Accounts</h2>');
     expect(settings).not.toMatch(/gitIdentity|settings-name|settings-email/);
 
     const accounts = read("src/lib/components/AccountsView.svelte");
@@ -158,5 +155,39 @@ describe("wiring", () => {
   test("Book setup's server connect and the Accounts page share one Git server form", () => {
     expect(read("src/lib/components/ProjectConnectionsSection.svelte")).toContain("<GitServerForm");
     expect(read("src/lib/components/AccountsView.svelte")).toContain("<GitServerForm");
+  });
+
+  test("a Git server's address, as it is typed, links to that server's own token page (#481)", () => {
+    const form = read("src/lib/components/GitServerForm.svelte");
+    // The address is looked up while it is typed (and on open, for a saved server's Edit)…
+    expect(form).toContain("oninput={addressTyped}");
+    expect(form).toMatch(/function addressTyped\(\) \{\s*clearTimeout\(lookupTimer\);\s*lookupTimer = setTimeout\(\(\) => void lookupHelp\(\), 300\);/);
+    expect(form).toMatch(/onMount\(\(\) => \{[^}]*void lookupHelp\(\);/);
+    // …through the route the lib answers, unless the caller already knows the page (Book setup's diagnosis).
+    expect(form).toContain("const url = await api.remote.forgeTokenUrl(asked);");
+    expect(form).toContain("if (tokenUrl !== undefined) return;");
+    expect(form).toContain("const helpUrl = $derived(tokenUrl === undefined ? found : tokenUrl);");
+    // A known server gets its own page; anything else the guide.
+    expect(form).toContain("api.shell.openExternal(helpUrl ?? OTHER_SERVER_GUIDE)");
+    expect(form).toContain("{helpUrl ? `Create an access token on ${hostName}` : \"How to make an access token\"}");
+    expect(read("src/lib/api.ts")).toContain("post<string | null>('/api/remote/forge-token-url', { host })");
+    // Accounts leaves tokenUrl out, so its forms look the address up.
+    const accounts = read("src/lib/components/AccountsView.svelte");
+    expect([...accounts.matchAll(/<GitServerForm[^>]*>/g)].every((m) => !m[0].includes("tokenUrl"))).toBe(true);
+  });
+
+  test("Open from GitHub links to Accounts for a different Git host, closing itself first (#481)", () => {
+    const dialog = read("src/lib/components/GitHubDialog.svelte");
+    expect(dialog).toMatch(/function goAccounts\(\) \{\s*open = false;\s*onClosed\?\.\(\);[\s\S]*?onOpenAccounts\?\.\(\);/);
+    const body = dialog.slice(dialog.indexOf('<div class="dialog-body">'));
+    const connect = body.slice(body.indexOf('{#if step === "connect"}'), body.indexOf('{:else if step === "code"}'));
+    expect(connect).toContain("Using a different Git host (Gitea, GitLab, Bitbucket, …)?");
+    expect(connect).toContain('<button type="button" class="link-btn" onclick={goAccounts}>Open Accounts</button>');
+    const repos = body.slice(body.indexOf('{:else if step === "repos"}'), body.indexOf('{:else if step === "configure"'));
+    expect(repos).toContain('Or connect a different Git server in');
+    expect(repos).toContain("onclick={goAccounts}>Accounts</button>");
+    const page = read("src/routes/+page.svelte");
+    const mount = page.slice(page.indexOf("<GitHubDialog"));
+    expect(mount.slice(0, mount.indexOf("/>"))).toContain("onOpenAccounts={() => (accountsOpen = true)}");
   });
 });

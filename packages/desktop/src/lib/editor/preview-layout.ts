@@ -4,6 +4,18 @@ export interface SplitDragInput {
   pointerX: number;
 }
 
+/** The zoom choices: the preview's zoom menu and Settings → Preview's Default zoom. */
+export const ZOOM_LEVELS: ReadonlyArray<readonly [value: string, label: string]> = [
+  ["fit-width", "Fit to width"],
+  ["0.25", "25%"],
+  ["0.5", "50%"],
+  ["0.75", "75%"],
+  ["1", "100%"],
+  ["1.25", "125%"],
+  ["1.5", "150%"],
+  ["2", "200%"],
+];
+
 /** Breakpoint default split (editor fraction) — restored by double-click reset. */
 export const DEFAULT_SPLIT_RATIO = 0.42;
 const MIN_SPLIT_RATIO = 0.25;
