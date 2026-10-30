@@ -22,6 +22,11 @@ chapters:
   - paper.md
   - references.md
 
+# Two rules that keep content inside the text column whatever fonts the
+# building machine has (see the file).
+styles:
+  - paper.css
+
 extensions:
   # Superscripts for author and affiliation marks: Contributors^1^.
   - markdown-it-sup

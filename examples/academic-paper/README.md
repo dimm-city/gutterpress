@@ -11,10 +11,11 @@ verified against the sources cited. Section 7 is a worked demonstration of
 the math feature, from piecewise definitions and matrices to formulas inside
 table cells.
 
-There is no HTML in the source and no stylesheet of its own: the look is
-Gutterpress's built-in `academic` look, and math is Gutterpress's bundled Math
-feature. Copy this folder to start your own paper, or start one from the
-`paper` template:
+There is no HTML in the source: the look is Gutterpress's built-in
+`academic` look, and math is Gutterpress's bundled Math feature. The paper's
+own `paper.css` has two rules, both to keep content inside the text column
+whatever fonts the building machine has. Copy this folder to start your own
+paper, or start one from the `paper` template:
 
 ```bash
 gutterpress new "My Paper" --template paper --preset book
@@ -23,7 +24,10 @@ gutterpress new "My Paper" --template paper --preset book
 ## What's included
 
 - `manifest.yaml`: the language, US Letter page size and margins, the two
-  source files, and the three extensions: superscripts, math, and the look
+  source files, the stylesheet, and the three extensions: superscripts, math,
+  and the look
+- `paper.css`: two rules that keep a formula's hidden screen-reader copy and
+  long reference URLs inside the text column on any machine's fonts
 - `paper.md`: the article, from the title block to the availability statement
 - `references.md`: the numbered bibliography (alphabetical, SIAM style)
 - `figures/pipeline.svg`: Figure 1, the pipeline, as hand-written SVG
@@ -105,9 +109,9 @@ SVG was chosen over MathML and HTML output.
 serif text face, justified and hyphenated text, 1 in margins and a centered
 page number, with the title block, abstract, figures, tables, notes and
 references styled by the `@section` each sits in. It is listed by name in
-`manifest.yaml`, nothing is copied into the project. To change it, add a
-stylesheet of your own under `styles:` and set the tokens there; your sheet
-loads after every extension, so it wins. The names are the same every
+`manifest.yaml`, nothing is copied into the project. To change it, set the
+tokens in `paper.css` (or another stylesheet listed under `styles:`); your
+sheet loads after every extension, so it wins. The names are the same every
 built-in look uses:
 
 ```css
