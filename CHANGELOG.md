@@ -105,6 +105,9 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **An example paper**, `examples/academic-paper`: a complete, genuine
   research article with numbered equations, a theorem and proof, a figure,
   tables, a listing, footnotes and linked references, from Markdown alone.
+- **Google Drive: your own folder when the book's is out of reach (#452).** It
+  is saved for you only and never changes the book's folder for the team;
+  `gutterpress publish --folder-id` or `--folder` publishes elsewhere for one run.
 
 ### Changed
 

@@ -5,7 +5,9 @@
  *
  * - Per book (keyed by the book's path): that person's own `publish.<id>.*`
  *   values for it — which of their saved accounts the book publishes with
- *   (`credential`) and an output folder outside the book (`dir`). They are
+ *   (`credential`), an output folder outside the book (`dir`), and their own
+ *   Google Drive folder when the book's is out of their reach (`myFolder*`,
+ *   #452). They are
  *   read over the manifest's values, so the manifest stays the team's shared
  *   default (where the book is published). See `savePublishSettings` for which
  *   values land here and which in the manifest.

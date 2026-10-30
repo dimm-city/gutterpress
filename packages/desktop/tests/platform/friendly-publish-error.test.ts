@@ -125,9 +125,9 @@ test("friendlyPublishError maps a raw storageQuotaExceeded reason to a friendly 
   expect(result.details).toBe(raw);
 });
 
-test("friendlyPublishError passes the lib's Drive folder-gone message through unchanged", () => {
+test("friendlyPublishError passes the lib's Drive folder-out-of-reach message through unchanged", () => {
   const msg =
-    'The Drive folder recorded in publish.gdrive.folderId ("1fq156Yx") can\'t be found — it may have been trashed or the id copied wrong. Pick the folder again.';
+    'This book publishes to the Drive folder "Harbor Books", which this Google account can\'t reach: it isn\'t shared with Gutterpress under this account, or it was trashed or deleted.';
   expect(friendlyPublishError(msg)).toEqual({ summary: msg });
 });
 

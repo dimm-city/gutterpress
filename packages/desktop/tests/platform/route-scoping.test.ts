@@ -56,6 +56,7 @@ import { POST as publishList } from "../../src/routes/api/publish/list/+server";
 import { POST as publishPreflight } from "../../src/routes/api/publish/preflight/+server";
 import { POST as publishDestinationsList } from "../../src/routes/api/publish/destinations/list/+server";
 import { POST as publishDestinationsCreate } from "../../src/routes/api/publish/destinations/create/+server";
+import { POST as publishDestinationsStatus } from "../../src/routes/api/publish/destinations/status/+server";
 import { POST as extensionList } from "../../src/routes/api/extension/list/+server";
 import { POST as extensionAdd } from "../../src/routes/api/extension/add/+server";
 import { POST as extensionAddLocal } from "../../src/routes/api/extension/add-local/+server";
@@ -108,6 +109,7 @@ const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) =
   { name: "publish/preflight", handler: publishPreflight as RouteHandler, body: (d) => ({ projectDir: d, providerIds: [] }) },
   { name: "publish/destinations/list", handler: publishDestinationsList as RouteHandler, body: (d) => ({ projectDir: d, providerId: "gdrive" }) },
   { name: "publish/destinations/create", handler: publishDestinationsCreate as RouteHandler, body: (d) => ({ projectDir: d, providerId: "gdrive", name: "New folder" }) },
+  { name: "publish/destinations/status", handler: publishDestinationsStatus as RouteHandler, body: (d) => ({ projectDir: d, providerId: "gdrive" }) },
   { name: "extension/list", handler: extensionList as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "extension/add", handler: extensionAdd as RouteHandler, body: (d) => ({ projectDir: d, specifier: "markdown-it-mark" }) },
   { name: "extension/add-local", handler: extensionAddLocal as RouteHandler, body: (d) => ({ projectDir: d }) },

@@ -8,8 +8,8 @@
  * add or replace one, and this controller only records which saved account the
  * book uses. It writes non-secret settings through `setConfig`; the host sorts
  * each value into the manifest (shared) or this person's private settings (their
- * account, Drive folder, an output folder outside the book). Runs are long
- * (butler/swa uploads) — one provider at a time (`publishBusyId`).
+ * account, their own Drive folder, an output folder outside the book). Runs are
+ * long (butler/swa uploads) — one provider at a time (`publishBusyId`).
  *
  * Single-owner discipline mirrors `DesignSectionController`
  * (`design-section-controller.svelte.ts`): the component reads the public
@@ -27,6 +27,7 @@ import type {
   PublishProviderCard,
   PublishRunResult,
   PublishDestination,
+  PublishDestinationStatus,
 } from "#lib/platform/contract.ts";
 import type { PreflightRow } from "#lib/preflight.ts";
 
@@ -51,6 +52,8 @@ export interface PublishSectionDeps {
     providerId: string,
     name: string,
   ) => Promise<PublishDestination>;
+  /** #452 — where this person publishes among the destinations, and whether they must choose. */
+  destinationStatus: (projectDir: string, providerId: string) => Promise<PublishDestinationStatus>;
   run: (
     projectDir: string,
     providerId: string,
@@ -62,6 +65,23 @@ export interface PublishSectionDeps {
   /** Fired after a non-dry-run Publish succeeds; `guided` selects the copy. */
   onPublished?: (guided: boolean) => void;
 }
+
+/** What a destination step says and where a pick is saved (#452). */
+export interface DestinationPrompt {
+  /** The plain-words status line, "" for none. */
+  message: string;
+  /** The destination the picker shows as chosen, "" when the person must choose. */
+  selected: string;
+  /** "book": a pick is the book's folder, saved in the manifest. "mine": it is
+   *  this person's own, saved in their private settings only. */
+  saveTo: "book" | "mine";
+  /** Offer "Use the book's folder" (drops this person's own). */
+  canUseBook: boolean;
+  /** Offer "Use a different folder just for me". */
+  canChooseOwn: boolean;
+}
+
+const SAVED_FOR_YOU = "It is saved for you only; the book keeps its folder for everyone else.";
 
 export class PublishSectionController {
   // ── Public rune state (read by the template; mutated only via methods) ──────
@@ -81,6 +101,12 @@ export class PublishSectionController {
   destinationsError = $state<Record<string, string | null>>({});
   // Per-provider draft for the inline "New folder…" name input.
   newDestinationDrafts = $state<Record<string, string>>({});
+  /** #452 — where this person publishes, as the host last reported it. */
+  publishDestinationStatus = $state<Record<string, PublishDestinationStatus>>({});
+  /** #452 — the person asked for a folder just for them while the book's is reachable. */
+  ownDestination = $state<Record<string, boolean>>({});
+  /** #452 — a pick that would change the book's folder for everyone, awaiting confirmation. */
+  pendingDestination = $state<Record<string, PublishDestination | undefined>>({});
 
   // ── Preflight (#105) — the wizard's readiness step reads these ──────────────
   preflightRows = $state<PreflightRow[]>([]);
@@ -134,27 +160,14 @@ export class PublishSectionController {
 
   /**
    * The shared "busy-lock this provider → write non-secret config → reload
-   * the cards" sequence `selectFormat`/`selectDestination`/
-   * `createNewDestination` all need. `valuesOrBuilder` is either the config
-   * values directly, or an async builder (for a caller — `createNewDestination`
-   * — that has real work to do, e.g. an API call, BEFORE it knows what to
-   * write, and that work must happen INSIDE the same busy-lock window as the
-   * write itself; the builder receives the already-null-checked `projectDir`
-   * so it doesn't need to re-resolve or re-guard it).
+   * the cards" sequence `selectFormat` and the destination choices need.
    */
-  private applyConfig = async (
-    providerId: string,
-    valuesOrBuilder:
-      | Record<string, string>
-      | ((projectDir: string) => Promise<Record<string, string>>),
-  ): Promise<void> => {
+  private applyConfig = async (providerId: string, values: Record<string, string>): Promise<void> => {
     const projectDir = this.deps.projectDir();
     if (!projectDir || this.publishBusyId) return;
     this.publishBusyId = providerId;
     this.publishError = null;
     try {
-      const values =
-        typeof valuesOrBuilder === "function" ? await valuesOrBuilder(projectDir) : valuesOrBuilder;
       await this.deps.setConfig(projectDir, providerId, values);
       await this.loadPublish();
     } catch (e) {
@@ -275,19 +288,23 @@ export class PublishSectionController {
     if (card?.connected && card.destinations) await this.loadDestinations(providerId);
   }
 
-  // ── Destinations picker (#221) ───────────────────────────────────────────
-  /** Load the folder list for a provider's picker (called on entering setup
-   *  once connected, and after the account changes). */
+  // ── Destinations picker (#221, #452) ──────────────────────────────────────
+  /** Load the folder list and where this person publishes (called on entering
+   *  setup once connected, after the account changes, and after a choice). */
   loadDestinations = async (providerId: string): Promise<void> => {
     const projectDir = this.deps.projectDir();
     if (!projectDir || this.destinationsBusyId[providerId]) return;
     this.destinationsBusyId = { ...this.destinationsBusyId, [providerId]: true };
     this.destinationsError = { ...this.destinationsError, [providerId]: null };
+    this.ownDestination = { ...this.ownDestination, [providerId]: false };
+    this.pendingDestination = { ...this.pendingDestination, [providerId]: undefined };
     try {
-      this.publishDestinations = {
-        ...this.publishDestinations,
-        [providerId]: await this.deps.listDestinations(projectDir, providerId),
-      };
+      const [list, status] = await Promise.all([
+        this.deps.listDestinations(projectDir, providerId),
+        this.deps.destinationStatus(projectDir, providerId),
+      ]);
+      this.publishDestinations = { ...this.publishDestinations, [providerId]: list };
+      this.publishDestinationStatus = { ...this.publishDestinationStatus, [providerId]: status };
     } catch (e) {
       this.destinationsError = {
         ...this.destinationsError,
@@ -298,34 +315,151 @@ export class PublishSectionController {
     }
   };
 
-  /** Pick an existing destination — writes `{folderId, folder}` via the same
-   *  settings path the free-text `folder` config field uses (a folder in this
-   *  person's own Drive, so the host keeps it private). */
-  selectDestination = (providerId: string, destination: PublishDestination): Promise<void> =>
-    this.applyConfig(providerId, { folderId: destination.id, folder: destination.title });
+  /** The host's status, or, until it has answered, what the card's settings
+   *  imply (so a pick never replaces an existing book folder unasked). */
+  private statusOf(providerId: string): PublishDestinationStatus {
+    const loaded = this.publishDestinationStatus[providerId];
+    if (loaded) return loaded;
+    const config = this.publishCards.find((c) => c.id === providerId)?.config ?? {};
+    if (config.folderId) {
+      return { state: "book", destination: { id: config.folderId, title: config.folder || config.folderId } };
+    }
+    return config.folder ? { state: "by-name", name: config.folder, several: false } : { state: "unset" };
+  }
+
+  /**
+   * What the destination step says, and where a pick is saved (#452). The
+   * book's folder is the team's: the first pick, and a change while it is
+   * reachable, go to the manifest. A person who can't reach it, whose own
+   * folder is gone, or who asks for a folder just for them, picks one saved in
+   * their private settings only.
+   */
+  destinationPrompt = (providerId: string): DestinationPrompt => {
+    const status = this.statusOf(providerId);
+    const book = { saveTo: "book" as const, canUseBook: false };
+    const mine = { saveTo: "mine" as const, canChooseOwn: false };
+    switch (status.state) {
+      case "unset":
+        return { ...book, message: "Saved with the book, so everyone publishes here.", selected: "", canChooseOwn: false };
+      case "mine": {
+        const own = status.destination.title;
+        const reach = status.book.reachable ? "." : ", which your Google account can't reach.";
+        return {
+          ...mine,
+          selected: status.destination.id,
+          canUseBook: status.book.reachable,
+          message:
+            own === status.book.title
+              ? `You publish to the folder '${own}' you chose for yourself.`
+              : `You publish to your own folder '${own}' instead of the book's '${status.book.title}'${reach}`,
+        };
+      }
+      case "unreachable": {
+        const why = status.mine
+          ? `Your own folder '${status.mine}' for this book can't be reached any more.`
+          : `This book publishes to the Drive folder '${status.book.title}', which your Google account can't reach.`;
+        return {
+          ...mine,
+          selected: "",
+          canUseBook: status.book.reachable,
+          message: `${why} Choose a folder you can reach. ${SAVED_FOR_YOU}`,
+        };
+      }
+    }
+    // The book's folder is reachable.
+    if (this.ownDestination[providerId]) {
+      return { ...mine, selected: "", canUseBook: true, message: `Choose a folder just for you. ${SAVED_FOR_YOU}` };
+    }
+    if (status.state === "book") {
+      return { ...book, message: "", selected: status.destination.id, canChooseOwn: true };
+    }
+    const byName = `Each person publishes to a folder named '${status.name}' in their own Drive.`;
+    return status.several
+      ? {
+          ...mine,
+          selected: "",
+          canUseBook: false,
+          message: `${byName} Several of yours have that name: choose the one you publish to. It is saved for you only.`,
+        }
+      : { ...book, message: byName, selected: status.destination?.id ?? "", canChooseOwn: true };
+  };
+
+  /** Save a destination choice and reload where this person now publishes.
+   *  The host files `folderId`/`folder` in the manifest and `myFolderId`/
+   *  `myFolder` in this person's private settings (recording the book's folder
+   *  it stands in for, and the account). */
+  private saveDestination = async (providerId: string, values: Record<string, string>): Promise<void> => {
+    await this.applyConfig(providerId, values);
+    await this.loadDestinations(providerId);
+  };
+
+  /** Pick a destination, saved where {@link destinationPrompt} says. Replacing
+   *  the book's folder for everyone waits on {@link confirmBookDestination}. */
+  selectDestination = async (providerId: string, destination: PublishDestination): Promise<void> => {
+    if (this.destinationPrompt(providerId).saveTo === "mine") {
+      return this.saveDestination(providerId, { myFolderId: destination.id, myFolder: destination.title });
+    }
+    if (this.statusOf(providerId).state !== "unset") {
+      this.pendingDestination = { ...this.pendingDestination, [providerId]: destination };
+      return;
+    }
+    return this.saveDestination(providerId, { folderId: destination.id, folder: destination.title });
+  };
+
+  /** "This changes the folder for everyone who publishes this book." — confirmed. */
+  confirmBookDestination = async (providerId: string): Promise<void> => {
+    const destination = this.pendingDestination[providerId];
+    if (!destination) return;
+    this.pendingDestination = { ...this.pendingDestination, [providerId]: undefined };
+    await this.saveDestination(providerId, { folderId: destination.id, folder: destination.title });
+  };
+
+  cancelBookDestination = (providerId: string): void => {
+    this.pendingDestination = { ...this.pendingDestination, [providerId]: undefined };
+  };
+
+  /** "Use a different folder just for me": the next pick is private. */
+  chooseOwnDestination = (providerId: string): void => {
+    this.ownDestination = { ...this.ownDestination, [providerId]: true };
+    this.pendingDestination = { ...this.pendingDestination, [providerId]: undefined };
+  };
+
+  /** "Use the book's folder": drop this person's own folder for the book. */
+  useBookDestination = async (providerId: string): Promise<void> => {
+    const status = this.statusOf(providerId);
+    this.ownDestination = { ...this.ownDestination, [providerId]: false };
+    if (status.state === "mine" || (status.state === "unreachable" && status.mine)) {
+      await this.saveDestination(providerId, { myFolderId: "" });
+    }
+  };
 
   setNewDestinationDraft = (providerId: string, value: string): void => {
     this.newDestinationDrafts = { ...this.newDestinationDrafts, [providerId]: value };
   };
 
-  /** Inline "New folder…" — create it, then select it (same as picking an
-   *  existing one), and add it to the picker list without a full reload. The
-   *  create call and the local state updates happen inside applyConfig's
-   *  builder callback, so they share its busy-lock window (the UI shows
-   *  "busy" for the whole create-then-select operation, not just the final
-   *  config write) exactly like the un-refactored version did. */
-  createNewDestination = (providerId: string): Promise<void> => {
+  /** Inline "New folder…" — create it, add it to the picker list without a
+   *  full reload, then pick it like an existing one. */
+  createNewDestination = async (providerId: string): Promise<void> => {
     const name = (this.newDestinationDrafts[providerId] ?? "").trim();
-    if (!name) return Promise.resolve();
-    return this.applyConfig(providerId, async (projectDir) => {
-      const destination = await this.deps.createDestination(projectDir, providerId, name);
-      this.publishDestinations = {
-        ...this.publishDestinations,
-        [providerId]: [...(this.publishDestinations[providerId] ?? []), destination],
-      };
-      this.newDestinationDrafts = { ...this.newDestinationDrafts, [providerId]: "" };
-      return { folderId: destination.id, folder: destination.title };
-    });
+    const projectDir = this.deps.projectDir();
+    if (!name || !projectDir || this.publishBusyId) return;
+    this.publishBusyId = providerId;
+    this.publishError = null;
+    let destination: PublishDestination;
+    try {
+      destination = await this.deps.createDestination(projectDir, providerId, name);
+    } catch (e) {
+      this.publishError = e instanceof Error ? e.message : String(e);
+      return;
+    } finally {
+      this.publishBusyId = null;
+    }
+    this.publishDestinations = {
+      ...this.publishDestinations,
+      [providerId]: [...(this.publishDestinations[providerId] ?? []), destination],
+    };
+    this.newDestinationDrafts = { ...this.newDestinationDrafts, [providerId]: "" };
+    await this.selectDestination(providerId, destination);
   };
 
   /** Run one provider. `artifactPath` is the file/folder the wizard just

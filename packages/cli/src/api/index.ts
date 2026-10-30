@@ -530,6 +530,7 @@ export type {
   PublishArtifactFormat,
   PublishAuthStatus,
   PublishDeps,
+  PublishDestinationStatus,
   PublishListingMetadata,
   PublishOutcome,
   PublishProduct,

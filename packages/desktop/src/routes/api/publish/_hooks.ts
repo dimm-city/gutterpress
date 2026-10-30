@@ -19,8 +19,9 @@ let selections: { file: string; store: InstanceType<LibModule['PublishSelections
 /**
  * The deps every publish route hands the lib: the credential store, and this
  * person's PRIVATE publish settings for each book (`userData/publish-selections.json`,
- * `0600`): the saved account a book publishes with, and an output folder
- * outside the book. They are read over the manifest's values and
+ * `0600`): the saved account a book publishes with, an output folder outside
+ * the book, and their own Drive folder when the book's is out of their reach
+ * (#452). They are read over the manifest's values and
  * never written into the manifest (see the lib's `savePublishSettings`). One
  * store for the process, so its writes queue behind one another.
  */
@@ -33,16 +34,16 @@ export async function publishDeps() {
 
 /**
  * The provider lookup + capability check + `PublishRequest` resolution the
- * two destinations routes (`destinations/list`, `destinations/create`) both
- * do identically before making their own, different, final call into the
- * provider. `capability` names which optional method the caller is about to
- * use, purely for the "can't do that" error message — the routes still call
- * it themselves afterward.
+ * destinations routes (`destinations/list`, `destinations/create`,
+ * `destinations/status`) all do identically before making their own,
+ * different, final call into the provider. `capability` names which optional
+ * method the caller is about to use, purely for the "can't do that" error
+ * message — the routes still call it themselves afterward.
  */
 export async function resolveDestinationProvider(
   projectDir: string,
   providerId: string,
-  capability: 'listDestinations' | 'createDestination',
+  capability: 'listDestinations' | 'createDestination' | 'destinationStatus',
 ): Promise<{
   provider: ReturnType<LibModule['publishProviderFor']>;
   req: Awaited<ReturnType<LibModule['resolvePublishRequest']>>;
@@ -50,7 +51,7 @@ export async function resolveDestinationProvider(
   const lib = await loadLib();
   const provider = lib.publishProviderFor(providerId);
   if (!provider[capability]) {
-    const reason = capability === 'listDestinations' ? 'has no folder picker' : "can't create new folders";
+    const reason = capability === 'createDestination' ? "can't create new folders" : 'has no folder picker';
     throw new Error(`${provider.info.label} ${reason}.`);
   }
   const req = await lib.resolvePublishRequest({ projectDir, providerId }, await publishDeps());
