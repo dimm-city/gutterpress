@@ -1,0 +1,14 @@
+/* style.css — the exact-fit-image page with a display formula in the
+   plate's place: an A4 page with 20mm margins (a 971.34px column in the
+   viewer; on this Chromium print keeps a box that ends up to ~972px down
+   it), one-line paragraphs on a fixed line-height, and the formula's SVG
+   sized by its box rather than in ex, so neither its top nor its height
+   depends on the font stack. With its 14px margin its box ends at 971.42px:
+   the preview pushes it to the next page, print keeps it.
+   docs/native-parity-gate.md describes the outcome. */
+
+@page { size: 210mm 297mm; margin: 20mm; }
+body { margin: 0; font-family: "DejaVu Serif", serif; font-size: 14px; line-height: 20.3px; orphans: 1; widows: 1; }
+h1, h2 { font-size: 20px; line-height: 28px; margin: 0 0 14px; }
+p { margin: 0; }
+mjx-container[display="true"] > svg { display: block; width: 240px; height: 408px; margin: 0 auto; }

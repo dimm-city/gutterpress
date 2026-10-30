@@ -1,0 +1,12 @@
+/* style.css — an A4 page with 20mm margins: the viewer's column is 971.34px
+   tall, and on this Chromium print keeps a box that ends up to ~972px down
+   it. One-line paragraphs on a fixed line-height put the plate's top at
+   549.42px whatever the font stack, and the plate is drawn 422px tall, so its
+   box ends at 971.42px: the preview pushes it to the next page, print keeps
+   it. docs/native-parity-gate.md describes the outcome. */
+
+@page { size: 210mm 297mm; margin: 20mm; }
+body { margin: 0; font-family: "DejaVu Serif", serif; font-size: 14px; line-height: 20.3px; orphans: 1; widows: 1; }
+h1, h2 { font-size: 20px; line-height: 28px; margin: 0 0 14px; }
+p { margin: 0; }
+img.plate { display: block; width: 240px; height: 422px; }

@@ -400,6 +400,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **The first backup of a new revision works (#448).** It used to stop with
   "sign in again" because a revision the online copy didn't have yet was taken
   for a rejected sign-in.
+- **The parity gate measures an exact fit at a formula or an image (#465).**
+  A display formula or an image has no text, so check (e) measured a later
+  line instead and reported a sub-pixel boundary as a divergence. It now
+  measures the element's box, as print draws it and the preview lays it out.
 
 ## [0.11.22] - 2026-10-23
 
