@@ -1,0 +1,7 @@
+{
+  "name": "look-b",
+  "version": "0.0.0",
+  "gutterpress": {
+    "styles": ["look.css"]
+  }
+}

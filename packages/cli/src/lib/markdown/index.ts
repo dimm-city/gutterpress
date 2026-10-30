@@ -1,4 +1,5 @@
 import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
+import postcss from "postcss";
 import { isOnlineSibling } from "../remote-auth/sync-messages";
 import { join } from "node:path";
 import { BOOK_HTML_FILENAME } from "../desktop";
@@ -38,6 +39,44 @@ export async function resolveActiveMarkdownFiles(
   return (await readdir(inputDir))
     .filter((f: string) => f.endsWith(".md") && !isOnlineSibling(f))
     .sort();
+}
+
+/**
+ * Split an extension's CSS into what goes inside its cascade layer and its
+ * `@page` rules, which the caller writes after the layer, unlayered, in
+ * source order. A rule inside the extension's own `@layer` loses that layer;
+ * one inside `@media` or `@supports` keeps the condition.
+ *
+ * Chromium ranks `@page` declarations by cascade layer before page name, so a
+ * layered `@page full { margin: 0 }` lost to the manifest's unlayered
+ * `@page { margin }` on its own pages, while the engine's reader, which
+ * ignores layers, kept it (#454). Unlayered, page rules cascade by page
+ * selector, then order: a look's named page keeps its margins, and the
+ * book's own sheet and the manifest, written later, still win on the pages
+ * they share with it.
+ */
+function liftPageRules(css: string): { layered: string; pages: string } {
+  if (!/@page\b/i.test(css)) return { layered: css, pages: "" };
+  let root: postcss.Root;
+  try {
+    root = postcss.parse(css);
+  } catch {
+    return { layered: css, pages: "" }; // CSS postcss cannot read stays as it was
+  }
+  const found: postcss.AtRule[] = [];
+  root.walkAtRules(/^page$/i, (rule) => {
+    found.push(rule);
+  });
+  const pages = found.map((rule) => {
+    let lifted: postcss.ChildNode = rule.clone();
+    for (let p = rule.parent; p instanceof postcss.AtRule || p instanceof postcss.Rule; p = p.parent) {
+      if (p instanceof postcss.AtRule && p.name.toLowerCase() === "layer") continue;
+      lifted = p.clone({ nodes: [] }).append(lifted);
+    }
+    rule.remove();
+    return lifted.toString();
+  });
+  return { layered: root.toString(), pages: pages.join("\n") };
 }
 
 /**
@@ -108,7 +147,8 @@ export async function renderChapters(
   // stylesheet FILES get the same asset-inline pass as the project's own
   // (fonts/images embedded, print-safety lintable; `inlineStyles` leaves
   // their absolute paths alone). A module's `css` string export follows its
-  // files, inside the same layer.
+  // files, inside the same layer. Its `@page` rules do not: they follow the
+  // layer, unlayered (see liftPageRules).
   const blocks: string[] = [];
   const layers: string[] = [];
   const styleWarnings: string[] = [];
@@ -122,7 +162,11 @@ export async function renderChapters(
       .join("\n\n");
     if (!css) continue;
     layers.push(group.layer);
-    blocks.push(`/* ${group.name} */\n@layer ${group.layer} {\n${css.trim()}\n}`);
+    const { layered, pages } = liftPageRules(css);
+    blocks.push(
+      `/* ${group.name} */\n@layer ${group.layer} {\n${layered.trim()}\n}` +
+        (pages ? `\n/* ${group.name}: page rules */\n${pages}` : ""),
+    );
   }
   styleWarnings.push(...inlined.warnings);
   if (styleWarnings.length > 0) opts.onStyleWarnings?.(styleWarnings);

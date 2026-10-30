@@ -217,7 +217,10 @@ export interface AssembleBookHtmlOptions {
  * makes Chromium print at it: written AFTER every extension's and the book's
  * own sheet, it wins by the cascade, so a `size` in a look's or an author's
  * `@page` cannot shadow the manifest (the print-safety check reports one), and
- * neither can an `@page` margin once the manifest has margins. Left out of the
+ * neither can an `@page` margin once the manifest has margins — except on a
+ * named page (`@page full { margin: 0 }`), whose name outranks these rules.
+ * That holds for a look's named pages too because a look's `@page` rules are
+ * written unlayered (index.ts's `liftPageRules`, #454). Left out of the
  * manifest, margins stay the stylesheets' business — a look's design — else
  * the 1in default `defaultPageMarginCss` writes; Setup > Book records
  * `page.margin` the first time an author changes one.
@@ -241,12 +244,11 @@ function pageGeometryCss(page: PrintAreaSource | undefined): string | null {
  * The margin a book prints with when the manifest sets none: a default, not a
  * decision (`DEFAULT_PAGE_MARGIN_PT` says why one is needed at all). Written
  * AHEAD of every stylesheet and INSIDE the core `gp.vocab` layer, so a look's
- * `@page` margin (in its `ext.<name>` layer, declared later) and the book's
- * own (unlayered) both win by the cascade — in Chromium, which ranks `@page`
- * declarations by layer, as well as in the engine's order-based reader.
- * Unlayered, it would beat a look's margin in print while the preview took
- * the look's. `null` once the manifest has margins — `pageGeometryCss` then
- * writes them last — or when there is no page geometry to supply.
+ * `@page` margin and the book's own (both unlayered, both later) win by the
+ * cascade — in Chromium, which ranks `@page` declarations by layer, as well
+ * as in the engine's order-based reader. `null` once the manifest has
+ * margins — `pageGeometryCss` then writes them last — or when there is no
+ * page geometry to supply.
  */
 function defaultPageMarginCss(page: PrintAreaSource | undefined): string | null {
   if (!page || page.margin) return null;

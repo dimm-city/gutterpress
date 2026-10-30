@@ -1,0 +1,20 @@
+title: "Named Page Margins"
+authors:
+  - "Gutterpress Fixture"
+
+preset: book
+
+extensions:
+  - ./look
+
+chapters:
+  - 01-plate.md
+
+page:
+  width: 432   # 6in
+  height: 648  # 9in
+  margin:
+    top: 54
+    bottom: 54
+    inside: 72
+    outside: 54

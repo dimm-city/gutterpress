@@ -374,6 +374,12 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 - **The minus sign (−, U+2212) is typed as itself.** The character check no
   longer reports it as a look-alike hyphen, and the editor no longer outlines it.
+- **A look's named pages keep their margins under `page.margin` (#454).**
+  Chromium ranks `@page` rules by cascade layer first, so the manifest's
+  margins beat a look's layered `@page full { margin: 0 }`: full-bleed plates
+  printed inset, and a sheet-wide one shrank the whole book to fit, while the
+  preview showed them full bleed. A look's `@page` rules are now written
+  after its layer, unlayered.
 
 ## [0.11.22] - 2026-10-23
 

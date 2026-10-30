@@ -13,11 +13,16 @@
  *      list order, so the list order holds even when an earlier extension
  *      leaves its CSS unlayered and a later one layers its own — and the
  *      book's unlayered `styles:` beat them all. Proved on computed style in
- *      Chromium, not on string positions.
+ *      Chromium, not on string positions;
+ *   5. an extension's `@page` rules are the exception (#454): they follow its
+ *      layer, unlayered and in source order, so Chromium ranks them by page
+ *      selector as the engine's reader does. Where they print is pinned on
+ *      the PDF by render-parity.page-margins.test.ts.
  */
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import postcss from "postcss";
 
 import { resolveConfig } from "./manifest";
 import { loadPluginsWithCss } from "./markdown/plugins";
@@ -130,6 +135,92 @@ describe("extensions cascade contract (#265)", () => {
     },
     60000,
   );
+
+  test("an extension's @page rules follow its layer, unlayered and in source order; its element rules stay inside (#454)", async () => {
+    writeLook(
+      dir,
+      "alpha",
+      "red",
+      [
+        "@layer alpha.pages {",
+        "  @page { margin: 0.5in; }",
+        "  @page full { margin: 0; }",
+        "  .plate { page: full; }",
+        "}",
+        ".tie { color: red; }",
+        "@media print {",
+        "  @page front { margin: 0.25in; }",
+        "  .x { color: red; }",
+        "}",
+      ].join("\n"),
+    );
+    writeLook(dir, "beta", "blue", "@page { margin: 0.75in; }\n.tie { color: blue; }\n");
+    writeFileSync(join(dir, "styles", "book.css"), "@page { margin: 1in; }\n", "utf8");
+    const config = resolveConfig({}, { extensions: ["./ext/alpha", "./ext/beta"], styles: ["styles/book.css"] });
+    const { plugins, pluginStyles } = await loadPluginsWithCss(config.extensions, dir);
+    const html = await renderChapters(dir, {
+      styles: config.styles,
+      files: ["chapter.md"],
+      plugins,
+      pluginStyles,
+      printArea: { width: 432, height: 648, margin: { top: 54, bottom: 54, inside: 54, outside: 54 } },
+    });
+
+    // Every node of the extension CSS, flat, with the layers around it.
+    const root = postcss.parse(html.slice(html.indexOf("/* extension css */"), html.indexOf("/* column alignment */")));
+    const layersAround = (node: postcss.Node): string[] => {
+      const names: string[] = [];
+      for (let p = node.parent; p instanceof postcss.AtRule || p instanceof postcss.Rule; p = p.parent) {
+        if (p instanceof postcss.AtRule && p.name === "layer") names.unshift(p.params);
+      }
+      return names;
+    };
+    const topIndex = (node: postcss.Node): number => {
+      let top = node;
+      while (top.parent && top.parent !== root) top = top.parent as postcss.Node;
+      return root.index(top as postcss.ChildNode);
+    };
+    const pages: postcss.AtRule[] = [];
+    root.walkAtRules("page", (rule) => {
+      pages.push(rule);
+    });
+    const layer = (name: string) => root.nodes.findIndex((n) => n instanceof postcss.AtRule && n.name === "layer" && n.params === name);
+
+    // In source order, alpha's then beta's, none inside a layer.
+    expect(pages.map((r) => `${r.params} ${r.toString().match(/margin: [^;]+/)?.[0]}`)).toEqual([
+      " margin: 0.5in",
+      "full margin: 0",
+      "front margin: 0.25in",
+      " margin: 0.75in",
+    ]);
+    for (const rule of pages) expect(layersAround(rule), rule.toString()).toEqual([]);
+    // The one in `@media print` keeps its condition.
+    expect((pages[2]!.parent as postcss.AtRule).params).toBe("print");
+    // Right after their own extension's layer, before the next one's.
+    expect(layer("ext.alpha")).toBeGreaterThan(-1);
+    for (const rule of pages.slice(0, 3)) {
+      expect(topIndex(rule)).toBeGreaterThan(layer("ext.alpha"));
+      expect(topIndex(rule)).toBeLessThan(layer("ext.beta"));
+    }
+    expect(topIndex(pages[3]!)).toBeGreaterThan(layer("ext.beta"));
+
+    // Element rules stay in their layers, an extension's own sublayer too.
+    const layersOf = (selector: string): string[][] => {
+      const found: string[][] = [];
+      root.walkRules((r) => {
+        if (r.selector === selector) found.push(layersAround(r));
+      });
+      return found;
+    };
+    expect(layersOf(".plate")).toEqual([["ext.alpha", "alpha.pages"]]);
+    expect(layersOf(".x")).toEqual([["ext.alpha"]]);
+    expect(layersOf(".tie")).toEqual([["ext.alpha"], ["ext.beta"]]);
+
+    // The book's own @page, then the manifest's margins, come after all of them.
+    const css = html.slice(html.indexOf("<style data-project-css>"), html.indexOf("</style>"));
+    expect(css.indexOf("@page { margin: 1in; }")).toBeGreaterThan(css.indexOf("@page { margin: 0.75in; }"));
+    expect(css.indexOf("/* page geometry (manifest) */")).toBeGreaterThan(css.indexOf("@page { margin: 1in; }"));
+  });
 
   test("list order is the markdown registration order", async () => {
     expect((await render(dir, ["./ext/alpha", "./ext/beta"])).registration).toEqual(["alpha", "beta"]);

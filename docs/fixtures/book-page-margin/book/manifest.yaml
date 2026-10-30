@@ -1,0 +1,18 @@
+title: "Book Page Margin"
+authors:
+  - "Gutterpress Fixture"
+
+preset: book
+
+extensions:
+  - ./look
+
+styles:
+  - styles/book.css
+
+chapters:
+  - 01-margins.md
+
+page:
+  width: 432   # 6in
+  height: 648  # 9in
