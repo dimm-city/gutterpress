@@ -1,8 +1,9 @@
 /**
  * Route-level coverage for the Versions view's data (#408):
- *  - `vcs/list-snapshots-page` describes each version (changed files +
- *    backed-up flag) for a versioned book and passes a plain folder's page
- *    through untouched;
+ *  - `vcs/list-snapshots-page` describes each version (backed-up flag) for a
+ *    versioned book and passes a plain folder's page through untouched;
+ *  - `vcs/version-changes` validates the id, then lists one version's
+ *    changed files;
  *  - `vcs/online-versions` forwards to the lib with the host's token store;
  *  - `vcs/compare-file` validates the id and the path before the lib sees
  *    them;
@@ -16,6 +17,7 @@ import { makeHostServices } from "../support/host-services-fake";
 import { setLibForTests, type LibModule } from "../../src/routes/api/_lib/route";
 import { POST as listSnapshotsPage } from "../../src/routes/api/vcs/list-snapshots-page/+server";
 import { POST as onlineVersions } from "../../src/routes/api/vcs/online-versions/+server";
+import { POST as versionChanges } from "../../src/routes/api/vcs/version-changes/+server";
 import { POST as compareFile } from "../../src/routes/api/vcs/compare-file/+server";
 import { POST as openVersionPreview } from "../../src/routes/api/vcs/open-version-preview/+server";
 import { POST as closeVersionPreview } from "../../src/routes/api/vcs/close-version-preview/+server";
@@ -69,13 +71,12 @@ describe("POST /api/vcs/list-snapshots-page", () => {
       providerFor: () => ({ listHistoryPage: async () => ({ entries: [entry], hasMore: false }) }),
       describeVersions: async (dir: string, entries: Array<{ id: string }>) => {
         described.push(dir, ...entries.map((e) => e.id));
-        return entries.map((e) => ({ ...e, changes: [{ path: "a.md", kind: "changed", hint: "1 paragraph changed", text: true }], moreChanges: 0, backedUp: false }));
+        return entries.map((e) => ({ ...e, backedUp: false }));
       },
     });
     const res = await listSnapshotsPage({ request: request({ projectDir: "/abs/project" }) } as never);
     const page = await res.json();
     expect(described).toEqual(["/abs/project", SHA]);
-    expect(page.entries[0].changes[0].hint).toBe("1 paragraph changed");
     expect(page.entries[0].backedUp).toBe(false);
   });
 
@@ -90,6 +91,28 @@ describe("POST /api/vcs/list-snapshots-page", () => {
     });
     const res = await listSnapshotsPage({ request: request({ projectDir: "/abs/project" }) } as never);
     expect(await res.json()).toEqual({ entries: [], hasMore: false });
+  });
+});
+
+describe("POST /api/vcs/version-changes", () => {
+  test("400 on a bad id; otherwise lists that one version's changed files", async () => {
+    openProject();
+    const calls: unknown[] = [];
+    const changes = { files: [{ path: "a.md", kind: "changed", hint: "1 paragraph changed", text: true }], more: 0 };
+    fakeLib({
+      listVersionChanges: async (...args: unknown[]) => {
+        calls.push(args);
+        return changes;
+      },
+    });
+    for (const id of ["abc", undefined, 42]) {
+      const { status } = await caught(versionChanges({ request: request({ projectDir: "/abs/project", id }) } as never));
+      expect(status).toBe(400);
+    }
+    expect(calls).toEqual([]);
+    const res = await versionChanges({ request: request({ projectDir: "/abs/project", id: SHA }) } as never);
+    expect(await res.json()).toEqual(changes);
+    expect(calls).toEqual([["/abs/project", SHA]]);
   });
 });
 

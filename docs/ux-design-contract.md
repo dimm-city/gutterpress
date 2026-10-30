@@ -521,9 +521,11 @@ buttons.
   Version history card lists the newest versions with **Save a version** and
   **Browse versions**, which (or a listed version) opens the screen over Book
   setup — the versions on the left grouped by day, the selected one on the
-  right with its **Pages** rendered as they were or its **Changed files** line
-  by line, and **Restore this version** at the top. × or Esc returns to Book
-  setup. It never takes over the editor pane.
+  right with its **Changed files** (a text file opens line by line) or, only
+  when asked for, its **Pages** rendered as they were, and **Restore this
+  version** at the top. Selecting a version never renders it: selecting
+  another returns to its Changed files. × or Esc returns to Book setup. It
+  never takes over the editor pane.
   Author-facing vocabulary says "revision", never "branch"; "copy" means only
   the online copy. The editor/file tree/preview show the new revision the same
   way they pick up any other external change.

@@ -18,11 +18,12 @@
  *      allows (never Delete on the open one; Switch and Delete… on an
  *      online-only one). Past five revisions the list scrolls in its own box
  *      and offers "Find a revision" (case-insensitive; "No revisions match.").
- *   3. Version history… opens INSIDE the tab (Book setup stays up, the rest
- *      of the tab is hidden, the editor pane is untouched); a changed file
- *      opens its compare there, and Online copy brings the tab back. Look at
- *      this version closes Book setup and shows the preview's own "Looking at
- *      …" bar, whose close button stops looking.
+ *   3. Browse versions opens Version history, a screen of its own over Book
+ *      setup (the editor pane untouched), on the newest version's Changed
+ *      files with nothing rendered; a changed file opens line by line, and
+ *      back. Pages renders the selected version only when asked; selecting
+ *      another version goes back to its Changed files and closes those pages.
+ *      Restore this version asks once; × and Escape return to Book setup.
  *   4. New revision… sits above the list (and its name form opens there;
  *      Escape in it cancels the form, not Book setup), previews the name, creates it and lists it; Rename… of an online
  *      revision shows the "also renames it in the online copy" note; deleting
@@ -45,13 +46,13 @@
  *   7. A Reader sees no status control and no Sync, even in that state.
  *
  * Screenshots: <os tmpdir>/online-copy-{bar,bar-auto,bar-sync,bar-sync-updates,
- * bar-narrow,tab,filter,history,compare,rename,delete,delete-online,failing,reader}.png.
+ * bar-narrow,tab,filter,history,compare,history-pages,rename,delete,delete-online,failing,reader}.png.
  *
  * Usage: node tests/integration/online-copy.pw.mjs [exe-or-main-js] [fixture-dir]
  * Exit 0 on pass, 1 on fail.
  */
 import { execFileSync, spawn } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -98,6 +99,9 @@ const git = (...args) => execFileSync("git", ["-c", "user.name=Ada", "-c", "user
 git("init", "-q", "-b", "main");
 git("add", "-A");
 git("commit", "-q", "-m", "First version");
+// A second version, so the screen has another one to select.
+writeFileSync(join(bookDir, "02-beta.md"), readFileSync(join(bookDir, "02-beta.md"), "utf8").replace("Beta opening paragraph.", "A tighter beta opening."));
+git("commit", "-q", "-am", "Tightened the opening");
 git("remote", "add", "origin", "https://github.com/ada/harbor-lights.git");
 log(`seeded book: ${bookDir}`);
 
@@ -417,19 +421,37 @@ log(`version history: ${JSON.stringify(vh)}`);
 check(vh.title === "Version history" && vh.bookSetupUnder && !vh.inEditorPane, "it is its own screen, over Book setup, not in the editor");
 check(vh.selected === 1 && vh.firstSelected && vh.head, `the newest version is selected and named at the top (${vh.head})`);
 check(vh.actions.join("|") === "Restore this version", "Restore this version sits at the top of the selected version");
-check(vh.tabs[0] === "Pages" && /^Changed files/.test(vh.tabs[1] ?? ""), `the version shows its Pages or its Changed files (${vh.tabs.join(", ")})`);
-check(await waitFor(`!!document.querySelector('.vh .pages iframe') || /Couldn't show/.test(document.querySelector('.vh .pages')?.textContent ?? '')`, 60000), "its pages render on the right");
-await sleep(1500);
-await screenshot(join(tmpdir(), "online-copy-history.png"));
+check(/^Changed files/.test(vh.tabs[0] ?? "") && vh.tabs[1] === "Pages", `the version shows its Changed files or its Pages (${vh.tabs.join(", ")})`);
 
-// Changed files: a text file opens line by line, and back.
-await click(".vh .tabs [role='tab']", vh.tabs[1]);
-check(await waitFor(`!!document.querySelector('.vh .files .file')`), "Changed files lists the files it changed");
+// Changed files first: a version opens on what it changed, and nothing renders.
+check(await waitFor(`!!document.querySelector('.vh .files .file')`), "the selected version opens on the files it changed");
+check(await evalJs(`/^Changed files \\(1\\)$/.test(document.querySelector('.vh .tabs [role="tab"]').textContent.trim()) && !document.querySelector('.vh .pages, .vh iframe')`), "Changed files (1) is shown, and no pages are rendered");
+await sleep(400);
+await screenshot(join(tmpdir(), "online-copy-history.png"));
+// A text file opens line by line, and back.
 await click(".vh .files button.file");
 check(await waitFor(`!!document.querySelector('.vh .compare-view .columns')`), "a changed text file opens line by line");
 await screenshot(join(tmpdir(), "online-copy-compare.png"));
 await click(".vh .compare-view .back");
 check(await waitFor(`!!document.querySelector('.vh .files')`), "and goes back to the list");
+
+// Pages renders the selected version when asked for.
+await click(".vh .tabs [role='tab']", "Pages");
+check(await waitFor(`!!document.querySelector('.vh .pages iframe') || /Couldn't show/.test(document.querySelector('.vh .pages')?.textContent ?? '')`, 60000), "Pages renders the selected version when asked");
+const pagesUrl = await evalJs(`document.querySelector('.vh .pages iframe')?.src ?? null`);
+await sleep(1500);
+await screenshot(join(tmpdir(), "online-copy-history-pages.png"));
+// Selecting another version goes back to Changed files, and the pages close.
+await evalJs(`document.querySelectorAll('.vh .ver')[1].click(); true`);
+check(await waitFor(`document.querySelectorAll('.vh .ver')[1]?.classList.contains('selected') && !!document.querySelector('.vh .files') && !document.querySelector('.vh .pages')`), "selecting another version shows its Changed files, not pages");
+if (pagesUrl) {
+  let closed = false;
+  for (let i = 0; i < 40 && !closed; i++) {
+    closed = await fetch(pagesUrl).then(() => false, () => true);
+    if (!closed) await sleep(250);
+  }
+  check(closed, "and the pages it was showing are closed");
+}
 
 // Restore asks once, at the top.
 await click(".vh .detail-actions button", "Restore this version");

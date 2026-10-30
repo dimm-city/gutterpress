@@ -27,11 +27,12 @@ export interface VcsHooks {
    */
   refreshOnlineStatus?: (dir: string) => void;
   /**
-   * "Look at this version" (#408): render version `id` of the open book
+   * Version history's Pages (#408): render version `id` of the open book
    * read-only, from a scratch copy of its files, and return the preview URL
-   * for a second frame. Replaces any version preview already open.
+   * for a second frame. Replaces any version preview already open; `null`
+   * when a later open or close replaced this one before it started.
    */
-  openVersionPreview: (projectDir: string, id: string) => Promise<{ url: string }>;
+  openVersionPreview: (projectDir: string, id: string) => Promise<{ url: string } | null>;
   /** Stop the version preview and drop its scratch copy. No-op when none is open. */
   closeVersionPreview: () => Promise<void>;
 }
