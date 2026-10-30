@@ -545,7 +545,7 @@ describe("plugin loader", () => {
     test("error message points to the built-in installer, not an external tool", async () => {
       await expect(
         loadPlugin(cfg({ name: "this-package-does-not-exist-xyz", version: "1.0.0" }), TMP_ROOT)
-      ).rejects.toThrow(/gutterpress ext add this-package-does-not-exist-xyz@1\.0\.0.*Book setup > Advanced/);
+      ).rejects.toThrow(/gutterpress ext add this-package-does-not-exist-xyz@1\.0\.0.*add it in Book setup/);
     });
 
     test.each([undefined, "^1.0.0", "latest"])(
