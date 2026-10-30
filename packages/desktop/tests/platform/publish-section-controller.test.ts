@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 import { PublishSectionController } from "../../src/lib/routes/publish-section-controller.svelte";
-import type { PublishProviderCard, PublishRunResult } from "../../src/lib/platform/contract";
+import type {
+  PublishDestination,
+  PublishDestinationStatus,
+  PublishProviderCard,
+  PublishRunResult,
+} from "../../src/lib/platform/contract";
 import type { PreflightRow } from "../../src/lib/preflight";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
@@ -39,6 +44,10 @@ interface Harness {
   preflightRows: PreflightRow[];
   preflightCalls: Array<{ dir: string; providerIds: string[] }>;
   failPreflight: boolean;
+  /** What the host reports for the Drive step (#452), and the folders it lists. */
+  status: PublishDestinationStatus;
+  statusCalls: number;
+  folders: PublishDestination[];
 }
 
 function make(over: Partial<{ noProject: boolean; cards: PublishProviderCard[] }> = {}): Harness {
@@ -54,6 +63,9 @@ function make(over: Partial<{ noProject: boolean; cards: PublishProviderCard[] }
     preflightRows: [],
     preflightCalls: [],
     failPreflight: false,
+    status: { state: "unset" },
+    statusCalls: 0,
+    folders: [],
   } as Harness;
   h.ctrl = new PublishSectionController({
     projectDir: () => h.projectDir,
@@ -66,6 +78,12 @@ function make(over: Partial<{ noProject: boolean; cards: PublishProviderCard[] }
     setConfig: (dir, providerId, values) => {
       h.setConfigCalls.push({ dir, providerId, values });
       return Promise.resolve({});
+    },
+    listDestinations: () => Promise.resolve(h.folders),
+    createDestination: (_dir, _providerId, name) => Promise.resolve({ id: `new-${name}`, title: name }),
+    destinationStatus: () => {
+      h.statusCalls++;
+      return Promise.resolve(h.status);
     },
     run: () => Promise.resolve(h.runResult),
     openExternal: () => Promise.resolve({ ok: true }),
@@ -386,6 +404,7 @@ test("selectCredential triggers a destinations reload for the newly selected acc
       return Promise.resolve([]);
     },
     createDestination: () => Promise.reject(new Error("not used")),
+    destinationStatus: () => Promise.resolve({ state: "unset" }),
     run: () => Promise.reject(new Error("not used")),
     pickPdfFile: () => Promise.resolve(null),
     openDirectory: () => Promise.resolve(null),
@@ -414,6 +433,7 @@ test("selectCredential does not reload destinations for a provider without a pic
       return Promise.resolve([]);
     },
     createDestination: () => Promise.reject(new Error("not used")),
+    destinationStatus: () => Promise.resolve({ state: "unset" }),
     run: () => Promise.reject(new Error("not used")),
     pickPdfFile: () => Promise.resolve(null),
     openDirectory: () => Promise.resolve(null),
@@ -437,6 +457,7 @@ test("destinationsError and destinationsBusyId are keyed PER PROVIDER — an err
       return Promise.resolve([]);
     },
     createDestination: () => Promise.reject(new Error("not used")),
+    destinationStatus: () => Promise.resolve({ state: "unset" }),
     run: () => Promise.reject(new Error("not used")),
     pickPdfFile: () => Promise.resolve(null),
     openDirectory: () => Promise.resolve(null),
@@ -473,6 +494,7 @@ test("destinationsBusyId's single-flight guard is per-provider, not global", asy
       return Promise.resolve([]);
     },
     createDestination: () => Promise.reject(new Error("not used")),
+    destinationStatus: () => Promise.resolve({ state: "unset" }),
     run: () => Promise.reject(new Error("not used")),
     pickPdfFile: () => Promise.resolve(null),
     openDirectory: () => Promise.resolve(null),
@@ -492,4 +514,186 @@ test("destinationsBusyId's single-flight guard is per-provider, not global", asy
   releaseA!();
   await loadA;
   expect(ctrl.destinationsBusyId["gdrive-a"]).toBe(false);
+});
+
+// ── The book's Drive folder, or one of the person's own (#452) ───────────────
+//
+// The host reports where this person publishes; the controller turns it into
+// the step's words and picks one of two save paths: `folderId`/`folder` (the
+// book's, which the host writes to the manifest) or `myFolderId`/`myFolder`
+// (theirs, which the host keeps in their private settings).
+
+const DRIVE: PublishProviderCard = {
+  ...GDRIVE_DEST_CARD,
+  connected: true,
+  config: { folderId: "F1", folder: "Harbor Books" },
+};
+const HARBOR = { id: "F1", title: "Harbor Books" };
+const BENS = { id: "B1", title: "Ben's Books" };
+const SAVED_FOR_YOU = "It is saved for you only; the book keeps its folder for everyone else.";
+
+async function driveStep(status: PublishDestinationStatus, card: PublishProviderCard = DRIVE): Promise<Harness> {
+  const h = make({ cards: [card] });
+  h.status = status;
+  h.folders = [HARBOR, BENS];
+  await h.ctrl.loadPublish();
+  await h.ctrl.loadDestinations("gdrive");
+  return h;
+}
+
+test("case 1: the book's reachable folder is shown with no prompt, and a folder just for me is offered", async () => {
+  const h = await driveStep({ state: "book", destination: HARBOR });
+  expect(h.ctrl.destinationPrompt("gdrive")).toEqual({
+    message: "",
+    selected: "F1",
+    saveTo: "book",
+    canUseBook: false,
+    canChooseOwn: true,
+  });
+});
+
+test("case 2: an unreachable book folder is explained, and the pick is saved for this person only", async () => {
+  const h = await driveStep({ state: "unreachable", book: { title: "Harbor Books", reachable: false } });
+  expect(h.ctrl.destinationPrompt("gdrive")).toEqual({
+    message: `This book publishes to the Drive folder 'Harbor Books', which your Google account can't reach. Choose a folder you can reach. ${SAVED_FOR_YOU}`,
+    selected: "",
+    saveTo: "mine",
+    canUseBook: false,
+    canChooseOwn: false,
+  });
+
+  h.statusCalls = 0;
+  await h.ctrl.selectDestination("gdrive", BENS);
+  expect(h.setConfigCalls).toEqual([
+    { dir: "/proj", providerId: "gdrive", values: { myFolderId: "B1", myFolder: "Ben's Books" } },
+  ]);
+  expect(h.statusCalls).toBe(1); // where they now publish is checked again
+});
+
+test("case 2: a new folder made on the step is theirs too", async () => {
+  const h = await driveStep({ state: "unreachable", book: { title: "Harbor Books", reachable: false } });
+  h.ctrl.setNewDestinationDraft("gdrive", "Ben's Copy");
+  await h.ctrl.createNewDestination("gdrive");
+  expect(h.setConfigCalls.map((c) => c.values)).toEqual([{ myFolderId: "new-Ben's Copy", myFolder: "Ben's Copy" }]);
+});
+
+test("case 3: with no folder yet the first pick is the book's, saved with no question", async () => {
+  const h = await driveStep({ state: "unset" }, { ...DRIVE, config: {} });
+  expect(h.ctrl.destinationPrompt("gdrive").message).toBe("Saved with the book, so everyone publishes here.");
+  await h.ctrl.selectDestination("gdrive", HARBOR);
+  expect(h.setConfigCalls.map((c) => c.values)).toEqual([{ folderId: "F1", folder: "Harbor Books" }]);
+});
+
+test("case 4: their own folder is named instead of the book's, and Use the book's folder clears it", async () => {
+  const h = await driveStep({ state: "mine", destination: BENS, book: { title: "Harbor Books", reachable: true } });
+  expect(h.ctrl.destinationPrompt("gdrive")).toEqual({
+    message: "You publish to your own folder 'Ben's Books' instead of the book's 'Harbor Books'.",
+    selected: "B1",
+    saveTo: "mine",
+    canUseBook: true,
+    canChooseOwn: false,
+  });
+  await h.ctrl.useBookDestination("gdrive");
+  expect(h.setConfigCalls.map((c) => c.values)).toEqual([{ myFolderId: "" }]);
+});
+
+test("case 4: while the book's folder is still out of reach, it says so and offers no way back yet", async () => {
+  const h = await driveStep({ state: "mine", destination: BENS, book: { title: "Harbor Books", reachable: false } });
+  const prompt = h.ctrl.destinationPrompt("gdrive");
+  expect(prompt.message).toBe(
+    "You publish to your own folder 'Ben's Books' instead of the book's 'Harbor Books', which your Google account can't reach.",
+  );
+  expect(prompt.canUseBook).toBe(false);
+  await h.ctrl.selectDestination("gdrive", { id: "B2", title: "Elsewhere" }); // changing their own stays private
+  expect(h.setConfigCalls.map((c) => c.values)).toEqual([{ myFolderId: "B2", myFolder: "Elsewhere" }]);
+});
+
+test("case 6: their own folder gone asks again as in case 2, offering the book's folder when it is reachable", async () => {
+  const h = await driveStep({ state: "unreachable", book: { title: "Harbor Books", reachable: true }, mine: "Ben's Books" });
+  expect(h.ctrl.destinationPrompt("gdrive")).toEqual({
+    message: `Your own folder 'Ben's Books' for this book can't be reached any more. Choose a folder you can reach. ${SAVED_FOR_YOU}`,
+    selected: "",
+    saveTo: "mine",
+    canUseBook: true,
+    canChooseOwn: false,
+  });
+  await h.ctrl.selectDestination("gdrive", HARBOR);
+  expect(h.setConfigCalls.map((c) => c.values)).toEqual([{ myFolderId: "F1", myFolder: "Harbor Books" }]);
+});
+
+test("case 7: changing the book's reachable folder asks first; only a confirmed change is written, to the manifest", async () => {
+  const h = await driveStep({ state: "book", destination: HARBOR });
+  await h.ctrl.selectDestination("gdrive", BENS);
+  expect(h.ctrl.pendingDestination.gdrive).toEqual(BENS);
+  expect(h.setConfigCalls).toEqual([]);
+
+  h.ctrl.cancelBookDestination("gdrive");
+  expect(h.ctrl.pendingDestination.gdrive).toBeUndefined();
+  expect(h.setConfigCalls).toEqual([]);
+
+  await h.ctrl.selectDestination("gdrive", BENS);
+  await h.ctrl.confirmBookDestination("gdrive");
+  expect(h.setConfigCalls.map((c) => c.values)).toEqual([{ folderId: "B1", folder: "Ben's Books" }]);
+  expect(h.ctrl.pendingDestination.gdrive).toBeUndefined();
+});
+
+test("case 7: Use a different folder just for me makes the next pick private", async () => {
+  const h = await driveStep({ state: "book", destination: HARBOR });
+  h.ctrl.chooseOwnDestination("gdrive");
+  expect(h.ctrl.destinationPrompt("gdrive")).toEqual({
+    message: `Choose a folder just for you. ${SAVED_FOR_YOU}`,
+    selected: "",
+    saveTo: "mine",
+    canUseBook: true,
+    canChooseOwn: false,
+  });
+  await h.ctrl.selectDestination("gdrive", BENS);
+  expect(h.setConfigCalls.map((c) => c.values)).toEqual([{ myFolderId: "B1", myFolder: "Ben's Books" }]);
+
+  // Changing their mind before picking writes nothing.
+  h.ctrl.chooseOwnDestination("gdrive");
+  await h.ctrl.useBookDestination("gdrive");
+  expect(h.setConfigCalls.length).toBe(1);
+  expect(h.ctrl.destinationPrompt("gdrive").saveTo).toBe("book");
+});
+
+test("case 8: a folder named only by name is each person's own; several of that name are chosen privately, once", async () => {
+  const byName = { ...DRIVE, config: { folder: "Harbor Books" } };
+  const one = await driveStep({ state: "by-name", name: "Harbor Books", destination: HARBOR, several: false }, byName);
+  expect(one.ctrl.destinationPrompt("gdrive")).toMatchObject({
+    message: "Each person publishes to a folder named 'Harbor Books' in their own Drive.",
+    selected: "F1",
+    saveTo: "book",
+  });
+
+  const several = await driveStep({ state: "by-name", name: "Harbor Books", destination: HARBOR, several: true }, byName);
+  expect(several.ctrl.destinationPrompt("gdrive")).toMatchObject({
+    message:
+      "Each person publishes to a folder named 'Harbor Books' in their own Drive. Several of yours have that name: choose the one you publish to. It is saved for you only.",
+    selected: "",
+    saveTo: "mine",
+  });
+  await several.ctrl.selectDestination("gdrive", { id: "H1", title: "Harbor Books" });
+  expect(several.setConfigCalls.map((c) => c.values)).toEqual([{ myFolderId: "H1", myFolder: "Harbor Books" }]);
+
+  // Afterwards the step names the choice without repeating the name twice.
+  const chosen = await driveStep({ state: "mine", destination: { id: "H1", title: "Harbor Books" }, book: { title: "Harbor Books", reachable: true } }, byName);
+  expect(chosen.ctrl.destinationPrompt("gdrive").message).toBe("You publish to the folder 'Harbor Books' you chose for yourself.");
+});
+
+test("case 9: switching the account re-checks where this person publishes", async () => {
+  const h = await driveStep({ state: "mine", destination: BENS, book: { title: "Harbor Books", reachable: false } });
+  h.statusCalls = 0;
+  h.status = { state: "book", destination: HARBOR };
+  await h.ctrl.selectCredential("gdrive", "work");
+  expect(h.statusCalls).toBe(1);
+  expect(h.ctrl.destinationPrompt("gdrive").selected).toBe("F1");
+});
+
+test("before the host has answered, a pick never replaces the book's folder unasked", async () => {
+  const h = make({ cards: [DRIVE] });
+  await h.ctrl.loadPublish();
+  await h.ctrl.selectDestination("gdrive", BENS);
+  expect(h.setConfigCalls).toEqual([]);
+  expect(h.ctrl.pendingDestination.gdrive).toEqual(BENS);
 });

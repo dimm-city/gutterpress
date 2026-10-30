@@ -54,6 +54,10 @@ gutterpress publish --provider gdrive --connect
 # Publish (uses the manifest's output location by default)
 gutterpress build && gutterpress publish --provider itch
 
+# Google Drive: another folder for this run only, when the book's is out of
+# your reach (the manifest is not changed)
+gutterpress publish --provider gdrive --folder-id <id>   # or --folder "My Books"
+
 # Preflight only / CI
 gutterpress publish --provider itch --dry-run --json
 
@@ -100,7 +104,7 @@ publish:
     apiVersion: "2026-04"                # optional
   gdrive:
     folder: My Books              # display name; created at My Drive root if missing (default: "Gutterpress")
-    folderId: 1AbC…               # stable id, takes precedence over `folder` — picker-set, or hand-recorded from the CLI's post-publish tip
+    folderId: 1AbC…               # stable id, takes precedence over `folder` — the team's folder (see below), picker-set or hand-recorded from the CLI's post-publish tip
     format: pdf                   # pdf (default) | html — the zipped website export
 ```
 
@@ -116,10 +120,11 @@ edits publishing settings to start publishing.
 | itch.io `target`, `channel` | manifest | |
 | Shopify `shop`, `productId`, `apiVersion` | manifest | |
 | Azure `env`; DriveThruRPG `productUrl` | manifest | |
-| Google Drive `folder`, `folderId`, and the `format` choice | manifest | the team's folder; each member reaches it through their own Google connection |
+| Google Drive `folder`, `folderId`, and the `format` choice | manifest | the team's folder; each member reaches it through their own Google connection, or uses their own folder when they can't (below) |
 | Local output folder `dir`, when it is inside the book | manifest, **relative to the book** (`dist`, `exports`) | means the same on every computer |
 | Which of your saved accounts the book publishes with (`credential`) | **private** | accounts are yours; a label in the manifest would name an account teammates don't have |
 | Local output folder, when it is outside the book | **private** | a personal override; an absolute path is never written to the manifest |
+| Your own Google Drive folder, when the book's is out of your reach (`myFolderId`, `myFolder`) | **private** | a personal override; see [Google Drive: the book's folder and your own](#google-drive-the-books-folder-and-your-own) |
 
 "Inside the book" means inside the book's own folder. (A folder elsewhere in
 the same Git repository counts as outside: it is a personal choice, not the
@@ -138,6 +143,48 @@ carries a `credential` or an absolute `dir` keeps publishing, and your own
 choice wins over it. The CLI reads the manifest only (it has no private
 store yet), so `gutterpress publish` uses the manifest's `credential` and
 `dir`, or the defaults.
+
+### Google Drive: the book's folder and your own
+
+Gutterpress connects to Google with the `drive.file` scope, which sees only the
+folders a person's own connection created or opened. So the folder Ada picked
+for the book can be out of Ben's reach even when she shared it with him in
+Drive: Drive answers "not found", the same as for a folder that is trashed or
+belongs to another account. The rule (#452):
+
+- **The manifest is the team's.** `publish.gdrive.folderId` (or a `folder` name)
+  is written only when the book has no folder yet (the first pick), or when
+  someone changes it on purpose; the desktop says "This changes the folder for
+  everyone who publishes this book." before saving that change.
+- **Out of reach: you choose your own.** When the book's folder is not reachable
+  with the account this book publishes with, the desktop's Google Drive step
+  says so and you pick a folder you can reach (or make one). It is saved in your
+  private settings for the book (`myFolderId`, `myFolder`), recorded with the
+  book's folder it stands in for and the account you chose it with. The
+  manifest is not written, and publishing never creates a folder in its place.
+- **It lapses on its own.** Your folder is used while the book's folder and your
+  account are the ones it was chosen for. When the team changes the folder (a
+  pull, or a merge that kept another member's pick) or you switch accounts, it
+  no longer applies: the book's folder is used if you can reach it (and your
+  old choice is dropped), otherwise you are asked again. If your own folder is
+  gone, you are asked again too.
+- **Never a silent switch.** If the book's folder becomes reachable while you
+  have your own, you keep publishing to yours; the step offers **Use the
+  book's folder**. **Use a different folder just for me** makes a private
+  choice while the book's folder is reachable.
+- **A folder named only by name** (`folder`, no `folderId`) is each person's own
+  folder of that name, found or created in their Drive; the id is never written
+  to the manifest. If several of your folders have the name, the desktop asks
+  once and saves your choice privately; the CLI uses the most recently changed
+  one and says which.
+- **Both formats, and re-publishing,** use the same folder: the PDF and the
+  zipped website go to whichever folder you publish to, and publishing again
+  updates the file there, never the one in the team's folder.
+
+The CLI reads the manifest only and never writes it. When the book's folder is
+out of reach the error names it and how to publish elsewhere:
+`--folder-id <id>` or `--folder <name>` for that run, or the desktop's
+per-book choice.
 
 Sections are keyed by the provider id — the same spelling as
 `--provider <id>`. Each provider declares its editable fields
@@ -313,7 +360,7 @@ lib/publish/
                      and never stored)
   manifest-publish.ts readPublishSettings/setPublishProviderConfig (yaml round-trip);
                      savePublishSettings files each value as shared (manifest) or private
-  selections.ts      PublishSelectionsStore: one person's private values per book (account, outside folder)
+  selections.ts      PublishSelectionsStore: one person's private values per book (account, outside folder, own Drive folder)
   command-runner.ts  injectable child-process seam (secrets via env only)
   butler.ts          butler acquisition (BUTLER_PATH → PATH → cache → download)
   google-auth.ts     GoogleAuthProvider: loopback-redirect + PKCE OAuth connect, client id/secret resolution
@@ -338,6 +385,7 @@ interface PublishProvider {
   updateListing?(req, id, metadata): Promise<PublishProduct>;
   listDestinations?(req): Promise<PublishProduct[]>;  // gdrive: app-visible Drive folders
   createDestination?(req, name): Promise<PublishProduct>;  // gdrive: create a folder
+  destinationStatus?(req): Promise<PublishDestinationStatus>;  // gdrive: the book's folder or your own (#452)
 }
 ```
 

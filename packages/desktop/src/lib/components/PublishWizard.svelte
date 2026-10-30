@@ -23,8 +23,9 @@
    * (PublishKeyForm). The team decides where the book is published, so the
    * destinations ticked and each one's settings are saved in the book's
    * manifest, and a teammate who opens the book finds them ready: they only
-   * connect their own account. Which account they use and a folder outside the
-   * book are their own: the host keeps those in private settings on this
+   * connect their own account. Which account they use, a folder outside the
+   * book, and a Drive folder of their own when the book's is out of their
+   * reach (#452) are theirs: the host keeps those in private settings on this
    * computer.
    *
    * PWA-clean + $effect-free (CLAUDE.md §8): host work goes through the injected
@@ -131,6 +132,13 @@
     addingFolder = { ...addingFolder, [card.id]: false };
     const destination = (controller.publishDestinations[card.id] ?? []).find((d) => d.id === value);
     if (destination) void controller.selectDestination(card.id, destination);
+  }
+
+  /** Folders that share a name are told apart by their place in the list
+   *  (most recently changed first), so a person can choose among them (#452). */
+  function folderLabel(dests: { id: string; title: string }[], i: number): string {
+    const same = dests.filter((d) => d.title === dests[i]!.title);
+    return same.length > 1 ? `${dests[i]!.title} (${same.indexOf(dests[i]!) + 1})` : dests[i]!.title;
   }
 
   async function doCreateDestination(card: PublishProviderCard) {
@@ -496,18 +504,26 @@
             {#if card.destinations}
               {@const destBusy = controller.destinationsBusyId[card.id] === true}
               {@const dests = controller.publishDestinations[card.id] ?? []}
-              {@const currentFolderId = card.config.folderId ?? ""}
+              {@const prompt = controller.destinationPrompt(card.id)}
+              {@const pending = controller.pendingDestination[card.id]}
+              {@const destState = controller.publishDestinationStatus[card.id]?.state}
+              {#if prompt.message}
+                <p class={destState === "unreachable" ? "warn" : "field-hint"}>
+                  {#if destState === "unreachable"}<Icon name="triangle-alert" size={13} />{/if}
+                  {prompt.message}
+                </p>
+              {/if}
               <label class="field" for={`pw-${card.id}-folder`}>
                 <span>{card.destinations.label}</span>
                 <select
                   id={`pw-${card.id}-folder`}
-                  value={addingFolder[card.id] ? NEW_FOLDER : currentFolderId}
+                  value={addingFolder[card.id] ? NEW_FOLDER : (pending?.id ?? prompt.selected)}
                   onchange={(e) => onDestinationSelect(card, e.currentTarget.value)}
                   disabled={destBusy || busy}
                 >
                   <option value="">{destBusy ? "Loading folders…" : "Choose a folder…"}</option>
-                  {#each dests as d (d.id)}
-                    <option value={d.id}>{d.title}</option>
+                  {#each dests as d, i (d.id)}
+                    <option value={d.id}>{folderLabel(dests, i)}</option>
                   {/each}
                   {#if card.destinations.canCreate}
                     <option value={NEW_FOLDER}>New folder…</option>
@@ -526,8 +542,24 @@
                   <button class="app-btn app-btn-primary" onclick={() => doCreateDestination(card)} disabled={busy}>Create</button>
                 </div>
               {/if}
+              {#if pending}
+                <!-- Changing the book's folder is the team's destination (#452 case 7): say so before saving. -->
+                <p class="warn" role="alert"><Icon name="triangle-alert" size={13} /> This changes the folder for everyone who publishes this book.</p>
+                <div class="key-row">
+                  <button class="app-btn app-btn-primary" onclick={() => controller.confirmBookDestination(card.id)} disabled={busy}>Change it for everyone</button>
+                  <button class="app-btn app-btn-ghost" onclick={() => controller.cancelBookDestination(card.id)}>Cancel</button>
+                </div>
+              {/if}
+              {#if prompt.canUseBook || prompt.canChooseOwn}
+                <div class="key-row">
+                  {#if prompt.canUseBook}<button class="link" onclick={() => controller.useBookDestination(card.id)} disabled={busy}>Use the book's folder</button>{/if}
+                  {#if prompt.canChooseOwn}<button class="link" onclick={() => controller.chooseOwnDestination(card.id)} disabled={busy}>Use a different folder just for me</button>{/if}
+                </div>
+              {/if}
               {#if controller.destinationsError[card.id]}<p class="error">{controller.destinationsError[card.id]}</p>{/if}
-              <p class="field-hint">Or type a folder name directly in the {card.destinations.label.toLowerCase()} field above — it's created at your Drive's root the first time you publish.</p>
+              {#if destState === "unset" || destState === "by-name"}
+                <p class="field-hint">Or type a folder name directly in the {card.destinations.label.toLowerCase()} field above — it's created at your Drive's root the first time you publish.</p>
+              {/if}
             {/if}
           {/if}
         {/key}
