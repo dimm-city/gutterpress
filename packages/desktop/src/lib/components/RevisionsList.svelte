@@ -8,21 +8,25 @@
    *   Online                       — on this computer and in the online copy
    *   Online · not backed up yet   — this computer has versions the online copy hasn't
    *   Only on this computer        — never backed up
-   *   Only online                  — in the online copy, not on this computer yet (Switch only)
+   *   Only online                  — in the online copy, not on this computer yet (Switch or Delete)
    *
-   * Rename and Delete are inline and say what they do before they do it: an
-   * online revision is renamed or deleted in the online copy too, now, and
-   * deleting one that holds versions found nowhere else asks a second time,
-   * naming how many would be lost. The open revision is never deleted. The
-   * list refreshes from the online copy when it can ("Couldn't check…" when
-   * it can't). Vocabulary: docs/ux-design-contract.md.
+   * New revision… sits above the list, which keeps the open revision first and
+   * scrolls inside its own box; past a handful of revisions it can be filtered
+   * by name. Rename and Delete are inline and say what they do before they do
+   * it: an online revision is renamed or deleted in the online copy too, now,
+   * one that is only online is deleted from the online copy, and deleting one
+   * that holds versions found nowhere else asks a second time, naming how many
+   * would be lost. The open revision is never deleted. The list refreshes from
+   * the online copy when it can ("Couldn't check…" when it can't). Vocabulary:
+   * docs/ux-design-contract.md.
    *
    * PWA-clean (§8): api.* routes only.
    */
   import { onMount } from "svelte";
   import { api, type Revision, type RevisionList } from "#lib/api.ts";
+  import { keepInView } from "#lib/dialog.ts";
   import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
-  import { revisionNameFrom } from "#lib/revision-name.ts";
+  import { revisionNameFrom, revisionsShown } from "#lib/revision-name.ts";
 
   let {
     projectDir,
@@ -52,6 +56,12 @@
     | { kind: "delete"; revision: Revision; everywhere: boolean; lost: number | null };
   let pending = $state<Pending | null>(null);
   let typed = $state("");
+
+  /** More revisions than this and the list offers a filter by name. */
+  const FILTER_FROM = 5;
+  let find = $state("");
+  const filtering = $derived((list?.revisions.length ?? 0) > FILTER_FROM);
+  const shown = $derived(revisionsShown(list?.revisions ?? [], filtering ? find : ""));
 
   /** The refreshed list, or the last one when the online copy can't be reached. */
   async function load(): Promise<void> {
@@ -110,10 +120,16 @@
   /** Delete; a revision holding versions found nowhere else comes back with how many, and asks again. */
   const remove = (p: Extract<Pending, { kind: "delete" }>, discard: boolean) =>
     run(async () => {
-      const result = await api.vcs.deleteRevision(projectDir, p.revision.name, { everywhere: p.everywhere, discard });
-      if (result.deleted) return true;
-      pending = { ...p, lost: result.versionsOnlyHere };
-      return false;
+      try {
+        const result = await api.vcs.deleteRevision(projectDir, p.revision.name, { everywhere: p.everywhere, discard });
+        if (result.deleted) return true;
+        pending = { ...p, lost: result.versionsOnlyHere };
+        return false;
+      } catch (e) {
+        // An online-only revision is refused when it changed online after the list was checked: show it as it is now.
+        if (p.revision.where === "online-only") void load();
+        throw e;
+      }
     });
 
   /** The name as it will be kept, when it differs from what was typed. */
@@ -146,8 +162,31 @@
 {#if list}
   <div class="revisions">
     <h3>Revisions</h3>
+    {#if pending?.kind === "new"}
+      <div class="inline-form">
+        {@render nameField(
+          "Name of the new revision",
+          "Create revision",
+          () => void create(),
+          `It starts from your book as it is now (work not in a version yet is saved as one first) and opens it.${hasOnlineCopy ? " It goes online the next time you back up." : ""}`,
+        )}
+      </div>
+    {:else}
+      <button class="ghost self-start" onclick={() => open({ kind: "new" })} disabled={working || disabled}>New revision…</button>
+    {/if}
+    {#if filtering}
+      <input
+        class="input find"
+        type="search"
+        bind:value={find}
+        placeholder="Find a revision"
+        aria-label="Find a revision"
+        spellcheck="false"
+        autocomplete="off"
+      />
+    {/if}
     <ul class="item-list" aria-label="Revisions">
-      {#each list.revisions as r (r.name)}
+      {#each shown as r (r.name)}
         <li>
           <div class="item-row">
             <span class="item-label">{r.name}</span>
@@ -159,14 +198,14 @@
               {/if}
               {#if r.where !== "online-only"}
                 <button class="ghost small" aria-label="Rename {r.name}" onclick={() => open({ kind: "rename", revision: r }, r.name)} disabled={working || disabled}>Rename…</button>
-                {#if !r.current}
-                  <button class="ghost small" aria-label="Delete {r.name}" onclick={() => open({ kind: "delete", revision: r, everywhere: false, lost: null })} disabled={working || disabled}>Delete…</button>
-                {/if}
+              {/if}
+              {#if !r.current}
+                <button class="ghost small" aria-label="Delete {r.name}" onclick={() => open({ kind: "delete", revision: r, everywhere: r.where === "online-only", lost: null })} disabled={working || disabled}>Delete…</button>
               {/if}
             </span>
           </div>
           {#if pending?.kind === "rename" && pending.revision.name === r.name}
-            <div class="inline-form">
+            <div class="inline-form" use:keepInView>
               {@render nameField(
                 "New name",
                 "Rename",
@@ -178,7 +217,7 @@
             </div>
           {:else if pending?.kind === "delete" && pending.revision.name === r.name}
             {@const p = pending}
-            <div class="inline-form">
+            <div class="inline-form" use:keepInView>
               {#if p.lost !== null}
                 <p class="warn" role="alert">
                   "{r.name}" holds {p.lost} {p.lost === 1 ? "version" : "versions"} that {p.lost === 1 ? "isn't" : "aren't"} in any other
@@ -195,6 +234,12 @@
                   <button class="ghost danger" onclick={() => void remove({ ...p, everywhere: true }, false)} disabled={working}>Delete everywhere</button>
                   <button class="ghost" onclick={() => (pending = null)} disabled={working}>Cancel</button>
                 </div>
+              {:else if r.where === "online-only"}
+                <p class="hint">Delete "{r.name}" from the online copy? It isn't on this computer.</p>
+                <div class="row">
+                  <button class="ghost danger" onclick={() => void remove(p, false)} disabled={working}>Delete</button>
+                  <button class="ghost" onclick={() => (pending = null)} disabled={working}>Cancel</button>
+                </div>
               {:else}
                 <p class="hint">Delete "{r.name}" from this computer? It isn't in the online copy.</p>
                 <div class="row">
@@ -205,22 +250,12 @@
             </div>
           {/if}
         </li>
+      {:else}
+        <li class="none">No revisions match.</li>
       {/each}
     </ul>
     {#if hasOnlineCopy && !checking && !list.checkedOnline}
       <p class="hint">Couldn't check the online copy for other revisions. This list shows the revisions on this computer.</p>
-    {/if}
-    {#if pending?.kind === "new"}
-      <div class="inline-form">
-        {@render nameField(
-          "Name of the new revision",
-          "Create revision",
-          () => void create(),
-          `It starts from your book as it is now (work not in a version yet is saved as one first) and opens it.${hasOnlineCopy ? " It goes online the next time you back up." : ""}`,
-        )}
-      </div>
-    {:else}
-      <button class="ghost self-start" onclick={() => open({ kind: "new" })} disabled={working || disabled}>New revision…</button>
     {/if}
     {#if error}<p class="error" role="alert">{error}</p>{/if}
   </div>
@@ -232,6 +267,10 @@
   .revisions { display: flex; flex-direction: column; gap: 8px; align-self: stretch; }
   h3 { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--app-text); }
   .mine { flex-shrink: 0; font-size: 11px; font-weight: 600; color: var(--app-success-text); }
+  /* About six rows; the rest scroll inside the box, so the tab below stays in reach. */
+  .item-list { max-height: 17rem; overflow-y: auto; }
+  .find { max-width: 260px; }
+  .item-list li.none { border: 0; background: transparent; padding: 0; font-size: 11.5px; color: var(--app-text-muted); }
   .item-caption { white-space: normal; }
   .revisions .item-actions { gap: 4px; }
   .item-row { flex-wrap: wrap; }

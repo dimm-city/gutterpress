@@ -23,17 +23,21 @@
    *                         gets the sign-in step again.
    *        own-tools      — an SSH (or other non-https) address.
    *      Then one line about this computer ("Saved · last version 10 minutes
-   *      ago") with Save a version and Version history….
+   *      ago") with Save a version and Version history…, which replaces the
+   *      tab's content with the Version history view (ProjectActivityView; its
+   *      back button returns here). "Look at this version" is the one thing it
+   *      cannot do in place: the page's preview shows the comparison, so Book
+   *      setup closes (`onLookAt`).
    *   2. Revisions (RevisionsList), whenever version history is on.
    *   3. If backing up keeps failing (ready), collapsed: Test connection (a
    *      read-only probe of this book's online copy; the GitHub sign-in itself
-   *      is tested in Accounts), Repair the online copy (`onRepair`: fresh
-   *      versions under the files, then a backup), Start over from the online
-   *      copy (`api.remote.scorchedEarth`: keep a safety folder, empty the
-   *      folder, download the online copy, put the files back on top and —
-   *      whether or not that worked — close the book, so the app holds no
-   *      stale state; Book setup closes with it, so the outcome is a toast)
-   *      and Sign in again (Accounts) for GitHub books.
+   *      is tested in Accounts), Sign in again (Accounts) for GitHub books,
+   *      Repair the online copy (`onRepair`: fresh versions under the files,
+   *      then a backup) and Start over from the online copy
+   *      (`api.remote.scorchedEarth`: keep a safety folder, empty the folder,
+   *      download the online copy, put the files back on top and — whether or
+   *      not that worked — close the book, so the app holds no stale state;
+   *      Book setup closes with it, so the outcome is a toast).
    *
    * PWA-clean (§8): api.* routes only.
    */
@@ -48,6 +52,7 @@
   import GitHubConnect from "#lib/components/GitHubConnect.svelte";
   import GitServerForm, { OTHER_SERVER_GUIDE } from "#lib/components/GitServerForm.svelte";
   import Icon from "#lib/components/Icon.svelte";
+  import ProjectActivityView from "#lib/components/ProjectActivityView.svelte";
   import RevisionsList from "#lib/components/RevisionsList.svelte";
   import type { ToastController } from "#lib/components/Toast.svelte";
   import type { ProjectRemoteDiagnosis, RemoteAccessResult, RemoteConnection, RemoteRepository } from "#lib/platform/contract.ts";
@@ -62,7 +67,10 @@
     onBackUpNow,
     onRepair,
     onSaveVersion,
-    onShowVersions,
+    logFilePath = null,
+    viewingId = null,
+    onLookAt,
+    onStopLooking,
     onCloseBook,
     onOpenAccounts,
     toast = null,
@@ -84,8 +92,13 @@
     onRepair?: () => Promise<void>;
     /** Save a version now: the page's own save (its toast); resolves "unchanged" when there was nothing new. */
     onSaveVersion?: () => Promise<"saved" | "unchanged">;
-    /** Version history…: the parent closes Book setup and opens the view. */
-    onShowVersions?: () => void;
+    /** The newest operation log, for Version history's Technical details. */
+    logFilePath?: string | null;
+    /** The version the preview is showing beside the live book, if any. */
+    viewingId?: string | null;
+    /** Look at this version: the parent closes Book setup and shows it in the preview. */
+    onLookAt?: (id: string, label: string) => void;
+    onStopLooking?: () => void;
     /** Close the open book: Start over from the online copy ends with it. */
     onCloseBook?: () => Promise<boolean>;
     /** Open the Accounts page, over this one. */
@@ -135,6 +148,25 @@
   let nothingNew = $state(false);
   let savingVersion = $state(false);
   let revisionsEl = $state<{ refresh: () => void }>();
+
+  // Version history replaces the rest of the tab (which stays, hidden, with its state).
+  let versionsOpen = $state(false);
+  let versionsBtn = $state<HTMLButtonElement>();
+  let historyEl = $state<{ refreshHistory: () => void }>();
+
+  /** A backup finished: reload the Version history list, if it is showing. */
+  export function refreshHistory() {
+    historyEl?.refreshHistory();
+  }
+
+  /** Back from Version history: what it did (a saved or restored version) shows in the rest of the tab. */
+  async function closeVersions() {
+    versionsOpen = false;
+    if (projectDir) void loadFacts(projectDir);
+    revisionsEl?.refresh();
+    await tick();
+    versionsBtn?.focus();
+  }
 
   onMount(() => {
     void load();
@@ -393,7 +425,7 @@
   const githubRepo = $derived(diag?.remoteUrl ? onlineCopyName(diag.remoteUrl).replace(/^[^/]*\//, "") : "");
 </script>
 
-<section class="online-copy" bind:this={sectionEl} tabindex="-1">
+<section class="online-copy" class:away={versionsOpen} bind:this={sectionEl} tabindex="-1">
   {#if loading}
     <p class="hint">Checking this book's online copy…</p>
   {:else if !diag}
@@ -518,7 +550,7 @@
           <button class="ghost" onclick={() => void saveVersion()} disabled={busy || savingVersion || !onSaveVersion}>
             {savingVersion ? "Saving a version…" : "Save a version"}
           </button>
-          <button class="ghost" onclick={() => onShowVersions?.()} disabled={!onShowVersions}>Version history…</button>
+          <button class="ghost" bind:this={versionsBtn} onclick={() => (versionsOpen = true)}>Version history…</button>
         </div>
       </div>
 
@@ -534,6 +566,10 @@
           </button>
           <span class="hint">Checks that Gutterpress can reach this book's online copy. Nothing is changed or uploaded.</span>
           {#if testResult}<p class="result" class:failed={!testOk} role="status">{testResult}</p>{/if}
+          {#if onOpenAccounts && diag.provider === "github"}
+            <button class="ghost" onclick={onOpenAccounts}>Sign in again</button>
+            <span class="hint">Opens Accounts, where you sign in to GitHub again.</span>
+          {/if}
           <button
             class="ghost"
             onclick={() => void repair()}
@@ -548,10 +584,6 @@
             disabled={busy}
           >{running === "start-over" ? "Working…" : confirm["start-over"] ? "Really start over?" : "Start over from the online copy"}</button>
           <span class="hint">The last resort. Keeps a safety folder with everything as it is now, downloads a fresh start from the online copy, then puts your files back on top. The book closes at the end.</span>
-          {#if onOpenAccounts && diag.provider === "github"}
-            <button class="ghost" onclick={onOpenAccounts}>Sign in again</button>
-            <span class="hint">Opens Accounts, where you sign in to GitHub again.</span>
-          {/if}
         </div>
       </details>
     {/if}
@@ -560,10 +592,26 @@
   {/if}
 </section>
 
+{#if versionsOpen && projectDir}
+  <ProjectActivityView
+    bind:this={historyEl}
+    {projectDir}
+    {logFilePath}
+    hasRemote={!!diag?.remoteUrl}
+    {viewingId}
+    onBack={closeVersions}
+    onRestored={onProjectFilesChanged}
+    {onSaveVersion}
+    {onLookAt}
+    {onStopLooking}
+  />
+{/if}
+
 <style>
   @import "../styles/config-section-shared.css";
 
   .online-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+  .online-copy.away { display: none; }
   /* Focus lands on these after an action; they are not controls. */
   .online-copy, .done, .error { outline: none; }
   .online-copy .field { align-self: stretch; max-width: 420px; }

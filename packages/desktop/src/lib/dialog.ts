@@ -225,3 +225,13 @@ export function cancelInlineConfirm(
   const { [key]: _armed, ...rest } = state;
   return rest;
 }
+
+/**
+ * Svelte action: an open inline form stays fully in view as it grows (it opens
+ * low on the page or inside a scrolling list, then gains a warning or an error).
+ */
+export function keepInView(node: HTMLElement) {
+  const watch = new ResizeObserver(() => node.scrollIntoView({ block: "nearest" }));
+  watch.observe(node);
+  return { destroy: () => watch.disconnect() };
+}

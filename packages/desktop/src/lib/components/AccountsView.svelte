@@ -44,7 +44,7 @@
   import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
   import { useSettings } from "#lib/settings.svelte.ts";
   import type { HostConnectionInfo, RemoteConnection } from "#lib/platform/contract.ts";
-  import { requestInlineConfirm, cancelInlineConfirm, type InlineConfirmState } from "#lib/dialog.ts";
+  import { keepInView, requestInlineConfirm, cancelInlineConfirm, type InlineConfirmState } from "#lib/dialog.ts";
 
   let {
     onClose,
@@ -112,13 +112,6 @@
   /** A control that appears where the one clicked was (the armed Remove, the Add form's picker) takes focus, so Escape still closes the page. */
   function focusNow(node: HTMLElement) {
     node.focus();
-  }
-
-  /** An open form stays fully in view as it grows: it opens low on the page, then gains an error or the waiting line. */
-  function keepInView(node: HTMLElement) {
-    const watch = new ResizeObserver(() => node.scrollIntoView({ block: "nearest" }));
-    watch.observe(node);
-    return { destroy: () => watch.disconnect() };
   }
 
   // ── The inline forms ───────────────────────────────────────────────────────

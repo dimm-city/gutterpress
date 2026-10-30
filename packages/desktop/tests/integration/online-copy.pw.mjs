@@ -13,26 +13,36 @@
  *      last version …" line with Save a version and Version history…, and a
  *      Revisions list. The four revision calls are STUBBED in the page (the
  *      list/create/rename/delete routes live in the host and are covered by
- *      their own tests): each row says where it is kept and offers exactly
- *      the actions the design allows (never Delete on the open one; Switch
- *      only on an online-only one).
- *   3. New revision… previews the name, creates it and lists it; Rename… of
- *      an online revision shows the "also renames it in the online copy"
- *      note; deleting an online revision offers "this computer only" and
- *      "everywhere"; one holding versions found nowhere else asks a second
+ *      their own tests): the open revision is first, the rest by name; each
+ *      row says where it is kept and offers exactly the actions the design
+ *      allows (never Delete on the open one; Switch and Delete… on an
+ *      online-only one). Past five revisions the list scrolls in its own box
+ *      and offers "Find a revision" (case-insensitive; "No revisions match.").
+ *   3. Version history… opens INSIDE the tab (Book setup stays up, the rest
+ *      of the tab is hidden, the editor pane is untouched); a changed file
+ *      opens its compare there, and Online copy brings the tab back. Look at
+ *      this version closes Book setup and shows the preview's own "Looking at
+ *      …" bar, whose close button stops looking.
+ *   4. New revision… sits above the list (and its name form opens there),
+ *      previews the name, creates it and lists it; Rename… of an online
+ *      revision shows the "also renames it in the online copy" note; deleting
+ *      an online revision offers "this computer only" and "everywhere"; an
+ *      online-only one is one step ("from the online copy? It isn't on this
+ *      computer."); one holding versions found nowhere else asks a second
  *      time, naming how many, and the second call carries `discard: true`.
- *   4. Once backing up can work (the diagnosis is stubbed as ready), "If
- *      backing up keeps failing" holds Test connection, Repair the online
- *      copy, Start over from the online copy and Sign in again, collapsed.
- *   5. For a book that can back up (closing Accounts makes the app look at its
+ *   5. Once backing up can work (the diagnosis is stubbed as ready), "If
+ *      backing up keeps failing" holds Test connection, Sign in again, Repair
+ *      the online copy and Start over from the online copy, collapsed.
+ *   6. For a book that can back up (closing Accounts makes the app look at its
  *      online copy again, stubbed as ready) the status bar shows no Sync while
  *      automatic backing up is on, and ONE Sync button after the status control
  *      once it is off: it runs a pass, reads "Syncing…" while it runs, and
  *      carries the "new changes are online" cue and toast action. It still
  *      fits, with the status line ellipsized, at 700px and (cut short) at 260px.
- *   6. A Reader sees no status control and no Sync, even in that state.
+ *   7. A Reader sees no status control and no Sync, even in that state.
  *
- * Screenshots: <os tmpdir>/online-copy-{bar,bar-auto,bar-sync,bar-sync-updates,bar-narrow,tab,rename,delete,reader}.png.
+ * Screenshots: <os tmpdir>/online-copy-{bar,bar-auto,bar-sync,bar-sync-updates,
+ * bar-narrow,tab,filter,history,compare,rename,delete,delete-online,failing,reader}.png.
  *
  * Usage: node tests/integration/online-copy.pw.mjs [exe-or-main-js] [fixture-dir]
  * Exit 0 on pass, 1 on fail.
@@ -222,6 +232,9 @@ await evalJs(`(() => {
       { name: "second-edition", current: false, where: "this-computer", notBackedUp: false },
       { name: "release-1", current: false, where: "online", notBackedUp: false },
       { name: "editors-pass", current: false, where: "online-only", notBackedUp: false },
+      { name: "late-draft", current: false, where: "online-only", notBackedUp: false },
+      { name: "side-project", current: false, where: "online-only", notBackedUp: false },
+      { name: "appendix", current: false, where: "this-computer", notBackedUp: false },
     ],
   };
   window.__revisions = state;
@@ -256,6 +269,7 @@ await evalJs(`(() => {
       }
       case "/api/vcs/delete-revision": {
         if (body.name === "second-edition" && !body.discard) return json({ deleted: false, versionsOnlyHere: 2 });
+        if (body.name === "side-project" && !body.discard) return json({ deleted: false, versionsOnlyHere: 3 });
         state.revisions = state.revisions.filter((r) => r.name !== body.name);
         return json({ deleted: true });
       }
@@ -296,6 +310,17 @@ const tab = await evalJs(`(() => {
     line: panel.querySelector('.this-computer .line')?.textContent.trim(),
     buttons: [...panel.querySelectorAll('.this-computer button')].map((b) => b.textContent.trim()),
     rows,
+    // New revision… and the filter come before the list.
+    newAbove: (() => {
+      const list = panel.querySelector('.revisions .item-list');
+      const btn = [...panel.querySelectorAll('.revisions > button')].find((b) => b.textContent.trim() === 'New revision…');
+      return !!btn && !!list && !!(btn.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING);
+    })(),
+    find: !!panel.querySelector('.revisions input[aria-label="Find a revision"]'),
+    box: (() => {
+      const list = panel.querySelector('.revisions .item-list');
+      return { scrolls: getComputedStyle(list).overflowY === 'auto' && list.scrollHeight > list.clientHeight, height: list.clientHeight };
+    })(),
     stale: [...panel.querySelectorAll('.hint')].some((h) => h.textContent.includes("Couldn't check the online copy for other revisions. This list shows the revisions on this computer.")),
     failing: !!panel.querySelector('details.failing'),
     signIn: [...panel.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Sign in…'),
@@ -305,18 +330,95 @@ log(`tab: ${JSON.stringify(tab)}`);
 check(/online copy is on GitHub: ada\/harbor-lights\. Sign in to back it up\./.test(tab.headline) && tab.signIn, "the status is one sentence with its one action (Sign in…)");
 check(/^Saved · last version /.test(tab.line) && tab.buttons.join("|") === "Save a version|Version history…", `the line about this computer, with Save a version and Version history… (${tab.line})`);
 const row = (name) => tab.rows.find((r) => r.name === name);
-check(tab.rows.map((r) => r.name).join(",") === "editors-pass,main,release-1,second-edition", "every revision is listed, by name");
+check(tab.rows.map((r) => r.name).join(",") === "main,appendix,editors-pass,late-draft,release-1,second-edition,side-project", "every revision is listed: the open one first, the rest by name");
+check(tab.newAbove, "New revision… is above the list");
+check(tab.find, "more than five revisions offer Find a revision");
+check(tab.box.scrolls && tab.box.height < 330, `the list is capped (about six rows) and scrolls in its own box (${tab.box.height}px)`);
 check(row("main").mine && row("main").where === "Online · not backed up yet" && row("main").actions.join("|") === "Rename…", "the open revision: You're working on this, where it is, Rename… only");
 check(row("second-edition").where === "Only on this computer" && row("second-edition").actions.join("|") === "Switch|Rename…|Delete…", "a revision only on this computer: Switch, Rename…, Delete…");
 check(row("release-1").where === "Online" && row("release-1").actions.join("|") === "Switch|Rename…|Delete…", "an online revision: Switch, Rename…, Delete…");
-check(row("editors-pass").where === "Only online" && row("editors-pass").actions.join("|") === "Switch", "an online-only revision: Switch only");
+check(row("editors-pass").where === "Only online" && row("editors-pass").actions.join("|") === "Switch|Delete…", "an online-only revision: Switch, Delete… (it can't be renamed from here)");
 check(tab.stale, "an online copy that could not be checked says the list shows this computer's revisions");
 check(!tab.failing, "the failing-tools disclosure is only there once backing up can work");
 await screenshot(join(tmpdir(), "online-copy-tab.png"));
 
+// ── 7b. Find a revision ──────────────────────────────────────────────────────
+const names = () => evalJs(`[...document.querySelectorAll('#project-settings-panel .revisions .item-list > li .item-label')].map((e) => e.textContent.trim()).join(',')`);
+await type('.revisions input[aria-label="Find a revision"]', "A");
+await sleep(100);
+check((await names()) === "main,appendix,editors-pass,late-draft,release-1", `the filter ignores case and keeps the open revision first (${await names()})`);
+await type('.revisions input[aria-label="Find a revision"]', "PASS");
+await sleep(100);
+check((await names()) === "editors-pass", `matches names anywhere (${await names()})`);
+await screenshot(join(tmpdir(), "online-copy-filter.png"));
+await type('.revisions input[aria-label="Find a revision"]', "zzz");
+await sleep(100);
+check(await evalJs(`document.querySelector('#project-settings-panel .revisions .item-list')?.textContent.includes('No revisions match.')`), "a filter that matches nothing says so");
+await type('.revisions input[aria-label="Find a revision"]', "");
+await sleep(100);
+check((await names()).split(",").length === 7, "clearing the filter brings every revision back");
+
+// ── 7c. Version history opens inside the tab ─────────────────────────────────
+await click("#project-settings-panel .this-computer button", "Version history…");
+check(await waitFor(`!!document.querySelector('#project-settings-panel .activity-view .history-list li')`), "Version history… opens inside Book setup, in the tab");
+const history = await evalJs(`(() => {
+  const panel = document.querySelector('#project-settings-panel');
+  const visible = (el) => !!el && el.getClientRects().length > 0;
+  return {
+    heading: panel.querySelector('.activity-view h2')?.textContent.trim(),
+    back: [...panel.querySelectorAll('.activity-header button')].map((b) => b.textContent.trim()),
+    restCovered: !visible(panel.querySelector('.online-copy')) && !visible(panel.querySelector('.revisions')),
+    inEditorPane: !!document.querySelector('.editor-pane .activity-view'),
+    title: document.querySelector('[role="dialog"] h1')?.textContent.trim(),
+    focus: document.activeElement?.closest('.activity-view') ? document.activeElement.tagName : null,
+  };
+})()`);
+log(`history: ${JSON.stringify(history)}`);
+check(history.heading === "Version history" && history.back.join("|") === "Online copy|Save a version", `it has a way back (Online copy) and Save a version at the top (${history.back})`);
+check(history.restCovered && history.title === "Book setup", "it replaces the rest of the tab; Book setup is still the screen");
+check(!history.inEditorPane && history.focus === "H2", "the editor pane no longer hosts it, and focus moved to the view");
+await screenshot(join(tmpdir(), "online-copy-history.png"));
+
+// A changed file opens its compare there, and its back button returns to the list.
+check(await waitFor(`!!document.querySelector('#project-settings-panel .activity-view .change-link')`), "a version lists its changed text files");
+await click("#project-settings-panel .activity-view .change-link");
+check(await waitFor(`!!document.querySelector('#project-settings-panel .compare-view .columns')`), "a changed file opens its compare inside the tab");
+check(await evalJs(`!document.querySelector('#project-settings-panel .activity-view') && !!document.querySelector('#project-settings-panel')`), "Book setup is still up behind the compare");
+await screenshot(join(tmpdir(), "online-copy-compare.png"));
+await click("#project-settings-panel .compare-view .back");
+check(await waitFor(`!!document.querySelector('#project-settings-panel .activity-view .history-list li')`), "the compare's back button returns to Version history");
+
+// Save a version works in place (the book has nothing new, which is said calmly).
+await click("#project-settings-panel .activity-header button", "Save a version");
+check(await waitFor(`/Nothing new to save|nothing new/i.test(document.querySelector('#project-settings-panel .activity-view .notice')?.textContent ?? '')`, 20000), "Save a version says so when there is nothing new");
+
+// Back to the rest of Online copy, with focus on the button that opened it.
+await click("#project-settings-panel .activity-header .back");
+check(await waitFor(`!document.querySelector('#project-settings-panel .activity-view') && !!document.querySelector('#project-settings-panel .revisions .item-list li')`), "Online copy brings the rest of the tab back");
+check(await evalJs(`document.activeElement?.textContent.trim() === 'Version history…'`), "focus returns to Version history…");
+
+// Look at this version needs the preview: it closes Book setup and the preview's own bar stays.
+await click("#project-settings-panel .this-computer button", "Version history…");
+check(await waitFor(`!!document.querySelector('#project-settings-panel .activity-view .history-list li')`), "Version history opens again");
+await click("#project-settings-panel .activity-view .history-list button", "Look at this version");
+check(await waitFor(`!document.querySelector('#project-settings-panel')`), "Look at this version closes Book setup");
+check(await waitFor(`/Looking at/.test(document.querySelector('.version-bar')?.textContent ?? '')`, 60000), "the preview shows the version beside the current book, with its own Looking at… bar");
+await screenshot(join(tmpdir(), "online-copy-looking.png"));
+await click(".version-bar .version-bar-close");
+check(await waitFor(`!document.querySelector('.version-bar')`), "its close button stops looking");
+
+// Book setup opens on the tab itself again, not on Version history.
+await click(".status-bar .status-control");
+check(await waitFor(`!!document.querySelector('#project-settings-panel .revisions .item-list li') && !document.querySelector('#project-settings-panel .activity-view')`), "reopening Book setup lands on Online copy");
+
 // ── 8. New revision… ─────────────────────────────────────────────────────────
 await click("#project-settings-panel .revisions button", "New revision…");
-await type(".revisions input", "Third edition");
+check(await evalJs(`(() => {
+  const form = document.querySelector('#project-settings-panel .revisions > .inline-form');
+  const list = document.querySelector('#project-settings-panel .revisions .item-list');
+  return !!form && !!list && !!(form.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING);
+})()`), "its name form opens above the list");
+await type(".revisions .name-form input", "Third edition");
 await sleep(100);
 const preview = await evalJs(`document.querySelector('.revisions .name-form .hint')?.textContent.trim()`);
 check(preview === 'It will be called "Third-edition".', `the field previews the name (${preview})`);
@@ -327,6 +429,7 @@ check(await waitFor(`[...document.querySelectorAll('.revisions .item-label')].so
 const created = await evalJs(`window.__revisions.calls.find((c) => c.path === 'create-revision')?.body`);
 check(created?.name === "Third edition", "the typed name went to the host (it normalises it)");
 check(await evalJs(`!!document.querySelector('.revisions .item-list li:has(.mine) .item-label') && document.querySelector('.revisions .item-list li:has(.mine) .item-label').textContent.trim() === 'Third-edition'`), "the new revision is the one open");
+check((await names()).startsWith("Third-edition,"), "and it moves to the top of the list");
 
 // ── 9. Rename… of an online revision ─────────────────────────────────────────
 check(await rowButton("main", "Rename…"), "Rename… on the online revision");
@@ -354,6 +457,29 @@ await click(".revisions .inline-form button", "Delete anyway");
 check(await waitFor(`![...document.querySelectorAll('.revisions .item-label')].some((e) => e.textContent.trim() === 'second-edition')`), "deleted after the second confirmation");
 check(await evalJs(`window.__revisions.calls.filter((c) => c.path === 'delete-revision' && c.body.name === 'second-edition').map((c) => !!c.body.discard).join() === 'false,true'`), "the second call carried discard: true");
 
+// An online-only revision: one step, saying where it goes from.
+await rowButton("late-draft", "Delete…");
+const onlineOnly = await evalJs(`(() => {
+  const form = [...document.querySelectorAll('.revisions .inline-form')][0];
+  return { text: form?.querySelector('.hint')?.textContent.trim(), buttons: [...(form?.querySelectorAll('button') ?? [])].map((b) => b.textContent.trim()).join('|') };
+})()`);
+check(onlineOnly.text === 'Delete "late-draft" from the online copy? It isn\'t on this computer.' && onlineOnly.buttons === "Delete|Cancel", `an online-only revision is deleted in one step (${onlineOnly.text})`);
+await screenshot(join(tmpdir(), "online-copy-delete-online.png"));
+await click(".revisions .inline-form button", "Delete");
+check(await waitFor(`![...document.querySelectorAll('.revisions .item-label')].some((e) => e.textContent.trim() === 'late-draft')`), "the online-only revision is gone");
+check(await evalJs(`window.__revisions.calls.some((c) => c.path === 'delete-revision' && c.body.name === 'late-draft' && c.body.everywhere === true && !c.body.discard)`), "the host was asked to delete it from the online copy");
+
+// …and the same second ask when it holds versions found nowhere else.
+await rowButton("side-project", "Delete…");
+await click(".revisions .inline-form button", "Delete");
+check(await waitFor(`/3 versions/.test(document.querySelector('.revisions .inline-form .warn')?.textContent ?? '')`), "an online-only revision holding versions found nowhere else asks again, naming how many");
+await click(".revisions .inline-form button", "Delete anyway");
+check(await waitFor(`![...document.querySelectorAll('.revisions .item-label')].some((e) => e.textContent.trim() === 'side-project')`), "deleted after the second confirmation");
+check(await evalJs(`window.__revisions.calls.filter((c) => c.path === 'delete-revision' && c.body.name === 'side-project').map((c) => !!c.body.discard).join() === 'false,true'`), "the second call carried discard: true");
+
+// Down to four revisions, the filter is no longer offered.
+check(await evalJs(`document.querySelectorAll('#project-settings-panel .revisions .item-list > li').length === 4 && !document.querySelector('#project-settings-panel .revisions input[aria-label="Find a revision"]')`), "five revisions or fewer: no filter");
+
 // ── 11. Switch ───────────────────────────────────────────────────────────────
 await rowButton("editors-pass", "Switch");
 check(await waitFor(`document.querySelector('.revisions .item-list li:has(.mine) .item-label')?.textContent.trim() === 'editors-pass'`), "Switch opens an online-only revision");
@@ -376,7 +502,10 @@ const failing = await evalJs(`(() => {
 })()`);
 log(`ready tab: ${JSON.stringify(failing)}`);
 check(!failing.open && failing.summary === "If backing up keeps failing", "it is collapsed by default");
-check(failing.buttons.join("|") === "Test connection|Repair the online copy|Start over from the online copy|Sign in again", "it holds the four tools");
+check(failing.buttons.join("|") === "Test connection|Sign in again|Repair the online copy|Start over from the online copy", "it holds the four tools, Sign in again right after Test connection");
+await evalJs(`document.querySelector('#project-settings-panel details.failing').open = true; true`);
+await sleep(200);
+await screenshot(join(tmpdir(), "online-copy-failing.png"));
 check(/^Online copy: github\.com\/ada\/harbor-lights$/.test(failing.headline), `the status names the online copy without claiming a backup (${failing.headline})`);
 await closeDialog();
 check(await waitFor(`!document.querySelector('#project-settings-panel')`), "Book setup closed again");
@@ -502,6 +631,6 @@ const readerBar = await evalJs(`[...document.querySelectorAll('.status-bar butto
 check(!readerBar.some((l) => /Sync|Get latest|Back up now/.test(l)), `a Reader has no Sync, even with automatic backing up off (${readerBar.join(", ")})`);
 await screenshot(join(tmpdir(), "online-copy-reader.png"));
 
-log("PASS: one status control, the Online copy tab, revisions (new, rename, delete, switch) and the Reader's bare status bar all verified");
+log("PASS: one status control, the Online copy tab, Version history inside it, revisions (find, new, rename, delete, switch) and the Reader's bare status bar all verified");
 cleanup();
 process.exit(0);

@@ -3,15 +3,17 @@
    * ProjectActivityView — the Version history view (#408): the writer-facing
    * view of a book's versions, in the product's own words (version, backed
    * up, online copy, this computer — never commit, push, pull), with Save a
-   * version at the top.
+   * version at the top. It opens inside Book setup → Online copy, in place of
+   * the tab's content; its back button returns to the rest of the tab.
    *
    * Each version says what it changed (the host's `describeVersions`: files
    * with a plain size hint) and whether it is backed up or on this computer
    * only. A changed text file opens as a read-only two-column compare
    * (VersionCompareView). "Look at this version" asks the page to render the
-   * version read-only beside the live preview. When the book has an online
-   * copy, the top section lists what is in the online copy and not yet on
-   * this computer, so Get latest is no longer a leap of faith.
+   * version read-only beside the live preview, which closes Book setup. When
+   * the book has an online copy, the top section lists what is in the online
+   * copy and not yet on this computer, so Get latest is no longer a leap of
+   * faith.
    *
    * Restore: the host's `/api/vcs/restore-snapshot` route validates the
    * version id and saves the current state as a version before restoring, so
@@ -41,7 +43,7 @@
     logFilePath = null,
     hasRemote = false,
     viewingId = null,
-    onClose,
+    onBack,
     onRestored,
     onSaveVersion,
     onLookAt,
@@ -53,7 +55,8 @@
     hasRemote?: boolean;
     /** The version the page is showing beside the live preview, if any. */
     viewingId?: string | null;
-    onClose?: () => void;
+    /** Back to the rest of Online copy. */
+    onBack: () => void;
     /** Called after a version is successfully restored, so the parent can
      * reload the editor buffer/preview from the (now-changed) disk state. */
     onRestored?: () => void;
@@ -85,6 +88,7 @@
     savingVersion = true;
     try {
       nothingNew = (await onSaveVersion()) === "unchanged";
+      if (!nothingNew) refreshHistory();
     } catch {
       // The page shows the failure toast.
     } finally {
@@ -163,8 +167,8 @@
     }
   }
 
-  /** Re-fetch the version list (called by the parent after backing up or
-   * saving a version — so new versions appear without reopening the view). */
+  /** Re-fetch the version list (after saving a version here, and called by the
+   * parent after backing up — so new versions appear without reopening the view). */
   export function refreshHistory() {
     void loadHistory();
     void loadOnline();
@@ -225,7 +229,10 @@
     return `${versionLabel(entry.message)}${note ? ` — ${note}` : ""} · ${when(entry.timestamp)}`;
   }
 
+  let headingEl = $state<HTMLElement>();
+
   onMount(() => {
+    headingEl?.focus();
     void loadHistory();
     void loadOnline();
     void loadLog();
@@ -336,15 +343,13 @@
 {:else}
 <div class="activity-view">
   <header class="activity-header">
-    <h2><Icon name="history" size={16} /> Version history</h2>
-    <div class="header-actions">
-      {#if onSaveVersion}
-        <button class="ghost small" onclick={() => void saveVersion()} disabled={savingVersion}>
-          {savingVersion ? "Saving a version…" : "Save a version"}
-        </button>
-      {/if}
-      <button class="close" onclick={onClose} title="Close" aria-label="Close version history"><Icon name="x" size={14} /></button>
-    </div>
+    <button class="back" onclick={onBack}><Icon name="chevron-left" size={14} /> Online copy</button>
+    <h2 bind:this={headingEl} tabindex="-1"><Icon name="history" size={16} /> Version history</h2>
+    {#if onSaveVersion}
+      <button class="ghost small save" onclick={() => void saveVersion()} disabled={savingVersion}>
+        {savingVersion ? "Saving a version…" : "Save a version"}
+      </button>
+    {/if}
   </header>
 
   {#if error}<p class="error" role="alert">{error}</p>{/if}
@@ -422,12 +427,14 @@
 {/if}
 
 <style>
-  .activity-view { display: flex; flex-direction: column; gap: 14px; height: 100%; overflow: auto; background: var(--app-bg); color: var(--app-text-secondary); }
-  .activity-header { padding: 12px 16px; border-bottom: 1px solid var(--app-border); background: var(--app-surface-raised); display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .header-actions { display: flex; align-items: center; gap: 8px; }
-  .notice { margin: 0 16px; font-size: 12px; font-weight: 600; color: var(--app-text); }
-  h2 { margin: 0; display: inline-flex; align-items: center; gap: 8px; font-size: 15px; color: var(--app-text); }
-  .activity-section { padding: 0 16px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .activity-view { display: flex; flex-direction: column; gap: 14px; color: var(--app-text-secondary); }
+  .activity-header { padding-bottom: 12px; border-bottom: 1px solid var(--app-border-subtle); display: flex; align-items: center; gap: 12px; }
+  .back { display: inline-flex; align-items: center; gap: 4px; background: transparent; color: var(--app-text-muted); border: 1px solid var(--app-border); border-radius: 5px; padding: 4px 8px; font-size: 12px; cursor: pointer; flex: 0 0 auto; }
+  .back:hover { background: var(--app-control-hover-bg); }
+  .save { margin-left: auto; }
+  .notice { margin: 0; font-size: 12px; font-weight: 600; color: var(--app-text); }
+  h2 { margin: 0; display: inline-flex; align-items: center; gap: 8px; font-size: 15px; color: var(--app-text); outline: none; }
+  .activity-section { padding: 0 0 14px; display: flex; flex-direction: column; gap: 8px; }
   .online-section { padding-bottom: 6px; border-bottom: 1px solid var(--app-border); }
   h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--app-text); }
   .day-heading { margin: 6px 0 2px; font-size: 11px; text-transform: none; letter-spacing: 0; color: var(--app-text-muted); }
@@ -453,7 +460,7 @@
   .change-link:disabled { cursor: default; }
   .change-hint, .change-more, .no-changes { color: var(--app-text-muted); }
   .no-changes { font-size: 11px; }
-  .error { color: var(--app-error-text); margin: 0 16px; }
+  .error { color: var(--app-error-text); margin: 0; }
   .restore-error { margin: 0; font-size: 11px; }
   .restore-confirm { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .confirm-copy { color: var(--app-text-secondary); font-size: 11px; max-width: 220px; }
@@ -466,5 +473,4 @@
   /* Colors come from the shared .app-btn-primary recipe (theme.css). */
   .primary { border-width: 1px; border-style: solid; border-radius: 5px; padding: 5px 10px; cursor: pointer; }
   .ghost.small, .primary.small { padding: 4px 8px; font-size: 11px; }
-  .close { display: inline-flex; align-items: center; justify-content: center; background: transparent; color: var(--app-text-muted); border: 1px solid var(--app-border); border-radius: 5px; padding: 4px; cursor: pointer; }
 </style>

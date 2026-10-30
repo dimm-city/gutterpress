@@ -375,7 +375,7 @@ export class ProjectLifecycleController {
       this.currentFolderHasManifest = d.projectSession.activeBookHasManifest;
       this.adoptBannerDismissed = false;
       // Clear stale problems/log-path from the previous project immediately so
-      // the badge/panel/activity view don't show the old project's data while
+      // the badge/panel/Version history don't show the old project's data while
       // the new one renders.
       d.clearStaleProjectState();
       // Preload the first file into the editor buffer when a folder opens.
