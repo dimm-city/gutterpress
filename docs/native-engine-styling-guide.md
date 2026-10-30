@@ -409,6 +409,25 @@ extension that leaves its CSS unlayered cannot jump ahead of one listed after
 it — the list order is the precedence, by construction. An extension's own
 `@layer`s nest inside its layer and keep their relative order.
 
+`@page` rules are the exception (#454). Chromium ranks `@page` declarations by
+cascade layer before it looks at the page name, so a look's layered
+`@page full { margin: 0 }` lost, on its own pages, to the manifest's unlayered
+`page.margin`. Each extension's `@page` rules (from its sublayers and
+`@media` blocks too, keeping the `@media` condition) are written right after
+its layer, unlayered, in source order, and core's (`@page blank`,
+`@page full-bleed`, `.gp-bleed`'s page) right after core's two layers. The
+book's own `@page` rules follow its sheets the same way, so one you put in a
+layer of your own still beats a look's. Only core's 1in default margin stays
+in `gp.vocab`, so every other margin beats it. They then cascade by page
+selector first — a page name beats `:left`/`:right`, which beat a bare
+`@page` — and by order second: the book's own `@page` rules and the
+manifest's page geometry come later and win at the same selector, and a
+look's named page keeps its own margins. The same goes for a look's `:left`/`:right` margins
+against the book's bare `@page { margin }`: the look's win on those pages,
+in print as in the preview (before, print took the book's and the preview
+the look's). The manifest's `page.margin` is written for both sides and
+overrides them.
+
 Every stylesheet the manifest's `styles:` list names, and anything those
 sheets `@import`, stays UNLAYERED. Per the CSS Cascading and Layers spec,
 unlayered CSS always wins over layered CSS, regardless of selector

@@ -1,0 +1,18 @@
+/* look-a/look.css — the first of two looks that both set a page margin.
+
+   Each look's `@page` rules are written after its own cascade layer,
+   unlayered (#454), in `extensions:` order, so at the same page selector
+   the later look's margin wins, as it did while both were layered. Both beat
+   core's 1in default, which stays in core's layer. */
+
+@layer look-a.pages {
+  @page { margin: 0.5in; }
+}
+
+body {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 10.5pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}

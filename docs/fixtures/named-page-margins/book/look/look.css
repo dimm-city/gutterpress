@@ -1,0 +1,39 @@
+/* look.css — a look's full-bleed plate page, in a book whose manifest sets
+   `page.margin`, and nothing else.
+
+   Gutterpress wraps a look's CSS in its own cascade layer, and Chromium ranks
+   `@page` declarations by layer before page name. The manifest's margins are
+   written unlayered and last, so while the look's `@page full` sat in the
+   layer it lost them on its own pages: the plate printed inset by the book's
+   margins and ran onto a second page, while the preview, whose `@page`
+   reader ignores layers, showed it full bleed on one (#454). A look's `@page`
+   rules are now written after its layer, unlayered, so the page name decides.
+
+   The `@page` rules sit in the look's own sublayer, the way a real look keeps
+   them. */
+
+@layer plate-look.pages {
+  /* Loses to the manifest's margins, written later. */
+  @page { margin: 0.25in; }
+  /* Wins on its own pages: a page name outranks the manifest's rules. */
+  @page full { margin: 0; }
+}
+
+body {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 10.5pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+
+/* Taller than the page's content box under the manifest's margins (7.5in),
+   so a plate that loses its zero margin needs a second page. */
+.plate {
+  page: full;
+  height: 8.5in;
+  box-sizing: border-box;
+  padding: 0.5in;
+  background: #7a1f6e;
+  color: #ffffff;
+}

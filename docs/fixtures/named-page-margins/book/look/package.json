@@ -1,0 +1,7 @@
+{
+  "name": "plate-look",
+  "version": "0.0.0",
+  "gutterpress": {
+    "styles": ["look.css"]
+  }
+}
