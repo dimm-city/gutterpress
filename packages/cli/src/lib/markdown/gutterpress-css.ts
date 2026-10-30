@@ -398,8 +398,9 @@ img.gp-shape {
 
 /* Math (the bundled gutterpress-math feature, math.ts): MathJax's own rules
    for the <mjx-container> SVG output it emits, from its SVG output jax's
-   stylesheet, less the ones for its interactive menu and tooltips. Inert in
-   a book without formulas. */
+   stylesheet, less the ones for its interactive menu and tooltips, plus one
+   bound of ours on the hidden MathML copy (#469, below). Inert in a book
+   without formulas. */
 mjx-container[jax="SVG"] { direction: ltr; }
 mjx-container[jax="SVG"] > svg { overflow: visible; min-height: 1px; min-width: 1px; }
 mjx-container[jax="SVG"] > svg a { fill: blue; stroke: blue; }
@@ -416,6 +417,15 @@ mjx-assistive-mml {
   border: 0px !important;
   display: block !important;
   width: auto !important;
+  /* Ours (#469). The browser lays the copy out in whatever math font it has,
+     so it can be wider than the formula's SVG; ending a line, it crossed the
+     column edge and Chromium shrank the whole print to fit. MathJax makes the
+     container position: relative with the copy at its top left, so 100% is
+     the formula's width. Clip and overflow still hide the copy and its MathML
+     still reaches screen readers; only its box changes. Not the 1px
+     visually-hidden box MathJax 2 used: its docs note VoiceOver on iOS could
+     not reach a formula by touch in it. */
+  max-width: 100% !important;
   overflow: hidden !important;
   user-select: none;
 }
