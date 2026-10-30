@@ -81,11 +81,13 @@ smaller, more pages, different pagination) appears far from the cause.
   `overflow-x: visible` alone, so horizontal overflow still escapes.
 - **However small.** Justified lines with inline markup end a fraction of a
   pixel past the column by themselves, and that alone printed whole books at
-  0.99995 (#470). **[handled]** — the build holds the body's overflow to the
-  page content box, where print already clips, so what the width check lets
-  through (up to 1px) cannot shrink the book; and it reads the scale the PDF
-  actually printed at, warning about any scale below 1 and naming what
-  reaches past the column.
+  0.99995, laid out a pixel wider than the preview (#470). **[handled]** — the
+  build holds the body's overflow to the page content box, where print
+  already clips, so what the width check lets through (up to 1px) cannot
+  shrink the book; and it reads the scale the PDF actually printed at,
+  warning about any scale below 1 and naming what reaches past the column.
+  It cannot hold it in a book with a page wider than its first — a
+  full-bleed plate after margined pages — and the warning says so.
 - **Auto-width replaced elements (images) trigger it via their INTRINSIC
   width.** An `<img>` with `width: auto` feeds its natural pixel width into
   Chromium's preferred-width computation. `max-width: 100%` does **not** bound

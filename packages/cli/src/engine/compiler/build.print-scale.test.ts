@@ -102,11 +102,39 @@ testIf(
 );
 
 testIf(
-  "an element 0.5px past the content box that still shrinks the print is a warning naming it",
+  "a block 0.5px too wide in a book the body's clip cannot hold is a warning naming it, with the reason",
+  async () => {
+    // A full-bleed plate after the first page: Chromium paints the body's clip
+    // on every page at its first page's width, so holding it would cut the
+    // plate. The book prints as before and the shrink is reported.
+    const result = await buildDoc(
+      doc(
+        `@page plate { margin: 0; }
+         .plate { page: plate; height: 40px; background: #cde; }
+         .wide { width: 336.5px; height: 4px; background: #cde; }`,
+        `<div class="wide"></div>`,
+        `<div class="plate"></div>`,
+      ),
+    );
+    expect(result.post.scale).toBeCloseTo(336 / 336.5, 6);
+    const warnings = widthWarnings(result.diagnostics);
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toContain("printed at 99.8514% of its declared size");
+    expect(warnings[0]).toContain("about 0.50px past the 336px page content box");
+    expect(warnings[0]).toContain('the page "plate" is wider than the first page');
+    expect(warnings[1]).toBe(
+      "div.wide reaches 0.50px past the 336px page content box. Keep it inside the page content box.",
+    );
+  },
+  TIMEOUT_MS,
+);
+
+testIf(
+  "an element 0.5px past the content box placed against the whole document is a warning naming it",
   async () => {
     // Nothing positioned around it, so it is placed against the whole
-    // document and the body's clip does not hold it: its overflow reaches
-    // the page area and Chromium shrinks.
+    // document and the body's clip does not hold it: its overflow reaches the
+    // page area and Chromium shrinks.
     const result = await buildDoc(
       doc(
         `.marker { position: absolute; left: 0; top: 0; width: 336.5px; height: 4px; background: #cde; }`,
@@ -127,11 +155,11 @@ testIf(
 );
 
 testIf(
-  "an element 0.5px past the content box inside the body is clipped: full size, no warning",
+  "an element 0.5px past the content box inside the body is held there: full size, no warning",
   async () => {
-    // Print already clips the page area at that edge, so holding the body's
-    // overflow there cuts nothing that printed before — it only stops the
-    // shrink.
+    // The body spans the page content box, where print already clips, so
+    // holding its overflow there cuts nothing print shows — it only stops
+    // the shrink.
     const result = await buildDoc(
       doc(`.wide { width: 336.5px; height: 4px; background: #cde; }`, `<div class="wide"></div>`),
     );

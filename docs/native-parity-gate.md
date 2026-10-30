@@ -140,6 +140,13 @@ walked the heading onto the next page in the preview only.
 a different font stack the same slice may agree on both sides and read CLEAN
 — also a pass. It can never fail the gate on its own.
 
+The worked example's print was shrunk. Under the CI fonts the slice's
+justified lines ended 1/64 px past its 648px column, so Chromium printed it at
+0.99998, laid out a pixel wider than the preview (#470). Since the engine holds
+that overflow to the page content box, the slice prints unscaled and reads
+CLEAN on Chrome 153 under both font sets; `exact-fit-image` and
+`exact-fit-formula` still exercise the outcome there.
+
 ### Why the fixture isn't made CLEAN with a CSS fudge factor (#268)
 
 It looks fixable from the numbers above: give the viewer's fragmentainer

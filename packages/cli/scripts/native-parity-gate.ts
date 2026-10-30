@@ -171,8 +171,8 @@ const DEFAULT_FIXTURES = [
   // The justified-text fixture (committed, #470): justified prose with
   // emphasis, links and inline code. Each splits a line into separate text
   // items, and the line can end 1/64 px per item past the column; Chromium's
-  // print then shrank the whole book to fit (0.99992 here) while the preview
-  // laid it out at the column's own width. The engine holds the body's
+  // print then shrank the whole book to fit (0.99992 here), its lines laid
+  // out a pixel longer than the preview's. The engine holds the body's
   // overflow to the page content box, so both lay out at the same width;
   // build.print-scale.test.ts asserts the scale off this book's PDF.
   join(REPO, "docs", "fixtures", "justified-text", "book"),

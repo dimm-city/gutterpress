@@ -4,10 +4,11 @@
    and a line split into several items — by an emphasis, a link, inline
    code — can end up to 1/64 px per item past the column. Chromium's print
    shrinks the WHOLE book to fit it while the preview does not. This
-   book printed at a scale of 0.99992, its 384px column laid out 384.03px
-   wide, under both the CI runner's fonts and a dev container's, until the
-   engine held the body's overflow to the page content box. Plain justified
-   text, one item per line, never overflows; mirrored-margins is that case. */
+   book printed at a scale of 0.99992 (384 / 384.03), its lines laid out
+   385px long in the 384px column, under both the CI runner's fonts and a
+   dev container's, until the engine held the body's overflow to the page
+   content box. Plain justified text, one item per line, never
+   overflows; mirrored-margins is that case. */
 
 body {
   margin: 0;
