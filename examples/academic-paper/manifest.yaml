@@ -1,7 +1,6 @@
-title: "When Does Romberg Integration Help?"
+title: "Gutterpress: Print Publishing from Markdown on an Unmodified Browser Engine"
 authors:
-  - "Ada Quill"
-  - "Rowan Tate"
+  - "The Gutterpress Contributors"
 language: en
 
 # US Letter, 8.5 × 11 in, with no print-service rules (the same shape the
@@ -23,8 +22,13 @@ chapters:
   - paper.md
   - references.md
 
+# Two rules that keep content inside the text column whatever fonts the
+# building machine has (see the file).
+styles:
+  - paper.css
+
 extensions:
-  # Superscripts for author and affiliation marks: Quill^1^.
+  # Superscripts for author and affiliation marks: Contributors^1^.
   - markdown-it-sup
   # LaTeX math, $…$ and $$…$$, typeset by MathJax. Bundled: nothing to install.
   - gutterpress-math
