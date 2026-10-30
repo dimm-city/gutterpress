@@ -33,7 +33,10 @@
  *      time, naming how many, and the second call carries `discard: true`.
  *   5. Once backing up can work (the diagnosis is stubbed as ready), "If
  *      backing up keeps failing" holds Test connection, Sign in again, Repair
- *      the online copy and Start over from the online copy, collapsed.
+ *      the online copy and Start over from the online copy, collapsed. Save a
+ *      version, clicked like a person does, disables itself while it saves,
+ *      which drops focus to <body>; Escape pressed then still closes Book setup
+ *      (the original #448 bug, fixed by dialogBehavior in #451).
  *   6. For a book that can back up (closing Accounts makes the app look at its
  *      online copy again, stubbed as ready) the status bar shows no Sync while
  *      automatic backing up is on, and ONE Sync button after the status control
@@ -188,6 +191,21 @@ const click = (selector, text = null) =>
     el?.click();
     return !!el;
   })()`);
+/** Click the element `expr` finds the way a person does: a real mouse press, which also focuses it. */
+async function mouseClick(expr) {
+  const at = await evalJs(`(() => {
+    const el = ${expr};
+    if (!el) return null;
+    el.scrollIntoView({ block: "center" });
+    const r = el.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  })()`);
+  if (!at) return false;
+  for (const type of ["mousePressed", "mouseReleased"]) {
+    await send("Input.dispatchMouseEvent", { type, x: at.x, y: at.y, button: "left", clickCount: 1 });
+  }
+  return true;
+}
 /** Type into the input matching `selector` the way a person does (fires input events). */
 const type = (selector, value) =>
   evalJs(`(() => {
@@ -548,8 +566,16 @@ await evalJs(`document.querySelector('#project-settings-panel details.trouble').
 await sleep(200);
 await screenshot(join(tmpdir(), "online-copy-failing.png"));
 check(/^Online copy: github\.com\/ada\/harbor-lights$/.test(failing.title), `the status names the online copy without claiming a backup (${failing.title})`);
-await closeDialog();
-check(await waitFor(`!document.querySelector('#project-settings-panel')`), "Book setup closed again");
+
+// Save a version, then Escape: the button is disabled while it saves, so the focus a click gave
+// it drops to <body>, outside Book setup. Escape must still close Book setup (#448, #451).
+const saveVersionBtn = `[...document.querySelectorAll('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button')].find((b) => b.textContent.trim() === 'Save a version')`;
+check(await mouseClick(saveVersionBtn), "Save a version, clicked");
+check(await waitFor(`/Nothing new to save/.test(document.querySelector('#project-settings-panel [aria-labelledby="version-history-title"]')?.textContent ?? '') && !!(${saveVersionBtn}) && !(${saveVersionBtn}).disabled`, 20000), "Save a version finished (nothing new) and is ready again");
+const focusAfterSave = await evalJs(`document.activeElement === document.body ? "body" : document.activeElement?.closest('#project-settings-panel') ? "in Book setup" : String(document.activeElement?.tagName)`);
+log(`focus after Save a version: ${focusAfterSave}`);
+await press("Escape", "Escape", 27);
+check(await waitFor(`!document.querySelector('#project-settings-panel')`, 3000), `Escape after Save a version closes Book setup (focus was ${focusAfterSave})`);
 
 // ── 12b. automatic backing up off: one Sync button beside the status control ─
 // The sync and update-check calls are stubbed in the page. Closing Accounts makes

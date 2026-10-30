@@ -94,6 +94,9 @@ history-start versions "First version":
 | repair | "Repaired the online copy" |
 | before deleting | "Before deleting X" |
 | an edit saved during a backup | "Saved the edit you made while backing up" |
+| before combining with the online copy | "Getting your changes ready to combine with the online copy's changes" |
+| combining with the online copy | "Combined your changes with the online copy's" |
+| keeping both takes of a file that can't be combined | "Kept both takes of the files that can't be combined" |
 
 ---
 
