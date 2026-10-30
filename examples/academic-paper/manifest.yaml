@@ -22,7 +22,7 @@ chapters:
   - paper.md
   - references.md
 
-# Two rules that keep content inside the text column whatever fonts the
+# One rule that keeps content inside the text column whatever fonts the
 # building machine has (see the file).
 styles:
   - paper.css

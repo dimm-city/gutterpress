@@ -13,9 +13,9 @@ table cells.
 
 There is no HTML in the source: the look is Gutterpress's built-in
 `academic` look, and math is Gutterpress's bundled Math feature. The paper's
-own `paper.css` has two rules, both to keep content inside the text column
-whatever fonts the building machine has. Copy this folder to start your own
-paper, or start one from the `paper` template:
+own `paper.css` has one rule, to keep long reference URLs inside the text
+column whatever fonts the building machine has. Copy this folder to start
+your own paper, or start one from the `paper` template:
 
 ```bash
 gutterpress new "My Paper" --template paper --preset book
@@ -26,8 +26,8 @@ gutterpress new "My Paper" --template paper --preset book
 - `manifest.yaml`: the language, US Letter page size and margins, the two
   source files, the stylesheet, and the three extensions: superscripts, math,
   and the look
-- `paper.css`: two rules that keep a formula's hidden screen-reader copy and
-  long reference URLs inside the text column on any machine's fonts
+- `paper.css`: one rule that keeps long reference URLs inside the text column
+  on any machine's fonts
 - `paper.md`: the article, from the title block to the availability statement
 - `references.md`: the numbered bibliography (alphabetical, SIAM style)
 - `figures/pipeline.svg`: Figure 1, the pipeline, as hand-written SVG

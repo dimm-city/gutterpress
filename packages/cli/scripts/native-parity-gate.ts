@@ -211,6 +211,13 @@ const DEFAULT_FIXTURES = [
   // On another Chromium they may read CLEAN instead.
   join(REPO, "docs", "fixtures", "exact-fit-image", "book"),
   join(REPO, "docs", "fixtures", "exact-fit-formula", "book"),
+  // The assistive-mml-width fixture (#469, committed): an inline formula
+  // ending a line 1px short of the column edge. MathJax's hidden MathML copy,
+  // laid out in the machine's math font, is wider than the SVG; until core
+  // held it to the formula's box it crossed the edge and Chromium shrank the
+  // print, which then fitted the "After the Formula" heading on page 1 and
+  // the preview did not (print=p1 viewer=p2, on the CI fonts and others).
+  join(REPO, "docs", "fixtures", "assistive-mml-width", "book"),
   // The percentage-height-root fixture (committed): `height: 100%` on every
   // page block, by the data-name the pipeline gives it (which its heading
   // shares). Print resolves the percentage against the flow root — auto, so
