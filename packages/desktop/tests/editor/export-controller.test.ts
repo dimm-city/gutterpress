@@ -186,14 +186,14 @@ test("start() clears any previously adopted activeExportId (M27 — prevents cro
 test("a pre-gate 'started' event with a message shows that message and adopts the id (M28)", () => {
   const { ctrl, clock } = makeController();
   ctrl.start();
-  ctrl.syncProgress(ev({ exportId: "exp-1", state: "started", message: "Syncing latest changes…" }));
+  ctrl.syncProgress(ev({ exportId: "exp-1", state: "started", message: "Getting the latest changes…" }));
   expect(ctrl.activeExportId).toBe("exp-1");
-  expect(ctrl.pdfProgress).toBe("Syncing latest changes…");
+  expect(ctrl.pdfProgress).toBe("Getting the latest changes…");
   // The 1s ticker must not clobber the syncing message with the elapsed-time
   // label — this is exactly the bug the ticker's unconditional updateLabel()
   // call would otherwise reintroduce.
   clock.tick(4);
-  expect(ctrl.pdfProgress).toBe("Syncing latest changes…");
+  expect(ctrl.pdfProgress).toBe("Getting the latest changes…");
 
   // The real build-start event (no message) reverts to the normal label.
   ctrl.syncProgress(ev({ exportId: "exp-1", state: "started" }));
@@ -203,7 +203,7 @@ test("a pre-gate 'started' event with a message shows that message and adopts th
 test("markCanceling during the syncing phase shows Canceling…, not the stale sync message", () => {
   const { ctrl } = makeController();
   ctrl.start();
-  ctrl.syncProgress(ev({ exportId: "exp-1", state: "started", message: "Syncing latest changes…" }));
+  ctrl.syncProgress(ev({ exportId: "exp-1", state: "started", message: "Getting the latest changes…" }));
   ctrl.markCanceling();
   expect(ctrl.pdfProgress).toBe("Canceling export…");
 });
