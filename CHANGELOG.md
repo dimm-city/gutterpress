@@ -377,12 +377,12 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 - **The minus sign (−, U+2212) is typed as itself.** The character check no
   longer reports it as a look-alike hyphen, and the editor no longer outlines it.
-- **A look's named pages keep their margins under `page.margin` (#454).**
-  Chromium ranks `@page` rules by cascade layer first, so the manifest's
-  margins beat a look's layered `@page full { margin: 0 }`: full-bleed plates
-  printed inset, and a sheet-wide one shrank the whole book to fit, while the
-  preview showed them full bleed. A look's `@page` rules are now written
-  after its layer, unlayered.
+- **Named pages keep their margins under `page.margin` (#454).** Chromium
+  ranks `@page` rules by cascade layer first, so the manifest's margins beat a
+  look's layered `@page full { margin: 0 }` and core's `@page full-bleed` and
+  `.gp-bleed`: full-bleed pages printed inset, and a sheet-wide plate shrank
+  the whole book to fit, while the preview showed them full bleed. A look's
+  and core's `@page` rules are now written after their layers, unlayered.
 - **The design settings read the book's stylesheet as the build does (#454).**
   A plugin's `css` and a `:root` in a later stylesheet now show, a value with
   `;` inside `url("data:…")` is no longer cut short, and an edit lands where

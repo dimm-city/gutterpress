@@ -36,6 +36,7 @@ import {
   type PrintAreaSource,
 } from "../../engine/shared/print-area.ts";
 import { DEFAULT_PAGE_MARGIN_PT } from "../../engine/shared/gcpm-extract.ts";
+import postcss from "postcss";
 
 /** Reader injected by the host: resolve a project-root-relative file → its text. */
 export type ReadText = (relPath: string) => Promise<string>;
@@ -219,8 +220,8 @@ export interface AssembleBookHtmlOptions {
  * `@page` cannot shadow the manifest (the print-safety check reports one), and
  * neither can an `@page` margin once the manifest has margins — except on a
  * named page (`@page full { margin: 0 }`), whose name outranks these rules.
- * That holds for a look's named pages too because a look's `@page` rules are
- * written unlayered (index.ts's `liftPageRules`, #454). Left out of the
+ * That holds for a look's and core's named pages too because their `@page`
+ * rules are written unlayered (`liftPageRules`, #454). Left out of the
  * manifest, margins stay the stylesheets' business — a look's design — else
  * the 1in default `defaultPageMarginCss` writes; Setup > Book records
  * `page.margin` the first time an author changes one.
@@ -254,6 +255,50 @@ function defaultPageMarginCss(page: PrintAreaSource | undefined): string | null 
   if (!page || page.margin) return null;
   return `@layer gp.vocab {\n@page { margin: ${cssLength(DEFAULT_PAGE_MARGIN_PT)}; }\n}`;
 }
+
+/**
+ * Split a stylesheet into everything but its `@page` rules, and its `@page`
+ * rules, which the caller writes after it, unlayered, in source order. A
+ * rule inside an `@layer` loses that layer; one inside `@media` or
+ * `@supports` keeps the condition. CSS postcss cannot read is left as it was.
+ *
+ * Chromium ranks `@page` declarations by cascade layer before page name, so a
+ * layered `@page full { margin: 0 }` lost to the manifest's unlayered
+ * `@page { margin }` on its own pages, while the engine's reader, which
+ * ignores layers, kept it (#454). So neither core's nor an extension's
+ * `@page` rules are written inside a layer, except core's 1in default
+ * (`defaultPageMarginCss`), which must lose to all of them.
+ * Unlayered, page rules cascade by page selector, then order: a named page
+ * keeps its margins, and the book's own sheet and the manifest, written
+ * later, still win on the pages they share with it.
+ */
+export function liftPageRules(css: string): { layered: string; pages: string } {
+  if (!/@page\b/i.test(css)) return { layered: css, pages: "" };
+  let root: postcss.Root;
+  try {
+    root = postcss.parse(css);
+  } catch {
+    return { layered: css, pages: "" };
+  }
+  const found: postcss.AtRule[] = [];
+  root.walkAtRules(/^page$/i, (rule) => {
+    found.push(rule);
+  });
+  const pages = found.map((rule) => {
+    let lifted: postcss.ChildNode = rule.clone();
+    for (let p = rule.parent; p instanceof postcss.AtRule || p instanceof postcss.Rule; p = p.parent) {
+      if (p instanceof postcss.AtRule && p.name.toLowerCase() === "layer") continue;
+      lifted = p.clone({ nodes: [] }).append(lifted);
+    }
+    rule.remove();
+    return lifted.toString();
+  });
+  return { layered: root.toString(), pages: pages.join("\n") };
+}
+
+/** Core's two layered blocks, their `@page` rules lifted out (liftPageRules). */
+const CORE_MARKERS = liftPageRules(`${MARKER_CSS.trim()}\n${TWO_VERSIONS_CSS.trim()}`);
+const CORE_VOCAB = liftPageRules(GUTTERPRESS_CSS.trim());
 
 /** Where one chunk of a book's stylesheet comes from. */
 export type CssChunkOrigin =
@@ -294,9 +339,13 @@ export function assembleCssChunks(opts: {
   return [
     ...core("@layer gp.marker, gp.vocab;"),
     // The two-versions box (two-versions.ts) rides in the marker layer: it
-    // styles DOM only core emits, exactly like the marker wrappers.
-    ...core(`/* gutterpress markers */\n@layer gp.marker {\n${MARKER_CSS.trim()}\n${TWO_VERSIONS_CSS.trim()}\n}`),
-    ...core(`/* gutterpress */\n@layer gp.vocab {\n${GUTTERPRESS_CSS.trim()}\n}`),
+    // styles DOM only core emits, exactly like the marker wrappers. Each
+    // block's `@page` rules (`@page blank`, `@page full-bleed`, `.gp-bleed`)
+    // follow it, unlayered (liftPageRules).
+    ...core(`/* gutterpress markers */\n@layer gp.marker {\n${CORE_MARKERS.layered.trim()}\n}`),
+    ...core(CORE_MARKERS.pages && `/* gutterpress markers: page rules */\n${CORE_MARKERS.pages}`),
+    ...core(`/* gutterpress */\n@layer gp.vocab {\n${CORE_VOCAB.layered.trim()}\n}`),
+    ...core(CORE_VOCAB.pages && `/* gutterpress: page rules */\n${CORE_VOCAB.pages}`),
     // The default margin (defaultPageMarginCss): in the core layer and ahead
     // of every sheet that could set one, so its place says what it is.
     ...core(defaultMargin && `/* page margins (default) */\n${defaultMargin}`),

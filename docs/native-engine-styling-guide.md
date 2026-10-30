@@ -414,7 +414,10 @@ cascade layer before it looks at the page name, so a look's layered
 `@page full { margin: 0 }` lost, on its own pages, to the manifest's unlayered
 `page.margin`. Each extension's `@page` rules (from its sublayers and
 `@media` blocks too, keeping the `@media` condition) are written right after
-its layer, unlayered, in source order. They then cascade by page selector
+its layer, unlayered, in source order, and core's (`@page blank`,
+`@page full-bleed`, `.gp-bleed`'s page) right after core's two layers. Only
+core's 1in default margin stays in `gp.vocab`, so every other margin beats
+it. They then cascade by page selector
 first — a page name beats `:left`/`:right`, which beat a bare `@page` — and
 by order second: the book's own `@page` rules and the manifest's page
 geometry come later and win at the same selector, and a look's named page

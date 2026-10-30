@@ -220,12 +220,15 @@ const DEFAULT_FIXTURES = [
   // `@page` declarations by layer before page name, so while a look's `@page`
   // rules sat in its layer, the manifest's unlayered `page.margin` beat the
   // look's `@page full { margin: 0 }` in print only: the plate printed inset
-  // and ran onto a second page (print 4pp, viewer 3pp). A look's `@page`
-  // rules are now written unlayered. render-parity.page-margins.test.ts
-  // reads the margins each fixture prints with off the PDF.
+  // and ran onto a second page (print 4pp, viewer 3pp). Core's own
+  // `@page full-bleed` did the same from core's layer (print 6pp, viewer
+  // 5pp). No look's or core's `@page` rule is written in a layer now.
+  // render-parity.page-margins.test.ts reads the margins each fixture prints
+  // with off the PDF.
   join(REPO, "docs", "fixtures", "named-page-margins", "book"),
   join(REPO, "docs", "fixtures", "book-page-margin", "book"),
   join(REPO, "docs", "fixtures", "two-looks", "book"),
+  join(REPO, "docs", "fixtures", "core-full-bleed", "book"),
 ];
 
 type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";
