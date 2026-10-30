@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="468pt" height="300pt" viewBox="0 0 468 300" font-family="Liberation Sans, Arial, Helvetica, sans-serif" font-size="7.4">
+  <defs>
+    <marker id="dim" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+      <path d="M 0 0 L 8 4 L 0 8 z" fill="#333333"/>
+    </marker>
+    <pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="4" stroke="#999999" stroke-width="0.8"/>
+    </pattern>
+  </defs>
+  <style>
+    .t { fill: #111111; }
+    .m { fill: #444444; font-size: 6.8; }
+    .h { fill: #111111; font-weight: bold; }
+    .d { fill: none; stroke: #333333; stroke-width: 0.6; marker-start: url(#dim); marker-end: url(#dim); }
+    .lbl { fill: #111111; font-style: italic; font-size: 8; }
+  </style>
+
+  <!--
+    A recto (right-hand) page of the DriveThruRPG US Letter preset, drawn at
+    0.3 pt per pt: sheet 621 x 810 pt -> 186.3 x 243 pt. The binding edge is
+    on the LEFT. Bleed b = 9 pt (2.7), text-safe s = 36 pt (10.8),
+    art-safe a = 18 pt (5.4), gutter g = 36 pt (10.8).
+    sheet:  x 40, y 24, w 186.3, h 243
+    trim:   x 40, y 26.7, w 183.6, h 237.6      (no bleed at the binding)
+    text:   x 50.8, y 37.5, w 162, h 216         (g at left, s elsewhere)
+    art:    x 50.8, y 32.1, w 167.4, h 226.8     (g at left, a elsewhere)
+  -->
+
+  <!-- bleed band: sheet minus trim, hatched -->
+  <rect x="40" y="24" width="186.3" height="243" fill="url(#hatch)" stroke="none"/>
+  <rect x="40" y="26.7" width="183.6" height="237.6" fill="#ffffff" stroke="none"/>
+
+  <!-- sheet -->
+  <rect x="40" y="24" width="186.3" height="243" fill="none" stroke="#111111" stroke-width="1"/>
+  <!-- trim (cut line) -->
+  <rect x="40" y="26.7" width="183.6" height="237.6" fill="none" stroke="#111111" stroke-width="0.7" stroke-dasharray="4 2"/>
+  <!-- art-safe -->
+  <rect x="50.8" y="32.1" width="167.4" height="226.8" fill="none" stroke="#555555" stroke-width="0.7" stroke-dasharray="1 1.5"/>
+  <!-- text-safe -->
+  <rect x="50.8" y="37.5" width="162" height="216" fill="none" stroke="#111111" stroke-width="0.7" stroke-dasharray="2 1.5"/>
+
+  <!-- binding edge marker -->
+  <rect x="34" y="24" width="4" height="243" fill="#333333"/>
+  <text class="m" transform="translate(30 145.5) rotate(-90)" text-anchor="middle">binding edge (spine): no bleed, inset g</text>
+
+  <!-- dimension: bleed at top -->
+  <path class="d" d="M 150 24 L 150 26.7"/>
+  <text class="lbl" x="153" y="28">b</text>
+  <!-- dimension: text-safe at top (trim to text box) -->
+  <path class="d" d="M 120 26.7 L 120 37.5"/>
+  <text class="lbl" x="123" y="36">s</text>
+  <!-- dimension: art-safe at top -->
+  <path class="d" d="M 90 26.7 L 90 32.1"/>
+  <text class="lbl" x="93" y="32">a</text>
+  <!-- dimension: gutter at left (trim to text box) -->
+  <path class="d" d="M 40 150 L 50.8 150"/>
+  <text class="lbl" x="43" y="147">g</text>
+  <!-- dimension: outer safe at right -->
+  <path class="d" d="M 212.8 150 L 223.6 150"/>
+  <text class="lbl" x="214" y="147">s</text>
+  <!-- outer bleed at right -->
+  <path class="d" d="M 223.6 200 L 226.3 200"/>
+  <text class="lbl" x="228" y="203">b</text>
+
+  <!-- sample ink: a text block inside, an image bleeding off the outer edge, an image stopping in the bleed band -->
+  <rect x="58" y="60" width="140" height="3" fill="#777777"/>
+  <rect x="58" y="66" width="130" height="3" fill="#777777"/>
+  <rect x="58" y="72" width="136" height="3" fill="#777777"/>
+  <text class="m" x="58" y="84">text runs: judged against the text-safe box</text>
+
+  <rect x="150" y="110" width="76.3" height="50" fill="#cccccc" stroke="#333333" stroke-width="0.5"/>
+  <text class="m" x="152" y="121">art that reaches</text>
+  <text class="m" x="152" y="129">the sheet edge:</text>
+  <text class="m" x="152" y="137">a bleed, passes</text>
+
+  <rect x="140" y="178" width="84.5" height="40" fill="#ffffff" stroke="#333333" stroke-width="0.5" stroke-dasharray="1.5 1"/>
+  <text class="m" x="142" y="189">art stopping in the</text>
+  <text class="m" x="142" y="197">bleed band: flagged</text>
+  <text class="m" x="142" y="205">(white sliver risk)</text>
+
+  <!-- legend / right column -->
+  <text class="h" x="262" y="34">Boxes of one page (print-area.ts)</text>
+  <rect x="262" y="42" width="16" height="7" fill="none" stroke="#111111" stroke-width="1"/>
+  <text class="t" x="284" y="48">sheet: the media box, W × H</text>
+  <rect x="262" y="54" width="16" height="7" fill="url(#hatch)" stroke="none"/>
+  <text class="t" x="284" y="60">bleed band: top, bottom and outer edge only</text>
+  <rect x="262" y="66" width="16" height="7" fill="none" stroke="#111111" stroke-width="0.7" stroke-dasharray="4 2"/>
+  <text class="t" x="284" y="72">trim: the cut page</text>
+  <rect x="262" y="78" width="16" height="7" fill="none" stroke="#555555" stroke-width="0.7" stroke-dasharray="1 1.5"/>
+  <text class="t" x="284" y="84">art-safe: trim inset by a (by g at the binding)</text>
+  <rect x="262" y="90" width="16" height="7" fill="none" stroke="#111111" stroke-width="0.7" stroke-dasharray="2 1.5"/>
+  <text class="t" x="284" y="96">text-safe: trim inset by s (by g at the binding)</text>
+
+  <text class="h" x="262" y="118">DriveThruRPG preset values</text>
+  <text class="t" x="262" y="130">W × H = 621 × 810 pt (8.625 × 11.25 in)</text>
+  <text class="t" x="262" y="141">b = 9 pt (0.125 in)   s = 36 pt (0.5 in)</text>
+  <text class="t" x="262" y="152">a = 18 pt (0.25 in)   g = 36 pt (0.5 in)</text>
+  <text class="t" x="262" y="163">trim = 612 × 792 pt (8.5 × 11 in)</text>
+
+  <text class="h" x="262" y="185">Verdict on a rectangle of ink</text>
+  <text class="t" x="262" y="197">inside   within the box its rule allows</text>
+  <text class="t" x="262" y="208">unsafe   past that box, still on the trimmed page</text>
+  <text class="t" x="262" y="219">bleed    past the trim, still on the sheet</text>
+  <text class="t" x="262" y="230">off-page past the sheet's edge (not printed)</text>
+  <text class="m" x="262" y="244">The worst edge decides; art touching the sheet</text>
+  <text class="m" x="262" y="253">edge is bleeding there and passes on that edge.</text>
+  <text class="m" x="262" y="262">A verso mirrors the binding and outer insets.</text>
+
+  <text class="m" x="40" y="282">Recto page drawn at 0.3 pt per pt. The preview's print overlay and the pdf.print.safe-margins check</text>
+  <text class="m" x="40" y="291">read these boxes from one function (print-area.ts).</text>
+</svg>

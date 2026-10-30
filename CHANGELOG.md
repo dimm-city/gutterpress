@@ -7,6 +7,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The example paper is now about Gutterpress.** `examples/academic-paper`
+  is a peer-review-style article on how the system compiles CSS Paged Media on
+  an unmodified Chromium (the three synthesis tiers, the `/Dests` measurement
+  channel, predict-then-verify), how the preview and the PDF are held to the
+  same pages, and the geometry behind the print checks (page boxes, bleed,
+  signature padding, ink coverage, effective resolution), with a worked LaTeX
+  demonstration and fresh measurements of the parity gate over the corpus. Its
+  figures are hand-written SVG; the Romberg sample paper and its matplotlib
+  script are gone.
 - **Keeping an author's work safe has one set of words and one place to look
   (#448).** The status bar's save indicator, sync pill and "Where your work is
   kept" sheet are one status control ("Saved · Backed up", "Saved · Not backed
