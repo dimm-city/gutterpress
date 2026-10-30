@@ -106,10 +106,6 @@ This project follows [Semantic Versioning](https://semver.org/).
     tab is gone, and its tools moved to Backup and Accounts. Diagnostics
     shows Check now and the update channel beside the version. The separate
     Updates section, the Lib version and the Logs tab's Open folder are gone.
-
-  Gone from the app: the extension version picker, the pre-release switch
-  and the export-name field. `gutterpress ext` and the manifest still do
-  them.
 - **Publishing: the team's settings live in the book, your account on your
   computer.** The Publish wizard saves where the book is published in its
   manifest, so everyone who opens it sees the same destinations ticked:
@@ -154,8 +150,7 @@ This project follows [Semantic Versioning](https://semver.org/).
   manifest and copies nothing, the way `gutterpress-math` already worked. The
   look's stylesheet is compiled into Gutterpress and loads like a plugin's own
   CSS; a book styles over it from its own `styles:` sheets, which load after
-  every extension. `ext add --look` and the `extensions/<id>` copy are gone; a book
-  that still carries such a copy keeps working as the path extension it is.
+  every extension.
   Several looks may be listed at once, later ones winning ties, as before.
 - **Book setup shows one Looks & features list.** The Look and Features tabs
   are one **Looks & features** tab: every `extensions:` entry in order, looks
@@ -167,8 +162,7 @@ This project follows [Semantic Versioning](https://semver.org/).
   area: *Built in* (every bundled look, then every bundled feature), *Search*
   (npm) and *Advanced* (install by name, a folder or file used in place, a
   `.zip`, `.css` or URL import). A failed download's notice now offers **Open
-  Looks & features**. The enlarged hover preview is gone: it showed only in a
-  window wider than the app's, and the thumbnails show the same sample.
+  Looks & features**.
 - **Design tokens come from every look and are saved to your stylesheet.** The
   **Design** tab (with the stylesheet list) shows the settings of every look
   that is switched on (built in, from npm or a folder) in list order, as
@@ -371,6 +365,48 @@ This project follows [Semantic Versioning](https://semver.org/).
   demonstration and fresh measurements of the parity gate over the corpus. Its
   figures are hand-written SVG; the Romberg sample paper and its matplotlib
   script are gone.
+
+### Removed
+
+Each of these was removed on purpose and is described under Changed. A 0.11.22
+manifest that still has a removed key builds anyway: the load notice names the
+key, and the build ignores it.
+
+- **`validate.enabled`.** `gutterpress build --skip-pre-validate
+  --skip-post-validate` skips validation for one build.
+- **`lint.configPath` and a config path under `validate.source.<tool>`.** Each
+  checker finds its own config file by its usual name, in the book's folder or
+  a folder above it. The keys 0.11.22 already ignored, such as
+  `validate.assets.minImageDpi`, are dropped the same way.
+- **A stylesheet's `@page size`.** The manifest's `preset:` and `page:` set the
+  page size, and the CSS check reports a `size` in a stylesheet. The
+  stylesheet editor no longer suggests `size` inside `@page`.
+- **A look's `gutterpress.tokensFile`.** The design settings come from every
+  look that is switched on and are saved to the book's own stylesheet. A
+  package that still declares it loads unchanged.
+- **One person's publishing details in the manifest.** Which account a book
+  publishes with, and an output folder outside the book, stay on that
+  person's computer.
+- **Settings:** the file-watcher and log-level options.
+- **Troubleshooting:** the Sync tab (its tools are in Book setup → Online copy
+  and Accounts), the separate Updates section and its Reset, the Lib version
+  line, the update-channel hint, and the Logs tab's Open folder.
+- **The status bar's save indicator, sync pill and "Where your work is kept"
+  sheet,** with that sheet's explanations and its advice after a failed save.
+  One status control replaces them.
+- **Backup controls for Readers.** A Reader gets the latest changes
+  automatically and never sends anything.
+- **Looking at a past version beside the current book, and the docked version
+  history.** Version history is a screen of its own.
+- **Backing up when a PDF is exported.** Exporting gets the latest changes
+  first, and nothing more.
+- **The mouse-wheel page flip (#301).** The wheel scrolls the preview; the
+  toolbar and the keys turn a page at a time.
+- **Library exports renamed with no alias:**
+  `listBuiltInStyleSets` (use `listBundledExtensions`),
+  `BUILT_IN_STYLE_SET_IDS` and `RECOMMENDED_EXTENSIONS` (use
+  `BUNDLED_EXTENSION_DETAILS`), and `listLocalBranches` with its
+  `LocalBranches` type (use `listRevisions`).
 
 ### Fixed
 
