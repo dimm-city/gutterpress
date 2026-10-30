@@ -1030,20 +1030,25 @@ built-in look defines, so a choice carries across looks. They sit beside a
 live sample page that redraws as each setting changes (a typed color or
 number counts once it is committed, on blur or Enter, and only a color is
 saved as a color). Every edit is written to
-the **book's own stylesheet** (`styles/book.css`, created with an empty
-`:root {}` and added to `styles:` on the first edit when the book has none):
-the token's `:root` declaration is updated if the sheet has one, otherwise
-added to its `:root` block; a declaration in any other rule or in a comment
-is left alone. **Reset to the look's settings** asks first ("Replace your
+the **book's own stylesheets** (`styles/book.css`, created with an empty
+`:root {}` and added to `styles:` on the first edit when the book has none),
+host-side with postcss (#454): the token's root-level `:root` declaration is
+updated in place in the last of the book's sheets that has one, otherwise it
+is added to the `:root` block of the first; a declaration in any other rule,
+in `@media` or `@supports`, or in a comment is left alone, and every other
+byte of the sheet is kept. **Reset to the look's settings** asks first ("Replace your
 settings with Clean book's?" **Replace** / **Keep mine**), then removes the
 book's declarations of the six, so the look's values show through; Advanced's
 Undo changes restores them. A look's own files are never
 written; there is no eject or copy of a look.
 
-**All design settings** (Advanced). `DesignSection` shows the `:root`
-custom properties of **every enabled look** — bundled, npm or path — in
-cascade order (a later look wins a duplicate), overlaid with the book's own
-stylesheet, which wins, with each variable's name, a per-row "Use the look's
+**All design settings** (Advanced). `DesignSection` shows the root-level
+`:root` custom properties of the book's stylesheet **as the build assembles
+it** (#454): every enabled extension's — bundled, npm or path, its
+stylesheet files and a plugin's `css` export — and every one of the book's
+own `styles:` sheets, read host-side with postcss (`style/book-css`), each
+with the value the sample page computes for it (`getComputedStyle`, so the
+cascade is the browser's), with each variable's name, a per-row "Use the look's
 value", and Undo changes for the visit. Derived labels are plain words
 (`--fs-display` → "Display size"); a look labels its own extra tokens with
 `@label`. A compound value (`1pt solid …`) is edited as text, never as a

@@ -377,6 +377,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 - **The minus sign (−, U+2212) is typed as itself.** The character check no
   longer reports it as a look-alike hyphen, and the editor no longer outlines it.
+- **The design settings read the book's stylesheet as the build does (#454).**
+  A plugin's `css` and a `:root` in a later stylesheet now show, a value with
+  `;` inside `url("data:…")` is no longer cut short, and an edit lands where
+  your stylesheet already sets the setting, never in a comment or `@media`.
 
 ## [0.11.22] - 2026-10-23
 
