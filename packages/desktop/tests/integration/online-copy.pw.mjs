@@ -23,8 +23,8 @@
  *      opens its compare there, and Online copy brings the tab back. Look at
  *      this version closes Book setup and shows the preview's own "Looking at
  *      …" bar, whose close button stops looking.
- *   4. New revision… sits above the list (and its name form opens there),
- *      previews the name, creates it and lists it; Rename… of an online
+ *   4. New revision… sits above the list (and its name form opens there;
+ *      Escape in it cancels the form, not Book setup), previews the name, creates it and lists it; Rename… of an online
  *      revision shows the "also renames it in the online copy" note; deleting
  *      an online revision offers "this computer only" and "everywhere"; an
  *      online-only one is one step ("from the online copy? It isn't on this
@@ -202,6 +202,11 @@ const type = (selector, value) =>
     inp.dispatchEvent(new Event('input', { bubbles: true }));
     return true;
   })()`);
+/** Press a key the way a person does: through the browser, to whatever has focus. */
+const press = async (key, code = key, keyCode = 0) => {
+  await send("Input.dispatchKeyEvent", { type: "keyDown", key, code, windowsVirtualKeyCode: keyCode });
+  await send("Input.dispatchKeyEvent", { type: "keyUp", key, code, windowsVirtualKeyCode: keyCode });
+};
 await send("Page.bringToFront");
 
 // ── 4. open the seeded book via the left panel Books tab ─────────────────────
@@ -418,6 +423,12 @@ check(await evalJs(`(() => {
   const list = document.querySelector('#project-settings-panel .revisions .item-list');
   return !!form && !!list && !!(form.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING);
 })()`), "its name form opens above the list");
+// Escape in the name field cancels the form only: Book setup stays open.
+await evalJs(`document.querySelector('.revisions .name-form input')?.focus()`);
+await press("Escape", "Escape", 27);
+check(await waitFor(`!document.querySelector('.revisions .name-form')`, 3000), "Escape in the name field cancels the form");
+check(await evalJs(`!!document.querySelector('#project-settings-panel .revisions')`), "and leaves Book setup open");
+await click("#project-settings-panel .revisions button", "New revision…");
 await type(".revisions .name-form input", "Third edition");
 await sleep(100);
 const preview = await evalJs(`document.querySelector('.revisions .name-form .hint')?.textContent.trim()`);

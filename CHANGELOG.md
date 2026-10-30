@@ -61,6 +61,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Escape inside Book setup, Settings and Accounts acts on the control first
+  (#448).** Escape in a revision's name form cancels the form, and Escape on
+  the look's "Replace / Keep mine" question keeps yours, instead of closing the
+  whole page: the page's own Escape now waits for the control's.
 - **The first backup of a new revision works (#448).** It used to stop with
   "sign in again" because a revision the online copy didn't have yet was taken
   for a rejected sign-in.

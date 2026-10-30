@@ -6,12 +6,13 @@
  *
  *   - the ARIA wiring (`role="dialog"`, `aria-modal`, `tabindex`, and an
  *     optional `aria-labelledby`),
- *   - Escape-to-close (consumed so it doesn't leak to page-level handlers),
+ *   - Escape-to-close (consumed so it doesn't leak to page-level handlers,
+ *     after any control inside the dialog has had the first say),
  *   - initial focus placement on open,
  *   - focus trapping while open (WCAG 2.1.2, delegated to {@link trapFocus}),
  *   - and restoring focus to the triggering element when the dialog unmounts.
  *
- * It is pure DOM — no Svelte state, no host imports — so it stays PWA-clean
+ * It is DOM plus Svelte's own `on` — no Svelte state, no host imports — so it stays PWA-clean
  * (CLAUDE.md §8) and is unit-testable against a bare DOM. All
  * dependencies (the close callback, the trigger element, focus targets) are
  * injected through the action's options object.
@@ -26,6 +27,8 @@
  * `destroy` and restores focus. `onClose` should flip that flag; the backdrop
  * click handler should call the same function.
  */
+import { on } from "svelte/events";
+
 /**
  * CSS selector for "things a user can Tab to" — exported so the one
  * remaining non-modal caller (EditorToolbar's plain-disclosure popups, which
@@ -118,7 +121,12 @@ export function dialogBehavior(node: HTMLElement, options: DialogOptions) {
     }
     trapFocus(e, node);
   }
-  node.addEventListener("keydown", onKeydown);
+  // Through Svelte's `on`, not addEventListener: a control inside the dialog
+  // that handles Escape with an `onkeydown` attribute (cancel an inline form,
+  // answer an inline question) is called first and can stop the key there.
+  // Svelte runs those attributes from the app root, above this node, so a
+  // plain listener here would close the dialog before they ever ran.
+  const offKeydown = on(node, "keydown", onKeydown);
 
   // A click that removes its own button (Add, Remove, Create…) drops focus to
   // <body>, outside every dialog, where the listener above never hears Escape
@@ -156,7 +164,7 @@ export function dialogBehavior(node: HTMLElement, options: DialogOptions) {
       else node.removeAttribute("aria-labelledby");
     },
     destroy() {
-      node.removeEventListener("keydown", onKeydown);
+      offKeydown();
       doc.removeEventListener("keydown", onDocumentKeydown);
       openDialogs.splice(openDialogs.indexOf(node), 1);
       const restore = opts.triggerEl ?? previouslyFocused;
