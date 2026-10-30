@@ -440,6 +440,35 @@ Two measured facts about how Chromium scales a print render:
   trigger behind the compiler's shrink-to-fit hard error and `--allow-shrink`:
   the failure is silent and document-wide, so it has to be caught before
   printing rather than detected after.
+- **Any overflow counts, however small, and justified text makes its own
+  (#470).** The factor is the page content box's width over the widest
+  overflow, exactly: a box 0.5px past a 624px column printed at 624 / 624.5.
+  Chromium lays each text item of a justified line out in 1/64 px units, and
+  a line split into several items — by an emphasis, a link, inline code, a
+  formula — can end up to 1/64 px per item past the column (measured 1/64
+  and 2/64 px on real books, 7/64 px with every word its own item, never with
+  plain text). `examples/academic-paper`, the user guide and the design guide
+  all printed at 0.99995, laid out 0.03px wider than the preview, which
+  never shrinks — enough for a line that just fits in print to wrap in the
+  preview and move a page break. `body { overflow-x: clip }` alone changes
+  nothing (the body's overflow is the viewport's while the root's is
+  `visible`); with the root's set too, the body clips and the print is
+  unscaled. `text-align: left` also prints unscaled; clipping every formula
+  SVG does not.
+
+  So the compiler, printing only, clips the body's horizontal overflow at the
+  page content box (`gp-root-clip` in `build.ts`) when the width check found
+  nothing past it and the body spans that box. Print already clips the page
+  area there (§5), so nothing that printed before is cut; `clip` makes no
+  scroll container and no formatting context, so no line or page moves. The
+  width check keeps its 1px tolerance — the viewport it lays out in is a
+  whole number of px — because anything smaller inside the body is now held
+  by the clip. What can still shrink the print (a box positioned against the
+  whole document, a book whose body is inset or sets its own overflow) is
+  read off the PDF after printing, not predicted: the page area is drawn
+  under `s 0 0 s x y cm` right after its clip, and s is 3.125 times the
+  factor (`printScale` in `shared/pdf-inspect.ts`). Any factor below 1 is a
+  warning, naming whatever reaches past the column at all.
 
 ## 10. `filter:` rasterizes the subtree at 300 DPI — the dominant print cost
 

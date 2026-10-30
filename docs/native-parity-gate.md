@@ -35,9 +35,13 @@ Staged books land under `/tmp/gutterpress-parity/<fixture>/` (override with
 `with-design-guide` manifests, and the minimal repro books under
 `docs/fixtures/`, each of which pins a divergence the gate once caught — or,
 for `exact-fit-boundary`, `exact-fit-image` and `exact-fit-formula`, the
-outcome below, and for `book-page-margin` and
+outcome below, for `book-page-margin` and
 `two-looks`, the `@page` margins the `named-page-margins` fix (#454) must
-leave as they were. CI runs the whole list when the rendering gate is
+leave as they were, and for `justified-text`, a print Chromium shrank to fit
+justified lines a fraction of a pixel past the column (#470). A fixture whose
+PDF printed shrunk at all is noted above its results, with the scale: the
+print was laid out wider than the preview, so its page counts are not
+comparable. CI runs the whole list when the rendering gate is
 selected; see [CI policy](./ci.md).
 
 ## The three outcomes

@@ -1,0 +1,49 @@
+/* style.css — justified prose with inline markup, and nothing else (#470).
+
+   Chromium lays each text item of a justified line out in 1/64 px units,
+   and a line split into several items — by an emphasis, a link, inline
+   code — can end up to 1/64 px per item past the column. Chromium's print
+   shrinks the WHOLE book to fit it while the preview does not. This
+   book printed at a scale of 0.99992, its 384px column laid out 384.03px
+   wide, under both the CI runner's fonts and a dev container's, until the
+   engine held the body's overflow to the page content box. Plain justified
+   text, one item per line, never overflows; mirrored-margins is that case. */
+
+body {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 10.5pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+
+@page {
+  size: 6in 9in;
+  margin: 0.75in 1in;
+
+  @bottom-center {
+    content: counter(page);
+    font-size: 8pt;
+    color: #555555;
+  }
+}
+
+h1 {
+  font-size: 22pt;
+  margin: 0 0 0.6em;
+}
+
+h2 {
+  font-size: 14pt;
+  margin: 1.2em 0 0.4em;
+}
+
+p {
+  margin: 0 0 0.6em;
+  text-align: justify;
+}
+
+code {
+  font-family: "DejaVu Sans Mono", monospace;
+  font-size: 0.9em;
+}
