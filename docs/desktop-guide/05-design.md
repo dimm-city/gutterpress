@@ -23,7 +23,8 @@ On the **Book** tab:
   [create the book](02-books.md#create-a-new-book). The tab opens on the book's current size;
 - under **Margins (inches)**, type the four margins (see below);
 - under **Check the PDF against**, tick the print services whose rules the finished PDF should be
-  checked against. The general print checks always run;
+  checked against; each one says what it checks, as when you create a book. The general print
+  checks always run;
 - under **Chapters**, the book's chapters are listed in reading order, each by its first heading
   with its file name beside it. Drag a chapter, or use its arrows, to move it. Untick one to leave
   it out of the book: it moves under **Not in the book**, and ticking it there adds it back at the
@@ -38,13 +39,23 @@ can start new books from.
 
 A *look* is a complete design for a book. On the **Look** tab, under **Choose a look**, each look
 is a small picture of a page: **Clean book**, **Zine**, **Technical doc** and **Academic**, and any
-look your book has from elsewhere. The one your book uses comes first, with a tick. Click another
-to use it instead; Gutterpress saves the choice as soon as you stop, and the line under the
-pictures says what the look is like. A new book already has the look its template came with.
+look your book has from elsewhere, with who made it when the look says. The one your book uses
+comes first, with a tick. Click another to use it instead; Gutterpress saves the choice as soon as
+you stop, and the line under the pictures says what the look is like. A new book already has the
+look its template came with. In a window wider than about 1620 pixels, pointing at a look shows it
+larger, over two facing sample pages, beside Book setup.
 
-A book that combines two looks (set up on the **Extensions** tab) says so above the pictures, and
-its looks are changed there. Formatting extras such as callouts and math are on the Extensions tab
-too: see [add plugins and formatting extras](06-plugins.md).
+To change a built-in look's own CSS, click **Make an editable copy** under the pictures while your
+book uses it. Gutterpress copies the look into your book's `extensions` folder (for example
+`extensions/zine`), and the copy takes the built-in's place: its picture now says **From a folder**,
+and its stylesheet, `theme.css`, is yours to edit. The book then uses your copy, so a later
+Gutterpress version never changes it. (`gutterpress ext add zine --look` does the same from the
+command line.)
+
+A book can combine two looks: add a second one on the **Extensions** tab, under **Add an
+extension → Built-in looks** (see [combine two looks](06-plugins.md#combine-two-looks)). Such a book
+says so above the pictures, and its looks are changed there. Formatting extras such as callouts and
+math are on the Extensions tab too.
 
 ## Adjust the look
 
@@ -53,8 +64,9 @@ Under **Adjust the look** are the six settings every built-in look has: **Body t
 and links). The **Sample page** beside them shows each change as you make it. Your changes are
 saved to your book's own stylesheet (`styles/book.css` unless you chose another; Gutterpress makes
 one the first time you change something), never to the look itself, so they stay if you change
-looks. A color or a number is saved when you leave its field or press Enter; type a color with or
-without its `#` (anything that is not a color is not saved, and the field says so).
+looks. A color or a number is saved when you leave its field or press Enter. Type a color with or
+without its `#`, or another setting written as `var(--color-ink)` to use that setting's color (the
+accent then follows your text color). Anything else is not saved, and the field says so.
 **Reset to the look's settings** asks first, then (**Replace**) takes your changes to these six out
 again; **Undo changes** in Advanced brings them back.
 

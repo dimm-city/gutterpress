@@ -19,11 +19,14 @@
  *     `extensions/npm/` (`npm-plugin-installer.ts`) and written back pinned, as
  *     `name@version`.
  *
- * Nothing is copied into a project here. A bundled look's stylesheet is
- * carried as text on its row of the table in `extension-specifier.ts` and
- * handed to the cascade the way a plugin's `css` export is; the book styles
- * over it from its own `styles:` sheets, which load after every extension.
- * Zip and URL imports land in `extensions/` (extension-import.ts).
+ * A bundled look's stylesheet is carried as text on its row of the table in
+ * `extension-specifier.ts` and handed to the cascade the way a plugin's `css`
+ * export is; the book styles over it from its own `styles:` sheets, which
+ * load after every extension. One thing here copies INTO a project, and only
+ * when asked: `addBuiltInStyleSet` (`ext add <look> --look`, Book setup's
+ * "Make an editable copy") writes a built-in look into `extensions/<id>/` as
+ * the author's own files and lists it by path. Zip and URL imports land in
+ * `extensions/` too (extension-import.ts).
  *
  * Cascade order and markdown registration order are BOTH the list order —
  * a later entry loads later and its CSS wins ties — and the project's own
@@ -33,7 +36,7 @@
  * round-trip (the same dep `manifest.ts` parses with). Host-side (node:fs);
  * the desktop reaches it through thin SvelteKit server routes.
  */
-import { readdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { isSeq, isMap, isScalar, YAMLMap, YAMLSeq, Scalar } from "yaml";
@@ -1013,6 +1016,57 @@ export function listBundledExtensions(): BundledExtensionInfo[] {
     description: b.description,
     look: b.css !== undefined,
   }));
+}
+
+/** The built-in looks' names (the bundled extensions that carry a stylesheet), in table order. */
+export const BUILT_IN_LOOKS: readonly string[] = BUNDLED_EXTENSION_DETAILS.filter((b) => b.css !== undefined).map((b) => b.name);
+
+/**
+ * Make an editable copy of a built-in look (0.11.22's, restored in #482): its
+ * stylesheet and a package.json land in `extensions/<id>/`, the author's own
+ * files from then on, and the book lists the copy as `./extensions/<id>` — a
+ * plain path extension, loaded and built like any folder the author owns.
+ *
+ * A book that lists the built-in by name gets the copy in that entry's place
+ * (on or off as it was), so the look is not listed twice and the cascade
+ * order holds; otherwise the copy is added at the end. Idempotent: a folder
+ * already there is kept as it is — the author's edits survive — and only
+ * (re-)referenced.
+ */
+export async function addBuiltInStyleSet(projectDir: string, id: string): Promise<ProjectExtensionEntry> {
+  const look = bundledExtension(id);
+  if (look?.css === undefined) {
+    throw new Error(`Unknown built-in look "${id}" (one of: ${BUILT_IN_LOOKS.join(", ")}).`);
+  }
+  const css = look.css;
+  return withMutationLock(projectDir, async () => {
+    const dest = path.join(projectDir, EXTENSIONS_DIR, id);
+    if (!existsSync(dest)) {
+      await mkdir(dest, { recursive: true });
+      const pkg = {
+        name: id,
+        description: look.description,
+        author: "gutterpress",
+        keywords: ["gutterpress", "gutterpress-look"],
+        gutterpress: { styles: ["theme.css"] },
+      };
+      await writeFile(path.join(dest, EXTENSION_MANIFEST_FILENAME), `${JSON.stringify(pkg, null, 2)}\n`, "utf8");
+      await writeFile(path.join(dest, "theme.css"), css, "utf8");
+    }
+    const use = `./${EXTENSIONS_DIR}/${id}`;
+    await loadPlugin(extensionConfigFor({ use, kind: "path", name: use }), projectDir);
+    const { doc, file } = await loadManifestDoc(projectDir);
+    const seq = ensureSeq(doc, "extensions");
+    if (indexOfUse(seq, use) < 0) {
+      const at = indexOfUse(seq, id);
+      const item = at < 0 ? undefined : (seq.items[at] as Node);
+      if (isMap(item)) item.set("use", use);
+      else if (at >= 0) seq.items[at] = new Scalar(use);
+      else seq.add(new Scalar(use));
+      await writeManifestDoc(file, doc);
+    }
+    return (await describeExtension(projectDir, use))!;
+  });
 }
 
 /** A folder name under `extensions/` not yet taken: `<slug>`, `<slug>-2`, … */

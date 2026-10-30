@@ -179,22 +179,31 @@ gutterpress/
 │   │                                                    at the right; one Saving…/Saved in the
 │   │                                                    header; every tab saves as you go; #442)
 │   ├── Book (id `book`)                       SHIPPED  (DetailsSection: title, authors, page size,
-│   │                                                    margins, print checks, then chapters by
-│   │                                                    title with "Not in the book" below, then
-│   │                                                    Save as template)
+│   │                                                    margins, print checks (each with what it
+│   │                                                    checks, the wizard's words), then
+│   │                                                    chapters by title with "Not in the book"
+│   │                                                    below, then Save as template)
 │   ├── Look (id `look`)                       SHIPPED  (LookSection: Choose a look (a one-choice
-│   │                                                    gallery), Adjust the look (six brand
-│   │                                                    settings beside a live sample))
+│   │                                                    gallery; a card names the look's author;
+│   │                                                    the enlarged two-page sample on hover in
+│   │                                                    a window over 1620 px; Make an editable
+│   │                                                    copy of the built-in look in use), Adjust
+│   │                                                    the look (six brand settings beside a
+│   │                                                    live sample))
 │   ├── Extensions (id `extensions`)           SHIPPED  (ExtensionsSection: Your extensions (the
 │   │                                                    manifest's ordered list: checkbox, move,
-│   │                                                    Remove; an npm row's version picker,
-│   │                                                    "x.y.z available" and Update; Check for
-│   │                                                    updates and Include pre-release
-│   │                                                    versions), then Add an extension: the
-│   │                                                    built-in extras the book does not list,
-│   │                                                    each with what to type, an npm search,
-│   │                                                    then exact-name, folder, .zip/.css and
-│   │                                                    web-address adds)
+│   │                                                    Remove; a built-in extra's what to type;
+│   │                                                    the lib's notices; an npm row's version
+│   │                                                    picker, "x.y.z available" and Update;
+│   │                                                    Check for updates, Re-check and Include
+│   │                                                    pre-release versions), then Add an
+│   │                                                    extension: the built-in extras and looks
+│   │                                                    the book does not list (an extra with
+│   │                                                    what to type; a look stacks), an npm
+│   │                                                    search (name@version, npm page, "Showing
+│   │                                                    N of M"), then exact-name (with an
+│   │                                                    optional named export), folder, .zip/.css
+│   │                                                    and web-address adds)
 │   ├── Online copy (id `online-copy`)         SHIPPED  (ProjectConnectionsSection: one sentence for
 │   │                                                    the book's situation and at most one
 │   │                                                    primary action (Back up now, Sync now or
@@ -949,9 +958,15 @@ to the Extensions tab instead of a guess. **Extensions** is the list itself
 and the only place its entries are changed: *Your extensions* shows the
 manifest's `extensions:` entries in order, each row a checkbox (on/off), the
 label, its kind and source in words ("Look · built in", "Extra · npm
-3.0.0"), move up/down and Remove. A row otherwise says something only when it
-needs attention: "Not downloaded yet." with Install, "Couldn't load." with
-Show details and Check again.
+3.0.0"), move up/down and Remove; a built-in extra's row also says what to
+type (its description, the backtick spans in code type). A row otherwise says
+something only when it needs attention: "Not downloaded yet." with Install,
+"Couldn't load." with Show details and Check again, and any notice the lib
+attached to the entry ("Not found: …"; the not-installed ones are what "Not
+downloaded yet." says). **Re-check**, in the list's head whenever the list
+has an entry, reads the list again and load-tests every entry, at any time
+(0.11.22's, restored in #482); afterwards one quiet line says "Every
+extension loads." when nothing is wrong.
 
 The npm update tools (0.11.22's, restored in 0.11.23 after #442 dropped them,
 #479) show when the list holds an npm package. Every npm row has a **Version**
@@ -975,28 +990,35 @@ them as updates (`extension/outdated`'s `includePrerelease`).
 
 Below the list, one *Add an extension* area, in three parts. The **built-in extras** the book does
 not list yet (Highlight, Callouts, Math…), each with what to type and an Add
-button. **Find one on npm** is the way to a published extension: a search box
+button, and the **built-in looks** it does not list (by name or as an editable
+copy), each with its description and an Add that appends it to the list: the
+one-click way to stack a second look on the book's look (0.11.22's, restored
+in #482), which the Look tab's single-choice gallery deliberately does not
+offer. **Find one on npm** is the way to a published extension: a search box
 whose results are the lib's `searchNpmExtensions` (what `gutterpress ext
 search` prints — packages tagged `gutterpress` or `markdown-it-plugin`),
 asked only when the author submits it (Enter or Search; with nothing typed it
 lists the most relevant), never at project load or on a keystroke. npm
 filters by keyword and only ranks by the words, so a typed search keeps the
-results whose name, description or keywords mention every word. Each result
-is the package name, its description, its kind when npm's keywords say (a
-`gutterpress-look` package is a Look, a plain markdown-it plugin an Extra) and
-an Add that is the same add as typing the name — or "Added" when the book
-lists it. No results, being offline and any other failure are one plain line
-under the box ("No extensions found for …", "Couldn't reach the npm
-registry…"), never a toast. **Other ways to add** are an exact npm name or
-`name@version` (for a package search cannot find, such as a private one), a
-folder or file referenced in place, a `.zip`/`.css` import and a web address
-(§11). A built-in extra is never shown twice: while the book lists it, it is
+results whose name, description or keywords mention every word. Above the
+results, "Showing N of M" (M is the total npm reported). Each result is
+`name@version`, its description, its kind when npm's keywords say (a
+`gutterpress-look` package is a Look, a plain markdown-it plugin an Extra), an
+**npm page** link (opened with `shell.openExternal`) and an Add that is the
+same add as typing the name — or "Added" when the book lists it. No results,
+being offline and any other failure are one plain line under the box ("No
+extensions found for …", "Couldn't reach the npm registry…"), never a toast.
+**Other ways to add** are an exact npm name or `name@version` (for a package
+search cannot find, such as a private one), with an optional **export** field
+naming the plugin function of a package that has no default one (the
+manifest's `export:`, `ext add --export`), a folder or file referenced in
+place, a `.zip`/`.css` import and a web address (§11). A built-in extra is never shown twice: while the book lists it, it is
 a row of the list; Remove puts it back among the ones to add. (Footnotes,
 tables and definition lists need no extension and are always on, which the
 area says.) No status badges beyond "x.y.z available".
 
-Refinements (PROPOSED): link each plugin to its npm page for
-author/version/last-published metadata; surface load errors inline.
+Refinements (PROPOSED): link each listed npm plugin to its npm page for
+last-published metadata.
 
 Explicitly **removed** from the earlier draft (each would require its own
 ADR-level proposal and a docs/architecture-rules.md §5 amendment):
@@ -1051,11 +1073,23 @@ adjusted on Book setup's **Look** tab) with PROPOSED refinements tracked in
 **#106**.
 
 Shipped: the Look tab's gallery offers the built-in looks (bundled names:
-nothing is copied) and any npm or folder look already in the list; the
-Extensions tab adds a look from npm, a folder referenced in place, or a **folder, ZIP, CSS
-file or URL** import (`extension-import.ts`, reached through server routes).
-Every gallery card shows a **rendered thumbnail** of its CSS over a fixed
-sample; there is no hover preview.
+nothing is copied) and any npm or folder look already in the list, each card
+naming the look's author when its package says; the Extensions tab adds a
+second built-in look in one click, a look from npm, a folder referenced in
+place, or a **folder, ZIP, CSS file or URL** import (`extension-import.ts`,
+reached through server routes). Every gallery card shows a **rendered
+thumbnail** of its CSS over a fixed sample, and pointing at (or focusing) a
+card shows the enlarged two-page sample (below).
+
+**Make an editable copy** (0.11.22's, restored in #482). While the book uses a
+built-in look by name, the Look tab offers to copy it: the lib's
+`addBuiltInStyleSet` (the `extension/add-built-in` route; `gutterpress ext add
+<look> --look`) writes its stylesheet and a package.json into
+`extensions/<id>/` and lists `./extensions/<id>` in the built-in's place, on or
+off as it was; the copy takes the built-in's gallery card ("From a folder").
+It is a path extension from then on, the author's own files, built like any
+folder; a folder already there is kept, never overwritten. Copies 0.11.22
+made are the same shape and keep building.
 
 A bundled look never sets the page size or margins; the manifest (Setup >
 Book) does, and `assemble.ts` writes them as the `@page` rule after every
@@ -1073,8 +1107,10 @@ override.
 text size, Line spacing, Text color, Accent color — the shared tokens every
 built-in look defines, so a choice carries across looks. They sit beside a
 live sample page that redraws as each setting changes (a typed color or
-number counts once it is committed, on blur or Enter, and only a color is
-saved as a color). Every edit is written to
+number counts once it is committed, on blur or Enter). A color field saves a
+color, or one `var(--name)` reference to another setting (not to itself) —
+what it took in 0.11.22, restored in #482 — and refuses anything else, saying
+what to type; a reference the book wrote shows as written. Every edit is written to
 the **book's own stylesheets** (`styles/book.css`, created with an empty
 `:root {}` and added to `styles:` on the first edit when the book has none),
 host-side with postcss (#454): the token's root-level `:root` declaration is
@@ -1085,7 +1121,10 @@ byte of the sheet is kept. **Reset to the look's settings** asks first ("Replace
 settings with Clean book's?" **Replace** / **Keep mine**), then removes the
 book's declarations of the six, so the look's values show through; Advanced's
 Undo changes restores them. A look's own files are never
-written; there is no eject or copy of a look.
+written; the only copy of a look is the one the author asks for with **Make
+an editable copy**. The postcss write refuses a value that is not one
+declaration's value (a `;` or `}` that would end it), so no setting can
+corrupt the sheet.
 
 **All design settings** (Advanced). `DesignSection` shows the root-level
 `:root` custom properties of the book's stylesheet **as the build assembles
@@ -1123,13 +1162,15 @@ do not reintroduce a theme-specific history.
 
 Shipped refinements (#106, 0.8.0-beta.1; carried into the one-list model):
 
-- **Thumbnails, not a hover preview** — every look row renders its CSS over
-  a fixed sample (`sampleSrcdoc`) in a sandboxed iframe; it never
-  re-paginates the user's document. The earlier enlarged hover flyout is
-  gone: it only ever showed above 1620 px (the app window is 1400 px) and
-  promised a preview the author could not see. Full-document re-pagination
-  happens only when the list actually changes (add, enable/disable,
-  reorder), with a progress state.
+- **Thumbnails, and an enlarged sample in wide windows** — every look card
+  renders its CSS over a fixed sample (`sampleSrcdoc`) in a sandboxed iframe;
+  pointing at or focusing a card also shows it over a fixed two-page spread
+  (`hoverPreviewSrcdoc`), larger, pinned beside Book setup's 860 px column.
+  That flyout shows only in a window wider than 1620 px, where it clears the
+  column, exactly as in 0.11.22 (removed in 31d1bcbd, restored in #482);
+  narrower, the thumbnail is the preview. Neither ever re-paginates the
+  user's document. Full-document re-pagination happens only when the list
+  actually changes (add, enable/disable, reorder), with a progress state.
 - **ZIP drag-and-drop import**, validated against the extension package
   format: `theme.css` at root + optional `assets/` + optional `package.json`
   declaring `name` and a `gutterpress` block's `styles`

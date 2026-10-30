@@ -64,6 +64,18 @@ must exist and parse, and print-safety findings (a remote `url()`, say) are
 reported as warnings. A look with fonts or images of its own travels as a
 folder or a `.zip`; a URL import fetches only the stylesheet and metadata.
 
+To change a built-in look's own CSS rather than style over it, make an
+editable copy of it:
+
+```sh
+gutterpress ext add zine ./my-book --look   # copy zine into extensions/zine/ and list ./extensions/zine
+```
+
+The copy (`theme.css` and a `package.json`) is the book's own folder from then
+on, listed in the built-in's place, and a later Gutterpress never changes it.
+Running the command again keeps your edited copy. The desktop's **Make an
+editable copy**, on Book setup's Look tab, does the same.
+
 Two looks listed at once both load, and the later one wins ties --- so
 switching is adding the new look, then disabling or removing the old one:
 

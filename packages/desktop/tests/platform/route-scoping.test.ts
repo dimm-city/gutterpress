@@ -16,8 +16,8 @@
  *   - `remote/sync` runs a CREDENTIALED push/pull against any repo
  *   - `publish/run` uploads a file to a configured provider
  *   - `extension/remove` `rm -rf`s an npm entry's vendored subtree
- *   - `extension/add` / `style/set-active` / `manifest/set-fields`
- *     / `extension/set-enabled` rewrite any `manifest.yaml`
+ *   - `extension/add` / `extension/add-built-in` / `style/set-active` /
+ *     `manifest/set-fields` / `extension/set-enabled` rewrite any `manifest.yaml`
  *   - `extension/validate` dynamic-`import()`s whatever JS the target
  *     directory's manifest names — an execute primitive
  *   - `tpl/save-as-template` recursively copies any folder into app storage
@@ -60,6 +60,7 @@ import { POST as publishDestinationsStatus } from "../../src/routes/api/publish/
 import { POST as extensionList } from "../../src/routes/api/extension/list/+server";
 import { POST as extensionAdd } from "../../src/routes/api/extension/add/+server";
 import { POST as extensionAddLocal } from "../../src/routes/api/extension/add-local/+server";
+import { POST as extensionAddBuiltIn } from "../../src/routes/api/extension/add-built-in/+server";
 import { POST as extensionRemove } from "../../src/routes/api/extension/remove/+server";
 import { POST as extensionSetEnabled } from "../../src/routes/api/extension/set-enabled/+server";
 import { POST as extensionReorder } from "../../src/routes/api/extension/reorder/+server";
@@ -113,6 +114,7 @@ const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) =
   { name: "extension/list", handler: extensionList as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "extension/add", handler: extensionAdd as RouteHandler, body: (d) => ({ projectDir: d, specifier: "markdown-it-mark" }) },
   { name: "extension/add-local", handler: extensionAddLocal as RouteHandler, body: (d) => ({ projectDir: d }) },
+  { name: "extension/add-built-in", handler: extensionAddBuiltIn as RouteHandler, body: (d) => ({ projectDir: d, id: "zine" }) },
   { name: "extension/remove", handler: extensionRemove as RouteHandler, body: (d) => ({ projectDir: d, use: "some-extension" }) },
   { name: "extension/set-enabled", handler: extensionSetEnabled as RouteHandler, body: (d) => ({ projectDir: d, use: "some-extension", enabled: true }) },
   { name: "extension/reorder", handler: extensionReorder as RouteHandler, body: (d) => ({ projectDir: d, order: ["some-extension"] }) },

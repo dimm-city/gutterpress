@@ -168,6 +168,8 @@ export {
   validateProjectExtensions,
   readExtensionCss,
   listBundledExtensions,
+  addBuiltInStyleSet,
+  BUILT_IN_LOOKS,
   sameExtension,
   EXTENSIONS_DIR,
   PLUGINS_DIR,

@@ -4,18 +4,24 @@
    * `extensions:` entries in load order, owned by `ExtensionsSectionController`,
    * then one Add area. Every row has the model's verbs and nothing else: a
    * checkbox to use it, its kinds and source in words, move up/down, Remove.
-   * A row speaks when something needs attention — a newer npm version (the
-   * "x.y.z available" badge and Update), or a load failure (Show details, and
-   * Install / Reinstall / Check again) — and an npm row also has its version
-   * picker. This is the one place for the built-in extras (those the
-   * book does not list are offered to Add, each with what to type), finding
-   * a published extension on npm, folders, web addresses and the order; the
-   * book's look is chosen on the Look tab.
+   * A built-in extra's row also says what to type, and a row shows the lib's
+   * notices about it (`entryWarnings`). A row speaks when something needs
+   * attention — a newer npm version (the "x.y.z available" badge and Update),
+   * or a load failure (Show details, and Install / Reinstall / Check again) —
+   * and an npm row also has its version picker. **Re-check**, in the list's
+   * head, reads the list again and load-tests every entry, any time. This is
+   * the one place for the built-in extras and looks (those the book does not
+   * list are offered to Add: an extra with what to type, a look to stack on
+   * the book's look), finding a published extension on npm, folders, web
+   * addresses and the order; the book's look is chosen on the Look tab.
    *
    * Search: the box asks npm when the author submits it (Enter or Search),
-   * never at project load or on a keystroke. Each result is a name, its
-   * description, its kind when npm's keywords say (`searchKindLabel`) and Add
-   * — or "Added" when the book lists it. A failure is one quiet line.
+   * never at project load or on a keystroke. Each result is `name@version`,
+   * its description, its kind when npm's keywords say (`searchKindLabel`), a
+   * link to its npm page, and Add — or "Added" when the book lists it; above
+   * them, "Showing N of M" (M is what npm said it has). A failure is one
+   * quiet line. An exact name can carry the named export to use, for a
+   * package with no default plugin.
    *
    * Updates (a book with an npm package): showing this list (its mount —
    * never project load) asks npm once for each pinned entry's latest, and
@@ -36,7 +42,7 @@
   import { onMount } from "svelte";
   import Icon from "#lib/components/Icon.svelte";
   import { api } from "#lib/api.ts";
-  import { extensionProblem, extensionSourceLabel, carriedKinds, describeSegments, searchKindLabel } from "./config-helpers";
+  import { entryWarnings, extensionProblem, extensionSourceLabel, carriedKinds, describeSegments, searchKindLabel } from "./config-helpers";
   import type { ProjectExtensionEntry } from "#lib/platform/dtos.ts";
   import type { ExtensionsSectionController } from "#lib/routes/extensions-section-controller.svelte.ts";
 
@@ -46,6 +52,12 @@
 
   /** The update tools (Check for updates, the pre-release switch) are about npm packages; a book with none has nothing to ask npm. */
   const hasNpm = $derived(controller.entries.some((e) => e.kind === "npm"));
+  /** After a Re-check that found nothing wrong, the list says so. */
+  const allLoad = $derived(
+    controller.rechecked &&
+      !controller.validating &&
+      controller.entries.every((e) => !extensionProblem(e, controller.validation, controller.validating)),
+  );
 
   onMount(() => {
     if (controller.updates.status === "idle" && hasNpm) void controller.checkUpdates();
@@ -66,14 +78,27 @@
   }
 </script>
 
+<!-- What a built-in extra does and what to type, the "what to type" set in
+     code type: in the Add area, and on the extra's row once it is listed. -->
+{#snippet whatToType(description: string)}
+  {#each describeSegments(description) as seg}{#if seg.code}<code>{seg.text}</code>{:else}{seg.text}{/if}{/each}
+{/snippet}
+
 <section class="block" aria-labelledby="extensions-list">
   <div class="block-head">
     <h3 id="extensions-list">Your extensions</h3>
-    {#if hasNpm}
-      <button class="ghost small" onclick={() => controller.checkUpdates()} disabled={controller.updates.status === "loading"} title="Ask npm whether a newer version of any package from npm exists">
-        <Icon name="refresh-cw" size={13} /> {controller.updates.status === "loading" ? "Checking npm…" : "Check for updates"}
-      </button>
-    {/if}
+    <span class="head-actions">
+      {#if hasNpm}
+        <button class="ghost small" onclick={() => controller.checkUpdates()} disabled={controller.updates.status === "loading"} title="Ask npm whether a newer version of any package from npm exists">
+          <Icon name="refresh-cw" size={13} /> {controller.updates.status === "loading" ? "Checking npm…" : "Check for updates"}
+        </button>
+      {/if}
+      {#if controller.entries.length > 0}
+        <button class="ghost small" onclick={controller.recheck} disabled={controller.validating} title="Check again that every extension loads">
+          <Icon name="refresh-cw" size={13} /> {controller.validating ? "Checking…" : "Re-check"}
+        </button>
+      {/if}
+    </span>
   </div>
   <p class="hint">Extensions add things you can type, like callouts or math, and extra looks. They load in this order: one lower in the list wins where two disagree. Your stylesheet always comes last.</p>
   {#if hasNpm}
@@ -126,6 +151,12 @@
               <button class="ghost small" onclick={() => controller.remove(e)} disabled={controller.busy !== null} aria-label={`Remove ${e.label}`} title={e.kind === "npm" ? "Remove from this book (deletes its downloaded copy)" : "Remove from this book"}>Remove</button>
             </span>
           </div>
+          {#if e.kind === "bundled" && e.carries.markdown && e.description}
+            <p class="ext-note what-to-type">{@render whatToType(e.description)}</p>
+          {/if}
+          {#each entryWarnings(e) as w (w)}
+            <p class="ext-note warning">{w}</p>
+          {/each}
           {#if e.kind === "npm"}
             {@const versions = controller.versions[e.name]}
             <div class="ext-note version-pick">
@@ -156,7 +187,7 @@
                 <details class="status-raw"><summary>Show details</summary><pre>{problem.raw}</pre></details>
               {/if}
               {#if problem.fix === "check"}
-                <button class="ghost small" onclick={controller.validateExtensions} disabled={controller.validating}>Check again</button>
+                <button class="ghost small" onclick={controller.recheck} disabled={controller.validating}>Check again</button>
               {:else}
                 <button class="ghost small" onclick={() => controller.install(e)} disabled={controller.busy !== null} aria-label={`${problem.fix === "install" ? "Install" : "Reinstall"} ${e.label}${e.version ? ` ${e.version}` : ""}`}>
                   {controller.busy === e.use ? "Installing…" : problem.fix === "install" ? "Install" : "Reinstall"}
@@ -172,6 +203,9 @@
     {:else if controller.updates.status === "ready" && controller.updates.checks.length > 0 && !controller.updates.checks.some((c) => c.outdated)}
       <p class="muted update-status" role="status">Every installed package is at its latest version.</p>
     {/if}
+    {#if allLoad}
+      <p class="muted recheck-status" role="status">Every extension loads.</p>
+    {/if}
   {/if}
 </section>
 
@@ -184,9 +218,22 @@
       {#each controller.unlistedExtras as x (x.use)}
         <li>
           <span class="add-name">{x.label}</span>
-          <!-- What it does and what to type, the "what to type" set in code type. -->
-          <span class="extra-desc">{#each describeSegments(x.description) as seg}{#if seg.code}<code>{seg.text}</code>{:else}{seg.text}{/if}{/each}</span>
+          <span class="extra-desc">{@render whatToType(x.description)}</span>
           <button class="ghost small" onclick={() => controller.addExtra(x)} disabled={controller.busy !== null} aria-label={`Add ${x.label}`}>{controller.busy === x.use ? "Adding…" : "Add"}</button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+  {#if controller.unlistedLooks.length > 0}
+    <!-- The one-click way to stack a second look (the Look tab chooses one). -->
+    <h4 class="subhead">Built-in looks</h4>
+    <p class="hint">Add one to use it together with your book's look. It goes last in the list, so it wins where the two disagree.</p>
+    <ul class="add-list extras looks">
+      {#each controller.unlistedLooks as x (x.use)}
+        <li>
+          <span class="add-name">{x.label}</span>
+          <span class="extra-desc">{x.description}</span>
+          <button class="ghost small" onclick={() => controller.addExtra(x)} disabled={controller.busy !== null} aria-label={`Add the ${x.label} look`}>{controller.busy === x.use ? "Adding…" : "Add"}</button>
         </li>
       {/each}
     </ul>
@@ -207,12 +254,20 @@
   {:else if controller.search.status === "ready" && controller.searchResults.length === 0}
     <p class="muted search-status" role="status">{controller.search.query ? `No extensions found for "${controller.search.query}".` : "No extensions found on npm."}</p>
   {:else if controller.searchResults.length > 0}
+    <p class="muted search-status" role="status">Showing {controller.searchResults.length} of {controller.search.total}.</p>
     <ul class="add-list results" aria-label="Search results">
       {#each controller.searchResults as m (m.name)}
         {@const kind = searchKindLabel(m)}
+        {@const npmUrl = m.npmUrl}
         <li>
           <div class="result-main">
-            <span class="result-head"><span class="result-name">{m.name}</span>{#if kind}<span class="result-kind">{kind}</span>{/if}</span>
+            <span class="result-head">
+              <span class="result-name">{m.name}<span class="result-version">@{m.version}</span></span>
+              {#if kind}<span class="result-kind">{kind}</span>{/if}
+              {#if npmUrl}
+                <button class="link result-link" onclick={() => api.shell.openExternal(npmUrl).catch(() => {})} title={npmUrl} aria-label={`${m.name} on npm`}>npm page <Icon name="external-link" size={11} /></button>
+              {/if}
+            </span>
             {#if m.description}<span class="result-desc" title={m.description}>{m.description}</span>{/if}
           </div>
           {#if m.added}
@@ -229,8 +284,10 @@
   <div class="add-row">
     <label class="add-label" for="add-npm">Exact name</label>
     <input id="add-npm" class="input" type="text" placeholder="name or name@version, for a package search can't find" bind:value={controller.npmName} onkeydown={(e) => { if (e.key === "Enter") controller.addNpm(); }} />
+    <input id="add-npm-export" class="input export-input" type="text" placeholder="export (optional)" aria-label="Named export (optional)" aria-describedby="add-npm-export-hint" bind:value={controller.npmExport} onkeydown={(e) => { if (e.key === "Enter") controller.addNpm(); }} />
     <button class="ghost small" onclick={controller.addNpm} disabled={controller.busy !== null}>{controller.busy !== null && controller.busy === controller.npmName.trim() ? "Adding…" : "Add"}</button>
   </div>
+  <p class="hint" id="add-npm-export-hint">For a package with no default plugin, such as <code>markdown-it-emoji</code>, type the export to use (for example <code>full</code>).</p>
   <div class="row">
     <button class="ghost small" onclick={controller.addLocal} disabled={controller.busy !== null} title="It is used where it is, not copied">
       <Icon name="folder" size={13} /> Add a folder or file…
@@ -254,9 +311,14 @@
   .ext-use { display: flex; align-items: center; gap: 8px; min-width: 0; cursor: pointer; }
   .ext-note { margin: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-left: 24px; font-size: 12px; color: var(--app-text-secondary); }
   .ext-note.problem > span { color: var(--app-warning-text); }
+  /* Running text, not a row of controls. */
+  .ext-note.what-to-type, .ext-note.warning { display: block; line-height: 1.4; }
+  .ext-note.warning { color: var(--app-warning-text); overflow-wrap: anywhere; }
+  .what-to-type code { font-family: var(--app-font-mono); font-size: 12px; color: var(--app-text); }
+  .head-actions { display: flex; align-items: center; gap: 6px; }
 
   .notice { color: var(--app-warning-text); font-size: 12px; margin: 0; }
-  .update-status { font-size: 12px; }
+  .update-status, .recheck-status { font-size: 12px; }
 
   /* ── The update tools: Check for updates in the head, the pre-release switch, each npm row's version line ── */
   .prerelease-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -295,7 +357,10 @@
   .result-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .result-head { display: flex; align-items: baseline; gap: 8px; }
   .result-name { font-size: 13px; font-weight: 600; color: var(--app-text); overflow-wrap: anywhere; }
+  .result-version { font-weight: 400; color: var(--app-text-muted); }
   .result-kind { font-size: 12px; color: var(--app-text-muted); }
+  /* Opens through api.shell.openExternal, never a bare <a target="_blank"> in the Electron shell. */
+  .result-link { font-size: 12px; white-space: nowrap; }
   .result-desc { font-size: 12px; line-height: 1.4; color: var(--app-text-muted); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   /* Where Add was: the same width, so a row does not change size when it is added. */
   .result-added { flex-shrink: 0; min-width: 46px; padding: 5px 0; font-size: 12px; text-align: center; color: var(--app-text-muted); }
@@ -303,6 +368,9 @@
   .add-row { align-items: center; }
   .add-label { flex-shrink: 0; width: 96px; font-size: 12.5px; color: var(--app-text-secondary); }
   .add-row .link { white-space: nowrap; }
+  /* Narrow beside the name; beats the shared `.add-row .input { flex: 1 }`, which can load after this. */
+  .add-row .input.export-input { flex: 0 0 130px; }
+  .hint code { font-family: var(--app-font-mono); font-size: 11px; }
 
 
   /* #106: non-fatal import warnings (print-safety, missing metadata, extra files). */

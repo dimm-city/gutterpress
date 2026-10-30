@@ -3,7 +3,9 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  addBuiltInStyleSet,
   addExtension,
+  BUILT_IN_LOOKS,
   checkExtensionUpdates,
   importExtensionFromFile,
   importExtensionFromUrl,
@@ -30,7 +32,7 @@ import {
  * carry (markdown, styles, snippets, a component catalog):
  *
  *   gutterpress ext list [dir]
- *   gutterpress ext add <source> [dir] [--export name]
+ *   gutterpress ext add <source> [dir] [--export name] [--look]
  *   gutterpress ext remove <specifier> [dir]
  *   gutterpress ext enable <specifier> [dir]
  *   gutterpress ext disable <specifier> [dir]
@@ -52,8 +54,11 @@ import {
  *
  * `add` takes an npm package (`name`, `name@version`), a bundled feature
  * name, a folder or plugin-file path, a `.zip`/`.css` file, or an http(s)
- * URL. A thin front-end over `extension-manager.ts`/`extension-import.ts` —
- * the same shared-lib functions the desktop's Extensions panel calls.
+ * URL. With `--look`, SOURCE is a built-in look copied into
+ * `extensions/<id>/` as the author's own editable files (`addBuiltInStyleSet`,
+ * what Book setup's "Make an editable copy" calls). A thin front-end over
+ * `extension-manager.ts`/`extension-import.ts` — the same shared-lib functions
+ * the desktop's Extensions panel calls.
  */
 
 const dirArg = {
@@ -81,6 +86,12 @@ export const extAddArgs = {
   export: {
     type: "string",
     description: "Named module export to use as the plugin function (npm and path extensions only)",
+    required: false,
+  },
+  look: {
+    type: "boolean",
+    description:
+      "Treat SOURCE as a built-in look (clean-book, zine, technical-doc, academic): copy it into extensions/ as your own files and list the copy",
     required: false,
   },
 } as const;
@@ -235,7 +246,15 @@ const add = defineCommand({
       if (typeof args.export === "string" && !exportName) {
         throw new UsageError("gutterpress ext add: --export requires a non-empty name");
       }
-      if (!isUrl && !existing) {
+      if (args.look && !BUILT_IN_LOOKS.includes(source)) {
+        throw new UsageError(
+          `gutterpress ext add --look: unknown built-in look "${source}" (one of: ${BUILT_IN_LOOKS.join(", ")})`,
+        );
+      }
+      if (args.look && exportName) {
+        throw new UsageError("gutterpress ext add --look: a look takes no --export");
+      }
+      if (!args.look && !isUrl && !existing) {
         // A bundled/npm specifier — or a path that is not there: either way
         // a usage error, not a pipeline failure.
         try {
@@ -254,6 +273,10 @@ const add = defineCommand({
     }
 
     try {
+      if (args.look) {
+        printAdded(await addBuiltInStyleSet(projectDir, source), projectDir);
+        return;
+      }
       if (isUrl) {
         const { entry, warnings } = await importExtensionFromUrl(projectDir, source);
         printAdded(entry, projectDir, warnings.map((w) => w.message));
