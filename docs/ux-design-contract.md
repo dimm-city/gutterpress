@@ -72,7 +72,9 @@ section and the vocabulary review in #448 differ, this section wins.
 | **Restore this version** | revert, checkout | going back to a version |
 | **online copy** | online backup (noun), remote, repository, online repository/address/location | the book kept online |
 | **Back up** / **Backed up** / **Backing up…** / **Not backed up yet** | sync, push, upload | "Backed up" is shown only when a pass sent your work or there was nothing to send. |
-| **Sync** / **Sync now** / **Syncing…** | Get latest, Back up now, pull, fetch, push | the one manual button, shown only with automatic backing up off: status bar **Sync**, Online copy **Sync now**, and the action on the "New changes are online for this book." toast. It gets the latest changes from the online copy, then backs up yours. Tooltip: "Sync: get the latest changes from the online copy, then back up yours" ("Sync — new changes are online: get them, then back up yours" when some are waiting). Nowhere else says "sync" to an Author; status texts stay Backed up / Backing up…. |
+| **Back up now** | sync, push, upload | Online copy's button, whenever the book can back up, with automatic backing up on or off (#485): one pass that gets the latest changes from the online copy, then backs up yours, at once. With automatic backing up off the same button reads **Sync now**, and after a failure **Try again**. Tooltip: "Back up now: get the latest changes from the online copy, then back up yours". |
+| **Get latest** / **Getting the latest…** / **New online** | pull, fetch | brings in the online copy's changes and sends nothing; this computer's own versions wait for the next backup (the status says **Not backed up yet** if there are any). In Online copy beside Back up now, Sync now or Try again; in the status bar beside **Sync** with automatic backing up off (an arrow, reading **New online** when changes are waiting and **Getting…** while it runs); and the action on the "New changes are online for this book." toast (#485). Tooltip: "Get latest: bring in changes from the online copy without sending yours". |
+| **Sync** / **Sync now** / **Syncing…** | pull, fetch, push | the full pass's button with automatic backing up off: status bar **Sync** (beside Get latest), Online copy **Sync now**. It gets the latest changes from the online copy, then backs up yours. Tooltip: "Sync: get the latest changes from the online copy, then back up yours" ("Sync — new changes are online: get them, then back up yours" when some are waiting). Nowhere else says "sync" to an Author; status texts stay Backed up / Backing up…. |
 | **revision**, **New revision…**, **Revision you're working on** | branch, copy (for a branch), version (for a branch) | "copy" means only the online copy |
 | **take**: "Two takes of a passage were kept in chapter-02.md — yours and the online copy's" | two versions, your version, online version | one side of a passage changed in two places. Buttons stay "Keep yours / Keep online / Keep both". The on-disk markers `<<<<<<< your version` / `>>>>>>> online version` and `name.online.ext` stay (a file format in existing books). |
 | **sign-in**, **Sign in again** | connection, reconnect, token (except "access token" where a writer pastes one) | |
@@ -204,7 +206,9 @@ gutterpress/
 │   │                                                    and web-address adds)
 │   ├── Online copy (id `online-copy`)         SHIPPED  (ProjectConnectionsSection: one sentence for
 │   │                                                    the book's situation and at most one
-│   │                                                    primary action; GitHub or the book's own
+│   │                                                    primary action (Back up now, Sync now or
+│   │                                                    Try again, with Get latest beside it,
+│   │                                                    #485); GitHub or the book's own
 │   │                                                    server sign-in in place; "Saved · last
 │   │                                                    version …" with Save a version and Version
 │   │                                                    history…; Revisions (RevisionsList: switch,
@@ -510,10 +514,14 @@ buttons.
   attention" — with a shape (check, cloud, warning, error) carrying the tone, not
   colour alone. Clicking it opens Book setup → Online copy, the one place for
   versions, version history, revisions and the online copy. It sits on the
-  left, after the book switcher. With automatic backing up off, one **Sync**
-  button sits beside it and "New changes are online for this book." stays a
-  toast with Sync. A Reader sees none of it: no control, no
-  buttons, no online toasts (a Reader gets the latest changes automatically).
+  left, after the book switcher. With automatic backing up off, **Get latest**
+  (receives, sends nothing) and **Sync** (gets the latest, then backs up) sit
+  beside it, and "New changes are online for this book." stays a toast with
+  Get latest. Online copy offers **Back up now** (with automatic backing up off
+  it reads **Sync now**; after a failure, **Try again**) and **Get latest**
+  whenever the book can back up, whatever the setting (#485). A Reader sees
+  none of it: no control, no buttons, no online toasts (a Reader gets the
+  latest changes automatically).
 - **Revisions are SHIPPED in Book setup → Online copy** (#448, which replaced
   #273's switcher in Settings → Saving): the list names each revision, marks
   the one the author is working on, and says where each is kept (Online; Online
