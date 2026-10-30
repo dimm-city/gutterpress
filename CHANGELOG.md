@@ -407,6 +407,11 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **A formula ending a line no longer shrinks the print (#469).** The hidden
   MathML copy screen readers read is held to its formula's box, so a wider math
   font can't push it past the column and make Chromium scale the whole PDF down.
+- **Version history reaches every version after changes are combined (#472).**
+  In a book whose changes were combined with the online copy's, a page of
+  versions could come back short with no **Show older versions**, and the next
+  page could skip or repeat versions. Each version is now listed once, newest
+  first, and **Show older versions** stays until the oldest.
 
 ## [0.11.22] - 2026-10-23
 

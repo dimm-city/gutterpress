@@ -713,6 +713,93 @@ test("subfolder listHistoryPage pages the WHOLE repo history", async () => {
   }
 });
 
+/**
+ * A history like a book's after many Syncs with a collaborator (#472):
+ * automatic versions, some in the same second; the collaborator's versions on
+ * a side line, their clock up to five minutes behind; and each Sync's version
+ * before backing up plus the merge that combines both, often in the same
+ * second. Seeded, so every run builds the same history. Returns every id.
+ */
+async function writeMergedHistory(dir: string, total: number): Promise<string[]> {
+  let seed = 7;
+  const random = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
+  await git.init({ fs, dir, defaultBranch: "main" });
+  const ids: string[] = [];
+  let time = 1_790_000_000;
+  const version = async (message: string, parent: string[], timestamp: number) => {
+    const text = new TextEncoder().encode(`# Draft ${ids.length}\n`);
+    const blob = await git.writeBlob({ fs, dir, blob: text });
+    const tree = await git.writeTree({
+      fs,
+      dir,
+      tree: [{ mode: "100644", path: "chapter-01.md", oid: blob, type: "blob" }],
+    });
+    const who = { name: "Writer", email: "writer@example.test", timestamp, timezoneOffset: 0 };
+    const id = await git.writeCommit({
+      fs,
+      dir,
+      commit: { message: `${message}\n`, tree, parent, author: who, committer: who },
+    });
+    ids.push(id);
+    return id;
+  };
+  let main = await version("First version", [], time);
+  while (ids.length < total) {
+    if (random() < 0.5 || ids.length + 3 > total) {
+      time += random() < 0.3 ? 0 : 1 + Math.floor(random() * 120);
+      main = await version("Automatic version", [main], time);
+      continue;
+    }
+    const behind = random() < 0.5 ? 0 : Math.floor(random() * 300);
+    const sideCount = 1 + Math.floor(random() * Math.min(4, total - ids.length - 2));
+    let side = main;
+    for (let i = 0; i < sideCount; i++) {
+      side = await version("Collaborator's version", [side], time - behind + i);
+    }
+    time += 1 + Math.floor(random() * 60);
+    main = await version("Automatic version before backing up", [main], time);
+    if (random() < 0.4) time += 1;
+    main = await version("Combined your changes with the online copy's", [main, side], time);
+  }
+  await git.writeRef({ fs, dir, ref: "refs/heads/main", value: main, force: true });
+  return ids;
+}
+
+test("listHistoryPage pages through a history with merges: every version once, newest first (#472)", async () => {
+  const dir = await tempDir();
+  try {
+    const ids = await writeMergedHistory(dir, 286);
+    const provider = providerFor(await detectProjectSource(dir));
+    // The order Version history shows: isomorphic-git's log, newest first,
+    // without the repeats it makes after merges.
+    const logged = (await git.log({ fs, dir })).map((c) => c.oid);
+    expect(logged.length).toBeGreaterThan(ids.length); // the log repeats versions
+    const order = [...new Set(logged)];
+    expect(order.length).toBe(ids.length);
+    expect(new Set(order)).toEqual(new Set(ids));
+
+    for (const limit of [100, 7]) {
+      const paged: string[] = [];
+      let page = await provider.listHistoryPage(dir, { limit });
+      for (;;) {
+        paged.push(...page.entries.map((e) => e.id));
+        if (!page.hasMore) break;
+        expect(page.entries.length).toBe(limit);
+        page = await provider.listHistoryPage(dir, { limit, before: page.entries.at(-1)!.id });
+      }
+      // Every version exactly once, in order; hasMore false only at the oldest.
+      expect(paged).toEqual(order);
+    }
+
+    // A cursor in the middle of a page, asked out of turn, gives the same answer.
+    const page = await provider.listHistoryPage(dir, { limit: 7, before: order[20] });
+    expect(page.entries.map((e) => e.id)).toEqual(order.slice(21, 28));
+    expect(page.hasMore).toBe(true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("listHistory is a bounded page (delegates to listHistoryPage defaults)", async () => {
   const dir = await tempDir();
   try {

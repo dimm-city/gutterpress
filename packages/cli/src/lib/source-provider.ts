@@ -16,7 +16,7 @@
 import { gitFs as fs } from "./git-fs.ts";
 import path from "node:path";
 
-import git from "isomorphic-git";
+import git, { type ReadCommitResult } from "isomorphic-git";
 
 import type { ProjectCapabilities, ProjectSource } from "./project-source.ts";
 import {
@@ -530,6 +530,64 @@ class LocalFolderSourceProvider implements SourceProvider {
 }
 
 /**
+ * A walk back through a repo's history in the order `git.log` lists it (the
+ * newest commit time first), visiting each commit once (#472). `git.log` has
+ * no visited set: after a merge it lists a commit again, with everything older,
+ * and the repeats used up a page. Starting the next page's log at the last id
+ * also dropped the side of a merge that id does not descend from.
+ */
+interface HistoryWalk {
+  /** Commits read but not listed yet, sorted so the newest is last. */
+  tips: ReadCommitResult[];
+  /** Every commit ever put in `tips`. */
+  queued: Set<string>;
+  /** `.git/shallow`: commits whose parents a shallow clone does not have. */
+  shallow: Set<string>;
+  /** Commits read ahead (see {@link nextInHistory}), not queued yet. */
+  readAhead: Map<string, ReadCommitResult>;
+}
+
+/**
+ * The walk behind the last history page, so "Show older versions" carries
+ * on where it stopped instead of walking from the newest version again. Only
+ * the next page of the same history continues it; any other request starts a
+ * fresh walk, which gives the same answer. It holds parsed commits only,
+ * never an object cache (see {@link GitCache}).
+ */
+let lastHistoryWalk: { dir: string; head: string; last: string; walk: HistoryWalk } | null = null;
+
+/**
+ * The walk's next commit, newest first; undefined once the history is done.
+ * `needed` is how many more commits the page needs, to bound a read-ahead.
+ */
+async function nextInHistory(
+  dir: string,
+  walk: HistoryWalk,
+  cache: GitCache,
+  needed: number,
+): Promise<ReadCommitResult | undefined> {
+  const commit = walk.tips.pop();
+  if (!commit || walk.shallow.has(commit.oid)) return commit;
+  for (const oid of commit.commit.parent) {
+    if (walk.queued.has(oid)) continue;
+    // Down to one line (a book with one author is one line throughout): read
+    // the rest of the page with one git.log call. One readCommit per commit
+    // stats the .git folder each time, which made a page about 1.5x as slow.
+    if (!walk.readAhead.has(oid) && walk.tips.length === 0 && commit.commit.parent.length === 1) {
+      for (const c of await git.log({ fs, dir, cache, ref: oid, depth: needed })) {
+        if (!walk.queued.has(c.oid)) walk.readAhead.set(c.oid, c);
+      }
+    }
+    walk.queued.add(oid);
+    walk.tips.push(walk.readAhead.get(oid) ?? (await git.readCommit({ fs, dir, cache, oid })));
+    walk.readAhead.delete(oid);
+  }
+  // The order git.log uses: a stable sort by commit time, newest taken first.
+  walk.tips.sort((a, b) => a.commit.committer.timestamp - b.commit.committer.timestamp);
+  return commit;
+}
+
+/**
  * `local-git-folder` provider: backed entirely by `isomorphic-git` against the
  * project's `.git` directory (pure JS, no system git).
  */
@@ -578,11 +636,11 @@ class LocalGitSourceProvider implements SourceProvider {
   }
 
   /**
-   * LOCK-FREE by design: `git.log` is a pure read (refs resolved once, then
-   * an object walk over immutable commits/trees), so it can never corrupt
-   * the repo and doesn't need the per-repo write queue. Taking the lock here
-   * would queue the History dialog behind a running auto-snapshot of a
-   * large working tree — a multi-second stall for a read-only view.
+   * LOCK-FREE by design: reading commits is a pure read (HEAD resolved once,
+   * then a walk over immutable commits), so it can never corrupt the repo
+   * and doesn't need the per-repo write queue. Taking the lock here would
+   * queue the History dialog behind a running auto-snapshot of a large
+   * working tree — a multi-second stall for a read-only view.
    */
   async listHistoryPage(
     _projectDir: string,
@@ -591,47 +649,57 @@ class LocalGitSourceProvider implements SourceProvider {
     const dir = this.dir;
     const limit = Math.min(500, Math.max(1, options.limit ?? HISTORY_PAGE_LIMIT));
     const before = options.before;
-    // Whole-repo history (a project is its git repo). `depth` bounds the walk;
-    // continuation starts AT the cursor commit (dropped below). `limit + 2`
-    // guarantees that after dropping the cursor at least `limit + 1` entries
-    // remain whenever older history exists, so `hasMore` can never read false
-    // at a page boundary that still has older entries.
-    let commits;
+    const cache: GitCache = {}; // per-call cache — never pin packfile buffers across calls
     try {
-      commits = await git.log({
-        fs,
-        dir,
-        cache: {}, // per-call cache — never pin packfile buffers across calls
-        depth: limit + 2,
-        ...(before ? { ref: before } : {}),
-      });
+      // Whole-repo history (a project is its git repo), walked from HEAD.
+      const head = await git.resolveRef({ fs, dir, ref: "HEAD" });
+      let walk: HistoryWalk;
+      const saved = lastHistoryWalk;
+      if (before && saved?.dir === dir && saved.head === head && saved.last === before) {
+        walk = saved.walk;
+        lastHistoryWalk = null;
+      } else {
+        const shallow = await fs.promises
+          .readFile(path.join(gitDirFor(dir), "shallow"), "utf8")
+          .catch(() => "");
+        walk = {
+          tips: [await git.readCommit({ fs, dir, cache, oid: head })],
+          queued: new Set([head]),
+          shallow: new Set(shallow.split("\n")),
+          readAhead: new Map(),
+        };
+        if (before) {
+          // No saved walk to carry on (asked out of turn, or HEAD moved): walk
+          // to the cursor. A garbage/expired one must not crash the view.
+          let c: ReadCommitResult | undefined;
+          do {
+            c = await nextInHistory(dir, walk, cache, limit);
+          } while (c && c.oid !== before);
+          if (!c) return { entries: [], hasMore: false };
+        }
+      }
+      const entries: SnapshotEntry[] = [];
+      while (entries.length < limit) {
+        const c = await nextInHistory(dir, walk, cache, limit - entries.length);
+        if (!c) break;
+        entries.push({
+          id: c.oid,
+          message: c.commit.message.trim(),
+          timestamp: c.commit.author.timestamp * 1000,
+          author: c.commit.author.name,
+        });
+      }
+      // Every commit still queued is one not shown yet: hasMore is exact.
+      const hasMore = walk.tips.length > 0;
+      lastHistoryWalk = hasMore ? { dir, head, last: entries.at(-1)!.id, walk } : null;
+      return { entries, hasMore };
     } catch (e) {
-      // A garbage/expired cursor must not crash the history view.
+      // A cursor whose commit is gone must not crash the history view.
       if (before && (e as { code?: string })?.code === "NotFoundError") {
         return { entries: [], hasMore: false };
       }
       throw e;
     }
-    // isomorphic-git's log can emit a shared ancestor ONCE PER PARENT after a
-    // merge when commit timestamps tie (observed: post-pull merge commits made
-    // within the same second). The UI keys its list on the id — dedupe here.
-    const seen = new Set<string>();
-    let filtered = commits.filter((c) => {
-      if (c.oid === before || seen.has(c.oid)) return false;
-      seen.add(c.oid);
-      return true;
-    });
-    const hasMore = filtered.length > limit;
-    if (hasMore) filtered = filtered.slice(0, limit);
-    return {
-      entries: filtered.map((c) => ({
-        id: c.oid,
-        message: c.commit.message.trim(),
-        timestamp: c.commit.author.timestamp * 1000,
-        author: c.commit.author.name,
-      })),
-      hasMore,
-    };
   }
 
   restore(options: RestoreSnapshotOptions): Promise<void> {
