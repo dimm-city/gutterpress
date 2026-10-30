@@ -8,7 +8,7 @@ styles:
   - styles/book.css
 # Page size and margins in points (72 = 1 in): US Letter with 1 in margins
 # (A4 is width 595, height 842); text stays 0.25 in (18) inside the trim.
-# Change them under Setup > Book.
+# Change them in Book setup.
 page:
   width: 612
   height: 792
