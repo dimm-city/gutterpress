@@ -24,12 +24,15 @@
   let {
     open = $bindable(false),
     onOpened,
+    onOpenAccounts,
     onClosed,
     triggerEl,
   }: {
     open?: boolean;
     /** Called with the new local project folder once the download finishes. */
     onOpened?: (projectDir: string) => void;
+    /** "Using a different Git host?" — closes this dialog, opens the Accounts page. */
+    onOpenAccounts?: () => void;
     /** Called whenever the dialog closes (any path). Useful for post-close refresh. */
     onClosed?: () => void;
     triggerEl?: HTMLButtonElement | undefined;
@@ -159,6 +162,15 @@
     // The search input is the primary action when there is a list; with no
     // repositories the Refresh button is.
     (repos.length > 0 ? filterEl : (refreshBtn ?? filterEl))?.focus();
+  }
+
+  /** Hand off to the Accounts page (other Git servers) — shared by the connect + repos steps. */
+  function goAccounts() {
+    open = false;
+    onClosed?.();
+    // No triggerEl?.focus() here: Accounts opens next and takes focus itself;
+    // it restores focus when IT closes.
+    onOpenAccounts?.();
   }
 
   async function chooseRepo(repo: RemoteRepository) {
@@ -335,10 +347,13 @@
           Connect your GitHub account to open the books stored there.
           A browser window will ask you to enter a short code — that's it.
         </p>
-        <p class="hint subtle">
-          Using another Git server? Download the book with your usual Git tool, open the folder, then sign in to the
-          server in Setup &gt; Online copy.
-        </p>
+        {#if onOpenAccounts}
+          <p class="hint subtle">
+            Using a different Git host (Gitea, GitLab, Bitbucket, …)?
+            <button type="button" class="link-btn" onclick={goAccounts}>Open Accounts</button>
+            to sign in to it, then download the book with your usual Git tool and open the folder.
+          </p>
+        {/if}
         <footer class="dlg-actions">
           <button class="dlg-ghost" onclick={close}>Cancel</button>
           <button bind:this={connectBtn} class="dlg-primary app-btn-primary" onclick={connect} disabled={busy}>
@@ -405,6 +420,12 @@
               </li>
             {/each}
           </ul>
+        {/if}
+        {#if onOpenAccounts}
+          <p class="hint subtle">
+            Or connect a different Git server in
+            <button type="button" class="link-btn" onclick={goAccounts}>Accounts</button>
+          </p>
         {/if}
         <footer class="dlg-actions">
           <button class="dlg-ghost" onclick={close}>Cancel</button>

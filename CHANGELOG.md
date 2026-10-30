@@ -63,12 +63,12 @@ This project follows [Semantic Versioning](https://semver.org/).
   preset's 0.5pt. The `asset.font.approved-files` check, which nothing could
   switch on, is gone.
 - **Settings and Book setup, redesigned (#442).** Settings is one page with
-  no tabs: How you use Gutterpress (Reader or Author), Appearance, Saving and
-  Accounts. It opens in its own sheet from the status-bar gear, Ctrl+, or the
-  start screen's new Settings button, and looks the same with or without a
-  book open. Reader shows just the pages and Author adds Edit, Setup and
-  Publish; creating a book switches to Author. The preview, overlay-colour,
-  zoom, file-watcher and log-level options and every Reset button are gone.
+  no tabs: How you use Gutterpress (Reader or Author), Appearance, Preview,
+  Editor, Saving and Accounts. It opens in its own sheet from the status-bar
+  gear, Ctrl+, or the start screen's new Settings button, and looks the same
+  with or without a book open. Reader shows just the pages and Author adds
+  Edit, Setup and Publish; creating a book switches to Author. The
+  file-watcher and log-level options are gone.
   - **Accounts** is a page of its own. It opens from the start screen's
     Accounts button, Settings and Book setup → Backup, and is the one place
     for who you are and what Gutterpress signs in to, for every book:
@@ -381,6 +381,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Settings, Accounts and Open from GitHub have the controls 0.11.22 had
+  (#481).** A regression from 0.11.22 in the 0.11.23 betas: Settings had lost
+  the Preview background, the Preview group (Default zoom, Right-click menu in
+  the preview, Print overlay strength and the overlay colours) and the Reset on
+  each group; Accounts had lost the Reset on Your name and email and, for a
+  server Gutterpress recognises, the link to its own token page; and Open from
+  GitHub had lost its link to Accounts for another Git host. They are back,
+  under the same settings keys, so what 0.11.22 saved applies again, and the
+  right-click menu can be turned off again (Shift+F10 too).
 - **Get latest and Back up now are back beside Sync (#485).** A regression
   from 0.11.22: the 0.11.23 betas folded both into Sync. **Get latest** again
   brings in the online copy's changes without sending yours: on the "New

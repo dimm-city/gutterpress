@@ -228,9 +228,9 @@ test("readSettings loads a file still carrying keys deleted from the schema, dro
         editor: { fontSize: 18, autoSaveDelay: 2500, crashRecovery: false },
         versionHistory: { autoSnapshotMinutes: 30, autoSave: false },
         appearance: { theme: "dark" },
-        // The dead developer knobs and the right-click switch (#442).
+        // The dead developer knobs (#442).
         advanced: { fileWatcherInterval: 300, logLevel: "warn" },
-        preview: { contextMenu: false, mode: "viewer" },
+        preview: { mode: "viewer" },
       }),
   });
   const s = await store.readSettings();
@@ -244,9 +244,43 @@ test("readSettings loads a file still carrying keys deleted from the schema, dro
   expect(s.editor).toEqual(DEFAULT_SETTINGS.editor);
   expect(s.versionHistory).not.toHaveProperty("autoSnapshotMinutes");
   expect(s).not.toHaveProperty("advanced");
-  expect(s.preview).not.toHaveProperty("contextMenu");
   expect(s.preview.mode).toBe("viewer");
   expect(s.versionHistory.autoSnapshot).toBe(DEFAULT_SETTINGS.versionHistory.autoSnapshot);
+});
+
+test("a file 0.11.22 wrote keeps its Settings choices: background, zoom, right-click menu off, overlay look (#481)", async () => {
+  const saved = {
+    appearance: { theme: "dark", previewBg: "#202830" },
+    preview: {
+      defaultZoom: "1.5",
+      contextMenu: false,
+      marginOverlayStrength: "strong",
+      overlayColors: { bleed: "#111111", safe: "#222222", art: "#333333", margins: "#444444" },
+    },
+  };
+  const { store, writes, renames } = makeStore({ readFileImpl: async () => JSON.stringify(saved) });
+  const s = await store.readSettings();
+
+  expect(renames).toHaveLength(0);
+  expect(s.appearance.previewBg).toBe("#202830");
+  expect(s.preview.defaultZoom).toBe("1.5");
+  expect(s.preview.contextMenu).toBe(false);
+  expect(s.preview.marginOverlayStrength).toBe("strong");
+  expect(s.preview.overlayColors).toEqual(saved.preview.overlayColors);
+
+  // A later write (any setting) carries them on rather than dropping them.
+  await store.updateSettings({ preview: { splitRatio: 0.5 } });
+  const written = JSON.parse(writes[0]!.data) as AppSettings;
+  expect(written.preview.contextMenu).toBe(false);
+  expect(written.preview.defaultZoom).toBe("1.5");
+  expect(written.appearance.previewBg).toBe("#202830");
+});
+
+test("the right-click menu in the preview is on for a fresh profile and a file that never set it (#481)", async () => {
+  expect(DEFAULT_SETTINGS.preview.contextMenu).toBe(true);
+  expect((await makeStore().store.readSettings()).preview.contextMenu).toBe(true);
+  const legacy = makeStore({ readFileImpl: async () => JSON.stringify({ preview: { mode: "viewer" } }) });
+  expect((await legacy.store.readSettings()).preview.contextMenu).toBe(true);
 });
 
 test("updateSettings drops the removed editor keys from the file on the next write (#384)", async () => {

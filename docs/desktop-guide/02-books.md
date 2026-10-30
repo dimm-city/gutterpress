@@ -49,6 +49,10 @@ edit its design and keep version history. **Not now** opens it as it is.
 3. Choose the online copy. If it holds more than one book, choose the book.
 4. Pick the revision to open, a name, and where to save it on your computer, then open it.
 
+Is your book on another Git server (Gitea, GitLab, Bitbucket, …)? **Open Accounts**, in the same
+window, takes you to [Accounts](10-settings.md#accounts) to sign in to that server. Then download
+the book with your usual Git tool and open its folder.
+
 ## Find your books again
 
 The **Your books** list on the Books tab has **Currently open**, **Favorites**, **Recently
