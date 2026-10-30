@@ -111,15 +111,21 @@ export interface ConvergeResult {
   keptBothFiles: KeptBothFile[];
 }
 
+// The three messages below are recorded VERBATIM in the book's history, so a
+// writer sees them raw on github.com; the desktop's Version history timeline
+// matches them as literal strings, every superseded spelling included (older
+// history says "...with the online version" and "Kept both versions ...").
+// Rename only with a matching timeline entry (docs/ux-design-contract.md,
+// Vocabulary).
 /** Snapshot message for the equalization commit (driver-unreachable cases). */
 export const CONVERGE_PREPARE_MESSAGE =
-  "Getting your changes ready to combine with the online version";
+  "Getting your changes ready to combine with the online copy's changes";
 /** Snapshot message for the post-merge restore commit (kept-both/edits). */
 export const CONVERGE_RESTORE_MESSAGE =
-  "Kept both versions of the files that can't be combined";
+  "Kept both takes of the files that can't be combined";
 /** The merge commit message. */
 export const CONVERGE_MERGE_MESSAGE =
-  "Combined your changes with the online version";
+  "Combined your changes with the online copy's";
 
 /**
  * Extensions the NUL-byte sniff below cannot catch but that conflict markers

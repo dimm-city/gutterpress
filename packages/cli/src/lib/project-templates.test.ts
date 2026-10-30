@@ -43,6 +43,10 @@ test("each built-in template scaffolds into a valid project", async () => {
       const manifest = await readFile(result.manifestPath, "utf8");
       expect(manifest).toContain(`title: "Demo ${id}"`);
       expect(manifest).not.toContain("{{TITLE}}");
+      // Starter text says the action ("in Book setup"), never a desktop tab.
+      const starterCss = await readFile(path.join(result.projectDir, "styles", "book.css"), "utf8");
+      for (const text of [manifest, starterCss])
+        expect(text).not.toMatch(/Setup >|Book setup >|> Look|> Advanced|> Details|Look tab|Design tab/);
       // The first chapter the wizard opens exists and has no leftover tokens.
       const open = await readFile(result.openFile, "utf8");
       expect(open).not.toContain("{{TITLE}}");

@@ -4,9 +4,8 @@
  * OWNS
  *   `:root` custom properties, and nothing else. The palette, the type scale,
  *   the spacing scale, the measure. This is the file to edit to rebrand the
- *   look. The desktop app's Book setup lists these tokens (the six shared
- *   ones under Look, every one under Advanced) and saves a book's changes
- *   to that book's own stylesheet, never to this file.
+ *   look. The desktop app's Book setup lists these tokens and saves a
+ *   book's changes to that book's own stylesheet, never to this file.
  *
  * MUST NOT CONTAIN
  *   - Any selector other than `:root`. The moment a rule here targets `h1`,
@@ -18,12 +17,12 @@
  *     waiting to happen.
  *   - Anything a specific book needs. Book-specific values go in book.css.
  *
- * WHAT THE DESIGN TAB SHOWS is curated with comments. Right above one
+ * WHAT BOOK SETUP SHOWS is curated with comments. Right above one
  * declaration: `@label Accent color` (its plain-words name), `@group Paper`
  * (its heading), `@internal` (not shown). Right above a `:root` selector:
  * `@group` or `@internal` for the whole block, which a declaration's own
  * comment overrides. One `@internal` line above a block of component
- * defaults keeps them off the tab.
+ * defaults keeps them out of Book setup.
  *
  * LOADS FIRST, and therefore declares the layer order for the whole stack.
  * ======================================================================== */

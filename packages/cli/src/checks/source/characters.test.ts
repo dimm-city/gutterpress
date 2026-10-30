@@ -50,7 +50,7 @@ describe("source.characters", () => {
     const results = await runOn(
       [
         "a\u2019b", // typographer
-        "a\u2212b", // lookalike
+        "a\u2010b", // lookalike
         "a\u2192b \u{1F680}", // symbol, emoji
         "a\u200Bb", // invisible
         "a\u00A0b", // whitespace
@@ -80,6 +80,10 @@ describe("source.characters", () => {
     expect(results[4]!.message).toBe(
       "Zero-width space (U+200B). Delete it, or type &ZeroWidthSpace; if you meant it.",
     );
+  });
+
+  test("leaves the minus sign alone: it prints as typed and is not a hyphen", async () => {
+    expect(await runOn("a \u2212 b is \u22123\n")).toEqual([]);
   });
 
   test("lets a right single quote through only where it starts a word, which a typed ' cannot make", async () => {

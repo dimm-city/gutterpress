@@ -1,0 +1,61 @@
+/* style.css — a look's rules that need the page's own numbers, reading them
+   from --gp-page-* instead of keeping a copy that stops following Book setup.
+
+   The `@page` margin below is the look's own, and the manifest outranks it
+   (it sets margins), so the margin box's padding and the plates are sized from
+   what actually prints. Preview and print must agree on both:
+
+   - the folio's left padding is the OUTSIDE margin less 2pt, so its text sits
+     at (inside margin) + (outside margin - 2pt) from the sheet's left edge on
+     a recto, and (outside margin) + (outside margin - 2pt) on a verso;
+   - each plate is one sheet: --gp-page-width wide and a sheet (less 2pt, so
+     an exact fit cannot tip it onto a second page) tall, on a page with no
+     margins of its own. */
+
+body {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 10.5pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+
+@page {
+  margin: 0.5in;
+
+  @bottom-left {
+    content: "Folio " counter(page);
+    font-size: 8pt;
+    padding-left: calc(var(--gp-page-margin-outside) - 2pt);
+  }
+}
+
+@page plate {
+  margin: 0;
+
+  @bottom-left {
+    content: none;
+  }
+}
+
+[data-page="plate"] {
+  page: plate;
+}
+
+.plate {
+  display: block;
+  width: var(--gp-page-width);
+  height: calc(var(--gp-page-height) - 2pt);
+  margin: 0;
+  background: #e8e2d4;
+  text-align: right;
+}
+
+h1 {
+  font-size: 22pt;
+  margin: 0 0 0.6em;
+}
+
+p {
+  margin: 0 0 0.6em;
+}

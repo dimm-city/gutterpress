@@ -26,6 +26,9 @@ describe("Version history timeline — machine history entries read as writer co
     "Repaired the online copy",
     "Saved the edit you made while backing up",
     "Before deleting chapter-01.md",
+    "Getting your changes ready to combine with the online copy's changes",
+    "Combined your changes with the online copy's",
+    "Kept both takes of the files that can't be combined",
     "Created project",
     "Set up as a gutterpress book",
     // Superseded spellings:

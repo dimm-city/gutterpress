@@ -24,6 +24,7 @@ const AUTOMATIC_MESSAGES = [
   "Repaired the online copy", // repair REPAIR_SNAPSHOT_MESSAGE
   "Saved the edit you made while backing up", // sync-messages SYNC_LATE_EDIT_MESSAGE
   "Before deleting chapter-02.md", // fs/delete route (a prefix match)
+  "Getting your changes ready to combine with the online copy's changes", // CONVERGE_PREPARE_MESSAGE
   // Superseded spellings:
   "Automatic snapshot",
   "Automatic backup of your work", // SYNC_SNAPSHOT_MESSAGE (0.10.1+)
@@ -32,11 +33,14 @@ const AUTOMATIC_MESSAGES = [
   "Automatic backup before restoring an earlier version",
   "Saved before switching copy",
   "Repaired online backup",
-  "Getting your changes ready to combine with the online version", // CONVERGE_PREPARE_MESSAGE
+  "Getting your changes ready to combine with the online version",
 ];
 const COMBINED_MESSAGES = [
-  "Combined your changes with the online version", // CONVERGE_MERGE_MESSAGE
-  "Kept both versions of the files that can't be combined", // CONVERGE_RESTORE_MESSAGE
+  "Combined your changes with the online copy's", // CONVERGE_MERGE_MESSAGE
+  "Kept both takes of the files that can't be combined", // CONVERGE_RESTORE_MESSAGE
+  // Superseded spellings:
+  "Combined your changes with the online version",
+  "Kept both versions of the files that can't be combined",
 ];
 const CREATED_MESSAGES = [
   "First version", // enable-version-history route

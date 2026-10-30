@@ -65,7 +65,7 @@ export const CHARACTER_PATTERN = new RegExp(
   "[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F-\\u00A0\\u00AD\\u00B4\\u02BC" +
     "\\u061C\\u2000-\\u2015\\u2018\\u201B-\\u201D\\u201F\\u2022\\u2026" +
     "\\u2028-\\u202F\\u2032\\u2033\\u205F\\u2060\\u2066-\\u2069\\u2190\\u2192" +
-    "\\u2194\\u21D2\\u2212\\u25AA\\u25E6\\u2605\\u2713\\u2714\\u2717\\u3000" +
+    "\\u2194\\u21D2\\u25AA\\u25E6\\u2605\\u2713\\u2714\\u2717\\u3000" +
     "\\uE000-\\uF8FF\\uFEFF\\uFF02\\uFF07\\uFFFD]" +
     "|\\p{Emoji_Presentation}|\\p{Extended_Pictographic}(?=\\uFE0F)" +
     // A right single quote, except one that starts a word (’90s, ’tis): a
@@ -98,7 +98,6 @@ const NAMED: Record<number, Entry> = {
   0x2011: ["Non-breaking hyphen", "lookalike", "-"],
   0x2012: ["Figure dash", "lookalike", "-"],
   0x2015: ["Horizontal bar", "lookalike", "---"],
-  0x2212: ["Minus sign", "lookalike", "-"],
 
   0x2022: ["Bullet", "symbol", "&bull;"],
   0x25e6: ["White bullet", "symbol", "&#x25E6;"],

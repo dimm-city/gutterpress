@@ -159,8 +159,8 @@ one place, and chapters written afterwards get it for free.
 ### 4. The page size and margins are the book's, not the look's
 
 A look never declares `@page { size }` or `@page { margin }`. The book's
-manifest records both (`preset:`, `page: width / height / margin`, which the
-app edits under Setup > Book), and the build writes them as the `@page`
+manifest records both (`preset:`, `page: width / height / margin`, which an
+author sets in Book setup), and the build writes them as the `@page`
 rule after every stylesheet, so a `size` in a look is ignored and reported by
 the print-safety check, and a `margin` holds only until the author sets
 margins in the app. `page-rules.css` owns what IS a look's: the margin boxes
