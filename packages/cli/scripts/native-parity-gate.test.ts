@@ -3,6 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { PDFDocument, rgb } from "pdf-lib";
+import { getDocumentProxy } from "unpdf";
 import { launchChromium, type Browser } from "../src/engine/shared/cdp.ts";
 import { resolveChromiumExecutable } from "../src/lib/chromium.ts";
 import { getAssetPath } from "../src/lib/embedded-assets.ts";
@@ -16,8 +18,13 @@ import {
   isDownstream,
   measureExactFitBoundary,
   mountViewer,
+  paintedBoxes,
   type Divergence,
 } from "./native-parity-gate.ts";
+
+// A 1×1 PNG, for an image that has to be drawn rather than measured.
+const PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
 describe("classifyBoundary — the exact-fit rule", () => {
   test("issue #268: print kept at +0.00, the viewer pushed at -0.37", () => {
@@ -126,6 +133,29 @@ describe("groupTextRuns", () => {
   });
 });
 
+describe("paintedBoxes — where print drew something other than text", () => {
+  test("paths and images in the content box, top-down in CSS px; text and the margins drop out", async () => {
+    // a 200pt page with a 20pt margin: content top at 20pt, 160pt (213.33px) tall
+    const pdf = await PDFDocument.create();
+    const page = pdf.addPage([200, 200]);
+    page.drawRectangle({ x: 10, y: 20, width: 50, height: 30, color: rgb(0, 0, 0) }); // 150..180pt down
+    const png = await pdf.embedPng(Buffer.from(PNG_BASE64, "base64"));
+    page.drawImage(png, { x: 10, y: 100, width: 40, height: 40 }); // 60..100pt down
+    page.drawText("text is not paint", { x: 10, y: 150, size: 10 });
+    page.drawRectangle({ x: 10, y: 185, width: 50, height: 10, color: rgb(0, 0, 0) }); // in the top margin
+    const doc = await getDocumentProxy(await pdf.save());
+    try {
+      const boxes = await paintedBoxes(await doc.getPage(1), 200, 20, (160 * 96) / 72);
+      expect(boxes).toEqual([
+        [173.333, 213.333],
+        [53.333, 106.667],
+      ]);
+    } finally {
+      await doc.destroy();
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // The viewer side, in a real Chromium: a 100px column, 21px lines, a one-line
 // <p> then a six-line <pre>, so the viewer keeps three pre lines on page 1
@@ -172,10 +202,40 @@ td { padding: 0 0 3px; line-height: 21px; width: 50%; }
 <h2 id="after">After</h2>
 </main></body></html>`;
 
+// The same column ending on a replaced element: two lines (0..42), then a
+// markdown image — an <img> in a <p> of its own — drawn 58.5px tall, so its
+// box would end at 100.5px: half a pixel past the column, and the viewer
+// pushes it. In the formula page a display formula takes its place, 7px of
+// margin above a 51.5px box whose drawing runs from 10px to 40px down it.
+// The second line holds an inline formula, which is part of the line, and
+// MathJax's hidden MathML copy, which print never draws.
+const REPLACED_STYLE = `@page { size: 4in 3in; margin: 94px 20px; }
+body { margin: 0; font-family: serif; font-size: 14px; line-height: 21px; }
+p, h2 { margin: 0; padding: 0; line-height: 21px; }
+img { display: block; width: 40px; height: 58.5px; }
+.fits img { height: 50px; }
+mjx-container[display="true"] { display: block; margin: 7px 0 0; }
+mjx-container[display="true"] > svg { display: block; width: 40px; height: 51.5px; }
+mjx-assistive-mml { position: absolute; top: 0; left: 0; clip: rect(1px, 1px, 1px, 1px); }`;
+const REPLACED_LINES = `<p>Intro line.</p>
+<p>Second <mjx-container jax="SVG"><svg width="8" height="8"><rect width="8" height="8"/></svg><mjx-assistive-mml>hidden</mjx-assistive-mml></mjx-container> line.</p>`;
+const IMAGE_PAGE = `<!doctype html><html><head><meta charset="utf-8"><style>${REPLACED_STYLE}</style></head><body><main>
+${REPLACED_LINES}
+<p><img src="data:image/png;base64,${PNG_BASE64}" alt=""></p>
+<h2 id="after">After</h2>
+</main></body></html>`;
+const FORMULA_PAGE = `<!doctype html><html><head><meta charset="utf-8"><style>${REPLACED_STYLE}</style></head><body><main>
+${REPLACED_LINES}
+<mjx-container jax="SVG" display="true"><svg><path d="M0 10H40V40H0Z"/></svg><mjx-assistive-mml>a</mjx-assistive-mml></mjx-container>
+<h2 id="after">After</h2>
+</main></body></html>`;
+
 let browser: Browser | undefined;
 let dir: string | undefined;
 let url = "";
 let tableUrl = "";
+let imageUrl = "";
+let formulaUrl = "";
 let agent = "";
 let viewer = "";
 
@@ -191,6 +251,11 @@ async function fixture(): Promise<Browser> {
   const tableFile = join(dir, "table.html");
   await writeFile(tableFile, TABLE_PAGE);
   tableUrl = pathToFileURL(tableFile).href;
+  for (const [name, html] of [["image.html", IMAGE_PAGE], ["formula.html", FORMULA_PAGE]] as const) {
+    await writeFile(join(dir, name), html);
+  }
+  imageUrl = pathToFileURL(join(dir, "image.html")).href;
+  formulaUrl = pathToFileURL(join(dir, "formula.html")).href;
   agent = await Bun.file(await getAssetPath("engine/gutterpress-agent.js")).text();
   viewer = await Bun.file(await getAssetPath("engine/gutterpress-viewer.js")).text();
   browser = await launchChromium();
@@ -436,6 +501,183 @@ testIf(
       expect(m).toMatchObject({ page: 1, keptBy: "print", text: "end two", block: "tr", lineIndex: 3, lineCount: 3, contentHPx: 100 });
       // the viewer's geometry puts the row right under row one: 66 + 45
       expect(m.viewerBottomPx).toBeCloseTo(111, 1);
+      expect(m.printBaselinePx).toBe(94);
+    } finally {
+      await page.close();
+    }
+  },
+  TIMEOUT,
+);
+
+// ---------------------------------------------------------------------------
+// Replaced elements (#465): no text run, so the element's box is the "line".
+// ---------------------------------------------------------------------------
+
+// Print's text on the replaced pages: both lines on page 1, the heading on 2.
+const REPLACED_PRINT_LINES = { 1: [line("Intro line.", 15), line("Second line.", 36)], 2: [line("After", 73)] };
+const measureOn = (page: Awaited<ReturnType<typeof mount>>, input: object) =>
+  page.evaluate<any>(`window.__gpExactFit(window.__gpParity).measure(${JSON.stringify(input)})`);
+const slacks = (m: { contentHPx: number; printBottomPx: number; viewerBottomPx: number }) => ({
+  print: m.contentHPx - m.printBottomPx,
+  viewer: m.contentHPx - m.viewerBottomPx,
+});
+
+testIf(
+  "print keeps an image the viewer pushes by half a pixel: its box is measured, and it is an exact fit",
+  async () => {
+    const page = await mount("", () => imageUrl);
+    try {
+      // the viewer: the image sits at the top of page 2, its <p> holding nothing else
+      const where = await page.evaluate<{ page: number; lines: string[] }>(`(() => {
+        const fx = window.__gpExactFit(window.__gpParity);
+        return { page: window.__gpParity.pageOf(document.querySelector("img")) + 1,
+                 lines: fx.linesOf(document.querySelectorAll("p")[1]).map((l) => l.text) };
+      })()`);
+      expect(where.page).toBe(2);
+      // the inline formula is part of the line, and its hidden MathML is not read
+      expect(where.lines.map((t) => t.replace(/\s+/g, " ").trim())).toEqual(["Second line."]);
+      // print drew it 0.2px higher than the viewer would: from 41.8 to 100.3
+      const m = await measureOn(page, {
+        lo: 1,
+        agreeingPage: 1,
+        headingIds: ["after"],
+        printLines: REPLACED_PRINT_LINES,
+        printPaint: { 1: [[41.8, 100.3]], 2: [] },
+      });
+      expect(m.error).toBeUndefined();
+      expect(m).toMatchObject({ page: 1, keptBy: "print", item: "image", text: "img", block: "p", contentHPx: 100 });
+      expect(m.printBottomPx).toBeCloseTo(100.3, 3);
+      expect(m.printBaselinePx).toBeCloseTo(41.8, 3); // the box's top: margin-top plus border-box height above its end
+      // the viewer's geometry puts the box right under the second line: 42 + 58.5
+      expect(m.viewerBottomPx).toBeCloseTo(100.5, 1);
+      const s = slacks(m);
+      expect(classifyBoundary(s.print, s.viewer)).toBe(true);
+    } finally {
+      await page.close();
+    }
+  },
+  TIMEOUT,
+);
+
+testIf(
+  "an image whose fit misses by more than the tolerance is still a divergence",
+  async () => {
+    const page = await mount("", () => imageUrl);
+    try {
+      // print laid the page out 2px higher than the viewer — the second
+      // line and the image both — so it kept the image with 1.5px to spare
+      // where the viewer overflows by half a pixel
+      const m = await measureOn(page, {
+        lo: 1,
+        agreeingPage: 1,
+        headingIds: ["after"],
+        printLines: { ...REPLACED_PRINT_LINES, 1: [line("Intro line.", 13), line("Second line.", 34)] },
+        printPaint: { 1: [[40, 98.5]], 2: [] },
+      });
+      expect(m).toMatchObject({ page: 1, keptBy: "print", item: "image" });
+      const s = slacks(m);
+      expect(s.print).toBeCloseTo(1.5, 3);
+      expect(s.viewer).toBeCloseTo(-0.5, 1);
+      expect(classifyBoundary(s.print, s.viewer)).toBe(false);
+    } finally {
+      await page.close();
+    }
+  },
+  TIMEOUT,
+);
+
+testIf(
+  "a formula's drawing is carried to its box, and a page ending on it is found walking back from the agreeing heading",
+  async () => {
+    const page = await mount("", () => formulaUrl);
+    try {
+      // print drew the formula's 30px of ink from 58.8px: its box (ink ends 11.5px above the box's end) ends at 100.3
+      const m = await measureOn(page, {
+        lo: 2,
+        agreeingPage: 2,
+        headingIds: ["after"],
+        printLines: REPLACED_PRINT_LINES,
+        printPaint: { 1: [[58.8, 88.8]], 2: [] },
+      });
+      expect(m.error).toBeUndefined();
+      expect(m).toMatchObject({ page: 1, keptBy: "print", item: "formula", text: "mjx-container", block: "mjx-container" });
+      expect(m.printBottomPx).toBeCloseTo(100.3, 1);
+      expect(m.printBaselinePx).toBeCloseTo(100.3 - 7 - 51.5, 1);
+      // 42 + the formula's 7px margin + its 51.5px box
+      expect(m.viewerBottomPx).toBeCloseTo(100.5, 1);
+      const s = slacks(m);
+      expect(classifyBoundary(s.print, s.viewer)).toBe(true);
+    } finally {
+      await page.close();
+    }
+  },
+  TIMEOUT,
+);
+
+testIf(
+  "print's drawing below the last line decides: nothing there agrees with the viewer, anything else is reported",
+  async () => {
+    const page = await mount("", () => imageUrl);
+    try {
+      const input = { lo: 1, agreeingPage: 1, headingIds: ["after"], printLines: REPLACED_PRINT_LINES };
+      // print drew nothing below the second line: it pushed the image too
+      const none = await measureOn(page, { ...input, printPaint: { 1: [], 2: [] } });
+      expect(none.error).toMatch(/no page between p1 and p1 ends on different lines/);
+      // print drew something, but not the image's height
+      const other = await measureOn(page, { ...input, printPaint: { 1: [[60, 70]], 2: [] } });
+      expect(other.error).toMatch(/print drew 10\.00px below p1's last line, not the 58\.50px of the img the viewer pushed/);
+    } finally {
+      await page.close();
+    }
+  },
+  TIMEOUT,
+);
+
+testIf(
+  "the viewer keeps an image print pushed: print's box is projected from print's last kept line",
+  async () => {
+    const page = await mount("fits", () => imageUrl);
+    try {
+      const L = await page.evaluate<number>(
+        `window.__gpExactFit(window.__gpParity).linesOf(document.querySelectorAll("p")[1])[0].baseline`,
+      );
+      const m = await measureOn(page, {
+        lo: 1,
+        agreeingPage: 1,
+        headingIds: ["after"],
+        printLines: REPLACED_PRINT_LINES,
+        printPaint: { 1: [], 2: [[0, 50]] },
+      });
+      expect(m.error).toBeUndefined();
+      expect(m).toMatchObject({ page: 1, keptBy: "viewer", item: "image", block: "p" });
+      expect(m.viewerBottomPx).toBeCloseTo(92, 1);
+      expect(m.printBottomPx).toBeCloseTo(36 + (m.viewerBottomPx - L), 3);
+    } finally {
+      await page.close();
+    }
+  },
+  TIMEOUT,
+);
+
+testIf(
+  "the text-line path is unchanged: paint on the page does not move a line's measurement",
+  async () => {
+    const page = await mount();
+    try {
+      // the "print keeps a line" case above, with print's page full of drawings
+      const m = await measureOn(page, {
+        lo: 1,
+        agreeingPage: 1,
+        headingIds: ["after"],
+        printLines: {
+          1: [line("Intro line.", 10), line("line one", 31), line("line two", 52), line("line three", 73), line("line four", 94)],
+          2: [line("line five", 10), line("line six", 31)],
+        },
+        printPaint: { 1: [[0, 100], [85, 99]], 2: [[0, 40]] },
+      });
+      expect(m.error).toBeUndefined();
+      expect(m).toMatchObject({ page: 1, keptBy: "print", item: "line", text: "line four", block: "pre", lineIndex: 4 });
+      expect(m.viewerBottomPx).toBeCloseTo(105, 1);
       expect(m.printBaselinePx).toBe(94);
     } finally {
       await page.close();
