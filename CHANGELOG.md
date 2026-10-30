@@ -5,92 +5,6 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Changed
-
-- **Keeping an author's work safe has one set of words and one place to look
-  (#448).** The status bar's save indicator, sync pill and "Where your work is
-  kept" sheet are one status control ("Saved · Backed up", "Saved · Not backed
-  up yet", "Saved · Sign in to back up", …) that opens Book setup → Online
-  copy, the renamed Backup tab. There an author sees where the book is kept in
-  one sentence with its one next step, saves a version, opens Version history
-  (the renamed Versions view, with Save a version at the top), manages
-  revisions (switch, new, rename, delete: separate lines of work in the same
-  book, each saying whether it is also in the online copy), and, collapsed, the
-  tools for when backing up keeps failing. Readers see no status control, Sync
-  button or online toasts. Nothing an author reads says commit, branch, push,
-  pull, merge, remote, repository, snapshot or clone any more (the one manual
-  button is **Sync**); Help no longer describes the removed conflict model, and the two sides
-  of an overlapping passage are "two takes". Settings' switch is now **Keep
-  version history**, and crash recovery's button is **Recover**.
-- **Honest backup status, and Readers only ever get the latest (#448).**
-  "Backed up" now appears only after a pass that sent your work or found nothing
-  to send; a get-latest-only pass with unsent versions says "Not backed up yet",
-  and with automatic backing up off the status is checked at open and after
-  every version. A Reader gets the latest changes automatically whatever "Back up
-  online automatically" says, and never sends anything. Exporting a PDF gets the
-  latest first but no longer sends.
-- **Revisions are renamed and deleted in the online copy too, right away
-  (#448).** Renaming or deleting everywhere refuses, changing nothing, when the
-  online copy can't be reached or has versions this computer lacks; deleting a
-  revision whose versions are found nowhere else asks a second time with the
-  count.
-- **Online copy is laid out as three cards (#448).** A status card (where the
-  book is kept, its one next step, and **Backing up keeps failing?** at its
-  foot with Test connection, Sign in again, Repair and Start over), a
-  **Revisions** card, and a short **Version history** card (the newest versions,
-  Save a version, Browse versions).
-- **Version history is a screen of its own (#448).** Browse versions (or a
-  version in the card) opens it over Book setup: the versions on the left,
-  grouped by day; the selected version on the right, its **Pages** rendered as
-  they were or its **Changed files** line by line; **Restore this version** at
-  the top. × or Esc returns to Book setup. It replaces looking at a version
-  beside the live preview, and never takes over the editor. Revisions: the open one first,
-  five shown with **Show all**, **Find a revision** past five, **New
-  revision** in the card's header, and each row's **Switch** plus a ⋯ menu
-  with **Rename…** (every revision) and **Delete…** (all but the open one);
-  New revision, Rename and Delete are dialogs. A revision that is **Only
-  online** can now be renamed or deleted in the online copy (refused, changing
-  nothing, when it changed online since the list was checked). With automatic backing up off, one **Sync** button
-  (Setup → Online copy: **Sync now**; the new-changes toast: **Sync**) replaces
-  Back up now and Get latest; it runs the same backing up as before, which gets
-  the latest first. The status control and Sync sit on the left of the status
-  bar, after the book switcher.
-- **History messages follow the vocabulary (#448).** New versions record
-  "Automatic version", "First version", "Saved a version", "Automatic version
-  before backing up", "Automatic version before restoring", "Saved before
-  switching revision", "Repaired the online copy" and "Saved the edit you made
-  while backing up"; combining with the online copy records "Combined your
-  changes with the online copy's" and "Kept both takes of the files that can't
-  be combined", no longer "the online version" and "both versions". Version
-  history still recognises every earlier spelling.
-- **Version history is quick to browse.** Selecting a version shows its
-  **Changed files** straight away; its **Pages** render only when you click
-  Pages, and selecting another version goes back to its changed files, so
-  clicking down the list no longer renders every version on the way. Opening
-  the screen and **Show older versions** no longer work out what every listed
-  version changed, and a book with many versions not backed up yet no longer
-  walks its whole history once for each of them. Library: `describeVersions`
-  and `listOnlineVersions` entries no longer carry `changes`/`moreChanges`;
-  `listVersionChanges(projectDir, id)` lists one version's changed files
-  (desktop route `vcs/version-changes`).
-- **Library:** `listLocalBranches` and its `LocalBranches` type are replaced by
-  `listRevisions`, with `createRevision`, `renameRevision`, `deleteRevision` and
-  `revisionNameFrom`; `SyncOutcome` gains `pushDeferred` on a get-latest pass
-  that left versions unsent. The desktop's `vcs/list-branches` and
-  `remote/refresh-copies` routes are replaced by `vcs/list-revisions` (with
-  `refresh`), `vcs/create-revision`, `vcs/rename-revision` and
-  `vcs/delete-revision`.
-
-### Fixed
-
-- **Escape inside Book setup, Settings and Accounts acts on the control first
-  (#448).** Escape in a revision's name form cancels the form, and Escape on
-  the look's "Replace / Keep mine" question keeps yours, instead of closing the
-  whole page: the page's own Escape now waits for the control's.
-- **The first backup of a new revision works (#448).** It used to stop with
-  "sign in again" because a revision the online copy didn't have yet was taken
-  for a rejected sign-in.
-
 ## [0.11.23] - 2026-10-26
 
 ### Added
@@ -382,6 +296,79 @@ This project follows [Semantic Versioning](https://semver.org/).
   markdownlint prints `|`, not `\|`; the alphas printed the backslash). A
   row that still has more cells than the header is reported in Problems
   (`table_extra_cells`) instead of silently losing them.
+- **Keeping an author's work safe has one set of words and one place to look
+  (#448).** The status bar's save indicator, sync pill and "Where your work is
+  kept" sheet are one status control ("Saved · Backed up", "Saved · Not backed
+  up yet", "Saved · Sign in to back up", …) that opens Book setup → Online
+  copy, the renamed Backup tab. There an author sees where the book is kept in
+  one sentence with its one next step, saves a version, opens Version history
+  (the renamed Versions view, with Save a version at the top), manages
+  revisions (switch, new, rename, delete: separate lines of work in the same
+  book, each saying whether it is also in the online copy), and, collapsed, the
+  tools for when backing up keeps failing. Readers see no status control, Sync
+  button or online toasts. Nothing an author reads says commit, branch, push,
+  pull, merge, remote, repository, snapshot or clone any more (the one manual
+  button is **Sync**); Help no longer describes the removed conflict model, and the two sides
+  of an overlapping passage are "two takes". Settings' switch is now **Keep
+  version history**, and crash recovery's button is **Recover**.
+- **Honest backup status, and Readers only ever get the latest (#448).**
+  "Backed up" now appears only after a pass that sent your work or found nothing
+  to send; a get-latest-only pass with unsent versions says "Not backed up yet",
+  and with automatic backing up off the status is checked at open and after
+  every version. A Reader gets the latest changes automatically whatever "Back up
+  online automatically" says, and never sends anything. Exporting a PDF gets the
+  latest first but no longer sends.
+- **Revisions are renamed and deleted in the online copy too, right away
+  (#448).** Renaming or deleting everywhere refuses, changing nothing, when the
+  online copy can't be reached or has versions this computer lacks; deleting a
+  revision whose versions are found nowhere else asks a second time with the
+  count.
+- **Online copy is laid out as three cards (#448).** A status card (where the
+  book is kept, its one next step, and **Backing up keeps failing?** at its
+  foot with Test connection, Sign in again, Repair and Start over), a
+  **Revisions** card, and a short **Version history** card (the newest versions,
+  Save a version, Browse versions).
+- **Version history is a screen of its own (#448).** Browse versions (or a
+  version in the card) opens it over Book setup: the versions on the left,
+  grouped by day; the selected version on the right, its **Pages** rendered as
+  they were or its **Changed files** line by line; **Restore this version** at
+  the top. × or Esc returns to Book setup. It replaces looking at a version
+  beside the live preview, and never takes over the editor. Revisions: the open one first,
+  five shown with **Show all**, **Find a revision** past five, **New
+  revision** in the card's header, and each row's **Switch** plus a ⋯ menu
+  with **Rename…** (every revision) and **Delete…** (all but the open one);
+  New revision, Rename and Delete are dialogs. A revision that is **Only
+  online** can now be renamed or deleted in the online copy (refused, changing
+  nothing, when it changed online since the list was checked). With automatic backing up off, one **Sync** button
+  (Setup → Online copy: **Sync now**; the new-changes toast: **Sync**) replaces
+  Back up now and Get latest; it runs the same backing up as before, which gets
+  the latest first. The status control and Sync sit on the left of the status
+  bar, after the book switcher.
+- **History messages follow the vocabulary (#448).** New versions record
+  "Automatic version", "First version", "Saved a version", "Automatic version
+  before backing up", "Automatic version before restoring", "Saved before
+  switching revision", "Repaired the online copy" and "Saved the edit you made
+  while backing up"; combining with the online copy records "Combined your
+  changes with the online copy's" and "Kept both takes of the files that can't
+  be combined", no longer "the online version" and "both versions". Version
+  history still recognises every earlier spelling.
+- **Version history is quick to browse.** Selecting a version shows its
+  **Changed files** straight away; its **Pages** render only when you click
+  Pages, and selecting another version goes back to its changed files, so
+  clicking down the list no longer renders every version on the way. Opening
+  the screen and **Show older versions** no longer work out what every listed
+  version changed, and a book with many versions not backed up yet no longer
+  walks its whole history once for each of them. Library: `describeVersions`
+  and `listOnlineVersions` entries no longer carry `changes`/`moreChanges`;
+  `listVersionChanges(projectDir, id)` lists one version's changed files
+  (desktop route `vcs/version-changes`).
+- **Library:** `listLocalBranches` and its `LocalBranches` type are replaced by
+  `listRevisions`, with `createRevision`, `renameRevision`, `deleteRevision` and
+  `revisionNameFrom`; `SyncOutcome` gains `pushDeferred` on a get-latest pass
+  that left versions unsent. The desktop's `vcs/list-branches` and
+  `remote/refresh-copies` routes are replaced by `vcs/list-revisions` (with
+  `refresh`), `vcs/create-revision`, `vcs/rename-revision` and
+  `vcs/delete-revision`.
 
 ### Fixed
 
@@ -397,6 +384,13 @@ This project follows [Semantic Versioning](https://semver.org/).
   A plugin's `css` and a `:root` in a later stylesheet now show, a value with
   `;` inside `url("data:…")` is no longer cut short, and an edit lands where
   your stylesheet already sets the setting, never in a comment or `@media`.
+- **Escape inside Book setup, Settings and Accounts acts on the control first
+  (#448).** Escape in a revision's name form cancels the form, and Escape on
+  the look's "Replace / Keep mine" question keeps yours, instead of closing the
+  whole page: the page's own Escape now waits for the control's.
+- **The first backup of a new revision works (#448).** It used to stop with
+  "sign in again" because a revision the online copy didn't have yet was taken
+  for a rejected sign-in.
 
 ## [0.11.22] - 2026-10-23
 
