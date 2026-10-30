@@ -23,6 +23,7 @@ import {
   pinRootStyle,
   type PinEdge,
 } from "../shared/pin-edges.ts";
+import { pageGeometryVarsCss } from "../shared/page-vars.ts";
 import type { PrintArea } from "../shared/print-area.ts";
 import {
   isIgnoredMarginBoxProperty,
@@ -468,11 +469,14 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         key: root.key,
       });
     }
-    // The art-safe line comes from the manifest, through the book's print-area
-    // meta; none means 0 — the paper's edge.
-    const printArea = pinRoots.length
-      ? await page.evaluate<PrintArea | null>(`window.__gp.printArea()`)
-      : null;
+    // The manifest's print area, through the book's print-area meta: the
+    // art-safe line (none means 0 — the paper's edge) pinned art sits on, and
+    // the numbers published as `--gp-page-*` (shared/page-vars.ts). Those are
+    // read from the AUTHOR's model, here, before the pin step below aliases
+    // page contexts with their margins freed: they are the book's own numbers,
+    // which is what the viewer's twin publishes.
+    const printArea = await page.evaluate<PrintArea | null>(`window.__gp.printArea()`);
+    const geometryVarsCss = pageGeometryVarsCss(model, printArea);
     // The root's declarations for one page context, against the AUTHOR's
     // margins (the alias page is a different name, so resolving the author's
     // still reads the original geometry).
@@ -606,9 +610,10 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         (a) =>
           `${a.selector} { --gp-content-h: ${namedContentHeightsPx[a.page] ?? contentHeightPx}px; }`,
       ),
+      geometryVarsCss,
     ].join("\n");
     await page.evaluate(`window.__gp.addCss("gp-page-vars", ${JSON.stringify(pageVarsCss)})`);
-    log(`page geometry published (--gp-content-h: ${Math.round(contentHeightPx)}px)`);
+    log(`page geometry published (--gp-content-h: ${Math.round(contentHeightPx)}px, --gp-page-*)`);
 
     // ---- pinned edges: what needs the root's physical page ---------------
     // Margin boxes on a freed edge cannot render natively (their margin is

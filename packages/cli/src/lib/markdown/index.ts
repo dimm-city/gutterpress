@@ -3,7 +3,7 @@ import { isOnlineSibling } from "../remote-auth/sync-messages";
 import { join } from "node:path";
 import { BOOK_HTML_FILENAME } from "../desktop";
 import { canonicalChapterId } from "./chapter-id";
-import { assembleBookHtml, type AssembleBookHtmlOptions, type LayoutWarning } from "./assemble";
+import { assembleBookHtml, liftPageRules, type AssembleBookHtmlOptions, type LayoutWarning } from "./assemble";
 import { resolveActiveStyles } from "../style-resolver";
 import { inlineStyles, type AssetCopy } from "../asset-inline";
 import type { LoadedPlugin, PluginStyleGroup } from "./renderer";
@@ -99,6 +99,11 @@ export async function renderChapters(
   // a copy plan). A stylesheet is a file to READ, never a file to ship, so its
   // location — themes/, ../design-guide/, anywhere — has no effect on output.
   const inlined = await inlineStyles(inputDir, styles);
+  // The book's own `@page` rules follow its sheets, unlayered, in source
+  // order (liftPageRules): one inside an `@layer` the book declares would
+  // otherwise lose to every unlayered look's and core's in print, while the
+  // preview, which ignores layers, took the book's.
+  const book = liftPageRules(inlined.css);
 
   // Each extension's CSS goes in its own cascade layer, in `extensions:`
   // list order, so precedence IS the list order: an extension cannot jump
@@ -108,7 +113,8 @@ export async function renderChapters(
   // stylesheet FILES get the same asset-inline pass as the project's own
   // (fonts/images embedded, print-safety lintable; `inlineStyles` leaves
   // their absolute paths alone). A module's `css` string export follows its
-  // files, inside the same layer.
+  // files, inside the same layer. Its `@page` rules do not: they follow the
+  // layer, unlayered (see assemble.ts's liftPageRules).
   const blocks: string[] = [];
   const layers: string[] = [];
   const styleWarnings: string[] = [];
@@ -122,7 +128,11 @@ export async function renderChapters(
       .join("\n\n");
     if (!css) continue;
     layers.push(group.layer);
-    blocks.push(`/* ${group.name} */\n@layer ${group.layer} {\n${css.trim()}\n}`);
+    const { layered, pages } = liftPageRules(css);
+    blocks.push(
+      `/* ${group.name} */\n@layer ${group.layer} {\n${layered.trim()}\n}` +
+        (pages ? `\n/* ${group.name}: page rules */\n${pages}` : ""),
+    );
   }
   styleWarnings.push(...inlined.warnings);
   if (styleWarnings.length > 0) opts.onStyleWarnings?.(styleWarnings);
@@ -145,7 +155,7 @@ export async function renderChapters(
     // here also makes Windows-authored manifest entries (`chapters\03.md`)
     // readable on POSIX hosts (canonicalChapterId already normalised slashes).
     readText: (relPath) => readFile(join(inputDir, canonicalChapterId(relPath)), "utf-8"),
-    projectCss: inlined.css,
+    projectCss: book.pages ? `${book.layered.trim()}\n${book.pages}` : inlined.css,
     // SHIM — spec gap #152. Every staged CSS image gets a
     // `<link rel="preload" as="image">`, or Chromium prints an `@page`
     // background as blank paper. See `preloadImages` in ./assemble.ts for the

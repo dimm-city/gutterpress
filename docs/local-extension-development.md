@@ -5,6 +5,12 @@ carries both) against a real book, and see each change in the live preview
 without publishing to npm first. The package format itself is described in
 [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-plugins.md).
 
+Provisional until 0.12: the `@group`, `@label` and `@internal` comment
+directives and the six Look-tab names (`--font-body`, `--font-display`,
+`--fs-body`, `--leading`, `--color-ink`, `--color-accent`) change in 0.12 (the
+design is [#457](https://github.com/dimm-city/gutterpress/issues/457)), so don't
+build on them yet.
+
 A book normally pins a published version of the extension:
 
 ```yaml

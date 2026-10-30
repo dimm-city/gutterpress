@@ -76,7 +76,7 @@ gutterpress ext remove clean-book ./my-book    # or drop the entry
 The desktop app's **Book setup &rarr; Extensions** tab is the same list,
 looks and features together: add a look, move entries up or down, switch one
 off, or remove it. There is no separate apply or revert step --- a look is
-just an entry, and the snapshot history versions the manifest change like any
+just an entry, and version history records the manifest change like any
 other edit. The **Look** tab adjusts six of the settings of the look you have
 switched on, and **Advanced** shows every one; both save your changes to
 `styles/book.css`, and the looks themselves are never edited.
@@ -160,6 +160,13 @@ after every stylesheet. No built-in look sets either; a `size` in your own
 `@page` rule is ignored (the print-safety check says so), and an `@page`
 margin of your own holds only until the manifest sets margins (Chapter 1,
 *Page Size Reference*).
+
+When a rule needs the page's own numbers, read them from `--gp-page-width`,
+`--gp-page-height`, `--gp-page-bleed`, `--gp-page-safe`, `--gp-page-gutter`,
+`--gp-page-art-safe`, `--gp-page-margin-top`, `--gp-page-margin-bottom`,
+`--gp-page-margin-inside` and `--gp-page-margin-outside`, all lengths in `pt`
+that `calc()` takes directly. Read these, don't copy them: they follow Book
+setup, in the preview and in the PDF.
 
 To reuse a look across books, make it a folder: a `theme.css` plus a
 `package.json` declaring it, which is all a one-sheet look is. `gutterpress

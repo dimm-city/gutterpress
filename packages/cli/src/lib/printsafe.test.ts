@@ -436,7 +436,7 @@ test("checkCss warns on size in a plain or pseudo-class @page rule, not in a nam
   expect(found.map((w) => w.line)).toEqual([1, 2, 6]);
   expect(found[0]!.severity).toBe("warning");
   expect(found[0]!.message).toContain("manifest");
-  expect(found[0]!.message).toContain("Setup > Book");
+  expect(found[0]!.message).toContain("Book setup");
 });
 
 test("checkCss's page-size warning can be silenced like any other rule", () => {

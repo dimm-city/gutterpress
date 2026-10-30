@@ -1,0 +1,29 @@
+/* style.css — core's own full-bleed pages, in a book whose manifest sets
+   `page.margin`, and nothing else.
+
+   Core's `@page full-bleed` (`@page gp-page-full-bleed { margin: 0 }`) and
+   `.gp-bleed` (`@page gp-full-bleed`, no side margins) used to sit in core's
+   cascade layers, and Chromium ranks `@page` declarations by layer before
+   page name: the manifest's unlayered margins beat them, so in print the
+   full-bleed page was inset and ran onto a second page and the bleed image
+   stopped at the margins, while the preview, whose `@page` reader ignores
+   layers, showed both at the sheet's edges (#454). Core's `@page` rules are
+   now written unlayered, after its layers. */
+
+body {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 10.5pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+
+/* Taller than the content box under the manifest's margins (7.5in), so a
+   full-bleed page that loses its zero margin needs a second page. */
+.sheet {
+  height: 8.75in;
+  box-sizing: border-box;
+  padding: 0.25in;
+  background: #1f4e7a;
+  color: #ffffff;
+}

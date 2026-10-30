@@ -21,6 +21,7 @@ import {
   pinRootStyle,
   type PinEdge,
 } from "../shared/pin-edges.ts";
+import { pageGeometryVarsCss } from "../shared/page-vars.ts";
 import { printAreaFromMeta } from "../shared/print-area.ts";
 
 export const PX_PER_PT = 96 / 72;
@@ -67,6 +68,22 @@ export function injectViewerCss(doc: Document = document) {
   style.id = "gp-viewer-css";
   style.textContent = VIEWER_CSS;
   doc.head.appendChild(style);
+}
+
+/**
+ * Publish the page's numbers as `--gp-page-*` (shared/page-vars.ts), the
+ * preview's twin of the compiler's `gp-page-vars` stylesheet: the same
+ * function over the same model and print area, so a rule that reads them
+ * resolves the same on screen and in the PDF. Replaces a previous mount's.
+ */
+export function injectPageVars(model: GcpmModel, doc: Document = document) {
+  let style = doc.getElementById("gp-page-vars");
+  if (!style) {
+    style = doc.createElement("style");
+    style.id = "gp-page-vars";
+    doc.head.appendChild(style);
+  }
+  style.textContent = pageGeometryVarsCss(model, printAreaFromMeta(doc));
 }
 
 export interface LayoutOptions {
@@ -1707,6 +1724,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
     document.head.appendChild(style);
   }
   const model = extract(css);
+  injectPageVars(model);
   injectBreakMapping(model);
   const authoring: string[] = [];
   const strips = buildStrips(model, opts, authoring);

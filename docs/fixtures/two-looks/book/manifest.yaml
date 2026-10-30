@@ -1,0 +1,16 @@
+title: "Two Looks"
+authors:
+  - "Gutterpress Fixture"
+
+preset: book
+
+extensions:
+  - ./look-a
+  - ./look-b
+
+chapters:
+  - 01-margins.md
+
+page:
+  width: 432   # 6in
+  height: 648  # 9in

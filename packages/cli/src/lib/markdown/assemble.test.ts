@@ -3,6 +3,7 @@ import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type MarkdownIt from "markdown-it";
+import postcss from "postcss";
 
 import { assembleBookHtml } from "./assemble";
 import { inlineStyles } from "../asset-inline";
@@ -216,8 +217,9 @@ test("with no margin anywhere the 1in default is written in the core layer ahead
   // What Chromium prints with and what the engine's reader assumes agree.
   expect(resolvePage(extract(css)).geometry.margin).toEqual({ top: 72, right: 72, bottom: 72, left: 72 });
   // A look's margin wins over the default: later in the reader's order, and
-  // in a layer declared after gp.vocab for Chromium (an unlayered default
-  // would beat it there, and print would disagree with the preview).
+  // for Chromium outside core's layer, which is declared first (renderChapters
+  // writes a look's `@page` rules unlayered; one in a later layer, as here,
+  // wins too).
   const look = projectStyle(
     await assembleBookHtml({ files: ["a.md"], readText: readA, pluginCss: "@layer ext.look;\n@layer ext.look {\n@page { margin: 0.5in }\n}", printArea: DTRPG }),
   );
@@ -229,6 +231,47 @@ test("with no margin anywhere the 1in default is written in the core layer ahead
   );
   expect(own).not.toContain("page margins (default)");
   expect(own).toContain("@page { size: 8.625in 11.25in; margin: 0.75in 0.75in 0.75in 0.75in; }");
+});
+
+test("core's @page rules follow its layers, unlayered and ahead of every extension; its element rules and the 1in default stay layered (#454)", async () => {
+  const css = projectStyle(
+    await assembleBookHtml({ files: ["a.md"], readText: readA, pluginCss: "@layer ext.look;\n@layer ext.look {\nbody { color: red }\n}", printArea: DTRPG }),
+  );
+  const root = postcss.parse(css.slice(css.indexOf("\n")));
+  const layersAround = (node: postcss.Node): string[] => {
+    const names: string[] = [];
+    for (let p = node.parent; p instanceof postcss.AtRule; p = p.parent) if (p.name === "layer") names.unshift(p.params);
+    return names;
+  };
+  const pages: Array<[string, string[]]> = [];
+  root.walkAtRules("page", (rule) => {
+    pages.push([rule.params, layersAround(rule)]);
+  });
+  // In source order: `@page blank`, `@page full-bleed` and `.gp-bleed`'s page,
+  // unlayered; the 1in default, still in core's layer and so below every
+  // unlayered rule; the manifest's size, last.
+  expect(pages).toEqual([
+    ["gp-page-blank", []],
+    ["gp-page-full-bleed", []],
+    ["gp-full-bleed", []],
+    ["", ["gp.vocab"]],
+    ["", []],
+  ]);
+  // Each block's after its layer; all of them before the extensions.
+  expect(css.indexOf("@page gp-page-full-bleed")).toBeGreaterThan(css.indexOf("@layer gp.marker {"));
+  expect(css.indexOf("@page gp-full-bleed")).toBeGreaterThan(css.indexOf("@layer gp.vocab {"));
+  expect(css.indexOf("@page gp-full-bleed")).toBeLessThan(css.indexOf("/* extension css */"));
+  // Element rules stay in their layers.
+  const layersOf = (selector: string): string[][] => {
+    const found: string[][] = [];
+    root.walkRules((r) => {
+      if (r.selector === selector) found.push(layersAround(r));
+    });
+    return found;
+  };
+  expect(layersOf(".page.gp-page-full-bleed")).toEqual([["gp.marker"]]);
+  expect(layersOf(".page.gp-page-blank")).toEqual([["gp.marker"]]);
+  expect(layersOf(".gp-bleed")).toEqual([["gp.vocab"]]);
 });
 
 test("a size in the book's or a look's own plain @page is overridden by the manifest's", async () => {

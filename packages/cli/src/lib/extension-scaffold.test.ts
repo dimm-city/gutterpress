@@ -42,6 +42,9 @@ function stripCssComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, "");
 }
 
+/** How a desktop tab is named in text the CLI writes into a book: say the action instead. */
+const DESKTOP_TAB = /Setup >|Book setup >|> Look|> Advanced|> Details|Look tab|Design tab/;
+
 /** A manifest `extensions:` path entry with the defaults the loader expects. */
 function pluginCfg(path: string): ResolvedExtensionConfig {
   return { use: path, options: {}, path };
@@ -114,6 +117,15 @@ describe.each([...EXTENSION_KINDS])("scaffoldExtension --kind %s", (kind) => {
     for (const rel of result.files) {
       const text = await readFile(path.join(result.extensionDir, rel), "utf8");
       expect(text).not.toMatch(/\{\{[A-Z_]+\}\}/);
+    }
+  });
+
+  test("names the action in Book setup, never a desktop tab, in any file", async () => {
+    const parent = await tmpParent();
+    const result = await scaffoldExtension({ name: "Field Notes", kind, parentDir: parent });
+    for (const rel of result.files) {
+      const text = await readFile(path.join(result.extensionDir, rel), "utf8");
+      expect(text, rel).not.toMatch(DESKTOP_TAB);
     }
   });
 

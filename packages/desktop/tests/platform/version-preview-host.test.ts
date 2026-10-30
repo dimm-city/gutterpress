@@ -1,8 +1,9 @@
 /**
- * electron/version-preview.ts — "Look at this version" (#408): one read-only
+ * electron/version-preview.ts — Version history's Pages (#408): one read-only
  * preview of a past version at a time, from a scratch copy of its files,
  * rendered through a second preview server; closing stops the server and
- * drops the copy, and a failed open leaves nothing behind.
+ * drops the copy, a failed open leaves nothing behind, and an open still
+ * waiting when a later open or close arrives is skipped.
  */
 import { describe, expect, test } from "bun:test";
 import { VersionPreviewHost, type VersionPreviewDeps } from "../../electron/version-preview";
@@ -68,6 +69,27 @@ describe("VersionPreviewHost", () => {
     await host.close();
     expect(log.stops).toEqual([url]);
     expect(log.removed).toHaveLength(1);
+  });
+
+  test("an open still waiting its turn when a later call arrives is skipped: no copy, no server", async () => {
+    const { host, log } = make();
+    const first = host.open("/book", "a".repeat(40));
+    await Promise.resolve(); // the first open has started
+    const stale = host.open("/book", "b".repeat(40));
+    const closed = host.close();
+    const latest = host.open("/book", "c".repeat(40));
+    expect(await first).toEqual({ url: "http://127.0.0.1:4001" });
+    expect(await stale).toBeNull();
+    await closed;
+    expect(await latest).toEqual({ url: "http://127.0.0.1:4002" });
+    expect(log.exports.map(([, id]) => id[0])).toEqual(["a", "c"]);
+    expect(log.stops).toEqual(["http://127.0.0.1:4001"]);
+    // An open that a close replaced before it started is skipped too.
+    const dropped = host.open("/book", "d".repeat(40));
+    await host.close();
+    expect(await dropped).toBeNull();
+    expect(log.exports).toHaveLength(2);
+    expect(log.stops).toEqual(["http://127.0.0.1:4001", "http://127.0.0.1:4002"]);
   });
 
   test("a failed export leaves no folder behind and no server running", async () => {

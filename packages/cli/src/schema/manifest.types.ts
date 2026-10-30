@@ -271,7 +271,8 @@ export interface GutterpressManifest {
      * Page margins (pt), the space between the trim and the text on each
      * edge — `inside` is the binding edge, `outside` the other. Setup >
      * Details in the app writes it. When set, the book prints with these
-     * margins and any `@page` margin in a stylesheet is overridden; left
+     * margins and any `@page` margin in a stylesheet is overridden, except
+     * where a named page sets its own (`@page full { margin: 0 }`); left
      * out, the stylesheets' `@page` margins apply (a look's design), else
      * 1in. All four edges are required together.
      */

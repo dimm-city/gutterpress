@@ -230,6 +230,7 @@
     // #221 — provider-neutral destinations picker.
     listDestinations: (dir, providerId) => api.publish.listDestinations(dir, providerId),
     createDestination: (dir, providerId, name) => api.publish.createDestination(dir, providerId, name),
+    destinationStatus: (dir, providerId) => api.publish.destinationStatus(dir, providerId),
     run: (dir, providerId, options) => api.publish.run(dir, providerId, options),
     openExternal: (url) => api.shell.openExternal(url),
     onSaved: () => toast?.success?.("Publish settings saved."),

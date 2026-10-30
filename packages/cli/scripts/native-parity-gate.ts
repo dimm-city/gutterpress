@@ -185,9 +185,9 @@ const DEFAULT_FIXTURES = [
   join(REPO, "examples", "with-validation"),
   join(REPO, "examples", "gutterpress-user-guide"),
   // The paper (#425): display and inline math as SVG, ruled tables, and a
-  // look loaded as an extension — its `@page` and every rule inside
-  // `@layer ext.academic` — so the two renderers are held to the same pages
-  // for a book styled by a bundled look listed in `extensions:`.
+  // look loaded as an extension — every rule inside `@layer ext.academic`,
+  // and its `@page` after it — so the two renderers are held to the same
+  // pages for a book styled by a bundled look listed in `extensions:`.
   join(REPO, "examples", "academic-paper"),
   // The exact-fit boundary fixture (committed): the #268 boundary as a slice
   // of the user guide's styling chapter on the rules of its stylesheet that
@@ -207,6 +207,28 @@ const DEFAULT_FIXTURES = [
   // pin root being a run of its own). `.gp-strip` now takes its height from
   // the flow root the way the block does in print (viewer.css).
   join(REPO, "docs", "fixtures", "percentage-height-root", "book"),
+  // The page-vars fixture (committed): a look's plates sized `var(--gp-page-height)`
+  // and a margin-box folio padded by `var(--gp-page-margin-outside)`. The
+  // compiler and the viewer each publish `--gp-page-*` (shared/page-vars.ts);
+  // a renderer that did not would leave the plates one line tall — two to a
+  // page, 3pp against 4. (The folio's position is asserted by
+  // render-parity.page-vars.test.ts; the gate only sees page indices.)
+  join(REPO, "docs", "fixtures", "page-vars", "book"),
+  // The page-margin fixtures (#454, committed): which `@page` margin a page
+  // prints with when a look, the book's own sheet and the manifest all set
+  // one. The engine's `@page` reader ignores cascade layers; Chromium ranks
+  // `@page` declarations by layer before page name, so while a look's `@page`
+  // rules sat in its layer, the manifest's unlayered `page.margin` beat the
+  // look's `@page full { margin: 0 }` in print only: the plate printed inset
+  // and ran onto a second page (print 4pp, viewer 3pp). Core's own
+  // `@page full-bleed` did the same from core's layer (print 6pp, viewer
+  // 5pp). No look's or core's `@page` rule is written in a layer now.
+  // render-parity.page-margins.test.ts reads the margins each fixture prints
+  // with off the PDF.
+  join(REPO, "docs", "fixtures", "named-page-margins", "book"),
+  join(REPO, "docs", "fixtures", "book-page-margin", "book"),
+  join(REPO, "docs", "fixtures", "two-looks", "book"),
+  join(REPO, "docs", "fixtures", "core-full-bleed", "book"),
 ];
 
 type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";

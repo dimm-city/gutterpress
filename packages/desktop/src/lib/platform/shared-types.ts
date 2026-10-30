@@ -687,6 +687,17 @@ export interface PublishDestination {
   url?: string;
 }
 
+/** Where this person publishes among a provider's destinations, and whether
+ *  they must choose one (#452) — mirrors the lib's `PublishDestinationStatus`.
+ *  The book's folder is the team's (manifest); a person who can't reach it
+ *  chooses their own, kept in their private settings for the book. */
+export type PublishDestinationStatus =
+  | { state: "unset" }
+  | { state: "book"; destination: PublishDestination }
+  | { state: "by-name"; name: string; destination?: PublishDestination; several: boolean }
+  | { state: "mine"; destination: PublishDestination; book: { title: string; reachable: boolean } }
+  | { state: "unreachable"; book: { title: string; reachable: boolean }; mine?: string };
+
 /** A saved publishing credential, redacted (no token) — for the picker. */
 export interface PublishSavedAccountInfo {
   /** Account label; "" is the default (unnamed) credential. */
@@ -741,7 +752,7 @@ export interface PublishRunResult {
 
 /** One entry in a project's version history (a Git commit, abstracted). */
 export interface SnapshotEntry {
-  /** Opaque revision id (a commit SHA for the local provider). */
+  /** Opaque version id (a commit SHA for the local provider). */
   id: string;
   /** Author-supplied or auto-generated snapshot message. */
   message: string;
@@ -778,11 +789,8 @@ export interface RevisionList {
   checkedOnline: boolean;
 }
 
-/** A history entry with what it changed and where it is kept (#408). */
+/** A history entry and where it is kept (#408). */
 export interface VersionEntry extends SnapshotEntry {
-  changes: VersionFileChange[];
-  /** Changed files beyond the ones listed. */
-  moreChanges: number;
   /** True = online too; false = on this computer only; null = no online copy to compare with. */
   backedUp: boolean | null;
 }

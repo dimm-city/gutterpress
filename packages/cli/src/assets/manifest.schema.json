@@ -242,7 +242,7 @@
         },
         "margin": {
           "type": "object",
-          "description": "Page margins, in points (1in = 72pt): the space between the trim and the text on each edge. `inside` is the binding edge (the left of a right-hand page, the right of a left-hand one), `outside` the other. When set, the book prints with these margins and any `@page` margin in a stylesheet is overridden; when left out, the stylesheets' `@page` margins apply (a look's design), else 1in. Setup > Book in the app edits it. All four edges are required together.",
+          "description": "Page margins, in points (1in = 72pt): the space between the trim and the text on each edge. `inside` is the binding edge (the left of a right-hand page, the right of a left-hand one), `outside` the other. When set, the book prints with these margins and any `@page` margin in a stylesheet is overridden, except where a named page sets its own (`@page full { margin: 0 }`); when left out, the stylesheets' `@page` margins apply (a look's design), else 1in. Setup > Book in the app edits it. All four edges are required together.",
           "properties": {
             "top": { "type": "number", "description": "Top margin in points.", "minimum": 0, "examples": [61.2, 72] },
             "bottom": { "type": "number", "description": "Bottom margin in points.", "minimum": 0, "examples": [61.2, 72] },

@@ -36,6 +36,7 @@ import {
   type PrintAreaSource,
 } from "../../engine/shared/print-area.ts";
 import { DEFAULT_PAGE_MARGIN_PT } from "../../engine/shared/gcpm-extract.ts";
+import postcss from "postcss";
 
 /** Reader injected by the host: resolve a project-root-relative file → its text. */
 export type ReadText = (relPath: string) => Promise<string>;
@@ -217,7 +218,10 @@ export interface AssembleBookHtmlOptions {
  * makes Chromium print at it: written AFTER every extension's and the book's
  * own sheet, it wins by the cascade, so a `size` in a look's or an author's
  * `@page` cannot shadow the manifest (the print-safety check reports one), and
- * neither can an `@page` margin once the manifest has margins. Left out of the
+ * neither can an `@page` margin once the manifest has margins — except on a
+ * named page (`@page full { margin: 0 }`), whose name outranks these rules.
+ * That holds for a look's and core's named pages too because their `@page`
+ * rules are written unlayered (`liftPageRules`, #454). Left out of the
  * manifest, margins stay the stylesheets' business — a look's design — else
  * the 1in default `defaultPageMarginCss` writes; Setup > Book records
  * `page.margin` the first time an author changes one.
@@ -241,16 +245,121 @@ function pageGeometryCss(page: PrintAreaSource | undefined): string | null {
  * The margin a book prints with when the manifest sets none: a default, not a
  * decision (`DEFAULT_PAGE_MARGIN_PT` says why one is needed at all). Written
  * AHEAD of every stylesheet and INSIDE the core `gp.vocab` layer, so a look's
- * `@page` margin (in its `ext.<name>` layer, declared later) and the book's
- * own (unlayered) both win by the cascade — in Chromium, which ranks `@page`
- * declarations by layer, as well as in the engine's order-based reader.
- * Unlayered, it would beat a look's margin in print while the preview took
- * the look's. `null` once the manifest has margins — `pageGeometryCss` then
- * writes them last — or when there is no page geometry to supply.
+ * `@page` margin and the book's own (both unlayered, both later) win by the
+ * cascade — in Chromium, which ranks `@page` declarations by layer, as well
+ * as in the engine's order-based reader. `null` once the manifest has
+ * margins — `pageGeometryCss` then writes them last — or when there is no
+ * page geometry to supply.
  */
 function defaultPageMarginCss(page: PrintAreaSource | undefined): string | null {
   if (!page || page.margin) return null;
   return `@layer gp.vocab {\n@page { margin: ${cssLength(DEFAULT_PAGE_MARGIN_PT)}; }\n}`;
+}
+
+/**
+ * Split a stylesheet into everything but its `@page` rules, and its `@page`
+ * rules, which the caller writes after it, unlayered, in source order. A
+ * rule inside an `@layer` loses that layer; one inside `@media` or
+ * `@supports` keeps the condition. CSS postcss cannot read is left as it was.
+ *
+ * Chromium ranks `@page` declarations by cascade layer before page name, so a
+ * layered `@page full { margin: 0 }` lost to the manifest's unlayered
+ * `@page { margin }` on its own pages, while the engine's reader, which
+ * ignores layers, kept it (#454). So no `@page` rule is written inside a
+ * layer — core's, an extension's or one in a layer the book declares —
+ * except core's 1in default (`defaultPageMarginCss`), which must lose to all
+ * of them.
+ * Unlayered, page rules cascade by page selector, then order: a named page
+ * keeps its margins, and the book's own sheet and the manifest, written
+ * later, still win on the pages they share with it.
+ */
+export function liftPageRules(css: string): { layered: string; pages: string } {
+  if (!/@page\b/i.test(css)) return { layered: css, pages: "" };
+  let root: postcss.Root;
+  try {
+    root = postcss.parse(css);
+  } catch {
+    return { layered: css, pages: "" };
+  }
+  const found: postcss.AtRule[] = [];
+  root.walkAtRules(/^page$/i, (rule) => {
+    found.push(rule);
+  });
+  const pages = found.map((rule) => {
+    let lifted: postcss.ChildNode = rule.clone();
+    for (let p = rule.parent; p instanceof postcss.AtRule || p instanceof postcss.Rule; p = p.parent) {
+      if (p instanceof postcss.AtRule && p.name.toLowerCase() === "layer") continue;
+      lifted = p.clone({ nodes: [] }).append(lifted);
+    }
+    rule.remove();
+    return lifted.toString();
+  });
+  return { layered: root.toString(), pages: pages.join("\n") };
+}
+
+/** Core's two layered blocks, their `@page` rules lifted out (liftPageRules). */
+const CORE_MARKERS = liftPageRules(`${MARKER_CSS.trim()}\n${TWO_VERSIONS_CSS.trim()}`);
+const CORE_VOCAB = liftPageRules(GUTTERPRESS_CSS.trim());
+
+/** Where one chunk of a book's stylesheet comes from. */
+export type CssChunkOrigin =
+  | { kind: "core" }
+  /** One extension's CSS: `file` (project-relative) for one of its stylesheets, none for its `css` export. */
+  | { kind: "extension"; name?: string; layer?: string; file?: string }
+  /** One of the book's own `styles:` sheets (project-relative). */
+  | { kind: "book"; file?: string };
+
+/** One piece of a book's stylesheet, tagged with where it comes from. */
+export interface CssChunk {
+  origin: CssChunkOrigin;
+  css: string;
+}
+
+/**
+ * A book's stylesheet as ordered chunks, each tagged with its origin, in
+ * cascade order (see the note where {@link assembleBookHtml} calls this).
+ * Joined with blank lines, the chunks are the `<style data-project-css>`
+ * block that function writes; it passes the extensions' CSS and the book's
+ * whole, one chunk each. Book setup's design settings pass them one extension
+ * file and one book sheet at a time, so each setting can say where it comes
+ * from (`book-css.ts`).
+ */
+export function assembleCssChunks(opts: {
+  printArea?: PrintAreaSource;
+  /** The extensions' CSS, already in their cascade layers, in `extensions:` order. */
+  extensions?: CssChunk[];
+  /** The book's own stylesheets, in `styles:` order. */
+  book?: CssChunk[];
+}): CssChunk[] {
+  const core = (css: string | null): CssChunk[] => (css ? [{ origin: { kind: "core" }, css }] : []);
+  // A section's comment heads its first chunk.
+  const headed = (title: string, chunks: CssChunk[] = []): CssChunk[] =>
+    chunks.map((chunk, i) => (i === 0 ? { ...chunk, css: `/* ${title} */\n${chunk.css.trim()}` } : chunk));
+  const pageGeometry = pageGeometryCss(opts.printArea);
+  const defaultMargin = defaultPageMarginCss(opts.printArea);
+  return [
+    ...core("@layer gp.marker, gp.vocab;"),
+    // The two-versions box (two-versions.ts) rides in the marker layer: it
+    // styles DOM only core emits, exactly like the marker wrappers. Each
+    // block's `@page` rules (`@page blank`, `@page full-bleed`, `.gp-bleed`)
+    // follow it, unlayered (liftPageRules).
+    ...core(`/* gutterpress markers */\n@layer gp.marker {\n${CORE_MARKERS.layered.trim()}\n}`),
+    ...core(CORE_MARKERS.pages && `/* gutterpress markers: page rules */\n${CORE_MARKERS.pages}`),
+    ...core(`/* gutterpress */\n@layer gp.vocab {\n${CORE_VOCAB.layered.trim()}\n}`),
+    ...core(CORE_VOCAB.pages && `/* gutterpress: page rules */\n${CORE_VOCAB.pages}`),
+    // The default margin (defaultPageMarginCss): in the core layer and ahead
+    // of every sheet that could set one, so its place says what it is.
+    ...core(defaultMargin && `/* page margins (default) */\n${defaultMargin}`),
+    ...headed("extension css", opts.extensions),
+    // Unlayered, before the project CSS (equal specificity: the book's rule,
+    // coming later, wins).
+    ...core(`/* column alignment */\n${TABLE_ALIGN_CSS.trim()}`),
+    ...headed("project css", opts.book),
+    // The manifest's page geometry (pageGeometryCss). Unlayered and LAST,
+    // after every sheet that could have set a size or a margin, so its place
+    // says what it is: the decision.
+    ...core(pageGeometry && `/* page geometry (manifest) */\n${pageGeometry}`),
+  ];
 }
 
 /**
@@ -350,27 +459,13 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   // it replaces an inline style, which beat plugin CSS (layered) and a book's
   // generic `th { text-align }`, so it must still beat both, while a book rule
   // that is at least as specific and later can override it.
-  const pageGeometry = pageGeometryCss(opts.printArea);
-  const defaultMargin = defaultPageMarginCss(opts.printArea);
-  const inlineCss = [
-    "@layer gp.marker, gp.vocab;",
-    // The two-versions box (two-versions.ts) rides in the marker layer: it
-    // styles DOM only core emits, exactly like the marker wrappers.
-    `/* gutterpress markers */\n@layer gp.marker {\n${MARKER_CSS.trim()}\n${TWO_VERSIONS_CSS.trim()}\n}`,
-    `/* gutterpress */\n@layer gp.vocab {\n${GUTTERPRESS_CSS.trim()}\n}`,
-    // The default margin (defaultPageMarginCss): in the core layer and ahead
-    // of every sheet that could set one, so its place says what it is.
-    defaultMargin ? `/* page margins (default) */\n${defaultMargin}` : null,
-    pluginCss ? `/* extension css */\n${pluginCss.trim()}` : null,
-    // Unlayered, before the project CSS (equal specificity: the book's rule,
-    // coming later, wins).
-    `/* column alignment */\n${TABLE_ALIGN_CSS.trim()}`,
-    projectCss ? `/* project css */\n${projectCss.trim()}` : null,
-    // The manifest's page geometry (pageGeometryCss). Unlayered and LAST,
-    // after every sheet that could have set a size or a margin, so its place
-    // says what it is: the decision.
-    pageGeometry ? `/* page geometry (manifest) */\n${pageGeometry}` : null,
-  ].filter(Boolean).join("\n\n");
+  const inlineCss = assembleCssChunks({
+    printArea: opts.printArea,
+    extensions: pluginCss ? [{ origin: { kind: "extension" }, css: pluginCss }] : [],
+    book: projectCss ? [{ origin: { kind: "book" }, css: projectCss }] : [],
+  })
+    .map((chunk) => chunk.css)
+    .join("\n\n");
 
   // SHIM — spec gap #152; see `preloadImages` above for why and when to delete.
   const preloadTags = (opts.preloadImages ?? [])
