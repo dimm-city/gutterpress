@@ -24,18 +24,16 @@ import {
 import {
   createFolder,
   driveAbout,
-  ensureFolder,
   findFileInFolder,
-  getFolderById,
   listFolders,
   refreshAccessToken,
   resumableUpload,
-  type DriveFolder,
 } from "../google-drive.ts";
 import {
   resolvePublishCredential,
   type PreflightIssue,
   type PublishAuthStatus,
+  type PublishDestinationStatus,
   type PublishOutcome,
   type PublishProduct,
   type PublishProvider,
@@ -43,11 +41,7 @@ import {
   type PublishRequest,
 } from "../types.ts";
 import type { HostCredential } from "../../remote-auth/token-store.ts";
-
-/** Default folder name when the manifest sets neither `folder` nor
- * `folderId` (D5, ratified: one shared "Gutterpress" folder, not
- * per-book-title folders). */
-const DEFAULT_FOLDER_NAME = "Gutterpress";
+import { DEFAULT_FOLDER_NAME, resolveFolder, toDestination, uploadFolder } from "./gdrive-folder.ts";
 
 const NOT_CONNECTED_MESSAGE =
   "Google Drive isn't connected. Run `gutterpress publish --provider gdrive --connect` (or set GDRIVE_REFRESH_TOKEN) first.";
@@ -73,19 +67,6 @@ const info: PublishProviderInfo = {
   },
   destinations: { label: "Folder", canCreate: true },
 };
-
-interface GDriveConfig {
-  folder?: string;
-  folderId?: string;
-}
-
-function readConfig(req: PublishRequest): GDriveConfig {
-  const cfg = req.config as GDriveConfig;
-  return {
-    folder: cfg.folder?.trim() || undefined,
-    folderId: cfg.folderId?.trim() || undefined,
-  };
-}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -123,33 +104,6 @@ async function getAccessToken(
   if (!resolved) throw new Error(NOT_CONNECTED_MESSAGE);
   const accessToken = await mintAccessToken(resolved, req.deps.fetch ?? globalThis.fetch);
   return { accessToken, source: resolved.source };
-}
-
-/** Resolve the target folder per D5: explicit `folderId` (verified alive) →
- * find-by-name → create at My Drive root. */
-async function resolveFolder(
-  fetchImpl: typeof fetch,
-  accessToken: string,
-  cfg: GDriveConfig,
-): Promise<DriveFolder> {
-  if (cfg.folderId) {
-    const folder = await getFolderById(fetchImpl, accessToken, cfg.folderId);
-    if (!folder) {
-      throw new Error(
-        `The Drive folder recorded in publish.gdrive.folderId ("${cfg.folderId}") can't be found — it may have been trashed or the id copied wrong. Pick the folder again.`,
-      );
-    }
-    return folder;
-  }
-  return ensureFolder(fetchImpl, accessToken, cfg.folder || DEFAULT_FOLDER_NAME);
-}
-
-function folderUrl(id: string): string {
-  return `https://drive.google.com/drive/folders/${id}`;
-}
-
-function toDestination(folder: DriveFolder): PublishProduct {
-  return { id: folder.id, title: folder.name, url: folderUrl(folder.id) };
 }
 
 /** What actually gets uploaded: a local file path + the Drive-visible name.
@@ -382,9 +336,13 @@ export const gdriveProvider: PublishProvider = {
     return toDestination(folder);
   },
 
+  async destinationStatus(req): Promise<PublishDestinationStatus> {
+    const { accessToken } = await getAccessToken(req);
+    return resolveFolder(req, accessToken);
+  },
+
   async upload(req): Promise<PublishOutcome> {
     const fetchImpl = req.deps.fetch ?? globalThis.fetch;
-    const cfg = readConfig(req);
     const { accessToken } = await getAccessToken(req);
     const isHtml = req.artifact.format === "html";
 
@@ -414,13 +372,14 @@ export const gdriveProvider: PublishProvider = {
       }
 
       req.deps.onProgress?.("Resolving the Drive folder…");
-      const folder = await resolveFolder(fetchImpl, accessToken, cfg);
+      const where = await resolveFolder(req, accessToken);
+      const folder = await uploadFolder(where, fetchImpl, accessToken);
 
       const fileName = source.fileName;
       const existing = await findFileInFolder(fetchImpl, accessToken, folder.id, fileName);
 
       req.deps.onProgress?.(
-        existing ? `Updating "${fileName}" in "${folder.name}"…` : `Uploading "${fileName}" to "${folder.name}"…`,
+        existing ? `Updating "${fileName}" in "${folder.title}"…` : `Uploading "${fileName}" to "${folder.title}"…`,
       );
 
       let lastReported = -1;
@@ -445,15 +404,19 @@ export const gdriveProvider: PublishProvider = {
       return {
         kind: "published",
         url: file.webViewLink,
-        detail: `Uploaded "${fileName}" to the "${folder.name}" folder in your Google Drive${existing ? " (updated the existing file)" : ""}.`,
+        detail:
+          `Uploaded "${fileName}" to the "${folder.title}" folder in your Google Drive${existing ? " (updated the existing file)" : ""}.` +
+          (where.state === "by-name" && where.several
+            ? ` Several of your folders are named "${where.name}"; this is the most recently changed one: ${folder.url}`
+            : ""),
         followUp: [
           "To share it, open it in Drive and use the Share button — Gutterpress never changes who can see your files.",
           isHtml
             ? "Google Drive stores files, not live websites — download and unzip it to view the export, or publish it as a real site with the Azure Static Web Apps provider."
             : undefined,
-          cfg.folderId
-            ? undefined
-            : `Tip (CLI): record the folder id in the manifest (publish.gdrive.folderId: "${folder.id}") so renaming the folder in Drive can never break publishing.`,
+          where.state === "unset"
+            ? `Tip (CLI): record the folder id in the manifest (publish.gdrive.folderId: "${folder.id}") so renaming the folder in Drive can never break publishing.`
+            : undefined,
         ].filter((s): s is string => !!s),
       };
     } finally {

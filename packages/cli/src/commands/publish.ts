@@ -38,6 +38,8 @@ import {
  *                                                   #   browser instead — nothing to paste
  *   gutterpress publish --provider itch --disconnect   # forget the stored key
  *   gutterpress publish --provider itch [dir]          # publish (add --dry-run / --json)
+ *   gutterpress publish --provider gdrive --folder-id <id>  # this run only: another
+ *                                                   #   Drive folder (or --folder <name>)
  *   gutterpress publish --provider <package> [dir]     # via a book's publishing plugin
  *                                                   #   (experimental, #381)
  *
@@ -137,6 +139,16 @@ const commandArgs = {
     type: "string",
     description:
       "Artifact to publish (PDF path, or HTML export dir). Default: the manifest's output location",
+  },
+  "folder-id": {
+    type: "string",
+    description:
+      "Google Drive: publish to this folder id for this run only (the manifest is not changed)",
+  },
+  folder: {
+    type: "string",
+    description:
+      "Google Drive: publish to the folder with this name in your own Drive, found or created, for this run only (the manifest is not changed)",
   },
   manifest: { type: "string", description: "Path to manifest.yaml" },
   "dry-run": { type: "boolean", description: "Preflight only; don't contact the platform" },
@@ -365,6 +377,16 @@ export default defineCommand({
       return;
     }
 
+    // A Drive folder for this run only (#452): the manifest is read, never
+    // written, so a teammate who can't reach the book's folder publishes
+    // elsewhere without changing it for everyone.
+    const folderId = typeof args["folder-id"] === "string" ? args["folder-id"].trim() : "";
+    const folder = typeof args.folder === "string" ? args.folder.trim() : "";
+    if ((folderId || folder) && provider.info.id !== "gdrive") {
+      log.error("--folder-id and --folder are for --provider gdrive.");
+      process.exit(EXIT_CODES.USAGE);
+    }
+
     let result: RunPublishResult;
     try {
       result = await runPublish(
@@ -375,6 +397,7 @@ export default defineCommand({
           manifestPath: typeof args.manifest === "string" ? args.manifest : undefined,
           artifactPath: typeof args.file === "string" ? args.file : undefined,
           dryRun: !!args["dry-run"],
+          ...(folderId || folder ? { settings: { folderId, folder } } : {}),
         },
         deps,
       );

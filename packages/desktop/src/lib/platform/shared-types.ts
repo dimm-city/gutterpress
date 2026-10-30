@@ -687,6 +687,17 @@ export interface PublishDestination {
   url?: string;
 }
 
+/** Where this person publishes among a provider's destinations, and whether
+ *  they must choose one (#452) — mirrors the lib's `PublishDestinationStatus`.
+ *  The book's folder is the team's (manifest); a person who can't reach it
+ *  chooses their own, kept in their private settings for the book. */
+export type PublishDestinationStatus =
+  | { state: "unset" }
+  | { state: "book"; destination: PublishDestination }
+  | { state: "by-name"; name: string; destination?: PublishDestination; several: boolean }
+  | { state: "mine"; destination: PublishDestination; book: { title: string; reachable: boolean } }
+  | { state: "unreachable"; book: { title: string; reachable: boolean }; mine?: string };
+
 /** A saved publishing credential, redacted (no token) — for the picker. */
 export interface PublishSavedAccountInfo {
   /** Account label; "" is the default (unnamed) credential. */

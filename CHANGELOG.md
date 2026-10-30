@@ -114,6 +114,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   `--gp-page-margin-top`, `-bottom`, `-inside` and `-outside` (lengths in `pt`)
   instead of keeping a copy that stops following Book setup. They are the same in
   the preview and the PDF, and a named page has its own size and margins.
+- **Google Drive: your own folder when the book's is out of reach (#452).** It
+  is saved for you only and never changes the book's folder for the team;
+  `gutterpress publish --folder-id` or `--folder` publishes elsewhere for one run.
 
 ### Changed
 

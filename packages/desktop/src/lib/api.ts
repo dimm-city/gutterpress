@@ -114,6 +114,7 @@ import type {
   UpdaterStatus,
   PublishProviderCard,
   PublishDestination,
+  PublishDestinationStatus,
   PublishRunResult,
   DesktopPrefs,
   LastFlushFailure,
@@ -958,5 +959,10 @@ export const api = {
     /** Create a new destination (gdrive: a Drive folder at My Drive root). */
     createDestination: (projectDir: string, providerId: string, name: string) =>
       post<PublishDestination>('/api/publish/destinations/create', { projectDir, providerId, name }),
+
+    /** Where this person publishes among the destinations, and whether they
+     *  must choose one (#452, gdrive: the book's folder or their own). */
+    destinationStatus: (projectDir: string, providerId: string) =>
+      post<PublishDestinationStatus>('/api/publish/destinations/status', { projectDir, providerId }),
   },
 };

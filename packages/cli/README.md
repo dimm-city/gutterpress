@@ -253,6 +253,8 @@ gutterpress publish [project] [options]
   --account <label>    Named-credential label for --connect/--disconnect (keep several accounts per provider); omit for the default
   --token <key>        API key for --connect (prefer stdin/env var to keep it out of shell history)
   --file <path>        Artifact to publish (PDF path, or HTML export dir). Default: the manifest's output location
+  --folder-id <id>     Google Drive: publish to this folder for this run only (the manifest is not changed)
+  --folder <name>      Google Drive: publish to the folder with this name in your own Drive, for this run only
   --manifest <path>    Path to manifest.yaml
   --dry-run            Preflight only; don't contact the platform
   --json               Machine-readable JSON output (CI)

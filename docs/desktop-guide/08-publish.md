@@ -52,7 +52,8 @@ computer.
 - **Azure Static Web Apps:** enter the **Environment**.
 - **Google Drive:** once you are connected, pick a folder with **Choose a folder…** or make one
   with **New folder…**. The folder is where the whole team publishes, so it is saved with the
-  book.
+  book. Changing it later asks first: "This changes the folder for everyone who publishes this
+  book." See [The book's Drive folder and your own](#the-books-drive-folder-and-your-own).
 - **Folder:** choose where the file goes on your computer. A folder inside the book (`dist` by
   default) is saved with the book, so everyone saves to the same place. A folder outside the
   book is yours alone: it is saved on this computer only, never in the book.
@@ -78,6 +79,22 @@ remembered for this book on this computer only, so it never changes a teammate's
 - **Manage accounts** opens the Accounts page to see, replace or remove an account.
 
 Keys are stored on your computer only.
+
+### The book's Drive folder and your own
+
+Gutterpress can only see Drive folders that your own Google connection made or opened, so a
+folder a teammate picked for the book may be out of your reach even if they shared it with you.
+The Google Drive step then says so: "This book publishes to the Drive folder 'Harbor Books',
+which your Google account can't reach." Choose a folder you can reach, or make one. It is saved
+for you only, on this computer; the book keeps its folder for everyone else.
+
+- If the book's folder becomes reachable later, you keep publishing to your own until you click
+  **Use the book's folder**.
+- **Use a different folder just for me** picks your own folder even when you can reach the book's.
+- If the team changes the book's folder, or you switch accounts, your own folder no longer
+  applies: you publish to the book's folder if you can reach it, or choose again.
+- A book that names its folder only by name publishes to a folder of that name in each person's
+  own Drive. If several of yours have that name, the step asks you to choose one, for you only.
 
 ## Preflight
 

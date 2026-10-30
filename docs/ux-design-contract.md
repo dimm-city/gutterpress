@@ -701,6 +701,24 @@ older book's account or absolute in-book folder is moved on the next save of
 it; opening the wizard rewrites nothing. Detail and the full table:
 `docs/publishing.md`.
 
+**The book's Drive folder and a person's own (binding, #452):** the Google
+Drive folder in the manifest is the team's, and is written only on the first
+pick ("Saved with the book, so everyone publishes here.") or on a deliberate
+change, which the step confirms first: "This changes the folder for everyone
+who publishes this book." When the book's folder is not reachable with the
+account the book publishes with (`drive.file` answers 404 for a folder the
+connection never opened), the Drive step says so in plain words and the pick is
+saved in the person's private settings only, recorded with the book's folder it
+stands in for and the account; the manifest is not written and publishing never
+creates a folder in its place. That own folder lapses when the book's folder or
+the account changes (the book's folder is used if reachable, else the step asks
+again), and is never switched silently: once the book's folder is reachable the
+step shows "You publish to your own folder 'X' instead of the book's 'Y'" with
+**Use the book's folder**. **Use a different folder just for me** makes a
+private choice while the book's folder is reachable. A folder named only by
+name is each person's own of that name. The CLI reads the manifest only and
+offers `--folder-id` / `--folder` for one run. Detail: `docs/publishing.md`.
+
 **One place for accounts (binding):** the **Accounts** page is where accounts
 are managed. The wizard lists the provider's saved accounts, lets the author
 pick one for this book, and adds or replaces one in place with the Accounts

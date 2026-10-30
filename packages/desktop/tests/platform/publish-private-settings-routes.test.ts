@@ -8,7 +8,8 @@
  * the book, are one person's own and never land in the manifest.
  * `publish/list` shows the person's view (their values over the manifest's),
  * and an older book that still keeps an account or an absolute folder in its
- * manifest keeps working until the next save moves it.
+ * manifest keeps working until the next save moves it. A Drive folder of their
+ * own, for when the book's is out of their reach (#452), is private too.
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -19,6 +20,7 @@ import { makeHostServices } from "../support/host-services-fake";
 import { POST as publishList } from "../../src/routes/api/publish/list/+server";
 import { POST as publishRun } from "../../src/routes/api/publish/run/+server";
 import { POST as publishSetConfig } from "../../src/routes/api/publish/set-config/+server";
+import { POST as publishDestinationStatus } from "../../src/routes/api/publish/destinations/status/+server";
 
 let root: string;
 let book: string;
@@ -214,4 +216,80 @@ test("another book's private settings do not apply to this one", async () => {
   const res = await publishList({ request: request({ projectDir: other }) } as never);
   const itch = ((await res.json()) as Card[]).find((c) => c.id === "itch")!;
   expect(itch.selectedAccount).toBe("");
+});
+
+// ── A Drive folder of one's own (#452) ───────────────────────────────────────
+
+test("a Drive folder of one's own is private: the manifest is byte-identical, and it records the book's folder", async () => {
+  await writeManifest("publish:\n  gdrive:\n    folderId: F1\n    folder: Harbor Books\n");
+  const before = await manifest();
+
+  await setConfig("gdrive", { myFolderId: "B1", myFolder: "Ben's Books" });
+  expect(await manifest()).toBe(before);
+  expect(await privateSettings()).toEqual({ gdrive: { myFolderId: "B1", myFolder: "Ben's Books", myFolderFor: "F1" } });
+
+  await setConfig("gdrive", { myFolderId: "" }); // "Use the book's folder"
+  expect(await manifest()).toBe(before);
+  expect(await privateSettings()).toBeUndefined();
+});
+
+test("a teammate whose Google account can't reach the book's folder publishes to their own, and the manifest is untouched", async () => {
+  // Ada set up the book's folder F1. Ben's Google account sees only his own B1:
+  // Drive answers 404 for anything else, as it does under the drive.file scope.
+  await writeManifest("publish:\n  gdrive:\n    folderId: F1\n    folder: Harbor Books\n");
+  const before = await manifest();
+  const ben = { host: "gdrive", kind: "google-oauth", token: "ben", createdAt: 1, label: "ben@example.com" };
+  registerHostServices(
+    makeHostServices({
+      fsGuard: { projectRoots: () => [book], readOnlyRoots: () => [] as string[] },
+      desktop: { getUserDataPath: () => userData },
+      remote: { tokenStore: { get: async (key: string) => (key === "gdrive" ? ben : null), list: async () => [ben] } as never },
+    }),
+  );
+  const uploads: Array<{ parents?: string[] }> = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+    if (url.includes("oauth2.googleapis.com/token")) return json({ access_token: "at", expires_in: 3599 });
+    if (url.includes("/drive/v3/about")) return json({ storageQuota: { usage: "0" } });
+    if (/\/files\/B1\?fields=id,name,trashed,mimeType/.test(url)) {
+      return json({ id: "B1", name: "Ben's Books", trashed: false, mimeType: "application/vnd.google-apps.folder" });
+    }
+    if (/\/files\/[^?]+\?fields=id,name,trashed,mimeType/.test(url)) return json({ error: { code: 404 } }, 404);
+    if (url.includes("/drive/v3/files?q=")) return json({ files: [] });
+    if (url.includes("uploadType=resumable")) {
+      uploads.push(JSON.parse(String(init?.body)) as { parents?: string[] });
+      return new Response(null, { status: 200, headers: { Location: "https://upload.test/s" } });
+    }
+    if (url === "https://upload.test/s") return json({ id: "f", name: "x", webViewLink: "https://drive.google.com/file/d/f/view" });
+    throw new Error(`unexpected fetch ${url}`);
+  }) as typeof fetch;
+  process.env.GUTTERPRESS_GOOGLE_CLIENT_ID = "test-client-id";
+  process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET = "test-client-secret";
+  const status = async () =>
+    (await publishDestinationStatus({ request: request({ projectDir: book, providerId: "gdrive" }) } as never)).json();
+  try {
+    expect(await status()).toEqual({ state: "unreachable", book: { title: "Harbor Books", reachable: false } });
+
+    await setConfig("gdrive", { myFolderId: "B1", myFolder: "Ben's Books" });
+    expect(await status()).toMatchObject({ state: "mine", destination: { id: "B1" }, book: { reachable: false } });
+
+    const dist = path.join(book, "dist");
+    await mkdir(dist, { recursive: true });
+    await writeFile(path.join(dist, "field-guide-pdf.pdf"), "%PDF-1.4 fake");
+    const res = await publishRun({
+      request: request({ projectDir: book, providerId: "gdrive", artifactPath: "dist/field-guide-pdf.pdf" }),
+    } as never);
+    const ran = (await res.json()) as { ok: boolean; error?: string; issues?: unknown };
+    expect(ran).toMatchObject({ ok: true });
+    expect(uploads).toEqual([{ name: "field-guide-pdf.pdf", parents: ["B1"] }]);
+
+    expect(await manifest()).toBe(before);
+    expect(await privateSettings()).toEqual({ gdrive: { myFolderId: "B1", myFolder: "Ben's Books", myFolderFor: "F1" } });
+  } finally {
+    globalThis.fetch = realFetch;
+    delete process.env.GUTTERPRESS_GOOGLE_CLIENT_ID;
+    delete process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET;
+  }
 });

@@ -366,3 +366,105 @@ export async function publish(outputDir, context) {
     expect(lines.join("\n")).toContain("pub-demo is a publishing plugin — it manages its own credentials");
   });
 });
+
+// #452 case 11: the CLI reads the book's Drive folder from the manifest only,
+// never writes it (not even on failure), and names a one-run way out.
+describe("publish --provider gdrive — the book's folder from the manifest, never written", () => {
+  const dirs: string[] = [];
+  let fetchSpy: ReturnType<typeof spyOn> | undefined;
+  const uploads: string[] = [];
+
+  beforeEach(() => {
+    process.env.GDRIVE_REFRESH_TOKEN = "rt";
+    process.env.GUTTERPRESS_GOOGLE_CLIENT_ID = "test-client-id";
+    process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET = "test-client-secret";
+    uploads.length = 0;
+    // This account reaches only its own folder "B1"; any other id is a 404.
+    fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+      if (url.includes("oauth2.googleapis.com/token")) return json({ access_token: "at", expires_in: 3599 });
+      if (url.includes("/drive/v3/about")) return json({ storageQuota: { usage: "0" } });
+      if (/\/files\/B1\?fields=id,name,trashed,mimeType/.test(url)) {
+        return json({ id: "B1", name: "Ben's Books", trashed: false, mimeType: "application/vnd.google-apps.folder" });
+      }
+      if (/\/files\/[^?]+\?fields=id,name,trashed,mimeType/.test(url)) return json({ error: { code: 404 } }, 404);
+      if (url.includes("/drive/v3/files?q=")) return json({ files: [] });
+      if (url.includes("uploadType=resumable")) {
+        uploads.push(String(init?.body));
+        return new Response(null, { status: 200, headers: { Location: "https://upload.test/s" } });
+      }
+      if (url === "https://upload.test/s") return json({ id: "f", name: "x", webViewLink: "https://drive.google.com/file/d/f/view" });
+      throw new Error(`unexpected fetch ${url}`);
+    }) as unknown as typeof fetch);
+  });
+  afterEach(async () => {
+    fetchSpy?.mockRestore();
+    delete process.env.GUTTERPRESS_GOOGLE_CLIENT_ID;
+    delete process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET;
+    for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true }).catch(() => {});
+  });
+
+  async function teamBook(): Promise<string> {
+    const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-publish-gdrive-cmd-"));
+    dirs.push(dir);
+    await writeFile(
+      path.join(dir, "manifest.yaml"),
+      "title: Test Book\nauthors: [Tester]\npreset: book\npublish:\n  gdrive:\n    folderId: F1\n    folder: Harbor Books\n",
+      "utf8",
+    );
+    await writeFile(path.join(dir, "book.pdf"), "%PDF-1.4 fake");
+    return dir;
+  }
+
+  function lastJson(spy: ReturnType<typeof spyOn>): { ok: boolean; error?: string } {
+    const writes = (spy.mock.calls ?? [])
+      .map((c: unknown[]) => c[0])
+      .filter((s: unknown): s is string => typeof s === "string" && /^\s*\{/.test(s));
+    return JSON.parse(writes[writes.length - 1] as string);
+  }
+
+  test("an unreachable book folder fails naming it and the one-run flags, and the manifest is unchanged", async () => {
+    const dir = await teamBook();
+    const before = await readFile(path.join(dir, "manifest.yaml"), "utf8");
+    stubExit();
+    consoleLogSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await expect(
+      runCommand(publishCommand, { rawArgs: [dir, "--provider", "gdrive", "--file", "book.pdf", "--json"] }),
+    ).rejects.toThrow(new ProcessExitSignal(EXIT_CODES.FINDINGS).message);
+
+    const result = lastJson(consoleLogSpy);
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('the Drive folder "Harbor Books", which this Google account can\'t reach');
+    expect(result.error).toContain("--folder-id <id> or --folder <name>");
+    expect(uploads).toEqual([]);
+    expect(await readFile(path.join(dir, "manifest.yaml"), "utf8")).toBe(before);
+  });
+
+  test("--folder-id publishes to that folder for this run only", async () => {
+    const dir = await teamBook();
+    const before = await readFile(path.join(dir, "manifest.yaml"), "utf8");
+    consoleLogSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await runCommand(publishCommand, {
+      rawArgs: [dir, "--provider", "gdrive", "--file", "book.pdf", "--folder-id", "B1", "--json"],
+    });
+
+    expect(lastJson(consoleLogSpy).ok).toBe(true);
+    expect(uploads.map((b) => (JSON.parse(b) as { parents: string[] }).parents)).toEqual([["B1"]]);
+    expect(await readFile(path.join(dir, "manifest.yaml"), "utf8")).toBe(before);
+  });
+
+  test("--folder-id and --folder are refused for any other provider", async () => {
+    const dir = await teamBook();
+    stubExit();
+    const errors: string[] = [];
+    consoleErrorSpy = spyOn(console, "error").mockImplementation((...a) => void errors.push(a.join(" ")));
+
+    await expect(
+      runCommand(publishCommand, { rawArgs: [dir, "--provider", "kdp", "--folder", "Mine"] }),
+    ).rejects.toThrow(new ProcessExitSignal(EXIT_CODES.USAGE).message);
+    expect(errors.join("\n")).toContain("--folder-id and --folder are for --provider gdrive.");
+  });
+});
