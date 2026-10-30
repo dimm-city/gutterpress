@@ -188,8 +188,18 @@ describe("Version history", () => {
     expect(view).toContain(">Pages</button>");
     expect(view).toContain("Changed files");
     expect(view).toContain("Your current work is saved as a version first.");
-    expect(view).toContain("in the online copy and not on this computer yet");
     expect(view).toContain("Only on this computer");
+  });
+
+  test("versions online and not here yet are listed under their own heading, and say when they come in (#484)", () => {
+    expect(view).toContain("Online, not yet on this computer</h2>");
+    expect(view).toContain("They come in with <strong>Get latest</strong>, or the next time this book backs up.");
+  });
+
+  test("each card names what its version changed, in 0.11.22's words (#484)", () => {
+    expect(view).toContain("No changes");
+    expect(view).toContain("and {more} more");
+    expect(view).toMatch(/\{change\.path\}<\/span> · \{change\.hint\}/);
   });
 });
 

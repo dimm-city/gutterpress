@@ -6,13 +6,15 @@
  *   1. What did a version change? A walk over the version's tree and its
  *      parent's; each differing file gets a plain size hint
  *      ("3 paragraphs changed", "1 rule changed", "replaced") from a
- *      two-way diff of the two blobs. Asked for one version at a time (the
- *      one selected), never for a whole page. A history page says only
- *      whether each version is backed up online (an ancestor of the
- *      remote-tracking tip) or on this computer only.
+ *      two-way diff of the two blobs. Asked for one version at a time (a
+ *      card as it scrolls into view, or the one selected), never for a
+ *      whole page. A history page says only whether each version is backed
+ *      up online (an ancestor of the remote-tracking tip) or on this
+ *      computer only.
  *   2. What is online, not yet on this computer? A fetch of the book's
  *      branch (refs only move; nothing is merged or checked out) and the
- *      commits the fetched tip has that the local tip does not.
+ *      commits the fetched tip has that the local tip does not, each with
+ *      the files it changed.
  *   3. A version's files: one text file at that version beside the file as
  *      it is now, lines aligned and changed lines marked (the compare view);
  *      or the whole tree written to a folder for the preview to render
@@ -55,6 +57,13 @@ export interface VersionChanges {
 export interface VersionEntry extends SnapshotEntry {
   /** True = online too; false = on this computer only; null = no online copy to compare with. */
   backedUp: boolean | null;
+}
+
+/** A version in the online copy that this computer has not got, with the files it changed. */
+export interface OnlineVersionEntry extends VersionEntry {
+  changes: VersionFileChange[];
+  /** Changed files beyond the ones listed. */
+  moreChanges: number;
 }
 
 /** How many changed files a version card lists before "and N more". */
@@ -118,8 +127,11 @@ export function changeHint(filepath: string, before: string, after: string): str
  * {@link VERSION_CHANGES_SHOWN}.
  */
 export async function listVersionChanges(projectDir: string, oid: string): Promise<VersionChanges> {
-  const dir = await repoDirFor(projectDir);
-  const cache = {};
+  return changesOf(await repoDirFor(projectDir), {}, oid);
+}
+
+/** {@link listVersionChanges} in repository `dir`, sharing `cache` with the caller's other reads. */
+async function changesOf(dir: string, cache: object, oid: string): Promise<VersionChanges> {
   const parent = (await git.readCommit({ fs, dir, cache, oid })).commit.parent[0] ?? null;
   const found: VersionFileChange[] = [];
   await git.walk({
@@ -327,15 +339,15 @@ export async function commitsAhead(
 /**
  * What is online that this computer has not got: fetch the book's branch
  * (remote-tracking ref only — no merge, no checkout, safe on a dirty tree)
- * and describe the commits this computer has not got. Quiet on every failure,
- * reporting why, like `checkRemoteUpdates`.
+ * and describe the commits this computer has not got, each with the files it
+ * changed. Quiet on every failure, reporting why, like `checkRemoteUpdates`.
  */
 export async function listOnlineVersions(options: {
   projectDir: string;
   credential?: HostCredential;
   tokenStore?: TokenStore;
   httpClient?: typeof defaultGitHttp;
-}): Promise<{ entries: VersionEntry[]; reason?: "no-remote" | "auth" | "offline" }> {
+}): Promise<{ entries: OnlineVersionEntry[]; reason?: "no-remote" | "auth" | "offline" }> {
   const http = options.httpClient ?? defaultGitHttp;
   try {
     const dir = await repoDirFor(options.projectDir);
@@ -361,8 +373,12 @@ export async function listOnlineVersions(options: {
     const tip = await resolveOrNull(dir, `refs/remotes/${transport.remote}/${branch}`);
     const local = await resolveOrNull(dir, branch);
     if (!tip || !local) return { entries: [] };
-    const entries = await commitsAhead(dir, tip, local, cache);
-    return { entries: entries.map((entry) => ({ ...entry, backedUp: true })) };
+    const entries: OnlineVersionEntry[] = [];
+    for (const entry of await commitsAhead(dir, tip, local, cache)) {
+      const { files, more } = await changesOf(dir, cache, entry.id);
+      entries.push({ ...entry, backedUp: true, changes: files, moreChanges: more });
+    }
+    return { entries };
   } catch (e) {
     const message = (e as { message?: string })?.message ?? "";
     if (message === MSG_NO_REMOTE || message === MSG_SSH_REMOTE) return { entries: [], reason: "no-remote" };

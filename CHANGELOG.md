@@ -352,7 +352,7 @@ This project follows [Semantic Versioning](https://semver.org/).
   the screen and **Show older versions** no longer work out what every listed
   version changed, and a book with many versions not backed up yet no longer
   walks its whole history once for each of them. Library: `describeVersions`
-  and `listOnlineVersions` entries no longer carry `changes`/`moreChanges`;
+  entries no longer carry `changes`/`moreChanges`;
   `listVersionChanges(projectDir, id)` lists one version's changed files
   (desktop route `vcs/version-changes`).
 - **Library:** `listLocalBranches` and its `LocalBranches` type are replaced by
@@ -526,6 +526,19 @@ This project follows [Semantic Versioning](https://semver.org/).
     neither shape is refused. `PublishSelectionsStore` reads a file 0.11.22
     wrote (one account per provider for a book) as that book's account, and
     keeps it on the next write instead of mangling it.
+- **Version history lists the versions in the online copy, and what every
+  version changed, again (#484), a regression from 0.11.22.** The Version
+  history screen (#448, 0.11.23-alpha.7) and its speed-up (#461, beta.1) cut
+  the versions in the online copy and not on this computer yet down to a
+  count, and showed changed files only for the selected version. As in
+  0.11.22, those versions are listed at the top again, under **Online, not yet
+  on this computer**, each with its name, time, author and the files it
+  changed, and every version lists its changed files (`chapter-02.md · 3
+  paragraphs changed`, **and N more**, **No changes**). A version's files load
+  as it scrolls into view, so opening the screen and **Show older versions**
+  stay as quick as #461 made them, and selecting a version already shown is
+  instant. Library: `listOnlineVersions` entries carry `changes` and
+  `moreChanges` again (`OnlineVersionEntry`).
 
 ## [0.11.22] - 2026-10-23
 

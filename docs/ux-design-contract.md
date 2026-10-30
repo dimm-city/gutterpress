@@ -558,6 +558,15 @@ buttons.
   version** at the top. Selecting a version never renders it: selecting
   another returns to its Changed files. × or Esc returns to Book setup. It
   never takes over the editor pane.
+  As in 0.11.22 (#484), every version card lists the files its version
+  changed ("chapter-02.md · 3 paragraphs changed", "and N more" past eight,
+  "No changes"), loaded as the card scrolls into view, never a whole page up
+  front, so the list and **Show older versions** stay as quick as #461 made
+  them, and a card already seen selects instantly. With an online copy, the
+  versions in it that are not on this computer yet are listed above the
+  rest, under **Online, not yet on this computer**, each with its name, time,
+  author and changed files ("They come in with **Get latest**, or the next
+  time this book backs up."); they are shown, not selected or restored.
   Author-facing vocabulary says "revision", never "branch"; "copy" means only
   the online copy. The editor/file tree/preview show the new revision the same
   way they pick up any other external change.

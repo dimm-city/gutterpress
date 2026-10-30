@@ -1,8 +1,10 @@
 /**
  * version-changes.ts over a real (temporary) repository built with
  * isomorphic-git: what a version changed, whether each is backed up,
- * which commits an online tip has that the local tip lacks, the aligned
- * compare rows, and a version's files written out for the preview.
+ * which commits an online tip has that the local tip lacks, what is in the
+ * online copy (over the in-process git server) and what each of those
+ * versions changed, the aligned compare rows, and a version's files written
+ * out for the preview.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import fs from "node:fs";
@@ -16,8 +18,11 @@ import {
   compareVersionFile,
   describeVersions,
   exportVersionTree,
+  listOnlineVersions,
   listVersionChanges,
+  VERSION_CHANGES_SHOWN,
 } from "./version-changes";
+import { serverCommit, setupClone } from "./remote-auth/test-support/sync-harness";
 
 const author = { name: "Test Writer", email: "writer@example.test" };
 let dir: string;
@@ -340,6 +345,55 @@ describe("commitsAhead", () => {
       expect((await commitsAhead(repo, online, local)).map((e) => e.id)).toEqual([online, theirs]);
     } finally {
       await rm(repo, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("listOnlineVersions", () => {
+  test("lists each version online and not here, newest first, with the files it changed (#484)", async () => {
+    const h = await setupClone();
+    try {
+      expect(await listOnlineVersions({ projectDir: h.projectDir })).toEqual({ entries: [] });
+      const ten = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`notes-${i}.md`, `Note ${i}\n`]));
+      const notes = await serverCommit(h.serverDir, ten, "Automatic version");
+      const reworded = await serverCommit(
+        h.serverDir,
+        { "chapter-01.md": "# One\n\nThird draft.\n\nA new paragraph.\n", "notes-0.md": null },
+        "Tightened chapter one",
+      );
+      const { entries, reason } = await listOnlineVersions({ projectDir: h.projectDir });
+      expect(reason).toBeUndefined();
+      expect(entries.map((e) => [e.id, e.message, e.author, e.backedUp])).toEqual([
+        [reworded, "Tightened chapter one", "Server", true],
+        [notes, "Automatic version", "Server", true],
+      ]);
+      expect(entries[0]!.changes).toEqual([
+        { path: "chapter-01.md", kind: "changed", hint: "2 paragraphs changed", text: true },
+        { path: "notes-0.md", kind: "removed", hint: "removed", text: true },
+      ]);
+      expect(entries[0]!.moreChanges).toBe(0);
+      // Capped as a card lists them: the first eight by path, "and 2 more".
+      expect(entries[1]!.changes.map((c) => [c.path, c.hint])).toEqual(
+        Array.from({ length: VERSION_CHANGES_SHOWN }, (_, i) => [`notes-${i}.md`, "added"]),
+      );
+      expect(entries[1]!.moreChanges).toBe(10 - VERSION_CHANGES_SHOWN);
+      // The same answer the version-changes route gives for each one.
+      for (const entry of entries) {
+        expect(await listVersionChanges(h.projectDir, entry.id)).toEqual({ files: entry.changes, more: entry.moreChanges });
+      }
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("an online copy it can't reach lists nothing and says why", async () => {
+    const h = await setupClone();
+    try {
+      await serverCommit(h.serverDir, { "chapter-02.md": "# Two\n" }, "Added chapter two");
+      await h.server.close();
+      expect(await listOnlineVersions({ projectDir: h.projectDir })).toEqual({ entries: [], reason: "offline" });
+    } finally {
+      await h.cleanup().catch(() => {});
     }
   });
 });

@@ -819,6 +819,20 @@ export interface VersionEntry extends SnapshotEntry {
   backedUp: boolean | null;
 }
 
+/** The files one version changed (mirrors the lib's VersionChanges). */
+export interface VersionChanges {
+  files: VersionFileChange[];
+  /** Changed files beyond the ones listed. */
+  more: number;
+}
+
+/** A version in the online copy that this computer has not got, with the files it changed (#484). */
+export interface OnlineVersionEntry extends VersionEntry {
+  changes: VersionFileChange[];
+  /** Changed files beyond the ones listed. */
+  moreChanges: number;
+}
+
 /** One row of the side-by-side file compare: a line on each side, or a gap. */
 export interface CompareRow {
   then: string | null;

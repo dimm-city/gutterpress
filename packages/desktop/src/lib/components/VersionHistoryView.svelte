@@ -10,11 +10,17 @@
    * sits at the top of the selected version. It opens over Book setup →
    * Online copy and closing it (X or Escape) returns there.
    *
+   * Every card lists the files its version changed, as in 0.11.22 (#484).
+   * They load as the card scrolls into view (VersionChangesController), so
+   * opening the screen and Show older versions list versions only, and a
+   * card already seen opens its Changed files at once.
+   *
    * Restore: the host's `/api/vcs/restore-snapshot` saves the current state as
    * a version first, so restoring never loses work; the screen still asks once.
    * On success the parent reloads the open editor and preview (`onRestored`).
-   * Versions in the online copy that this computer hasn't got are named in a
-   * note at the top: Sync (or automatic backing up) brings them in.
+   * Versions in the online copy that this computer hasn't got are listed at
+   * the top, each with the files it changed (#484), once the list is shown:
+   * Get latest, Sync or automatic backing up brings them in.
    *
    * PWA-clean (§8): api.* routes only.
    */
@@ -22,10 +28,11 @@
   import Icon from "#lib/components/Icon.svelte";
   import PreviewFrame from "#lib/components/PreviewFrame.svelte";
   import VersionCompareView from "#lib/components/VersionCompareView.svelte";
-  import { api, type CompareRow, type VersionEntry, type VersionFileChange } from "#lib/api.ts";
+  import { api, type CompareRow, type OnlineVersionEntry, type VersionEntry, type VersionFileChange } from "#lib/api.ts";
   import { dialogBehavior } from "#lib/dialog.ts";
   import { friendlyHostError } from "#lib/errors.ts";
   import type { PreviewClient } from "#lib/preview-client.ts";
+  import { VersionChangesController } from "#lib/routes/version-changes-controller.svelte.ts";
   import { autoRunSummary, collapseAutomaticRuns, groupVersionsByDay, versionDescription, versionLabel } from "#lib/routes/version-timeline.ts";
 
   let {
@@ -54,13 +61,17 @@
   let loading = $state(true);
   let loadingOlder = $state(false);
   let error = $state<string | null>(null);
-  let onlineCount = $state(0);
+  /** Versions in the online copy that this computer hasn't got, each with its changed files. */
+  let online = $state<OnlineVersionEntry[]>([]);
+
+  /** What each version changed: a card's as it scrolls into view, the selected one's first. */
+  const changesOf = new VersionChangesController((id) => api.vcs.versionChanges(projectDir, id));
 
   let selected = $state<VersionEntry | null>(null);
   /** What the right side shows for the selected version. */
   let view = $state<"files" | "pages" | "log">("files");
   /** The selected version's changed files, once the host has listed them. */
-  let changes = $state<{ files: VersionFileChange[]; more: number } | null>(null);
+  const changes = $derived(selected ? (changesOf.loaded[selected.id] ?? null) : null);
   let changesError = $state<string | null>(null);
   /** The version whose pages were asked for (only ever the selected one). */
   let pagesFor = $state<string | null>(null);
@@ -84,7 +95,7 @@
   async function loadHistory(): Promise<void> {
     loading = true;
     try {
-      const page = await api.vcs.listSnapshotsPage(projectDir);
+      const page = await changesOf.listFirst(api.vcs.listSnapshotsPage(projectDir));
       entries = page.entries;
       hasMore = page.hasMore;
       const keep = selected && entries.find((e) => e.id === selected!.id);
@@ -101,7 +112,7 @@
     if (!last || loadingOlder) return;
     loadingOlder = true;
     try {
-      const page = await api.vcs.listSnapshotsPage(projectDir, { before: last.id });
+      const page = await changesOf.listFirst(api.vcs.listSnapshotsPage(projectDir, { before: last.id }));
       entries = [...entries, ...page.entries];
       hasMore = page.hasMore;
     } catch (e) {
@@ -118,16 +129,46 @@
     confirming = false;
     restoreError = null;
     compare = null;
-    changes = null;
     changesError = null;
     closePages();
     if (!entry) return;
     try {
-      const result = await api.vcs.versionChanges(projectDir, entry.id);
-      if (selected?.id === entry.id) changes = result;
+      await changesOf.load(entry.id);
     } catch (e) {
       if (selected?.id === entry.id) changesError = friendlyHostError(e instanceof Error ? e.message : String(e));
     }
+  }
+
+  /** What is in the online copy and not on this computer yet. Quiet when it can't tell. */
+  async function loadOnline(): Promise<void> {
+    online = (await api.vcs.onlineVersions(projectDir).catch(() => null))?.entries ?? [];
+  }
+
+  /** Cards report coming into and leaving the list's view; their changes load while they are in it. */
+  let observer: IntersectionObserver | null = null;
+  const cardIds = new WeakMap<Element, string>();
+  function cardInView(node: HTMLElement, id: string) {
+    observer ??= new IntersectionObserver(
+      (seen) => {
+        for (const card of seen) {
+          const seenId = cardIds.get(card.target);
+          if (!seenId) continue;
+          if (card.isIntersecting) changesOf.show(seenId);
+          else changesOf.hide(seenId);
+        }
+      },
+      // A little ahead of the view, so a card scrolled to usually has its files already.
+      { root: node.closest(".vh-list"), rootMargin: "120px 0px" },
+    );
+    cardIds.set(node, id);
+    observer.observe(node);
+    return {
+      destroy() {
+        observer?.unobserve(node);
+        cardIds.delete(node);
+        changesOf.hide(id);
+      },
+    };
   }
 
   /** Pages: render the selected version, once, now that the author asked. */
@@ -193,12 +234,11 @@
   }
 
   onMount(() => {
-    void loadHistory();
-    if (hasRemote) {
-      void api.vcs.onlineVersions(projectDir).then((r) => (onlineCount = r.entries.length)).catch(() => {});
-    }
+    // The online copy is checked once the list is shown, so it never holds the list up.
+    void loadHistory().then(() => (hasRemote ? loadOnline() : undefined));
   });
   onDestroy(() => {
+    observer?.disconnect();
     void api.vcs.closeVersionPreview().catch(() => {});
   });
 
@@ -208,8 +248,31 @@
   }
 </script>
 
+<!-- What a version changed, on its card: "chapter-02.md · 3 paragraphs changed", "and N more", "No changes". -->
+{#snippet changedFiles(files: VersionFileChange[], more: number)}
+  <span class="ver-files">
+    {#each files as change (change.path)}
+      <span class="ver-file"><span class="ver-path">{change.path}</span> · {change.hint}</span>
+    {:else}
+      <span class="ver-file">No changes</span>
+    {/each}
+    {#if more}<span class="ver-file">and {more} more</span>{/if}
+  </span>
+{/snippet}
+
+<!-- A version in the online copy only: shown with what it changed; it comes in with the next backup. -->
+{#snippet onlineRow(entry: OnlineVersionEntry)}
+  <li class="online-ver">
+    <span class="ver-title">{versionLabel(entry.message)}</span>
+    {#if versionDescription(entry.message)}<span class="ver-note">{versionDescription(entry.message)}</span>{/if}
+    <span class="ver-meta">{when(entry.timestamp)}{entry.author ? ` · ${entry.author}` : ""}</span>
+    {@render changedFiles(entry.changes, entry.moreChanges)}
+  </li>
+{/snippet}
+
 {#snippet row(entry: VersionEntry)}
-  <li>
+  {@const loaded = changesOf.loaded[entry.id]}
+  <li use:cardInView={entry.id}>
     <button
       class="ver"
       class:selected={selected?.id === entry.id}
@@ -222,6 +285,11 @@
         {time(entry.timestamp)}{entry.author ? ` · ${entry.author}` : ""}
         {#if entry.backedUp === false}<span class="dot local" title="Only on this computer"></span>{/if}
       </span>
+      {#if loaded}
+        {@render changedFiles(loaded.files, loaded.more)}
+      {:else}
+        <span class="ver-files pending" aria-hidden="true"></span>
+      {/if}
     </button>
   </li>
 {/snippet}
@@ -238,11 +306,27 @@
 
   <div class="vh-body">
     <nav class="vh-list" aria-label="Versions">
-      {#if hasRemote && onlineCount > 0}
-        <p class="online-note">
-          <Icon name="cloud" size={13} />
-          {onlineCount} {onlineCount === 1 ? "version is" : "versions are"} in the online copy and not on this computer yet. They come in the next time this book backs up.
-        </p>
+      {#if online.length > 0}
+        <section class="online" aria-labelledby="vh-online-title">
+          <h2 class="day" id="vh-online-title"><Icon name="cloud" size={13} /> Online, not yet on this computer</h2>
+          <ul>
+            {#each collapseAutomaticRuns(online) as item (item.key)}
+              {#if item.kind === "auto-run"}
+                <li>
+                  <details class="run">
+                    <summary>{autoRunSummary(item.entries)}</summary>
+                    <ul>
+                      {#each item.entries as entry (entry.id)}{@render onlineRow(entry)}{/each}
+                    </ul>
+                  </details>
+                </li>
+              {:else}
+                {@render onlineRow(item.entry)}
+              {/if}
+            {/each}
+          </ul>
+          <p class="online-note">They come in with <strong>Get latest</strong>, or the next time this book backs up.</p>
+        </section>
       {/if}
       {#if loading && entries.length === 0}
         <p class="muted pad">Loading versions…</p>
@@ -396,13 +480,21 @@
   .ver-note { font-size: 12.5px; color: var(--app-text-secondary); overflow-wrap: anywhere; }
   .ver-meta { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--app-text-muted); }
   .dot.local { width: 7px; height: 7px; border-radius: 50%; background: var(--app-info-text); }
+  /* A card's changed files: plain lines under its title, as in 0.11.22. One line is
+     kept while they load, so most cards do not grow when they arrive. */
+  .ver-files { display: flex; flex-direction: column; gap: 1px; margin-top: 3px; min-width: 0; max-width: 100%; font-size: 11.5px; color: var(--app-text-muted); }
+  .ver-files.pending { min-height: 1.35em; }
+  .ver-file { line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ver-path { color: var(--app-text-secondary); }
   .run summary { padding: 8px 16px; cursor: pointer; font-size: 12.5px; color: var(--app-text-secondary); }
   .run summary:hover { background: var(--app-surface-hover); }
   .run .ver { padding-left: 28px; }
-  .online-note {
-    display: flex; gap: 6px; align-items: flex-start; margin: 0; padding: 10px 16px;
-    font-size: 12px; line-height: 1.4; color: var(--app-info-text); background: var(--app-info-bg); border-bottom: 1px solid var(--app-info-border);
-  }
+  .online { background: var(--app-info-bg); border-bottom: 1px solid var(--app-info-border); }
+  /* Laid out like a card, but not one to select: it comes in with the next backup. */
+  .online-ver { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 8px 16px 8px 19px; color: var(--app-text); }
+  .run .online-ver { padding-left: 31px; }
+  .online .day { display: flex; align-items: center; gap: 6px; color: var(--app-info-text); }
+  .online-note { margin: 0; padding: 4px 16px 12px; font-size: 12px; line-height: 1.4; color: var(--app-info-text); }
   .older { margin: 10px 16px 0; }
   .tech { display: block; margin: 14px 16px 0; }
 
