@@ -1,10 +1,13 @@
 /**
- * `publish/connect` with no `projectDir` (no book open, as from the Accounts
- * page), against the REAL lib: the key is still verified with the provider and
- * only then stored, a rejected one leaves the saved key alone, Shopify's check
- * takes its store address from the request, and a `projectDir` that is sent is
- * still confined to the open project. Nothing here reaches the network (fetch
- * is stubbed).
+ * The routes the Accounts page leans on, against the REAL lib:
+ *
+ *  - `publish/connect` with no `projectDir` (no book open): the key is still
+ *    verified with the provider and only then stored, a rejected one leaves
+ *    the saved key alone, Shopify's check takes its store address from the
+ *    request, and a `projectDir` that is sent is still confined to the open
+ *    project. Nothing here reaches the network (fetch is stubbed).
+ *  - `remote/forge-token-url`: where a Git server makes tokens, by address
+ *    alone (#481).
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -14,6 +17,7 @@ import { isHttpError } from "@sveltejs/kit";
 import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
 import { makeHostServices } from "../support/host-services-fake";
 import { POST as publishConnect } from "../../src/routes/api/publish/connect/+server";
+import { POST as forgeTokenUrl } from "../../src/routes/api/remote/forge-token-url/+server";
 
 interface Stored {
   token: string;
@@ -160,4 +164,16 @@ test("publish/connect: a projectDir that is sent is still confined to the open p
   const res = await outcome(publishConnect({ request: request({ projectDir: "/somewhere/else", providerId: "itch", token: "good-key" }) } as never));
   expect(res).toMatchObject({ ok: false, status: 403 });
   expect(stored.size).toBe(0);
+});
+
+test("remote/forge-token-url answers with a recognised server's token page, else null, and asks no server (#481)", async () => {
+  const ask = async (body: unknown) => (await (await forgeTokenUrl({ request: request(body) } as never)).json()) as string | null;
+  expect(await ask({ host: "gitea.example.com" })).toBe("https://gitea.example.com/user/settings/applications");
+  expect(await ask({ host: "gitlab.com" })).toBe("https://gitlab.com/-/user_settings/personal_access_tokens");
+  expect(await ask({ host: "https://Bitbucket.org/team/repo" })).toBe("https://bitbucket.org/account/settings/app-passwords/");
+  expect(await ask({ host: "git.example.com" })).toBeNull();
+  expect(await ask({ host: "github.com" })).toBeNull();
+  expect(await ask({ host: "  " })).toBeNull();
+  expect(await ask({})).toBeNull();
+  expect(fetchCalls).toEqual([]);
 });

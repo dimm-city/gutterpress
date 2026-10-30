@@ -43,10 +43,24 @@
  *      once it is off: it runs a pass, reads "Syncing…" while it runs, and
  *      carries the "new changes are online" cue and toast action. It still
  *      fits, with the status line ellipsized, at 700px and (cut short) at 260px.
- *   7. A Reader sees no status control and no Sync, even in that state.
+ *   7. The Settings, Accounts and Open from GitHub controls 0.11.22 had are
+ *      back (#481). Settings is How you use Gutterpress, Appearance, Preview,
+ *      Editor, Saving and Accounts, with a Reset on each group of settings.
+ *      Preview background, Default zoom (the preview follows it), Print overlay
+ *      strength and each overlay colour save their 0.11.22 keys at once. With
+ *      the right-click menu off, neither a right-click on a block nor Shift+F10
+ *      opens it (both do before, as a control); Preview's Reset puts the whole
+ *      section back and the menu works again; Appearance's, Editor's and
+ *      Saving's Resets do the same for theirs. Open from GitHub links to
+ *      Accounts ("Open Accounts", which closes the dialog), where Your name and
+ *      email has its Reset and typing a Gitea server's address links to that
+ *      server's own token page (an unknown one, to the guide). Troubleshooting
+ *      is pictured as it is.
+ *   8. A Reader sees no status control and no Sync, even in that state.
  *
  * Screenshots: <os tmpdir>/online-copy-{bar,bar-auto,bar-sync,bar-sync-updates,
- * bar-narrow,tab,filter,history,compare,history-pages,rename,delete,delete-online,failing,reader}.png.
+ * bar-narrow,tab,filter,history,compare,history-pages,rename,delete,delete-online,failing,
+ * settings-preview,troubleshooting,github-dialog,accounts-token-link,reader}.png.
  *
  * Usage: node tests/integration/online-copy.pw.mjs [exe-or-main-js] [fixture-dir]
  * Exit 0 on pass, 1 on fail.
@@ -686,6 +700,219 @@ for (const width of [700, 260]) {
 await send("Emulation.clearDeviceMetricsOverride");
 await sleep(500);
 
+// ── 12c. the Settings, Accounts and Open from GitHub controls 0.11.22 had (#481) ─
+const settingsFile = () => JSON.parse(readFileSync(join(userDataDir, "app-settings.json"), "utf8"));
+/** Wait until the settings file on disk says what `pick` looks for (the app saves each change at once). */
+async function saved(pick, want, ms = 8000) {
+  const deadline = Date.now() + ms;
+  let got;
+  while (Date.now() < deadline) {
+    try { got = pick(settingsFile()); } catch { got = undefined; }
+    if (JSON.stringify(got) === JSON.stringify(want)) return true;
+    await sleep(200);
+  }
+  log(`settings file has ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`);
+  return false;
+}
+/** Set a field's value and fire the event the page listens for. */
+const setField = (selector, value, event) =>
+  evalJs(`(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (!el) return false;
+    el.value = ${JSON.stringify(value)};
+    el.dispatchEvent(new Event(${JSON.stringify(event)}, { bubbles: true }));
+    return true;
+  })()`);
+const resetIn = (group) => `document.querySelector('[aria-labelledby="${group}"] button.reset')`;
+const menuOpen = `!!document.querySelector('[role="menu"]')`;
+/** Shift+F10 in the preview: its listener lives in the book frame, so a click on `spot` puts the keyboard there first. */
+async function shiftF10(spot) {
+  await send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", buttons: 1, clickCount: 1, ...spot });
+  await send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", buttons: 0, clickCount: 1, ...spot });
+  await sleep(500);
+  await send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "F10", code: "F10", windowsVirtualKeyCode: 121, modifiers: 8 });
+  await send("Input.dispatchKeyEvent", { type: "keyUp", key: "F10", code: "F10", windowsVirtualKeyCode: 121, modifiers: 8 });
+}
+/** Right-click the preview at `spot` the way a person does. */
+async function rightClick(spot) {
+  await send("Input.dispatchMouseEvent", { type: "mousePressed", button: "right", buttons: 2, clickCount: 1, ...spot });
+  await send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "right", buttons: 0, clickCount: 1, ...spot });
+}
+
+// A point on the first page that the preview answers with a menu target.
+await evalJs(`(() => {
+  let id = 800000;
+  window.__ask = (cmd, args) => new Promise((res) => {
+    const f = document.querySelector('iframe');
+    if (!f) return res(null);
+    const myId = ++id;
+    const h = (e) => {
+      if (e.data?.type === 'gutterpress:reply' && e.data.id === myId) { window.removeEventListener('message', h); res(e.data.result); }
+    };
+    window.addEventListener('message', h);
+    f.contentWindow.postMessage({ type: 'gutterpress:cmd', id: myId, cmd, args }, '*');
+    setTimeout(() => { window.removeEventListener('message', h); res(null); }, 4000);
+  });
+  return true;
+})()`);
+/** A point the preview answers with a block (the viewer answers whether or not the menu is on). */
+async function findBlock() {
+  for (let i = 0; i < 60; i++) {
+    const at = await evalJs(`(async () => {
+      const f = document.querySelector('iframe');
+      if (!f) return null;
+      const r = f.getBoundingClientRect();
+      for (let y = 40; y < r.height - 40; y += 16) for (let x = 20; x < r.width - 20; x += 24) {
+        const t = await window.__ask('getContextTargetAt', [{ x, y }]);
+        if (t && t.kind === 'block') return { x: Math.round(r.left + x), y: Math.round(r.top + y) };
+      }
+      return null;
+    })()`);
+    if (at) return at;
+    await sleep(1000);
+  }
+  return null;
+}
+let spot = await findBlock();
+check(!!spot, `the preview has a block to right-click (${JSON.stringify(spot)})`);
+await rightClick(spot);
+check(await waitFor(menuOpen, 8000), "(control) right-clicking a block in the preview opens its menu");
+await press("Escape", "Escape", 27);
+check(await waitFor(`!${menuOpen}`, 3000), "(control) Escape closes it");
+await shiftF10(spot);
+check(await waitFor(menuOpen, 8000), "(control) so does Shift+F10");
+await press("Escape", "Escape", 27);
+check(await waitFor(`!${menuOpen}`, 3000), "(control) Escape closes it");
+
+// Settings: the groups, each with its Reset, and the Preview controls.
+await click('.status-bar button[aria-label="Settings"]');
+check(await waitFor(`!!document.querySelector('#settings-preview')`), "Settings opened");
+const groups = await evalJs(`[...document.querySelectorAll('.app-view section.group')].map((g) => ({ title: g.querySelector('h2').textContent.trim(), reset: !!g.querySelector('button.reset') }))`);
+check(
+  JSON.stringify(groups) === JSON.stringify([
+    { title: "How you use Gutterpress", reset: false },
+    { title: "Appearance", reset: true },
+    { title: "Preview", reset: true },
+    { title: "Editor", reset: true },
+    { title: "Saving", reset: true },
+    { title: "Accounts", reset: false },
+  ]),
+  `Settings: How you use Gutterpress, Appearance, Preview, Editor, Saving, Accounts, a Reset on each group of settings (${JSON.stringify(groups)})`,
+);
+const previewControls = await evalJs(`(() => {
+  const g = document.querySelector('[aria-labelledby="settings-preview"]');
+  return {
+    zoom: g.querySelector('#settings-zoom')?.value,
+    zoomOptions: [...g.querySelectorAll('#settings-zoom option')].map((o) => o.textContent.trim()),
+    contextMenu: g.querySelector('#settings-context-menu')?.checked,
+    strength: [...g.querySelectorAll('input[name="settings-overlay-strength"]')].map((r) => r.value + (r.checked ? "*" : "")),
+    colours: [...g.querySelectorAll('input[type="color"]')].map((c) => document.querySelector('label[for="' + c.id + '"]').textContent.trim() + " " + c.value),
+  };
+})()`);
+log(`Preview group: ${JSON.stringify(previewControls)}`);
+check(previewControls.zoom === "fit-width" && previewControls.zoomOptions.join() === "Fit to width,25%,50%,75%,100%,125%,150%,200%", "Default zoom: Fit to width, from the zoom menu's levels");
+check(previewControls.contextMenu === true, "Right-click menu in the preview: on");
+check(previewControls.strength.join() === "subtle,normal*,strong", "Print overlay strength: Subtle, Normal (chosen), Strong");
+check(
+  previewControls.colours.join("|") === "Bleed overlay colour #e5484d|Safe area: text overlay colour #2f80ed|Safe area: art overlay colour #a855f7|Page margins overlay colour #1a9c6b",
+  "one overlay colour per layer, each with its default",
+);
+check(await evalJs(`document.querySelector('#settings-preview-bg')?.value === '#5a5a5a'`), "Appearance has the Preview background, #5a5a5a");
+
+// Each control saves its 0.11.22 key at once.
+await setField("#settings-preview-bg", "#203040", "input");
+check(await saved((s) => s.appearance.previewBg, "#203040"), "Preview background saves appearance.previewBg");
+await setField("#settings-zoom", "1.5", "change");
+check(await saved((s) => s.preview.defaultZoom, "1.5"), "Default zoom saves preview.defaultZoom");
+check(await waitFor(`document.querySelector('.zoom-menu .zoom-label')?.textContent.trim() === '150%'`), "the preview's zoom follows it (150%)");
+await click('input[name="settings-overlay-strength"][value="strong"]');
+check(await saved((s) => s.preview.marginOverlayStrength, "strong"), "Strong saves preview.marginOverlayStrength");
+await setField("#settings-overlay-color-bleed", "#ff8800", "input");
+check(await saved((s) => s.preview.overlayColors, { bleed: "#ff8800", safe: "#2f80ed", art: "#a855f7", margins: "#1a9c6b" }), "a layer's colour saves preview.overlayColors, the others kept");
+await click("#settings-context-menu");
+check(await saved((s) => s.preview.contextMenu, false), "turning the right-click menu off saves preview.contextMenu: false");
+await screenshot(join(tmpdir(), "online-copy-settings-preview.png"));
+await click('button[aria-label="Close settings"]');
+check(await waitFor(`!document.querySelector('#settings-preview')`), "Settings closed");
+
+// Off means off: no menu from the mouse or Shift+F10, on a point that is a block at this zoom.
+spot = await findBlock();
+check(!!spot, `the preview still has a block to right-click at 150% (${JSON.stringify(spot)})`);
+await rightClick(spot);
+await sleep(1500);
+check(!(await evalJs(menuOpen)), "with it off, right-clicking the same block opens no menu");
+await shiftF10(spot);
+await sleep(1500);
+check(!(await evalJs(menuOpen)), "nor does Shift+F10");
+
+// Preview's Reset puts the whole section back: the menu works again, the zoom fits the width.
+await click('.status-bar button[aria-label="Settings"]');
+check(await waitFor(`!!document.querySelector('#settings-preview')`), "Settings opened");
+check(await evalJs(`(${resetIn("settings-preview")}).getAttribute('aria-label') === 'Reset Preview'`), "Preview's Reset is named for its group");
+await evalJs(`(${resetIn("settings-preview")}).click(); true`);
+check(await saved((s) => [s.preview.contextMenu, s.preview.defaultZoom, s.preview.marginOverlayStrength, s.preview.overlayColors.bleed], [true, "fit-width", "normal", "#e5484d"]), "Reset (Preview) saves the defaults: menu on, Fit to width, Normal, the bleed colour");
+check(await evalJs(`document.querySelector('#settings-context-menu').checked && document.querySelector('#settings-zoom').value === 'fit-width' && document.querySelector('input[name="settings-overlay-strength"][value="normal"]').checked && document.querySelector('#settings-overlay-color-bleed').value === '#e5484d'`), "and the controls show them");
+check(await evalJs(`document.querySelector('#settings-preview-bg').value === '#203040'`), "Preview's Reset leaves Appearance alone");
+await evalJs(`(${resetIn("settings-appearance")}).click(); true`);
+check(await saved((s) => s.appearance.previewBg, "#5a5a5a"), "Reset (Appearance) puts the Preview background back");
+await evalJs(`(() => { const sw = document.querySelector('#settings-problems'); sw.checked = false; sw.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+check(await saved((s) => s.editor.highlightProblems, false), "Mark problems in the editor, off");
+await evalJs(`(${resetIn("settings-editor")}).click(); true`);
+check(await saved((s) => s.editor.highlightProblems, true), "Reset (Editor) turns it back on");
+// Saving's Reset turns automatic backing up back on (12b turned it off); the Reader check below wants it off again.
+await evalJs(`(${resetIn("settings-saving")}).click(); true`);
+check(await saved((s) => s.versionHistory.autoSync, true), "Reset (Saving) puts Back up online automatically back on");
+check(await evalJs(`document.querySelector('#settings-autosync').checked`), "and the switch shows it");
+await evalJs(`(() => { const sw = document.querySelector('#settings-autosync'); sw.checked = false; sw.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+check(await saved((s) => s.versionHistory.autoSync, false), "(and off again, for the Reader check)");
+await click('button[aria-label="Close settings"]');
+check(await waitFor(`!document.querySelector('#settings-preview')`), "Settings closed");
+spot = await findBlock();
+await rightClick(spot);
+check(await waitFor(menuOpen, 8000), "after the Reset, right-clicking a block opens its menu again");
+await press("Escape", "Escape", 27);
+check(await waitFor(`!${menuOpen}`, 3000), "Escape closes it");
+
+// Open from GitHub (the start screen, from the status bar's Books) links to Accounts for any other Git host.
+await click('.status-bar button[aria-label^="Books"]');
+check(await waitFor(`!!document.querySelector('#landing-tab-troubleshooting')`), "the start screen opened");
+// Troubleshooting is as it was (#481 leaves it alone): a picture for the record.
+await click("#landing-tab-troubleshooting");
+check(await waitFor(`!!document.querySelector('#landing-troubleshooting-tab-diagnostics')`), "Troubleshooting opened");
+await click("#landing-troubleshooting-tab-diagnostics");
+await waitFor(`!!document.querySelector('.troubleshooting .versions')`, 15000);
+await screenshot(join(tmpdir(), "online-copy-troubleshooting.png"));
+await click("#landing-tab-projects");
+check(await waitFor(`[...document.querySelectorAll('.action-card')].some((b) => b.textContent.includes('Open from GitHub'))`), "the Books tab offers Open from GitHub");
+await evalJs(`[...document.querySelectorAll('.action-card')].find((b) => b.textContent.includes('Open from GitHub'))?.click(); true`);
+check(await waitFor(`!!document.querySelector('#github-dialog-title')`), "Open from GitHub opened");
+const hint = await evalJs(`[...document.querySelectorAll('.dialog-body .hint.subtle')].map((p) => p.textContent.replace(/\\s+/g, " ").trim()).find((t) => t.startsWith('Using a different Git host'))`);
+check(/^Using a different Git host \(Gitea, GitLab, Bitbucket, …\)\? Open Accounts to sign in to it/.test(hint ?? ""), `it says where another Git host goes, with a link (${hint})`);
+await screenshot(join(tmpdir(), "online-copy-github-dialog.png"));
+await click(".dialog-body .link-btn", "Open Accounts");
+check(await waitFor(`!!document.querySelector('button[aria-label="Close accounts"]') && !document.querySelector('#github-dialog-title')`), "Open Accounts closes Open from GitHub and opens Accounts");
+
+// Accounts: Your name and email has its Reset; a known server links to its token page.
+await setField("#accounts-name", "Ada Lovelace", "change");
+check(await saved((s) => s.gitIdentity.authorName, "Ada Lovelace"), "a name typed in Accounts is saved");
+await evalJs(`(${resetIn("accounts-identity")}).click(); true`);
+check(await saved((s) => s.gitIdentity, { authorName: "", authorEmail: "" }), "Reset (Your name and email) clears them");
+check(await evalJs(`document.querySelector('#accounts-name').value === ''`), "and the Name field shows it");
+await click("button", "Add a Git server…");
+check(await waitFor(`!!document.querySelector('.server-form input[placeholder="git.example.com"]')`), "Add a Git server… opens the form");
+const tokenLink = `[...document.querySelectorAll('.server-form button.link')].map((b) => b.textContent.trim())[0]`;
+check((await evalJs(tokenLink)) === "How to make an access token", "with no address, the link is the guide");
+await type('.server-form input[placeholder="git.example.com"]', "gitea.example.com");
+check(await waitFor(`${tokenLink} === 'Create an access token on gitea.example.com'`), "typing a Gitea server links to its own token page");
+await screenshot(join(tmpdir(), "online-copy-accounts-token-link.png"));
+await type('.server-form input[placeholder="git.example.com"]', "git.example.com");
+check(await waitFor(`${tokenLink} === 'How to make an access token'`), "a server Gutterpress doesn't know goes back to the guide");
+await click(".server-form button", "Cancel");
+await click('button[aria-label="Close accounts"]');
+check(await waitFor(`!document.querySelector('button[aria-label="Close accounts"]')`), "Accounts closed, back on the start screen");
+await click('button[aria-label="Close this screen"]');
+check(await waitFor(`!document.querySelector('#landing-tab-troubleshooting')`), "back to the book");
+
 // ── 13. a Reader sees none of it ─────────────────────────────────────────────
 await click('.status-bar button[aria-label="Settings"]');
 check(await waitFor(`!!document.querySelector('input[name="settings-role"][value="reader"]')`), "Settings opened");
@@ -698,6 +925,6 @@ const readerBar = await evalJs(`[...document.querySelectorAll('.status-bar butto
 check(!readerBar.some((l) => /Sync|Get latest|Back up now/.test(l)), `a Reader has no Sync, even with automatic backing up off (${readerBar.join(", ")})`);
 await screenshot(join(tmpdir(), "online-copy-reader.png"));
 
-log("PASS: one status control, the Online copy tab, Version history inside it, revisions (find, new, rename, delete, switch) and the Reader's bare status bar all verified");
+log("PASS: one status control, the Online copy tab, Version history inside it, revisions (find, new, rename, delete, switch), the Settings, Accounts and Open from GitHub controls of 0.11.22, and the Reader's bare status bar all verified");
 cleanup();
 process.exit(0);

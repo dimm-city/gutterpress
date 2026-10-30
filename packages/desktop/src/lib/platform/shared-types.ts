@@ -122,8 +122,9 @@ export type ReadLayout = "single" | "spread";
 
 // ── User settings (#45) ───────────────────────────────────────────────────
 //
-// Keys with no control in Settings (#442: previewBg, defaultZoom, the overlay
-// look) are still read; a power user can edit them in app-settings.json.
+// Each Settings group shows one section below, and its Reset puts that whole
+// section back to DEFAULT_SETTINGS (`useSettings().resetSection`). The keys and
+// their meaning are the ones 0.11.22 stored, so a saved file keeps working (#481).
 
 export type WorkspaceRole = "reader" | "author";
 
@@ -140,16 +141,22 @@ export interface AppSettings {
   editor: {
     /**
      * Mark every line with a Problems entry in the editor, plus the CSS lint
-     * gutter and the unusual-character boxes (Settings → Appearance, "Mark
+     * gutter and the unusual-character boxes (Settings → Editor, "Mark
      * problems in the editor", #383). Default ON.
      */
     highlightProblems: boolean;
   };
   appearance: {
     theme: "light" | "dark" | "system";
+    /** The colour around the pages in the preview (Settings → Appearance, "Preview background"). */
     previewBg: string;
   };
   preview: {
+    /**
+     * The preview's zoom: "fit-width" or a scale such as "1.25" (Settings →
+     * Preview, "Default zoom"). The preview's zoom menu writes it too, so a book
+     * opens at the zoom last chosen.
+     */
     defaultZoom: string;
     /**
      * Which panes the wide workspace shows — the ONE workspace-layout switch
@@ -182,7 +189,7 @@ export interface AppSettings {
      * colour (`electron/settings-store.ts`); after that it is ignored.
      */
     marginOverlayColor: string;
-    /** How prominent the overlay is: line width, tint and bleed band. Default "normal". */
+    /** How prominent the overlay is: line width, tint and bleed band (Settings → Preview). Default "normal". */
     marginOverlayStrength: "subtle" | "normal" | "strong";
     /**
      * Which layers the overlay draws while the master switch is on: the bleed
@@ -192,7 +199,7 @@ export interface AppSettings {
      * it was a layer of its own) reads it as on.
      */
     overlayLayers: { bleed: boolean; safe: boolean; art: boolean; margins: boolean };
-    /** Each layer's colour, `#rrggbb`. A stored object without `art` reads its default. */
+    /** Each layer's colour, `#rrggbb` (Settings → Preview). A stored object without `art` reads its default. */
     overlayColors: { bleed: string; safe: string; art: string; margins: string };
     /**
      * Durable editor/preview split fraction (0.25..0.75, editor share) for the
@@ -200,6 +207,14 @@ export interface AppSettings {
      * `ProjectState.splitPaneRatio` snapshot overrides it at project-open.
      */
     splitRatio: number;
+    /**
+     * Right-click (or Shift+F10) context menu over the paginated preview
+     * (inline-editing plan §4.5; Settings → Preview, "Right-click menu in the
+     * preview"). Default true — an explicit-invocation affordance, not seamless
+     * WYSIWYG, so the UX contract's opt-in rule for the latter does not apply
+     * here. Off: the menu never opens, from the mouse or the keyboard.
+     */
+    contextMenu: boolean;
   };
   updates: {
     /** Release stream for desktop update checks (see UpdateChannel above). */
@@ -271,6 +286,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     // Matches DEFAULT_SPLIT_RATIO in src/lib/editor/preview-layout.ts so the
     // durable default and the double-click reset target agree (#103).
     splitRatio: 0.42,
+    contextMenu: true,
   },
   updates: {
     channel: "stable",

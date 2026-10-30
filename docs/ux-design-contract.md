@@ -209,19 +209,26 @@ gutterpress/
 │                                                        .css files to add), and every design
 │                                                        setting (DesignSection))
 ├── Project source / version history / GitHub  SHIPPED  (#12–#16, the Node-native git layer; AdvancedSetupDialog,
-│                                                        GitHubDialog; the status bar's one status
-│                                                        control, Authors only; Version history inside
-│                                                        Book setup → Online copy; #448)
+│                                                        GitHubDialog (its "Using a different Git
+│                                                        host?" opens Accounts); the status bar's
+│                                                        one status control, Authors only; Version
+│                                                        history inside Book setup → Online copy;
+│                                                        #448)
 ├── Media panel                                SHIPPED  (MediaPanel, #47)
 ├── Crash recovery                             SHIPPED  (RecoveryOverlay / CrashRecoveryDialog)
 ├── Settings                                   SHIPPED  (SettingsView: one page in its own sheet,
 │                                                        no tabs — How you use Gutterpress
-│                                                        (Reader or Author), Appearance, Saving,
-│                                                        and Accounts… (opens Accounts);
-│                                                        opened by the status-bar gear, Ctrl+, and
-│                                                        the start screen's Settings button; it
-│                                                        never reads the open book, so it is the
-│                                                        same everywhere; #442)
+│                                                        (Reader or Author), Appearance (theme,
+│                                                        preview background), Preview (default
+│                                                        zoom, right-click menu, print overlay
+│                                                        strength and colours), Editor (mark
+│                                                        problems), Saving, and Accounts… (opens
+│                                                        Accounts); every group of settings has
+│                                                        a Reset to its defaults; opened by the
+│                                                        status-bar gear, Ctrl+, and the start
+│                                                        screen's Settings button; it never reads
+│                                                        the open book, so it is the same
+│                                                        everywhere; #442, #481)
 ├── Accounts                                   SHIPPED  (AccountsView: one page in its own sheet, like
 │                                                        Settings — the one place to manage every
 │                                                        connection, saved on this computer and
@@ -229,11 +236,13 @@ gutterpress/
 │                                                        what is saved with one Add button that
 │                                                        opens a compact inline form: Your name
 │                                                        and email (moved from Settings; same
-│                                                        keys, saved on change); GitHub (Connect,
-│                                                        or Test sign-in / Sign in again… /
-│                                                        Disconnect); Other Git servers (Add,
+│                                                        keys, saved on change; with a Reset);
+│                                                        GitHub (Connect, or Test sign-in / Sign
+│                                                        in again… / Disconnect); Other Git servers (Add,
 │                                                        Edit, Remove — host, optional username,
-│                                                        token, checked with the server first);
+│                                                        token, checked with the server first; a
+│                                                        known server's address links to its own
+│                                                        token page, any other to the guide);
 │                                                        Publishing (a key for each provider that
 │                                                        takes one, with an optional account
 │                                                        name, and Google Drive's sign-in: Add,
@@ -379,6 +388,9 @@ Shipped behavior:
   unreachable from inside a `@section`, whose innermost annotated block
   always wins the primary slot. A preview that does not report the
   enclosing marker (older than bridge protocol v7) offers no such item.
+  Gated by the `preview.contextMenu` setting (Settings → Preview, "Right-click
+  menu in the preview"), default on; off, neither a right-click nor
+  `Shift+F10` opens it.
 - **Block overlay.** "Edit this block" opens that block's **markdown
   source** in place over the preview; commit on `Ctrl/Cmd+Enter` or blur,
   cancel on `Escape`.
@@ -602,7 +614,8 @@ buttons.
   fields commit when you leave them or press Enter; pending edits are saved
   when you switch tabs or close the panel. A commit writes only what changed
   (a title edit never rewrites the page size or `targets:`).
-- Settings is one page with no tabs (How you use Gutterpress, Appearance, Saving, Accounts…), reached
+- Settings is one page with no tabs (How you use Gutterpress, Appearance, Preview, Editor, Saving,
+  Accounts…; a Reset on each group of settings), reached
   from the status bar's settings button, `Cmd/Ctrl+,` and the start screen;
   your name and email and every account are a page of their own (Accounts).
   Any further regrouping is a PROPOSED delta.
@@ -1415,7 +1428,7 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 | Raw rule IDs / linter jargon as primary text | Writer-first product | Plain-language labels, codes demoted (shipped, §10) |
 | Reintroducing stylelint or any bundler-hostile dep for editor lint | Breaks `bun build --compile` (docs/architecture-rules.md §3) | Extend `printsafe.ts` |
 | A Gutterpress-specific plugin API, hosted plugin marketplace, or fake granular permissions UI | Contradicts docs/architecture-rules.md §5 and the unsandboxed runtime | §9's plain-package model and one honest full-privilege confirmation |
-| Settings with more than a page of choices, or tabs inside Settings | Overwhelming; "where did X go?" | One short Settings page; a choice earns a place only when many authors need it (#442) |
+| Tabs inside Settings | Overwhelming; "where did X go?" | One Settings page of groups, each group of settings with its Reset (#442, #481) |
 | Status badges, or switches beside checkboxes, in Book setup | Noise; two controls for one meaning | Silence is success: a row speaks only when it needs attention; checkboxes for items of a set, switches only in Settings (#442) |
 
 ---
