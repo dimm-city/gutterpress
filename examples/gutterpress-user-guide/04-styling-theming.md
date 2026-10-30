@@ -17,7 +17,7 @@ Gutterpress ships four built-in looks, embedded in the CLI binary and library:
 | `technical-doc` | Clean sans-serif manual look with clear hierarchy, code styling, and tidy tables. |
 | `academic` | A journal-article look: serif text, justified and hyphenated, ruled tables, notes and references set smaller. The `paper` starter template uses it. |
 
-A look (a *theme*, in older docs and in `gutterpress new --kind look`) is an
+A look (a *theme*, in older docs; `gutterpress new --kind theme` still makes one) is an
 **extension**: a folder holding a stylesheet --- `theme.css` --- plus a small
 metadata file, listed in the manifest's `extensions:` list alongside any
 plugins ([Chapter 5](#ch-plugins) covers that list in full).

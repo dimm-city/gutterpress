@@ -33,7 +33,8 @@ The `checks` map in `manifest.yaml` sets each check's level by its ID: `off`,
 their own config files (`.markdownlint.yaml`, `.htmlhintrc`) from the book's
 folder or a folder above it. The thresholds the checks measure against (image
 size, DPI, ink coverage, text density) come from the preset and the publish
-target.
+target; a book overrides one as an option in that check's entry, as this
+example's manifest does for the largest image file.
 
 > **Tip:** Run `gutterpress validate --format json` to get machine-readable output for CI pipelines.
 

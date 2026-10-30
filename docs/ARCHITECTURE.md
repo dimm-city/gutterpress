@@ -532,10 +532,12 @@ pdfx:
   stripAnnotations: true
 
 # Check levels: off | on | info | warn | error. Thresholds come from the
-# preset and the publish target (lib/presets.ts, lib/targets.ts).
+# preset and the publish target (lib/presets.ts, lib/targets.ts); a book
+# overrides one as an option of its check (lib/check-options.ts).
 checks:
   pdf.structure.qpdf: off
   pdf.print.transparency: on
+  pdf.print.ink-coverage: { maxTac: 300 }
 ```
 
 See the [`with-validation` example](../examples/with-validation/README.md) for a

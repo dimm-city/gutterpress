@@ -151,7 +151,7 @@ Scaffold a new book, plugin or look from an embedded starter template — the fa
 ```sh
 gutterpress new <name> [--kind <id>] [options]
 
-  --kind <id>              What to create: book (default), plugin, look
+  --kind <id>              What to create: book (default), plugin, look (theme is look's older name)
   --prefix <str>           Class/custom-property prefix an extension claims (default: its slug, e.g. "field-notes-"); --kind plugin|look only
   --description <text>     One-line description recorded in the extension's metadata; --kind plugin|look only
   --preset <id>            Preset the book is designed for: dtrpg, book, custom (default: the template's)
@@ -162,6 +162,7 @@ gutterpress new <name> [--kind <id>] [options]
   --targets <ids>          Publish targets recorded in the manifest (comma-separated: dtrpg, itch; or "none") — default: the preset's
   --page-width <pt>        Trim width in points, 72pt = 1in (required with --preset custom; optional override otherwise)
   --page-height <pt>       Trim height in points, 72pt = 1in (required with --preset custom; optional override otherwise)
+  --page-tolerance <pt>    Allowed trim deviation when validating a built PDF (default: 0.5); written as checks: { pdf.print.page-size: { tolerance } }
   --git                    Keep version history on this computer (default: true; use --no-git to skip)
   --no-git
 ```
