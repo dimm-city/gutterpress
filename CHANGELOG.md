@@ -417,6 +417,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   (unless a page is wider than the first, such as a full-bleed plate after
   margined pages), and now warns whenever a PDF comes out scaled at all,
   naming what reaches past the column.
+- **Version history reaches every version after changes are combined (#472).**
+  In a book whose changes were combined with the online copy's, a page of
+  versions could come back short with no **Show older versions**, and the next
+  page could skip or repeat versions. Each version is now listed once, newest
+  first, and **Show older versions** stays until the oldest.
 
 ## [0.11.22] - 2026-10-23
 
