@@ -7,8 +7,8 @@
  *   to a CSS `@page name`.
  *
  *   NOT the page geometry. The trim size and the margins are the BOOK's,
- *   recorded in its manifest (`preset:`, `page:` — Setup > Book in the
- *   app) and written by the build after every stylesheet, so a `size` here
+ *   recorded in its manifest (`preset:`, `page:` — set in Book setup) and
+ *   written by the build after every stylesheet, so a `size` here
  *   would be ignored (and reported) and a `margin` here would hold only
  *   until the author sets margins in the app. Design the furniture below to
  *   sit in whatever margin the book gives it.

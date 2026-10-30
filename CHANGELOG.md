@@ -59,7 +59,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   "Automatic version", "First version", "Saved a version", "Automatic version
   before backing up", "Automatic version before restoring", "Saved before
   switching revision", "Repaired the online copy" and "Saved the edit you made
-  while backing up"; Version history still recognises every earlier spelling.
+  while backing up"; combining with the online copy records "Combined your
+  changes with the online copy's" and "Kept both takes of the files that can't
+  be combined", no longer "the online version" and "both versions". Version
+  history still recognises every earlier spelling.
 - **Library:** `listLocalBranches` and its `LocalBranches` type are replaced by
   `listRevisions`, with `createRevision`, `renameRevision`, `deleteRevision` and
   `revisionNameFrom`; `SyncOutcome` gains `pushDeferred` on a get-latest pass
@@ -105,6 +108,12 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **An example paper**, `examples/academic-paper`: a complete, genuine
   research article with numbered equations, a theorem and proof, a figure,
   tables, a listing, footnotes and linked references, from Markdown alone.
+- **The page's own numbers, as `--gp-page-*` (#454).** A look or a book's
+  stylesheet reads `--gp-page-width`, `--gp-page-height`, `--gp-page-bleed`,
+  `--gp-page-safe`, `--gp-page-gutter`, `--gp-page-art-safe` and
+  `--gp-page-margin-top`, `-bottom`, `-inside` and `-outside` (lengths in `pt`)
+  instead of keeping a copy that stops following Book setup. They are the same in
+  the preview and the PDF, and a named page has its own size and margins.
 - **Google Drive: your own folder when the book's is out of reach (#452).** It
   is saved for you only and never changes the book's folder for the team;
   `gutterpress publish --folder-id` or `--folder` publishes elsewhere for one run.
@@ -265,6 +274,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   token after it and showed a value read out of the comment; a shadow such as
   `3pt 7pt 12pt -5pt var(--shadow-soft)` is edited as text, never as the
   single number that would have replaced it.
+- **Provisional until 0.12 (#457).** The `@group`, `@label` and `@internal`
+  comment directives and the six names on the Look tab (`--font-body`,
+  `--font-display`, `--fs-body`, `--leading`, `--color-ink`, `--color-accent`)
+  change in 0.12; don't build on them yet.
 - **Every new book comes with its look, and the page size and margins live
   in the manifest alone.** The Book, Zine and Technical document templates
   list `clean-book`, `zine` and `technical-doc` the way the Academic paper
@@ -359,6 +372,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   markdownlint prints `|`, not `\|`; the alphas printed the backslash). A
   row that still has more cells than the header is reported in Problems
   (`table_extra_cells`) instead of silently losing them.
+
+### Fixed
+
+- **The minus sign (−, U+2212) is typed as itself.** The character check no
+  longer reports it as a look-alike hyphen, and the editor no longer outlines it.
 
 ## [0.11.22] - 2026-10-23
 

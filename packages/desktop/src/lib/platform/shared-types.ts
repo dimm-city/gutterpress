@@ -752,7 +752,7 @@ export interface PublishRunResult {
 
 /** One entry in a project's version history (a Git commit, abstracted). */
 export interface SnapshotEntry {
-  /** Opaque revision id (a commit SHA for the local provider). */
+  /** Opaque version id (a commit SHA for the local provider). */
   id: string;
   /** Author-supplied or auto-generated snapshot message. */
   message: string;
