@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { bannedTermsIn } from "../../test-helpers/vocabulary.ts";
 import * as messages from "./sync-messages.ts";
 import { SYNC_LATE_EDIT_MESSAGE, SYNC_SNAPSHOT_MESSAGE } from "./sync-messages.ts";
 
@@ -20,9 +21,7 @@ describe("sync messages are writer copy", () => {
   });
 
   test("no version-control jargon in anything a writer reads", () => {
-    const jargon =
-      /\bsync|snapshot|commit|\bgit\b|merge|repositor|\bbranch|\bpush|\bpull|reconnect|online backup|where your work is kept|saved connection/;
-    const offenders = AUTHOR_COPY.filter(([, text]) => jargon.test(text.replace(/git@…/g, "").toLowerCase())).map(
+    const offenders = AUTHOR_COPY.filter(([, text]) => bannedTermsIn(text.replace(/git@…/g, "")).length > 0).map(
       ([name]) => name,
     );
     expect(offenders).toEqual([]);

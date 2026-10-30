@@ -6,6 +6,7 @@
  * stay listed forever: existing history keeps them.
  */
 import { expect, test, describe } from "bun:test";
+import { bannedTermsIn } from "../../../cli/src/test-helpers/vocabulary";
 import {
   versionKind,
   versionLabel,
@@ -55,7 +56,7 @@ describe("Version history timeline — machine history entries read as writer co
   test("machine rows show an honest label and never echo the raw message", () => {
     for (const m of MACHINE_MESSAGES) {
       expect(versionDescription(m)).toBeNull();
-      expect(versionLabel(m).toLowerCase()).not.toMatch(/snapshot|commit|\bgit\b|merge|repo/);
+      expect(bannedTermsIn(versionLabel(m))).toEqual([]);
     }
   });
 });

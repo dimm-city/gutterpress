@@ -1,4 +1,5 @@
 import { describe, test, expect } from "bun:test";
+import { bannedTermsIn } from "../../../cli/src/test-helpers/vocabulary";
 import {
   versionKind,
   versionLabel,
@@ -94,15 +95,15 @@ describe("versionKind / versionLabel — writer-facing classification from messa
     }
   });
 
-  test("nothing a writer sees leaks the words snapshot/commit/git/merge/repo", () => {
+  test("nothing a writer sees uses a banned term", () => {
     for (const m of [...ALL_MACHINE_MESSAGES, "Saved a version", "Saved snapshot", "hand note"]) {
       const visible = `${versionLabel(m)} ${versionDescription(m) ?? ""}`;
       // "hand note" is the author's own text and may say anything; machine
       // rows must surface only the label.
       if (m !== "hand note") {
-        expect(visible.toLowerCase()).not.toMatch(/snapshot|commit|\bgit\b|merge|repo/);
+        expect(bannedTermsIn(visible)).toEqual([]);
       } else {
-        expect(versionLabel(m).toLowerCase()).not.toMatch(/snapshot|commit|\bgit\b|merge|repo/);
+        expect(bannedTermsIn(versionLabel(m))).toEqual([]);
       }
     }
   });
@@ -180,12 +181,12 @@ describe("autoRunSummary — the collapsed row's one-line story", () => {
     expect(autoRunSummary(entries)).toBe(`Versions made automatically · ${at(1_000_000)} · 2 times`);
   });
 
-  test("never says snapshot/commit/git", () => {
+  test("never uses a banned term", () => {
     const entries = [
       snap({ timestamp: 2_000, message: "Snapshot before syncing" }),
       snap({ timestamp: 1_000, message: "Snapshot before syncing" }),
     ];
-    expect(autoRunSummary(entries).toLowerCase()).not.toMatch(/snapshot|commit|\bgit\b/);
+    expect(bannedTermsIn(autoRunSummary(entries))).toEqual([]);
   });
 });
 
