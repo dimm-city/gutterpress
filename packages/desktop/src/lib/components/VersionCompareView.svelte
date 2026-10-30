@@ -52,13 +52,13 @@
 </div>
 
 <style>
-  .compare-view { display: flex; flex-direction: column; gap: 10px; height: 100%; overflow: auto; background: var(--app-bg); color: var(--app-text-secondary); }
-  .compare-header { position: sticky; top: 0; z-index: 1; padding: 12px 16px; border-bottom: 1px solid var(--app-border); background: var(--app-surface-raised); display: flex; align-items: center; gap: 12px; }
+  .compare-view { display: flex; flex-direction: column; gap: 10px; color: var(--app-text-secondary); }
+  .compare-header { position: sticky; top: 0; z-index: 1; padding: 12px 0; border-bottom: 1px solid var(--app-border-subtle); background: var(--app-bg); display: flex; align-items: center; gap: 12px; }
   h2 { margin: 0; font-size: 14px; color: var(--app-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .back { display: inline-flex; align-items: center; gap: 4px; background: transparent; color: var(--app-text-muted); border: 1px solid var(--app-border); border-radius: 5px; padding: 4px 8px; font-size: 12px; cursor: pointer; flex: 0 0 auto; }
   .back:hover { background: var(--app-control-hover-bg); }
-  .muted { margin: 0 16px; color: var(--app-text-muted); font-size: 12px; }
-  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; margin: 0 16px 16px; font-size: 12px; line-height: 1.45; }
+  .muted { margin: 0; color: var(--app-text-muted); font-size: 12px; }
+  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; margin: 0 0 16px; font-size: 12px; line-height: 1.45; }
   .columns.mono { font-family: var(--app-font-mono); }
   .col-head { position: sticky; top: 45px; padding: 4px 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--app-text-muted); background: var(--app-bg); border-bottom: 1px solid var(--app-border); }
   .cell { padding: 1px 8px; white-space: pre-wrap; overflow-wrap: anywhere; border-left: 3px solid transparent; min-height: 1.45em; }

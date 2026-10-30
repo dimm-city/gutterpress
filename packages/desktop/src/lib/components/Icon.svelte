@@ -37,6 +37,8 @@
     | "list"
     | "history"
     | "cloud-upload"
+    | "cloud"
+    | "laptop"
     | "triangle-alert"
     | "circle-x"
     | "circle-check"
@@ -65,7 +67,6 @@
     | "github"
     | "panel-left-close"
     | "chevron-up"
-    | "arrow-down-to-line"
     | "arrow-up-from-line"
     | "star"
     // SVG stand-ins for ✓ / → / 📖 / 💡 text glyphs.
@@ -135,6 +136,10 @@
       '<path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/>',
     "history":
       '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+    "cloud":
+      '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
+    "laptop":
+      '<path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"/>',
     "cloud-upload":
       '<path d="M12 13v8"/><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="m8 17 4-4 4 4"/>',
     "triangle-alert":
@@ -190,8 +195,6 @@
       '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/>',
     "chevron-up":
       '<path d="m18 15-6-6-6 6"/>',
-    "arrow-down-to-line":
-      '<path d="M12 17V3"/><path d="m6 11 6 6 6-6"/><path d="M19 21H5"/>',
     "arrow-up-from-line":
       '<path d="m18 9-6-6-6 6"/><path d="M12 3v14"/><path d="M5 21h14"/>',
     "star":

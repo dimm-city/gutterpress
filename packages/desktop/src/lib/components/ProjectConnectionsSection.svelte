@@ -1,10 +1,10 @@
 <script lang="ts">
   /**
    * ProjectConnectionsSection — Book setup → Online copy: the one place for
-   * where this book is kept, from top to bottom:
+   * where this book is kept, as three cards:
    *
-   *   1. Status — one headline and at most one primary button, from six
-   *      situations (`backupState`, #442):
+   *   1. Status — a short title, one line, and at most one primary button,
+   *      from six situations (`backupState`, #442):
    *        no-versions    — a plain folder: Turn on version history.
    *        local-only     — versions, no online copy: Keep this book safe
    *                         online… (connect GitHub, then create a new online
@@ -16,35 +16,32 @@
    *                         never typed.
    *        ready          — access is set up. What it says about the last
    *                         backup comes from the host's last status (live,
-   *                         the sync controller's `backup`) or a Back up now
-   *                         run here (`readyView`), never from the setup
-   *                         alone. Back up now / Try again run the page's
-   *                         Back up now (`onBackUpNow`); a rejected sign-in
-   *                         gets the sign-in step again.
+   *                         the sync controller's `backup`) or a Sync now run
+   *                         here (`readyView`), never from the setup alone;
+   *                         a rejected sign-in gets the sign-in step again.
    *        own-tools      — an SSH (or other non-https) address.
-   *      Then one line about this computer ("Saved · last version 10 minutes
-   *      ago") with Save a version and Version history….
+   *      Once backing up can work, "Backing up keeps failing?" folds into the
+   *      card's foot: Test connection (a read-only probe of this book's online
+   *      copy), Sign in again (Accounts) for GitHub books, Repair the online
+   *      copy (`onRepair`) and Start over from the online copy
+   *      (`api.remote.scorchedEarth`; the book closes at the end, so the
+   *      outcome is a toast).
    *   2. Revisions (RevisionsList), whenever version history is on.
-   *   3. If backing up keeps failing (ready), collapsed: Test connection (a
-   *      read-only probe of this book's online copy; the GitHub sign-in itself
-   *      is tested in Accounts), Repair the online copy (`onRepair`: fresh
-   *      versions under the files, then a backup), Start over from the online
-   *      copy (`api.remote.scorchedEarth`: keep a safety folder, empty the
-   *      folder, download the online copy, put the files back on top and —
-   *      whether or not that worked — close the book, so the app holds no
-   *      stale state; Book setup closes with it, so the outcome is a toast)
-   *      and Sign in again (Accounts) for GitHub books.
+   *   3. Version history — the newest three versions and "Save a version";
+   *      Browse versions (or a version) opens the Version history screen
+   *      over this one (`onBrowseVersions`).
    *
    * PWA-clean (§8): api.* routes only.
    */
   import { onMount, tick } from "svelte";
-  import { api } from "#lib/api.ts";
+  import { api, type VersionEntry } from "#lib/api.ts";
   import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
   import { cancelInlineConfirm, requestInlineConfirm, type InlineConfirmState } from "#lib/dialog.ts";
   import { useSettings } from "#lib/settings.svelte.ts";
   import { suggestRepositoryName } from "#lib/backup-repo-name.ts";
   import { backupState, onlineCopyName, readyView, type LastBackup } from "#lib/backup-state.ts";
   import { NOTHING_NEW_NOTICE, versionsLine } from "#lib/save-status.ts";
+  import { versionDescription, versionLabel } from "#lib/routes/version-timeline.ts";
   import GitHubConnect from "#lib/components/GitHubConnect.svelte";
   import GitServerForm, { OTHER_SERVER_GUIDE } from "#lib/components/GitServerForm.svelte";
   import Icon from "#lib/components/Icon.svelte";
@@ -62,13 +59,13 @@
     onBackUpNow,
     onRepair,
     onSaveVersion,
-    onShowVersions,
+    onBrowseVersions,
     onCloseBook,
     onOpenAccounts,
     toast = null,
   }: {
     projectDir: string | null;
-    /** The online copy's last word for this book: the host's status stream or the last Back up now. */
+    /** The online copy's last word for this book: the host's status stream or the last Sync. */
     backup?: LastBackup | null;
     /** Automatic versions keep failing, and why (the host said so). */
     versionsProblem?: { message: string | null } | null;
@@ -78,14 +75,14 @@
     onBackupSetUp?: (projectDir: string) => void;
     /** Another revision was just opened, made or renamed: the files under `projectDir` changed under the open editor. */
     onProjectFilesChanged?: () => void;
-    /** Back up now: the page's own backup (its toasts and editor refresh). */
+    /** Sync now: the page's own pass, which gets the latest then backs up (its toasts and editor refresh). */
     onBackUpNow?: () => Promise<void>;
     /** Repair the online copy: the page's repair (its toasts and editor refresh). */
     onRepair?: () => Promise<void>;
     /** Save a version now: the page's own save (its toast); resolves "unchanged" when there was nothing new. */
     onSaveVersion?: () => Promise<"saved" | "unchanged">;
-    /** Version history…: the parent closes Book setup and opens the view. */
-    onShowVersions?: () => void;
+    /** Open the Version history screen over this one, on a version or the newest. */
+    onBrowseVersions?: (id?: string) => void;
     /** Close the open book: Start over from the online copy ends with it. */
     onCloseBook?: () => Promise<boolean>;
     /** Open the Accounts page, over this one. */
@@ -136,6 +133,14 @@
   let savingVersion = $state(false);
   let revisionsEl = $state<{ refresh: () => void }>();
 
+  /** The newest versions, for the Version history card. */
+  let recent = $state<VersionEntry[]>([]);
+
+  /** A backup finished, or a version was restored: the newest versions may have changed. */
+  export function refreshHistory() {
+    if (projectDir) void loadFacts(projectDir);
+  }
+
   onMount(() => {
     void load();
   });
@@ -160,7 +165,8 @@
   /** Best-effort: the line says nothing rather than guessing when the lookup fails. */
   async function loadFacts(dir: string) {
     try {
-      const [page, pending] = await Promise.all([api.vcs.listSnapshotsPage(dir, { limit: 1 }), api.vcs.unversionedChanges(dir)]);
+      const [page, pending] = await Promise.all([api.vcs.listSnapshotsPage(dir, { limit: 3 }), api.vcs.unversionedChanges(dir)]);
+      recent = page.entries;
       facts = { lastVersionAt: page.entries[0]?.timestamp ?? null, changedFiles: pending.changedFiles, stale: pending.stale };
       if ((pending.changedFiles ?? 0) > 0) nothingNew = false;
     } catch {
@@ -273,7 +279,7 @@
       return null;
     });
 
-  // The page's Back up now, run from here; the sync controller's `backup` is the headline.
+  // The page's Sync, run from here; the sync controller's `backup` is the headline.
   const backUpNow = () =>
     act(async (dir) => {
       running = "back-up";
@@ -391,199 +397,281 @@
   }
 
   const githubRepo = $derived(diag?.remoteUrl ? onlineCopyName(diag.remoteUrl).replace(/^[^/]*\//, "") : "");
+
+  /** The status card: a shape and tone, a short title, and one line under it. */
+  type Tone = "ok" | "warn" | "pending" | "plain";
+  const status = $derived.by((): { icon: "circle-check" | "triangle-alert" | "refresh-cw" | "cloud-upload" | "cloud" | "laptop" | "history" | "info"; tone: Tone; title: string; detail: string } | null => {
+    if (!diag) return null;
+    switch (situation) {
+      case "no-versions":
+        return { icon: "history", tone: "plain", title: "Version history is off", detail: "Turn it on to keep earlier versions on this computer, so you can go back. Nothing is uploaded." };
+      case "local-only":
+        return { icon: "laptop", tone: "plain", title: "Saved on this computer only", detail: "An online copy keeps your book, and every earlier version, safe on GitHub, so you can get it back if this computer is lost." };
+      case "connect-github":
+        return { icon: "triangle-alert", tone: "warn", title: "Sign in to back up", detail: `This book's online copy is on GitHub: ${githubRepo}.` };
+      case "connect-server":
+        return { icon: "triangle-alert", tone: "warn", title: "Sign in to back up", detail: `This book's online copy is on ${diag.remoteHost}.` };
+      case "ready": {
+        if (!ready) return null;
+        const state = backup?.state;
+        const tone: Tone = ready.ok ? "ok" : state === "syncing" ? "pending" : ready.action === "try-again" || ready.action === "sign-in" ? "warn" : "plain";
+        const icon = ready.ok ? "circle-check" : state === "syncing" ? "refresh-cw" : tone === "warn" ? "triangle-alert" : state === "unsent" ? "cloud-upload" : "cloud";
+        const copy = diag.remoteUrl ? onlineCopyName(diag.remoteUrl) : "";
+        return { icon, tone, title: ready.headline, detail: ready.headline.includes(copy) ? ready.detail : `${copy} · ${ready.detail}` };
+      }
+      default:
+        return {
+          icon: "info",
+          tone: "plain",
+          title: "Backed up with your own Git tool",
+          detail: diag.remoteProtocol === "ssh"
+            ? "This book's online copy uses an SSH address (git@…), which Gutterpress can't back up over."
+            : `This book's online copy is at ${diag.remoteUrl}. Gutterpress backs up only to https:// addresses.`,
+        };
+    }
+  });
 </script>
 
-<section class="online-copy" bind:this={sectionEl} tabindex="-1">
+<div class="online-copy" bind:this={sectionEl} tabindex="-1">
   {#if loading}
     <p class="hint">Checking this book's online copy…</p>
-  {:else if !diag}
+  {:else if !diag || !status}
     <p class="hint">Couldn't read this book's online copy status. <button class="ghost small" onclick={load}>Try again</button></p>
   {:else}
-    {#if done}<p class="done" role="status" bind:this={doneEl} tabindex="-1">{done}</p>{/if}
-
-    {#if situation === "no-versions"}
-      <p class="headline">Version history is off for this book.</p>
-      <p class="hint">Turn it on to keep earlier versions on this computer, so you can go back. Nothing is uploaded.</p>
-      <button class="app-btn-primary" onclick={turnOnVersions} disabled={busy}>
-        {busy ? "Turning on…" : "Turn on version history"}
-      </button>
-    {:else if situation === "local-only"}
-      <p class="headline">Saved on this computer only.</p>
-      {#if !settingUp}
-        <p class="hint">An online copy keeps your book, and every earlier version, safe on GitHub, so you can get it back if this computer is lost.</p>
-        <button class="app-btn-primary" onclick={() => (settingUp = true)}>Keep this book safe online…</button>
-      {:else}
-        <h3>Set up an online copy</h3>
-        <p class="hint">Keeps your book, and every earlier version, in an online copy on GitHub.</p>
-        {#if !github?.connected}
-          <GitHubConnect primary onConnected={githubConnected} />
-        {:else}
-          <p class="hint">Signed in to GitHub{github.username ? ` as @${github.username}` : ""}.</p>
-          {#if !useExisting}
-            <label class="field">
-              <span class="lbl">Name of the online copy</span>
-              <input class="input" bind:value={repoName} spellcheck="false" autocomplete="off" />
-            </label>
-            <label class="check">
-              <input type="checkbox" bind:checked={makePrivate} />
-              Private: only you can see it
-            </label>
-          {:else if reposLoading}
-            <p class="hint">Looking for your empty online copies…</p>
-          {:else if reposError}
-            <p class="error" role="alert">{reposError}</p>
-          {:else if emptyRepos.length === 0}
-            <p class="hint">
-              No empty online copies found on your GitHub account. Create one on github.com (GitHub calls it a repository;
-              leave "Add a README" off), then come back.
-            </p>
-            <button class="ghost" onclick={() => void api.shell.openExternal("https://github.com/new").catch(() => {})}>
-              Open github.com to create one…
+    <!-- 1. Where the book is kept: one sentence and its one next step. -->
+    <section class="section-card status {status.tone}" aria-labelledby="online-status-title">
+      <div class="status-row">
+        <span class="status-icon"><Icon name={status.icon} size={18} /></span>
+        <div class="status-text">
+          <h3 id="online-status-title">{status.title}</h3>
+          <p>{status.detail}</p>
+        </div>
+        <div class="status-action">
+          {#if situation === "no-versions"}
+            <button class="app-btn-primary" onclick={turnOnVersions} disabled={busy}>{busy ? "Turning on…" : "Turn on version history"}</button>
+          {:else if situation === "local-only" && !settingUp}
+            <button class="app-btn-primary" onclick={() => (settingUp = true)}>Keep this book safe online…</button>
+          {:else if situation === "ready" && ready && (ready.action === "back-up" || ready.action === "try-again")}
+            <button class="app-btn-primary" onclick={backUpNow} disabled={busy}>
+              {running === "back-up" ? "Syncing…" : ready.action === "try-again" ? "Try again" : "Sync now"}
             </button>
-          {:else}
-            <label class="field">
-              <span class="lbl">Empty online copy</span>
-              <select class="input" bind:value={chosenRepo}>
-                {#each emptyRepos as r (r.fullName)}
-                  <option value={r.fullName}>{r.fullName}{r.private ? " (private)" : ""}</option>
-                {/each}
-              </select>
-            </label>
           {/if}
-          <button
-            class="app-btn-primary"
-            onclick={setUpBackup}
-            disabled={busy || (useExisting ? !chosenRepo : !repoName.trim())}
-          >
-            {busy ? "Setting up…" : actionError ? "Try again" : "Back up to GitHub"}
-          </button>
-          <button class="link" onclick={() => void chooseExisting(!useExisting)}>
-            {useExisting ? "Create a new online copy" : "Use an empty one you already made on GitHub"}
-          </button>
-        {/if}
-        <p class="hint">
-          Another Git server (GitLab, Gitea, Bitbucket…)?
-          <button class="link" onclick={() => void api.shell.openExternal(OTHER_SERVER_GUIDE).catch(() => {})}>
-            How to back up there <Icon name="external-link" size={11} />
-          </button>
-        </p>
-      {/if}
-    {:else if situation === "connect-github"}
-      <p class="headline">This book's online copy is on GitHub: {githubRepo}. Sign in to back it up.</p>
-      <GitHubConnect primary label="Sign in…" onConnected={githubConnected} />
-    {:else if situation === "connect-server"}
-      <p class="headline">This book's online copy is on {diag.remoteHost}. Sign in to back it up.</p>
-      <GitServerForm host={diag.remoteHost ?? ""} tokenUrl={diag.tokenSettingsUrl} repoUrl={diag.remoteUrl} submitLabel="Sign in" onConnected={serverConnected} />
-    {:else if situation === "ready" && ready}
-      <p class="headline" class:ok={ready.ok}>
-        {#if ready.ok}<Icon name="circle-check" size={15} />{/if}
-        {ready.headline}
-      </p>
-      <p class="hint">{ready.detail}</p>
-      {#if ready.action === "back-up" || ready.action === "try-again"}
-        <button class="app-btn-primary" onclick={backUpNow} disabled={busy}>
-          {running === "back-up" ? "Backing up…" : ready.action === "try-again" ? "Try again" : "Back up now"}
-        </button>
-      {:else if ready.action === "sign-in"}
-        {#if diag.provider === "github"}
-          <GitHubConnect primary label="Sign in…" onConnected={githubConnected} />
-        {:else}
-          <GitServerForm host={diag.remoteHost ?? ""} tokenUrl={diag.tokenSettingsUrl} repoUrl={diag.remoteUrl} submitLabel="Sign in" onConnected={serverConnected} />
-        {/if}
-      {/if}
-    {:else if diag.remoteProtocol === "ssh"}
-      <p class="headline">This book's online copy uses an SSH address (git@…).</p>
-      <p class="hint">
-        Gutterpress can't back up over SSH. Keep backing up with your usual Git tool, or give the book its https://
-        address with that tool and come back here to sign in:
-      </p>
-      <code>git remote set-url origin https://…</code>
-    {:else}
-      <p class="headline">This book's online copy is at {diag.remoteUrl}.</p>
-      <p class="hint">Gutterpress backs up only to https:// addresses. Keep backing up with your usual Git tool.</p>
-    {/if}
+        </div>
+      </div>
 
-    {#if situation && situation !== "no-versions" && projectDir}
-      <!-- This computer: the newest version, and the two ways to the rest. -->
-      <div class="this-computer">
-        {#if facts}<p class="line">{versionsLine({ ...facts, now: Date.now() })}</p>{/if}
-        {#if versionsProblem}
+      {#if situation === "local-only" && settingUp}
+        <div class="status-body">
+          {#if !github?.connected}
+            <GitHubConnect primary onConnected={githubConnected} />
+          {:else}
+            <p class="hint">Signed in to GitHub{github.username ? ` as @${github.username}` : ""}.</p>
+            {#if !useExisting}
+              <label class="field">
+                <span class="lbl">Name of the online copy</span>
+                <input class="input" bind:value={repoName} spellcheck="false" autocomplete="off" />
+              </label>
+              <label class="check">
+                <input type="checkbox" bind:checked={makePrivate} />
+                Private: only you can see it
+              </label>
+            {:else if reposLoading}
+              <p class="hint">Looking for your empty online copies…</p>
+            {:else if reposError}
+              <p class="error" role="alert">{reposError}</p>
+            {:else if emptyRepos.length === 0}
+              <p class="hint">
+                No empty online copies found on your GitHub account. Create one on github.com (GitHub calls it a repository;
+                leave "Add a README" off), then come back.
+              </p>
+              <button class="ghost" onclick={() => void api.shell.openExternal("https://github.com/new").catch(() => {})}>
+                Open github.com to create one…
+              </button>
+            {:else}
+              <label class="field">
+                <span class="lbl">Empty online copy</span>
+                <select class="input" bind:value={chosenRepo}>
+                  {#each emptyRepos as r (r.fullName)}
+                    <option value={r.fullName}>{r.fullName}{r.private ? " (private)" : ""}</option>
+                  {/each}
+                </select>
+              </label>
+            {/if}
+            <div class="row">
+              <button
+                class="app-btn-primary"
+                onclick={setUpBackup}
+                disabled={busy || (useExisting ? !chosenRepo : !repoName.trim())}
+              >
+                {busy ? "Setting up…" : actionError ? "Try again" : "Back up to GitHub"}
+              </button>
+              <button class="link" onclick={() => void chooseExisting(!useExisting)}>
+                {useExisting ? "Create a new online copy" : "Use an empty one you already made on GitHub"}
+              </button>
+            </div>
+          {/if}
           <p class="hint">
+            Another Git server (GitLab, Gitea, Bitbucket…)?
+            <button class="link" onclick={() => void api.shell.openExternal(OTHER_SERVER_GUIDE).catch(() => {})}>
+              How to back up there <Icon name="external-link" size={11} />
+            </button>
+          </p>
+        </div>
+      {:else if situation === "connect-github" || (situation === "ready" && ready?.action === "sign-in" && diag.provider === "github")}
+        <div class="status-body"><GitHubConnect primary label="Sign in…" onConnected={githubConnected} /></div>
+      {:else if situation === "connect-server" || (situation === "ready" && ready?.action === "sign-in")}
+        <div class="status-body">
+          <GitServerForm host={diag.remoteHost ?? ""} tokenUrl={diag.tokenSettingsUrl} repoUrl={diag.remoteUrl} submitLabel="Sign in" onConnected={serverConnected} />
+        </div>
+      {:else if situation === "own-tools" && diag.remoteProtocol === "ssh"}
+        <div class="status-body">
+          <p class="hint">Keep backing up with your usual Git tool, or give the book its https:// address with that tool and come back here to sign in:</p>
+          <code>git remote set-url origin https://…</code>
+        </div>
+      {/if}
+
+      {#if done}<p class="status-note done" role="status" bind:this={doneEl} tabindex="-1">{done}</p>{/if}
+      {#if actionError}<p class="status-note error" role="alert" bind:this={errorEl} tabindex="-1">{actionError}</p>{/if}
+
+      {#if situation === "ready" && ready}
+        <details class="trouble">
+          <summary>Backing up keeps failing?</summary>
+          <div class="tools">
+            <div class="tool">
+              <div><strong>Test connection</strong><p class="hint">Checks that Gutterpress can reach this book's online copy. Nothing is changed or uploaded.</p></div>
+              <button class="ghost small" onclick={() => void testConnection()} disabled={busy || testing}>{testing ? "Testing…" : "Test connection"}</button>
+            </div>
+            {#if testResult}<p class="result" class:failed={!testOk} role="status">{testResult}</p>{/if}
+            {#if onOpenAccounts && diag.provider === "github"}
+              <div class="tool">
+                <div><strong>Sign in again</strong><p class="hint">Opens Accounts, where you sign in to GitHub again.</p></div>
+                <button class="ghost small" onclick={onOpenAccounts}>Sign in again</button>
+              </div>
+            {/if}
+            <div class="tool">
+              <div><strong>Repair the online copy</strong><p class="hint">Replaces this book's versions with a fresh download from the online copy. Your files stay as they are. Then a version is saved and backed up.</p></div>
+              <button
+                class="ghost small"
+                onclick={() => void repair()}
+                onblur={() => (confirm = cancelInlineConfirm(confirm, "repair"))}
+                disabled={busy}
+              >{running === "repair" ? "Repairing…" : confirm["repair"] ? "Really repair?" : "Repair the online copy"}</button>
+            </div>
+            <div class="tool">
+              <div><strong>Start over from the online copy</strong><p class="hint">The last resort. Keeps a safety folder with everything as it is now, downloads a fresh start from the online copy, then puts your files back on top. The book closes at the end.</p></div>
+              <button
+                class="ghost small danger"
+                onclick={() => void startOver()}
+                onblur={() => (confirm = cancelInlineConfirm(confirm, "start-over"))}
+                disabled={busy}
+              >{running === "start-over" ? "Working…" : confirm["start-over"] ? "Really start over?" : "Start over from the online copy"}</button>
+            </div>
+          </div>
+        </details>
+      {/if}
+    </section>
+
+    {#if situation !== "no-versions" && projectDir}
+      <!-- 2. Revisions. -->
+      <RevisionsList bind:this={revisionsEl} {projectDir} hasOnlineCopy={!!diag.remoteUrl} disabled={busy} onChanged={revisionsChanged} />
+
+      <!-- 3. Version history of the revision you're working on: the newest three, and the screen for all of them. -->
+      <section class="section-card" aria-labelledby="version-history-title">
+        <header class="section-head">
+          <div>
+            <h3 id="version-history-title">Version history</h3>
+            {#if facts}<p class="section-sub">{versionsLine({ ...facts, now: Date.now() })}</p>{/if}
+          </div>
+          <div class="head-actions">
+            <button class="ghost" onclick={() => void saveVersion()} disabled={busy || savingVersion || !onSaveVersion}>
+              <Icon name="save" size={14} /> {savingVersion ? "Saving…" : "Save a version"}
+            </button>
+            <button class="ghost" onclick={() => onBrowseVersions?.()} disabled={!onBrowseVersions}>
+              <Icon name="history" size={14} /> Browse versions
+            </button>
+          </div>
+        </header>
+        {#if versionsProblem}
+          <p class="section-note warn">
             Automatic versions aren't working right now. Try Save a version. If that fails, close any other program that
             might be using your book folder.
           </p>
         {/if}
-        {#if nothingNew}<p class="hint" role="status">{NOTHING_NEW_NOTICE}</p>{/if}
-        <div class="row">
-          <button class="ghost" onclick={() => void saveVersion()} disabled={busy || savingVersion || !onSaveVersion}>
-            {savingVersion ? "Saving a version…" : "Save a version"}
-          </button>
-          <button class="ghost" onclick={() => onShowVersions?.()} disabled={!onShowVersions}>Version history…</button>
-        </div>
-      </div>
-
-      <RevisionsList bind:this={revisionsEl} {projectDir} hasOnlineCopy={!!diag.remoteUrl} disabled={busy} onChanged={revisionsChanged} />
+        {#if nothingNew}<p class="section-note" role="status">{NOTHING_NEW_NOTICE}</p>{/if}
+        <ul class="recent" aria-label="Newest versions">
+          {#each recent as v (v.id)}
+            <li>
+              <button class="recent-row" onclick={() => onBrowseVersions?.(v.id)} disabled={!onBrowseVersions}>
+                <span class="recent-title">{versionLabel(v.message)}{#if versionDescription(v.message)}<span class="recent-note"> — {versionDescription(v.message)}</span>{/if}</span>
+                <span class="recent-when">{new Date(v.timestamp).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</span>
+                <Icon name="chevron-right" size={14} />
+              </button>
+            </li>
+          {:else}
+            <li class="section-note">No versions yet.</li>
+          {/each}
+        </ul>
+      </section>
     {/if}
-
-    {#if situation === "ready" && ready}
-      <details class="failing">
-        <summary>If backing up keeps failing</summary>
-        <div class="tools">
-          <button class="ghost" onclick={() => void testConnection()} disabled={busy || testing}>
-            {testing ? "Testing…" : "Test connection"}
-          </button>
-          <span class="hint">Checks that Gutterpress can reach this book's online copy. Nothing is changed or uploaded.</span>
-          {#if testResult}<p class="result" class:failed={!testOk} role="status">{testResult}</p>{/if}
-          <button
-            class="ghost"
-            onclick={() => void repair()}
-            onblur={() => (confirm = cancelInlineConfirm(confirm, "repair"))}
-            disabled={busy}
-          >{running === "repair" ? "Repairing…" : confirm["repair"] ? "Really repair?" : "Repair the online copy"}</button>
-          <span class="hint">Replaces this book's versions with a fresh download from the online copy. Your files stay as they are. Then a version is saved and backed up.</span>
-          <button
-            class="ghost danger"
-            onclick={() => void startOver()}
-            onblur={() => (confirm = cancelInlineConfirm(confirm, "start-over"))}
-            disabled={busy}
-          >{running === "start-over" ? "Working…" : confirm["start-over"] ? "Really start over?" : "Start over from the online copy"}</button>
-          <span class="hint">The last resort. Keeps a safety folder with everything as it is now, downloads a fresh start from the online copy, then puts your files back on top. The book closes at the end.</span>
-          {#if onOpenAccounts && diag.provider === "github"}
-            <button class="ghost" onclick={onOpenAccounts}>Sign in again</button>
-            <span class="hint">Opens Accounts, where you sign in to GitHub again.</span>
-          {/if}
-        </div>
-      </details>
-    {/if}
-
-    {#if actionError}<p class="error" role="alert" bind:this={errorEl} tabindex="-1">{actionError}</p>{/if}
   {/if}
-</section>
+</div>
 
 <style>
   @import "../styles/config-section-shared.css";
 
-  .online-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+  .online-copy { display: flex; flex-direction: column; gap: 16px; max-width: 820px; }
   /* Focus lands on these after an action; they are not controls. */
   .online-copy, .done, .error { outline: none; }
-  .online-copy .field { align-self: stretch; max-width: 420px; }
-  .headline { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.45; color: var(--app-text); }
-  .headline.ok { display: inline-flex; align-items: center; gap: 6px; }
-  .headline.ok :global(svg) { color: var(--app-success-strong); }
-  h3 { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--app-text); }
-  .done { margin: 0; font-size: 13px; color: var(--app-success-text); }
+
+  .status-row { display: flex; align-items: center; gap: 14px; padding: 16px; }
+  .status-icon {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--app-surface-sunken); color: var(--app-text-muted);
+  }
+  .status.ok .status-icon { background: var(--app-success-bg); color: var(--app-success-strong); }
+  .status.warn .status-icon { background: var(--app-warning-bg); color: var(--app-warning-text); }
+  .status.pending .status-icon { background: var(--app-info-bg); color: var(--app-info-text); }
+  .status-text { flex: 1; min-width: 0; }
+  .status-text h3 { margin: 0; font-size: 15px; font-weight: 600; color: var(--app-text); overflow-wrap: anywhere; }
+  .status-text p { margin: 3px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--app-text-muted); overflow-wrap: anywhere; }
+  .status-action { flex-shrink: 0; }
+  .status-body {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+    padding: 0 16px 16px 66px;
+  }
+  .status-body .field { align-self: stretch; max-width: 420px; }
+  .status-note { margin: 0; padding: 0 16px 14px 66px; font-size: 13px; }
+  .done { color: var(--app-success-text); }
   .check { display: flex; gap: 6px; align-items: center; font-size: 13px; }
-  .this-computer { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding-top: 4px; }
-  .this-computer .line { margin: 0; font-size: 13px; color: var(--app-text); }
-  .failing { align-self: stretch; }
-  .failing summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--app-text); }
-  .failing .tools { margin-top: 8px; }
-  /* Each tool's button beside what it does, the buttons one column so the descriptions line up. */
-  .tools { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 12px; }
-  .tools .hint { margin: 0; }
-  .result { grid-column: 1 / -1; margin: 0; font-size: 12px; color: var(--app-text-secondary); overflow-wrap: anywhere; }
+  .head-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .recent { list-style: none; margin: 0; padding: 0; }
+  .recent li + li { border-top: 1px solid var(--app-border-subtle); }
+  .recent-row {
+    display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 12px 9px 16px;
+    border: 0; border-radius: 0; background: none; color: var(--app-text-muted); text-align: left;
+  }
+  .recent-row:hover:not(:disabled) { background: var(--app-surface-hover); }
+  .recent-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--app-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .recent-note { font-weight: 400; color: var(--app-text-secondary); }
+  .recent-when { font-size: 12px; flex-shrink: 0; }
+
+  .trouble { border-top: 1px solid var(--app-border-subtle); }
+  .trouble summary {
+    padding: 10px 16px; cursor: pointer; font-size: 12.5px; color: var(--app-text-muted);
+  }
+  .trouble summary:hover { color: var(--app-text); }
+  .tools { display: flex; flex-direction: column; }
+  .tool {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 10px 16px; border-top: 1px solid var(--app-border-subtle);
+  }
+  .tool strong { font-size: 13px; font-weight: 600; color: var(--app-text); }
+  .tool .hint { margin-top: 2px; }
+  .tool button { flex-shrink: 0; }
+  .result { margin: 0; padding: 0 16px 10px; font-size: 12px; color: var(--app-text-secondary); overflow-wrap: anywhere; }
   .result.failed { color: var(--app-error-text); }
-  .tools .danger { color: var(--app-error-text); border-color: var(--app-error-text); }
+  .tool .danger { color: var(--app-error-text); border-color: var(--app-error-text); }
+  .warn { color: var(--app-warning-text); }
   code { font-family: var(--app-font-mono); font-size: 12px; color: var(--app-text-secondary); }
   .link {
     padding: 0;

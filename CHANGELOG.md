@@ -16,10 +16,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   (the renamed Versions view, with Save a version at the top), manages
   revisions (switch, new, rename, delete: separate lines of work in the same
   book, each saying whether it is also in the online copy), and, collapsed, the
-  tools for when backing up keeps failing. Readers see no status control, Get
-  latest, Back up now or online toasts. Nothing an author reads says commit,
-  branch, push, pull, merge, remote, repository, snapshot, sync or clone any
-  more; Help no longer describes the removed conflict model, and the two sides
+  tools for when backing up keeps failing. Readers see no status control, Sync
+  button or online toasts. Nothing an author reads says commit, branch, push,
+  pull, merge, remote, repository, snapshot or clone any more (the one manual
+  button is **Sync**); Help no longer describes the removed conflict model, and the two sides
   of an overlapping passage are "two takes". Settings' switch is now **Keep
   version history**, and crash recovery's button is **Recover**.
 - **Honest backup status, and Readers only ever get the latest (#448).**
@@ -34,6 +34,27 @@ This project follows [Semantic Versioning](https://semver.org/).
   online copy can't be reached or has versions this computer lacks; deleting a
   revision whose versions are found nowhere else asks a second time with the
   count.
+- **Online copy is laid out as three cards (#448).** A status card (where the
+  book is kept, its one next step, and **Backing up keeps failing?** at its
+  foot with Test connection, Sign in again, Repair and Start over), a
+  **Revisions** card, and a short **Version history** card (the newest versions,
+  Save a version, Browse versions).
+- **Version history is a screen of its own (#448).** Browse versions (or a
+  version in the card) opens it over Book setup: the versions on the left,
+  grouped by day; the selected version on the right, its **Pages** rendered as
+  they were or its **Changed files** line by line; **Restore this version** at
+  the top. × or Esc returns to Book setup. It replaces looking at a version
+  beside the live preview, and never takes over the editor. Revisions: the open one first,
+  five shown with **Show all**, **Find a revision** past five, **New
+  revision** in the card's header, and each row's **Switch** plus a ⋯ menu
+  with **Rename…** (every revision) and **Delete…** (all but the open one);
+  New revision, Rename and Delete are dialogs. A revision that is **Only
+  online** can now be renamed or deleted in the online copy (refused, changing
+  nothing, when it changed online since the list was checked). With automatic backing up off, one **Sync** button
+  (Setup → Online copy: **Sync now**; the new-changes toast: **Sync**) replaces
+  Back up now and Get latest; it runs the same backing up as before, which gets
+  the latest first. The status control and Sync sit on the left of the status
+  bar, after the book switcher.
 - **History messages follow the vocabulary (#448).** New versions record
   "Automatic version", "First version", "Saved a version", "Automatic version
   before backing up", "Automatic version before restoring", "Saved before
@@ -49,6 +70,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Escape inside Book setup, Settings and Accounts acts on the control first
+  (#448).** Escape in a revision's name form cancels the form, and Escape on
+  the look's "Replace / Keep mine" question keeps yours, instead of closing the
+  whole page: the page's own Escape now waits for the control's.
 - **The first backup of a new revision works (#448).** It used to stop with
   "sign in again" because a revision the online copy didn't have yet was taken
   for a rejected sign-in.

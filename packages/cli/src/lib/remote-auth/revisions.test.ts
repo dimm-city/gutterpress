@@ -51,6 +51,17 @@ async function serverCommitOn(h: Harness, branch: string, message: string) {
 }
 
 /**
+ * A revision that exists only in the online copy as far as this computer is
+ * concerned: made there (with a version for each message), then heard about by a refresh.
+ */
+async function onlineOnlyRevision(h: Harness, name: string, versions: string[] = []) {
+  const tip = await git.resolveRef({ fs, dir: h.serverDir, ref: "main" });
+  await git.branch({ fs, dir: h.serverDir, ref: name, object: tip });
+  for (const message of versions) await serverCommitOn(h, name, message);
+  await refreshRemoteCopies({ projectDir: h.projectDir, credential: h.credential });
+}
+
+/**
  * An http client that lets everything through except deletes of the named
  * online revisions, which it declines in the server's report-status — as a host
  * does for the revision it opens by default.
@@ -469,22 +480,167 @@ describe("deleteRevision", () => {
     }
   });
 
-  test("a revision that is only in the online copy must be switched to first", async () => {
+  test("a revision that is only in the online copy is renamed there, with nothing changed here", async () => {
     const h = await setupClone();
     try {
-      const tip = await git.resolveRef({ fs, dir: h.serverDir, ref: "main" });
-      await git.branch({ fs, dir: h.serverDir, ref: "Elsewhere", object: tip });
-      await refreshRemoteCopies({ projectDir: h.projectDir });
+      await onlineOnlyRevision(h, "Elsewhere");
 
-      await expect(deleteRevision({ projectDir: h.projectDir, name: "Elsewhere" })).rejects.toThrow(
-        /only in the online copy so far.*switch to it first/i,
-      );
-      await expect(renameRevision({ projectDir: h.projectDir, from: "Elsewhere", to: "Else" })).rejects.toThrow(
-        /only in the online copy so far/i,
-      );
+      const result = await renameRevision({ projectDir: h.projectDir, from: "Elsewhere", to: "Somewhere else" });
+
+      expect(result).toEqual({ current: "main", name: "Somewhere-else" });
+      expect(await serverBranches(h)).toEqual(["Somewhere-else", "main"]);
+      expect(await localBranches(h)).toEqual(["main"]);
+      expect(await listed(h)).toEqual(["main:online", "Somewhere-else:online-only"]);
     } finally {
       await h.cleanup();
     }
+  });
+
+  describe("a revision that is only in the online copy", () => {
+    test("is deleted from the online copy; nothing changes on this computer", async () => {
+      const h = await setupClone();
+      try {
+        await onlineOnlyRevision(h, "Elsewhere");
+        expect(await listed(h)).toEqual(["Elsewhere:online-only", "main:online"]);
+
+        expect(await deleteRevision({ projectDir: h.projectDir, name: "Elsewhere" })).toEqual({ deleted: true });
+
+        expect(await serverBranches(h)).toEqual(["main"]);
+        expect(await localBranches(h)).toEqual(["main"]);
+        // The row is gone without another check of the online copy.
+        expect(await listed(h)).toEqual(["main:online"]);
+      } finally {
+        await h.cleanup();
+      }
+    });
+
+    test("holding versions found nowhere else is not deleted until asked twice", async () => {
+      const h = await setupClone();
+      try {
+        await onlineOnlyRevision(h, "Elsewhere", ["First online", "Second online"]);
+
+        expect(await deleteRevision({ projectDir: h.projectDir, name: "Elsewhere" })).toEqual({
+          deleted: false,
+          versionsOnlyHere: 2,
+        });
+        expect(await serverBranches(h)).toEqual(["Elsewhere", "main"]);
+        expect(await listed(h)).toEqual(["Elsewhere:online-only", "main:online"]);
+
+        expect(await deleteRevision({ projectDir: h.projectDir, name: "Elsewhere", discard: true })).toEqual({
+          deleted: true,
+        });
+        expect(await serverBranches(h)).toEqual(["main"]);
+        expect(await listed(h)).toEqual(["main:online"]);
+      } finally {
+        await h.cleanup();
+      }
+    });
+
+    test("needs no second look when another revision, here or online, has its versions", async () => {
+      const h = await setupClone();
+      try {
+        await onlineOnlyRevision(h, "Elsewhere", ["Kept online"]);
+        const tip = await git.resolveRef({ fs, dir: h.serverDir, ref: "Elsewhere" });
+        await git.branch({ fs, dir: h.serverDir, ref: "Copy", object: tip });
+        await refreshRemoteCopies({ projectDir: h.projectDir });
+
+        // The online copy's "Copy" has them too.
+        expect(await deleteRevision({ projectDir: h.projectDir, name: "Elsewhere" })).toEqual({ deleted: true });
+        expect(await serverBranches(h)).toEqual(["Copy", "main"]);
+
+        // And so does a revision on this computer, once "Copy" is out of the way.
+        await git.branch({ fs, dir: h.projectDir, ref: "Mine", object: tip });
+        expect(await deleteRevision({ projectDir: h.projectDir, name: "Copy" })).toEqual({ deleted: true });
+        expect(await serverBranches(h)).toEqual(["main"]);
+        expect(await localBranches(h)).toEqual(["Mine", "main"]);
+      } finally {
+        await h.cleanup();
+      }
+    });
+
+    test("is refused, changing nothing, when it gained versions after the list was checked", async () => {
+      const h = await setupClone();
+      try {
+        await onlineOnlyRevision(h, "Elsewhere");
+        await serverCommitOn(h, "Elsewhere", "Written online since");
+
+        await expect(deleteRevision({ projectDir: h.projectDir, name: "Elsewhere" })).rejects.toThrow(
+          /has versions of "Elsewhere" that this computer doesn't have yet\. They arrived after the list was last checked, so "Elsewhere" wasn't deleted\. Try again\./i,
+        );
+        expect(await serverBranches(h)).toEqual(["Elsewhere", "main"]);
+        expect(await listed(h)).toEqual(["Elsewhere:online-only", "main:online"]);
+
+        // Checking the list again brings the new version in; the delete now shows what would be lost.
+        await refreshRemoteCopies({ projectDir: h.projectDir });
+        expect(await deleteRevision({ projectDir: h.projectDir, name: "Elsewhere" })).toEqual({
+          deleted: false,
+          versionsOnlyHere: 1,
+        });
+      } finally {
+        await h.cleanup();
+      }
+    });
+
+    test("offline changes nothing and says so in plain words", async () => {
+      const h = await setupClone();
+      try {
+        await onlineOnlyRevision(h, "Elsewhere");
+        await h.server.close();
+
+        await expect(deleteRevision({ projectDir: h.projectDir, name: "Elsewhere" })).rejects.toThrow(
+          /couldn't reach the online copy, so "Elsewhere" wasn't deleted/i,
+        );
+        expect(await listed(h)).toEqual(["Elsewhere:online-only", "main:online"]);
+      } finally {
+        await h.cleanup().catch(() => {});
+      }
+    });
+
+    test("a rejected sign-in changes nothing; with the sign-in it works", async () => {
+      const h = await setupClone({ requireAuth: { username: "writer", password: "secret" } });
+      try {
+        await onlineOnlyRevision(h, "Elsewhere");
+
+        await expect(deleteRevision({ projectDir: h.projectDir, name: "Elsewhere" })).rejects.toThrow(
+          /didn't accept the saved sign-in, so "Elsewhere" wasn't deleted/i,
+        );
+        expect(await serverBranches(h)).toEqual(["Elsewhere", "main"]);
+
+        await deleteRevision({ projectDir: h.projectDir, name: "Elsewhere", credential: h.credential });
+        expect(await serverBranches(h)).toEqual(["main"]);
+      } finally {
+        await h.cleanup();
+      }
+    });
+
+    test("stays listed when the online copy won't remove it", async () => {
+      const h = await setupClone();
+      try {
+        await onlineOnlyRevision(h, "Elsewhere");
+
+        await expect(
+          deleteRevision({ projectDir: h.projectDir, name: "Elsewhere", httpClient: declineDeletes("Elsewhere") }),
+        ).rejects.toThrow(/didn't allow that, so "Elsewhere" wasn't deleted/i);
+        expect(await serverBranches(h)).toEqual(["Elsewhere", "main"]);
+        expect(await listed(h)).toEqual(["Elsewhere:online-only", "main:online"]);
+      } finally {
+        await h.cleanup();
+      }
+    });
+
+    test("already gone from the online copy: nothing to remove, and the next check drops the row", async () => {
+      const h = await setupClone();
+      try {
+        await onlineOnlyRevision(h, "Elsewhere");
+        await git.deleteBranch({ fs, dir: h.serverDir, ref: "Elsewhere" });
+
+        expect(await deleteRevision({ projectDir: h.projectDir, name: "Elsewhere" })).toEqual({ deleted: true });
+        await refreshRemoteCopies({ projectDir: h.projectDir });
+        expect(await listed(h)).toEqual(["main:online"]);
+      } finally {
+        await h.cleanup();
+      }
+    });
   });
 
   test("a name that does not exist is a plain error", async () => {

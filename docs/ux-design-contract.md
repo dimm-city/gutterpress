@@ -52,9 +52,10 @@ contract and those documents conflict, the architecture documents win.**
 Gutterpress keeps an author's work safe without the author learning how. They meet
 four ideas, each one they already know from other apps, and one place to look. Git's
 words never reach an Author (UI, toasts, Help, the desktop guide): *commit, branch,
-push, pull, merge, remote, repository, snapshot, sync, HEAD, clone*. Two exceptions:
-"(GitHub calls it a repository)", once, where the author must act on github.com; and
-the commands an author pastes into their own Git tool (the SSH hint). Where this
+push, pull, merge, remote, repository, snapshot, sync, HEAD, clone*. Three exceptions:
+"(GitHub calls it a repository)", once, where the author must act on github.com; the
+commands an author pastes into their own Git tool (the SSH hint); and the Sync
+button's own words (the **Sync** row below). Where this
 section and the vocabulary review in #448 differ, this section wins.
 
 | Idea | What the author sees | Familiar from | Underneath |
@@ -71,7 +72,7 @@ section and the vocabulary review in #448 differ, this section wins.
 | **Restore this version** | revert, checkout | going back to a version |
 | **online copy** | online backup (noun), remote, repository, online repository/address/location | the book kept online |
 | **Back up** / **Backed up** / **Backing up…** / **Not backed up yet** | sync, push, upload | "Backed up" is shown only when a pass sent your work or there was nothing to send. |
-| **Get latest** | pull, fetch, sync | bring changes from the online copy |
+| **Sync** / **Sync now** / **Syncing…** | Get latest, Back up now, pull, fetch, push | the one manual button, shown only with automatic backing up off: status bar **Sync**, Online copy **Sync now**, and the action on the "New changes are online for this book." toast. It gets the latest changes from the online copy, then backs up yours. Tooltip: "Sync: get the latest changes from the online copy, then back up yours" ("Sync — new changes are online: get them, then back up yours" when some are waiting). Nowhere else says "sync" to an Author; status texts stay Backed up / Backing up…. |
 | **revision**, **New revision…**, **Revision you're working on** | branch, copy (for a branch), version (for a branch) | "copy" means only the online copy |
 | **take**: "Two takes of a passage were kept in chapter-02.md — yours and the online copy's" | two versions, your version, online version | one side of a passage changed in two places. Buttons stay "Keep yours / Keep online / Keep both". The on-disk markers `<<<<<<< your version` / `>>>>>>> online version` and `name.online.ext` stay (a file format in existing books). |
 | **sign-in**, **Sign in again** | connection, reconnect, token (except "access token" where a writer pastes one) | |
@@ -206,8 +207,8 @@ gutterpress/
 │                                                        setting (DesignSection))
 ├── Project source / version history / GitHub  SHIPPED  (#12–#16, the Node-native git layer; AdvancedSetupDialog,
 │                                                        GitHubDialog; the status bar's one status
-│                                                        control, Authors only; Version history view;
-│                                                        #448)
+│                                                        control, Authors only; Version history inside
+│                                                        Book setup → Online copy; #448)
 ├── Media panel                                SHIPPED  (MediaPanel, #47)
 ├── Crash recovery                             SHIPPED  (RecoveryOverlay / CrashRecoveryDialog)
 ├── Settings                                   SHIPPED  (SettingsView: one page in its own sheet,
@@ -493,20 +494,33 @@ buttons.
   paused", "Saved · Not backed up yet", "Couldn't save", "Versions need
   attention" — with a shape (check, cloud, warning, error) carrying the tone, not
   colour alone. Clicking it opens Book setup → Online copy, the one place for
-  versions, revisions and the online copy. With automatic backing up off, Get
-  latest and Back up now stay beside it and "New changes are online for this
-  book." stays a toast with Get latest. A Reader sees none of it: no control, no
+  versions, version history, revisions and the online copy. It sits on the
+  left, after the book switcher. With automatic backing up off, one **Sync**
+  button sits beside it and "New changes are online for this book." stays a
+  toast with Sync. A Reader sees none of it: no control, no
   buttons, no online toasts (a Reader gets the latest changes automatically).
 - **Revisions are SHIPPED in Book setup → Online copy** (#448, which replaced
   #273's switcher in Settings → Saving): the list names each revision, marks
   the one the author is working on, and says where each is kept (Online; Online
-  · not backed up yet; Only on this computer; Only online). Switch (saves a
-  version of in-progress edits first; an online-only revision is made on this
-  computer first), Rename… and Delete… (never the open one) act at once, and
-  say what they do before they do it: an online revision is renamed or deleted
-  in the online copy too, when the author asks, and a revision holding
-  versions found nowhere else asks a second time. New revision… starts from
-  what is open now, switches to it, and goes online with the next backup.
+  · not backed up yet; Only on this computer; Only online). The open revision
+  comes first, then the rest by name; past five revisions a **Find a
+  revision** field filters them, and the list scrolls in its own box after
+  about six rows. **New revision…** sits above the list: it starts from what
+  is open now, switches to it, and goes online with the next backup. Switch
+  (saves a version of in-progress edits first; an online-only revision is
+  made on this computer first), Rename… and Delete… (never the open one) act
+  at once, and say what they do before they do it: an online revision is
+  renamed or deleted in the online copy too, when the author asks; an
+  online-only revision can be deleted from the online copy (refused, changing
+  nothing, when it changed online since the list was checked); and a revision
+  holding versions found nowhere else asks a second time.
+- **Version history is SHIPPED as a screen of its own** (#448): Online copy's
+  Version history card lists the newest versions with **Save a version** and
+  **Browse versions**, which (or a listed version) opens the screen over Book
+  setup — the versions on the left grouped by day, the selected one on the
+  right with its **Pages** rendered as they were or its **Changed files** line
+  by line, and **Restore this version** at the top. × or Esc returns to Book
+  setup. It never takes over the editor pane.
   Author-facing vocabulary says "revision", never "branch"; "copy" means only
   the online copy. The editor/file tree/preview show the new revision the same
   way they pick up any other external change.

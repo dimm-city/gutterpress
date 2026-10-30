@@ -24,9 +24,10 @@
    *   3. Extensions — the manifest's ordered extension list and the one Add
    *                 area: built-in extras, npm, folders and web addresses
    *                 (`ExtensionsSection`).
-   *   4. Online copy (id `online-copy`) — saved versions, revisions and this
-   *                 book's online copy (`ProjectConnectionsSection`,
-   *                 self-loading — no controller).
+   *   4. Online copy (id `online-copy`) — saved versions, Version history
+   *                 (opens inside the tab), revisions and this book's online
+   *                 copy (`ProjectConnectionsSection`, self-loading — no
+   *                 controller).
    *   5. Advanced — the one place for developer controls: the manifest file,
    *                 the stylesheet list (`StylesSection`), and every design
    *                 setting (`DesignSection`).
@@ -80,7 +81,7 @@
     onBackUpNow,
     onRepair,
     onSaveVersion,
-    onShowVersions,
+    onBrowseVersions,
     onCloseBook,
     onOpenAccounts,
     triggerEl,
@@ -96,7 +97,7 @@
     onOpenFile?: (path: string) => void;
     /** Close the view — return to the workspace. */
     onClose?: () => void;
-    /** The online copy's last word for this book (the host's stream or the last Back up now). */
+    /** The online copy's last word for this book (the host's stream or the last Sync). */
     backup?: LastBackup | null;
     /** Automatic versions keep failing, and why. */
     versionsProblem?: { message: string | null } | null;
@@ -106,14 +107,14 @@
     onBackupSetUp?: (projectDir: string) => void;
     /** The Online copy tab just switched to, made or renamed a revision: the book's files changed on disk. */
     onProjectFilesChanged?: () => void;
-    /** The Online copy tab's Back up now: the page's backup. */
+    /** The Online copy tab's Sync now: the page's sync. */
     onBackUpNow?: () => Promise<void>;
     /** The Online copy tab's Repair the online copy: the page's repair. */
     onRepair?: () => Promise<void>;
     /** The Online copy tab's Save a version: the page's save; resolves "unchanged" when there was nothing new. */
     onSaveVersion?: () => Promise<"saved" | "unchanged">;
-    /** The Online copy tab's Version history…: the parent closes this view and opens it. */
-    onShowVersions?: () => void;
+    /** Online copy › Version history: the parent opens the Version history screen over this one. */
+    onBrowseVersions?: (id?: string) => void;
     /** Close the book: the Online copy tab's Start over from the online copy ends with it. */
     onCloseBook?: () => Promise<boolean>;
     /** Open the Accounts page, over this one. */
@@ -281,9 +282,10 @@
     if (await flushAll()) onOpenFile?.(path);
   }
 
-  /** Online copy › Version history…: leave Book setup for the view. */
-  async function showVersions() {
-    if (await flushAll()) onShowVersions?.();
+  let onlineCopy = $state<{ refreshHistory: () => void }>();
+  /** A backup finished: reload the Version history list, if it is showing. */
+  export function refreshHistory() {
+    onlineCopy?.refreshHistory();
   }
 
   // "Save as template…" (Book tab) — mounted fresh per open so its form
@@ -326,8 +328,8 @@
       {/if}
 
       {#if activeTab === "online-copy"}
-        <!-- This book's versions, revisions and online copy: signing in to its GitHub account or server happens here, in place. -->
-        <ProjectConnectionsSection {projectDir} {backup} {versionsProblem} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} {onBackUpNow} {onRepair} {onSaveVersion} onShowVersions={showVersions} {onCloseBook} {onOpenAccounts} {toast} />
+        <!-- This book's versions, revisions and online copy: signing in to its GitHub account or server happens here, in place; Version history replaces the tab's content. -->
+        <ProjectConnectionsSection bind:this={onlineCopy} {projectDir} {backup} {versionsProblem} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} {onBackUpNow} {onRepair} {onSaveVersion} {onBrowseVersions} {onCloseBook} {onOpenAccounts} {toast} />
       {/if}
 
       {#if activeTab === "advanced"}

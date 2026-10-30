@@ -7,7 +7,8 @@
  * this computer lacks, nothing is changed anywhere and the error says so in
  * plain words. Transport and sign-in resolve exactly as `refreshRemoteCopies`
  * does (`resolveTransport`). Local-only revisions are listed, created and
- * switched in source-provider.ts.
+ * switched in source-provider.ts. A revision kept only in the online copy is
+ * renamed or deleted there, with nothing to change on this computer.
  */
 // Atomic writes for git metadata — see git-fs.ts. Drop-in for node:fs.
 import { gitFs as fs } from "../git-fs.ts";
@@ -106,13 +107,13 @@ interface Online {
  * Reach the online copy to change revision `name`, and check this computer
  * lacks nothing there. Returns `null` when the online copy no longer has the
  * revision (someone removed it), so there is nothing to change online. Throws
- * before anything has changed. `open` is whether `name` is the open revision.
+ * before anything has changed. `catchUp` says what to do when the online copy is ahead.
  */
 async function reachOnline(
   dir: string,
   name: string,
   tip: string,
-  open: boolean,
+  catchUp: string,
   options: OnlineOptions,
   unchanged: string,
 ): Promise<Online | null> {
@@ -129,11 +130,7 @@ async function reachOnline(
   // Only the live tip matters (a long-ago fetch may be stale): if it isn't in
   // this revision's versions, the online copy has work this computer lacks.
   if (!(await isContained(dir, onlineTip, tip, {}))) {
-    // Getting the latest brings in the open revision only.
-    throw new Error(
-      `The online copy has versions of "${name}" that this computer doesn't have yet. ` +
-        `${open ? "Get" : `Switch to "${name}" and get`} the latest first, then try again.`,
-    );
+    throw new Error(`The online copy has versions of "${name}" that this computer doesn't have yet. ${catchUp}`);
   }
   return { transport, http };
 }
@@ -178,6 +175,8 @@ async function sendRef(
  *  3. rename on this computer — only a local failure is possible here, and it
  *     leaves the online copy renamed and this computer under the old name, still
  *     listed (the new name shows as online-only).
+ * A revision kept only in the online copy is renamed there (steps 1 and 2), with
+ * the tracking ref (what this computer last heard) standing in for its tip.
  * Offline or a rejected sign-in: nothing is renamed, anywhere.
  */
 export async function renameRevision(
@@ -190,17 +189,25 @@ export async function renameRevision(
   const to = revisionNameFrom(options.to);
   return withRepoLock(dir, async () => {
     const refs = await readRevisionRefs(dir);
-    const tip = localTip(refs, from);
+    const onlineOnly = !refs.local.has(from) && refs.online.has(from);
+    const tip = onlineOnly ? refs.online.get(from)! : localTip(refs, from);
     const current = refs.current === from ? to : refs.current;
     if (to === from) return { current, name: to };
     await assertFreeRevisionName(dir, to);
 
     const unchanged = `"${from}" wasn't renamed`;
+    // Getting the latest brings in the open revision only.
+    const catchUp = onlineOnly
+      ? `They arrived after the list was last checked, so ${unchanged}. Try again.`
+      : `${refs.current === from ? "Get" : `Switch to "${from}" and get`} the latest first, then try again.`;
     const online = refs.online.has(from)
-      ? await reachOnline(dir, from, tip, refs.current === from, options, unchanged)
+      ? await reachOnline(dir, from, tip, catchUp, options, unchanged)
       : null;
+    if (onlineOnly && !online) {
+      throw new Error(`Couldn't find a revision named "${from}" in the online copy — it may have been renamed or deleted.`);
+    }
     if (online) {
-      const here = `refs/heads/${from}`;
+      const here = onlineOnly ? `refs/remotes/${online.transport.remote}/${from}` : `refs/heads/${from}`;
       try {
         await sendRef(dir, online, here, to);
       } catch (e) {
@@ -224,7 +231,7 @@ export async function renameRevision(
             );
       }
     }
-    await git.renameBranch({ fs, dir, ref: to, oldref: from });
+    if (!onlineOnly) await git.renameBranch({ fs, dir, ref: to, oldref: from });
     return { current, name: to };
   });
 }
@@ -281,7 +288,9 @@ async function countVersionsOnlyIn(
  * (a copy in the online copy stays, and shows as online-only); `everywhere`
  * removes it from the online copy first, then here — a failure online leaves
  * everything as it was, a failure here leaves it removed online and still
- * listed on this computer.
+ * listed on this computer. A revision kept only in the online copy has nothing
+ * here to remove: it is deleted from the online copy, as `everywhere` does, with
+ * the tracking ref (what this computer last heard) standing in for its tip.
  *
  * Nothing found only in the revision is deleted without a second look: when it
  * holds versions found in no other revision (and, unless deleted everywhere, not
@@ -302,11 +311,14 @@ export async function deleteRevision(
         `You're working on "${name}" right now. Switch to another revision first, then delete it.`,
       );
     }
-    const tip = localTip(refs, name);
-    const everywhere = options.everywhere === true && refs.online.has(name);
-    const online = everywhere
-      ? await reachOnline(dir, name, tip, false, options, `"${name}" wasn't deleted`)
-      : null;
+    const onlineOnly = !refs.local.has(name) && refs.online.has(name);
+    const tip = onlineOnly ? refs.online.get(name)! : localTip(refs, name);
+    const everywhere = onlineOnly || (options.everywhere === true && refs.online.has(name));
+    const unchanged = `"${name}" wasn't deleted`;
+    const catchUp = onlineOnly
+      ? `They arrived after the list was last checked, so ${unchanged}. Try again.`
+      : `Switch to "${name}" and get the latest first, then try again.`;
+    const online = everywhere ? await reachOnline(dir, name, tip, catchUp, options, unchanged) : null;
 
     if (!options.discard) {
       const others = [
@@ -318,13 +330,14 @@ export async function deleteRevision(
     }
 
     if (online) {
+      const ref = onlineOnly ? `refs/remotes/${online.transport.remote}/${name}` : `refs/heads/${name}`;
       try {
-        await sendRef(dir, online, `refs/heads/${name}`, name, true);
+        await sendRef(dir, online, ref, name, true);
       } catch (e) {
-        throw onlineFailure(e, `"${name}" wasn't deleted`);
+        throw onlineFailure(e, unchanged);
       }
     }
-    await git.deleteBranch({ fs, dir, ref: name });
+    if (!onlineOnly) await git.deleteBranch({ fs, dir, ref: name });
     return { deleted: true };
   });
 }

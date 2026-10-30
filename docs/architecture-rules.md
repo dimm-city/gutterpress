@@ -383,7 +383,7 @@ Both fail fast with the extension, the reason and how to retry — a new
 command that builds or checks gets this for free. The live HTML preview
 restores from its own render path, `renderPreviewBook`
 (`preview/file-watcher.ts`), on EVERY render: the first render from any host,
-a rebuild after the manifest's pins change (an edit, Get latest, restoring a
+a rebuild after the manifest's pins change (an edit, a sync, restoring a
 version) and a restart into another book. It degrades rather than failing. The
 desktop's `PreviewOpenController` also restores when a book is opened, only so
 the open can show download progress and a toast (`restoredExtensions`); the

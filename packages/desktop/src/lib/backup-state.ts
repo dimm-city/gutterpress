@@ -55,7 +55,7 @@ export interface ReadyView {
   detail: string;
   /** A backup is known to have worked, so the headline earns its check mark. */
   ok: boolean;
-  /** The one thing to do: run a backup now, run it again after a failure, or sign in again. */
+  /** The one thing to do: sync now (get the latest, then back up), run it again after a failure, or sign in again. */
   action: "back-up" | "try-again" | "sign-in" | null;
 }
 
@@ -67,7 +67,7 @@ export interface ReadyView {
 export function readyView(copy: string, last: LastBackup | null, autoSync: boolean, now: number): ReadyView {
   const ongoing = autoSync
     ? "Gutterpress backs it up while you work."
-    : "Backing up automatically is off, so this book is backed up only when you ask.";
+    : "Backing up automatically is off, so this book gets the latest changes and backs up yours only when you ask.";
   const manual = autoSync ? null : "back-up";
   switch (last?.state) {
     case "syncing":

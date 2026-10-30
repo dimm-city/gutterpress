@@ -238,9 +238,10 @@ await screen("online-copy", async () => {
   await click(".status-control");
   await wait(2000);
 }, { crop: SETTINGS, width: 960 });
+// Version history: its own screen, over Book setup.
 await screen("version-history", async () => {
-  await click("button:has-text('Version history')");
-  await wait(2000);
+  await click("button:has-text('Browse versions')");
+  await wait(4000); // the selected version's pages render
 }, { width: 1200 });
 
 await app.close();

@@ -2,7 +2,7 @@ import type { SnapshotEntry } from "#lib/api.ts";
 
 /**
  * Writer-facing view helpers for the "Version history" timeline
- * (ProjectActivityView). `SnapshotEntry` has no `kind` field, so the stored
+ * (VersionHistoryView). `SnapshotEntry` has no `kind` field, so the stored
  * `message` string is the ONLY discriminator the renderer has. The machine
  * messages below are produced by the CLI lib and the vcs routes; they are
  * matched as LITERAL strings — never imported — both because the SPA never
