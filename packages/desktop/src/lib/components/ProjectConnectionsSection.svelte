@@ -16,9 +16,13 @@
    *                         never typed.
    *        ready          — access is set up. What it says about the last
    *                         backup comes from the host's last status (live,
-   *                         the sync controller's `backup`) or a Sync now run
+   *                         the sync controller's `backup`) or a pass run
    *                         here (`readyView`), never from the setup alone;
    *                         a rejected sign-in gets the sign-in step again.
+   *                         Its step is one pass that gets the latest, then
+   *                         backs up: Back up now (automatic backing up on),
+   *                         Sync now (off) or Try again (after a failure),
+   *                         with Get latest beside it, which sends nothing.
    *        own-tools      — an SSH (or other non-https) address.
    *      Once backing up can work, "Backing up keeps failing?" folds into the
    *      card's foot: Test connection (a read-only probe of this book's online
@@ -57,6 +61,7 @@
     onBackupSetUp,
     onProjectFilesChanged,
     onBackUpNow,
+    onGetLatest,
     onRepair,
     onSaveVersion,
     onBrowseVersions,
@@ -75,8 +80,10 @@
     onBackupSetUp?: (projectDir: string) => void;
     /** Another revision was just opened, made or renamed: the files under `projectDir` changed under the open editor. */
     onProjectFilesChanged?: () => void;
-    /** Sync now: the page's own pass, which gets the latest then backs up (its toasts and editor refresh). */
+    /** Back up now / Sync now / Try again: the page's own pass, which gets the latest then backs up (its toasts and editor refresh). */
     onBackUpNow?: () => Promise<void>;
+    /** Get latest: the page's own pass that gets the latest and sends nothing (its toasts and editor refresh). */
+    onGetLatest?: () => Promise<void>;
     /** Repair the online copy: the page's repair (its toasts and editor refresh). */
     onRepair?: () => Promise<void>;
     /** Save a version now: the page's own save (its toast); resolves "unchanged" when there was nothing new. */
@@ -100,7 +107,7 @@
   let done = $state<string | null>(null);
   /** The one action of the current situation is running. */
   let busy = $state(false);
-  let running = $state<"back-up" | "repair" | "start-over" | null>(null);
+  let running = $state<"back-up" | "get-latest" | "repair" | "start-over" | null>(null);
   let confirm = $state<InlineConfirmState>({});
   let actionError = $state<string | null>(null);
   // Where focus goes after an action: the button that ran it is disabled or
@@ -121,9 +128,11 @@
   let chosenRepo = $state("");
 
   // ready: the last backup, from the host's status (kept live) or one run here.
+  // With automatic backing up off, Back up now is named Sync now.
+  const autoBackup = $derived(settings.current.versionHistory.autoSync);
   const ready = $derived(
     diag?.remoteUrl
-      ? readyView(onlineCopyName(diag.remoteUrl), backup, settings.current.versionHistory.autoSync, Date.now())
+      ? readyView(onlineCopyName(diag.remoteUrl), backup, autoBackup, Date.now())
       : null,
   );
 
@@ -279,20 +288,22 @@
       return null;
     });
 
-  // The page's Sync, run from here; the sync controller's `backup` is the headline.
-  const backUpNow = () =>
+  // The page's passes, run from here; the sync controller's `backup` is the headline.
+  const pass = (kind: "back-up" | "get-latest", run: (() => Promise<void>) | undefined) =>
     act(async (dir) => {
-      running = "back-up";
+      running = kind;
       try {
-        await onBackUpNow?.();
+        await run?.();
       } finally {
         running = null;
       }
-      // A pass can send a new revision online and make a version.
+      // A pass can bring in versions, send a new revision online and make a version.
       revisionsEl?.refresh();
       void loadFacts(dir);
       return null;
     });
+  const backUpNow = () => pass("back-up", onBackUpNow);
+  const getLatest = () => pass("get-latest", onGetLatest);
 
   // Save a version: the page saves and toasts; this line catches up.
   async function saveVersion() {
@@ -452,8 +463,17 @@
           {:else if situation === "local-only" && !settingUp}
             <button class="app-btn-primary" onclick={() => (settingUp = true)}>Keep this book safe online…</button>
           {:else if situation === "ready" && ready && (ready.action === "back-up" || ready.action === "try-again")}
-            <button class="app-btn-primary" onclick={backUpNow} disabled={busy}>
-              {running === "back-up" ? "Syncing…" : ready.action === "try-again" ? "Try again" : "Sync now"}
+            <!-- Get latest sends nothing; beside it, one pass that gets the latest, then backs up yours. -->
+            <button class="ghost" onclick={getLatest} disabled={busy} title="Get latest: bring in changes from the online copy without sending yours">
+              {running === "get-latest" ? "Getting the latest…" : "Get latest"}
+            </button>
+            <button
+              class="app-btn-primary"
+              onclick={backUpNow}
+              disabled={busy}
+              title={ready.action === "back-up" && autoBackup ? "Back up now: get the latest changes from the online copy, then back up yours" : undefined}
+            >
+              {running === "back-up" ? (autoBackup ? "Backing up…" : "Syncing…") : ready.action === "try-again" ? "Try again" : autoBackup ? "Back up now" : "Sync now"}
             </button>
           {/if}
         </div>
@@ -634,7 +654,7 @@
   .status-text { flex: 1; min-width: 0; }
   .status-text h3 { margin: 0; font-size: 15px; font-weight: 600; color: var(--app-text); overflow-wrap: anywhere; }
   .status-text p { margin: 3px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--app-text-muted); overflow-wrap: anywhere; }
-  .status-action { flex-shrink: 0; }
+  .status-action { flex-shrink: 0; display: flex; gap: 6px; }
   .status-body {
     display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
     padding: 0 16px 16px 66px;
