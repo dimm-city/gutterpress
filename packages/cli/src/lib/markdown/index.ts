@@ -99,6 +99,11 @@ export async function renderChapters(
   // a copy plan). A stylesheet is a file to READ, never a file to ship, so its
   // location — themes/, ../design-guide/, anywhere — has no effect on output.
   const inlined = await inlineStyles(inputDir, styles);
+  // The book's own `@page` rules follow its sheets, unlayered, in source
+  // order (liftPageRules): one inside an `@layer` the book declares would
+  // otherwise lose to every unlayered look's and core's in print, while the
+  // preview, which ignores layers, took the book's.
+  const book = liftPageRules(inlined.css);
 
   // Each extension's CSS goes in its own cascade layer, in `extensions:`
   // list order, so precedence IS the list order: an extension cannot jump
@@ -150,7 +155,7 @@ export async function renderChapters(
     // here also makes Windows-authored manifest entries (`chapters\03.md`)
     // readable on POSIX hosts (canonicalChapterId already normalised slashes).
     readText: (relPath) => readFile(join(inputDir, canonicalChapterId(relPath)), "utf-8"),
-    projectCss: inlined.css,
+    projectCss: book.pages ? `${book.layered.trim()}\n${book.pages}` : inlined.css,
     // SHIM — spec gap #152. Every staged CSS image gets a
     // `<link rel="preload" as="image">`, or Chromium prints an `@page`
     // background as blank paper. See `preloadImages` in ./assemble.ts for the

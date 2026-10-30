@@ -265,9 +265,10 @@ function defaultPageMarginCss(page: PrintAreaSource | undefined): string | null 
  * Chromium ranks `@page` declarations by cascade layer before page name, so a
  * layered `@page full { margin: 0 }` lost to the manifest's unlayered
  * `@page { margin }` on its own pages, while the engine's reader, which
- * ignores layers, kept it (#454). So neither core's nor an extension's
- * `@page` rules are written inside a layer, except core's 1in default
- * (`defaultPageMarginCss`), which must lose to all of them.
+ * ignores layers, kept it (#454). So no `@page` rule is written inside a
+ * layer — core's, an extension's or one in a layer the book declares —
+ * except core's 1in default (`defaultPageMarginCss`), which must lose to all
+ * of them.
  * Unlayered, page rules cascade by page selector, then order: a named page
  * keeps its margins, and the book's own sheet and the manifest, written
  * later, still win on the pages they share with it.

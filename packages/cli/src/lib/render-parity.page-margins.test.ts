@@ -12,7 +12,8 @@
  *     pages. While the rule sat in the look's layer, the plate printed inset
  *     by the book's margins and ran onto a second page;
  *   - book-page-margin: the book's own unnamed `@page` margin beats the
- *     look's and core's 1in default, and loses to `page.margin`;
+ *     look's and core's 1in default, in a layer the book declares too, and
+ *     loses to `page.margin`;
  *   - two-looks: the later look's margin wins, and both beat the default;
  *   - core-full-bleed: core's `@page full-bleed` page and a `.gp-bleed` image
  *     keep their zero margins under `page.margin`. While core's `@page` rules
@@ -24,7 +25,7 @@
  * like every real-Chromium test in this package.
  */
 import { afterAll, describe, expect, test } from "bun:test";
-import { appendFile, cp, mkdtemp, rm } from "node:fs/promises";
+import { appendFile, cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -115,8 +116,17 @@ describe("@page margins in print (#454)", () => {
       await appendFile(join(dir, "manifest.yaml"), "  margin: { top: 63, bottom: 63, inside: 63, outside: 63 }\n");
       const manifest = await buildReport(dir);
       for (const page of manifest.pages) expect(leftEdge(page)).toBeCloseTo(63, 0);
+
+      // The same margin in a layer the book declares still beats the look:
+      // the book's `@page` rules are written unlayered too.
+      const layered = await mkdtemp(join(tmpdir(), "gp-page-margins-src-"));
+      dirsToClean.push(layered);
+      await cp(fixture, layered, { recursive: true });
+      await writeFile(join(layered, "styles", "book.css"), "@layer pages {\n  @page { margin: 0.75in; }\n}\n");
+      const inLayer = await buildReport(layered);
+      for (const page of inLayer.pages) expect(leftEdge(page)).toBeCloseTo(54, 0);
     },
-    TIMEOUT_MS * 2,
+    TIMEOUT_MS * 3,
   );
 
   testIf(
