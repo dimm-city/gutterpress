@@ -735,15 +735,18 @@ export const api = {
       post<ProjectClassification>('/api/vcs/enable-version-history', { projectDir }),
     listSnapshotsPage: (projectDir: string, options?: { limit?: number; before?: string }) =>
       post<{ entries: VersionEntry[]; hasMore: boolean }>('/api/vcs/list-snapshots-page', { projectDir, ...options }),
-    /** Versions online that this computer has not got, each with its changed files (#408). */
+    /** Versions online that this computer has not got (#408). */
     onlineVersions: (projectDir: string) =>
       post<{ entries: VersionEntry[]; reason?: 'no-remote' | 'auth' | 'offline' }>('/api/vcs/online-versions', { projectDir }),
+    /** The files one version changed, each with a plain hint; `more` beyond the ones listed (#408). */
+    versionChanges: (projectDir: string, id: string) =>
+      post<{ files: VersionFileChange[]; more: number }>('/api/vcs/version-changes', { projectDir, id }),
     /** One text file at a version beside the file as it is now, as aligned rows (#408). */
     compareFile: (projectDir: string, id: string, path: string) =>
       post<{ binary: true } | { binary: false; rows: CompareRow[] }>('/api/vcs/compare-file', { projectDir, id, path }),
-    /** Render a version read-only beside the live preview; the URL for the second frame (#408). */
+    /** Render a version read-only; the URL for its frame, or null when a later open or close replaced it first (#408). */
     openVersionPreview: (projectDir: string, id: string) =>
-      post<{ url: string }>('/api/vcs/open-version-preview', { projectDir, id }),
+      post<{ url: string } | null>('/api/vcs/open-version-preview', { projectDir, id }),
     closeVersionPreview: () => post<{ closed: true }>('/api/vcs/close-version-preview', {}),
     restoreSnapshot: (projectDir: string, id: string) =>
       post<{ restoredId: string; backupId?: string }>('/api/vcs/restore-snapshot', { projectDir, id }),

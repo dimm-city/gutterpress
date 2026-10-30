@@ -6,13 +6,13 @@
  *   1. What did a version change? A walk over the version's tree and its
  *      parent's; each differing file gets a plain size hint
  *      ("3 paragraphs changed", "1 rule changed", "replaced") from a
- *      two-way diff of the two blobs, and the page says whether the version
- *      is backed up online (an ancestor of the remote-tracking tip) or on
- *      this computer only.
+ *      two-way diff of the two blobs. Asked for one version at a time (the
+ *      one selected), never for a whole page. A history page says only
+ *      whether each version is backed up online (an ancestor of the
+ *      remote-tracking tip) or on this computer only.
  *   2. What is online, not yet on this computer? A fetch of the book's
  *      branch (refs only move; nothing is merged or checked out) and the
- *      commits on the fetched tip above the merge base with the local tip,
- *      described the same way.
+ *      commits on the fetched tip above the merge base with the local tip.
  *   3. A version's files: one text file at that version beside the file as
  *      it is now, lines aligned and changed lines marked (the compare view);
  *      or the whole tree written to a folder for the preview to render
@@ -51,10 +51,8 @@ export interface VersionChanges {
   more: number;
 }
 
-/** A history entry with what it changed and where it is kept. */
+/** A history entry and where it is kept. */
 export interface VersionEntry extends SnapshotEntry {
-  changes: VersionFileChange[];
-  moreChanges: number;
   /** True = online too; false = on this computer only; null = no online copy to compare with. */
   backedUp: boolean | null;
 }
@@ -114,23 +112,15 @@ export function changeHint(filepath: string, before: string, after: string): str
   return count > 0 ? `${plural(count, unit)} changed` : "changed";
 }
 
-async function firstParent(dir: string, cache: object, oid: string): Promise<string | null> {
-  const { commit } = await git.readCommit({ fs, dir, cache, oid });
-  return commit.parent[0] ?? null;
-}
-
 /**
- * The files `oid` changed against its first parent (every file, for a
- * version with no parent), sorted by path and capped to
+ * The files version `oid` of the book changed against its first parent
+ * (every file, for a version with no parent), sorted by path and capped to
  * {@link VERSION_CHANGES_SHOWN}.
  */
-export async function listVersionChanges(
-  dir: string,
-  oid: string,
-  options: { cache?: object } = {},
-): Promise<VersionChanges> {
-  const cache = options.cache ?? {};
-  const parent = await firstParent(dir, cache, oid);
+export async function listVersionChanges(projectDir: string, oid: string): Promise<VersionChanges> {
+  const dir = await repoDirFor(projectDir);
+  const cache = {};
+  const parent = (await git.readCommit({ fs, dir, cache, oid })).commit.parent[0] ?? null;
   const found: VersionFileChange[] = [];
   await git.walk({
     fs,
@@ -203,35 +193,47 @@ async function trackingTip(dir: string): Promise<string | null> {
   return resolveOrNull(dir, `refs/remotes/${remote.remote}/${branch}`);
 }
 
-async function isAncestor(dir: string, cache: object, oid: string, ancestor: string): Promise<boolean> {
-  if (oid === ancestor) return true;
-  try {
-    return await git.isDescendent({ fs, dir, cache, oid, ancestor });
-  } catch {
-    return false;
-  }
-}
-
 /**
- * A history page with each version's changes and whether it is backed up.
- * Versions come newest-first, and everything older than the first backed-up
- * one is backed up too, so the ancestry walk runs only over the versions
- * that are on this computer only.
+ * A history page with whether each version is backed up: whether it is the
+ * online tip or one of its earlier versions. Versions come newest-first, and
+ * everything older than the first backed-up one is backed up too. The rest
+ * share ONE breadth-first walk back from the tip, step for step the walk
+ * `git.isDescendent` makes (a shallow commit's parents are not followed; a
+ * missing object ends the walk, and a version not reached by then is not
+ * backed up): asking `isDescendent` once per version walked the whole history
+ * again for every version on this computer only.
  */
 export async function describeVersions(projectDir: string, entries: SnapshotEntry[]): Promise<VersionEntry[]> {
   const dir = await repoDirFor(projectDir);
-  const cache = {};
   const tip = await trackingTip(dir);
+  if (!tip) return entries.map((entry) => ({ ...entry, backedUp: null }));
+  const cache = {};
+  const shallow = await readFile(path.join(dir, ".git", "shallow"), "utf8").catch(() => "");
+  /** The tip and every parent of a commit walked so far. */
+  const reached = new Set([tip]);
+  const queued = new Set<string>();
+  const queue = [tip];
   const out: VersionEntry[] = [];
   let olderAreBackedUp = false;
   for (const entry of entries) {
-    const { files, more } = await listVersionChanges(dir, entry.id, { cache });
-    let backedUp: boolean | null = null;
-    if (tip) {
-      backedUp = olderAreBackedUp || (await isAncestor(dir, cache, tip, entry.id));
-      if (backedUp) olderAreBackedUp = true;
+    try {
+      while (!olderAreBackedUp && !reached.has(entry.id) && queue.length > 0) {
+        const oid = queue.shift()!;
+        const { commit } = await git.readCommit({ fs, dir, cache, oid });
+        for (const parent of commit.parent) reached.add(parent);
+        if (shallow.includes(oid)) continue;
+        for (const parent of commit.parent) {
+          if (queued.has(parent)) continue;
+          queued.add(parent);
+          queue.push(parent);
+        }
+      }
+    } catch {
+      queue.length = 0;
     }
-    out.push({ ...entry, changes: files, moreChanges: more, backedUp });
+    const backedUp = olderAreBackedUp || reached.has(entry.id);
+    if (backedUp) olderAreBackedUp = true;
+    out.push({ ...entry, backedUp });
   }
   return out;
 }
@@ -301,12 +303,8 @@ export async function listOnlineVersions(options: {
     const tip = await resolveOrNull(dir, `refs/remotes/${transport.remote}/${branch}`);
     const local = await resolveOrNull(dir, branch);
     if (!tip || !local) return { entries: [] };
-    const entries: VersionEntry[] = [];
-    for (const entry of await commitsAhead(dir, tip, local, cache)) {
-      const { files, more } = await listVersionChanges(dir, entry.id, { cache });
-      entries.push({ ...entry, changes: files, moreChanges: more, backedUp: true });
-    }
-    return { entries };
+    const entries = await commitsAhead(dir, tip, local, cache);
+    return { entries: entries.map((entry) => ({ ...entry, backedUp: true })) };
   } catch (e) {
     const message = (e as { message?: string })?.message ?? "";
     if (message === MSG_NO_REMOTE || message === MSG_SSH_REMOTE) return { entries: [], reason: "no-remote" };

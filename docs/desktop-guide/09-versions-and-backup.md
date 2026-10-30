@@ -33,11 +33,12 @@ the versions listed there). **Version history** opens as a screen of its own:
 
 - The versions are listed on the left, newest first, grouped by day. Runs of automatic versions
   fold into one line you can open. Click a version to select it.
-- The selected version shows on the right. **Pages** shows the book as it was then, page by page;
-  nothing on disk changes. **Changed files** lists what it changed, each with a plain hint such as
-  `chapter-02.md · 3 paragraphs changed`, `styles/book.css · 1 rule changed` or
-  `art/cover.png · replaced`; click a text file to see **That version** and **Current** line by
-  line, with the lines that differ marked.
+- The selected version shows on the right, starting with **Changed files**: what it changed, each
+  with a plain hint such as `chapter-02.md · 3 paragraphs changed`,
+  `styles/book.css · 1 rule changed` or `art/cover.png · replaced`. Click a text file to see
+  **That version** and **Current** line by line, with the lines that differ marked.
+- Click **Pages** to see the book as it was then, page by page; nothing on disk changes. Selecting
+  another version goes back to its changed files, so you can click through versions quickly.
 - The first version of a book is labelled **First version**. When the book has an online copy,
   each version says **Backed up** or **Only on this computer**, and a note at the top of the list
   says how many versions are in the online copy and not on this computer yet; they come in the
@@ -50,7 +51,7 @@ the versions listed there). **Version history** opens as a screen of its own:
 2. Click **Restore this version** at the top.
 3. Click **Restore**. Gutterpress saves your current work as a version first, so nothing is lost.
 
-![Version history: the versions on the left, the selected one's pages on the right](images/version-history.jpg)
+![Version history: the versions on the left, the selected one's changed files on the right](images/version-history.jpg)
 
 ## Your online copy
 

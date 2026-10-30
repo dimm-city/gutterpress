@@ -1,6 +1,6 @@
 /**
- * version-preview.ts — "Look at this version" (#408): a read-only preview of
- * one past version, shown beside the live preview.
+ * version-preview.ts — Version history's Pages (#408): a read-only preview of
+ * one past version, made only when the author asks for its pages.
  *
  * The version's files are written to a scratch folder (the lib's
  * `exportVersionTree`, the whole repository tree so a book inside a larger
@@ -13,8 +13,10 @@
  * One version preview at a time: opening another closes the first, and the
  * project's own open/close closes it too (PreviewOpenController). Calls are
  * serialized like the project preview's, so an open and a close that
- * overlap cannot orphan a server or a folder. Node/lib-side only — reached
- * by the vcs routes through `getHostServices().vcs`.
+ * overlap cannot orphan a server or a folder; an open still waiting its turn
+ * when a later open or close arrives is skipped (it resolves null), so quick
+ * clicking never queues a copy and a server per click. Node/lib-side only —
+ * reached by the vcs routes through `getHostServices().vcs`.
  */
 
 type LibModule = typeof import("gutterpress");
@@ -33,15 +35,19 @@ export interface VersionPreviewDeps {
 export class VersionPreviewHost {
   private current: { id: string; handle: Handle; dir: string } | null = null;
   private chain: Promise<unknown> = Promise.resolve();
+  /** Counts opens and closes: an open whose turn comes after a later call is stale. */
+  private calls = 0;
 
   constructor(private readonly deps: VersionPreviewDeps) {}
 
-  /** The scratch folder and server for version `id`; its URL for an iframe. */
-  open(projectDir: string, id: string): Promise<{ url: string }> {
-    return this.enqueue(() => this.runOpen(projectDir, id));
+  /** The scratch folder and server for version `id`; its URL for an iframe, or null when skipped. */
+  open(projectDir: string, id: string): Promise<{ url: string } | null> {
+    const call = ++this.calls;
+    return this.enqueue(async () => (call === this.calls ? this.runOpen(projectDir, id) : null));
   }
 
   close(): Promise<void> {
+    this.calls++;
     return this.enqueue(() => this.runClose());
   }
 

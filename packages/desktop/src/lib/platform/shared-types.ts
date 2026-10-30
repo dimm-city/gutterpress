@@ -778,11 +778,8 @@ export interface RevisionList {
   checkedOnline: boolean;
 }
 
-/** A history entry with what it changed and where it is kept (#408). */
+/** A history entry and where it is kept (#408). */
 export interface VersionEntry extends SnapshotEntry {
-  changes: VersionFileChange[];
-  /** Changed files beyond the ones listed. */
-  moreChanges: number;
   /** True = online too; false = on this computer only; null = no online copy to compare with. */
   backedUp: boolean | null;
 }

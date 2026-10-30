@@ -241,7 +241,7 @@ await screen("online-copy", async () => {
 // Version history: its own screen, over Book setup.
 await screen("version-history", async () => {
   await click("button:has-text('Browse versions')");
-  await wait(4000); // the selected version's pages render
+  await wait(1500); // the selected version's changed files
 }, { width: 1200 });
 
 await app.close();

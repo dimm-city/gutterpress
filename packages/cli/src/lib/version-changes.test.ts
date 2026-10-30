@@ -1,6 +1,6 @@
 /**
  * version-changes.ts over a real (temporary) repository built with
- * isomorphic-git: what each version changed, whether it is backed up,
+ * isomorphic-git: what a version changed, whether each is backed up,
  * which commits an online tip has that the local tip lacks, the aligned
  * compare rows, and a version's files written out for the preview.
  */
@@ -123,8 +123,7 @@ describe("describeVersions", () => {
   test("without an online copy nothing is backed up or not: null", async () => {
     const described = await describeVersions(dir, entries());
     expect(described.map((e) => e.backedUp)).toEqual([null, null, null]);
-    expect(described[1]!.changes.map((c) => c.path)).toContain("chapter-01.md");
-    expect(described[0]!.changes).toEqual([{ path: "notes.md", kind: "removed", hint: "removed", text: true }]);
+    expect(described[1]).toEqual({ id: c2, message: "Version saved by you", timestamp: 2, backedUp: null });
   });
 
   test("with the online copy at c2, c3 is on this computer only and the rest are backed up", async () => {
@@ -133,6 +132,23 @@ describe("describeVersions", () => {
     try {
       const described = await describeVersions(dir, entries());
       expect(described.map((e) => e.backedUp)).toEqual([false, true, true]);
+    } finally {
+      await git.deleteRef({ fs, dir, ref: "refs/remotes/origin/main" });
+      await git.deleteRemote({ fs, dir, remote: "origin" });
+    }
+  });
+
+  test("answers what git.isDescendent answers, wherever the online copy is", async () => {
+    await git.addRemote({ fs, dir, remote: "origin", url: "https://example.test/book.git" });
+    try {
+      for (const tip of [c1, c2, c3, online1, online2]) {
+        await git.writeRef({ fs, dir, ref: "refs/remotes/origin/main", value: tip, force: true });
+        const expected = await Promise.all(
+          entries().map((e) => (e.id === tip ? true : git.isDescendent({ fs, dir, oid: tip, ancestor: e.id }))),
+        );
+        const described = await describeVersions(dir, entries());
+        expect(described.map((e) => e.backedUp)).toEqual(expected);
+      }
     } finally {
       await git.deleteRef({ fs, dir, ref: "refs/remotes/origin/main" });
       await git.deleteRemote({ fs, dir, remote: "origin" });

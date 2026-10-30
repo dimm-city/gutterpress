@@ -2,11 +2,13 @@
   /**
    * VersionHistoryView — the book's Version history as a screen of its own
    * (#448), the way word processors show it: the versions down the left,
-   * grouped by day, and the selected one on the right — its pages, rendered
-   * read-only, or the files it changed (a text file opens line by line beside
-   * the book as it is now). Restore this version sits at the top of the
-   * selected version. It opens over Book setup → Online copy and closing it
-   * (X or Escape) returns there.
+   * grouped by day, and the selected one on the right — the files it changed
+   * (a text file opens line by line beside the book as it is now) or, when
+   * the author asks (Pages), its pages, rendered read-only. Selecting a
+   * version never renders it: rendering one writes out all its files and
+   * starts a preview, too slow to do for every click. Restore this version
+   * sits at the top of the selected version. It opens over Book setup →
+   * Online copy and closing it (X or Escape) returns there.
    *
    * Restore: the host's `/api/vcs/restore-snapshot` saves the current state as
    * a version first, so restoring never loses work; the screen still asks once.
@@ -56,7 +58,12 @@
 
   let selected = $state<VersionEntry | null>(null);
   /** What the right side shows for the selected version. */
-  let view = $state<"pages" | "files" | "log">("pages");
+  let view = $state<"files" | "pages" | "log">("files");
+  /** The selected version's changed files, once the host has listed them. */
+  let changes = $state<{ files: VersionFileChange[]; more: number } | null>(null);
+  let changesError = $state<string | null>(null);
+  /** The version whose pages were asked for (only ever the selected one). */
+  let pagesFor = $state<string | null>(null);
   let pagesUrl = $state<string | null>(null);
   let pagesError = $state<string | null>(null);
   let compare = $state<{ path: string; rows: CompareRow[]; binary: boolean } | null>(null);
@@ -104,30 +111,58 @@
     }
   }
 
-  /** Show a version: its pages render on the right. */
+  /** Show a version: the files it changed. Its pages wait until the author asks (Pages). */
   async function select(entry: VersionEntry | null): Promise<void> {
     selected = entry;
+    view = "files";
     confirming = false;
     restoreError = null;
     compare = null;
-    if (view === "log") view = "pages";
-    pagesUrl = null;
-    pagesError = null;
+    changes = null;
+    changesError = null;
+    closePages();
     if (!entry) return;
     try {
-      const { url } = await api.vcs.openVersionPreview(projectDir, entry.id);
-      if (selected?.id === entry.id) pagesUrl = url;
+      const result = await api.vcs.versionChanges(projectDir, entry.id);
+      if (selected?.id === entry.id) changes = result;
     } catch (e) {
-      if (selected?.id === entry.id) pagesError = friendlyHostError(e instanceof Error ? e.message : String(e));
+      if (selected?.id === entry.id) changesError = friendlyHostError(e instanceof Error ? e.message : String(e));
     }
+  }
+
+  /** Pages: render the selected version, once, now that the author asked. */
+  async function showPages(): Promise<void> {
+    view = "pages";
+    compare = null;
+    const entry = selected;
+    if (!entry || pagesFor === entry.id) return;
+    pagesFor = entry.id;
+    try {
+      // null: a later open or close replaced this one before it started.
+      const opened = await api.vcs.openVersionPreview(projectDir, entry.id);
+      if (opened && pagesFor === entry.id) pagesUrl = opened.url;
+    } catch (e) {
+      if (pagesFor === entry.id) pagesError = friendlyHostError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /** Stop showing a version's pages; the host drops its preview, or skips one not started yet. */
+  function closePages(): void {
+    if (pagesFor === null) return;
+    pagesFor = null;
+    pagesUrl = null;
+    pagesError = null;
+    void api.vcs.closeVersionPreview().catch(() => {});
   }
 
   async function openFile(change: VersionFileChange): Promise<void> {
     if (!selected || comparing) return;
+    const id = selected.id;
     comparing = change.path;
     try {
-      const result = await api.vcs.compareFile(projectDir, selected.id, change.path);
-      compare = { path: change.path, rows: result.binary ? [] : result.rows, binary: result.binary };
+      const result = await api.vcs.compareFile(projectDir, id, change.path);
+      // Another version selected meanwhile: this file belongs to the old one.
+      if (selected?.id === id) compare = { path: change.path, rows: result.binary ? [] : result.rows, binary: result.binary };
     } catch (e) {
       error = friendlyHostError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -247,7 +282,7 @@
       {#if view === "log"}
         <div class="detail-head">
           <div><h2>Technical details</h2><p class="muted">The log of this book's recent backing up.</p></div>
-          <button class="ghost" onclick={() => (view = "pages")}>Back to the version</button>
+          <button class="ghost" onclick={() => (view = "files")}>Back to the version</button>
         </div>
         <pre class="log">{logContent ?? "Loading…"}</pre>
       {:else if selected}
@@ -273,10 +308,10 @@
         {#if restoreError}<p class="error" role="alert">{restoreError}</p>{/if}
 
         <div class="tabs" role="tablist" aria-label="Show">
-          <button role="tab" aria-selected={view === "pages"} class:active={view === "pages"} onclick={() => { view = "pages"; compare = null; }}>Pages</button>
           <button role="tab" aria-selected={view === "files"} class:active={view === "files"} onclick={() => (view = "files")}>
-            Changed files{selected.changes.length ? ` (${selected.changes.length + selected.moreChanges})` : ""}
+            Changed files{changes?.files.length ? ` (${changes.files.length + changes.more})` : ""}
           </button>
+          <button role="tab" aria-selected={view === "pages"} class:active={view === "pages"} onclick={() => void showPages()}>Pages</button>
         </div>
 
         {#if view === "pages"}
@@ -301,9 +336,11 @@
               onBack={() => (compare = null)}
             />
           </div>
-        {:else}
+        {:else if changesError}
+          <p class="error pad" role="alert">Couldn't show this version. {changesError}</p>
+        {:else if changes}
           <ul class="files">
-            {#each selected.changes as change (change.path)}
+            {#each changes.files as change (change.path)}
               <li>
                 {#if change.text}
                   <button class="file" onclick={() => void openFile(change)} disabled={!!comparing}>
@@ -316,7 +353,7 @@
             {:else}
               <li class="muted pad">This version changed nothing.</li>
             {/each}
-            {#if selected.moreChanges}<li class="muted pad">and {selected.moreChanges} more</li>{/if}
+            {#if changes.more}<li class="muted pad">and {changes.more} more</li>{/if}
           </ul>
         {/if}
       {:else if !loading}

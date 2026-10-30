@@ -60,6 +60,16 @@ This project follows [Semantic Versioning](https://semver.org/).
   before backing up", "Automatic version before restoring", "Saved before
   switching revision", "Repaired the online copy" and "Saved the edit you made
   while backing up"; Version history still recognises every earlier spelling.
+- **Version history is quick to browse.** Selecting a version shows its
+  **Changed files** straight away; its **Pages** render only when you click
+  Pages, and selecting another version goes back to its changed files, so
+  clicking down the list no longer renders every version on the way. Opening
+  the screen and **Show older versions** no longer work out what every listed
+  version changed, and a book with many versions not backed up yet no longer
+  walks its whole history once for each of them. Library: `describeVersions`
+  and `listOnlineVersions` entries no longer carry `changes`/`moreChanges`;
+  `listVersionChanges(projectDir, id)` lists one version's changed files
+  (desktop route `vcs/version-changes`).
 - **Library:** `listLocalBranches` and its `LocalBranches` type are replaced by
   `listRevisions`, with `createRevision`, `renameRevision`, `deleteRevision` and
   `revisionNameFrom`; `SyncOutcome` gains `pushDeferred` on a get-latest pass
