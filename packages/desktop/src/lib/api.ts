@@ -138,6 +138,7 @@ export type {
   NpmExtensionMatch,
   ExtensionSearchResult,
   ExtensionUpdatesResult,
+  ExtensionVersionsResult,
   ProjectStyle,
   BookCss,
   TokenUpdate,
@@ -164,6 +165,7 @@ import type {
   ExtensionImportResult,
   ExtensionSearchResult,
   ExtensionUpdatesResult,
+  ExtensionVersionsResult,
   ProjectStyle,
   BookCss,
   TokenUpdate,
@@ -643,9 +645,11 @@ export const api = {
     bundled: () => get<BundledExtensionInfo[]>('/api/extension/bundled'),
     /** Search npm for extensions (#246), on demand: the Extensions tab's search, never project load. A network/parse failure is data (`ok: false`), never a thrown error. */
     search: (query: string) => post<ExtensionSearchResult>('/api/extension/search', { query }),
-    /** Each pinned npm extension against npm's latest, on demand (the Extensions tab, never project load). A network failure is data (`ok: false`), never a thrown error. */
-    outdated: (projectDir: string) =>
-      post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir }),
+    /** Each pinned npm extension against npm's latest (the newest of any kind with `includePrerelease`), on demand (the Extensions tab and its Check for updates, never project load). A network failure is data (`ok: false`), never a thrown error. */
+    outdated: (projectDir: string, includePrerelease = false) =>
+      post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir, includePrerelease }),
+    /** Every published version of one npm package, newest first, pre-releases included (the Extensions tab's version picker). On demand; a network failure is data (`ok: false`). */
+    versions: (name: string) => post<ExtensionVersionsResult>('/api/extension/versions', { name }),
     /** A configured extension's stylesheets, concatenated (a bundled look's inlined css, or the entry's folder) — for a sample thumbnail. */
     readCss: (projectDir: string, use: string) =>
       post<string>('/api/extension/read-css', { projectDir, use }),

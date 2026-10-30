@@ -47,6 +47,7 @@
    */
   import { onMount, tick } from "svelte";
   import { api } from "#lib/api.ts";
+  import { useSettings } from "#lib/settings.svelte.ts";
   import type { ToastController } from "#lib/components/Toast.svelte";
   import { joinPath } from "#lib/platform/paths.ts";
   import { DetailsSectionController } from "#lib/routes/details-section-controller.svelte.ts";
@@ -131,6 +132,7 @@
   let loadingAll = $state(true);
 
   const projectDirAccessor = () => projectDir;
+  const settings = useSettings();
 
   // ── Design — depended on by Extensions' cross-refresh hook, so it's
   //    constructed first. ───────────────────────────────────────────────────
@@ -182,7 +184,10 @@
     list: (dir) => api.extension.list(dir),
     bundled: () => api.extension.bundled(),
     search: (query) => api.extension.search(query),
-    outdated: (dir) => api.extension.outdated(dir),
+    outdated: (dir, includePrerelease) => api.extension.outdated(dir, includePrerelease),
+    versions: (name) => api.extension.versions(name),
+    includePrerelease: () => settings.current.updates.includeExtensionPrereleases,
+    setIncludePrerelease: (on) => settings.set({ updates: { includeExtensionPrereleases: on } }),
     validate: (dir) => api.extension.validate(dir),
     add: (dir, specifier, exportName) => api.extension.add(dir, specifier, exportName),
     addLocal: (dir) => api.extension.addLocal(dir),
