@@ -534,9 +534,10 @@ class LocalFolderSourceProvider implements SourceProvider {
  * newest commit time first), visiting each commit once (#472). `git.log` has
  * no visited set: after a merge it lists a commit again, with everything older,
  * and the repeats used up a page. Starting the next page's log at the last id
- * also dropped the side of a merge that id does not descend from.
+ * also dropped the side of a merge that id does not descend from. Shared with
+ * the online-only versions (`commitsAhead`, #477), which walks two tips at once.
  */
-interface HistoryWalk {
+export interface HistoryWalk {
   /** Commits read but not listed yet, sorted so the newest is last. */
   tips: ReadCommitResult[];
   /** Every commit ever put in `tips`. */
@@ -556,11 +557,31 @@ interface HistoryWalk {
  */
 let lastHistoryWalk: { dir: string; head: string; last: string; walk: HistoryWalk } | null = null;
 
+/** A walk back from `heads` (the history of each of them, together). */
+export async function startHistoryWalk(
+  dir: string,
+  cache: GitCache,
+  heads: string[],
+): Promise<HistoryWalk> {
+  const shallow = await fs.promises
+    .readFile(path.join(gitDirFor(dir), "shallow"), "utf8")
+    .catch(() => "");
+  const tips = await Promise.all(heads.map((oid) => git.readCommit({ fs, dir, cache, oid })));
+  tips.sort((a, b) => a.commit.committer.timestamp - b.commit.committer.timestamp);
+  return {
+    tips,
+    queued: new Set(heads),
+    shallow: new Set(shallow.split("\n")),
+    readAhead: new Map(),
+  };
+}
+
 /**
  * The walk's next commit, newest first; undefined once the history is done.
- * `needed` is how many more commits the page needs, to bound a read-ahead.
+ * `needed` is how many more commits the page needs, to bound a read-ahead
+ * (none for 1: a caller that cannot tell how far it will go reads one by one).
  */
-async function nextInHistory(
+export async function nextInHistory(
   dir: string,
   walk: HistoryWalk,
   cache: GitCache,
@@ -573,7 +594,8 @@ async function nextInHistory(
     // Down to one line (a book with one author is one line throughout): read
     // the rest of the page with one git.log call. One readCommit per commit
     // stats the .git folder each time, which made a page about 1.5x as slow.
-    if (!walk.readAhead.has(oid) && walk.tips.length === 0 && commit.commit.parent.length === 1) {
+    const oneLine = walk.tips.length === 0 && commit.commit.parent.length === 1;
+    if (needed > 1 && oneLine && !walk.readAhead.has(oid)) {
       for (const c of await git.log({ fs, dir, cache, ref: oid, depth: needed })) {
         if (!walk.queued.has(c.oid)) walk.readAhead.set(c.oid, c);
       }
@@ -659,15 +681,7 @@ class LocalGitSourceProvider implements SourceProvider {
         walk = saved.walk;
         lastHistoryWalk = null;
       } else {
-        const shallow = await fs.promises
-          .readFile(path.join(gitDirFor(dir), "shallow"), "utf8")
-          .catch(() => "");
-        walk = {
-          tips: [await git.readCommit({ fs, dir, cache, oid: head })],
-          queued: new Set([head]),
-          shallow: new Set(shallow.split("\n")),
-          readAhead: new Map(),
-        };
+        walk = await startHistoryWalk(dir, cache, [head]);
         if (before) {
           // No saved walk to carry on (asked out of turn, or HEAD moved): walk
           // to the cursor. A garbage/expired one must not crash the view.

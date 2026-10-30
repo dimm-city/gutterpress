@@ -12,7 +12,7 @@
  *      remote-tracking tip) or on this computer only.
  *   2. What is online, not yet on this computer? A fetch of the book's
  *      branch (refs only move; nothing is merged or checked out) and the
- *      commits on the fetched tip above the merge base with the local tip.
+ *      commits the fetched tip has that the local tip does not.
  *   3. A version's files: one text file at that version beside the file as
  *      it is now, lines aligned and changed lines marked (the compare view);
  *      or the whole tree written to a folder for the preview to render
@@ -22,11 +22,11 @@
  */
 import path from "node:path";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import git, { type WalkerEntry } from "isomorphic-git";
+import git, { type ReadCommitResult, type WalkerEntry } from "isomorphic-git";
 import postcss from "postcss";
 import { gitFs as fs } from "./git-fs.ts";
 import { detectProjectSource, syncRemoteFor } from "./project-source.ts";
-import { gitScopeFor, type SnapshotEntry } from "./source-provider.ts";
+import { gitScopeFor, nextInHistory, startHistoryWalk, type SnapshotEntry } from "./source-provider.ts";
 import { currentBranchOrThrow, onAuthFor, repoDirFor, resolveTransport } from "./remote-auth/transport.ts";
 import { defaultGitHttp } from "./remote-auth/git-http.ts";
 import { MSG_NO_REMOTE, MSG_SSH_REMOTE } from "./remote-auth/sync-messages.ts";
@@ -239,37 +239,95 @@ export async function describeVersions(projectDir: string, entries: SnapshotEntr
 }
 
 /**
+ * How much earlier than a version it builds on a version `baseOid` has may be
+ * dated (a clock behind) for {@link commitsAhead} to stay exact: the walk goes
+ * this much further back on that side than the oldest version it lists.
+ */
+const CLOCK_SKEW_SECONDS = 10 * 60;
+
+/**
  * The commits reachable from `fromOid` that `baseOid`'s history does not
- * have, newest first, down to (not including) their merge base. None when
- * the two share no history.
+ * have (`git rev-list fromOid ^baseOid`), each once, newest first in the
+ * order Version history lists versions, up to `limit`. None when the two
+ * share no history: that is another book's online copy, which Sync refuses.
+ *
+ * One walk back from both tips, newest commit time first (#477). What
+ * `baseOid` reaches is marked, and a marked commit marks its parents, even
+ * ones already walked: a commit both tips reach is never listed, by whatever
+ * path `fromOid` reaches it (a criss-cross merge has two merge bases). The
+ * walk goes on while an unmarked commit is queued, so a version dated before
+ * the commits it builds on (a collaborator's clock behind) is still found;
+ * then until every marked commit queued is {@link CLOCK_SKEW_SECONDS} older
+ * than the oldest version listed.
  */
 export async function commitsAhead(
   dir: string,
   fromOid: string,
   baseOid: string,
-  cache: object = {},
+  cache: Record<string, unknown> = {},
   limit = 100,
 ): Promise<SnapshotEntry[]> {
   if (fromOid === baseOid) return [];
-  const bases = await git.findMergeBase({ fs, dir, cache, oids: [fromOid, baseOid] });
-  const stopAt = new Set<string>(bases as string[]);
-  if (stopAt.size === 0) return [];
-  const commits = await git.log({ fs, dir, cache, ref: fromOid, depth: limit });
-  const seen = new Set<string>();
-  const out: SnapshotEntry[] = [];
-  for (const c of commits) {
-    if (stopAt.has(c.oid)) break;
-    if (seen.has(c.oid)) continue;
-    seen.add(c.oid);
-    out.push(toEntry(c));
+  const walk = await startHistoryWalk(dir, cache, [baseOid, fromOid]);
+  /** Reached from `baseOid`: marked. */
+  const local = new Set([baseOid]);
+  /** Reached from `fromOid` through unmarked commits. */
+  const online = new Set([fromOid]);
+  /** Each walked commit's parents, to mark through it later. */
+  const parentsOf = new Map<string, string[]>();
+  /** Walked while unmarked, in walk order; marked later if `baseOid` reaches them after all. */
+  const listed: ReadCommitResult[] = [];
+  let shared = false;
+  const mark = (oid: string): void => {
+    const stack = [oid];
+    for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
+      if (local.has(next)) continue;
+      local.add(next);
+      if (online.has(next)) shared = true;
+      stack.push(...(parentsOf.get(next) ?? []));
+    }
+  };
+  const firstAhead = (): ReadCommitResult[] => {
+    const out: ReadCommitResult[] = [];
+    for (const c of listed) {
+      if (out.length === limit) break;
+      if (!local.has(c.oid)) out.push(c);
+    }
+    return out;
+  };
+  const time = (c: ReadCommitResult): number => c.commit.committer.timestamp;
+  for (;;) {
+    const searching = walk.tips.some((c) => !local.has(c.oid));
+    if (!searching || (shared && listed.length >= limit)) {
+      const shown = firstAhead();
+      if (!searching || shown.length === limit) {
+        const oldest = Math.min(...shown.map(time));
+        const newestMarked = walk.tips.findLast((c) => local.has(c.oid));
+        if (!newestMarked || time(newestMarked) < oldest - CLOCK_SKEW_SECONDS) break;
+      }
+    }
+    // One at a time: how far back the walk goes depends on what it finds.
+    const c = await nextInHistory(dir, walk, cache, 1);
+    if (!c) break;
+    const parents = walk.shallow.has(c.oid) ? [] : c.commit.parent;
+    parentsOf.set(c.oid, parents);
+    if (local.has(c.oid)) {
+      for (const p of parents) mark(p);
+      continue;
+    }
+    listed.push(c);
+    for (const p of parents) {
+      online.add(p);
+      if (local.has(p)) shared = true;
+    }
   }
-  return out;
+  return shared ? firstAhead().map(toEntry) : [];
 }
 
 /**
  * What is online that this computer has not got: fetch the book's branch
  * (remote-tracking ref only — no merge, no checkout, safe on a dirty tree)
- * and describe the commits above the merge base. Quiet on every failure,
+ * and describe the commits this computer has not got. Quiet on every failure,
  * reporting why, like `checkRemoteUpdates`.
  */
 export async function listOnlineVersions(options: {
