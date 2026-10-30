@@ -161,11 +161,20 @@ describe("resolveActiveStyles (the one resolver the renderer + editor share)", (
     expect(await resolveActiveStyles(dir, ["themes/x/theme.css"])).toEqual(["themes/x/theme.css"]);
   });
 
-  test("no manifest → styles/book.css, else the first discovered .css by name", async () => {
+  test("no manifest → styles/book.css, then css/print.css, index.css, style.css, main.css, then the first .css by name (#483)", async () => {
     const dir = projectDir();
-    write(dir, "css/print.css", "");
+    // The first .css by name, when no conventional name is there.
+    write(dir, "css/extra.css", "");
+    expect(await resolveActiveStyles(dir, [])).toEqual(["css/extra.css"]);
+    // The older conventional names win over one that sorts first, in this order.
+    write(dir, "css/main.css", "");
+    expect(await resolveActiveStyles(dir, [])).toEqual(["css/main.css"]);
+    write(dir, "css/style.css", "");
+    expect(await resolveActiveStyles(dir, [])).toEqual(["css/style.css"]);
     write(dir, "css/index.css", "");
     expect(await resolveActiveStyles(dir, [])).toEqual(["css/index.css"]);
+    write(dir, "css/print.css", "");
+    expect(await resolveActiveStyles(dir, [])).toEqual(["css/print.css"]);
     write(dir, "styles/book.css", "");
     expect(await resolveActiveStyles(dir, [])).toEqual(["styles/book.css"]);
   });

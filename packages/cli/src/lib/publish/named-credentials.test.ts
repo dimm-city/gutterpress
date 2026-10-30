@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -104,6 +104,28 @@ describe("PublishSelectionsStore — project/global default precedence", () => {
 
       await store.setGlobal("itch", null); // clear global
       expect(await store.resolve("itch", "/p")).toBeUndefined();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a file 0.11.22 wrote is read in its own shape and kept on the next write (#483)", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "gutterpress-sel-"));
+    try {
+      const file = path.join(dir, "sel.json");
+      // 0.11.22 kept one account label per provider for a book.
+      await writeFile(
+        file,
+        JSON.stringify({ version: 1, global: { itch: "personal" }, projects: { "/books/a": { itch: "studio", gdrive: "" } } }),
+      );
+      const store = new PublishSelectionsStore(file);
+      expect(await store.resolve("itch", "/books/a")).toBe("studio");
+      expect(await store.levels("itch", "/books/a")).toEqual({ project: "studio", global: "personal" });
+      expect(await store.settings("/books/a")).toEqual({ itch: { credential: "studio" } });
+      await store.setSettings("/books/a", "itch", { dir: "/out" });
+      expect(JSON.parse(await readFile(file, "utf8")).projects).toEqual({
+        "/books/a": { itch: { credential: "studio", dir: "/out" } },
+      });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

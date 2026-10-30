@@ -2,7 +2,7 @@
 
 Gutterpress includes a JSON schema for `manifest.yaml` that provides autocomplete, validation, and documentation directly in your editor.
 
-The schema is **editor-facing only**. Gutterpress itself does not validate `manifest.yaml` against it at build or preview time — an unknown key is simply ignored by `resolveConfig`. (The removed keys are the exception: `plugins`, `engine`, `engineStyles`, `output` and `source.assets` each fail with a message naming their replacement — see `extensions` below. The keys 0.11.23 replaced — `source.files`, `validate`, `lint`, `ink` and `page.tolerance` — still work in 0.11.23, with one notice naming each new spelling.) Wiring the schema into your editor (below) is what turns a typo into visible feedback.
+The schema is **editor-facing only**. Gutterpress itself does not validate `manifest.yaml` against it at build or preview time — an unknown key is simply ignored by `resolveConfig`. (The removed keys are the exception: `plugins`, `engine`, `engineStyles`, `output` and `source.assets` each fail with a message naming their replacement — see `extensions` below. The keys 0.11.23 replaced — `source.files`, `validate`, `lint`, `ink` and `page.tolerance` — still work in 0.11.23, with one notice naming each new spelling; a threshold among them becomes an option of its check under `checks:`.) Wiring the schema into your editor (below) is what turns a typo into visible feedback.
 
 ## Quick Setup
 
@@ -248,7 +248,7 @@ targets:
 ```
 
 #### `styles` (array of strings)
-CSS files to link into the rendered book, applied in order, relative to the manifest directory. If omitted, Gutterpress discovers one: `styles/book.css` (what `gutterpress new` scaffolds), then the first `.css` it finds in the project root, `styles/` or `css/`, then none. New projects should set `styles:` explicitly or use `styles/book.css`; the `css/*.css` fallback names are not a recommended convention.
+CSS files to link into the rendered book, applied in order, relative to the manifest directory. If omitted, Gutterpress discovers one: `styles/book.css` (what `gutterpress new` scaffolds), then four **legacy** names kept so pre-existing projects keep working — `css/print.css`, `css/index.css`, `css/style.css`, `css/main.css`, in that order — then the first `.css` it finds in the project root, `styles/` or `css/`, then none. New projects should set `styles:` explicitly or use `styles/book.css`; the `css/*.css` fallback names are not a recommended convention.
 
 ```yaml
 styles:
@@ -366,9 +366,12 @@ including ids contributed by plugins (built-in ids are namespaced `source.*`,
 - `on` - the check runs at its own severity, for a check the preset or target leaves off.
 - `info`, `warn`, `error` - the check runs and reports at that severity. `error` fails `gutterpress validate` and stops a build.
 
-The limits a check measures against (ink coverage, image size and resolution,
-bleed size, the heuristics' ranges) come from the preset and the publish
-target; they are not manifest settings. The Markdown, HTML and CSS-ownership
+The limits a check measures against (ink coverage, the page-size tolerance,
+image size and resolution, bleed size, the approved font files, the
+heuristics' ranges) come from the preset and the publish target. A book
+overrides one as an option of its check: the entry becomes a map, with an
+optional `level` beside the options (see the user guide's validation chapter
+for every option and its default). The Markdown, HTML and CSS-ownership
 checks are configured by their own files (`.markdownlint.yaml`, `.htmlhintrc`,
 `.gutterpress/css-contract.yaml`), found in the book's folder or the nearest
 folder above it, up to the repository root.
@@ -379,6 +382,11 @@ checks:
   pdf.print.pdfx-markers: off
   asset.image.alpha-channel: off
   printsafe/page-containment: warn
+  pdf.print.ink-coverage:
+    maxTac: 300
+  pdf.print.image-resolution:
+    level: error
+    minImageResolution: 200
 ```
 
 #### `publish` (object)

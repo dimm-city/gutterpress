@@ -13,7 +13,8 @@
  *      source line break renders with a single space where the source has a
  *      `\n` (plus possible leading indentation on the continuation line).
  *   2. Typography — the renderer turns straight quotes, `--`, `---` and
- *      `...` into their Unicode glyphs.
+ *      `...` into their Unicode glyphs, `(c)` / `(r)` / `(tm)` / `+-` into
+ *      © ® ™ ±, and collapses runs of `..`, `,,` and `????` / `!!!!`.
  *   3. Inline formatting delimiters — `selection.toString()` never contains
  *      `**`/`_`/`` ` ``/link syntax, so a selection spanning an
  *      already-formatted span (e.g. "a **bold** word" rendering as
@@ -29,15 +30,32 @@
  * to "couldn't locate this text — disable the item", never a guessed edit.
  */
 
-/** Reverse map of the typography Gutterpress's own `gp_typography` rule
- *  (`packages/cli/src/lib/markdown/typography.ts`) makes from plain typing,
- *  keyed one raw Unicode character at a time. Every one is exactly
- *  one-to-one, so reversing it is deterministic. Quotation marks are not
- *  here: see {@link QUOTES}. */
+/** Reverse map of the dashes and the ellipsis Gutterpress's `gp_typography`
+ *  rule (`packages/cli/src/lib/markdown/typography.ts`) makes from plain
+ *  typing, keyed one raw Unicode character at a time. Quotation marks are not
+ *  here: see {@link QUOTES}; the rest of the rule's conversions are folded by
+ *  {@link FOLDS}. */
 const TYPOGRAPHER_REVERSE: ReadonlyArray<readonly [string, string]> = [
   ["—", "---"], // — em dash
   ["–", "--"], // – en dash
   ["…", "..."], // … ellipsis
+];
+
+/** The rest of `gp_typography`'s conversions, folded FORWARD on both sides of
+ *  the search: what an author typed and what the page prints come to the
+ *  same text whichever of them it started as. Several of them are
+ *  many-to-one (`..` and `....` both print …, `,,` prints `,`), so reversing
+ *  the glyph would be a guess; folding both sides is not, and the uniqueness
+ *  check still refuses a block where two spellings fold alike. Each pattern
+ *  is tried at one position (sticky). A `(c)` a lettered list keeps as typed
+ *  folds the same on both sides, so it is found too. */
+const SYMBOLS: Readonly<Record<string, string>> = { "(c)": "©", "(r)": "®", "(tm)": "™" };
+const FOLDS: ReadonlyArray<readonly [RegExp, (run: string) => string]> = [
+  [/\((?:c|r|tm)\)/iy, (run) => SYMBOLS[run.toLowerCase()]!],
+  [/\+-/y, () => "±"],
+  [/\.{2,}/y, () => "..."],
+  [/[?!]{4,}/y, (run) => run.slice(-1).repeat(3)],
+  [/,{2,}/y, () => ","],
 ];
 
 /** Every quotation mark the renderer can print — any language's outer or
@@ -78,8 +96,9 @@ export interface NormalizeResult {
  * strip inline formatting delimiters, producing a normalized string plus an
  * index map from normalized offsets back to raw offsets (plan §4.6).
  *
- * Order of operations at each raw position (first match wins): typographer
- * reverse (single raw char → one-or-more normalized chars) → whitespace run
+ * Order of operations at each raw position (first match wins): quotation
+ * marks → typographer fold ({@link FOLDS}, a raw run → its printed form) →
+ * typographer reverse (single raw char → one-or-more normalized chars) → whitespace run
  * collapse (`[ \t\r\n]+` → one space) → delimiter strip (`stripDelimiters`
  * only: `**`, `__`, `*`, `_` unconditionally; `~~` only as a pair — a lone
  * `~` is not a valid strikethrough delimiter and is left alone) → verbatim
@@ -113,6 +132,16 @@ export function normalizeForSearch(
     }
     if (ch === NBSP && QUOTES.has(raw[i + 1] ?? "")) {
       i += 1;
+      continue;
+    }
+
+    const fold = foldAt(raw, i);
+    if (fold) {
+      for (let k = 0; k < fold.text.length; k++) {
+        normalized += fold.text[k];
+        indexMap.push(i);
+      }
+      i += fold.length;
       continue;
     }
 
@@ -152,6 +181,16 @@ export function normalizeForSearch(
 
   indexMap.push(n);
   return { normalized, indexMap };
+}
+
+/** The {@link FOLDS} entry that matches `raw` at `i`: its folded text and how many raw characters it covers. */
+function foldAt(raw: string, i: number): { text: string; length: number } | null {
+  for (const [pattern, fold] of FOLDS) {
+    pattern.lastIndex = i;
+    const m = pattern.exec(raw);
+    if (m) return { text: fold(m[0]), length: m[0].length };
+  }
+  return null;
 }
 
 /**

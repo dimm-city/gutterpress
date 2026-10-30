@@ -45,7 +45,7 @@ export interface BundledExtension {
   css?: string;
 }
 
-export const BUNDLED_EXTENSIONS: readonly BundledExtension[] = [
+export const BUNDLED_EXTENSION_DETAILS: readonly BundledExtension[] = [
   {
     name: "markdown-it-mark",
     label: "Highlight",
@@ -102,8 +102,16 @@ export const BUNDLED_EXTENSIONS: readonly BundledExtension[] = [
   },
 ];
 
+/**
+ * The bundled names, in table order: the shape this export had in 0.11.22,
+ * so `BUNDLED_EXTENSIONS.includes(name)` still answers "is this bundled?".
+ * Each one's label, description and stylesheet are in
+ * {@link BUNDLED_EXTENSION_DETAILS}.
+ */
+export const BUNDLED_EXTENSIONS: readonly string[] = BUNDLED_EXTENSION_DETAILS.map((e) => e.name);
+
 export function bundledExtension(name: string): BundledExtension | undefined {
-  return BUNDLED_EXTENSIONS.find((e) => e.name === name);
+  return BUNDLED_EXTENSION_DETAILS.find((e) => e.name === name);
 }
 
 export function isBundledExtension(name: string): boolean {

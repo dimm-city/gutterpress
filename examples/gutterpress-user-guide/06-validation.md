@@ -185,7 +185,7 @@ Examples: broken internal links, missing alt text, oversized source images, mark
 
 The CSS check also tells you when the live preview cannot follow a break in your stylesheet. The preview reads your forced breaks (`break-before`/`break-after: page`, `left`, `right`) and `page:` assignments from the CSS text, so one written with `var()`, inside a nested rule, right after a nested rule, or with the old `page-break-before: always` spelling is honoured by the PDF but missing from the preview, and the two page counts drift apart. Rule id `printsafe/preview-cannot-follow`; write the keyword in a flat rule, or silence it like any other rule below.
 
-The character check finds characters that usually arrive by pasting from a chat model, a word processor or a web page: em and en dashes, curly and look-alike quote marks, the ellipsis character, bullets, arrows, emoji, and invisible ones such as zero-width spaces, non-breaking spaces and control characters. Each finding has its line and column and says what to type instead. Dashes, curly quotes and the ellipsis character are info, since they print correctly; the rest are warnings, since they can change what prints. Plain typing already prints proper typography, so the fix does not change the page: `---` prints an em dash, `--` an en dash, `...` an ellipsis, and straight quotes print curly. The one curly character the check lets through is an apostrophe that starts a word (’90s), which a typed `'` cannot make. A character you do want can be written as an HTML entity (`&nbsp;`, `&rarr;`), which the check leaves alone. In the desktop editor each one is outlined where it sits, and the invisible ones show as a placeholder symbol. The editor also marks every line the Problems list reports; the **Highlight problems in the editor** setting (Settings, Editor tab) turns those marks and the outlines off. Rule id `source.characters`; silence it like any other rule below.
+The character check finds characters that usually arrive by pasting from a chat model, a word processor or a web page: em and en dashes, curly and look-alike quote marks, the ellipsis character, bullets, arrows, emoji, and invisible ones such as zero-width spaces, non-breaking spaces and control characters. Each finding has its line and column and says what to type instead. Dashes, curly quotes and the ellipsis character are info, since they print correctly; the rest are warnings, since they can change what prints. Plain typing already prints proper typography, so the fix does not change the page: `---` prints an em dash, `--` an en dash, `...` an ellipsis, and straight quotes print curly. So do the other shortcuts every Gutterpress book has had: `(c)`, `(r)`, `(tm)` and `+-` print ©, ®, ™ and ±, a run of dots prints one ellipsis, and runs of `,,`, `????` and `!!!!` print one comma, `???` and `!!!`. A `(c)` after a `(b)` in the same file is the next label of a lettered list and prints as typed; a backslash (`\(c)`) keeps any of them as typed. The one curly character the check lets through is an apostrophe that starts a word (’90s), which a typed `'` cannot make. A character you do want can be written as an HTML entity (`&nbsp;`, `&rarr;`), which the check leaves alone. In the desktop editor each one is outlined where it sits, and the invisible ones show as a placeholder symbol. The editor also marks every line the Problems list reports; the **Highlight problems in the editor** setting (Settings, Editor tab) turns those marks and the outlines off. Rule id `source.characters`; silence it like any other rule below.
 
 ### PDF checks (post-build)
 
@@ -260,7 +260,41 @@ checks:
 
 The limits a check measures against --- the ink-coverage limit, the minimum
 image resolution, the largest image file --- come from the preset and the
-publish target, not from the manifest.
+publish target. A book that needs another one sets it as an option of that
+check: write the check's entry as a map, with `level` beside the option when
+you change that too.
+
+```yaml
+checks:
+  pdf.print.ink-coverage:
+    maxTac: 300
+  pdf.print.image-resolution:
+    level: error
+    minImageResolution: 200
+```
+
+| Check | Option | What it sets | Default |
+|---|---|---|---|
+| `pdf.print.ink-coverage` | `maxTac` | The total ink limit in percent; a PDF/X build holds the ink to it too | 240 for `dtrpg`, 400 for `book` |
+| `pdf.print.ink-coverage` | `tacTolerance` | How far over `maxTac` a page may measure | 0.5 |
+| `pdf.print.page-size` | `tolerance` | How far, in points, the PDF's page may differ from `page.width` and `page.height` | 0.5 |
+| `pdf.print.image-resolution` | `minImageResolution` | The lowest DPI an image may print at; 0 for no floor | 300 (itch.io: 0) |
+| `pdf.print.bleed` | `bleedSize` | The bleed, in points, each side must have | 9 |
+| `asset.image.file-size` | `maxImageSize` | The largest image file, in bytes; 0 for no limit | 10000000 (itch.io: 0) |
+| `asset.font.approved-files` | `approvedFontFiles` | The font files the book may ship, as patterns such as `fonts/*.woff2`; a font no pattern matches is reported | none: every font |
+| `heuristic.decoration.layer-count` | `maxDecorativeLayers` | The most decorative layers on one page | 5 |
+| `heuristic.whitespace.text-density` | `textDensityRange` | `{ min, max }`: the characters a page should carry | 200 to 5000 |
+| `heuristic.chunking.section-density` | `maxParagraphsPerSection` | The most paragraphs in one section | 10 |
+
+A manifest written for 0.11.22 spelled these `ink.maxTac`, `ink.tacTolerance`,
+`page.tolerance`, `validate.assets.maxImageSize`,
+`validate.assets.approvedFontFiles`, `validate.pdf.minImageResolution`,
+`validate.pdf.bleedSize` and `validate.heuristics.*`. They still work in
+0.11.23: each is read as the option above, and one notice names its new
+spelling. Book setup writes them the new way the next time it saves the book.
+A value the option cannot take, such as a word where a number goes, is named
+in the notice and ignored, as it was in 0.11.22; written as an option of the
+check, the same value stops the build with an error naming it.
 
 The Markdown and HTML linters are opt-in: `source.markdownlint` reads a
 `.markdownlint.yaml` (or `.jsonc`, `.json`, `.yml`) and `source.htmlhint` reads

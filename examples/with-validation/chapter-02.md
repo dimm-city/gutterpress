@@ -8,12 +8,16 @@ The `pdf.print.page-size` check verifies that every page in your PDF matches the
 configured dimensions. For DTRPG products, the standard size is 621 x 810
 points (8.625" x 11.25").
 
-The preset sets the size; a book printed at another size sets its own in the manifest:
+The preset sets the size; a book printed at another size sets its own in the
+manifest, and how far the PDF may differ from it as the check's `tolerance`:
 
 ```yaml
 page:
   width: 621
   height: 810
+checks:
+  pdf.print.page-size:
+    tolerance: 0.5
 ```
 
 ## Color Compliance
@@ -34,7 +38,7 @@ errors.
 ## Ink Coverage
 
 Total Area Coverage (TAC) measures the combined ink density on a page. This
-project's `dtrpg` preset caps it at 240%. The `pdf.print.ink-coverage` check
+project's `dtrpg` preset caps it at 240% (the check's `maxTac` option). The `pdf.print.ink-coverage` check
 uses Ghostscript to measure this.
 
 > **Note:** High ink coverage can cause paper curling, slow drying, and ink smearing. Keep decorative elements in check.

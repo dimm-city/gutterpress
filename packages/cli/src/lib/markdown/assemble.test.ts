@@ -130,6 +130,30 @@ test("a single file's footnote links still resolve", async () => {
   expect(html).toContain('<a href="#fnref-paper-md-1" class="footnote-backref">');
 });
 
+test("a link written to a footnote in 0.11.22 (#fn1, #fnref1) still lands on that note (#483)", async () => {
+  const files: Record<string, string> = {
+    "a.md": "# One\n\nText[^1], [see the note](#fn1), <a href='#fnref1'>back</a>, [none](#fn9).\n\n[^1]: Note.\n",
+    "b.md": "# Two\n\nMore[^1] and [note 1](#fn1).\n\n[^1]: Other.\n",
+  };
+  const html = await assembleBookHtml({ files: Object.keys(files), readText: (rel) => Promise.resolve(files[rel]!) });
+  // `#fn1` named the first note numbered 1 in reading order in 0.11.22 (the
+  // first element with that id), so it goes there, from either file.
+  expect(html).toContain('<a href="#fn-a-md-1" data-gp-source-token="[see the note](#fn1)"');
+  expect(html).toContain("<a href='#fnref-a-md-1'>back</a>");
+  expect(html).toContain('<a href="#fn-a-md-1" data-gp-source-token="[note 1](#fn1)"');
+  // A number no note has dangles as it did; the notes' own links are untouched.
+  expect(html).toContain('href="#fn9"');
+  expect(html).toContain('<a href="#fn-b-md-1" id="fnref-b-md-1">');
+  expect(html).toContain('<a href="#fnref-b-md-1" class="footnote-backref">');
+  // A book with an element of that id of its own keeps its link.
+  const own = await assembleBookHtml({
+    files: ["c.md"],
+    readText: () => Promise.resolve('<p id="fn1">Mine</p>\n\nText[^1] [mine](#fn1)\n\n[^1]: Note.\n'),
+  });
+  expect(own).toContain('data-gp-source-token="[mine](#fn1)"');
+  expect(own).toMatch(/<a href="#fn1" data-gp-source-token="\[mine\]\(#fn1\)"/);
+});
+
 test("assembleBookHtml throws on empty file list", async () => {
   await expect(
     assembleBookHtml({ files: [], readText: () => Promise.resolve("") }),

@@ -48,7 +48,7 @@ export function shippedImages(ctx: CheckContext, exts: readonly string[]): strin
   );
 }
 
-/** Font file extensions the font-license check looks for. */
+/** Font file extensions shared by the approved-fonts and font-license checks. */
 export const FONT_EXTS = ["woff", "woff2", "otf", "ttf", "eot"] as const;
 
 /**

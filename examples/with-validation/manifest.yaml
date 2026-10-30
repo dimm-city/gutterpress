@@ -37,7 +37,8 @@ page:
 
 # Per-check levels: off, on, info, warn or error, keyed by check id. The
 # numbers the checks measure against (image resolution, ink coverage, the
-# safe area) come from the preset and the publish targets.
+# safe area) come from the preset and the publish targets; a check that
+# measures against one takes it as an option in the same entry.
 checks:
   # Switch a check off
   pdf.structure.qpdf: off
@@ -45,6 +46,16 @@ checks:
   heuristic.whitespace.text-density: info
   # Switch on a check the preset leaves off
   pdf.nav.bookmarks: warn
+  # A check's options: the number (or list) it measures against
+  asset.image.file-size:
+    maxImageSize: 5000000          # 5 MB per image
+  asset.font.approved-files:
+    approvedFontFiles:
+      - "fonts/**/*.{woff2,otf,ttf}"
+  # Its level and an option together
+  pdf.print.image-resolution:
+    level: error
+    minImageResolution: 300
 
 # The markdownlint and HTMLHint checks read .markdownlint.yaml and .htmlhintrc,
 # found by name in this folder (or a folder above it, up to the repository).

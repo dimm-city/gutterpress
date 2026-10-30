@@ -77,7 +77,7 @@ import {
   resolveExtension,
   type ExtensionCarries,
 } from "./extension-manifest.ts";
-import { BUNDLED_EXTENSIONS, bundledExtension } from "./extension-specifier.ts";
+import { BUNDLED_EXTENSION_DETAILS, bundledExtension } from "./extension-specifier.ts";
 import { slugify, prettify } from "./slug.ts";
 import { ensureProjectGitignore } from "./project-gitignore.ts";
 import type { ResolvedExtensionConfig } from "../schema/manifest.types.ts";
@@ -85,7 +85,7 @@ import type { ResolvedExtensionConfig } from "../schema/manifest.types.ts";
 /** The folder (relative to the project root) a book's extensions live under:
  *  vendored npm copies in `extensions/npm/`, zip and URL imports beside them
  *  (extension-import.ts). Path entries elsewhere are never moved. */
-export { EXTENSIONS_DIR } from "./plugin-vendor.ts";
+export { EXTENSIONS_DIR, PLUGINS_DIR } from "./plugin-vendor.ts";
 
 /** How an `extensions:` entry resolves — the form of its specifier decides. */
 export type ExtensionSourceKind = "bundled" | "path" | "npm";
@@ -1010,7 +1010,7 @@ export interface BundledExtensionInfo {
 
 /** The bundled extensions, in table order. */
 export function listBundledExtensions(): BundledExtensionInfo[] {
-  return BUNDLED_EXTENSIONS.map((b) => ({
+  return BUNDLED_EXTENSION_DETAILS.map((b) => ({
     use: b.name,
     label: b.label,
     description: b.description,
@@ -1019,7 +1019,7 @@ export function listBundledExtensions(): BundledExtensionInfo[] {
 }
 
 /** The built-in looks' names (the bundled extensions that carry a stylesheet), in table order. */
-export const BUILT_IN_LOOKS: readonly string[] = BUNDLED_EXTENSIONS.filter((b) => b.css !== undefined).map((b) => b.name);
+export const BUILT_IN_LOOKS: readonly string[] = BUNDLED_EXTENSION_DETAILS.filter((b) => b.css !== undefined).map((b) => b.name);
 
 /**
  * Make an editable copy of a built-in look (0.11.22's, restored in #482): its

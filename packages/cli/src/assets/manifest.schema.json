@@ -44,7 +44,7 @@
     },
     "styles": {
       "type": "array",
-      "description": "Project-relative CSS files to <link> into the rendered book, applied in order. If omitted, Gutterpress discovers one: styles/book.css (what `gutterpress new` scaffolds), else the first .css file found in the project root, styles/ or css/, else none. New projects should set this explicitly or use styles/book.css.",
+      "description": "Project-relative CSS files to <link> into the rendered book, applied in order. If omitted, Gutterpress discovers one: styles/book.css (what `gutterpress new` scaffolds), else the older conventional names css/print.css, css/index.css, css/style.css, css/main.css (in that order), else the first .css file found in the project root, styles/ or css/, else none. New projects should set this explicitly or use styles/book.css.",
       "items": {
         "type": "string",
         "minLength": 1,
@@ -124,11 +124,215 @@
     },
     "checks": {
       "type": "object",
-      "description": "Per-check and per-rule levels, keyed by a check id (pdf.print.image-resolution, source.markdownlint, …) or a lint rule id (printsafe/no-risky-print-effects). `off` switches it off; `on` switches on a check the preset leaves off, at its own severity; `info`, `warn` and `error` set the severity its findings are reported at. The numbers the checks measure against come from the preset and the publish targets. Linter config files (.markdownlint.yaml, .htmlhintrc, .gutterpress/css-contract.yaml) are found by name in the book's folder or a folder above it, up to the repository.",
-      "additionalProperties": {
-        "enum": ["off", "on", "info", "warn", "warning", "error", true, false]
+      "description": "Per-check and per-rule levels, keyed by a check id (pdf.print.image-resolution, source.markdownlint, …) or a lint rule id (printsafe/no-risky-print-effects). `off` switches it off; `on` switches on a check the preset leaves off, at its own severity; `info`, `warn` and `error` set the severity its findings are reported at. A check that measures against a number or a list takes it as an option in the same entry, written as an object: `pdf.print.ink-coverage: { maxTac: 300 }`, or `{ level: error, maxTac: 300 }` to set its level too. The preset and the publish targets set every option a book leaves out. Linter config files (.markdownlint.yaml, .htmlhintrc, .gutterpress/css-contract.yaml) are found by name in the book's folder or a folder above it, up to the repository.",
+      "properties": {
+        "pdf.print.ink-coverage": {
+          "description": "Total ink coverage of each page of a PDF/X build.",
+          "oneOf": [
+            {"$ref": "#/definitions/checkLevel"},
+            {
+              "type": "object",
+              "description": "Its `level` (optional) and its options.",
+              "additionalProperties": false,
+              "properties": {
+                "level": {"$ref": "#/definitions/checkLevel"},
+                "maxTac": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "The total ink limit in percent: what the check measures against and what the PDF/X conversion holds the ink to. Preset defaults: dtrpg 240, book 400.",
+                  "examples": [240, 300]
+                },
+                "tacTolerance": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "How far over `maxTac` a page may measure before it is reported (percent). Default 0.5.",
+                  "examples": [0.5]
+                }
+              }
+            }
+          ]
+        },
+        "pdf.print.page-size": {
+          "description": "The built PDF's page size against the manifest's (page.width x page.height).",
+          "oneOf": [
+            {"$ref": "#/definitions/checkLevel"},
+            {
+              "type": "object",
+              "description": "Its `level` (optional) and its options.",
+              "additionalProperties": false,
+              "properties": {
+                "level": {"$ref": "#/definitions/checkLevel"},
+                "tolerance": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "How far (points) the built page may differ from the size. Default 0.5.",
+                  "examples": [0.5, 1]
+                }
+              }
+            }
+          ]
+        },
+        "pdf.print.image-resolution": {
+          "description": "The resolution each placed image prints at.",
+          "oneOf": [
+            {"$ref": "#/definitions/checkLevel"},
+            {
+              "type": "object",
+              "description": "Its `level` (optional) and its options.",
+              "additionalProperties": false,
+              "properties": {
+                "level": {"$ref": "#/definitions/checkLevel"},
+                "minImageResolution": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "The lowest DPI an image may print at; 0 = no floor. Default 300 (itch.io: 0).",
+                  "examples": [300, 150]
+                }
+              }
+            }
+          ]
+        },
+        "pdf.print.bleed": {
+          "description": "The bleed around the trim of a built PDF (off in every preset).",
+          "oneOf": [
+            {"$ref": "#/definitions/checkLevel"},
+            {
+              "type": "object",
+              "description": "Its `level` (optional) and its options.",
+              "additionalProperties": false,
+              "properties": {
+                "level": {"$ref": "#/definitions/checkLevel"},
+                "bleedSize": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "The bleed (points) each side must have. Default 9 (0.125in).",
+                  "examples": [9]
+                }
+              }
+            }
+          ]
+        },
+        "asset.image.file-size": {
+          "description": "The size of each image file the book ships.",
+          "oneOf": [
+            {"$ref": "#/definitions/checkLevel"},
+            {
+              "type": "object",
+              "description": "Its `level` (optional) and its options.",
+              "additionalProperties": false,
+              "properties": {
+                "level": {"$ref": "#/definitions/checkLevel"},
+                "maxImageSize": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "The largest image file in bytes; 0 = no limit. Default 10000000 (itch.io: 0).",
+                  "examples": [10000000]
+                }
+              }
+            }
+          ]
+        },
+        "asset.font.approved-files": {
+          "description": "The font files the book ships, against an approved list.",
+          "oneOf": [
+            {"$ref": "#/definitions/checkLevel"},
+            {
+              "type": "object",
+              "description": "Its `level` (optional) and its options.",
+              "additionalProperties": false,
+              "properties": {
+                "level": {"$ref": "#/definitions/checkLevel"},
+                "approvedFontFiles": {
+                  "type": "array",
+                  "description": "Glob patterns, relative to the book, of the font files it may ship. A font file no pattern matches is reported. Empty (the default) approves every font.",
+                  "items": {"type": "string"},
+                  "examples": [["fonts/*.woff2"]]
+                }
+              }
+            }
+          ]
+        },
+        "heuristic.decoration.layer-count": {
+          "description": "Decorative layers on each page.",
+          "oneOf": [
+            {"$ref": "#/definitions/checkLevel"},
+            {
+              "type": "object",
+              "description": "Its `level` (optional) and its options.",
+              "additionalProperties": false,
+              "properties": {
+                "level": {"$ref": "#/definitions/checkLevel"},
+                "maxDecorativeLayers": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "The most decorative layers on one page. Default 5.",
+                  "examples": [5]
+                }
+              }
+            }
+          ]
+        },
+        "heuristic.whitespace.text-density": {
+          "description": "The characters each page carries.",
+          "oneOf": [
+            {"$ref": "#/definitions/checkLevel"},
+            {
+              "type": "object",
+              "description": "Its `level` (optional) and its options.",
+              "additionalProperties": false,
+              "properties": {
+                "level": {"$ref": "#/definitions/checkLevel"},
+                "textDensityRange": {
+                  "type": "object",
+                  "description": "The characters a page should carry: `min` and `max`, either or both. Default { min: 200, max: 5000 }.",
+                  "additionalProperties": false,
+                  "properties": {"min": {"type": "number", "minimum": 0}, "max": {"type": "number", "minimum": 0}}
+                }
+              }
+            }
+          ]
+        },
+        "heuristic.chunking.section-density": {
+          "description": "Paragraphs in each section.",
+          "oneOf": [
+            {"$ref": "#/definitions/checkLevel"},
+            {
+              "type": "object",
+              "description": "Its `level` (optional) and its options.",
+              "additionalProperties": false,
+              "properties": {
+                "level": {"$ref": "#/definitions/checkLevel"},
+                "maxParagraphsPerSection": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "The most paragraphs in one section. Default 10.",
+                  "examples": [10]
+                }
+              }
+            }
+          ]
+        }
       },
-      "examples": [{ "pdf.structure.qpdf": "off", "heuristic.whitespace.text-density": "info", "pdf.nav.bookmarks": "warn" }]
+      "additionalProperties": {
+        "oneOf": [
+          {"$ref": "#/definitions/checkLevel"},
+          {
+            "type": "object",
+            "description": "A check's level as an object; a check with no options takes only `level`.",
+            "additionalProperties": false,
+            "properties": {"level": {"$ref": "#/definitions/checkLevel"}}
+          }
+        ]
+      },
+      "examples": [
+        {
+          "pdf.structure.qpdf": "off",
+          "heuristic.whitespace.text-density": "info",
+          "pdf.nav.bookmarks": "warn",
+          "pdf.print.ink-coverage": {"maxTac": 300},
+          "pdf.print.image-resolution": {"level": "error", "minImageResolution": 200}
+        }
+      ]
     },
     "pdfx": {
       "type": "object",
@@ -202,7 +406,7 @@
     },
     "page": {
       "type": "object",
-      "description": "Page geometry, in POINTS (1in = 72pt): the trim size the book prints at and, with `margin`, the margins. The build writes them as the `@page` rule after every stylesheet, so a `size` in a stylesheet's own `@page` is overridden (the print-safety check reports it); the `pdf.print.page-size` check compares the produced PDF against these numbers. A bleed-inclusive page size legitimately differs from the trim recorded here.",
+      "description": "Page geometry, in POINTS (1in = 72pt): the trim size the book prints at and, with `margin`, the margins. The build writes them as the `@page` rule after every stylesheet, so a `size` in a stylesheet's own `@page` is overridden (the print-safety check reports it); the `pdf.print.page-size` check compares the produced PDF against these numbers, allowing the `tolerance` set in its `checks:` entry (0.5pt by default). A bleed-inclusive page size legitimately differs from the trim recorded here.",
       "properties": {
         "width": {
           "type": "number",
@@ -374,6 +578,12 @@
           }
         }
       }
+    }
+  },
+  "definitions": {
+    "checkLevel": {
+      "description": "off, on (at the check's own severity), info, warn or error; `warning` is read as `warn`, true as on and false as off.",
+      "enum": ["off", "on", "info", "warn", "warning", "error", true, false]
     }
   },
   "examples": [

@@ -64,8 +64,10 @@ export function summarizeManifest(m: ManifestLike, markdownFileCount: number): s
   if (m.page?.width || m.page?.height) lines.push(`page: ${m.page.width ?? '?'} × ${m.page.height ?? '?'}`);
   if (m.pdfx?.flavor) lines.push(`pdfx: ${m.pdfx.flavor}`);
   if (m.print?.signature) lines.push(`print signature: ${m.print.signature}`);
+  // An entry is a level, or an object with a level and the check's options.
   const levels = Object.entries(m.checks ?? {});
-  if (levels.length > 0) lines.push(`checks: ${levels.map(([id, level]) => `${id} ${String(level)}`).join(', ')}`);
+  const entry = (v: unknown) => (typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v));
+  if (levels.length > 0) lines.push(`checks: ${levels.map(([id, level]) => `${id} ${entry(level)}`).join(', ')}`);
   return lines;
 }
 

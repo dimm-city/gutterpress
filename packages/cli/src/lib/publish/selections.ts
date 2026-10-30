@@ -61,7 +61,7 @@ export class PublishSelectionsStore {
         return {
           version: 1,
           global: parsed.global ?? {},
-          projects: parsed.projects ?? {},
+          projects: readProjects(parsed.projects),
         };
       }
     } catch {
@@ -172,6 +172,30 @@ export class PublishSelectionsStore {
       await this.write(data);
     });
   }
+}
+
+/**
+ * The per-book values as this release keeps them. A file 0.11.22 wrote holds
+ * one account label per provider (`projects[book][provider] = "studio"`);
+ * that label is the book's `credential` here, so it is read as
+ * `{ credential: "studio" }` and the next write keeps it in that shape (#483).
+ */
+function readProjects(projects: unknown): SelectionsShape["projects"] {
+  const out: SelectionsShape["projects"] = {};
+  if (!projects || typeof projects !== "object") return out;
+  for (const [book, providers] of Object.entries(projects as Record<string, unknown>)) {
+    if (!providers || typeof providers !== "object") continue;
+    const values: Record<string, BookSettings> = {};
+    for (const [provider, value] of Object.entries(providers as Record<string, unknown>)) {
+      if (typeof value === "string") {
+        if (value.trim()) values[provider] = { credential: value };
+      } else if (value && typeof value === "object") {
+        values[provider] = value as BookSettings;
+      }
+    }
+    if (Object.keys(values).length > 0) out[book] = values;
+  }
+  return out;
 }
 
 /** Trailing-separator-insensitive project key (paths are the identity here). */

@@ -18,6 +18,12 @@ import { exports as resolveExports } from "resolve.exports";
 
 /** Project-relative folder every extension a book carries lives under: vendored npm copies in `npm/`, imports beside them. */
 export const EXTENSIONS_DIR = "extensions";
+/**
+ * @deprecated 0.11.22's name for the folder vendored npm extensions go in;
+ * the same folder as {@link EXTENSIONS_DIR}, kept so a caller of the lib keeps
+ * working. Books vendored before 0.11.23 keep theirs in {@link LEGACY_PLUGINS_DIR}.
+ */
+export const PLUGINS_DIR = EXTENSIONS_DIR;
 /** Where books vendored before 0.11.23 keep their npm copies. Read, never written. */
 export const LEGACY_PLUGINS_DIR = "plugins";
 export const VENDORED_NPM_DIR = "npm";
