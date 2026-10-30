@@ -34,14 +34,18 @@ This project follows [Semantic Versioning](https://semver.org/).
   online copy can't be reached or has versions this computer lacks; deleting a
   revision whose versions are found nowhere else asks a second time with the
   count.
-- **Online copy refinements (#448).** Version history opens inside Book setup
-  → Online copy instead of taking over the editor (Look at this version still
-  closes Setup and compares in the preview). The revisions list puts the open
-  revision first, filters with **Find a revision** past five revisions, scrolls
-  in its own box, and has **New revision…** above it; an **Only online**
-  revision can now be deleted from the online copy (refused, changing nothing,
-  when it changed online since the list was checked). **Sign in again** sits
-  under **Test connection**. With automatic backing up off, one **Sync** button
+- **Online copy is laid out as three cards (#448).** A status card (where the
+  book is kept, its one next step, and **Backing up keeps failing?** at its
+  foot with Test connection, Sign in again, Repair and Start over), a
+  **Revisions** card, and a **Version history** card on the same page, so
+  Version history no longer takes over the editor (Look at this version still
+  closes Setup and compares in the preview). Revisions: the open one first,
+  five shown with **Show all**, **Find a revision** past five, **New
+  revision** in the card's header, and each row's **Switch** plus a ⋯ menu
+  with **Rename…** (every revision) and **Delete…** (all but the open one);
+  New revision, Rename and Delete are dialogs. A revision that is **Only
+  online** can now be renamed or deleted in the online copy (refused, changing
+  nothing, when it changed online since the list was checked). With automatic backing up off, one **Sync** button
   (Setup → Online copy: **Sync now**; the new-changes toast: **Sync**) replaces
   Back up now and Get latest; it runs the same backing up as before, which gets
   the latest first. The status control and Sync sit on the left of the status

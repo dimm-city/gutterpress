@@ -480,14 +480,17 @@ describe("deleteRevision", () => {
     }
   });
 
-  test("a revision that is only in the online copy can't be renamed until it is switched to", async () => {
+  test("a revision that is only in the online copy is renamed there, with nothing changed here", async () => {
     const h = await setupClone();
     try {
       await onlineOnlyRevision(h, "Elsewhere");
 
-      await expect(renameRevision({ projectDir: h.projectDir, from: "Elsewhere", to: "Else" })).rejects.toThrow(
-        /only in the online copy so far/i,
-      );
+      const result = await renameRevision({ projectDir: h.projectDir, from: "Elsewhere", to: "Somewhere else" });
+
+      expect(result).toEqual({ current: "main", name: "Somewhere-else" });
+      expect(await serverBranches(h)).toEqual(["Somewhere-else", "main"]);
+      expect(await localBranches(h)).toEqual(["main"]);
+      expect(await listed(h)).toEqual(["main:online", "Somewhere-else:online-only"]);
     } finally {
       await h.cleanup();
     }

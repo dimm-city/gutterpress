@@ -86,12 +86,12 @@ describe("Book setup → Online copy", () => {
     expect(read("routes/+page.svelte")).not.toMatch(/"backup"/);
   });
 
-  test("status, the line about this computer, revisions and the collapsed failing tools, in that order", () => {
+  test("three cards in order: where the book is kept (troubleshooting at its foot), Revisions, Version history", () => {
     const tab = markup("lib/components/ProjectConnectionsSection.svelte");
-    const order = [tab.indexOf('class="headline"'), tab.indexOf("Save a version"), tab.indexOf("<RevisionsList"), tab.indexOf("If backing up keeps failing")];
+    const order = [tab.indexOf('class="section-card status'), tab.indexOf("Backing up keeps failing?"), tab.indexOf("<RevisionsList"), tab.indexOf('id="version-history-title"')];
     expect(order.every((i) => i > -1)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    expect(tab).toContain('<details class="failing">');
+    expect(tab).toContain('<details class="trouble">');
   });
 
   test("if backing up keeps failing: Test connection, Sign in again, Repair, then Start over", () => {
@@ -110,48 +110,60 @@ describe("Book setup → Online copy", () => {
 
   test("each situation's action is worded as the design says", () => {
     const tab = markup("lib/components/ProjectConnectionsSection.svelte");
-    for (const text of ["Turn on version history", "Keep this book safe online…", "Version history…", "Repair the online copy", "Start over from the online copy", "Test connection", "Sign in again"]) {
+    for (const text of ["Turn on version history", "Keep this book safe online…", "Sync now", "Save a version", "Repair the online copy", "Start over from the online copy", "Test connection", "Sign in again"]) {
       expect(tab).toContain(text);
     }
   });
 
-  test("Revisions: New revision… sits above the list", () => {
+  test("Revisions: New revision sits in the card's header, above the list", () => {
     const rev = markup("lib/components/RevisionsList.svelte");
-    expect(rev.indexOf("New revision…")).toBeGreaterThan(-1);
-    expect(rev.indexOf("New revision…")).toBeLessThan(rev.indexOf('<ul class="item-list"'));
+    expect(rev.indexOf("New revision")).toBeGreaterThan(-1);
+    expect(rev.indexOf("New revision")).toBeLessThan(rev.indexOf('<ul class="rev-list"'));
   });
 
   test("Revisions: the four places, the actions, and the notes the design asks for", () => {
     const rev = read("lib/components/RevisionsList.svelte");
     for (const text of [
-      "You're working on this",
+      "Current",
       "Online · not backed up yet",
       "Only on this computer",
       "Only online",
       "Switch",
       "Rename…",
       "Delete…",
-      "New revision…",
+      "New revision",
       "Delete on this computer only",
       "Delete everywhere",
-      "from the online copy? It isn't on this computer.",
+      "It is deleted from the online copy. It isn't on this computer.",
+      "It is renamed in the online copy. It isn't on this computer.",
       "Find a revision",
       "No revisions match.",
       "This also renames it in the online copy. Anyone else working on",
-      "Couldn't check the online copy for other revisions. This list shows the revisions on this computer.",
+      "Couldn't check the online copy just now, so revisions made elsewhere may be missing.",
     ]) {
       expect(rev).toContain(text);
     }
+  });
+
+  test("Revisions: Rename… for every revision, Delete… for all but the open one", () => {
+    const rev = markup("lib/components/RevisionsList.svelte");
+    const start = rev.indexOf('role="menu"');
+    const menu = rev.slice(start, rev.indexOf("</div>", start));
+    // Rename… is unconditional; only Delete… sits behind "not the open one".
+    expect(menu.indexOf("Rename…")).toBeGreaterThan(-1);
+    expect(menu.indexOf("Rename…")).toBeLessThan(menu.indexOf("{#if !r.current}"));
+    expect(menu.indexOf("{#if !r.current}")).toBeLessThan(menu.indexOf("Delete…"));
   });
 });
 
 describe("Version history", () => {
   const view = markup("lib/components/ProjectActivityView.svelte");
 
-  test("is called Version history, with Save a version at the top and the new badges", () => {
-    expect(view).toContain("Version history</h2>");
-    expect(view).toContain("Online copy</button>");
-    expect(view.indexOf("Save a version")).toBeLessThan(view.indexOf("No versions yet."));
+  test("is a card on Online copy, called Version history, with Save a version in its header and the badges", () => {
+    const tab = markup("lib/components/ProjectConnectionsSection.svelte");
+    expect(tab).toContain('<h3 id="version-history-title">Version history</h3>');
+    expect(tab.indexOf("Save a version")).toBeLessThan(tab.indexOf("<ProjectActivityView"));
+    expect(view).not.toMatch(/class="back"|activity-header/);
     expect(view).toContain("Only on this computer");
     expect(view).toContain("In the online copy, not yet on this computer");
     expect(view).toContain("Restore this version");

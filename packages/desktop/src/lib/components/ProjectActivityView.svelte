@@ -25,11 +25,9 @@
    * other external change, per #44).
    */
   import { onMount } from "svelte";
-  import Icon from "#lib/components/Icon.svelte";
   import VersionCompareView from "#lib/components/VersionCompareView.svelte";
   import { api, type CompareRow, type VersionEntry, type VersionFileChange } from "#lib/api.ts";
   import { friendlyHostError } from "#lib/errors.ts";
-  import { NOTHING_NEW_NOTICE } from "#lib/save-status.ts";
   import {
     versionLabel,
     versionDescription,
@@ -43,9 +41,7 @@
     logFilePath = null,
     hasRemote = false,
     viewingId = null,
-    onBack,
     onRestored,
-    onSaveVersion,
     onLookAt,
     onStopLooking,
   }: {
@@ -55,13 +51,9 @@
     hasRemote?: boolean;
     /** The version the page is showing beside the live preview, if any. */
     viewingId?: string | null;
-    /** Back to the rest of Online copy. */
-    onBack: () => void;
     /** Called after a version is successfully restored, so the parent can
      * reload the editor buffer/preview from the (now-changed) disk state. */
     onRestored?: () => void;
-    /** Save a version now: the page saves and toasts (and reloads this list); resolves "unchanged" when there was nothing new. */
-    onSaveVersion?: () => Promise<"saved" | "unchanged">;
     /** "Look at this version": show it read-only beside the live preview. */
     onLookAt?: (id: string, label: string) => void;
     onStopLooking?: () => void;
@@ -78,23 +70,6 @@
   let logLoading = $state(false);
   let logContent = $state("");
   let error = $state<string | null>(null);
-
-  // ── Save a version ──────────────────────────────────────────────────────────
-  let savingVersion = $state(false);
-  let nothingNew = $state(false);
-
-  async function saveVersion() {
-    if (!onSaveVersion || savingVersion) return;
-    savingVersion = true;
-    try {
-      nothingNew = (await onSaveVersion()) === "unchanged";
-      if (!nothingNew) refreshHistory();
-    } catch {
-      // The page shows the failure toast.
-    } finally {
-      savingVersion = false;
-    }
-  }
 
   // ── In the online copy, not yet on this computer ────────────────────────────
   let online = $state<VersionEntry[]>([]);
@@ -229,10 +204,7 @@
     return `${versionLabel(entry.message)}${note ? ` — ${note}` : ""} · ${when(entry.timestamp)}`;
   }
 
-  let headingEl = $state<HTMLElement>();
-
   onMount(() => {
-    headingEl?.focus();
     void loadHistory();
     void loadOnline();
     void loadLog();
@@ -342,18 +314,7 @@
   />
 {:else}
 <div class="activity-view">
-  <header class="activity-header">
-    <button class="back" onclick={onBack}><Icon name="chevron-left" size={14} /> Online copy</button>
-    <h2 bind:this={headingEl} tabindex="-1"><Icon name="history" size={16} /> Version history</h2>
-    {#if onSaveVersion}
-      <button class="ghost small save" onclick={() => void saveVersion()} disabled={savingVersion}>
-        {savingVersion ? "Saving a version…" : "Save a version"}
-      </button>
-    {/if}
-  </header>
-
   {#if error}<p class="error" role="alert">{error}</p>{/if}
-  {#if nothingNew}<p class="notice" role="status">{NOTHING_NEW_NOTICE}</p>{/if}
 
   {#if hasRemote && (onlineState === "checking" || online.length > 0 || onlineState === "unavailable")}
     <section class="activity-section online-section">
@@ -404,7 +365,7 @@
         </ul>
       {/each}
       {#if hasMore}
-        <button class="ghost" onclick={loadOlder} disabled={loadingOlder}>
+        <button class="ghost older" onclick={loadOlder} disabled={loadingOlder}>
           {loadingOlder ? "Loading…" : "Show older versions"}
         </button>
       {/if}
@@ -427,50 +388,50 @@
 {/if}
 
 <style>
-  .activity-view { display: flex; flex-direction: column; gap: 14px; color: var(--app-text-secondary); }
-  .activity-header { padding-bottom: 12px; border-bottom: 1px solid var(--app-border-subtle); display: flex; align-items: center; gap: 12px; }
-  .back { display: inline-flex; align-items: center; gap: 4px; background: transparent; color: var(--app-text-muted); border: 1px solid var(--app-border); border-radius: 5px; padding: 4px 8px; font-size: 12px; cursor: pointer; flex: 0 0 auto; }
-  .back:hover { background: var(--app-control-hover-bg); }
-  .save { margin-left: auto; }
-  .notice { margin: 0; font-size: 12px; font-weight: 600; color: var(--app-text); }
-  h2 { margin: 0; display: inline-flex; align-items: center; gap: 8px; font-size: 15px; color: var(--app-text); outline: none; }
-  .activity-section { padding: 0 0 14px; display: flex; flex-direction: column; gap: 8px; }
-  .online-section { padding-bottom: 6px; border-bottom: 1px solid var(--app-border); }
-  h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--app-text); }
-  .day-heading { margin: 6px 0 2px; font-size: 11px; text-transform: none; letter-spacing: 0; color: var(--app-text-muted); }
-  .day-heading:first-of-type { margin-top: 0; }
-  .desc { color: var(--app-text-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
-  .history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-  .history-list li { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }
-  .auto-run summary { cursor: pointer; color: var(--app-text-secondary); font-size: 12px; font-weight: 600; }
-  .auto-run-list { margin-top: 6px; }
-  .entry-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  /* Inside Online copy's Version history card: day headings and rows divided by hairlines. */
+  .activity-view { display: flex; flex-direction: column; color: var(--app-text-secondary); }
+  .activity-section { display: flex; flex-direction: column; padding: 4px 0 8px; }
+  .online-section { border-bottom: 1px solid var(--app-border-subtle); background: var(--app-info-bg); }
+  .online-section .muted, .activity-section > .muted { padding: 6px 16px; }
+  h3 { margin: 0; font-size: 12px; color: var(--app-text); }
+  .day-heading { margin: 0; padding: 10px 16px 4px; font-size: 11.5px; font-weight: 600; color: var(--app-text-muted); }
+  .desc { color: var(--app-text-secondary); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+  .history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+  .history-list > li { display: flex; flex-direction: column; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--app-border-subtle); }
+  .history-list > li:last-child { border-bottom: 0; }
+  .auto-run summary { cursor: pointer; color: var(--app-text-secondary); font-size: 12.5px; }
+  .auto-run-list { margin-top: 6px; border-left: 2px solid var(--app-border-subtle); }
+  .auto-run-list > li { padding-right: 0; }
+  .entry-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
   .entry-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .entry-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .msg { color: var(--app-text); font-weight: 600; font-size: 12px; }
+  .entry-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .msg { color: var(--app-text); font-weight: 600; font-size: 13px; }
   .meta, .muted { color: var(--app-text-muted); font-size: 12px; }
-  .badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: 10px; font-weight: 600; background: var(--app-success-bg); border: 1px solid var(--app-success-border); color: var(--app-success-text); }
+  .badge { display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 999px; font-size: 10.5px; font-weight: 600; background: var(--app-success-bg); border: 1px solid var(--app-success-border); color: var(--app-success-text); }
   .badge.local { background: var(--app-info-bg); border-color: var(--app-info-border); color: var(--app-info-text); }
-  /* The changed-files list: plain rows under the card, no hunks. */
-  .changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; font-size: 11px; }
-  .history-list .changes li { display: block; padding: 0; border: 0; background: transparent; }
+  /* The changed files: plain lines under the version, no hunks. */
+  .changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; font-size: 12px; }
+  .changes li { display: block; padding: 0; border: 0; }
   .change-path, .change-link { color: var(--app-text); }
   .change-link { padding: 0; border: 0; background: none; font: inherit; cursor: pointer; text-decoration: underline; text-decoration-color: var(--app-border-strong); }
   .change-link:hover { color: var(--app-link); text-decoration-color: currentColor; }
   .change-link:disabled { cursor: default; }
   .change-hint, .change-more, .no-changes { color: var(--app-text-muted); }
-  .no-changes { font-size: 11px; }
-  .error { color: var(--app-error-text); margin: 0; }
-  .restore-error { margin: 0; font-size: 11px; }
+  .no-changes { font-size: 12px; }
+  .error { color: var(--app-error-text); margin: 0; padding: 10px 16px 0; font-size: 12px; }
+  .restore-error { padding: 0; }
   .restore-confirm { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-  .confirm-copy { color: var(--app-text-secondary); font-size: 11px; max-width: 220px; }
+  .confirm-copy { color: var(--app-text-secondary); font-size: 12px; max-width: 240px; }
   pre { margin: 0; padding: 10px; background: var(--app-surface-sunken); border: 1px solid var(--app-border); border-radius: 6px; white-space: pre-wrap; font-size: 11px; overflow: auto; }
+  .log-details { padding: 6px 16px 12px; border-top: 1px solid var(--app-border-subtle); }
   .log-details summary { cursor: pointer; color: var(--app-text-muted); font-size: 12px; padding: 4px 0; }
   .log-details pre { margin-top: 8px; }
-  .ghost { align-self: flex-start; background: transparent; color: var(--app-text-muted); border: 1px solid var(--app-border); border-radius: 5px; padding: 5px 10px; cursor: pointer; }
-  .ghost.active { color: var(--app-accent-text); border-color: var(--app-accent-border); background: var(--app-accent-subtle); }
+  .ghost { background: transparent; color: var(--app-text-secondary); border: 1px solid var(--app-border); border-radius: 5px; padding: 5px 10px; cursor: pointer; font: inherit; font-size: 12px; }
+  .ghost:hover:not(:disabled) { background: var(--app-surface-hover); color: var(--app-text); }
+  .ghost.active { color: var(--app-accent-text); border-color: var(--app-accent-border); background: var(--app-accent); }
+  .older { align-self: flex-start; margin: 8px 16px 4px; }
   .ghost:disabled, .primary:disabled { opacity: 0.6; cursor: default; }
   /* Colors come from the shared .app-btn-primary recipe (theme.css). */
-  .primary { border-width: 1px; border-style: solid; border-radius: 5px; padding: 5px 10px; cursor: pointer; }
-  .ghost.small, .primary.small { padding: 4px 8px; font-size: 11px; }
+  .primary { border-width: 1px; border-style: solid; border-radius: 5px; padding: 5px 10px; cursor: pointer; font-size: 12px; }
+  .ghost.small, .primary.small { padding: 4px 9px; font-size: 12px; }
 </style>

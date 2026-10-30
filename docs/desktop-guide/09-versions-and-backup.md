@@ -15,20 +15,21 @@ back**, **Saved · Sign in to back up**, **Saved · Backing up paused**, **Unsav
 **Couldn't save** or **Versions need attention**. A shape beside the words (a check, a cloud, a
 warning) says the same thing without colour.
 
-Click it to open **Setup → Online copy**, the one place for everything below. Its top section says
-in one line where the book is kept and offers the one next step. Under it, **Saved · last
-version 10 mins ago** has two buttons:
+Click it to open **Setup → Online copy**, the one place for everything below. It has three
+cards:
 
-- **Save a version** keeps the book as it is now, so you can go back to it.
-- **Version history…** lists every version, in the same place (**‹ Online copy** goes back).
+- **Status**, at the top: where the book is kept, in one line, with the one next step beside it.
+- **Revisions**: the book's separate lines of work (see [Revisions](#revisions)).
+- **Version history**: every version of the revision you're working on, with **Save a version**
+  in its header to keep the book as it is now.
 
-If the book is a plain folder, the tab offers **Turn on version history** instead. **Save now**
+If the book is a plain folder, the status card offers **Turn on version history** instead. **Save now**
 stays on Ctrl+S (Cmd+S on a Mac) and the editor's Save button.
 
 ## See what each version changed
 
-Click the status control, then **Version history…**, to open **Version history** inside **Setup →
-Online copy**. **Save a version** is at the top of it too, and **‹ Online copy** goes back. Each version shows when it was made and what it changed: a
+Click the status control: **Version history** is the last card in **Setup → Online copy**, with
+**Save a version** in its header. Each version shows when it was made and what it changed: a
 short list of files with a plain hint, such as `chapter-02.md · 3 paragraphs changed`,
 `styles/book.css · 1 rule changed` or `art/cover.png · replaced`. An automatic version that
 changed nothing says **No changes**. The first version of a book is labelled **First version**.
@@ -99,17 +100,20 @@ by name), and says where it is kept:
 - **Only on this computer** — never backed up.
 - **Only online** — in the online copy, not on this computer yet.
 
-With more than five revisions, a **Find a revision** field above the list narrows it as you type,
-and the list scrolls in its own box.
+The card shows five revisions, the open one first; **Show all** lists the rest. With more than five,
+a **Find a revision** field above the list narrows it as you type.
 
-Each row's buttons:
+Each row has **Switch** (except the open one) and a **⋯** menu with **Rename…** (every revision)
+and **Delete…** (every revision but the open one). Rename, Delete and New revision each open a
+small dialog that says what will happen before it happens:
 
 - **Switch** opens another revision. Gutterpress first saves any work not in a version yet, and
   the editor, the file tree and the preview show the revision you switched to. A revision that is
   only online is made on this computer first.
 - **Rename…** renames it. For an online revision it also renames it in the online copy, right away
-  (anyone else working on it keeps the old name until they switch to the new one). If the online
-  copy has versions this computer doesn't, it asks you to get the latest changes first.
+  (anyone else working on it keeps the old name until they switch to the new one); a revision that
+  is **Only online** is renamed in the online copy. If the online copy has versions this computer
+  doesn't, it asks you to get the latest changes first.
 - **Delete…** deletes a revision you are not working on. For an online revision you choose
   **Delete on this computer only** or **Delete everywhere**. A revision that is **Only online** is
   deleted from the online copy, after you confirm; if it changed online since the list was
@@ -117,7 +121,7 @@ Each row's buttons:
   versions that are in no other revision, Gutterpress says how many would be lost and asks once
   more.
 
-**New revision…**, above the list, asks for a name (spaces become hyphens), starts the revision
+**New revision**, in the card's header, asks for a name (spaces become hyphens), starts the revision
 from your book as it is now (saving any work not in a version yet first), and opens it. It goes
 online the next time you back up. If the online copy can't be checked, the list says so and shows
 the revisions on this computer.
@@ -184,8 +188,8 @@ Where each server makes its tokens:
 
 ### If backing up keeps failing
 
-Once a book's online copy can back up, **Setup → Online copy** has a collapsed section, **If
-backing up keeps failing**, with these tools:
+Once a book's online copy can back up, the status card in **Setup → Online copy** ends with a
+collapsed **Backing up keeps failing?**, with these tools:
 
 - **Test connection** checks that Gutterpress can reach this book's online copy. Nothing is changed
   or uploaded.

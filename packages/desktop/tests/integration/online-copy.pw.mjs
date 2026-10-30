@@ -184,14 +184,6 @@ const click = (selector, text = null) =>
     el?.click();
     return !!el;
   })()`);
-/** Click a revision row's button by its label. */
-const rowButton = (name, label) =>
-  evalJs(`(() => {
-    const li = [...document.querySelectorAll('.revisions .item-list > li')].find((l) => l.querySelector('.item-label').textContent.trim() === ${JSON.stringify(name)});
-    const b = [...(li?.querySelectorAll('.item-actions button') ?? [])].find((x) => x.textContent.trim() === ${JSON.stringify(label)});
-    b?.click();
-    return !!b;
-  })()`);
 /** Type into the input matching `selector` the way a person does (fires input events). */
 const type = (selector, value) =>
   evalJs(`(() => {
@@ -300,55 +292,75 @@ await screenshot(join(tmpdir(), "online-copy-bar.png"));
 await click(".status-bar .status-control");
 check(await waitFor(`document.querySelector('#project-settings-tab-online-copy')?.getAttribute('aria-selected') === 'true'`), "clicking it opens Book setup on the Online copy tab");
 
-// ── 7. the tab: status, this computer, revisions ─────────────────────────────
-check(await waitFor(`!!document.querySelector('#project-settings-panel .revisions .item-list li') && !!document.querySelector('#project-settings-panel .this-computer .line')`), "the Revisions list and the line about this computer loaded");
+// ── 7. the tab: three cards — where the book is kept, Revisions, Version history ─
+check(await waitFor(`!!document.querySelector('#project-settings-panel .revisions .rev-list li.rev') && !!document.querySelector('#project-settings-panel .activity-view .history-list li')`), "the status, Revisions and Version history cards loaded");
+await sleep(400);
+await screenshot(join(tmpdir(), "online-copy-tab.png"));
 const tab = await evalJs(`(() => {
   const panel = document.querySelector('#project-settings-panel');
-  const rows = [...panel.querySelectorAll('.revisions .item-list > li')].map((li) => ({
-    name: li.querySelector('.item-label')?.textContent.trim(),
-    mine: !!li.querySelector('.mine'),
-    where: li.querySelector('.item-caption')?.textContent.trim(),
-    actions: [...li.querySelectorAll('.item-actions button')].map((b) => b.textContent.trim()),
+  const cards = [...panel.querySelectorAll('.online-copy > .section-card')];
+  const rows = [...panel.querySelectorAll('.revisions .rev-list > li.rev')].map((li) => ({
+    name: li.querySelector('.rev-name')?.textContent.trim(),
+    current: li.classList.contains('current'),
+    badge: li.querySelector('.badge')?.textContent.trim() ?? null,
+    where: li.querySelector('.rev-where')?.textContent.replace(/\\s+/g, ' ').trim(),
+    buttons: [...li.querySelectorAll('.rev-actions > button')].map((b) => b.textContent.trim()),
+    more: !!li.querySelector('button[aria-label^="More for"]'),
   }));
   return {
-    headline: panel.querySelector('.headline')?.textContent.trim(),
-    line: panel.querySelector('.this-computer .line')?.textContent.trim(),
-    buttons: [...panel.querySelectorAll('.this-computer button')].map((b) => b.textContent.trim()),
-    rows,
-    // New revision… and the filter come before the list.
-    newAbove: (() => {
-      const list = panel.querySelector('.revisions .item-list');
-      const btn = [...panel.querySelectorAll('.revisions > button')].find((b) => b.textContent.trim() === 'New revision…');
-      return !!btn && !!list && !!(btn.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING);
-    })(),
+    titles: cards.map((c) => c.querySelector('h3')?.textContent.trim()),
+    statusDetail: panel.querySelector('.status-text p')?.textContent.trim(),
+    signIn: [...panel.querySelectorAll('.status-body button')].some((b) => /Sign in/.test(b.textContent)),
+    revisionsHead: [...panel.querySelectorAll('.revisions .section-head button')].map((b) => b.textContent.trim()),
     find: !!panel.querySelector('.revisions input[aria-label="Find a revision"]'),
-    box: (() => {
-      const list = panel.querySelector('.revisions .item-list');
-      return { scrolls: getComputedStyle(list).overflowY === 'auto' && list.scrollHeight > list.clientHeight, height: list.clientHeight };
-    })(),
-    stale: [...panel.querySelectorAll('.hint')].some((h) => h.textContent.includes("Couldn't check the online copy for other revisions. This list shows the revisions on this computer.")),
-    failing: !!panel.querySelector('details.failing'),
-    signIn: [...panel.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Sign in…'),
+    showAll: panel.querySelector('.revisions .section-foot button')?.textContent.trim(),
+    note: panel.querySelector('.revisions .section-note')?.textContent.trim(),
+    historyHead: [...panel.querySelectorAll('[aria-labelledby="version-history-title"] .section-head button')].map((b) => b.textContent.trim()),
+    historyBack: !!panel.querySelector('.activity-view .back, .activity-header'),
+    inEditorPane: !!document.querySelector('.editor-pane .activity-view'),
+    trouble: !!panel.querySelector('details.trouble'),
+    innerScroll: (() => { const l = panel.querySelector('.revisions .rev-list'); return l.scrollHeight > l.clientHeight + 1; })(),
+    rows,
   };
 })()`);
 log(`tab: ${JSON.stringify(tab)}`);
-check(/online copy is on GitHub: ada\/harbor-lights\. Sign in to back it up\./.test(tab.headline) && tab.signIn, "the status is one sentence with its one action (Sign in…)");
-check(/^Saved · last version /.test(tab.line) && tab.buttons.join("|") === "Save a version|Version history…", `the line about this computer, with Save a version and Version history… (${tab.line})`);
-const row = (name) => tab.rows.find((r) => r.name === name);
-check(tab.rows.map((r) => r.name).join(",") === "main,appendix,editors-pass,late-draft,release-1,second-edition,side-project", "every revision is listed: the open one first, the rest by name");
-check(tab.newAbove, "New revision… is above the list");
+const row = (n) => tab.rows.find((r) => r.name === n) ?? {};
+check(tab.titles.join("|") === "Sign in to back up|Revisions|Version history", `three cards, in order: status, Revisions, Version history (${tab.titles.join(" | ")})`);
+check(/GitHub: ada\/harbor-lights/.test(tab.statusDetail) && tab.signIn, "the status card names the online copy and offers Sign in…");
+check(tab.revisionsHead.join("|") === "New revision", "New revision sits in the Revisions card's header");
 check(tab.find, "more than five revisions offer Find a revision");
-check(tab.box.scrolls && tab.box.height < 330, `the list is capped (about six rows) and scrolls in its own box (${tab.box.height}px)`);
-check(row("main").mine && row("main").where === "Online · not backed up yet" && row("main").actions.join("|") === "Rename…", "the open revision: You're working on this, where it is, Rename… only");
-check(row("second-edition").where === "Only on this computer" && row("second-edition").actions.join("|") === "Switch|Rename…|Delete…", "a revision only on this computer: Switch, Rename…, Delete…");
-check(row("release-1").where === "Online" && row("release-1").actions.join("|") === "Switch|Rename…|Delete…", "an online revision: Switch, Rename…, Delete…");
-check(row("editors-pass").where === "Only online" && row("editors-pass").actions.join("|") === "Switch|Delete…", "an online-only revision: Switch, Delete… (it can't be renamed from here)");
-check(tab.stale, "an online copy that could not be checked says the list shows this computer's revisions");
-check(!tab.failing, "the failing-tools disclosure is only there once backing up can work");
-await screenshot(join(tmpdir(), "online-copy-tab.png"));
+check(tab.rows.map((r) => r.name).join(",") === "main,appendix,editors-pass,late-draft,release-1", `five rows show, the open one first (${tab.rows.map((r) => r.name)})`);
+check(tab.showAll === "Show all 7 revisions" && !tab.innerScroll, "the rest are one click away (Show all), with no box scrolling inside the page");
+check(row("main").current && row("main").badge === "Current" && row("main").where === "Online · not backed up yet" && row("main").buttons.length === 0 && row("main").more, "the open revision: Current, where it is kept, and its menu (no Switch)");
+check(row("editors-pass").where === "Only online" && row("editors-pass").buttons.join("|") === "Switch" && row("editors-pass").more, "an online-only revision: Switch and its menu");
+check(row("appendix").where === "Only on this computer", "a revision only on this computer says so");
+check(/revisions made elsewhere may be missing/.test(tab.note ?? ""), "an online copy that could not be checked says so, once");
+check(tab.historyHead.join("|") === "Save a version" && !tab.historyBack && !tab.inEditorPane, "Version history is a card on the page, with Save a version, no back button and nothing in the editor pane");
+check(!tab.trouble, "the backing-up-keeps-failing tools are only there once backing up can work");
+
+/** Open a row's "more" menu and choose an item. */
+const menuAction = async (name, label) => {
+  await click(`#project-settings-panel button[aria-label="More for ${name}"]`);
+  await waitFor(`!!document.querySelector('#project-settings-panel .menu [role="menuitem"]')`, 3000);
+  const items = await evalJs(`[...document.querySelectorAll('#project-settings-panel .menu [role="menuitem"]')].map((b) => b.textContent.trim()).join('|')`);
+  const ok = await click(`#project-settings-panel .menu [role="menuitem"]`, label);
+  return { ok, items };
+};
+const names = () => evalJs(`[...document.querySelectorAll('#project-settings-panel .revisions .rev-list > li .rev-name')].map((e) => e.textContent.trim()).join(',')`);
+const dialogText = () => evalJs(`document.querySelector('form.rev-dialog')?.textContent.replace(/\\s+/g, ' ').trim() ?? ''`);
+const dialogButtons = () => evalJs(`[...document.querySelectorAll('form.rev-dialog .dlg-actions button')].map((b) => b.textContent.trim()).join('|')`);
+const dialogClick = (label) => click("form.rev-dialog .dlg-actions button", label);
+
+// Every revision can be renamed; every one but the open one can be deleted.
+const openMenu = await menuAction("main", "Rename…");
+check(openMenu.items === "Rename…", `the open revision's menu: Rename… only (${openMenu.items})`);
+await dialogClick("Cancel");
+const onlineOnlyMenu = await menuAction("editors-pass", "Rename…");
+check(onlineOnlyMenu.items === "Rename…|Delete…", `an online-only revision's menu: Rename… and Delete… (${onlineOnlyMenu.items})`);
+await dialogClick("Cancel");
+check(await waitFor(`!document.querySelector('form.rev-dialog')`, 3000), "Cancel closes the dialog");
 
 // ── 7b. Find a revision ──────────────────────────────────────────────────────
-const names = () => evalJs(`[...document.querySelectorAll('#project-settings-panel .revisions .item-list > li .item-label')].map((e) => e.textContent.trim()).join(',')`);
 await type('.revisions input[aria-label="Find a revision"]', "A");
 await sleep(100);
 check((await names()) === "main,appendix,editors-pass,late-draft,release-1", `the filter ignores case and keeps the open revision first (${await names()})`);
@@ -358,142 +370,110 @@ check((await names()) === "editors-pass", `matches names anywhere (${await names
 await screenshot(join(tmpdir(), "online-copy-filter.png"));
 await type('.revisions input[aria-label="Find a revision"]', "zzz");
 await sleep(100);
-check(await evalJs(`document.querySelector('#project-settings-panel .revisions .item-list')?.textContent.includes('No revisions match.')`), "a filter that matches nothing says so");
+check(await evalJs(`document.querySelector('#project-settings-panel .revisions .rev-list')?.textContent.includes('No revisions match.')`), "a filter that matches nothing says so");
 await type('.revisions input[aria-label="Find a revision"]', "");
+await click("#project-settings-panel .revisions .section-foot button", "Show all 7 revisions");
 await sleep(100);
-check((await names()).split(",").length === 7, "clearing the filter brings every revision back");
+check((await names()).split(",").length === 7, "Show all lists every revision");
 
-// ── 7c. Version history opens inside the tab ─────────────────────────────────
-await click("#project-settings-panel .this-computer button", "Version history…");
-check(await waitFor(`!!document.querySelector('#project-settings-panel .activity-view .history-list li')`), "Version history… opens inside Book setup, in the tab");
-const history = await evalJs(`(() => {
-  const panel = document.querySelector('#project-settings-panel');
-  const visible = (el) => !!el && el.getClientRects().length > 0;
-  return {
-    heading: panel.querySelector('.activity-view h2')?.textContent.trim(),
-    back: [...panel.querySelectorAll('.activity-header button')].map((b) => b.textContent.trim()),
-    restCovered: !visible(panel.querySelector('.online-copy')) && !visible(panel.querySelector('.revisions')),
-    inEditorPane: !!document.querySelector('.editor-pane .activity-view'),
-    title: document.querySelector('[role="dialog"] h1')?.textContent.trim(),
-    focus: document.activeElement?.closest('.activity-view') ? document.activeElement.tagName : null,
-  };
-})()`);
-log(`history: ${JSON.stringify(history)}`);
-check(history.heading === "Version history" && history.back.join("|") === "Online copy|Save a version", `it has a way back (Online copy) and Save a version at the top (${history.back})`);
-check(history.restCovered && history.title === "Book setup", "it replaces the rest of the tab; Book setup is still the screen");
-check(!history.inEditorPane && history.focus === "H2", "the editor pane no longer hosts it, and focus moved to the view");
-await screenshot(join(tmpdir(), "online-copy-history.png"));
-
-// A changed file opens its compare there, and its back button returns to the list.
+// ── 7c. Version history, on the page ─────────────────────────────────────────
 check(await waitFor(`!!document.querySelector('#project-settings-panel .activity-view .change-link')`), "a version lists its changed text files");
+await evalJs(`document.querySelector('[aria-labelledby="version-history-title"]')?.scrollIntoView({ block: "start" }); true`);
+await sleep(300);
+await screenshot(join(tmpdir(), "online-copy-history.png"));
 await click("#project-settings-panel .activity-view .change-link");
-check(await waitFor(`!!document.querySelector('#project-settings-panel .compare-view .columns')`), "a changed file opens its compare inside the tab");
-check(await evalJs(`!document.querySelector('#project-settings-panel .activity-view') && !!document.querySelector('#project-settings-panel')`), "Book setup is still up behind the compare");
+check(await waitFor(`!!document.querySelector('#project-settings-panel .compare-view .columns')`), "a changed file opens its compare in the Version history card");
 await screenshot(join(tmpdir(), "online-copy-compare.png"));
 await click("#project-settings-panel .compare-view .back");
-check(await waitFor(`!!document.querySelector('#project-settings-panel .activity-view .history-list li')`), "the compare's back button returns to Version history");
+check(await waitFor(`!!document.querySelector('#project-settings-panel .activity-view .history-list li')`), "the compare's back button returns to the versions");
 
-// Save a version works in place (the book has nothing new, which is said calmly).
-await click("#project-settings-panel .activity-header button", "Save a version");
-check(await waitFor(`/Nothing new to save|nothing new/i.test(document.querySelector('#project-settings-panel .activity-view .notice')?.textContent ?? '')`, 20000), "Save a version says so when there is nothing new");
-
-// Back to the rest of Online copy, with focus on the button that opened it.
-await click("#project-settings-panel .activity-header .back");
-check(await waitFor(`!document.querySelector('#project-settings-panel .activity-view') && !!document.querySelector('#project-settings-panel .revisions .item-list li')`), "Online copy brings the rest of the tab back");
-check(await evalJs(`document.activeElement?.textContent.trim() === 'Version history…'`), "focus returns to Version history…");
+// Save a version, from the card's header (the book has nothing new, which is said calmly).
+await click('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button');
+check(await waitFor(`/Nothing new to save|nothing new/i.test(document.querySelector('#project-settings-panel [aria-labelledby="version-history-title"]')?.textContent ?? '')`, 20000), "Save a version says so when there is nothing new");
 
 // Look at this version needs the preview: it closes Book setup and the preview's own bar stays.
-await click("#project-settings-panel .this-computer button", "Version history…");
-check(await waitFor(`!!document.querySelector('#project-settings-panel .activity-view .history-list li')`), "Version history opens again");
 await click("#project-settings-panel .activity-view .history-list button", "Look at this version");
 check(await waitFor(`!document.querySelector('#project-settings-panel')`), "Look at this version closes Book setup");
 check(await waitFor(`/Looking at/.test(document.querySelector('.version-bar')?.textContent ?? '')`, 60000), "the preview shows the version beside the current book, with its own Looking at… bar");
 await screenshot(join(tmpdir(), "online-copy-looking.png"));
 await click(".version-bar .version-bar-close");
 check(await waitFor(`!document.querySelector('.version-bar')`), "its close button stops looking");
-
-// Book setup opens on the tab itself again, not on Version history.
 await click(".status-bar .status-control");
-check(await waitFor(`!!document.querySelector('#project-settings-panel .revisions .item-list li') && !document.querySelector('#project-settings-panel .activity-view')`), "reopening Book setup lands on Online copy");
+check(await waitFor(`!!document.querySelector('#project-settings-panel .revisions .rev-list li.rev')`), "the status control opens Online copy again");
+await click("#project-settings-panel .revisions .section-foot button", "Show all 7 revisions");
 
-// ── 8. New revision… ─────────────────────────────────────────────────────────
-await click("#project-settings-panel .revisions button", "New revision…");
-check(await evalJs(`(() => {
-  const form = document.querySelector('#project-settings-panel .revisions > .inline-form');
-  const list = document.querySelector('#project-settings-panel .revisions .item-list');
-  return !!form && !!list && !!(form.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING);
-})()`), "its name form opens above the list");
-// Escape in the name field cancels the form only: Book setup stays open.
-await evalJs(`document.querySelector('.revisions .name-form input')?.focus()`);
+// ── 8. New revision (a dialog) ───────────────────────────────────────────────
+await click("#project-settings-panel .revisions .section-head button", "New revision");
+check(await waitFor(`!!document.querySelector('form.rev-dialog input')`, 3000), "New revision opens a dialog with a name field");
+check(await evalJs(`document.activeElement === document.querySelector('form.rev-dialog input')`), "the name field has focus");
+// Escape cancels the dialog only: Book setup stays open.
 await press("Escape", "Escape", 27);
-check(await waitFor(`!document.querySelector('.revisions .name-form')`, 3000), "Escape in the name field cancels the form");
+check(await waitFor(`!document.querySelector('form.rev-dialog')`, 3000), "Escape cancels the dialog");
 check(await evalJs(`!!document.querySelector('#project-settings-panel .revisions')`), "and leaves Book setup open");
-await click("#project-settings-panel .revisions button", "New revision…");
-await type(".revisions .name-form input", "Third edition");
+await click("#project-settings-panel .revisions .section-head button", "New revision");
+await waitFor(`!!document.querySelector('form.rev-dialog input')`, 3000);
+await type("form.rev-dialog input", "Third edition");
 await sleep(100);
-const preview = await evalJs(`document.querySelector('.revisions .name-form .hint')?.textContent.trim()`);
-check(preview === 'It will be called "Third-edition".', `the field previews the name (${preview})`);
-const note = await evalJs(`document.querySelector('.revisions .inline-form')?.textContent.replace(/\\s+/g, ' ')`);
-check(note.includes("starts from your book as it is now") && note.includes("goes online the next time you back up"), "a one-line note says what it does");
-await click(".revisions button", "Create revision");
-check(await waitFor(`[...document.querySelectorAll('.revisions .item-label')].some((e) => e.textContent.trim() === 'Third-edition')`), "the new revision is listed");
+const newText = await dialogText();
+check(newText.includes('It will be called "Third-edition".'), `the dialog previews the name (${newText})`);
+check(newText.includes("starts from your book as it is now") && newText.includes("goes online the next time you back up"), "and says what it does");
+await screenshot(join(tmpdir(), "online-copy-new.png"));
+await dialogClick("Create revision");
+check(await waitFor(`!document.querySelector('form.rev-dialog') && document.querySelector('#project-settings-panel .revisions .rev.current .rev-name')?.textContent.trim() === 'Third-edition'`), "the new revision is created, open, and listed");
 const created = await evalJs(`window.__revisions.calls.find((c) => c.path === 'create-revision')?.body`);
 check(created?.name === "Third edition", "the typed name went to the host (it normalises it)");
-check(await evalJs(`!!document.querySelector('.revisions .item-list li:has(.mine) .item-label') && document.querySelector('.revisions .item-list li:has(.mine) .item-label').textContent.trim() === 'Third-edition'`), "the new revision is the one open");
 check((await names()).startsWith("Third-edition,"), "and it moves to the top of the list");
 
-// ── 9. Rename… of an online revision ─────────────────────────────────────────
-check(await rowButton("main", "Rename…"), "Rename… on the online revision");
-await type(".revisions .name-form input", "first edition");
+// ── 9. Rename… (an online revision, and one only online) ─────────────────────
+await menuAction("main", "Rename…");
+await type("form.rev-dialog input", "first edition");
 await sleep(100);
-const renameNote = await evalJs(`document.querySelector('.revisions .inline-form')?.textContent.replace(/\\s+/g, ' ')`);
-check(renameNote.includes('This also renames it in the online copy. Anyone else working on "main" keeps the old name until they switch to "first-edition".'), "an online rename says it renames online too");
+check((await dialogText()).includes('This also renames it in the online copy. Anyone else working on "main" keeps the old name until they switch to the new one.'), "an online rename says it renames online too");
 await screenshot(join(tmpdir(), "online-copy-rename.png"));
-await click(".revisions .name-form button", "Rename");
-check(await waitFor(`[...document.querySelectorAll('.revisions .item-label')].some((e) => e.textContent.trim() === 'first-edition')`), "the revision is renamed");
+await dialogClick("Rename");
+check(await waitFor(`!document.querySelector('form.rev-dialog') && [...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'first-edition')`), "the revision is renamed");
+await menuAction("editors-pass", "Rename…");
+await type("form.rev-dialog input", "editors final");
+await sleep(100);
+check((await dialogText()).includes("It is renamed in the online copy. It isn't on this computer."), "an online-only rename says where it happens");
+await dialogClick("Rename");
+check(await waitFor(`[...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'editors-final')`), "the online-only revision is renamed");
+check(await evalJs(`window.__revisions.calls.some((c) => c.path === 'rename-revision' && c.body.from === 'editors-pass' && c.body.to === 'editors final')`), "the host was asked to rename it");
 
-// ── 10. Delete… ──────────────────────────────────────────────────────────────
-await rowButton("release-1", "Delete…");
-const online = await evalJs(`[...document.querySelectorAll('.revisions .inline-form button')].map((b) => b.textContent.trim()).join('|')`);
-check(online === "Delete on this computer only|Delete everywhere|Cancel", `an online revision offers this computer only, or everywhere (${online})`);
-await click(".revisions .inline-form button", "Delete everywhere");
-check(await waitFor(`![...document.querySelectorAll('.revisions .item-label')].some((e) => e.textContent.trim() === 'release-1')`), "deleted everywhere");
+// ── 10. Delete… (a dialog; a second step when versions would be lost) ─────────
+await menuAction("release-1", "Delete…");
+check((await dialogButtons()) === "Cancel|Delete on this computer only|Delete everywhere", `an online revision offers this computer only, or everywhere (${await dialogButtons()})`);
+await dialogClick("Delete everywhere");
+check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'release-1')`), "deleted everywhere");
 check(await evalJs(`window.__revisions.calls.some((c) => c.path === 'delete-revision' && c.body.name === 'release-1' && c.body.everywhere === true)`), "the host was asked to delete it everywhere");
 
-await rowButton("second-edition", "Delete…");
-await click(".revisions .inline-form button", "Delete");
-check(await waitFor(`/2 versions/.test(document.querySelector('.revisions .inline-form .warn')?.textContent ?? '')`), "a revision holding versions found nowhere else asks again, naming how many");
+await menuAction("second-edition", "Delete…");
+await dialogClick("Delete");
+check(await waitFor(`/2 versions/.test(document.querySelector('form.rev-dialog .warn')?.textContent ?? '')`), "a revision holding versions found nowhere else asks again, naming how many");
 await screenshot(join(tmpdir(), "online-copy-delete.png"));
-await click(".revisions .inline-form button", "Delete anyway");
-check(await waitFor(`![...document.querySelectorAll('.revisions .item-label')].some((e) => e.textContent.trim() === 'second-edition')`), "deleted after the second confirmation");
+await dialogClick("Delete anyway");
+check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'second-edition')`), "deleted after the second confirmation");
 check(await evalJs(`window.__revisions.calls.filter((c) => c.path === 'delete-revision' && c.body.name === 'second-edition').map((c) => !!c.body.discard).join() === 'false,true'`), "the second call carried discard: true");
 
-// An online-only revision: one step, saying where it goes from.
-await rowButton("late-draft", "Delete…");
-const onlineOnly = await evalJs(`(() => {
-  const form = [...document.querySelectorAll('.revisions .inline-form')][0];
-  return { text: form?.querySelector('.hint')?.textContent.trim(), buttons: [...(form?.querySelectorAll('button') ?? [])].map((b) => b.textContent.trim()).join('|') };
-})()`);
-check(onlineOnly.text === 'Delete "late-draft" from the online copy? It isn\'t on this computer.' && onlineOnly.buttons === "Delete|Cancel", `an online-only revision is deleted in one step (${onlineOnly.text})`);
+await menuAction("late-draft", "Delete…");
+check((await dialogText()).includes("It is deleted from the online copy. It isn't on this computer.") && (await dialogButtons()) === "Cancel|Delete", "an online-only revision is deleted from the online copy, in one step");
 await screenshot(join(tmpdir(), "online-copy-delete-online.png"));
-await click(".revisions .inline-form button", "Delete");
-check(await waitFor(`![...document.querySelectorAll('.revisions .item-label')].some((e) => e.textContent.trim() === 'late-draft')`), "the online-only revision is gone");
+await dialogClick("Delete");
+check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'late-draft')`), "the online-only revision is gone");
 check(await evalJs(`window.__revisions.calls.some((c) => c.path === 'delete-revision' && c.body.name === 'late-draft' && c.body.everywhere === true && !c.body.discard)`), "the host was asked to delete it from the online copy");
 
-// …and the same second ask when it holds versions found nowhere else.
-await rowButton("side-project", "Delete…");
-await click(".revisions .inline-form button", "Delete");
-check(await waitFor(`/3 versions/.test(document.querySelector('.revisions .inline-form .warn')?.textContent ?? '')`), "an online-only revision holding versions found nowhere else asks again, naming how many");
-await click(".revisions .inline-form button", "Delete anyway");
-check(await waitFor(`![...document.querySelectorAll('.revisions .item-label')].some((e) => e.textContent.trim() === 'side-project')`), "deleted after the second confirmation");
-check(await evalJs(`window.__revisions.calls.filter((c) => c.path === 'delete-revision' && c.body.name === 'side-project').map((c) => !!c.body.discard).join() === 'false,true'`), "the second call carried discard: true");
+await menuAction("side-project", "Delete…");
+await dialogClick("Delete");
+check(await waitFor(`/3 versions/.test(document.querySelector('form.rev-dialog .warn')?.textContent ?? '')`), "an online-only revision holding versions found nowhere else asks again, naming how many");
+await dialogClick("Delete anyway");
+check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'side-project')`), "deleted after the second confirmation");
 
-// Down to four revisions, the filter is no longer offered.
-check(await evalJs(`document.querySelectorAll('#project-settings-panel .revisions .item-list > li').length === 4 && !document.querySelector('#project-settings-panel .revisions input[aria-label="Find a revision"]')`), "five revisions or fewer: no filter");
+// Down to four revisions: no filter, no Show all.
+check(await evalJs(`document.querySelectorAll('#project-settings-panel .revisions .rev-list > li.rev').length === 4 && !document.querySelector('#project-settings-panel .revisions input[aria-label="Find a revision"]') && !document.querySelector('#project-settings-panel .revisions .section-foot')`), "five revisions or fewer: no filter and no Show all");
 
 // ── 11. Switch ───────────────────────────────────────────────────────────────
-await rowButton("editors-pass", "Switch");
-check(await waitFor(`document.querySelector('.revisions .item-list li:has(.mine) .item-label')?.textContent.trim() === 'editors-pass'`), "Switch opens an online-only revision");
+await click('#project-settings-panel button[aria-label="Switch to editors-final"]');
+check(await waitFor(`document.querySelector('#project-settings-panel .revisions .rev.current .rev-name')?.textContent.trim() === 'editors-final'`), "Switch opens an online-only revision");
 
 // ── 12. once backing up can work: the tools for when it keeps failing ────────
 const closeDialog = () => evalJs(`document.querySelector('[role="dialog"]')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
@@ -501,23 +481,24 @@ await closeDialog();
 check(await waitFor(`!document.querySelector('#project-settings-panel')`), "Book setup closed");
 await evalJs(`window.__diagnoseReady = true; true`);
 await click(".status-bar .status-control");
-check(await waitFor(`!!document.querySelector('#project-settings-panel details.failing')`), "the failing-tools disclosure is there once backing up can work");
+check(await waitFor(`!!document.querySelector('#project-settings-panel details.trouble')`), "the backing-up-keeps-failing tools are there once backing up can work");
 const failing = await evalJs(`(() => {
-  const d = document.querySelector('#project-settings-panel details.failing');
+  const d = document.querySelector('#project-settings-panel details.trouble');
   return {
     open: d.open,
+    inStatusCard: !!d.closest('.status'),
     summary: d.querySelector('summary').textContent.trim(),
-    buttons: [...d.querySelectorAll('button')].map((b) => b.textContent.trim()),
-    headline: document.querySelector('#project-settings-panel .headline')?.textContent.trim(),
+    rows: [...d.querySelectorAll('.tool strong')].map((b) => b.textContent.trim()),
+    title: document.querySelector('#project-settings-panel .status-text h3')?.textContent.trim(),
   };
 })()`);
 log(`ready tab: ${JSON.stringify(failing)}`);
-check(!failing.open && failing.summary === "If backing up keeps failing", "it is collapsed by default");
-check(failing.buttons.join("|") === "Test connection|Sign in again|Repair the online copy|Start over from the online copy", "it holds the four tools, Sign in again right after Test connection");
-await evalJs(`document.querySelector('#project-settings-panel details.failing').open = true; true`);
+check(!failing.open && failing.inStatusCard && failing.summary === "Backing up keeps failing?", "they sit, collapsed, at the foot of the status card");
+check(failing.rows.join("|") === "Test connection|Sign in again|Repair the online copy|Start over from the online copy", "the four tools, Sign in again right after Test connection");
+await evalJs(`document.querySelector('#project-settings-panel details.trouble').open = true; true`);
 await sleep(200);
 await screenshot(join(tmpdir(), "online-copy-failing.png"));
-check(/^Online copy: github\.com\/ada\/harbor-lights$/.test(failing.headline), `the status names the online copy without claiming a backup (${failing.headline})`);
+check(/^Online copy: github\.com\/ada\/harbor-lights$/.test(failing.title), `the status names the online copy without claiming a backup (${failing.title})`);
 await closeDialog();
 check(await waitFor(`!document.querySelector('#project-settings-panel')`), "Book setup closed again");
 

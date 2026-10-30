@@ -238,10 +238,10 @@ await screen("online-copy", async () => {
   await click(".status-control");
   await wait(2000);
 }, { crop: SETTINGS, width: 960 });
-// Version history opens inside Online copy, in place of the tab's content.
+// Version history is the last card on Online copy.
 await screen("version-history", async () => {
-  await click("button:has-text('Version history')");
-  await wait(2000);
+  await page.locator("#version-history-title").scrollIntoViewIfNeeded();
+  await wait(1500);
 }, { crop: SETTINGS, width: 960 });
 
 await app.close();

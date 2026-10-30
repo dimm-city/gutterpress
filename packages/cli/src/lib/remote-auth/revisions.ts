@@ -7,8 +7,8 @@
  * this computer lacks, nothing is changed anywhere and the error says so in
  * plain words. Transport and sign-in resolve exactly as `refreshRemoteCopies`
  * does (`resolveTransport`). Local-only revisions are listed, created and
- * switched in source-provider.ts. A revision kept only in the online copy can
- * be deleted from there (`deleteRevision`) but not renamed.
+ * switched in source-provider.ts. A revision kept only in the online copy is
+ * renamed or deleted there, with nothing to change on this computer.
  */
 // Atomic writes for git metadata — see git-fs.ts. Drop-in for node:fs.
 import { gitFs as fs } from "../git-fs.ts";
@@ -175,6 +175,8 @@ async function sendRef(
  *  3. rename on this computer — only a local failure is possible here, and it
  *     leaves the online copy renamed and this computer under the old name, still
  *     listed (the new name shows as online-only).
+ * A revision kept only in the online copy is renamed there (steps 1 and 2), with
+ * the tracking ref (what this computer last heard) standing in for its tip.
  * Offline or a rejected sign-in: nothing is renamed, anywhere.
  */
 export async function renameRevision(
@@ -187,19 +189,25 @@ export async function renameRevision(
   const to = revisionNameFrom(options.to);
   return withRepoLock(dir, async () => {
     const refs = await readRevisionRefs(dir);
-    const tip = localTip(refs, from);
+    const onlineOnly = !refs.local.has(from) && refs.online.has(from);
+    const tip = onlineOnly ? refs.online.get(from)! : localTip(refs, from);
     const current = refs.current === from ? to : refs.current;
     if (to === from) return { current, name: to };
     await assertFreeRevisionName(dir, to);
 
     const unchanged = `"${from}" wasn't renamed`;
     // Getting the latest brings in the open revision only.
-    const catchUp = `${refs.current === from ? "Get" : `Switch to "${from}" and get`} the latest first, then try again.`;
+    const catchUp = onlineOnly
+      ? `They arrived after the list was last checked, so ${unchanged}. Try again.`
+      : `${refs.current === from ? "Get" : `Switch to "${from}" and get`} the latest first, then try again.`;
     const online = refs.online.has(from)
       ? await reachOnline(dir, from, tip, catchUp, options, unchanged)
       : null;
+    if (onlineOnly && !online) {
+      throw new Error(`Couldn't find a revision named "${from}" in the online copy — it may have been renamed or deleted.`);
+    }
     if (online) {
-      const here = `refs/heads/${from}`;
+      const here = onlineOnly ? `refs/remotes/${online.transport.remote}/${from}` : `refs/heads/${from}`;
       try {
         await sendRef(dir, online, here, to);
       } catch (e) {
@@ -223,7 +231,7 @@ export async function renameRevision(
             );
       }
     }
-    await git.renameBranch({ fs, dir, ref: to, oldref: from });
+    if (!onlineOnly) await git.renameBranch({ fs, dir, ref: to, oldref: from });
     return { current, name: to };
   });
 }
