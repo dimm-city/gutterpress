@@ -251,6 +251,20 @@ const DEFAULT_FIXTURES = [
   join(REPO, "docs", "fixtures", "book-page-margin", "book"),
   join(REPO, "docs", "fixtures", "two-looks", "book"),
   join(REPO, "docs", "fixtures", "core-full-bleed", "book"),
+  // The gp-dimm-city design guide's two divergences (#454), each on its own.
+  // repeated-table-header: long tables whose header print repeats on every
+  // page. The viewer cloned it into each continuation column in script, and
+  // got the breaks wrong both ways: a second header under print emulation
+  // (this gate's mount; print p5, viewer p6) and, on screen, a chapter break
+  // lost after the clones moved the table's end (print 12pp, viewer 11pp).
+  // Chromium now repeats it itself (viewer.css).
+  join(REPO, "docs", "fixtures", "repeated-table-header", "book"),
+  // overridden-recto-break: a `break-before: left` that a later rule resets
+  // to `auto`. Both renderers inserted blank pages for it anyway, from the
+  // declaration rather than the cascade, and placed them differently inside a
+  // padded box (print 8pp, viewer 7pp). Only a break the cascade keeps is a
+  // site now; the fixture's winning `verso` still gets its blank.
+  join(REPO, "docs", "fixtures", "overridden-recto-break", "book"),
 ];
 
 type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";

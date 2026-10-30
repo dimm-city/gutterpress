@@ -40,7 +40,6 @@
     fragmentDocument: () => fragmentDocument,
     cssZoomOf: () => cssZoomOf,
     contentEdgeRect: () => contentEdgeRect,
-    compensateRepeatedHeaders: () => compensateRepeatedHeaders,
     compensateRectoBreaks: () => compensateRectoBreaks,
     columnReserve: () => columnReserve,
     collectCssText: () => collectCssText,
@@ -192,6 +191,29 @@
    totals still agree. Anchor it with image identity, not text — that PDF has
    no extractable body text; \`rabbit-walking.png\` (1379x2530, unique) sits on
    PDF p134 vs viewer folio 135. */
+
+/* Repeated table headers and footers. Print draws a table's header group
+   (\`thead\`) at the top of every page the table spans, and its footer group
+   (\`tfoot\`) at the foot of each, and never leaves a header alone at the foot
+   of a page. Chromium does the same in a multicol column, through the same
+   table fragmentation, when the group is unbreakable; print media treats
+   every header and footer group so, the screen only one that is
+   \`break-inside: avoid\` (measured: on screen, a plain \`thead\` printed once and
+   a \`break-inside: avoid\` one on every column, exactly as print media does).
+   Setting it here makes the columns repeat the groups print repeats, where
+   print repeats them, and break around them as print does. A group the author
+   set to another \`display\` is not a header group and repeats in neither.
+
+   The viewer used to imitate this in script, cloning the header into each
+   continuation column and forcing a break before a table whose header would
+   be left alone. It moved a lead-in paragraph whole where print splits it,
+   left a clone at a column's foot, drew a second header wherever Chromium
+   already drew one, and shifted pages after the forced-break spacers had been
+   placed, losing a chapter's break (the gp-dimm-city design guide's reference
+   tables: #454). docs/fixtures/repeated-table-header pins it. */
+.gp-strip :is(thead, tfoot) {
+  break-inside: avoid;
+}
 
 /* View mode (\`applySpreadMode\` in fragment.ts): wraps this run's multicol
    columns into \`--gp-wrap-cols\` ROWS instead of one long row — 2 for
@@ -1482,10 +1504,13 @@
   function clearLeadingForcedBreaks(strip) {
     for (let el = strip.firstElementChild;el; el = el.firstElementChild) {
       const cs = getComputedStyle(el);
-      if (FORCED_BREAK.test(cs.breakBefore))
-        el.style.breakBefore = "auto";
+      if (!FORCED_BREAK.test(cs.breakBefore))
+        continue;
+      clearedLeadingBreaks.set(el, cs.breakBefore);
+      el.style.breakBefore = "auto";
     }
   }
+  var clearedLeadingBreaks = new WeakMap;
   function stabilizeFullHeightPageRoots(model, strips) {
     let stabilized = 0;
     for (const strip of strips) {
@@ -1688,148 +1713,6 @@
       clearLeadingForcedBreaks(s.el);
     return strips;
   }
-  var AVOID_BREAK = /^avoid(-page|-column)?$/;
-  function keepChainHead(el) {
-    let head = el;
-    for (let prev = head.previousElementSibling;prev instanceof HTMLElement; prev = head.previousElementSibling) {
-      const linked = AVOID_BREAK.test(getComputedStyle(prev).breakAfter) || AVOID_BREAK.test(getComputedStyle(head).breakBefore);
-      if (!linked)
-        break;
-      head = prev;
-    }
-    return head;
-  }
-  var pushTargets = new WeakMap;
-  function repeatingHead(table) {
-    const head = table.tHead;
-    return head && getComputedStyle(head).display === "table-header-group" ? head : null;
-  }
-  function repeatingFoot(table) {
-    const foot = table.tFoot;
-    return foot && getComputedStyle(foot).display === "table-footer-group" ? foot : null;
-  }
-  function compensateRepeatedHeaders(strips, maxPasses = 24) {
-    const warnings = [];
-    let passes = 0;
-    let touched = 0;
-    for (const strip of strips) {
-      const tables = Array.from(strip.el.querySelectorAll("table")).filter((t) => repeatingHead(t) || repeatingFoot(t));
-      if (!tables.length)
-        continue;
-      for (const table of tables) {
-        for (const shim of Array.from(table.querySelectorAll("tr.gp-thead-shim, tr.gp-tfoot-shim")))
-          shim.remove();
-        table.style.breakBefore = "";
-        const target = pushTargets.get(table);
-        if (target)
-          target.style.breakBefore = "";
-        pushTargets.delete(table);
-      }
-      const pushed = new Set;
-      const footClaims = new Map;
-      let previous = "";
-      for (let pass = 0;pass < maxPasses; pass++) {
-        passes = Math.max(passes, pass + 1);
-        const { stride, height: colBottom } = stripMetrics(strip.el);
-        const stripLeft = strip.el.getBoundingClientRect().left - strip.el.scrollLeft;
-        const zoom = cssZoomOf(strip.el);
-        const colOf = (r) => Math.floor(((r.left - stripLeft) / zoom + 1) / stride);
-        const stripTop = strip.el.getBoundingClientRect().top;
-        const plans = [];
-        for (const table of tables) {
-          const head = repeatingHead(table);
-          const headRect = head?.getClientRects()[0];
-          const footHeight = (repeatingFoot(table)?.getBoundingClientRect().height ?? 0) / zoom;
-          const rows = Array.from(table.querySelectorAll("tbody > tr")).filter((r) => !r.classList.contains("gp-thead-shim") && !r.classList.contains("gp-tfoot-shim"));
-          if (!rows.length)
-            continue;
-          const rects = rows.map((r) => r.getClientRects()[0] ?? r.getBoundingClientRect());
-          const cols = rects.map(colOf);
-          const claims = footClaims.get(table) ?? new Map;
-          footClaims.set(table, claims);
-          let newClaim;
-          if (footHeight > 0) {
-            const lastCol = cols[cols.length - 1];
-            for (let i = 0;i < rows.length; i++) {
-              const row = rows[i];
-              if (cols[i] === lastCol || claims.has(row))
-                continue;
-              const bottom = (rects[i].bottom - stripTop) / zoom;
-              if (bottom > colBottom - footHeight + 0.5) {
-                newClaim = row;
-                claims.set(row, colBottom - (rects[i].top - stripTop) / zoom);
-                break;
-              }
-            }
-          }
-          plans.push({
-            table,
-            push: headRect ? colOf(headRect) < cols[0] : false,
-            headHeight: (headRect?.height ?? 0) / zoom,
-            footHeight,
-            breakRows: headRect ? rows.filter((_, i) => i > 0 && cols[i] > cols[i - 1]) : [],
-            footRows: [...claims.entries()],
-            grew: newClaim !== undefined,
-            cells: Math.max(1, ...rows.map((r) => r.cells.length))
-          });
-        }
-        const signature = plans.map((p) => `${p.push || pushed.has(p.table) ? "P" : ""}${p.breakRows.map((r) => r.rowIndex).join(".")}~${p.footRows.map(([r]) => r.rowIndex).join(".")}`).join("|");
-        const anyGrowth = plans.some((p) => p.grew);
-        if (!anyGrowth && signature === previous)
-          break;
-        previous = signature;
-        for (const plan of plans) {
-          for (const shim of Array.from(plan.table.querySelectorAll("tr.gp-thead-shim, tr.gp-tfoot-shim")))
-            shim.remove();
-          if (plan.push && !pushed.has(plan.table)) {
-            pushed.add(plan.table);
-            const target = keepChainHead(plan.table);
-            target.style.breakBefore = "column";
-            pushTargets.set(plan.table, target);
-            touched++;
-            continue;
-          }
-          for (const row of plan.breakRows) {
-            row.before(headerShim(plan.table.tHead, plan.headHeight, plan.cells));
-            touched++;
-          }
-          for (const [row, height] of plan.footRows) {
-            row.before(sectionShim(plan.table.tFoot, height, plan.cells, "gp-tfoot-shim"));
-            touched++;
-          }
-        }
-      }
-    }
-    return { tables: touched, passes, warnings };
-  }
-  function headerShim(head, height, cells) {
-    return sectionShim(head, height, cells, "gp-thead-shim");
-  }
-  function sectionShim(section, height, cells, className) {
-    const shim = document.createElement("tr");
-    shim.className = className;
-    shim.setAttribute("aria-hidden", "true");
-    shim.style.height = `${height}px`;
-    if (className === "gp-tfoot-shim")
-      shim.style.verticalAlign = "bottom";
-    const source = section.rows[0];
-    if (source) {
-      for (const cell of Array.from(source.cells)) {
-        const td = document.createElement("td");
-        td.colSpan = cell.colSpan;
-        td.innerHTML = cell.innerHTML;
-        const cs = getComputedStyle(cell);
-        td.style.cssText = `font:${cs.font};color:${cs.color};letter-spacing:${cs.letterSpacing};text-transform:${cs.textTransform};vertical-align:${cs.verticalAlign};text-align:${cs.textAlign};padding:${cs.padding};border:${cs.border};background:${cs.backgroundColor};`;
-        shim.appendChild(td);
-      }
-    } else {
-      const td = document.createElement("td");
-      td.colSpan = cells;
-      td.style.cssText = `height:${height}px;padding:0;border:0;`;
-      shim.appendChild(td);
-    }
-    return shim;
-  }
   function compensateRectoBreaks(model, strips) {
     const decls2 = model.breaks.filter(isRectoVersoBreak);
     for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
@@ -1837,6 +1720,7 @@
     if (!decls2.length)
       return 0;
     const sites = [];
+    const seen = new Set;
     for (const d of decls2) {
       let els = [];
       try {
@@ -1844,8 +1728,13 @@
       } catch {
         continue;
       }
-      for (const el of els)
-        sites.push({ el, wantsRecto: wantsRecto(d.value) });
+      for (const el of els) {
+        const value = clearedLeadingBreaks.get(el) ?? getComputedStyle(el).breakBefore;
+        if (seen.has(el) || !RECTO_VERSO_VALUES.test(value))
+          continue;
+        seen.add(el);
+        sites.push({ el, wantsRecto: wantsRecto(value) });
+      }
     }
     sites.sort((a, b) => a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
     const plan = planRectoBlanks(sites.map((site) => ({ page: pageOf(site.el, strips) + 1, wantsRecto: site.wantsRecto })));
@@ -2043,7 +1932,6 @@
     const blanks = compensateRectoBreaks(model, strips);
     if (blanks)
       measure(strips);
-    const headers = opts.compensateHeaders === false ? { tables: 0, passes: 0, warnings: [] } : compensateRepeatedHeaders(strips);
     const contentPages = measure(strips).totalPages;
     const totalPages = padToSignature(strips, contentPages);
     fitVersoPinRoots(model, strips);
@@ -2051,7 +1939,7 @@
       model,
       strips,
       totalPages,
-      warnings: [...new Set([...authoring, ...headers.warnings])],
+      warnings: [...new Set(authoring)],
       blankPages: blanks,
       blankPageIndices: blankPageIndices(strips),
       paddedPageIndices: pagesAfter(contentPages, totalPages),
@@ -2072,10 +1960,7 @@
         synthesizeColumnBreaks(model);
         measure(strips);
         api.blankPages = compensateRectoBreaks(model, strips);
-        if (opts.compensateHeaders !== false)
-          api.warnings = [
-            ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings])
-          ];
+        api.warnings = [...new Set(authoring)];
         const content = measure(strips).totalPages;
         padToSignature(strips, content);
         const r = measure(strips);

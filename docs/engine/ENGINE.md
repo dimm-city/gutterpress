@@ -130,9 +130,7 @@ preview has to compensate.
 
 | Behaviour | Print | Multicol | Compensation |
 | --- | --- | --- | --- |
-| `<thead>` | repeated on every page the table spans | rendered once | clone the header into each continuation fragment (`s5`) |
-| `<tfoot>` | repeated at the bottom of every fragment | rendered once, at the end | reserve the space with a bottom-filling foot clone per column (`s5`) |
-| Header with no rows after it | never stranded — the whole table moves on | happily parks a lone header at a column bottom | push the table |
+| `<thead>` / `<tfoot>` | repeated at the top / foot of every page the table spans; a header is never left alone at a page foot | on screen, rendered once — unless the group is `break-inside: avoid`, when it repeats and breaks exactly as in print (print media treats every header and footer group that way) | `viewer.css` sets `break-inside: avoid` on them (#454; the script clones and pushes it replaced got the breaks wrong) |
 | Overheight images | **split across pages** | fragment across columns (verified equivalent) | none needed; the compiler warns |
 | Knife-edge boundaries | — | — | **not compensable**, see below |
 

@@ -135,12 +135,15 @@ fixed and removes it, forever. Symptoms were a build that hit its pass limit and
 a chapter that landed on a verso anyway.
 
 The same trap appears wherever a fix removes the symptom it was derived from.
-Where the answer genuinely cannot be computed in one shot — table header and
-footer reservation — the state is made **sticky** instead: claims only ever grow,
-and the loop ends when a pass adds nothing new.
+Where the answer genuinely cannot be computed in one shot, the state is made
+**sticky** instead: claims only ever grow, and the loop ends when a pass adds
+nothing new. (The viewer's table header and footer reservation was the example,
+and `s5` required its rows-per-page to match print exactly. It was deleted for
+§6's reason: Chromium repeats a `break-inside: avoid` header group in a column
+itself, and the reservation was moving rows and breaks that print did not —
+#454.)
 
-**What keeps it honest.** The measurement loop must converge, and `s5` required
-rows-per-page to match print exactly.
+**What keeps it honest.** The measurement loop must converge.
 
 ---
 

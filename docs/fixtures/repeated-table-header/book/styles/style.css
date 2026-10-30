@@ -1,0 +1,45 @@
+/* style.css — long tables whose header row repeats on every page.
+
+   Print draws a table's `thead` at the top of each page the table runs onto.
+   The preview used to imitate that in script: a clone of the header in each
+   continuation column, measured and inserted after the page breaks had been
+   placed. Both chapters below are one long table of one-line rows, so every
+   continuation page shows whether the preview's header takes print's height:
+   - Stakes: under print emulation (the parity gate's own preview) Chromium
+     already repeats the header, the clone drew a second one, and "Stake
+     Notes" landed a page late (print p5, preview p6);
+   - Tides: on screen the clones moved the table's end past where the break
+     before "Appendix" had been placed, the break was lost, and the preview
+     ran a page short (print 12pp, preview 11pp).
+   The gp-dimm-city design guide's reference tables did both (#454). The
+   preview now lets Chromium repeat the header itself (viewer.css). */
+
+body {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 10.5pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+
+@page {
+  size: 6in 9in;
+  margin: 0.75in;
+
+  @bottom-center {
+    content: counter(page);
+    font-size: 8pt;
+    color: #555555;
+  }
+}
+
+h1 { font-size: 20pt; margin: 0 0 0.6em; break-before: page; }
+h2 { font-size: 13pt; margin: 1.2em 0 0.4em; break-after: avoid; }
+p { margin: 0 0 0.6em; }
+
+table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+th { text-align: left; padding: 5pt 6pt; background: #e8e8e8; border-bottom: 1pt solid #1a1a1a; }
+td { padding: 4pt 6pt; border-bottom: 0.5pt solid #bbbbbb; vertical-align: top; }
+tr { break-inside: avoid; }
+
+a.xref::after { content: " (p. " target-counter(attr(href), page) ")"; }

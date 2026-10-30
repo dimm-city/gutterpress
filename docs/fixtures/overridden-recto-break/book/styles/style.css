@@ -1,0 +1,56 @@
+/* style.css — a side break that loses the cascade, and one that wins.
+
+   A look opens each specialty intro on a left-hand page
+   (`.intro { break-before: left }`). A guide that shows the intros as
+   specimens, one under another, turns that off where it shows them
+   (`.specimens .intro { break-before: auto }`): ordinary CSS, and Chromium
+   prints those intros where they fall, with no break. Gutterpress read the
+   side breaks from the stylesheet's declarations instead of the cascade, so
+   it still put a blank page before every intro that landed on a right-hand
+   page — in the PDF and in the preview — and, with each intro the first thing
+   inside a padded, bordered stage, the two placed their blanks differently:
+   print 7pp against the preview's 5pp (the gp-dimm-city design guide's
+   specialty intros, #454). Only a break the cascade keeps is a site now.
+
+   The appendix keeps its own `break-before: verso`, which wins: it must still
+   get the blank page that puts it on a left-hand page. */
+
+body {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 10.5pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+
+@page {
+  size: 6in 9in;
+  margin: 0.75in;
+
+  @bottom-center {
+    content: counter(page);
+    font-size: 8pt;
+    color: #555555;
+  }
+}
+
+h1 { font-size: 20pt; margin: 0 0 0.6em; }
+h2 { font-size: 13pt; margin: 0 0 0.3em; }
+p { margin: 0 0 0.6em; }
+
+/* the look */
+.intro { break-before: left; }
+
+/* the guide, showing the intros as specimens */
+.specimens .intro { break-before: auto; }
+
+.stage {
+  display: flow-root;
+  padding: 0.15in;
+  border: 1pt solid #555555;
+  margin: 0 0 0.2in;
+  break-inside: avoid;
+  background: #eeeeee;
+}
+
+h1.appendix { break-before: verso; }

@@ -407,6 +407,12 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **A formula ending a line no longer shrinks the print (#469).** The hidden
   MathML copy screen readers read is held to its formula's box, so a wider math
   font can't push it past the column and make Chromium scale the whole PDF down.
+- **Long tables and overridden side breaks paginate the same in preview and
+  print (#454).** The preview now lets Chromium repeat a table's header row on
+  each page, as print does, instead of copying it in; the copies could fit a
+  different number of rows on a page or lose the page break after the table.
+  And a `break-before: left` or `right` that your stylesheet resets to `auto`
+  no longer adds a blank page, in the PDF or the preview.
 
 ## [0.11.22] - 2026-10-23
 
