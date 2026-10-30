@@ -64,8 +64,8 @@ listed under `extensions:` in the manifest, with `styles/book.css` as your own
 layer on top of it. Chapter 4 covers looks; Chapter 5 covers the
 `extensions:` list itself.
 
-It also runs `git init` and records a "Created project" snapshot by default ---
-local version history with no credentials and no remote required. Pass
+It also runs `git init` and records a "Created project" version by default ---
+local version history with no sign-in and no online copy required. Pass
 `--no-git` to skip that.
 
 Useful flags:

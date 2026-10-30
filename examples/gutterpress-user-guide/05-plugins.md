@@ -190,7 +190,7 @@ files --- and it does not need you to do anything:
   under **Book setup &rarr; Extensions** reads **Not downloaded yet.**, and its
   **Install** button tries again.
   The preview checks again every time it redraws the book, so a pin that
-  changes while the book is open (you edit `manifest.yaml`, **Get latest**
+  changes while the book is open (you edit `manifest.yaml`, **Sync**
   brings in a new one, or you restore an earlier version) is downloaded before
   the next redraw.
   Exporting a PDF or HTML and the **Problems** panel do the same before they
@@ -221,7 +221,7 @@ fetched when every pinned copy is already there.
 Restoring downloads exactly the version in `manifest.yaml`, never a newer one,
 through the same hash-verified install as `ext add`, and it never edits the
 manifest. Once a package's pinned version is in place, its other downloaded
-versions are deleted (after a pull moves a pin, or a branch switch, say) ---
+versions are deleted (after **Sync** moves a pin, or a revision switch, say) ---
 they are a cache, the pin is what counts --- unless another enabled entry in the
 manifest still pins that version. Other packages are never touched. It does nothing, and uses no network, when every copy is already
 there; local paths, unpinned names and bundled features are never touched.
