@@ -468,7 +468,7 @@ function checkCssRaw(css: string, from?: string): PrintSafeWarning[] {
       warnings.push({
         rule: rulePageSizeInStylesheet,
         severity: "warning",
-        message: `"size" in a stylesheet's @page rule is ignored: the page size comes from the manifest (preset:, or page: width and height — Setup > Book in the app), which is written after every stylesheet. Remove this declaration; to print at another size, change the manifest.`,
+        message: `"size" in a stylesheet's @page rule is ignored: the page size comes from the manifest (preset:, or page: width and height — set them in Book setup), which is written after every stylesheet. Remove this declaration; to print at another size, change the manifest.`,
         ...nodeLoc(decl),
       });
       return;

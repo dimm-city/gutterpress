@@ -268,6 +268,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   token after it and showed a value read out of the comment; a shadow such as
   `3pt 7pt 12pt -5pt var(--shadow-soft)` is edited as text, never as the
   single number that would have replaced it.
+- **Provisional until 0.12 (#457).** The `@group`, `@label` and `@internal`
+  comment directives and the six names on the Look tab (`--font-body`,
+  `--font-display`, `--fs-body`, `--leading`, `--color-ink`, `--color-accent`)
+  change in 0.12; don't build on them yet.
 - **Every new book comes with its look, and the page size and margins live
   in the manifest alone.** The Book, Zine and Technical document templates
   list `clean-book`, `zine` and `technical-doc` the way the Academic paper
