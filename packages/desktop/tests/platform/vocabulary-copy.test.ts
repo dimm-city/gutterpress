@@ -66,11 +66,31 @@ describe("Book setup → Online copy", () => {
     expect(tab).toContain('<details class="failing">');
   });
 
+  test("if backing up keeps failing: Test connection, Sign in again, Repair, then Start over", () => {
+    const tab = markup("lib/components/ProjectConnectionsSection.svelte");
+    const order = ["Test connection", "Sign in again", "Repair the online copy", "Start over from the online copy"].map((t) => tab.indexOf(t));
+    expect(order.every((i) => i > -1)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  test("Version history opens inside the tab, not in the editor pane", () => {
+    const tab = markup("lib/components/ProjectConnectionsSection.svelte");
+    expect(tab).toContain("<ProjectActivityView");
+    const page = read("routes/+page.svelte");
+    expect(page).not.toMatch(/ProjectActivityView|showActivityView|editorView|paneViewRestore/);
+  });
+
   test("each situation's action is worded as the design says", () => {
     const tab = markup("lib/components/ProjectConnectionsSection.svelte");
     for (const text of ["Turn on version history", "Keep this book safe online…", "Version history…", "Repair the online copy", "Start over from the online copy", "Test connection", "Sign in again"]) {
       expect(tab).toContain(text);
     }
+  });
+
+  test("Revisions: New revision… sits above the list", () => {
+    const rev = markup("lib/components/RevisionsList.svelte");
+    expect(rev.indexOf("New revision…")).toBeGreaterThan(-1);
+    expect(rev.indexOf("New revision…")).toBeLessThan(rev.indexOf('<ul class="item-list"'));
   });
 
   test("Revisions: the four places, the actions, and the notes the design asks for", () => {
@@ -86,6 +106,9 @@ describe("Book setup → Online copy", () => {
       "New revision…",
       "Delete on this computer only",
       "Delete everywhere",
+      "from the online copy? It isn't on this computer.",
+      "Find a revision",
+      "No revisions match.",
       "This also renames it in the online copy. Anyone else working on",
       "Couldn't check the online copy for other revisions. This list shows the revisions on this computer.",
     ]) {
@@ -99,6 +122,7 @@ describe("Version history", () => {
 
   test("is called Version history, with Save a version at the top and the new badges", () => {
     expect(view).toContain("Version history</h2>");
+    expect(view).toContain("Online copy</button>");
     expect(view.indexOf("Save a version")).toBeLessThan(view.indexOf("No versions yet."));
     expect(view).toContain("Only on this computer");
     expect(view).toContain("In the online copy, not yet on this computer");

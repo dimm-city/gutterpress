@@ -24,9 +24,10 @@
    *   3. Extensions — the manifest's ordered extension list and the one Add
    *                 area: built-in extras, npm, folders and web addresses
    *                 (`ExtensionsSection`).
-   *   4. Online copy (id `online-copy`) — saved versions, revisions and this
-   *                 book's online copy (`ProjectConnectionsSection`,
-   *                 self-loading — no controller).
+   *   4. Online copy (id `online-copy`) — saved versions, Version history
+   *                 (opens inside the tab), revisions and this book's online
+   *                 copy (`ProjectConnectionsSection`, self-loading — no
+   *                 controller).
    *   5. Advanced — the one place for developer controls: the manifest file,
    *                 the stylesheet list (`StylesSection`), and every design
    *                 setting (`DesignSection`).
@@ -80,7 +81,10 @@
     onBackUpNow,
     onRepair,
     onSaveVersion,
-    onShowVersions,
+    logFilePath = null,
+    viewingId = null,
+    onLookAt,
+    onStopLooking,
     onCloseBook,
     onOpenAccounts,
     triggerEl,
@@ -112,8 +116,13 @@
     onRepair?: () => Promise<void>;
     /** The Online copy tab's Save a version: the page's save; resolves "unchanged" when there was nothing new. */
     onSaveVersion?: () => Promise<"saved" | "unchanged">;
-    /** The Online copy tab's Version history…: the parent closes this view and opens it. */
-    onShowVersions?: () => void;
+    /** The newest operation log, for Version history's Technical details. */
+    logFilePath?: string | null;
+    /** The version the preview is showing beside the live book, if any. */
+    viewingId?: string | null;
+    /** Version history › Look at this version: the parent closes this view and shows it in the preview. */
+    onLookAt?: (id: string, label: string) => void;
+    onStopLooking?: () => void;
     /** Close the book: the Online copy tab's Start over from the online copy ends with it. */
     onCloseBook?: () => Promise<boolean>;
     /** Open the Accounts page, over this one. */
@@ -281,9 +290,15 @@
     if (await flushAll()) onOpenFile?.(path);
   }
 
-  /** Online copy › Version history…: leave Book setup for the view. */
-  async function showVersions() {
-    if (await flushAll()) onShowVersions?.();
+  /** Online copy › Version history › Look at this version: leave Book setup for the preview. */
+  async function lookAt(id: string, label: string) {
+    if (await flushAll()) onLookAt?.(id, label);
+  }
+
+  let onlineCopy = $state<{ refreshHistory: () => void }>();
+  /** A backup finished: reload the Version history list, if it is showing. */
+  export function refreshHistory() {
+    onlineCopy?.refreshHistory();
   }
 
   // "Save as template…" (Book tab) — mounted fresh per open so its form
@@ -326,8 +341,8 @@
       {/if}
 
       {#if activeTab === "online-copy"}
-        <!-- This book's versions, revisions and online copy: signing in to its GitHub account or server happens here, in place. -->
-        <ProjectConnectionsSection {projectDir} {backup} {versionsProblem} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} {onBackUpNow} {onRepair} {onSaveVersion} onShowVersions={showVersions} {onCloseBook} {onOpenAccounts} {toast} />
+        <!-- This book's versions, revisions and online copy: signing in to its GitHub account or server happens here, in place; Version history replaces the tab's content. -->
+        <ProjectConnectionsSection bind:this={onlineCopy} {projectDir} {backup} {versionsProblem} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} {onBackUpNow} {onRepair} {onSaveVersion} {logFilePath} {viewingId} onLookAt={lookAt} {onStopLooking} {onCloseBook} {onOpenAccounts} {toast} />
       {/if}
 
       {#if activeTab === "advanced"}
