@@ -329,9 +329,8 @@ if (!sourceSaved) fail("Ctrl+S did not write the CodeMirror edit to disk");
 
 async function queryActivePreviewForMarker() {
   return evalJs(`new Promise((resolve) => {
-  // The LIVE preview's frame: the pane can also hold a version's frame
-  // beside it (Versions view, "Look at this version"), in its own slot.
-  const frame = document.querySelector('.preview-pane .now-slot iframe');
+  // The live preview's frame (the pane holds one).
+  const frame = document.querySelector('.preview-pane .frame-slot iframe');
   if (!frame?.contentWindow) return resolve({ hasMarker: false, error: 'preview frame missing' });
   const origin = new URL(frame.src).origin;
   const id = 900000000 + Math.floor(Math.random() * 1000000);
