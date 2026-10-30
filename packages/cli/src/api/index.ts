@@ -165,6 +165,8 @@ export {
   validateProjectExtensions,
   readExtensionCss,
   listBundledExtensions,
+  addBuiltInStyleSet,
+  BUILT_IN_LOOKS,
   sameExtension,
   EXTENSIONS_DIR,
 } from "../lib/extension-manager.ts";

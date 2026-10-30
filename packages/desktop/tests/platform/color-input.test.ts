@@ -62,3 +62,39 @@ test("typedColor is null while the text is not a color yet, or is cleared", () =
     expect(typedColor(text)).toBeNull();
   }
 });
+
+// #482: a color field took a variable in 0.11.22 (`var(--color-ink)`); it does
+// again, without giving back 7d83af98's fix — nothing but a color or ONE
+// reference is ever saved.
+const { typedColorValue } = await import("../../src/lib/style-tokens");
+
+test("typedColorValue saves a color as typedColor does", () => {
+  expect(typedColorValue("c0392b")).toBe("#c0392b");
+  expect(typedColorValue("red", "--color-accent")).toBe("#ff0000");
+  expect(typedColorValue("#c0392b80")).toBe("#c0392b80");
+});
+
+test("typedColorValue saves a reference to another setting, spaced the plain way", () => {
+  expect(typedColorValue("var(--color-ink)", "--color-accent")).toBe("var(--color-ink)");
+  expect(typedColorValue("  var( --color-ink )  ", "--color-accent")).toBe("var(--color-ink)");
+  expect(typedColorValue("var(--brand_2)")).toBe("var(--brand_2)");
+});
+
+test("typedColorValue saves nothing that is neither: a broken or compound reference, a loop, or CSS that would end the declaration", () => {
+  for (const text of [
+    "var(--color-ink",
+    "var(color-ink)",
+    "var(--)",
+    "var(--color-ink, red)",
+    "var(--a) var(--b)",
+    "var(--color-ink); } body { display: none",
+    "var(--color-ink);",
+    "--color-ink",
+    "reddish",
+    "",
+  ]) {
+    expect(typedColorValue(text, "--color-accent")).toBeNull();
+  }
+  // A setting that refers to itself is a loop the browser throws away.
+  expect(typedColorValue("var(--color-accent)", "--color-accent")).toBeNull();
+});

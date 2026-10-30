@@ -2,6 +2,8 @@ import { test, expect } from "bun:test";
 import {
   addedBuiltInIds,
   describeSegments,
+  entryWarnings,
+  hoverPreviewSrcdoc,
   extensionSourceLabel,
   extensionProblem,
   orderAfterMove,
@@ -237,4 +239,32 @@ test("pickerVersions: a pin the registry does not list (or an unloaded list) is 
   expect(pickerVersions([], "1.2.0-alpha.2", false)).toEqual(["1.2.0-alpha.2"]);
   expect(pickerVersions(["1.1.0"], "9.9.9", false)).toEqual(["9.9.9", "1.1.0"]);
   expect(pickerVersions([], undefined, true)).toEqual([]);
+});
+
+// ── #482: what 0.11.22 showed, restored ──────────────────────────────────────
+
+test("hoverPreviewSrcdoc lays the look's CSS over a fixed two-page sample, never the document", () => {
+  const doc = hoverPreviewSrcdoc(":root { --color-accent: #8a3b12; }");
+  expect(doc).toContain(":root { --color-accent: #8a3b12; }");
+  expect(doc.match(/class="pm-sample-page"/g)?.length).toBe(2);
+  // The look's CSS comes after the spread's own layout, so the look wins ties.
+  expect(doc.indexOf(".pm-sample-page{")).toBeLessThan(doc.indexOf("--color-accent: #8a3b12"));
+  expect(doc).not.toContain("<script");
+});
+
+test("entryWarnings keeps the lib's notices for a row, except the not-installed ones its Install already speaks for", () => {
+  expect(entryWarnings(entry())).toEqual([]);
+  expect(entryWarnings(entry({ warnings: ["Not found: /book/looks/later"] }))).toEqual(["Not found: /book/looks/later"]);
+  const look = entry({
+    use: "house-look@1.0.0",
+    kind: "npm",
+    name: "house-look",
+    carries: { ...NONE, styles: true },
+    warnings: [
+      "Not installed — run `gutterpress ext add house-look@1.0.0`.",
+      "Vendor install root is not a normal directory.",
+      "Not pinned — run `gutterpress ext add house-look` to install it and pin an exact version.",
+    ],
+  });
+  expect(entryWarnings(look)).toEqual(["Vendor install root is not a normal directory."]);
 });

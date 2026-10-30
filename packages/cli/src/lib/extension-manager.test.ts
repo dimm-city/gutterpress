@@ -10,8 +10,11 @@ import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "node
 import { join } from "node:path";
 
 import {
+  addBuiltInStyleSet,
   addExtension,
+  BUILT_IN_LOOKS,
   describeExtension,
+  extensionConfigFor,
   listBundledExtensions,
   listProjectExtensions,
   readExtensionCss,
@@ -21,7 +24,8 @@ import {
   validateProjectExtensions,
   EXTENSIONS_DIR,
 } from "./extension-manager";
-import { BUNDLED_EXTENSIONS } from "./extension-specifier";
+import { BUNDLED_EXTENSIONS, bundledExtension } from "./extension-specifier";
+import { loadPluginsWithCss } from "./markdown/plugins";
 
 const TMP_ROOT = join(process.cwd(), ".tmp", `extension-manager-tests-${Date.now()}`);
 let counter = 0;
@@ -292,6 +296,69 @@ describe("extension-manager", () => {
       expect(readManifest(dir)).toContain("- zine");
       expect(existsSync(join(dir, EXTENSIONS_DIR))).toBe(false);
       expect(await readExtensionCss(dir, "zine")).toContain(":root");
+    });
+
+    test("addBuiltInStyleSet copies the look into extensions/<id>/ as the author's files, lists it by path, and is idempotent", async () => {
+      expect(BUILT_IN_LOOKS).toEqual(["clean-book", "zine", "technical-doc", "academic"]);
+      const dir = projectDir();
+      const entry = await addBuiltInStyleSet(dir, "zine");
+      expect(entry).toMatchObject({
+        use: `./${EXTENSIONS_DIR}/zine`,
+        kind: "path",
+        label: "Zine",
+        author: "gutterpress",
+        styles: ["theme.css"],
+        carries: { styles: true, markdown: false },
+      });
+      expect(readFileSync(join(dir, EXTENSIONS_DIR, "zine", "theme.css"), "utf8")).toBe(bundledExtension("zine")!.css!);
+      expect(await readExtensionCss(dir, "./extensions/zine")).toContain(":root");
+      expect(readManifest(dir)).toContain("- ./extensions/zine");
+
+      // Edit the copy: it is the author's now, and a second add keeps it.
+      writeFileSync(join(dir, EXTENSIONS_DIR, "zine", "theme.css"), ":root { --mine: 1; }\n", "utf8");
+      await addBuiltInStyleSet(dir, "zine");
+      expect((await listProjectExtensions(dir)).map((e) => e.use)).toEqual(["./extensions/zine"]);
+      expect(await readExtensionCss(dir, "./extensions/zine")).toBe(":root { --mine: 1; }\n");
+
+      await expect(addBuiltInStyleSet(dir, "no-such-look")).rejects.toThrow(/Unknown built-in look "no-such-look" \(one of: clean-book, zine, technical-doc, academic\)/);
+      await expect(addBuiltInStyleSet(dir, "markdown-it-mark")).rejects.toThrow(/Unknown built-in look/);
+    });
+
+    test("addBuiltInStyleSet puts the copy where the book lists the built-in by name, on or off as it was", async () => {
+      const dir = projectDir(
+        ["title: T", "extensions:", "  - markdown-it-mark", "  - use: academic", "    enabled: false", "  - markdown-it-sub", ""].join("\n"),
+      );
+      await addBuiltInStyleSet(dir, "academic");
+      const list = await listProjectExtensions(dir);
+      expect(list.map((e) => [e.use, e.kind, e.enabled])).toEqual([
+        ["markdown-it-mark", "bundled", true],
+        ["./extensions/academic", "path", false],
+        ["markdown-it-sub", "bundled", true],
+      ]);
+      expect(readManifest(dir)).not.toMatch(/use: academic$/m);
+    });
+
+    test("a copy an older version made (0.11.22's package.json) loads and builds as the path extension it is", async () => {
+      const dir = projectDir(["title: T", "extensions:", "  - ./extensions/clean-book", ""].join("\n"));
+      writeExtension(
+        dir,
+        "extensions/clean-book",
+        {
+          name: "clean-book",
+          description: "A calm, classic book look: serif body, generous margins, restrained accents.",
+          author: "gutterpress",
+          keywords: ["gutterpress", "gutterpress-look"],
+          gutterpress: { styles: ["theme.css"], preview: null },
+        },
+        { "theme.css": ":root { --color-accent: #8a3b12; }\n" },
+      );
+      const [entry] = await listProjectExtensions(dir);
+      expect(entry).toMatchObject({ use: "./extensions/clean-book", kind: "path", label: "Clean book", author: "gutterpress", carries: { styles: true } });
+      expect(entry!.warnings).toBeUndefined();
+      expect((await validateProjectExtensions(dir)).map((r) => r.ok)).toEqual([true]);
+      // What a build loads: the copy's own stylesheet, from the book's folder.
+      const loaded = await loadPluginsWithCss([extensionConfigFor(entry!)], dir);
+      expect(loaded.pluginStylePaths).toEqual([join(dir, "extensions", "clean-book", "theme.css")]);
     });
 
     test("two looks can be on at once — no exclusivity", async () => {

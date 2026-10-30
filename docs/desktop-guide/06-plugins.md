@@ -1,6 +1,6 @@
 ---
 title: Add plugins and formatting extras
-description: Turn on the built-in formatting extras, find plugins on npm or add them from a folder, pick their versions and keep them up to date, and set the order they load in.
+description: Turn on the built-in formatting extras, combine two looks, find plugins on npm or add them from a folder, pick their versions and keep them up to date, and set the order they load in.
 ---
 
 # Add plugins and formatting extras
@@ -13,9 +13,9 @@ and more. Six of them are built in; the rest come from npm or a folder. All of t
 
 Six extras are built in, with nothing to download. Open **Setup → Extensions**. Under **Add an
 extension → Built-in extras**, each extra the book does not use yet has an **Add** button and says
-what to type; click it and the extra works straight away, and appears in **Your extensions** above.
-To take one out again, click its **Remove** there, and it is offered under **Built-in extras**
-again (footnotes, tables and definition lists are always on):
+what to type; click it and the extra works straight away, and appears in **Your extensions** above,
+where its row still says what to type. To take one out again, click its **Remove** there, and it is
+offered under **Built-in extras** again (footnotes, tables and definition lists are always on):
 
 | Extra | Type |
 | --- | --- |
@@ -26,12 +26,21 @@ again (footnotes, tables and definition lists are always on):
 | Callouts | `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]` |
 | Math | `$E = mc^2$` in a line, or `$$` ... `$$` on lines of their own |
 
+## Combine two looks
+
+The **Look** tab chooses one look. To use a second built-in look together with it, open **Setup →
+Extensions** and, under **Add an extension → Built-in looks**, click the look's **Add**. It goes last
+in **Your extensions**, so where the two looks disagree, the one you added wins; move it with **↑**
+and **↓**, or untick or **Remove** it, there. The Look tab then says the book combines two looks.
+
 ## Find a plugin on npm
 
 Looks and plugins other authors have published are on npm. On **Setup → Extensions**, under **Add an
 extension → Find one on npm**, type a word (such as `footnote` or `emoji`) and press Enter or click
-**Search**; with nothing typed, **Search** lists the most relevant ones. Each result shows the
-package's name, what it does, and whether it is a **Look** or an **Extra** when that is known.
+**Search**; with nothing typed, **Search** lists the most relevant ones. Above the results, **Showing
+N of M** says how many are listed out of the number npm reported. Each result shows the package's name and
+latest version (`name@1.2.0`), what it does, whether it is a **Look** or an **Extra** when that is
+known, and **npm page**, which opens the package's page on npmjs.com in your browser.
 **Add** downloads it, checks it, keeps a copy inside your book, and adds it to **Your extensions**;
 your book then builds from that copy, even offline. A package your book already uses says **Added**.
 If nothing matches, it says **No extensions found for** what you typed; if npm cannot be reached, it
@@ -45,7 +54,8 @@ Under **Add an extension → Other ways to add**:
 
 - type a package's **Exact name** (with a version if you want one, such as
   `markdown-it-highlightjs@4.3.0`) and click **Add**, for a package that search does not find, such
-  as a private one;
+  as a private one. A package with no default plugin, such as `markdown-it-emoji`, needs the name of
+  the plugin to use in **export (optional)** beside it (for `markdown-it-emoji`, `full`);
 - **Add a folder or file…** adds a plugin you have on your computer, used where it is;
 - **Import a .zip or .css file…**, or a **Web address** and **Import**, copies a look or plugin into
   your book's `extensions` folder.
@@ -71,7 +81,13 @@ stylesheet always comes last. Each row says what it is and where it comes from, 
 - **x.y.z available** and **Update**, when npm has a newer version;
 - **Couldn't load.** with **Show details**, when it fails, and **Install** or **Reinstall** for an
   npm plugin whose copy is missing or broken (or **Check again** for anything else). A plugin
-  that works says nothing.
+  that works says nothing;
+- anything Gutterpress noticed about it, such as **Not found:** and where it looked for a folder
+  that is not there.
+
+**Re-check**, at the top of the list, reads the list again and checks that every extension loads,
+at any time: after you fix a plugin's folder, for example. When nothing is wrong it says **Every
+extension loads.**
 
 When your book has a plugin from npm, Gutterpress asks npm for newer versions each time you open the
 Extensions tab, and **Check for updates**, at the top of the list, asks again (it reads **Checking

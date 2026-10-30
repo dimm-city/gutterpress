@@ -650,6 +650,9 @@ export const api = {
       post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir, includePrerelease }),
     /** Every published version of one npm package, newest first, pre-releases included (the Extensions tab's version picker). On demand; a network failure is data (`ok: false`). */
     versions: (name: string) => post<ExtensionVersionsResult>('/api/extension/versions', { name }),
+    /** Make an editable copy of a built-in look: copied into `extensions/<id>/` and listed as `./extensions/<id>`, in the built-in's place when the book lists it. */
+    addBuiltIn: (projectDir: string, id: string) =>
+      post<ProjectExtensionEntry>('/api/extension/add-built-in', { projectDir, id }),
     /** A configured extension's stylesheets, concatenated (a bundled look's inlined css, or the entry's folder) — for a sample thumbnail. */
     readCss: (projectDir: string, use: string) =>
       post<string>('/api/extension/read-css', { projectDir, use }),

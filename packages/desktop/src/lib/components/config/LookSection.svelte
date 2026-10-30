@@ -14,7 +14,14 @@
    * Choosing: the gallery is a radio group, so arrowing through it selects
    * each card in turn. The choice is written once the selection has rested
    * for 400 ms (WCAG 3.2.2), and the card order is fixed while the tab is
-   * open, so nothing moves under the pointer.
+   * open, so nothing moves under the pointer. A card names who made the look
+   * when it says.
+   *
+   * A built-in look in use can be turned into the book's own files: *Make an
+   * editable copy* copies it into `extensions/<id>/` and the copy takes its
+   * place (`copyLook`). Pointing at or tabbing to a card shows the look over
+   * an enlarged two-page sample beside the column, in a window wide enough
+   * to hold it (over 1620 px); narrower, the thumbnail is the preview.
    */
   import { onDestroy, tick } from "svelte";
   import Icon from "#lib/components/Icon.svelte";
@@ -49,6 +56,8 @@
   let timer: ReturnType<typeof setTimeout> | null = null;
   const selected = $derived(pending ?? current);
   const selectedCard = $derived(cards.find((c) => c.use === selected));
+  /** The built-in look the book uses, once its choice is written: the one an editable copy can be made of. */
+  const copyable = $derived(!pending && selectedCard?.from === null && selectedCard.use === current ? selectedCard : null);
 
   function pick(use: string) {
     pending = use;
@@ -73,6 +82,7 @@
 
   // Leaving the tab (or closing Book setup) writes a pick still waiting.
   onDestroy(() => {
+    extensions.hideHoverPreview();
     if (sampleTimer) clearTimeout(sampleTimer);
     if (!timer) return;
     clearTimeout(timer);
@@ -161,7 +171,7 @@
         </select>
       {:else if t.kind === "color"}
         <div class="hex">
-          <ColorField id={`look-${t.name}`} value={t.value} {label} onCommit={(value) => setToken(t, value)} />
+          <ColorField id={`look-${t.name}`} name={t.name} value={t.value} {label} onCommit={(value) => setToken(t, value)} />
         </div>
         {#if t.name === "--color-accent"}<span class="hint">Headings and links</span>{/if}
       {:else if t.kind === "length" || t.kind === "number"}
@@ -196,7 +206,14 @@
       {#each cards as card (card.use)}
         {@const src = thumbOf(card.use)}
         {@const isSelected = selected === card.use}
-        <label class="card" class:selected={isSelected}>
+        <label
+          class="card"
+          class:selected={isSelected}
+          onmouseenter={() => extensions.showHoverPreview(card.use)}
+          onmouseleave={extensions.hideHoverPreview}
+          onfocusin={() => extensions.showHoverPreview(card.use)}
+          onfocusout={extensions.hideHoverPreview}
+        >
           <span class="thumb" aria-hidden="true">
             {#if src}
               <iframe title={`Sample of ${card.label}`} srcdoc={src} sandbox="allow-same-origin" tabindex="-1" loading="lazy"></iframe>
@@ -210,6 +227,7 @@
             {#if isSelected}<span class="card-check"><Icon name="check" size={15} /></span>{/if}
           </span>
           {#if card.from}<span class="card-note">{card.from}</span>{/if}
+          {#if card.author}<span class="card-note author">By {card.author}</span>{/if}
           {#if broken(card)}<span class="card-note warn">Couldn't load. See Extensions.</span>{/if}
         </label>
       {/each}
@@ -217,8 +235,29 @@
     {#if selectedCard?.description}
       <p class="look-desc">{selectedCard.label}: {selectedCard.description}</p>
     {/if}
+    {#if copyable}
+      <div class="row copy-row">
+        <button class="ghost small" onclick={() => extensions.copyLook(copyable)} disabled={extensions.busy !== null}>
+          {extensions.busy === copyable.use ? "Copying…" : "Make an editable copy"}
+        </button>
+        <span class="hint">Copies {copyable.label} into your book's <code>extensions</code> folder as files of your own to change.</span>
+      </div>
+    {/if}
   </fieldset>
 </section>
+
+<!--
+  The enlarged sample (0.11.22's hover preview): the look under the pointer
+  over a FIXED two-page spread, never the author's document. Decorative and
+  out of the way: no pointer events, hidden from assistive technology (the
+  card's thumbnail and description say the same), and shown only where it
+  clears the 860 px column.
+-->
+{#if extensions.hoverPreview}
+  <div class="hover-preview" aria-hidden="true">
+    <iframe title="Two-page sample of the look" srcdoc={extensions.hoverPreview} sandbox="allow-same-origin" tabindex="-1"></iframe>
+  </div>
+{/if}
 
 {#if looks.length > 0 || design.brandTokens.length > 0}
   <section class="block" aria-labelledby="look-adjust">
@@ -293,7 +332,26 @@
   .card-check { display: inline-flex; color: var(--app-accent); }
   .card-note { padding: 0 8px 0 28px; font-size: 11.5px; color: var(--app-text-muted); }
   .card-note.warn { color: var(--app-warning-text); }
+  .card-note.author { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .look-desc { margin: 0; font-size: 12.5px; color: var(--app-text-secondary); }
+  .copy-row { flex-wrap: wrap; }
+  .copy-row code { font-family: var(--app-font-mono); font-size: 11px; }
+
+  /* The enlarged two-page sample, pinned beside Book setup's 860 px column. */
+  .hover-preview {
+    position: fixed; right: 24px; top: 50%; transform: translateY(-50%);
+    width: 360px; aspect-ratio: 3 / 2; z-index: 40; pointer-events: none;
+    border-radius: 8px; overflow: hidden;
+    border: 1px solid var(--app-border-strong); background: var(--app-surface);
+    box-shadow: 0 8px 30px var(--app-shadow-lg);
+  }
+  /* Laid out at twice the size and scaled down, so the pages read like pages. */
+  .hover-preview iframe { width: 200%; height: 200%; border: 0; background: #fff; transform: scale(0.5); transform-origin: top left; }
+  /* The column is centred at up to 860 px, so the sample clears it only from
+     about 1620 px; narrower, it would cover the cards being pointed at. */
+  @media (max-width: 1620px) {
+    .hover-preview { display: none; }
+  }
 
   /* ── Adjust the look: six settings beside the sample ── */
   .adjust { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }

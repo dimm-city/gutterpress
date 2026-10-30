@@ -4,11 +4,15 @@
  * cascade order) and ONE verb set (add, remove, toggle, move). Two tabs read
  * it:
  *   - **Look** shows it the way an author thinks of it: one look, chosen from
- *     a gallery (`galleryLooks`, `chooseLook`);
- *   - **Extensions** shows the list itself, with every verb, the npm update
- *     tools (check, update, a version picker per npm row, the pre-release
- *     preference), and the ways to add one: a built-in extra the book does not
- *     list yet (`unlistedExtras`, `addExtra`), or one from elsewhere.
+ *     a gallery (`galleryLooks`, `chooseLook`), an editable copy of a built-in
+ *     one (`copyLook`), and an enlarged two-page sample of the card under the
+ *     pointer (`showHoverPreview`, wide windows only);
+ *   - **Extensions** shows the list itself, with every verb, Re-check
+ *     (`recheck`), the npm update tools (check, update, a version picker per
+ *     npm row, the pre-release preference), and the ways to add one: a
+ *     built-in extra or look the book does not list yet (`unlistedExtras`,
+ *     `unlistedLooks`, `addExtra` — a second look stacks on the first), or one
+ *     from elsewhere.
  *
  * A look is an extension that carries styles and no markdown (`isLook`); an
  * extra carries markdown; a component library carries both. The list order
@@ -22,9 +26,13 @@
  * Adding is one verb with several ways to NAME the extension, which differ
  * only in what the host does with the name:
  *   - a bundled name (a look or an extra, written as-is; nothing is copied) or
- *     an npm specifier (`addNpm` by exact name, `addSearched` from a search
- *     result — downloaded, verified, vendored, pinned, behind the native
- *     trust gate, so a null result means "the author cancelled");
+ *     an npm specifier (`addNpm` by exact name — with the named export to use
+ *     when the package has no default one, `npmExport` — or `addSearched`
+ *     from a search result: downloaded, verified, vendored, pinned, behind
+ *     the native trust gate, so a null result means "the author cancelled");
+ *   - `copyLook` — a built-in look COPIED into `extensions/<id>/` as the
+ *     author's own files and listed by path in the built-in's place (the
+ *     lib's `addBuiltInStyleSet`, what `ext add <look> --look` calls);
  *   - `addLocal` — a folder or plugin file from the native picker,
  *     referenced in place, never copied;
  *   - `importFile` / `importUrl` — a `.zip`, `.css`, or URL package the host
@@ -35,6 +43,7 @@
  * `searchNpmExtensions`, what `gutterpress ext search` prints). A failure is
  * `search.message`, one quiet line, never `error`; `searchResults` marks the
  * packages the book already lists, so each reads "Added" instead of Add.
+ * `search.total` is what npm said it has, for "Showing N of M".
  *
  * Updates: `checkUpdates` asks npm for each pinned entry's latest (when the
  * tab opens, and again on Check for updates), and `update` re-pins one;
@@ -76,6 +85,7 @@ import type {
 } from "#lib/platform/dtos.ts";
 import {
   addedBuiltInIds,
+  hoverPreviewSrcdoc,
   isLook,
   orderAfterMove,
   pickerVersions,
@@ -108,6 +118,8 @@ export interface ExtensionsSectionDeps {
   ) => Promise<ProjectExtensionEntry | null>;
   /** Native folder/file picker; referenced in place. Null when cancelled. */
   addLocal: (projectDir: string) => Promise<ProjectExtensionEntry | null>;
+  /** Copy a built-in look into `extensions/<id>/` and list the copy, in the built-in's place when listed. */
+  addBuiltIn: (projectDir: string, id: string) => Promise<ProjectExtensionEntry>;
   remove: (projectDir: string, use: string) => Promise<unknown>;
   setEnabled: (projectDir: string, use: string, enabled: boolean) => Promise<unknown>;
   /** Rewrite the whole list order; must name every `use` exactly once. */
@@ -133,6 +145,8 @@ export interface LookCard {
   description: string;
   /** "From npm" / "From a folder"; null for a built-in look. */
   from: string | null;
+  /** Who made it (its package.json `author`), when it says. */
+  author?: string;
 }
 
 /** Does this add/import result carry a look? (`null` = cancelled, nothing changed.) */
@@ -174,13 +188,17 @@ export class ExtensionsSectionController {
     /** The query the current `matches` are for. */
     query: string;
     matches: NpmExtensionMatch[];
+    /** What npm said it has, for "Showing N of M". */
+    total: number;
     message: string | null;
-  }>({ status: "idle", query: "", matches: [], message: null });
+  }>({ status: "idle", query: "", matches: [], total: 0, message: null });
   /** The search box's draft text (bound by the view). */
   searchQuery = $state("");
   /** Last load-test result per `use`. */
   validation = $state<Record<string, ExtensionValidationResult>>({});
   validating = $state(false);
+  /** Re-check was pressed: the list says when every extension loads. */
+  rechecked = $state(false);
   error = $state<string | null>(null);
   /** A non-fatal notice from the last add (installer warnings). */
   notice = $state<string | null>(null);
@@ -194,11 +212,19 @@ export class ExtensionsSectionController {
   /** Drafts bound directly from the templates. */
   url = $state("");
   npmName = $state("");
+  /** The named export to use for a package with no default plugin (markdown-it-emoji's `full`). */
+  npmExport = $state("");
   /** Sample-thumbnail srcdoc per `use` (`"__fallback__"` when unavailable). */
   thumbs = $state<Record<string, string>>({});
+  /** The enlarged two-page sample of the look card under the pointer, or null. */
+  hoverPreview = $state<string | null>(null);
 
   /** The gallery's card order, fixed by `freezeGalleryOrder` when the Look tab opens. */
   private galleryOrder: string[] = [];
+  /** Each look's stylesheet as `loadThumb` read it, for the hover sample (no second host call). */
+  private readonly rawCss: Record<string, string> = {};
+  /** The card the pointer is on, so a late read never paints a card it has left. */
+  private hoverUse: string | null = null;
   private readonly deps: ExtensionsSectionDeps;
 
   constructor(deps: ExtensionsSectionDeps) {
@@ -245,6 +271,7 @@ export class ExtensionsSectionController {
           label: e.label,
           description: e.description ?? "",
           from: e.kind === "npm" ? "From npm" : "From a folder",
+          ...(e.author ? { author: e.author } : {}),
         })),
     ];
     return [...cards.filter((c) => inUse.has(c.use)), ...cards.filter((c) => !inUse.has(c.use))];
@@ -253,6 +280,16 @@ export class ExtensionsSectionController {
   /** The built-in extras (bundled, not looks) the book does not list: what the Add area offers. A listed one is a row of the list. */
   get unlistedExtras(): BundledExtensionInfo[] {
     return this.bundled.filter((b) => !b.look && !this.entries.some((e) => e.use === b.use));
+  }
+
+  /**
+   * The built-in looks the book does not list, by name or as an editable copy:
+   * the Add area's one-click way to stack a second look on the first (the Look
+   * tab's gallery chooses ONE look). A listed one is a row of the list.
+   */
+  get unlistedLooks(): BundledExtensionInfo[] {
+    const copies = addedBuiltInIds(this.entries);
+    return this.bundled.filter((b) => b.look && !copies.has(b.use) && !this.entries.some((e) => e.use === b.use));
   }
 
   /**
@@ -307,7 +344,17 @@ export class ExtensionsSectionController {
     }
   };
 
-  /** Load-test every entry; also the Extensions tab's Check again. */
+  /**
+   * Re-check (the list's head, any time) and a failing row's Check again: read
+   * the list again — a folder put back or fixed since is described afresh —
+   * and load-test every entry. Afterwards the list says when every one loads.
+   */
+  recheck = async (): Promise<void> => {
+    await this.loadExtensions();
+    this.rechecked = true;
+  };
+
+  /** Load-test every entry. */
   validateExtensions = async (): Promise<void> => {
     const projectDir = this.deps.projectDir();
     if (!projectDir) return;
@@ -331,14 +378,20 @@ export class ExtensionsSectionController {
   runSearch = async (): Promise<void> => {
     if (this.search.status === "loading") return;
     const query = this.searchQuery.trim();
-    this.search = { status: "loading", query, matches: this.search.matches, message: null };
+    this.search = { status: "loading", query, matches: this.search.matches, total: this.search.total, message: null };
     try {
       const result = await this.deps.search(query);
       this.search = result.ok
-        ? { status: "ready", query, matches: result.matches.filter((m) => searchMatchesQuery(m, query)), message: null }
-        : { status: "error", query, matches: [], message: result.message };
+        ? {
+            status: "ready",
+            query,
+            matches: result.matches.filter((m) => searchMatchesQuery(m, query)),
+            total: result.total,
+            message: null,
+          }
+        : { status: "error", query, matches: [], total: 0, message: result.message };
     } catch (e) {
-      this.search = { status: "error", query, matches: [], message: e instanceof Error ? e.message : String(e) };
+      this.search = { status: "error", query, matches: [], total: 0, message: e instanceof Error ? e.message : String(e) };
     }
   };
 
@@ -446,11 +499,42 @@ export class ExtensionsSectionController {
     if (!projectDir) return;
     try {
       const css = await this.deps.readCss(projectDir, use);
+      this.rawCss[use] = css;
       this.thumbs = { ...this.thumbs, [use]: sampleSrcdoc(css) };
     } catch {
       this.thumbs = { ...this.thumbs, [use]: "__fallback__" };
     }
   }
+
+  // ── The enlarged sample (0.11.22's hover preview, restored in #482) ────────
+  //
+  // Pointing at (or tabbing to) a look card shows the same look over a FIXED
+  // two-page sample spread, larger (`hoverPreviewSrcdoc`). It never renders the
+  // author's document, so it cannot re-paginate anything. The Look tab shows
+  // it only in a window wide enough to hold it beside the column (CSS); the
+  // CSS is the one `loadThumb` read, read again only when that failed.
+  showHoverPreview = async (use: string): Promise<void> => {
+    this.hoverUse = use;
+    let css = this.rawCss[use];
+    if (css === undefined) {
+      const projectDir = this.deps.projectDir();
+      if (!projectDir) return;
+      try {
+        css = await this.deps.readCss(projectDir, use);
+        this.rawCss[use] = css;
+      } catch {
+        if (this.hoverUse === use) this.hoverPreview = null;
+        return;
+      }
+    }
+    // The pointer may have moved on while the CSS was read.
+    if (this.hoverUse === use) this.hoverPreview = hoverPreviewSrcdoc(css);
+  };
+
+  hideHoverPreview = (): void => {
+    this.hoverUse = null;
+    this.hoverPreview = null;
+  };
 
   // ── The one mutation shape ──────────────────────────────────────────────────
   /**
@@ -543,26 +627,53 @@ export class ExtensionsSectionController {
     );
   };
 
-  /** Add a built-in extra to the list: by its bundled name, so nothing is installed or copied. */
+  /**
+   * "Make an editable copy" of a built-in look: the host copies it into
+   * `extensions/<id>/` and lists the copy (`./extensions/<id>`) where the
+   * built-in was. The copy takes the built-in's card in the gallery, so
+   * nothing moves; it is a folder look from then on, the author's to edit.
+   */
+  copyLook = async (card: LookCard): Promise<void> => {
+    if (card.from !== null) return;
+    const copy = await this.mutate(
+      card.use,
+      async (dir) => {
+        const added = await this.deps.addBuiltIn(dir, card.use);
+        // Before the list reloads, so the card never shows anywhere else.
+        this.galleryOrder = this.galleryOrder.map((use) => (use === card.use ? added.use : use));
+        return added;
+      },
+      () => true,
+      `Couldn't copy ${card.label}. `,
+    );
+    if (copy) this.announceAdded(copy);
+  };
+
+  /**
+   * Add a built-in extra or look to the list by its bundled name, so nothing
+   * is installed or copied. A look added here is stacked on the book's look:
+   * it goes last, so it wins where the two disagree.
+   */
   addExtra = async (b: BundledExtensionInfo): Promise<void> => {
     await this.mutate(b.use, (dir) => this.deps.add(dir, b.use), carriesStyles);
   };
 
   /** Add an npm package by name (or `name@version`): the one add path of the typed name and a search result. */
-  private addPackage(name: string): Promise<ProjectExtensionEntry | null | undefined> {
-    return this.mutate(name, (dir) => this.deps.add(dir, name), carriesStyles);
+  private addPackage(name: string, exportName?: string): Promise<ProjectExtensionEntry | null | undefined> {
+    return this.mutate(name, (dir) => this.deps.add(dir, name, exportName), carriesStyles);
   }
 
-  /** "Add by exact name" → `add`. A cancelled trust gate keeps the draft. */
+  /** "Add by exact name" → `add`, with the named export when one is typed. A cancelled trust gate keeps the drafts. */
   addNpm = async (): Promise<void> => {
     const name = this.npmName.trim();
     if (!name) {
       this.error = "Enter an npm package name (e.g. markdown-it-highlightjs).";
       return;
     }
-    const added = await this.addPackage(name);
+    const added = await this.addPackage(name, this.npmExport.trim() || undefined);
     if (!added) return;
     this.npmName = "";
+    this.npmExport = "";
     this.announceAdded(added);
   };
 

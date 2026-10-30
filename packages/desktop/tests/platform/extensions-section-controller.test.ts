@@ -10,7 +10,7 @@ import type {
   ExtensionVersionsResult,
   NpmExtensionMatch,
 } from "../../src/lib/platform/dtos";
-import { sampleSrcdoc, carriedKinds } from "../../src/lib/components/config/config-helpers";
+import { sampleSrcdoc, carriedKinds, hoverPreviewSrcdoc } from "../../src/lib/components/config/config-helpers";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests (same shim as design-section-controller.test.ts).
@@ -181,6 +181,15 @@ function make(
       } else h.entries = [...h.entries, added];
       return Promise.resolve(added);
     },
+    addBuiltIn: (dir, id) => {
+      record("addBuiltIn", dir, id);
+      if (h.failAdd) return Promise.reject(new Error("copy failed"));
+      // The host copies the look into extensions/<id>/ and lists the copy where the built-in was.
+      const copy = entry({ use: `./extensions/${id}`, label: id, carries: STYLES, dir: `/proj/extensions/${id}`, author: "gutterpress" });
+      const at = h.entries.findIndex((e) => e.use === id);
+      h.entries = at >= 0 ? h.entries.map((e, i) => (i === at ? { ...copy, enabled: e.enabled } : e)) : [...h.entries, copy];
+      return Promise.resolve(copy);
+    },
     addLocal: (dir) => {
       record("addLocal", dir);
       if (h.addLocalResult) h.entries = [...h.entries, h.addLocalResult];
@@ -233,7 +242,7 @@ test("initial public rune state matches the panel defaults", () => {
   expect(ctrl.bundled).toEqual([]);
   expect(ctrl.galleryLooks).toEqual([]);
   expect(ctrl.unlistedExtras).toEqual([]);
-  expect(ctrl.search).toEqual({ status: "idle", query: "", matches: [], message: null });
+  expect(ctrl.search).toEqual({ status: "idle", query: "", matches: [], total: 0, message: null });
   expect(ctrl.searchQuery).toBe("");
   expect(ctrl.searchResults).toEqual([]);
   expect(ctrl.updates).toEqual({ status: "idle", checks: [], message: null });
@@ -247,7 +256,11 @@ test("initial public rune state matches the panel defaults", () => {
   expect(ctrl.importWarnings).toEqual([]);
   expect(ctrl.url).toBe("");
   expect(ctrl.npmName).toBe("");
+  expect(ctrl.npmExport).toBe("");
   expect(ctrl.thumbs).toEqual({});
+  expect(ctrl.hoverPreview).toBeNull();
+  expect(ctrl.rechecked).toBe(false);
+  expect(ctrl.unlistedLooks).toEqual([]);
 });
 
 test("loadExtensions populates the list, the bundled catalog, and the validation map keyed by use", async () => {
@@ -388,7 +401,7 @@ test("runSearch asks npm for the trimmed query and keeps the matches with the qu
   h.ctrl.searchQuery = "  emoji  ";
   await h.ctrl.runSearch();
   expect(named(h, "search").map((c) => c.args)).toEqual([["emoji"]]);
-  expect(h.ctrl.search).toEqual({ status: "ready", query: "emoji", matches: [FOUND_OTHER], message: null });
+  expect(h.ctrl.search).toEqual({ status: "ready", query: "emoji", matches: [FOUND_OTHER], total: 2, message: null });
 });
 
 test("npm ranks by the words but filters only by keyword, so a typed search keeps only what mentions them; nothing typed keeps all", async () => {
@@ -398,7 +411,7 @@ test("npm ranks by the words but filters only by keyword, so a typed search keep
   expect(h.ctrl.search.matches).toEqual([FOUND_OTHER]); // dimm-city-components says nothing of emoji
   h.ctrl.searchQuery = "zzzz";
   await h.ctrl.runSearch();
-  expect(h.ctrl.search).toEqual({ status: "ready", query: "zzzz", matches: [], message: null });
+  expect(h.ctrl.search).toEqual({ status: "ready", query: "zzzz", matches: [], total: 2, message: null });
   h.ctrl.searchQuery = "";
   await h.ctrl.runSearch();
   expect(h.ctrl.search.matches).toEqual([FOUND_DC, FOUND_OTHER]);
@@ -414,7 +427,7 @@ test("a search that finds nothing is a ready state with no matches, for the view
   const h = make({ searchResult: { ok: true, matches: [], total: 0 } });
   h.ctrl.searchQuery = "zzzz";
   await h.ctrl.runSearch();
-  expect(h.ctrl.search).toEqual({ status: "ready", query: "zzzz", matches: [], message: null });
+  expect(h.ctrl.search).toEqual({ status: "ready", query: "zzzz", matches: [], total: 0, message: null });
   expect(h.ctrl.searchResults).toEqual([]);
 });
 
@@ -427,6 +440,7 @@ test("an `ok: false` search is one quiet message in search.message, not ctrl.err
     status: "error",
     query: "",
     matches: [],
+    total: 0,
     message: "Couldn't reach the npm registry. Check your connection and try again.",
   });
   expect(h.ctrl.error).toBeNull();
@@ -436,7 +450,7 @@ test("a search that throws is the same quiet message", async () => {
   const h = make();
   h.failSearch = true;
   await h.ctrl.runSearch();
-  expect(h.ctrl.search).toEqual({ status: "error", query: "", matches: [], message: "search blew up" });
+  expect(h.ctrl.search).toEqual({ status: "error", query: "", matches: [], total: 0, message: "search blew up" });
   expect(h.ctrl.error).toBeNull();
 });
 
@@ -1032,4 +1046,150 @@ test("a failed addExtra says why and leaves the list as it was", async () => {
   expect(h.ctrl.error).toBe("add failed");
   expect(h.ctrl.saveStatus).toBe("idle");
   expect(h.ctrl.entries.map((e) => e.use)).toEqual(["markdown-it-mark"]);
+});
+
+// ── #482: what 0.11.22's Look and Extensions tabs did, restored ──────────────
+
+test("copyLook makes an editable copy of the built-in look in use: the copy takes its place in the list and its card in the gallery", async () => {
+  const h = make({ entries: [FEATURE, CLEAN, SUB] });
+  await h.ctrl.loadExtensions();
+  h.ctrl.freezeGalleryOrder();
+  expect(h.ctrl.galleryLooks.map((c) => c.use)).toEqual(["clean-book", "zine"]);
+  const card = h.ctrl.galleryLooks[0]!;
+  await h.ctrl.copyLook(card);
+  expect(named(h, "addBuiltIn").map((c) => c.args)).toEqual([["/proj", "clean-book"]]);
+  expect(h.ctrl.entries.map((e) => e.use)).toEqual([FEATURE.use, "./extensions/clean-book", SUB.use]);
+  // The copy is a folder look now, in the card the built-in had: nothing moved.
+  expect(h.ctrl.galleryLooks.map((c) => [c.use, c.from])).toEqual([
+    ["./extensions/clean-book", "From a folder"],
+    ["zine", null],
+  ]);
+  expect(h.ctrl.enabledLooks.map((e) => e.use)).toEqual(["./extensions/clean-book"]);
+  expect(h.afterLookChange.calls.length).toBe(1);
+  expect(h.ctrl.saveStatus).toBe("saved");
+  expect(h.ctrl.busy).toBeNull();
+});
+
+test("copyLook is only for a built-in look; a failed copy says which look and changes nothing", async () => {
+  const h = make({ entries: [NPM_LOOK] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.copyLook({ use: NPM_LOOK.use, label: "House look", description: "", from: "From npm" });
+  expect(named(h, "addBuiltIn")).toEqual([]);
+
+  const failing = make({ entries: [CLEAN] });
+  await failing.ctrl.loadExtensions();
+  failing.failAdd = true;
+  await failing.ctrl.copyLook({ use: "clean-book", label: "Clean Book", description: "d", from: null });
+  expect(failing.ctrl.error).toBe("Couldn't copy Clean Book. copy failed");
+  expect(failing.ctrl.entries.map((e) => e.use)).toEqual(["clean-book"]);
+  expect(failing.ctrl.saveStatus).toBe("idle");
+});
+
+test("unlistedLooks: the built-in looks the book does not list, by name or as a copy — the one-click way to stack a second look", async () => {
+  const h = make({ entries: [CLEAN, FEATURE] });
+  await h.ctrl.loadExtensions();
+  expect(h.ctrl.unlistedLooks.map((b) => b.use)).toEqual(["zine"]);
+  const copied = make({ entries: [LOOK_A] }); // ./extensions/clean-book
+  await copied.ctrl.loadExtensions();
+  expect(copied.ctrl.unlistedLooks.map((b) => b.use)).toEqual(["zine"]);
+  // Never an extra.
+  expect(h.ctrl.unlistedLooks.every((b) => b.look)).toBe(true);
+});
+
+test("adding a second built-in look stacks it: listed last, both on, the design settings reloaded, the Look tab's gallery then hands the pair to Extensions", async () => {
+  const h = make({ entries: [CLEAN, FEATURE] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.addExtra(BUILTIN_ZINE);
+  expect(named(h, "add").map((c) => c.args.slice(1))).toEqual([["zine", undefined]]);
+  expect(h.ctrl.entries.map((e) => e.use)).toEqual(["clean-book", FEATURE.use, "zine"]);
+  expect(h.ctrl.enabledLooks.map((e) => e.use)).toEqual(["clean-book", "zine"]);
+  expect(h.ctrl.unlistedLooks).toEqual([]);
+  expect(h.afterLookChange.calls.length).toBe(1);
+  // Two looks on: the gallery's single choice is refused (the Look tab says so and links to Extensions).
+  await h.ctrl.chooseLook({ use: "clean-book", label: "Clean Book", description: "d", from: null });
+  expect(named(h, "remove")).toEqual([]);
+});
+
+test("recheck reads the list again and load-tests it, and only then says every extension loads", async () => {
+  const h = make({ entries: [LOOK_A, BROKEN] });
+  await h.ctrl.loadExtensions();
+  expect(h.ctrl.rechecked).toBe(false);
+  const lists = named(h, "list").length;
+  // The missing folder was put back since the list loaded.
+  h.entries = [LOOK_A, { ...BROKEN, warnings: undefined, carries: MARKDOWN }];
+  const run = h.ctrl.recheck();
+  await run;
+  expect(named(h, "list").length).toBe(lists + 1);
+  expect(h.ctrl.entries[1]!.warnings).toBeUndefined();
+  expect(h.ctrl.validation[BROKEN.use]?.ok).toBe(true);
+  expect(h.ctrl.rechecked).toBe(true);
+});
+
+test("runSearch keeps what npm said it has, for Showing N of M", async () => {
+  const h = make({ searchResult: { ok: true, matches: [FOUND_DC, FOUND_OTHER], total: 140 } });
+  await h.ctrl.runSearch();
+  expect(h.ctrl.search.total).toBe(140);
+  expect(h.ctrl.searchResults.map((m) => `${m.name}@${m.version}`)).toEqual(["dimm-city-components@1.2.0", "markdown-it-emoji@3.0.0"]);
+  h.searchResult = { ok: false, message: "offline" };
+  await h.ctrl.runSearch();
+  expect(h.ctrl.search.total).toBe(0);
+});
+
+test("addNpm passes the named export when one is typed, then clears both drafts; a cancelled gate keeps them", async () => {
+  const h = make({ entries: [] });
+  h.ctrl.npmName = "markdown-it-emoji@3.0.0";
+  h.ctrl.npmExport = "  full  ";
+  h.cancelAdd = true;
+  await h.ctrl.addNpm();
+  expect([h.ctrl.npmName, h.ctrl.npmExport]).toEqual(["markdown-it-emoji@3.0.0", "  full  "]);
+  h.cancelAdd = false;
+  await h.ctrl.addNpm();
+  expect(named(h, "add").map((c) => c.args.slice(1))).toEqual([
+    ["markdown-it-emoji@3.0.0", "full"],
+    ["markdown-it-emoji@3.0.0", "full"],
+  ]);
+  expect(h.ctrl.entries[0]!.export).toBe("full");
+  expect([h.ctrl.npmName, h.ctrl.npmExport]).toEqual(["", ""]);
+  // With nothing typed, no export is sent (the package's default plugin).
+  h.ctrl.npmName = "markdown-it-footnote";
+  await h.ctrl.addNpm();
+  expect(named(h, "add").at(-1)!.args.slice(1)).toEqual(["markdown-it-footnote", undefined]);
+});
+
+test("a look card names who made it when its package says", async () => {
+  const house = entry({ use: "../shared/house-style", label: "House style", carries: STYLES, author: "Ada Lovelace", enabled: false });
+  const h = make({ entries: [house] });
+  await h.ctrl.loadExtensions();
+  expect(h.ctrl.galleryLooks.find((c) => c.use === house.use)).toEqual({
+    use: house.use,
+    label: "House style",
+    description: "",
+    from: "From a folder",
+    author: "Ada Lovelace",
+  });
+  // A built-in card says nothing of an author.
+  expect(h.ctrl.galleryLooks.find((c) => c.use === "zine")!.author).toBeUndefined();
+});
+
+test("showHoverPreview shows the look over the fixed two-page sample, from the CSS its thumbnail read; leaving hides it", async () => {
+  const h = make({ entries: [CLEAN] });
+  await h.ctrl.loadExtensions();
+  await flush();
+  const reads = named(h, "readCss").length;
+  await h.ctrl.showHoverPreview("zine");
+  expect(h.ctrl.hoverPreview).toBe(hoverPreviewSrcdoc(":root { --x: 1; }"));
+  expect(h.ctrl.hoverPreview).toContain('class="pm-sample-page"');
+  expect(named(h, "readCss").length).toBe(reads); // no second host call
+  h.ctrl.hideHoverPreview();
+  expect(h.ctrl.hoverPreview).toBeNull();
+});
+
+test("a hover preview whose CSS arrives after the pointer left is not shown", async () => {
+  const h = make({ entries: [] });
+  // Nothing loaded yet, so the CSS is read on demand.
+  const pending = h.ctrl.showHoverPreview("zine");
+  h.ctrl.hideHoverPreview();
+  await pending;
+  expect(h.ctrl.hoverPreview).toBeNull();
+  expect(named(h, "readCss").map((c) => c.args[1])).toEqual(["zine"]);
 });

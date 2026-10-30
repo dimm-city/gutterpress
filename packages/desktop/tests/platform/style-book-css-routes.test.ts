@@ -106,3 +106,28 @@ test("style/edit-tokens refuses a malformed batch", async () => {
     ).toBe(400);
   }
 });
+
+// #482: a color setting takes a `var(--name)` reference again, written by the
+// same postcss edit; a value that would end its declaration writes nothing.
+test("style/edit-tokens writes a var(--name) reference in place, and refuses a value that is not one declaration's", async () => {
+  const late = path.join(book, "styles", "late.css");
+  await post(editTokensRoute, {
+    projectDir: book,
+    file: path.join(book, "styles", "book.css"),
+    updates: [{ name: "--color-accent", value: "var(--color-ink)" }],
+  });
+  expect(await readFile(late, "utf8")).toBe(":root {\n  --color-accent: var(--color-ink);\n}\n");
+
+  previewWrites = [];
+  expect(
+    await status(
+      post(editTokensRoute, {
+        projectDir: book,
+        file: path.join(book, "styles", "book.css"),
+        updates: [{ name: "--color-accent", value: "red; } body { display: none" }],
+      }),
+    ),
+  ).toBe(500);
+  expect(await readFile(late, "utf8")).toBe(":root {\n  --color-accent: var(--color-ink);\n}\n");
+  expect(previewWrites).toEqual([]);
+});
