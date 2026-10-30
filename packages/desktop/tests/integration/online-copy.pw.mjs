@@ -769,6 +769,10 @@ await send("Emulation.clearDeviceMetricsOverride");
 await sleep(500);
 
 // ── 12c. the Settings, Accounts and Open from GitHub controls 0.11.22 had (#481) ─
+// 12b is done with new changes online: no more, and its toast goes, so none is
+// left over (or raised while an Author here) when the Reader check below asks.
+await evalJs(`window.__sync.updatesOnline = false; [...document.querySelectorAll('.toast')].filter((t) => t.querySelector('.toast-message')?.textContent.trim() === 'New changes are online for this book.').forEach((t) => t.querySelector('.toast-close')?.click()); true`);
+check(await waitFor(`!(${prompt})`, 5000), "(no new-changes toast left from 12b)");
 const settingsFile = () => JSON.parse(readFileSync(join(userDataDir, "app-settings.json"), "utf8"));
 /** Wait until the settings file on disk says what `pick` looks for (the app saves each change at once). */
 async function saved(pick, want, ms = 8000) {
@@ -980,6 +984,8 @@ await click('button[aria-label="Close accounts"]');
 check(await waitFor(`!document.querySelector('button[aria-label="Close accounts"]')`), "Accounts closed, back on the start screen");
 await click('button[aria-label="Close this screen"]');
 check(await waitFor(`!document.querySelector('#landing-tab-troubleshooting')`), "back to the book");
+
+check(!(await evalJs(`!!(${prompt})`)), "(and none raised while Settings and Accounts were open)");
 
 // ── 13. a Reader sees none of it ─────────────────────────────────────────────
 await click('.status-bar button[aria-label="Settings"]');
