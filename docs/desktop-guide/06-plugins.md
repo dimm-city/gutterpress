@@ -1,6 +1,6 @@
 ---
 title: Add plugins and formatting extras
-description: Turn on the built-in formatting extras, find plugins on npm or add them from a folder, keep them up to date, and set the order they load in.
+description: Turn on the built-in formatting extras, find plugins on npm or add them from a folder, pick their versions and keep them up to date, and set the order they load in.
 ---
 
 # Add plugins and formatting extras
@@ -63,14 +63,25 @@ stylesheet always comes last. Each row says what it is and where it comes from, 
 
 - a checkbox to use it or not, **↑** and **↓** to move it, and **Remove** (which deletes an npm
   plugin's downloaded copy);
-- **Version x is available.** and **Update**, when npm has a newer version. Gutterpress asks npm
-  once each time you open the Extensions tab;
+- for a plugin from npm, a **Version** menu: its published versions, newest first, with the one
+  your book uses marked **(current)**. Pick a version to switch to it, newer or older. Gutterpress
+  downloads and checks it first, and your book keeps the version it had until that works; if it
+  fails, it says so and nothing changes. The menu fills when the tab opens; if npm cannot be
+  reached it says **Couldn't load the version list.**, and clicking the menu tries again;
+- **x.y.z available** and **Update**, when npm has a newer version;
 - **Couldn't load.** with **Show details**, when it fails, and **Install** or **Reinstall** for an
   npm plugin whose copy is missing or broken (or **Check again** for anything else). A plugin
   that works says nothing.
 
-To use a particular version, add it with its version (`name@1.2.0`) or change the version in
-`manifest.yaml`; the command line's `gutterpress ext` does the same. The
+When your book has a plugin from npm, Gutterpress asks npm for newer versions each time you open the
+Extensions tab, and **Check for updates**, at the top of the list, asks again (it reads **Checking
+npm…** meanwhile). Under the list it says **Every installed package is at its latest version.**,
+or why npm could not be asked. **Include pre-release versions**, above the list, adds alpha, beta
+and release-candidate versions to the Version menus and counts them as updates. It is off by
+default and applies to every book.
+
+Every download from npm, an update or another version, first asks you to confirm that you trust
+the package. The command line's `gutterpress ext` does the same things. The
 [plugins chapter](https://gutterpress.dimm.city/docs/plugins/) covers ordering plugins and writing
 your own.
 

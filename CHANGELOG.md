@@ -443,6 +443,15 @@ This project follows [Semantic Versioning](https://semver.org/).
   different number of rows on a page or lose the page break after the table.
   And a `break-before: left` or `right` that your stylesheet resets to `auto`
   no longer adds a blank page, in the PDF or the preview.
+- **Book setup's extension update tools are back (#479), a regression from
+  0.11.22.** The Book setup redesign (#442) dropped them in 0.11.23-alpha.4.
+  The Extensions tab has them again for a book with a plugin from npm:
+  **Check for updates**, an "x.y.z available" badge with **Update**, a
+  **Version** menu on each npm row (newest first, the book's version marked
+  "(current)"; choosing one installs it, and the book keeps its version until
+  that works), and **Include pre-release versions**, an app setting, off by
+  default, that adds alpha, beta and rc versions to the menus and the update
+  check. Every install still asks you to trust the package first.
 
 ## [0.11.22] - 2026-10-23
 

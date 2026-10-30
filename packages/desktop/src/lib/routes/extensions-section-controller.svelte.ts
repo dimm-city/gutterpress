@@ -6,8 +6,9 @@
  *   - **Look** shows it the way an author thinks of it: one look, chosen from
  *     a gallery (`galleryLooks`, `chooseLook`);
  *   - **Extensions** shows the list itself, with every verb, the npm update
- *     check, and the ways to add one: a built-in extra the book does not list
- *     yet (`unlistedExtras`, `addExtra`), or one from elsewhere.
+ *     tools (check, update, a version picker per npm row, the pre-release
+ *     preference), and the ways to add one: a built-in extra the book does not
+ *     list yet (`unlistedExtras`, `addExtra`), or one from elsewhere.
  *
  * A look is an extension that carries styles and no markdown (`isLook`); an
  * extra carries markdown; a component library carries both. The list order
@@ -35,11 +36,18 @@
  * `search.message`, one quiet line, never `error`; `searchResults` marks the
  * packages the book already lists, so each reads "Added" instead of Add.
  *
- * Updates: `checkUpdates` asks npm once for each pinned entry's latest, and
- * `update` re-pins one; `install` (a row whose downloaded copy is missing or
- * broken) is the same `add` for exactly the pinned version. The host pins only
- * after downloading, verifying and load-testing, so a failed install leaves
- * the old pin and copy untouched.
+ * Updates: `checkUpdates` asks npm for each pinned entry's latest (when the
+ * tab opens, and again on Check for updates), and `update` re-pins one;
+ * `install` (a row whose downloaded copy is missing or broken) is the same
+ * `add` for exactly the pinned version.
+ *
+ * Versions: every npm row has a picker over that package's published versions
+ * (`loadVersions`, on demand, cached for the session; `versionChoices` filters
+ * pre-releases by the app-level "Include pre-release versions" preference,
+ * `setIncludePrerelease`, and always keeps the pin). `switchVersion` is the
+ * same `add` of `name@<version>`. The host pins only after downloading,
+ * verifying and load-testing, so a failed install or switch leaves the old pin
+ * and copy untouched.
  *
  * Removal never touches the author's files (a path entry's folder stays; an
  * npm entry's vendored copy — Gutterpress's own — is deleted), so it is a
@@ -63,9 +71,17 @@ import type {
   ExtensionSearchResult,
   ExtensionUpdateCheck,
   ExtensionUpdatesResult,
+  ExtensionVersionsResult,
   NpmExtensionMatch,
 } from "#lib/platform/dtos.ts";
-import { addedBuiltInIds, isLook, orderAfterMove, sampleSrcdoc, searchMatchesQuery } from "#lib/components/config/config-helpers.ts";
+import {
+  addedBuiltInIds,
+  isLook,
+  orderAfterMove,
+  pickerVersions,
+  sampleSrcdoc,
+  searchMatchesQuery,
+} from "#lib/components/config/config-helpers.ts";
 
 export interface ExtensionsSectionDeps {
   /** The open project directory (reactive prop), or null when none is open. */
@@ -76,8 +92,13 @@ export interface ExtensionsSectionDeps {
   bundled: () => Promise<BundledExtensionInfo[]>;
   /** Search npm for extensions. A fetch/parse failure comes back as `{ ok: false }` data, never a rejection. */
   search: (query: string) => Promise<ExtensionSearchResult>;
-  /** Each pinned npm entry against npm's latest. Same data-not-rejection contract as `search`. */
-  outdated: (projectDir: string) => Promise<ExtensionUpdatesResult>;
+  /** Each pinned npm entry against npm's latest (or newest of any kind). Same data-not-rejection contract as `search`. */
+  outdated: (projectDir: string, includePrerelease: boolean) => Promise<ExtensionUpdatesResult>;
+  /** Every published version of one npm package, newest first, pre-releases included. Same data-not-rejection contract as `search`. */
+  versions: (name: string) => Promise<ExtensionVersionsResult>;
+  /** The "Include pre-release versions" app preference (`settings.updates.includeExtensionPrereleases`) — read and write. */
+  includePrerelease: () => boolean;
+  setIncludePrerelease: (on: boolean) => void;
   validate: (projectDir: string) => Promise<ExtensionValidationResult[]>;
   /** Add by specifier. Null when the author cancelled the native npm trust gate. */
   add: (
@@ -123,14 +144,26 @@ export class ExtensionsSectionController {
   entries = $state<ProjectExtensionEntry[]>([]);
   bundled = $state<BundledExtensionInfo[]>([]);
   /**
-   * Update check — each pinned npm entry against npm's latest. Run once when
-   * the Extensions tab is first shown (never at project load); a failure is one
-   * quiet line, never a modal.
+   * Update check — each pinned npm entry against npm's latest. Run when the
+   * Extensions tab is first shown (never at project load) and on *Check for
+   * updates*; a failure is one quiet `message`, never a modal.
    */
   updates = $state<{
     status: "idle" | "loading" | "ready" | "error";
     checks: ExtensionUpdateCheck[];
-  }>({ status: "idle", checks: [] });
+    message: string | null;
+  }>({ status: "idle", checks: [], message: null });
+  /**
+   * Published versions per npm package NAME (the version picker's source),
+   * loaded on demand — when an npm row is shown, or its picker is focused
+   * after a failure — and kept for the session. Pre-releases are in the cached
+   * list; `versionChoices` filters them by the preference, so flipping it
+   * needs no second fetch. A failed load is retried the next time a picker
+   * opens.
+   */
+  versions = $state<
+    Record<string, { status: "loading" | "ready" | "error"; versions: string[]; message: string | null }>
+  >({});
   /**
    * npm search — run ON DEMAND when the author submits the box, never at
    * project load; a failure is one quiet `message`, never a modal, and never
@@ -241,6 +274,17 @@ export class ExtensionsSectionController {
     return check && check.current === entry.version ? check.latest : null;
   };
 
+  /** Pre-release versions are offered and counted as "newer" (an app preference, not per book). */
+  get includePrerelease(): boolean {
+    return this.deps.includePrerelease();
+  }
+
+  /** What a row's version picker lists: stable unless the preference is on, always including the pin. Empty for non-npm entries. */
+  versionChoices = (entry: ProjectExtensionEntry): string[] =>
+    entry.kind === "npm"
+      ? pickerVersions(this.versions[entry.name]?.versions ?? [], entry.version, this.includePrerelease)
+      : [];
+
   // ── Load ────────────────────────────────────────────────────────────────────
   loadExtensions = async (): Promise<void> => {
     const projectDir = this.deps.projectDir();
@@ -299,20 +343,50 @@ export class ExtensionsSectionController {
   };
 
   /**
-   * Ask npm for each pinned entry's latest (stable versions only). Refuses to
-   * pile up a second in-flight check; a failure is `updates.status`, not
-   * `this.error`.
+   * Ask npm for each pinned entry's latest (pre-releases too when the
+   * preference is on). Refuses to pile up a second in-flight check; a failure
+   * lands in `updates.message`, not `this.error`.
    */
   checkUpdates = async (): Promise<void> => {
     const projectDir = this.deps.projectDir();
     if (!projectDir || this.updates.status === "loading") return;
-    this.updates = { status: "loading", checks: this.updates.checks };
+    this.updates = { status: "loading", checks: this.updates.checks, message: null };
     try {
-      const result = await this.deps.outdated(projectDir);
-      this.updates = result.ok ? { status: "ready", checks: result.checks } : { status: "error", checks: [] };
-    } catch {
-      this.updates = { status: "error", checks: [] };
+      const result = await this.deps.outdated(projectDir, this.includePrerelease);
+      this.updates = result.ok
+        ? { status: "ready", checks: result.checks, message: null }
+        : { status: "error", checks: [], message: result.message };
+    } catch (e) {
+      this.updates = { status: "error", checks: [], message: e instanceof Error ? e.message : String(e) };
     }
+  };
+
+  /** Flip "Include pre-release versions" and ask npm again — "newer" now means something else. */
+  setIncludePrerelease = (on: boolean): void => {
+    this.deps.setIncludePrerelease(on);
+    void this.checkUpdates();
+  };
+
+  /**
+   * Load one package's published versions for its picker. A no-op while a load
+   * is in flight or once it succeeded (the session cache); after a failure the
+   * next call tries again. A failure lands in `versions[name].message`, not
+   * `this.error` — it must never block the tab.
+   */
+  loadVersions = async (name: string): Promise<void> => {
+    const current = this.versions[name]?.status;
+    if (current === "loading" || current === "ready") return;
+    this.versions = { ...this.versions, [name]: { status: "loading", versions: [], message: null } };
+    let next: { status: "ready" | "error"; versions: string[]; message: string | null };
+    try {
+      const result = await this.deps.versions(name);
+      next = result.ok
+        ? { status: "ready", versions: result.versions, message: null }
+        : { status: "error", versions: [], message: result.message };
+    } catch (e) {
+      next = { status: "error", versions: [], message: e instanceof Error ? e.message : String(e) };
+    }
+    this.versions = { ...this.versions, [name]: next };
   };
 
   /** Re-pin one npm entry to the version `checkUpdates` found: `add(name@latest)`, behind the same trust gate as any install. */
@@ -336,13 +410,30 @@ export class ExtensionsSectionController {
     }
   };
 
+  /**
+   * The picker: install `name@<version>` and, only once the host has
+   * downloaded, verified and load-tested it, pin it. A failed install leaves
+   * the old pin and its downloaded copy exactly as they were (the host rolls
+   * back), and the error says so. Choosing the version already pinned is a no-op.
+   */
+  switchVersion = async (entry: ProjectExtensionEntry, version: string): Promise<void> => {
+    if (entry.kind !== "npm" || !version || version === entry.version) return;
+    const kept = entry.version ? `This book still uses ${entry.version}. ` : "";
+    if (await this.installSpec(entry, `${entry.name}@${version}`, kept)) void this.checkUpdates();
+  };
+
   /** The one npm install: `add(spec)` keeping the entry's `export`, behind the native trust gate. Null result: cancelled or failed. */
-  private async installSpec(entry: ProjectExtensionEntry, spec: string): Promise<ProjectExtensionEntry | null> {
+  private async installSpec(
+    entry: ProjectExtensionEntry,
+    spec: string,
+    /** Said after "Couldn't install …" when it fails, e.g. what the book still uses. */
+    failureNote = "",
+  ): Promise<ProjectExtensionEntry | null> {
     const added = await this.mutate(
       entry.use,
       (dir) => this.deps.add(dir, spec, entry.export),
       carriesStyles,
-      `Couldn't install ${spec}. `,
+      `Couldn't install ${spec}. ${failureNote}`,
     );
     if (!added) return null;
     if (added.warnings?.length) this.notice = added.warnings.join(" ");

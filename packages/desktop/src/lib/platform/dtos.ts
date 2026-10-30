@@ -221,7 +221,7 @@ export type ExtensionSearchResult =
 // extension-manager.ts) — defined locally so the SPA never value-imports the
 // lib (§8).
 
-/** One pinned npm extension against npm's `latest` tag. */
+/** One pinned npm extension against npm's `latest` tag (or, with pre-releases, its newest version). */
 export interface ExtensionUpdateCheck {
   /** The specifier as written in the manifest (`name@current`). */
   use: string;
@@ -239,6 +239,15 @@ export interface ExtensionUpdateCheck {
  */
 export type ExtensionUpdatesResult =
   | { ok: true; checks: ExtensionUpdateCheck[] }
+  | { ok: false; message: string };
+
+/**
+ * Every published version of one npm package, newest first, pre-releases
+ * included (the version picker's list). A fetch failure is DATA (`ok: false`),
+ * as for search and updates.
+ */
+export type ExtensionVersionsResult =
+  | { ok: true; versions: string[] }
   | { ok: false; message: string };
 
 // ── Style resolver (CSS editor) ───────────────────────────────────────────────
