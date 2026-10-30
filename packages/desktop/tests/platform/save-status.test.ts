@@ -5,6 +5,7 @@
  * the vocabulary (docs/ux-design-contract.md).
  */
 import { describe, expect, test } from "bun:test";
+import { bannedTermsIn } from "../../../cli/src/test-helpers/vocabulary";
 import { NOTHING_NEW_NOTICE, statusLine, versionsLine, type StatusLineInput } from "../../src/lib/save-status";
 import type { SyncState } from "../../src/lib/platform/contract";
 
@@ -109,7 +110,7 @@ describe("vocabulary", () => {
     lines.push(text({ versionsProblem: { message: null } }), text({ savePhase: "error" }), text({ savePhase: "dirty", autoSave: false }));
     for (const line of lines) {
       expect(line.length).toBeGreaterThan(0);
-      expect(line).not.toMatch(/online backup|\bsync|repository|\bremote\b|snapshot|commit|\bpush|\bpull|branch/i);
+      expect(bannedTermsIn(line)).toEqual([]);
     }
   });
 });
@@ -136,8 +137,8 @@ describe("versionsLine: the line about this computer", () => {
     expect(versionsLine({ lastVersionAt: null, changedFiles: 0, now: NOW })).toBe("Saved · no versions yet");
   });
 
-  test("never says snapshot, commit or 'saved copy'", () => {
+  test("never uses a banned term", () => {
     const all = [versionsLine({ lastVersionAt: NOW, changedFiles: 2, now: NOW }), NOTHING_NEW_NOTICE].join(" ");
-    expect(all).not.toMatch(/snapshot|commit|saved copy|restore point/i);
+    expect(bannedTermsIn(all)).toEqual([]);
   });
 });
