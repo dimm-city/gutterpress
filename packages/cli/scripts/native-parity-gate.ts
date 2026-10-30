@@ -207,6 +207,13 @@ const DEFAULT_FIXTURES = [
   // pin root being a run of its own). `.gp-strip` now takes its height from
   // the flow root the way the block does in print (viewer.css).
   join(REPO, "docs", "fixtures", "percentage-height-root", "book"),
+  // The page-vars fixture (committed): a look's plates sized `var(--gp-page-height)`
+  // and a margin-box folio padded by `var(--gp-page-margin-outside)`. The
+  // compiler and the viewer each publish `--gp-page-*` (shared/page-vars.ts);
+  // a renderer that did not would leave the plates one line tall — two to a
+  // page, 3pp against 4. (The folio's position is asserted by
+  // render-parity.page-vars.test.ts; the gate only sees page indices.)
+  join(REPO, "docs", "fixtures", "page-vars", "book"),
 ];
 
 type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";

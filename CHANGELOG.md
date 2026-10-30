@@ -108,6 +108,12 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **An example paper**, `examples/academic-paper`: a complete, genuine
   research article with numbered equations, a theorem and proof, a figure,
   tables, a listing, footnotes and linked references, from Markdown alone.
+- **The page's own numbers, as `--gp-page-*` (#454).** A look or a book's
+  stylesheet reads `--gp-page-width`, `--gp-page-height`, `--gp-page-bleed`,
+  `--gp-page-safe`, `--gp-page-gutter`, `--gp-page-art-safe` and
+  `--gp-page-margin-top`, `-bottom`, `-inside` and `-outside` (lengths in `pt`)
+  instead of keeping a copy that stops following Book setup. They are the same in
+  the preview and the PDF, and a named page has its own size and margins.
 
 ### Changed
 
@@ -363,6 +369,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   markdownlint prints `|`, not `\|`; the alphas printed the backslash). A
   row that still has more cells than the header is reported in Problems
   (`table_extra_cells`) instead of silently losing them.
+
+### Fixed
+
+- **The minus sign (−, U+2212) is typed as itself.** The character check no
+  longer reports it as a look-alike hyphen, and the editor no longer outlines it.
 
 ## [0.11.22] - 2026-10-23
 

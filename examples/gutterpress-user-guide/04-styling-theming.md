@@ -161,6 +161,13 @@ after every stylesheet. No built-in look sets either; a `size` in your own
 margin of your own holds only until the manifest sets margins (Chapter 1,
 *Page Size Reference*).
 
+When a rule needs the page's own numbers, read them from `--gp-page-width`,
+`--gp-page-height`, `--gp-page-bleed`, `--gp-page-safe`, `--gp-page-gutter`,
+`--gp-page-art-safe`, `--gp-page-margin-top`, `--gp-page-margin-bottom`,
+`--gp-page-margin-inside` and `--gp-page-margin-outside`, all lengths in `pt`
+that `calc()` takes directly. Read these, don't copy them: they follow Book
+setup, in the preview and in the PDF.
+
 To reuse a look across books, make it a folder: a `theme.css` plus a
 `package.json` declaring it, which is all a one-sheet look is. `gutterpress
 new "House Style" --kind look` scaffolds a layered six-sheet one; either way
