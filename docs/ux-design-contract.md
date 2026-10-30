@@ -514,12 +514,13 @@ buttons.
   online-only revision can be deleted from the online copy (refused, changing
   nothing, when it changed online since the list was checked); and a revision
   holding versions found nowhere else asks a second time.
-- **Version history is SHIPPED inside Book setup → Online copy** (#448): its
-  **Version history…** button opens the list in place of the tab's content,
-  with a back button; a changed file's compare opens there too. **Look at this
-  version** closes Book setup and shows the version beside the current book
-  in the preview, with the preview's own Stop looking bar. It never takes over
-  the editor pane.
+- **Version history is SHIPPED as a screen of its own** (#448): Online copy's
+  Version history card lists the newest versions with **Save a version** and
+  **Browse versions**, which (or a listed version) opens the screen over Book
+  setup — the versions on the left grouped by day, the selected one on the
+  right with its **Pages** rendered as they were or its **Changed files** line
+  by line, and **Restore this version** at the top. × or Esc returns to Book
+  setup. It never takes over the editor pane.
   Author-facing vocabulary says "revision", never "branch"; "copy" means only
   the online copy. The editor/file tree/preview show the new revision the same
   way they pick up any other external change.

@@ -293,7 +293,7 @@ await click(".status-bar .status-control");
 check(await waitFor(`document.querySelector('#project-settings-tab-online-copy')?.getAttribute('aria-selected') === 'true'`), "clicking it opens Book setup on the Online copy tab");
 
 // ── 7. the tab: three cards — where the book is kept, Revisions, Version history ─
-check(await waitFor(`!!document.querySelector('#project-settings-panel .revisions .rev-list li.rev') && !!document.querySelector('#project-settings-panel .activity-view .history-list li')`), "the status, Revisions and Version history cards loaded");
+check(await waitFor(`!!document.querySelector('#project-settings-panel .revisions .rev-list li.rev') && !!document.querySelector('#project-settings-panel .recent .recent-row')`), "the status, Revisions and Version history cards loaded");
 await sleep(400);
 await screenshot(join(tmpdir(), "online-copy-tab.png"));
 const tab = await evalJs(`(() => {
@@ -316,8 +316,7 @@ const tab = await evalJs(`(() => {
     showAll: panel.querySelector('.revisions .section-foot button')?.textContent.trim(),
     note: panel.querySelector('.revisions .section-note')?.textContent.trim(),
     historyHead: [...panel.querySelectorAll('[aria-labelledby="version-history-title"] .section-head button')].map((b) => b.textContent.trim()),
-    historyBack: !!panel.querySelector('.activity-view .back, .activity-header'),
-    inEditorPane: !!document.querySelector('.editor-pane .activity-view'),
+    recent: panel.querySelectorAll('.recent .recent-row').length,
     trouble: !!panel.querySelector('details.trouble'),
     innerScroll: (() => { const l = panel.querySelector('.revisions .rev-list'); return l.scrollHeight > l.clientHeight + 1; })(),
     rows,
@@ -335,7 +334,7 @@ check(row("main").current && row("main").badge === "Current" && row("main").wher
 check(row("editors-pass").where === "Only online" && row("editors-pass").buttons.join("|") === "Switch" && row("editors-pass").more, "an online-only revision: Switch and its menu");
 check(row("appendix").where === "Only on this computer", "a revision only on this computer says so");
 check(/revisions made elsewhere may be missing/.test(tab.note ?? ""), "an online copy that could not be checked says so, once");
-check(tab.historyHead.join("|") === "Save a version" && !tab.historyBack && !tab.inEditorPane, "Version history is a card on the page, with Save a version, no back button and nothing in the editor pane");
+check(tab.historyHead.join("|") === "Save a version|Browse versions" && tab.recent >= 1 && tab.recent <= 3, `Version history is a short card: the newest versions, Save a version and Browse versions (${tab.historyHead.join("|")}, ${tab.recent} rows)`);
 check(!tab.trouble, "the backing-up-keeps-failing tools are only there once backing up can work");
 
 /** Open a row's "more" menu and choose an item. */
@@ -376,31 +375,59 @@ await click("#project-settings-panel .revisions .section-foot button", "Show all
 await sleep(100);
 check((await names()).split(",").length === 7, "Show all lists every revision");
 
-// ── 7c. Version history, on the page ─────────────────────────────────────────
-check(await waitFor(`!!document.querySelector('#project-settings-panel .activity-view .change-link')`), "a version lists its changed text files");
-await evalJs(`document.querySelector('[aria-labelledby="version-history-title"]')?.scrollIntoView({ block: "start" }); true`);
-await sleep(300);
-await screenshot(join(tmpdir(), "online-copy-history.png"));
-await click("#project-settings-panel .activity-view .change-link");
-check(await waitFor(`!!document.querySelector('#project-settings-panel .compare-view .columns')`), "a changed file opens its compare in the Version history card");
-await screenshot(join(tmpdir(), "online-copy-compare.png"));
-await click("#project-settings-panel .compare-view .back");
-check(await waitFor(`!!document.querySelector('#project-settings-panel .activity-view .history-list li')`), "the compare's back button returns to the versions");
-
+// ── 7c. Version history: a screen of its own, over Book setup ────────────────
 // Save a version, from the card's header (the book has nothing new, which is said calmly).
-await click('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button');
+await click('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button', "Save a version");
 check(await waitFor(`/Nothing new to save|nothing new/i.test(document.querySelector('#project-settings-panel [aria-labelledby="version-history-title"]')?.textContent ?? '')`, 20000), "Save a version says so when there is nothing new");
 
-// Look at this version needs the preview: it closes Book setup and the preview's own bar stays.
-await click("#project-settings-panel .activity-view .history-list button", "Look at this version");
-check(await waitFor(`!document.querySelector('#project-settings-panel')`), "Look at this version closes Book setup");
-check(await waitFor(`/Looking at/.test(document.querySelector('.version-bar')?.textContent ?? '')`, 60000), "the preview shows the version beside the current book, with its own Looking at… bar");
-await screenshot(join(tmpdir(), "online-copy-looking.png"));
-await click(".version-bar .version-bar-close");
-check(await waitFor(`!document.querySelector('.version-bar')`), "its close button stops looking");
-await click(".status-bar .status-control");
-check(await waitFor(`!!document.querySelector('#project-settings-panel .revisions .rev-list li.rev')`), "the status control opens Online copy again");
-await click("#project-settings-panel .revisions .section-foot button", "Show all 7 revisions");
+await click('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button', "Browse versions");
+check(await waitFor(`!!document.querySelector('.vh .ver')`), "Browse versions opens the Version history screen");
+const vh = await evalJs(`(() => {
+  const root = document.querySelector('.vh');
+  return {
+    title: root.querySelector('#vh-title')?.textContent.trim(),
+    selected: root.querySelectorAll('.ver.selected').length,
+    firstSelected: root.querySelector('.ver')?.classList.contains('selected'),
+    head: root.querySelector('.detail-head h2')?.textContent.trim(),
+    actions: [...root.querySelectorAll('.detail-actions button')].map((b) => b.textContent.trim()),
+    tabs: [...root.querySelectorAll('.tabs [role="tab"]')].map((b) => b.textContent.trim()),
+    bookSetupUnder: !!document.querySelector('#project-settings-panel'),
+    inEditorPane: !!document.querySelector('.editor-pane .vh, .editor-pane .ver'),
+  };
+})()`);
+log(`version history: ${JSON.stringify(vh)}`);
+check(vh.title === "Version history" && vh.bookSetupUnder && !vh.inEditorPane, "it is its own screen, over Book setup, not in the editor");
+check(vh.selected === 1 && vh.firstSelected && vh.head, `the newest version is selected and named at the top (${vh.head})`);
+check(vh.actions.join("|") === "Restore this version", "Restore this version sits at the top of the selected version");
+check(vh.tabs[0] === "Pages" && /^Changed files/.test(vh.tabs[1] ?? ""), `the version shows its Pages or its Changed files (${vh.tabs.join(", ")})`);
+check(await waitFor(`!!document.querySelector('.vh .pages iframe') || /Couldn't show/.test(document.querySelector('.vh .pages')?.textContent ?? '')`, 60000), "its pages render on the right");
+await sleep(1500);
+await screenshot(join(tmpdir(), "online-copy-history.png"));
+
+// Changed files: a text file opens line by line, and back.
+await click(".vh .tabs [role='tab']", vh.tabs[1]);
+check(await waitFor(`!!document.querySelector('.vh .files .file')`), "Changed files lists the files it changed");
+await click(".vh .files button.file");
+check(await waitFor(`!!document.querySelector('.vh .compare-view .columns')`), "a changed text file opens line by line");
+await screenshot(join(tmpdir(), "online-copy-compare.png"));
+await click(".vh .compare-view .back");
+check(await waitFor(`!!document.querySelector('.vh .files')`), "and goes back to the list");
+
+// Restore asks once, at the top.
+await click(".vh .detail-actions button", "Restore this version");
+check(await waitFor(`/saved as a version first/.test(document.querySelector('.vh .detail-actions')?.textContent ?? '')`, 3000), "Restore says your current work is saved as a version first");
+check((await evalJs(`[...document.querySelectorAll('.vh .detail-actions button')].map((b) => b.textContent.trim()).join('|')`)) === "Cancel|Restore", "and asks Cancel or Restore");
+await click(".vh .detail-actions button", "Cancel");
+
+// Closing returns to Book setup, where it was opened.
+await click(".vh .vh-close");
+check(await waitFor(`!document.querySelector('.vh') && !!document.querySelector('#project-settings-panel .revisions .rev-list li.rev')`), "closing Version history returns to Online copy");
+
+// A version in the card opens the screen on that version.
+await click("#project-settings-panel .recent .recent-row");
+check(await waitFor(`!!document.querySelector('.vh .ver.selected')`), "a version in the card opens the screen on it");
+await press("Escape", "Escape", 27);
+check(await waitFor(`!document.querySelector('.vh') && !!document.querySelector('#project-settings-panel')`), "Escape closes Version history and leaves Book setup open");
 
 // ── 8. New revision (a dialog) ───────────────────────────────────────────────
 await click("#project-settings-panel .revisions .section-head button", "New revision");

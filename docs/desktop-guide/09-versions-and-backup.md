@@ -20,43 +20,37 @@ cards:
 
 - **Status**, at the top: where the book is kept, in one line, with the one next step beside it.
 - **Revisions**: the book's separate lines of work (see [Revisions](#revisions)).
-- **Version history**: every version of the revision you're working on, with **Save a version**
-  in its header to keep the book as it is now.
+- **Version history**: the newest versions of the revision you're working on, with **Save a
+  version** (keep the book as it is now) and **Browse versions** in its header.
 
 If the book is a plain folder, the status card offers **Turn on version history** instead. **Save now**
 stays on Ctrl+S (Cmd+S on a Mac) and the editor's Save button.
 
 ## See what each version changed
 
-Click the status control: **Version history** is the last card in **Setup → Online copy**, with
-**Save a version** in its header. Each version shows when it was made and what it changed: a
-short list of files with a plain hint, such as `chapter-02.md · 3 paragraphs changed`,
-`styles/book.css · 1 rule changed` or `art/cover.png · replaced`. An automatic version that
-changed nothing says **No changes**. The first version of a book is labelled **First version**.
-When the book has an online copy, each version also says **Backed up** or **Only on this
-computer**.
+Click the status control, then **Browse versions** in the Version history card (or click one of
+the versions listed there). **Version history** opens as a screen of its own:
 
-- **Look at this version** closes Setup and shows that version beside the current book in the
-  preview, on the same page, so you can compare them as they print. Nothing on disk changes. Click
-  **Stop looking** (or the **×** in the preview's bar) to return to the live preview.
-- Click a changed file to see **That version** and **Current** side by side, with the lines that
-  differ marked. This view is for reading only; go back to the versions list with the
-  **Version history** button at the top.
-- In a narrow window there is room for one page at a time: the bar above the preview offers
-  **That version** and **Current book**.
-- When new changes are in the online copy that this computer has not got, the list starts with
-  **In the online copy, not yet on this computer**, showing those versions and their changed
-  files. They come in on their own while Gutterpress backs up automatically, or when you choose
-  **Sync**.
+- The versions are listed on the left, newest first, grouped by day. Runs of automatic versions
+  fold into one line you can open. Click a version to select it.
+- The selected version shows on the right. **Pages** shows the book as it was then, page by page;
+  nothing on disk changes. **Changed files** lists what it changed, each with a plain hint such as
+  `chapter-02.md · 3 paragraphs changed`, `styles/book.css · 1 rule changed` or
+  `art/cover.png · replaced`; click a text file to see **That version** and **Current** line by
+  line, with the lines that differ marked.
+- The first version of a book is labelled **First version**. When the book has an online copy,
+  each version says **Backed up** or **Only on this computer**, and a note at the top of the list
+  says how many versions are in the online copy and not on this computer yet; they come in the
+  next time the book backs up.
+- Close Version history with **×** (or Esc) to go back to **Setup → Online copy**.
 
 ## Go back to an earlier version
 
-1. Open **Version history** as above.
-2. Find the version you want and click **Restore this version**.
-3. Confirm with **Yes, restore**. Gutterpress saves your current work as a version first, so
-   nothing is lost.
+1. Open **Version history** as above and select the version you want.
+2. Click **Restore this version** at the top.
+3. Click **Restore**. Gutterpress saves your current work as a version first, so nothing is lost.
 
-![Version history, each version with Restore this version](images/version-history.jpg)
+![Version history: the versions on the left, the selected one's pages on the right](images/version-history.jpg)
 
 ## Your online copy
 

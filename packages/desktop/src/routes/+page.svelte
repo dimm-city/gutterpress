@@ -35,6 +35,7 @@
   import Icon from "#lib/components/Icon.svelte";
   import AppToolbar from "#lib/components/AppToolbar.svelte";
   import FocusBar from "#lib/components/FocusBar.svelte";
+  import VersionHistoryView from "#lib/components/VersionHistoryView.svelte";
   import ProjectSettingsView from "#lib/components/ProjectSettingsView.svelte";
   import SettingsView from "#lib/components/SettingsView.svelte";
   import AccountsView from "#lib/components/AccountsView.svelte";
@@ -331,6 +332,8 @@
   // Ref to the mounted Book setup so a backup completion can ask its Online
   // copy tab to reload the Version history list. Undefined while Book setup is closed.
   let settingsViewRef = $state<{ refreshHistory: () => void } | undefined>(undefined);
+  /** The Version history screen, over Book setup: open on this version (the newest when null). */
+  let versionsFor = $state<{ id: string | null } | null>(null);
   /**
    * Settings: its own sheet (AppView), the same over a book and over the start
    * screen; closing it returns the author exactly where they were.
@@ -415,46 +418,6 @@
     refreshProblems();
   }
 
-  // ── Look at a version (#408) ───────────────────────────────────────────────
-  // The host renders a past version read-only from a scratch copy (a second
-  // preview server); the preview pane shows it in a frame beside the live
-  // one, following the live frame's page. Nothing on disk changes. The host
-  // closes it with the project; the renderer forgets it in the same resets.
-  let versionPreview = $state<{ id: string; url: string; label: string } | null>(null);
-  let versionClient = $state<PreviewClient | undefined>(undefined);
-  // Narrow windows have room for one frame: that version, or the current book.
-  let versionSide = $state<"then" | "now">("then");
-
-  async function lookAtVersion(id: string, label: string): Promise<void> {
-    const dir = lifecycle.currentDir;
-    if (!dir) return;
-    try {
-      const { url } = await api.vcs.openVersionPreview(dir, id);
-      if (lifecycle.currentDir !== dir) return;
-      versionPreview = { id, url, label };
-      versionSide = "then";
-      // A narrow window shows one pane at a time: take the author to the
-      // preview, where the version now is — the mirror of openProblem's
-      // switch to the editor.
-      if (isNarrow) setPaneMode("view");
-    } catch (e) {
-      toast?.error(`Couldn't show that version. ${friendlyHostError(e instanceof Error ? e.message : String(e))}`);
-    }
-  }
-
-  async function stopLookingAtVersion(): Promise<void> {
-    if (!versionPreview) return;
-    versionPreview = null;
-    await api.vcs.closeVersionPreview().catch(() => {});
-  }
-
-  /** The version frame: pinned to its own origin; once laid out, it opens on the live page. */
-  function onVersionClientReady(c: PreviewClient): void {
-    c.setExpectedOrigin(versionPreview?.url);
-    c.on((e) => {
-      if (e.name === "renderingComplete") void c.call("goToPage", [pageNav.currentPage]).catch(() => {});
-    });
-  }
   // A loose markdown folder opens fine (no manifest = defaults), but has no
   // editable styles or version history. When the OPENED folder has no manifest,
   // offer a non-blocking "set it up as a book" affordance. Default true (on the
@@ -578,7 +541,6 @@
     dismissLanding: (runPendingRecoveryScan) => dismissLanding(runPendingRecoveryScan),
     toast: () => toast,
     clearStaleProjectState: () => {
-      versionPreview = null;
       problems = [];
       projectComponents = [];
       projectVariants = [];
@@ -600,7 +562,7 @@
       // mode is untouched (a reset is not a choice; forcing Read here once
       // saved it for good).
       focus = false;
-      versionPreview = null;
+      versionsFor = null;
       resetEditorBuffer();
       crashRecovery.reset();
       pendingRecoveryScanDir = null;
@@ -2359,12 +2321,6 @@
     contextMenu.subscribe(c);
     inlineEdit.subscribe(c);
     c.on(onPreviewEscape);
-    // A version shown beside the book keeps the same page in view (#408).
-    c.on((e) => {
-      if (e.name === "pageChanged" && versionClient && typeof e.detail.currentPage === "number") {
-        void versionClient.call("goToPage", [e.detail.currentPage]).catch(() => {});
-      }
-    });
   }
 
   // ----------------------------------------------------------------
@@ -3317,49 +3273,8 @@
         {/if}
         <FindBar bind:this={findBarRef} bind:open={findBarOpen} {client} />
         {#if lifecycle.previewUrl}
-          {#if versionPreview}
-            <!-- Looking at a version (#408): a read-only frame of that version
-                 beside the live one, on the same page. -->
-            <div class="version-bar" role="status">
-              <span class="version-bar-label">
-                <Icon name="history" size={14} />
-                <span>Looking at <strong>{versionPreview.label}</strong> beside the current book</span>
-              </span>
-              {#if isNarrow}
-                <span class="version-toggle" role="group" aria-label="Which to show">
-                  <button class:active={versionSide === "then"} aria-pressed={versionSide === "then"} onclick={() => (versionSide = "then")}>That version</button>
-                  <button class:active={versionSide === "now"} aria-pressed={versionSide === "now"} onclick={() => (versionSide = "now")}>Current book</button>
-                </span>
-              {/if}
-              <button
-                class="version-bar-close"
-                onclick={() => void stopLookingAtVersion()}
-                aria-label="Stop looking at this version"
-                title="Back to the live preview"
-              >
-                <Icon name="x" size={14} />
-              </button>
-            </div>
-          {/if}
-          <div
-            class="preview-frames"
-            class:split={!!versionPreview}
-            class:show-then={!!versionPreview && isNarrow && versionSide === "then"}
-            class:show-now={!!versionPreview && isNarrow && versionSide === "now"}
-          >
-            {#if versionPreview}
-              {#key versionPreview.url}
-                <div class="frame-slot then-slot">
-                  <PreviewFrame
-                    url={versionPreview.url}
-                    bind:client={versionClient}
-                    onClientReady={onVersionClientReady}
-                    onError={(msg) => toast?.error(msg)}
-                  />
-                </div>
-              {/key}
-            {/if}
-            <div class="frame-slot now-slot">
+          <div class="preview-frames">
+            <div class="frame-slot">
               {#key lifecycle.previewUrl}
                 <PreviewFrame
                   bind:this={previewFrameRef}
@@ -3513,12 +3428,20 @@
     onBackUpNow={() => syncController.handleForceSync()}
     onRepair={() => syncController.handleRepair()}
     onSaveVersion={saveVersion}
-    logFilePath={syncController.logFile}
-    viewingId={versionPreview?.id ?? null}
-    onLookAt={(id, label) => { closeProjectSettings(); void lookAtVersion(id, label); }}
-    onStopLooking={() => void stopLookingAtVersion()}
+    onBrowseVersions={(id) => (versionsFor = { id: id ?? null })}
     onCloseBook={() => lifecycle.stopPreview()}
     onOpenAccounts={() => (accountsOpen = true)}
+  />
+{/if}
+{#if versionsFor && lifecycle.currentDir}
+  <!-- Version history opens over Book setup; closing it returns there. -->
+  <VersionHistoryView
+    projectDir={lifecycle.currentDir}
+    hasRemote={projectSession.projectHasRemote}
+    logFilePath={syncController.logFile}
+    initialId={versionsFor.id}
+    onClose={() => (versionsFor = null)}
+    onRestored={() => { onSnapshotRestored(); settingsViewRef?.refreshHistory(); }}
   />
 {/if}
 {#if settingsOpen}
@@ -3756,7 +3679,7 @@
     container-type: inline-size;
     container-name: preview-pane;
   }
-  /* The live frame, or (looking at a version) that version's frame beside it. */
+  /* The live frame. */
   .preview-frames {
     flex: 1;
     min-height: 0;
@@ -3767,66 +3690,6 @@
     min-width: 0;
     min-height: 0;
     display: flex;
-  }
-  .preview-frames.split .then-slot {
-    border-right: 2px solid var(--app-accent);
-  }
-  /* Narrow: one frame at a time. The hidden one has already laid out, so
-     the cross-origin throttling PreviewFrame warns about does not bite. */
-  .preview-frames.show-then .now-slot,
-  .preview-frames.show-now .then-slot {
-    display: none;
-  }
-  .version-bar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 12px;
-    background: var(--app-accent-subtle);
-    border-bottom: 1px solid var(--app-accent-border);
-    color: var(--app-accent-text);
-    font-size: 12px;
-    flex: 0 0 auto;
-  }
-  .version-bar-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .version-toggle {
-    display: inline-flex;
-    border: 1px solid var(--app-accent-border);
-    border-radius: 6px;
-    overflow: hidden;
-  }
-  .version-toggle button {
-    padding: 2px 10px;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    font-size: 12px;
-    cursor: pointer;
-  }
-  .version-toggle button.active {
-    background: var(--app-accent);
-    color: var(--app-text-on-accent);
-  }
-  .version-bar-close {
-    display: inline-flex;
-    padding: 3px;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-  }
-  .version-bar-close:hover {
-    background: var(--app-control-hover-bg);
   }
   .preview-error-view {
     flex: 1;

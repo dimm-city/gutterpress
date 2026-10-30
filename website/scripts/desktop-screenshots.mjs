@@ -238,11 +238,11 @@ await screen("online-copy", async () => {
   await click(".status-control");
   await wait(2000);
 }, { crop: SETTINGS, width: 960 });
-// Version history is the last card on Online copy.
+// Version history: its own screen, over Book setup.
 await screen("version-history", async () => {
-  await page.locator("#version-history-title").scrollIntoViewIfNeeded();
-  await wait(1500);
-}, { crop: SETTINGS, width: 960 });
+  await click("button:has-text('Browse versions')");
+  await wait(4000); // the selected version's pages render
+}, { width: 1200 });
 
 await app.close();
 rmSync(work, { recursive: true, force: true });

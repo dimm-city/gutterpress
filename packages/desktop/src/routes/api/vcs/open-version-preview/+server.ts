@@ -4,9 +4,9 @@ import { defineRoute, getHostServices, requireProjectDir } from '../../_lib/rout
 import type { RequestHandler } from './$types';
 
 /**
- * "Look at this version" (#408): the host writes the version's files to a
+ * Version history's Pages (#408, #448): the host writes the version's files to a
  * scratch copy and renders it read-only through a second preview server;
- * the renderer shows the returned URL beside the live preview.
+ * the Version history screen shows the returned URL as the selected version's pages.
  */
 export const POST: RequestHandler = defineRoute<{ projectDir: string; id: string }>({
   validate: async (raw) => {

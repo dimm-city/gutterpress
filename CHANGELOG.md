@@ -37,9 +37,14 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **Online copy is laid out as three cards (#448).** A status card (where the
   book is kept, its one next step, and **Backing up keeps failing?** at its
   foot with Test connection, Sign in again, Repair and Start over), a
-  **Revisions** card, and a **Version history** card on the same page, so
-  Version history no longer takes over the editor (Look at this version still
-  closes Setup and compares in the preview). Revisions: the open one first,
+  **Revisions** card, and a short **Version history** card (the newest versions,
+  Save a version, Browse versions).
+- **Version history is a screen of its own (#448).** Browse versions (or a
+  version in the card) opens it over Book setup: the versions on the left,
+  grouped by day; the selected version on the right, its **Pages** rendered as
+  they were or its **Changed files** line by line; **Restore this version** at
+  the top. × or Esc returns to Book setup. It replaces looking at a version
+  beside the live preview, and never takes over the editor. Revisions: the open one first,
   five shown with **Show all**, **Find a revision** past five, **New
   revision** in the card's header, and each row's **Switch** plus a ⋯ menu
   with **Rename…** (every revision) and **Delete…** (all but the open one);

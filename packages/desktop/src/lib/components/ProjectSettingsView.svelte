@@ -81,10 +81,7 @@
     onBackUpNow,
     onRepair,
     onSaveVersion,
-    logFilePath = null,
-    viewingId = null,
-    onLookAt,
-    onStopLooking,
+    onBrowseVersions,
     onCloseBook,
     onOpenAccounts,
     triggerEl,
@@ -116,13 +113,8 @@
     onRepair?: () => Promise<void>;
     /** The Online copy tab's Save a version: the page's save; resolves "unchanged" when there was nothing new. */
     onSaveVersion?: () => Promise<"saved" | "unchanged">;
-    /** The newest operation log, for Version history's Technical details. */
-    logFilePath?: string | null;
-    /** The version the preview is showing beside the live book, if any. */
-    viewingId?: string | null;
-    /** Version history › Look at this version: the parent closes this view and shows it in the preview. */
-    onLookAt?: (id: string, label: string) => void;
-    onStopLooking?: () => void;
+    /** Online copy › Version history: the parent opens the Version history screen over this one. */
+    onBrowseVersions?: (id?: string) => void;
     /** Close the book: the Online copy tab's Start over from the online copy ends with it. */
     onCloseBook?: () => Promise<boolean>;
     /** Open the Accounts page, over this one. */
@@ -290,11 +282,6 @@
     if (await flushAll()) onOpenFile?.(path);
   }
 
-  /** Online copy › Version history › Look at this version: leave Book setup for the preview. */
-  async function lookAt(id: string, label: string) {
-    if (await flushAll()) onLookAt?.(id, label);
-  }
-
   let onlineCopy = $state<{ refreshHistory: () => void }>();
   /** A backup finished: reload the Version history list, if it is showing. */
   export function refreshHistory() {
@@ -342,7 +329,7 @@
 
       {#if activeTab === "online-copy"}
         <!-- This book's versions, revisions and online copy: signing in to its GitHub account or server happens here, in place; Version history replaces the tab's content. -->
-        <ProjectConnectionsSection bind:this={onlineCopy} {projectDir} {backup} {versionsProblem} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} {onBackUpNow} {onRepair} {onSaveVersion} {logFilePath} {viewingId} onLookAt={lookAt} {onStopLooking} {onCloseBook} {onOpenAccounts} {toast} />
+        <ProjectConnectionsSection bind:this={onlineCopy} {projectDir} {backup} {versionsProblem} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} {onBackUpNow} {onRepair} {onSaveVersion} {onBrowseVersions} {onCloseBook} {onOpenAccounts} {toast} />
       {/if}
 
       {#if activeTab === "advanced"}

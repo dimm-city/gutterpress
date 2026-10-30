@@ -48,7 +48,7 @@ describe("the screens that were reshaped use the product's words", () => {
     "lib/components/HelpContent.svelte",
     "lib/components/ProjectConnectionsSection.svelte",
     "lib/components/RevisionsList.svelte",
-    "lib/components/ProjectActivityView.svelte",
+    "lib/components/VersionHistoryView.svelte",
     "lib/components/StatusBar.svelte",
     "lib/components/SettingsView.svelte",
     "lib/components/CrashRecoveryDialog.svelte",
@@ -101,11 +101,13 @@ describe("Book setup → Online copy", () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
-  test("Version history opens inside the tab, not in the editor pane", () => {
+  test("Version history is a screen of its own, opened from the tab, never in the editor pane", () => {
     const tab = markup("lib/components/ProjectConnectionsSection.svelte");
-    expect(tab).toContain("<ProjectActivityView");
+    expect(tab).toContain("Browse versions");
+    expect(tab).not.toContain("<ProjectActivityView");
     const page = read("routes/+page.svelte");
-    expect(page).not.toMatch(/ProjectActivityView|showActivityView|editorView|paneViewRestore/);
+    expect(page).toContain("<VersionHistoryView");
+    expect(page).not.toMatch(/ProjectActivityView|showActivityView|editorView|paneViewRestore|versionPreview|lookAtVersion/);
   });
 
   test("each situation's action is worded as the design says", () => {
@@ -157,16 +159,22 @@ describe("Book setup → Online copy", () => {
 });
 
 describe("Version history", () => {
-  const view = markup("lib/components/ProjectActivityView.svelte");
+  const view = markup("lib/components/VersionHistoryView.svelte");
 
-  test("is a card on Online copy, called Version history, with Save a version in its header and the badges", () => {
+  test("a short card on Online copy: the newest versions, Save a version and Browse versions", () => {
     const tab = markup("lib/components/ProjectConnectionsSection.svelte");
     expect(tab).toContain('<h3 id="version-history-title">Version history</h3>');
-    expect(tab.indexOf("Save a version")).toBeLessThan(tab.indexOf("<ProjectActivityView"));
-    expect(view).not.toMatch(/class="back"|activity-header/);
-    expect(view).toContain("Only on this computer");
-    expect(view).toContain("In the online copy, not yet on this computer");
+    expect(tab.indexOf("Save a version")).toBeLessThan(tab.indexOf("Browse versions"));
+  });
+
+  test("the screen: versions on the left, the selected one's Pages or Changed files, Restore this version at its top", () => {
+    expect(view).toContain("Version history</h1>");
     expect(view).toContain("Restore this version");
+    expect(view).toContain(">Pages</button>");
+    expect(view).toContain("Changed files");
+    expect(view).toContain("Your current work is saved as a version first.");
+    expect(view).toContain("in the online copy and not on this computer yet");
+    expect(view).toContain("Only on this computer");
   });
 });
 

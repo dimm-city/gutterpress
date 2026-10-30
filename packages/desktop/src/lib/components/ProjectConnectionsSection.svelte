@@ -1,10 +1,10 @@
 <script lang="ts">
   /**
    * ProjectConnectionsSection — Book setup → Online copy: the one place for
-   * where this book is kept, from top to bottom:
+   * where this book is kept, as three cards:
    *
-   *   1. Status — one headline and at most one primary button, from six
-   *      situations (`backupState`, #442):
+   *   1. Status — a short title, one line, and at most one primary button,
+   *      from six situations (`backupState`, #442):
    *        no-versions    — a plain folder: Turn on version history.
    *        local-only     — versions, no online copy: Keep this book safe
    *                         online… (connect GitHub, then create a new online
@@ -16,43 +16,35 @@
    *                         never typed.
    *        ready          — access is set up. What it says about the last
    *                         backup comes from the host's last status (live,
-   *                         the sync controller's `backup`) or a Sync now
-   *                         run here (`readyView`), never from the setup
-   *                         alone. Sync now / Try again run the page's
-   *                         Sync (`onBackUpNow`); a rejected sign-in
-   *                         gets the sign-in step again.
+   *                         the sync controller's `backup`) or a Sync now run
+   *                         here (`readyView`), never from the setup alone;
+   *                         a rejected sign-in gets the sign-in step again.
    *        own-tools      — an SSH (or other non-https) address.
-   *      Then one line about this computer ("Saved · last version 10 minutes
-   *      ago") with Save a version and Version history…, which replaces the
-   *      tab's content with the Version history view (ProjectActivityView; its
-   *      back button returns here). "Look at this version" is the one thing it
-   *      cannot do in place: the page's preview shows the comparison, so Book
-   *      setup closes (`onLookAt`).
+   *      Once backing up can work, "Backing up keeps failing?" folds into the
+   *      card's foot: Test connection (a read-only probe of this book's online
+   *      copy), Sign in again (Accounts) for GitHub books, Repair the online
+   *      copy (`onRepair`) and Start over from the online copy
+   *      (`api.remote.scorchedEarth`; the book closes at the end, so the
+   *      outcome is a toast).
    *   2. Revisions (RevisionsList), whenever version history is on.
-   *   3. If backing up keeps failing (ready), collapsed: Test connection (a
-   *      read-only probe of this book's online copy; the GitHub sign-in itself
-   *      is tested in Accounts), Sign in again (Accounts) for GitHub books,
-   *      Repair the online copy (`onRepair`: fresh versions under the files,
-   *      then a backup) and Start over from the online copy
-   *      (`api.remote.scorchedEarth`: keep a safety folder, empty the folder,
-   *      download the online copy, put the files back on top and — whether or
-   *      not that worked — close the book, so the app holds no stale state;
-   *      Book setup closes with it, so the outcome is a toast).
+   *   3. Version history — the newest three versions and "Save a version";
+   *      Browse versions (or a version) opens the Version history screen
+   *      over this one (`onBrowseVersions`).
    *
    * PWA-clean (§8): api.* routes only.
    */
   import { onMount, tick } from "svelte";
-  import { api } from "#lib/api.ts";
+  import { api, type VersionEntry } from "#lib/api.ts";
   import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
   import { cancelInlineConfirm, requestInlineConfirm, type InlineConfirmState } from "#lib/dialog.ts";
   import { useSettings } from "#lib/settings.svelte.ts";
   import { suggestRepositoryName } from "#lib/backup-repo-name.ts";
   import { backupState, onlineCopyName, readyView, type LastBackup } from "#lib/backup-state.ts";
   import { NOTHING_NEW_NOTICE, versionsLine } from "#lib/save-status.ts";
+  import { versionDescription, versionLabel } from "#lib/routes/version-timeline.ts";
   import GitHubConnect from "#lib/components/GitHubConnect.svelte";
   import GitServerForm, { OTHER_SERVER_GUIDE } from "#lib/components/GitServerForm.svelte";
   import Icon from "#lib/components/Icon.svelte";
-  import ProjectActivityView from "#lib/components/ProjectActivityView.svelte";
   import RevisionsList from "#lib/components/RevisionsList.svelte";
   import type { ToastController } from "#lib/components/Toast.svelte";
   import type { ProjectRemoteDiagnosis, RemoteAccessResult, RemoteConnection, RemoteRepository } from "#lib/platform/contract.ts";
@@ -67,10 +59,7 @@
     onBackUpNow,
     onRepair,
     onSaveVersion,
-    logFilePath = null,
-    viewingId = null,
-    onLookAt,
-    onStopLooking,
+    onBrowseVersions,
     onCloseBook,
     onOpenAccounts,
     toast = null,
@@ -92,13 +81,8 @@
     onRepair?: () => Promise<void>;
     /** Save a version now: the page's own save (its toast); resolves "unchanged" when there was nothing new. */
     onSaveVersion?: () => Promise<"saved" | "unchanged">;
-    /** The newest operation log, for Version history's Technical details. */
-    logFilePath?: string | null;
-    /** The version the preview is showing beside the live book, if any. */
-    viewingId?: string | null;
-    /** Look at this version: the parent closes Book setup and shows it in the preview. */
-    onLookAt?: (id: string, label: string) => void;
-    onStopLooking?: () => void;
+    /** Open the Version history screen over this one, on a version or the newest. */
+    onBrowseVersions?: (id?: string) => void;
     /** Close the open book: Start over from the online copy ends with it. */
     onCloseBook?: () => Promise<boolean>;
     /** Open the Accounts page, over this one. */
@@ -149,12 +133,12 @@
   let savingVersion = $state(false);
   let revisionsEl = $state<{ refresh: () => void }>();
 
-  // The Version history card's list.
-  let historyEl = $state<{ refreshHistory: () => void }>();
+  /** The newest versions, for the Version history card. */
+  let recent = $state<VersionEntry[]>([]);
 
-  /** A backup finished: reload the Version history list. */
+  /** A backup finished, or a version was restored: the newest versions may have changed. */
   export function refreshHistory() {
-    historyEl?.refreshHistory();
+    if (projectDir) void loadFacts(projectDir);
   }
 
   onMount(() => {
@@ -181,7 +165,8 @@
   /** Best-effort: the line says nothing rather than guessing when the lookup fails. */
   async function loadFacts(dir: string) {
     try {
-      const [page, pending] = await Promise.all([api.vcs.listSnapshotsPage(dir, { limit: 1 }), api.vcs.unversionedChanges(dir)]);
+      const [page, pending] = await Promise.all([api.vcs.listSnapshotsPage(dir, { limit: 3 }), api.vcs.unversionedChanges(dir)]);
+      recent = page.entries;
       facts = { lastVersionAt: page.entries[0]?.timestamp ?? null, changedFiles: pending.changedFiles, stale: pending.stale };
       if ((pending.changedFiles ?? 0) > 0) nothingNew = false;
     } catch {
@@ -315,7 +300,6 @@
     savingVersion = true;
     try {
       nothingNew = (await onSaveVersion()) === "unchanged";
-      historyEl?.refreshHistory();
       await loadFacts(projectDir);
     } catch {
       // The page shows the failure toast.
@@ -590,16 +574,21 @@
       <!-- 2. Revisions. -->
       <RevisionsList bind:this={revisionsEl} {projectDir} hasOnlineCopy={!!diag.remoteUrl} disabled={busy} onChanged={revisionsChanged} />
 
-      <!-- 3. Version history of the revision you're working on. -->
+      <!-- 3. Version history of the revision you're working on: the newest three, and the screen for all of them. -->
       <section class="section-card" aria-labelledby="version-history-title">
         <header class="section-head">
           <div>
             <h3 id="version-history-title">Version history</h3>
             {#if facts}<p class="section-sub">{versionsLine({ ...facts, now: Date.now() })}</p>{/if}
           </div>
-          <button class="ghost" onclick={() => void saveVersion()} disabled={busy || savingVersion || !onSaveVersion}>
-            <Icon name="save" size={14} /> {savingVersion ? "Saving…" : "Save a version"}
-          </button>
+          <div class="head-actions">
+            <button class="ghost" onclick={() => void saveVersion()} disabled={busy || savingVersion || !onSaveVersion}>
+              <Icon name="save" size={14} /> {savingVersion ? "Saving…" : "Save a version"}
+            </button>
+            <button class="ghost" onclick={() => onBrowseVersions?.()} disabled={!onBrowseVersions}>
+              <Icon name="history" size={14} /> Browse versions
+            </button>
+          </div>
         </header>
         {#if versionsProblem}
           <p class="section-note warn">
@@ -608,16 +597,19 @@
           </p>
         {/if}
         {#if nothingNew}<p class="section-note" role="status">{NOTHING_NEW_NOTICE}</p>{/if}
-        <ProjectActivityView
-          bind:this={historyEl}
-          {projectDir}
-          {logFilePath}
-          hasRemote={!!diag.remoteUrl}
-          {viewingId}
-          onRestored={onProjectFilesChanged}
-          {onLookAt}
-          {onStopLooking}
-        />
+        <ul class="recent" aria-label="Newest versions">
+          {#each recent as v (v.id)}
+            <li>
+              <button class="recent-row" onclick={() => onBrowseVersions?.(v.id)} disabled={!onBrowseVersions}>
+                <span class="recent-title">{versionLabel(v.message)}{#if versionDescription(v.message)}<span class="recent-note"> — {versionDescription(v.message)}</span>{/if}</span>
+                <span class="recent-when">{new Date(v.timestamp).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</span>
+                <Icon name="chevron-right" size={14} />
+              </button>
+            </li>
+          {:else}
+            <li class="section-note">No versions yet.</li>
+          {/each}
+        </ul>
       </section>
     {/if}
   {/if}
@@ -651,6 +643,17 @@
   .status-note { margin: 0; padding: 0 16px 14px 66px; font-size: 13px; }
   .done { color: var(--app-success-text); }
   .check { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+  .head-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .recent { list-style: none; margin: 0; padding: 0; }
+  .recent li + li { border-top: 1px solid var(--app-border-subtle); }
+  .recent-row {
+    display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 12px 9px 16px;
+    border: 0; border-radius: 0; background: none; color: var(--app-text-muted); text-align: left;
+  }
+  .recent-row:hover:not(:disabled) { background: var(--app-surface-hover); }
+  .recent-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--app-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .recent-note { font-weight: 400; color: var(--app-text-secondary); }
+  .recent-when { font-size: 12px; flex-shrink: 0; }
 
   .trouble { border-top: 1px solid var(--app-border-subtle); }
   .trouble summary {
