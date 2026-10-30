@@ -367,6 +367,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   row that still has more cells than the header is reported in Problems
   (`table_extra_cells`) instead of silently losing them.
 
+### Fixed
+
+- **The minus sign (−, U+2212) is typed as itself.** The character check no
+  longer reports it as a look-alike hyphen, and the editor no longer outlines it.
+
 ## [0.11.22] - 2026-10-23
 
 ### Added
