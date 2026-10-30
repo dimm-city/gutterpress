@@ -482,7 +482,7 @@
       <p class="hint">{ready.detail}</p>
       {#if ready.action === "back-up" || ready.action === "try-again"}
         <button class="app-btn-primary" onclick={backUpNow} disabled={busy}>
-          {running === "back-up" ? "Backing up…" : ready.action === "try-again" ? "Try again" : "Back up now"}
+          {running === "back-up" ? "Backing up…" : ready.action === "try-again" ? "Try again" : "Sync now"}
         </button>
       {:else if ready.action === "sign-in"}
         {#if diag.provider === "github"}

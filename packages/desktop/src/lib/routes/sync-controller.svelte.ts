@@ -2,8 +2,8 @@
  * SyncController — the single owner of the online copy's outcome routing.
  *
  * Backing up ALWAYS converges (no conflict outcome, no choices dialog, no
- * chooser), so this controller is the manual Back up now flow
- * (`handleForceSync`), the per-project remote diagnosis refresh
+ * chooser), so this controller is the manual Sync flow (`handleForceSync`:
+ * get the latest, then back up), the per-project remote diagnosis refresh
  * (`refreshSyncDiag`), what the host's status stream last said about the open
  * book (`applyStatus`, read by the status control and Book setup → Online
  * copy), and the toasts that name whatever the merge had to keep two takes of.
@@ -30,10 +30,8 @@ interface SyncToast {
 export const UPDATE_CHECK_INTERVAL_MS = 5 * 60_000;
 
 export interface SyncControllerDeps {
-  /** Host round-trip: Back up now for the given project dir. */
+  /** Host round-trip: a full pass (get the latest, then back up) for the given project dir. */
   syncChanges: (dir: string) => Promise<SyncOutcome>;
-  /** Host round-trip: "Get latest", fetch and merge the online changes without pushing. */
-  getLatest: (dir: string) => Promise<SyncOutcome>;
   /** Host round-trip: has the book's open revision moved online? (reads refs only; never throws) */
   checkUpdates: (dir: string) => Promise<{ available: boolean; reason?: string }>;
   /** Host round-trip: "Repair the online copy" for the given project dir. */
@@ -65,7 +63,7 @@ export interface SyncControllerDeps {
 }
 
 /**
- * The outcome of the last MANUAL "Back up now", in the ambient status
+ * The outcome of the last MANUAL Sync, in the ambient status
  * vocabulary. Manual passes bypass the host orchestrator (the only emitter
  * of sync:status), so `backup` reads this to learn what a manual backup just did.
  */
@@ -86,10 +84,7 @@ interface StreamedStatus extends LastBackup {
 
 /** A pass's outcome in the ambient status vocabulary the status control reads. */
 function outcomeState(outcome: SyncOutcome): SyncState {
-  if (outcome.status === "synced" || outcome.status === "up-to-date") {
-    // A get-latest pass leaves this computer's own versions unsent.
-    return outcome.status === "up-to-date" && outcome.pushDeferred ? "unsent" : "synced";
-  }
+  if (outcome.status === "synced" || outcome.status === "up-to-date") return "synced";
   return outcome.status === "auth" || outcome.status === "offline" ? outcome.status : "error";
 }
 
@@ -123,8 +118,6 @@ export class SyncController {
   forceSyncing = $state(false);
   /** The last manual backup's outcome, or null before any this session. */
   lastManual = $state<ManualBackup | null>(null);
-  /** True while a manual "Get latest" is in flight. */
-  gettingLatest = $state(false);
   /** The online copy has changes this one has not got (last check said so). */
   updatesAvailable = $state(false);
   /** The newest status event for a book: the host's stream, seeded with what it kept when the book opened. */
@@ -139,7 +132,7 @@ export class SyncController {
     this.deps = deps;
   }
 
-  /** What the open book's online copy last did: the newer of the host's stream and the last manual Back up now. */
+  /** What the open book's online copy last did: the newer of the host's stream and the last manual Sync. */
   get backup(): LastBackup | null {
     const dir = this.deps.currentDir();
     const s = this.streamed?.dir === dir ? this.streamed : null;
@@ -199,12 +192,12 @@ export class SyncController {
    * discovery. Only while automatic backing up is off (it gets them on its own
    * every few minutes), only for a book that can back up, and never for a
    * reader (who gets them quietly either way). Quiet on every failure: the
-   * next check, or the author's own Get latest, tries again.
+   * next check, or the author's own Sync, tries again.
    */
   async checkForUpdates(): Promise<void> {
     const dir = this.deps.currentDir();
     if (!dir || !this.syncDiag?.canSync || (this.deps.autoBackup?.() ?? true) || this.deps.isReader?.()) return;
-    if (this.forceSyncing || this.gettingLatest) return;
+    if (this.forceSyncing) return;
     let result: { available: boolean; reason?: string };
     try {
       result = await this.deps.checkUpdates(dir);
@@ -217,8 +210,8 @@ export class SyncController {
     if (discovered) {
       const t = this.deps.toast();
       const message = "New changes are online for this book.";
-      if (t?.show) t.show(message, "info", 0, { label: "Get latest", onClick: () => void this.handleGetLatest() });
-      else t?.info?.(`${message} Use Get latest to bring them in.`);
+      if (t?.show) t.show(message, "info", 0, { label: "Sync", onClick: () => void this.handleForceSync() });
+      else t?.info?.(`${message} Use Sync to bring them in.`);
     }
   }
 
@@ -234,45 +227,6 @@ export class SyncController {
       clearInterval(timer);
       win.removeEventListener("focus", check);
     };
-  }
-
-  /**
-   * "Get latest": bring in the online changes without sending anything back.
-   * Unsaved-to-history edits are kept (the lib saves a version first when it
-   * has something to merge), and overlaps are combined as in any backing up.
-   */
-  async handleGetLatest(): Promise<void> {
-    const dir = this.deps.currentDir();
-    if (!dir || this.gettingLatest || this.forceSyncing) return;
-    this.gettingLatest = true;
-    const failed = "Couldn't get the latest changes. Your work is saved on this computer — try again when you're ready.";
-    try {
-      const outcome = await this.deps.getLatest(dir);
-      if (this.deps.currentDir() !== dir) return;
-      if (outcome.status === "synced" || outcome.status === "up-to-date") {
-        this.updatesAvailable = false;
-        this.recordManual(dir, outcomeState(outcome));
-        const merged = outcome.status === "synced" && outcome.mergedRemoteChanges;
-        if (merged || outcome.filesChanged) {
-          this.deps.onFilesChanged();
-          this.deps.toast()?.success("Got the latest changes from the online copy.");
-          this.applyConvergeReport(outcome.combinedFiles, outcome.keptBothFiles);
-        } else {
-          this.deps.toast()?.info?.("Already up to date — nothing new online.");
-        }
-      } else if (outcome.status === "auth") {
-        this.deps.toast()?.error("Not signed in to the online copy. Sign in from Book setup → Online copy.");
-      } else if (outcome.status === "offline") {
-        this.deps.toast()?.info?.("Couldn't reach the online copy. Check your internet connection, or try again later.");
-      } else {
-        if (outcome.filesChanged) this.deps.onFilesChanged();
-        this.deps.toast()?.error(outcome.message || failed);
-      }
-    } catch {
-      this.deps.toast()?.error(failed);
-    } finally {
-      if (this.deps.currentDir() === dir) this.gettingLatest = false;
-    }
   }
 
   /**
@@ -297,8 +251,9 @@ export class SyncController {
   }
 
   /**
-   * Back up the open project now.
-   * Reuses the same syncChanges() path the auto-orchestrator uses.
+   * Sync the open project now: get the latest changes from the online copy,
+   * then back up this computer's. One full pass, the same syncChanges() path
+   * the auto-orchestrator uses.
    * Only callable when the project canSync (guarded in StatusBar via showManualSync).
    */
   async handleForceSync(): Promise<void> {

@@ -522,7 +522,6 @@
   // + buffer).
   const syncController = new SyncController({
     syncChanges: (dir) => api.remote.syncChanges(dir),
-    getLatest: (dir) => api.remote.getLatest(dir),
     checkUpdates: (dir) => api.remote.checkUpdates(dir),
     repair: (dir) => api.remote.repairOnlineBackup(dir),
     diagnose: (dir) => api.remote.diagnoseProjectRemote(dir),
@@ -971,7 +970,7 @@
   }
 
   // Backing up completed. Online changes may land on disk even when the final outcome
-  // is "up-to-date" (get latest fast-forwarded, then there was nothing to send), so the
+  // is "up-to-date" (the pass got the latest first, then there was nothing to send), so the
   // file-change signal is separate from the user-facing merge/backup copy.
   function onSyncCompleted(mergedRemoteChanges: boolean, filesChanged = mergedRemoteChanges) {
     toast?.success(
@@ -980,7 +979,7 @@
         : "Backed up — your changes are in the online copy.",
     );
     // Backing up may add new versions to the book's version history (both
-    // sending and getting latest) — refresh the Version history view's list
+    // sending and receiving) — refresh the Version history view's list
     // so new entries appear if it's open.
     activityViewRef?.refreshHistory();
     // If remote changes landed on disk, re-lint immediately (the preview
@@ -3518,8 +3517,6 @@
     {versionsProblem}
     onSwitchBook={(path) => void switchBook(path)}
     onForceSync={() => syncController.handleForceSync()}
-    onGetLatest={() => syncController.handleGetLatest()}
-    gettingLatest={syncController.gettingLatest}
     updatesAvailable={syncController.updatesAvailable}
     onOpenOnlineCopy={openOnlineCopy}
     onOpenSettings={() => openSettings()}

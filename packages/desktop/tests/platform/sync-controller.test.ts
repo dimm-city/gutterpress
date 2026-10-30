@@ -254,7 +254,6 @@ test("combined files -> a sticky toast with a Review button that opens the Probl
   const onReviewCombined = spy<[]>();
   const ctrl = new SyncController({
     syncChanges: () => Promise.reject(new Error("not wired")),
-    getLatest: () => Promise.reject(new Error("not wired")),
     checkUpdates: () => Promise.resolve({ available: false }),
     repair: () => Promise.reject(new Error("not wired")),
     diagnose: () => Promise.resolve(DIAG),
@@ -407,20 +406,21 @@ test("handleRepair: a no-op when no project is open", async () => {
   expect(h.calls).toEqual([]);
 });
 
-// ── Get latest and the "new changes online" prompt ──────────────────────────
+// ── The "new changes online" prompt and Sync ────────────────────────────────
 
-function makeManual(opts: { auto?: boolean; reader?: boolean; available?: boolean; reason?: string; latest?: SyncOutcome | Error } = {}) {
-  const toast = { ...makeToast(), show: spy<[string, string?, number?, { label: string; onClick: () => void }?]>() };
+function makeManual(opts: { auto?: boolean; reader?: boolean; available?: boolean; reason?: string; sync?: SyncOutcome | Error; showless?: boolean } = {}) {
+  const show = spy<[string, string?, number?, { label: string; onClick: () => void }?]>();
+  const toast = { ...makeToast(), ...(opts.showless ? {} : { show }) };
   const onFilesChanged = spy<[]>();
+  const onSyncCompleted = spy<[boolean, boolean]>();
   const checks: string[] = [];
-  const pulls: string[] = [];
+  const syncs: string[] = [];
   const state = { dir: "/proj" as string | null, available: opts.available ?? true, reason: opts.reason };
-  const latest = opts.latest ?? { status: "synced", message: "", mergedRemoteChanges: true, filesChanged: true };
+  const outcome = opts.sync ?? { status: "synced", message: "", mergedRemoteChanges: true, filesChanged: true };
   const ctrl = new SyncController({
-    syncChanges: () => Promise.resolve({ status: "up-to-date", message: "" }),
-    getLatest: (d) => {
-      pulls.push(d);
-      return latest instanceof Error ? Promise.reject(latest) : Promise.resolve(latest);
+    syncChanges: (d) => {
+      syncs.push(d);
+      return outcome instanceof Error ? Promise.reject(outcome) : Promise.resolve(outcome);
     },
     checkUpdates: (d) => {
       checks.push(d);
@@ -430,15 +430,15 @@ function makeManual(opts: { auto?: boolean; reader?: boolean; available?: boolea
     diagnose: () => Promise.resolve(DIAG),
     currentDir: () => state.dir,
     toast: () => toast,
-    onSyncCompleted: () => {},
+    onSyncCompleted: (merged, filesChanged) => onSyncCompleted(merged, filesChanged),
     onFilesChanged: () => onFilesChanged(),
     autoBackup: () => opts.auto ?? false,
     isReader: () => opts.reader ?? false,
   });
-  return { ctrl, toast, onFilesChanged, checks, pulls, state };
+  return { ctrl, toast: toast as typeof toast & { show: typeof show }, onFilesChanged, onSyncCompleted, checks, syncs, state };
 }
 
-test("checkForUpdates: automatic backing up off -> one sticky prompt with a Get latest action", async () => {
+test("checkForUpdates: automatic backing up off -> one sticky prompt with a Sync action", async () => {
   const m = makeManual();
   await m.ctrl.refreshSyncDiag("/proj");
   await m.ctrl.checkForUpdates();
@@ -448,7 +448,36 @@ test("checkForUpdates: automatic backing up off -> one sticky prompt with a Get 
   expect(message).toBe("New changes are online for this book.");
   expect(type).toBe("info");
   expect(duration).toBe(0);
-  expect(action!.label).toBe("Get latest");
+  expect(action!.label).toBe("Sync");
+});
+
+test("checkForUpdates: without a toast action surface the plain toast points at Sync", async () => {
+  const m = makeManual({ showless: true });
+  await m.ctrl.refreshSyncDiag("/proj");
+  await m.ctrl.checkForUpdates();
+  expect(m.toast.info.calls).toEqual([["New changes are online for this book. Use Sync to bring them in."]]);
+});
+
+test("the prompt's Sync action is the full pass: gets the latest, backs up, clears the flag", async () => {
+  const m = makeManual();
+  await m.ctrl.refreshSyncDiag("/proj");
+  await m.ctrl.checkForUpdates();
+  await m.toast.show.calls[0]![3]!.onClick(); // the prompt's action
+  await Promise.resolve();
+  expect(m.syncs).toEqual(["/proj"]);
+  expect(m.ctrl.updatesAvailable).toBe(false);
+  expect(m.ctrl.forceSyncing).toBe(false);
+  expect(m.onSyncCompleted.calls).toEqual([[true, true]]);
+  expect(m.ctrl.backup).toMatchObject({ state: "synced" });
+});
+
+test("checkForUpdates: stays quiet while a Sync is in flight", async () => {
+  const m = makeManual();
+  await m.ctrl.refreshSyncDiag("/proj");
+  const before = m.checks.length;
+  m.ctrl.forceSyncing = true;
+  await m.ctrl.checkForUpdates();
+  expect(m.checks.length).toBe(before);
 });
 
 test("checkForUpdates: automatic backing up on never checks (it gets changes on its own)", async () => {
@@ -480,45 +509,6 @@ test("checkForUpdates: a check that couldn't tell (offline/auth) stays quiet", a
   expect(m.ctrl.updatesAvailable).toBe(false);
   expect(m.toast.show.calls).toEqual([]);
   expect(m.toast.error.calls).toEqual([]);
-});
-
-test("handleGetLatest: merges, reloads the files, clears the flag, toasts success", async () => {
-  const m = makeManual();
-  await m.ctrl.refreshSyncDiag("/proj");
-  await m.ctrl.checkForUpdates();
-  await m.toast.show.calls[0]![3]!.onClick(); // the prompt's action
-  await Promise.resolve();
-  expect(m.pulls).toEqual(["/proj"]);
-  expect(m.ctrl.updatesAvailable).toBe(false);
-  expect(m.ctrl.gettingLatest).toBe(false);
-  expect(m.onFilesChanged.calls).toHaveLength(1);
-  expect(m.toast.success.calls).toEqual([["Got the latest changes from the online copy."]]);
-});
-
-test("handleGetLatest: this computer's own versions still unsent -> the status reads 'unsent'", async () => {
-  const m = makeManual({ latest: { status: "up-to-date", message: "", pushDeferred: true } as SyncOutcome });
-  await m.ctrl.handleGetLatest();
-  expect(m.ctrl.backup).toMatchObject({ state: "unsent" });
-});
-
-test("handleGetLatest: everything already online -> the status reads 'synced'", async () => {
-  const m = makeManual({ latest: { status: "up-to-date", message: "" } });
-  await m.ctrl.handleGetLatest();
-  expect(m.ctrl.backup).toMatchObject({ state: "synced" });
-});
-
-test("handleGetLatest: nothing new -> info toast, no reload", async () => {
-  const m = makeManual({ latest: { status: "up-to-date", message: "" } });
-  await m.ctrl.handleGetLatest();
-  expect(m.onFilesChanged.calls).toEqual([]);
-  expect(m.toast.info.calls).toEqual([["Already up to date — nothing new online."]]);
-});
-
-test("handleGetLatest: a thrown call toasts the fixed failure and clears gettingLatest", async () => {
-  const m = makeManual({ latest: new Error("net down") });
-  await m.ctrl.handleGetLatest();
-  expect(m.toast.error.calls[0]![0]).toContain("Couldn't get the latest changes");
-  expect(m.ctrl.gettingLatest).toBe(false);
 });
 
 test("watchForUpdates: checks on focus and stops after cleanup", async () => {
@@ -565,7 +555,7 @@ test("applyStatus: another book's event is ignored, and so is the old book's aft
   expect(h.ctrl.backup).toBeNull();
 });
 
-test("the newer of the stream and the last manual Back up now wins", async () => {
+test("the newer of the stream and the last manual Sync wins", async () => {
   const h = make();
   h.ctrl.applyStatus(status({ state: "unsent" }));
   await new Promise((r) => setTimeout(r, 5));
