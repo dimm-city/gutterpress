@@ -29,16 +29,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   hyphenation follows (every book hyphenated as English before), and the
   quotation marks straight quotes print as follow it: „…“ in German, «…» in
   French, Spanish, Italian and Russian, and so on.
-- **An example paper**, `examples/academic-paper`: a peer-review-style
-  article about Gutterpress itself, from Markdown alone, with numbered
-  equations, figures, tables, footnotes and linked references. It covers how
-  CSS Paged Media is compiled on an unmodified Chromium (the three synthesis
-  tiers, the `/Dests` measurement channel, predict-then-verify), how the
-  preview and the PDF are held to the same pages, and the geometry behind
-  the print checks (page boxes, bleed, signature padding, ink coverage,
-  effective resolution), with a worked LaTeX demonstration and fresh
-  measurements of the parity gate over the corpus. Its figures are
-  hand-written SVG.
+- **An example paper**, `examples/academic-paper`: a complete, genuine
+  research article with numbered equations, a theorem and proof, a figure,
+  tables, a listing, footnotes and linked references, from Markdown alone.
 - **The page's own numbers, as `--gp-page-*` (#454).** A look or a book's
   stylesheet reads `--gp-page-width`, `--gp-page-height`, `--gp-page-bleed`,
   `--gp-page-safe`, `--gp-page-gutter`, `--gp-page-art-safe` and
@@ -376,6 +369,15 @@ This project follows [Semantic Versioning](https://semver.org/).
   `remote/refresh-copies` routes are replaced by `vcs/list-revisions` (with
   `refresh`), `vcs/create-revision`, `vcs/rename-revision` and
   `vcs/delete-revision`.
+- **The example paper is now about Gutterpress.** `examples/academic-paper`
+  is a peer-review-style article on how the system compiles CSS Paged Media on
+  an unmodified Chromium (the three synthesis tiers, the `/Dests` measurement
+  channel, predict-then-verify), how the preview and the PDF are held to the
+  same pages, and the geometry behind the print checks (page boxes, bleed,
+  signature padding, ink coverage, effective resolution), with a worked LaTeX
+  demonstration and fresh measurements of the parity gate over the corpus. Its
+  figures are hand-written SVG; the Romberg sample paper and its matplotlib
+  script are gone.
 
 ### Fixed
 
