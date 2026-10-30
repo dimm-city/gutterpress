@@ -407,6 +407,16 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **A formula ending a line no longer shrinks the print (#469).** The hidden
   MathML copy screen readers read is held to its formula's box, so a wider math
   font can't push it past the column and make Chromium scale the whole PDF down.
+- **Justified text no longer shrinks the print (#470).** A justified line split
+  by emphasis, a link or inline code can end a fraction of a pixel past the
+  column, and Chromium scaled the whole PDF down to fit it: the example paper,
+  the user guide and the design guide printed at 99.995%, their lines laid out
+  a pixel longer than the preview's and the last letter of each full line cut
+  at the column's edge, so a page break could fall differently. The build
+  holds that overflow to the page content box, where print already clips
+  (unless a page is wider than the first, such as a full-bleed plate after
+  margined pages), and now warns whenever a PDF comes out scaled at all,
+  naming what reaches past the column.
 
 ## [0.11.22] - 2026-10-23
 
