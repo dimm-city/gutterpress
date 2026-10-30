@@ -98,15 +98,15 @@ describe("POST /api/vcs/switch-branch", () => {
     });
 
     const res = await vcsSwitchBranch({
-      request: request({ projectDir: "/abs/project", branch: "second-copy" }),
+      request: request({ projectDir: "/abs/project", branch: "second-revision" }),
     } as never);
     expect(await res.json()).toEqual({
-      current: "second-copy",
+      current: "second-revision",
       changedFiles: ["/abs/project/chapter-01.md", "/abs/project/chapter-02.md"],
     });
     expect(order).toEqual([
       "pause(/abs/project)",
-      "switchBranch(second-copy)",
+      "switchBranch(second-revision)",
       "resume(/abs/project)",
     ]);
     expect(recoveryCleared.sort()).toEqual(
@@ -132,7 +132,7 @@ describe("POST /api/vcs/switch-branch", () => {
     });
 
     const { status } = await caught(
-      vcsSwitchBranch({ request: request({ projectDir: "/abs/project", branch: "second-copy" }) } as never),
+      vcsSwitchBranch({ request: request({ projectDir: "/abs/project", branch: "second-revision" }) } as never),
     );
     expect(status).toBe(422); // the lib's own friendly message passes through
     expect(order).toEqual(["pause(/abs/project)", "switchBranch:throw", "resume(/abs/project)"]);
@@ -149,25 +149,25 @@ describe("POST /api/vcs/switch-branch", () => {
     });
     fakeLib({
       switchBranch: async () => ({
-        current: "second-copy",
+        current: "second-revision",
         changedFiles: ["/abs/project/chapter-01.md"],
       }),
     });
     const res = await vcsSwitchBranch({
-      request: request({ projectDir: "/abs/project", branch: "second-copy" }),
+      request: request({ projectDir: "/abs/project", branch: "second-revision" }),
     } as never);
     expect(await res.json()).toEqual({
-      current: "second-copy",
+      current: "second-revision",
       changedFiles: ["/abs/project/chapter-01.md"],
     });
   });
 
   test("works without pauseTimers/resumeTimers (optional hooks)", async () => {
     openProject();
-    fakeLib({ switchBranch: async () => ({ current: "second-copy", changedFiles: [] }) });
+    fakeLib({ switchBranch: async () => ({ current: "second-revision", changedFiles: [] }) });
     const res = await vcsSwitchBranch({
-      request: request({ projectDir: "/abs/project", branch: "second-copy" }),
+      request: request({ projectDir: "/abs/project", branch: "second-revision" }),
     } as never);
-    expect(await res.json()).toEqual({ current: "second-copy", changedFiles: [] });
+    expect(await res.json()).toEqual({ current: "second-revision", changedFiles: [] });
   });
 });

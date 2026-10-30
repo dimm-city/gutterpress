@@ -76,7 +76,7 @@ gutterpress ext remove clean-book ./my-book    # or drop the entry
 The desktop app's **Book setup &rarr; Extensions** tab is the same list,
 looks and features together: add a look, move entries up or down, switch one
 off, or remove it. There is no separate apply or revert step --- a look is
-just an entry, and the snapshot history versions the manifest change like any
+just an entry, and version history records the manifest change like any
 other edit. The **Look** tab adjusts six of the settings of the look you have
 switched on, and **Advanced** shows every one; both save your changes to
 `styles/book.css`, and the looks themselves are never edited.
