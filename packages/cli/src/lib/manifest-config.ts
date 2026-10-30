@@ -22,6 +22,7 @@ import {
 } from "./manifest-doc";
 import { TARGETS, TARGET_IDS } from "./targets";
 import { UsageError } from "./cli-args";
+import { rewriteOldThresholds } from "./manifest-old-spellings";
 
 /** The author-facing manifest subset the Config view can read + write. */
 export interface ProjectConfigFields {
@@ -48,13 +49,16 @@ function hasKey(obj: object, key: PropertyKey): boolean {
  * Only the keys present in `updates` are written; everything else is left
  * untouched (so unrelated comments + sections survive). `sourceFiles: null`
  * deletes the `chapters` entry (back to "all chapter files"). Either way an
- * older book's `source.files` is taken out, so the list has one spelling.
+ * older book's `source.files` is taken out, so the list has one spelling, and
+ * the thresholds it spells the 0.11.22 way are written as their checks'
+ * options (`rewriteOldThresholds`).
  */
 export async function setManifestFields(
   projectDir: string,
   updates: ProjectConfigFields,
 ): Promise<ProjectConfigFields> {
   const { doc, file } = await loadManifestDoc(projectDir);
+  rewriteOldThresholds(doc);
 
   if (hasKey(updates, "title")) {
     if (updates.title === undefined || updates.title === "") {

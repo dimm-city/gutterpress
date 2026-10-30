@@ -188,11 +188,14 @@ describe("new command — preset choice (ADR 0008)", () => {
         "612",
         "--page-height",
         "792",
+        "--page-tolerance",
+        "1.5",
       ],
     });
 
     expect(captured?.preset).toBe("custom");
-    expect(captured?.customPage).toEqual({ width: 612, height: 792 });
+    // --page-tolerance is back (#483): the page-size check's tolerance option.
+    expect(captured?.customPage).toEqual({ width: 612, height: 792, tolerance: 1.5 });
   });
 
   test("a non-numeric --page-width errors (exit 2) before scaffoldProject is called", async () => {
@@ -410,6 +413,21 @@ describe("new command — --kind dispatch", () => {
     }
   );
 
+  test("--kind theme, 0.11.22's word, makes a look (#483)", async () => {
+    consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+    stubScaffold(async () => fakeResult());
+    let captured: ScaffoldExtensionOptions | undefined;
+    stubExtensionScaffold(async (opts) => {
+      captured = opts;
+      return fakeExtensionResult({ kind: "look" });
+    });
+
+    await runCommand(newCommand, { rawArgs: ["House Style", "--kind", "theme", "--dir", path.join("/tmp", "parent")] });
+
+    expect(captured).toMatchObject({ name: "House Style", kind: "look" });
+    expect(scaffoldSpy).not.toHaveBeenCalled();
+  });
+
   test("no --kind still scaffolds a book", async () => {
     consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
     stubExtensionScaffold(async () => fakeExtensionResult());
@@ -435,7 +453,7 @@ describe("new command — --kind dispatch", () => {
     expect(extensionSpy).not.toHaveBeenCalled();
   });
 
-  test.each(["--preset", "--template", "--page-width", "--targets"] as const)(
+  test.each(["--preset", "--template", "--page-width", "--page-tolerance", "--targets"] as const)(
     "%s is REJECTED for an extension rather than silently ignored",
     async (flag) => {
       stubExit();

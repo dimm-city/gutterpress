@@ -9,8 +9,8 @@ import { UsageError } from "./cli-args";
  *
  * Geometry, build and print values are overridable from the manifest, leaf
  * by leaf (resolveConfig's mergeShape; precedence cli > manifest > target >
- * preset). The check thresholds (`ink`, `validate`) are the preset's and the
- * target's alone; a book changes a check's level in `checks:`.
+ * preset). The check thresholds (`ink`, `validate`, `page.tolerance`) are
+ * overridden in the check's own `checks:` entry (lib/check-options.ts).
  */
 export interface VendorPreset extends Omit<ResolvedConfig, "title" | "authors" | "language" | "preset" | "targets" | "page"> {
   /** This preset's id: what the manifest's `preset:` names and a resolved config reports. */
@@ -147,6 +147,7 @@ export const DTRPG_PRESET: VendorPreset = {
   validate: {
     assets: {
       maxImageSize: 10_000_000,
+      approvedFontFiles: [],
     },
     pdf: {
       // CONVENTION: 300 dpi is the common print minimum; DriveThru's quick
@@ -238,6 +239,7 @@ export const BOOK_PRESET: VendorPreset = {
   validate: {
     assets: {
       maxImageSize: 10_000_000,
+      approvedFontFiles: [],
     },
     pdf: {
       minImageResolution: 300,

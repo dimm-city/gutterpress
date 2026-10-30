@@ -123,6 +123,27 @@ describe("manifest-config", () => {
     });
 
 
+    test("writes an older book's thresholds as their checks' options, the way it moves source.files (#483)", async () => {
+      const dir = projectDir();
+      writeManifest(
+        dir,
+        ["title: Old", "ink:", "  maxTac: 300", "validate:", "  assets:", "    approvedFontFiles: [fonts/*.otf]", ""].join("\n"),
+      );
+
+      await setManifestFields(dir, { title: "New" });
+      expect(readManifest(dir)).toBe(
+        [
+          "title: New",
+          "checks:",
+          "  pdf.print.ink-coverage:",
+          "    maxTac: 300",
+          "  asset.font.approved-files:",
+          "    approvedFontFiles: [ fonts/*.otf ]",
+          "",
+        ].join("\n"),
+      );
+    });
+
     test("writes chapters, takes out an older book's source.files, and leaves sibling keys untouched", async () => {
       const dir = projectDir();
       writeManifest(

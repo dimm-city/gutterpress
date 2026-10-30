@@ -35,10 +35,19 @@ export interface ProjectStyle {
 const STYLES_SUBDIR = "styles";
 
 /**
- * The conventional stylesheet, used when a project has no manifest `styles:`:
- * `styles/book.css` is what `gutterpress new` and "set up as a book" scaffold.
+ * Conventional single-stylesheet locations, in priority order, used when a
+ * project has no manifest `styles:`. `styles/book.css` is what `gutterpress new`
+ * and "set up as a book" scaffold; the `css/*` names are the older convention,
+ * which a project from before `styles/book.css` still relies on: its
+ * `css/print.css` wins over an `css/extra.css` that sorts first (#483).
  */
-const DEFAULT_STYLESHEET = "styles/book.css";
+const FALLBACK_PRIORITY = [
+  "styles/book.css",
+  "css/print.css",
+  "css/index.css",
+  "css/style.css",
+  "css/main.css",
+];
 
 /** Project-relative, forward-slash display path for an absolute css path. */
 export function relDisplay(projectDir: string, absPath: string): string {
@@ -91,7 +100,8 @@ async function discoverCssFiles(projectDir: string): Promise<string[]> {
  * BOTH the renderer (to `<link>` them) and the editor (to edit them), so they
  * can never disagree. Returns project-relative paths:
  *   1. the manifest `styles:` list, if it has any entries; else
- *   2. `styles/book.css`, when the project has it; else
+ *   2. the first conventional stylesheet the project actually has
+ *      (`FALLBACK_PRIORITY`); else
  *   3. the first discovered `.css` anywhere we scan (deterministic); else
  *   4. `[]` — the project has no stylesheet (an honest empty, never a phantom
  *      link to a missing file).
@@ -110,7 +120,9 @@ export async function resolveActiveStyles(
   const manifest = configured.filter((s) => typeof s === "string" && s.trim().length > 0);
   if (manifest.length > 0) return manifest;
 
-  if (existsSync(path.join(projectDir, DEFAULT_STYLESHEET))) return [DEFAULT_STYLESHEET];
+  for (const rel of FALLBACK_PRIORITY) {
+    if (existsSync(path.join(projectDir, rel))) return [rel];
+  }
 
   const discovered = await discoverCssFiles(projectDir);
   if (discovered.length > 0) {

@@ -11,6 +11,40 @@ type CheckSeverity = "error" | "warning" | "info";
 export type CheckLevelInput = "off" | "on" | "info" | "warn" | "warning" | "error" | boolean;
 
 /**
+ * A `checks:` entry that also sets options: the numbers or the list a check
+ * measures against, which the preset and the publish target otherwise set
+ * (`lib/check-options.ts` lists which check takes which). `level` is optional;
+ * left out, the check keeps the level the preset and target give it.
+ *
+ *   checks:
+ *     pdf.print.ink-coverage: { maxTac: 300 }
+ *     pdf.print.image-resolution: { level: error, minImageResolution: 200 }
+ */
+export interface CheckEntry {
+  level?: CheckLevelInput;
+  /** `pdf.print.ink-coverage`: the total ink limit in percent (and what a PDF/X build holds the ink to). */
+  maxTac?: number;
+  /** `pdf.print.ink-coverage`: how far over `maxTac` a page may measure before it is reported. */
+  tacTolerance?: number;
+  /** `pdf.print.page-size`: how far (pt) the built PDF's page may differ from the manifest's size. */
+  tolerance?: number;
+  /** `pdf.print.image-resolution`: the lowest DPI a placed image may print at; 0 = no floor. */
+  minImageResolution?: number;
+  /** `pdf.print.bleed`: the bleed (pt) each side must have. */
+  bleedSize?: number;
+  /** `asset.image.file-size`: the largest image file in bytes; 0 = no limit. */
+  maxImageSize?: number;
+  /** `asset.font.approved-files`: the font files a book may ship (glob patterns, relative to the book); empty = any. */
+  approvedFontFiles?: string[];
+  /** `heuristic.decoration.layer-count`: the most decorative layers on one page. */
+  maxDecorativeLayers?: number;
+  /** `heuristic.whitespace.text-density`: the characters a page should carry. */
+  textDensityRange?: { min?: number; max?: number };
+  /** `heuristic.chunking.section-density`: the most paragraphs in one section. */
+  maxParagraphsPerSection?: number;
+}
+
+/**
  * A check's resolved level: `off`, `on` (runs at its own severity) or the
  * severity every finding is reported at.
  */
@@ -166,9 +200,10 @@ export interface GutterpressManifest {
   /**
    * Per-check and per-rule levels, keyed by a check id
    * (`pdf.print.image-resolution`) or a lint rule id
-   * (`printsafe/no-risky-print-effects`). A key that names nothing is ignored.
+   * (`printsafe/no-risky-print-effects`), and the options a check takes
+   * ({@link CheckEntry}). A key that names nothing is ignored.
    */
-  checks?: Record<string, CheckLevelInput>;
+  checks?: Record<string, CheckLevelInput | CheckEntry>;
   pdfx?: {
     flavor?: "x1a" | "x3";
     icc?: string;
@@ -347,7 +382,7 @@ export interface ResolvedConfig {
   page: {
     width: number;
     height: number;
-    /** Allowed deviation (pt) of a built PDF's page size; the preset's, never the manifest's. */
+    /** Allowed deviation (pt) of a built PDF's page size: the preset's, or `checks.pdf.print.page-size.tolerance`. */
     tolerance: number;
     /** In-sheet bleed in pt (top, bottom, outer edge; see the manifest field); absent = none. */
     bleed?: number;
@@ -365,15 +400,16 @@ export interface ResolvedConfig {
     tacTolerance: number;
   };
   /**
-   * The numbers the checks measure against. They come from the preset and
-   * the publish target (a printer's specification), not from the manifest:
-   * a book switches a check off, or changes how loudly it reports, in
-   * `checks:`.
+   * The numbers the checks measure against: the preset's and the publish
+   * target's (a printer's specification), overridden by a book's
+   * `checks.<id>` options ({@link CheckEntry}). `ink` above too.
    */
   validate: {
     assets: {
       /** Largest image file in bytes; 0 = no limit. */
       maxImageSize: number;
+      /** Glob patterns of the font files a book may ship; empty = any (`asset.font.approved-files`). */
+      approvedFontFiles: string[];
     };
     pdf: {
       /** Lowest effective image resolution in DPI; 0 = no floor. */

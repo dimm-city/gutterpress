@@ -363,6 +363,23 @@ export function assembleCssChunks(opts: {
 }
 
 /**
+ * A link an author wrote to a footnote in 0.11.22 (`[see note 1](#fn1)`,
+ * `#fnref1`) names the id markdown-it-footnote gave before each file's notes
+ * got their own (`fn-<file>-1`, the `docId` in {@link assembleBookHtml}). Such
+ * a link goes where it went in 0.11.22: to the first note (or reference) with
+ * that number in reading order, the element `#fn1` found then. It is left as
+ * written when the book has an element with that very id of its own, or no
+ * note with that number (it dangled in 0.11.22 too).
+ */
+function resolveOldFootnoteLinks(html: string, ids: ReadonlyMap<string, string>): string {
+  if (ids.size === 0) return html;
+  return html.replace(/ href=(["'])#(fn(?:ref)?\d+(?::\d+)?)\1/g, (link, quote: string, old: string) => {
+    const id = ids.get(old);
+    return id && !html.includes(` id="${old}"`) ? ` href=${quote}#${id}${quote}` : link;
+  });
+}
+
+/**
  * Assemble a single `book.html` string from the given markdown files.
  *
  * Pure: every input (the file list, their contents via `readText`, the resolved
@@ -390,6 +407,8 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   // chapter wrappers and IDs; the preview wrapper is internal-only.
   let bodyContent = "";
   const imageRefs = new Set<string>();
+  /** 0.11.22's footnote ids (`fn1`, `fnref1`) -> the first file's own (`fn-<file>-1`); see resolveOldFootnoteLinks. */
+  const oldFootnoteIds = new Map<string, string>();
   for (const file of files) {
     // ONE canonical identity per chapter (see chapter-id.ts): the same
     // normalized string is used to resolve the file AND as the data-chapter-src
@@ -427,8 +446,12 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
       opts.onChapterWarnings?.(chapterId, env.layoutWarnings);
     }
     for (const ref of env.imageRefs ?? []) imageRefs.add(ref);
+    for (const [, kind, n] of rendered.matchAll(new RegExp(` id="(fn|fnref)-${env.docId}-(\\d+(?::\\d+)?)"`, "g"))) {
+      if (!oldFootnoteIds.has(`${kind}${n}`)) oldFootnoteIds.set(`${kind}${n}`, `${kind}-${env.docId}-${n}`);
+    }
     bodyContent += rendered + "\n";
   }
+  bodyContent = resolveOldFootnoteLinks(bodyContent, oldFootnoteIds);
 
   // Raw HTML <img> (author-written or plugin-emitted) never passes through the
   // markdown image rule, so scan the assembled body for it too.

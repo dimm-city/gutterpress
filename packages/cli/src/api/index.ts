@@ -167,6 +167,7 @@ export {
   listBundledExtensions,
   sameExtension,
   EXTENSIONS_DIR,
+  PLUGINS_DIR,
 } from "../lib/extension-manager.ts";
 export type {
   ProjectExtensionEntry,
@@ -181,6 +182,7 @@ export type {
 } from "../lib/extension-manager.ts";
 export {
   BUNDLED_EXTENSIONS,
+  BUNDLED_EXTENSION_DETAILS,
   bundledExtension,
   isBundledExtension,
   isPathSpecifier,

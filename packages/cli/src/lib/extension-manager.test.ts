@@ -21,7 +21,7 @@ import {
   validateProjectExtensions,
   EXTENSIONS_DIR,
 } from "./extension-manager";
-import { BUNDLED_EXTENSIONS } from "./extension-specifier";
+import { BUNDLED_EXTENSION_DETAILS } from "./extension-specifier";
 
 const TMP_ROOT = join(process.cwd(), ".tmp", `extension-manager-tests-${Date.now()}`);
 let counter = 0;
@@ -267,10 +267,18 @@ describe("extension-manager", () => {
     });
   });
 
+  test("the library still exports 0.11.22's PLUGINS_DIR, as EXTENSIONS_DIR's other name, and BUNDLED_EXTENSIONS as names (#483)", async () => {
+    const lib = await import("../api/index.ts");
+    expect(lib.PLUGINS_DIR).toBe(lib.EXTENSIONS_DIR);
+    expect(lib.PLUGINS_DIR).toBe("extensions");
+    expect(lib.BUNDLED_EXTENSIONS.includes("markdown-it-mark")).toBe(true);
+    expect(lib.BUNDLED_EXTENSION_DETAILS.find((b) => b.name === "zine")?.label).toBe("Zine");
+  });
+
   describe("bundled looks", () => {
     test("listBundledExtensions lists every bundled name in table order and flags the looks", async () => {
       const listed = await listBundledExtensions();
-      expect(listed.map((b) => b.use)).toEqual(BUNDLED_EXTENSIONS.map((b) => b.name));
+      expect(listed.map((b) => b.use)).toEqual(BUNDLED_EXTENSION_DETAILS.map((b) => b.name));
       expect(listed.filter((b) => b.look).map((b) => b.use)).toEqual(["clean-book", "zine", "technical-doc", "academic"]);
       for (const b of listed) {
         expect(b.label.length).toBeGreaterThan(0);

@@ -18,7 +18,7 @@ import type { LayoutWarning } from "./assemble";
  *
  * Bundled, OPT-IN markdown feature (`gutterpress-math` in
  * `BUILTIN_OPTIONAL_PLUGINS`, renderer.ts; "Math" in
- * `BUNDLED_EXTENSIONS`, extension-specifier.ts), exactly like the Callouts
+ * `BUNDLED_EXTENSION_DETAILS`, extension-specifier.ts), exactly like the Callouts
  * feature: a book that never lists it renders `$` as the character it is.
  *
  * WHY SVG. Each formula is written as a drawing of its own glyphs, so the
