@@ -16,10 +16,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   (the renamed Versions view, with Save a version at the top), manages
   revisions (switch, new, rename, delete: separate lines of work in the same
   book, each saying whether it is also in the online copy), and, collapsed, the
-  tools for when backing up keeps failing. Readers see no status control, Get
-  latest, Back up now or online toasts. Nothing an author reads says commit,
-  branch, push, pull, merge, remote, repository, snapshot, sync or clone any
-  more; Help no longer describes the removed conflict model, and the two sides
+  tools for when backing up keeps failing. Readers see no status control, Sync
+  button or online toasts. Nothing an author reads says commit, branch, push,
+  pull, merge, remote, repository, snapshot or clone any more (the one manual
+  button is **Sync**); Help no longer describes the removed conflict model, and the two sides
   of an overlapping passage are "two takes". Settings' switch is now **Keep
   version history**, and crash recovery's button is **Recover**.
 - **Honest backup status, and Readers only ever get the latest (#448).**
@@ -34,6 +34,18 @@ This project follows [Semantic Versioning](https://semver.org/).
   online copy can't be reached or has versions this computer lacks; deleting a
   revision whose versions are found nowhere else asks a second time with the
   count.
+- **Online copy refinements (#448).** Version history opens inside Book setup
+  → Online copy instead of taking over the editor (Look at this version still
+  closes Setup and compares in the preview). The revisions list puts the open
+  revision first, filters with **Find a revision** past five revisions, scrolls
+  in its own box, and has **New revision…** above it; an **Only online**
+  revision can now be deleted from the online copy (refused, changing nothing,
+  when it changed online since the list was checked). **Sign in again** sits
+  under **Test connection**. With automatic backing up off, one **Sync** button
+  (Setup → Online copy: **Sync now**; the new-changes toast: **Sync**) replaces
+  Back up now and Get latest; it runs the same backing up as before, which gets
+  the latest first. The status control and Sync sit on the left of the status
+  bar, after the book switcher.
 - **History messages follow the vocabulary (#448).** New versions record
   "Automatic version", "First version", "Saved a version", "Automatic version
   before backing up", "Automatic version before restoring", "Saved before

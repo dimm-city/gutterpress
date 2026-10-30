@@ -19,7 +19,7 @@ function markup(rel: string): string {
 
 // Never shown to an Author. Three exceptions: "(GitHub calls it a repository)" where the author acts on
 // github.com, the command pasted into their own Git tool, and the Sync button's own words (the contract's
-// **Sync** row): its labels and tooltips, and Help naming the button.
+// **Sync** row): its labels and tooltips, and prose naming the button.
 const BANNED = [
   /\b(commits?|branch(es)?|push(ed|ing)?|pull(ed|ing)?|merge[ds]?|remote|repositor(y|ies)|snapshots?|sync(ing|ed)?|clone[ds]?|online backups?|previous versions|reconnect(ing)?)\b/gi,
   /\bHEAD\b/g,
@@ -27,14 +27,14 @@ const BANNED = [
 const EXCEPTIONS = [
   /GitHub calls it a repository/g,
   /<code>git remote set-url origin https:\/\/…<\/code>/g,
-  // The Sync button: "Sync" / "Sync now" / "Syncing…", the tooltips, and Help's <em>Sync</em>.
+  // The Sync button: "Sync" / "Sync now" / "Syncing…", the tooltips, and prose naming it (<em>/<strong>Sync</strong>).
   /"Sync now"/g,
   /"Syncing…"/g,
   /"Sync"/g,
   /"Sync — new changes are online: get them, then back up yours"/g,
   /"Sync: get the latest changes from the online copy, then back up yours"/g,
   /"Sync — new changes are online"/g,
-  /<em>Sync<\/em>/g,
+  /<(em|strong)>Sync<\/\1>/g,
 ];
 
 /** The banned words a component draws. */

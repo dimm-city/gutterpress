@@ -238,10 +238,11 @@ await screen("online-copy", async () => {
   await click(".status-control");
   await wait(2000);
 }, { crop: SETTINGS, width: 960 });
+// Version history opens inside Online copy, in place of the tab's content.
 await screen("version-history", async () => {
   await click("button:has-text('Version history')");
   await wait(2000);
-}, { width: 1200 });
+}, { crop: SETTINGS, width: 960 });
 
 await app.close();
 rmSync(work, { recursive: true, force: true });

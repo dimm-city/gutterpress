@@ -16,10 +16,10 @@
    *                         never typed.
    *        ready          — access is set up. What it says about the last
    *                         backup comes from the host's last status (live,
-   *                         the sync controller's `backup`) or a Back up now
+   *                         the sync controller's `backup`) or a Sync now
    *                         run here (`readyView`), never from the setup
-   *                         alone. Back up now / Try again run the page's
-   *                         Back up now (`onBackUpNow`); a rejected sign-in
+   *                         alone. Sync now / Try again run the page's
+   *                         Sync (`onBackUpNow`); a rejected sign-in
    *                         gets the sign-in step again.
    *        own-tools      — an SSH (or other non-https) address.
    *      Then one line about this computer ("Saved · last version 10 minutes
@@ -76,7 +76,7 @@
     toast = null,
   }: {
     projectDir: string | null;
-    /** The online copy's last word for this book: the host's status stream or the last Back up now. */
+    /** The online copy's last word for this book: the host's status stream or the last Sync. */
     backup?: LastBackup | null;
     /** Automatic versions keep failing, and why (the host said so). */
     versionsProblem?: { message: string | null } | null;
@@ -86,7 +86,7 @@
     onBackupSetUp?: (projectDir: string) => void;
     /** Another revision was just opened, made or renamed: the files under `projectDir` changed under the open editor. */
     onProjectFilesChanged?: () => void;
-    /** Back up now: the page's own backup (its toasts and editor refresh). */
+    /** Sync now: the page's own pass, which gets the latest then backs up (its toasts and editor refresh). */
     onBackUpNow?: () => Promise<void>;
     /** Repair the online copy: the page's repair (its toasts and editor refresh). */
     onRepair?: () => Promise<void>;
@@ -305,7 +305,7 @@
       return null;
     });
 
-  // The page's Back up now, run from here; the sync controller's `backup` is the headline.
+  // The page's Sync, run from here; the sync controller's `backup` is the headline.
   const backUpNow = () =>
     act(async (dir) => {
       running = "back-up";
@@ -514,7 +514,7 @@
       <p class="hint">{ready.detail}</p>
       {#if ready.action === "back-up" || ready.action === "try-again"}
         <button class="app-btn-primary" onclick={backUpNow} disabled={busy}>
-          {running === "back-up" ? "Backing up…" : ready.action === "try-again" ? "Try again" : "Sync now"}
+          {running === "back-up" ? "Syncing…" : ready.action === "try-again" ? "Try again" : "Sync now"}
         </button>
       {:else if ready.action === "sign-in"}
         {#if diag.provider === "github"}

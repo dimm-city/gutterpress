@@ -7,7 +7,8 @@ description: How Gutterpress saves your edits, keeps a version history you can g
 
 ## The status control
 
-The status bar has one status control. It shows whether your edits are saved and where the book
+The status bar has one status control, on the left after the book switcher. It shows whether your
+edits are saved and where the book
 stands in its online copy: **Saving…**, **Saved on this computer**, **Saved · Backed up**,
 **Saved · Backing up…**, **Saved · Not backed up yet**, **Saved · Offline — backs up when you're
 back**, **Saved · Sign in to back up**, **Saved · Backing up paused**, **Unsaved changes**,
@@ -19,24 +20,24 @@ in one line where the book is kept and offers the one next step. Under it, **Sav
 version 10 mins ago** has two buttons:
 
 - **Save a version** keeps the book as it is now, so you can go back to it.
-- **Version history…** lists every version.
+- **Version history…** lists every version, in the same place (**‹ Online copy** goes back).
 
 If the book is a plain folder, the tab offers **Turn on version history** instead. **Save now**
 stays on Ctrl+S (Cmd+S on a Mac) and the editor's Save button.
 
 ## See what each version changed
 
-Click the status control, then **Version history…**, to open **Version history**. **Save a
-version** is at the top of it too. Each version shows when it was made and what it changed: a
+Click the status control, then **Version history…**, to open **Version history** inside **Setup →
+Online copy**. **Save a version** is at the top of it too, and **‹ Online copy** goes back. Each version shows when it was made and what it changed: a
 short list of files with a plain hint, such as `chapter-02.md · 3 paragraphs changed`,
 `styles/book.css · 1 rule changed` or `art/cover.png · replaced`. An automatic version that
 changed nothing says **No changes**. The first version of a book is labelled **First version**.
 When the book has an online copy, each version also says **Backed up** or **Only on this
 computer**.
 
-- **Look at this version** shows that version beside the current book in the preview, on the
-  same page, so you can compare them as they print. Nothing on disk changes. Click **Stop
-  looking** (or the **×** in the preview's bar) to return to the live preview.
+- **Look at this version** closes Setup and shows that version beside the current book in the
+  preview, on the same page, so you can compare them as they print. Nothing on disk changes. Click
+  **Stop looking** (or the **×** in the preview's bar) to return to the live preview.
 - Click a changed file to see **That version** and **Current** side by side, with the lines that
   differ marked. This view is for reading only; go back to the versions list with the
   **Version history** button at the top.
@@ -44,7 +45,8 @@ computer**.
   **That version** and **Current book**.
 - When new changes are in the online copy that this computer has not got, the list starts with
   **In the online copy, not yet on this computer**, showing those versions and their changed
-  files. Use **Get latest** to bring them in.
+  files. They come in on their own while Gutterpress backs up automatically, or when you choose
+  **Sync**.
 
 ## Go back to an earlier version
 
@@ -77,7 +79,7 @@ in one line where the book is kept, and offers the one next step:
   lacks; **Couldn't reach …** when the server can't be reached; or **Couldn't back up to …**
   with the reason. The last two offer **Try again** (when the server no longer accepts the saved
   sign-in, the sign-in step comes back instead). With automatic backing up off, it says so and
-  offers **Back up now**.
+  offers **Sync now**, which gets the latest changes and then backs up yours.
 - **This book's online copy uses an SSH address (git@…).** Gutterpress can't back up over SSH.
   Keep backing up with your usual Git tool, or give the book its https:// address with that tool
   (`git remote set-url origin https://…`) and come back to sign in.
@@ -89,12 +91,16 @@ GitHub and other Git servers can also be signed in to, edited and removed on the
 
 A revision is a separate line of work in the same book: a "Second edition", an "Editor's pass".
 **Setup → Online copy** lists the book's revisions under **Revisions**. Each row has the
-revision's name, says **You're working on this** for the open one, and says where it is kept:
+revision's name, says **You're working on this** for the open one (always first; the rest follow
+by name), and says where it is kept:
 
 - **Online** — on this computer and in the online copy.
 - **Online · not backed up yet** — this computer has versions the online copy hasn't.
 - **Only on this computer** — never backed up.
 - **Only online** — in the online copy, not on this computer yet.
+
+With more than five revisions, a **Find a revision** field above the list narrows it as you type,
+and the list scrolls in its own box.
 
 Each row's buttons:
 
@@ -103,16 +109,18 @@ Each row's buttons:
   only online is made on this computer first.
 - **Rename…** renames it. For an online revision it also renames it in the online copy, right away
   (anyone else working on it keeps the old name until they switch to the new one). If the online
-  copy has versions this computer doesn't, it asks you to **Get latest** first.
+  copy has versions this computer doesn't, it asks you to get the latest changes first.
 - **Delete…** deletes a revision you are not working on. For an online revision you choose
-  **Delete on this computer only** or **Delete everywhere**. If the revision holds versions that
-  are in no other revision and not online, Gutterpress says how many would be lost and asks once
+  **Delete on this computer only** or **Delete everywhere**. A revision that is **Only online** is
+  deleted from the online copy, after you confirm; if it changed online since the list was
+  checked, nothing is deleted and Gutterpress asks you to try again. If the revision holds
+  versions that are in no other revision, Gutterpress says how many would be lost and asks once
   more.
 
-**New revision…** asks for a name (spaces become hyphens), starts the revision from your book as it
-is now (saving any work not in a version yet first), and opens it. It goes online the next time you
-back up. If the online copy can't be checked, the list says so and shows the revisions on this
-computer.
+**New revision…**, above the list, asks for a name (spaces become hyphens), starts the revision
+from your book as it is now (saving any work not in a version yet first), and opens it. It goes
+online the next time you back up. If the online copy can't be checked, the list says so and shows
+the revisions on this computer.
 
 ![Setup → Online copy: where the book is kept, its last version, and its revisions](images/online-copy.jpg)
 
@@ -181,13 +189,13 @@ backing up keeps failing**, with these tools:
 
 - **Test connection** checks that Gutterpress can reach this book's online copy. Nothing is changed
   or uploaded.
+- **Sign in again** opens the [Accounts](10-settings.md#accounts) page, for a book on GitHub.
 - **Repair the online copy** replaces this book's versions with a fresh download from the online
   copy. Your files stay as they are and win; files only the online copy has come back. The old
   versions are kept aside in the app's data folder, then a version is saved and backed up.
 - **Start over from the online copy** is the last resort. It keeps a safety folder with everything
   as it is now, downloads a fresh start from the online copy and puts your files back on top. The
   book closes at the end: open it again and back up.
-- **Sign in again** opens the [Accounts](10-settings.md#accounts) page, for a book on GitHub.
 
 Repair and Start over each ask once more before they run. If GitHub stopped accepting your
 sign-in, use **Sign in again…** beside GitHub on the Accounts page; its **Test sign-in** checks
@@ -196,16 +204,14 @@ the sign-in itself, while **Test connection** here checks this book's online cop
 ### Get and send changes yourself
 
 To get changes from the online copy and send yours only when you choose, turn off **Back up
-online automatically** in Settings. The status bar then shows two buttons next to the status:
+online automatically** in Settings. The status bar then shows a **Sync** button next to the
+status. **Sync** gets the latest changes from the online copy, then backs up yours.
 
-- **Get latest** brings in the changes from the online copy and sends nothing back. Your own edits
-  stay on this computer.
-- **Back up now** gets the latest first, then sends your versions.
-
-**Back up now** is also in **Setup → Online copy**. While automatic backing up is off, Gutterpress
-checks for new changes in the online copy every few minutes and when you come back to the window.
-When it finds some, a message says **New changes are online for this book**, with a **Get
-latest** button. In Reader mode none of this shows: a reader gets the latest changes on their own.
+**Sync now** in **Setup → Online copy** does the same. While automatic backing up is off,
+Gutterpress checks for new changes in the online copy every few minutes and when you come back to
+the window. When it finds some, the **Sync** button is highlighted and a message says **New changes
+are online for this book**, with a **Sync** button. In Reader mode none of this shows: a reader
+gets the latest changes on their own.
 
 ### When your changes and the online copy overlap
 

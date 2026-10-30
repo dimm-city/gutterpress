@@ -12,8 +12,8 @@
    * (VersionCompareView). "Look at this version" asks the page to render the
    * version read-only beside the live preview, which closes Book setup. When
    * the book has an online copy, the top section lists what is in the online
-   * copy and not yet on this computer, so Get latest is no longer a leap of
-   * faith.
+   * copy and not yet on this computer, so getting the latest is no longer a
+   * leap of faith.
    *
    * Restore: the host's `/api/vcs/restore-snapshot` route validates the
    * version id and saves the current state as a version before restoring, so
@@ -241,7 +241,7 @@
 
 <!-- One version row (used at the top level of a day, inside a collapsed
      automatic run, and in the online copy section — `online` rows cannot be
-     restored: Get latest brings them in). -->
+     restored: Sync brings them in). -->
 {#snippet versionRow(entry: VersionEntry, isOnline: boolean)}
   <li>
     <div class="entry-row">
@@ -368,7 +368,7 @@
             {@render versionRow(entry, true)}
           {/each}
         </ul>
-        <p class="muted">Use <strong>Get latest</strong> in the status bar to bring these in.</p>
+        <p class="muted">They come in on their own while Gutterpress backs up automatically, or when you choose <strong>Sync</strong>.</p>
       {/if}
     </section>
   {/if}

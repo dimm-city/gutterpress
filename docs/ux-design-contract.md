@@ -207,8 +207,8 @@ gutterpress/
 │                                                        setting (DesignSection))
 ├── Project source / version history / GitHub  SHIPPED  (#12–#16, the Node-native git layer; AdvancedSetupDialog,
 │                                                        GitHubDialog; the status bar's one status
-│                                                        control, Authors only; Version history view;
-│                                                        #448)
+│                                                        control, Authors only; Version history inside
+│                                                        Book setup → Online copy; #448)
 ├── Media panel                                SHIPPED  (MediaPanel, #47)
 ├── Crash recovery                             SHIPPED  (RecoveryOverlay / CrashRecoveryDialog)
 ├── Settings                                   SHIPPED  (SettingsView: one page in its own sheet,
@@ -494,20 +494,32 @@ buttons.
   paused", "Saved · Not backed up yet", "Couldn't save", "Versions need
   attention" — with a shape (check, cloud, warning, error) carrying the tone, not
   colour alone. Clicking it opens Book setup → Online copy, the one place for
-  versions, revisions and the online copy. With automatic backing up off, Get
-  latest and Back up now stay beside it and "New changes are online for this
-  book." stays a toast with Get latest. A Reader sees none of it: no control, no
+  versions, version history, revisions and the online copy. It sits on the
+  left, after the book switcher. With automatic backing up off, one **Sync**
+  button sits beside it and "New changes are online for this book." stays a
+  toast with Sync. A Reader sees none of it: no control, no
   buttons, no online toasts (a Reader gets the latest changes automatically).
 - **Revisions are SHIPPED in Book setup → Online copy** (#448, which replaced
   #273's switcher in Settings → Saving): the list names each revision, marks
   the one the author is working on, and says where each is kept (Online; Online
-  · not backed up yet; Only on this computer; Only online). Switch (saves a
-  version of in-progress edits first; an online-only revision is made on this
-  computer first), Rename… and Delete… (never the open one) act at once, and
-  say what they do before they do it: an online revision is renamed or deleted
-  in the online copy too, when the author asks, and a revision holding
-  versions found nowhere else asks a second time. New revision… starts from
-  what is open now, switches to it, and goes online with the next backup.
+  · not backed up yet; Only on this computer; Only online). The open revision
+  comes first, then the rest by name; past five revisions a **Find a
+  revision** field filters them, and the list scrolls in its own box after
+  about six rows. **New revision…** sits above the list: it starts from what
+  is open now, switches to it, and goes online with the next backup. Switch
+  (saves a version of in-progress edits first; an online-only revision is
+  made on this computer first), Rename… and Delete… (never the open one) act
+  at once, and say what they do before they do it: an online revision is
+  renamed or deleted in the online copy too, when the author asks; an
+  online-only revision can be deleted from the online copy (refused, changing
+  nothing, when it changed online since the list was checked); and a revision
+  holding versions found nowhere else asks a second time.
+- **Version history is SHIPPED inside Book setup → Online copy** (#448): its
+  **Version history…** button opens the list in place of the tab's content,
+  with a back button; a changed file's compare opens there too. **Look at this
+  version** closes Book setup and shows the version beside the current book
+  in the preview, with the preview's own Stop looking bar. It never takes over
+  the editor pane.
   Author-facing vocabulary says "revision", never "branch"; "copy" means only
   the online copy. The editor/file tree/preview show the new revision the same
   way they pick up any other external change.

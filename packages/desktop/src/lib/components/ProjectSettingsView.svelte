@@ -100,7 +100,7 @@
     onOpenFile?: (path: string) => void;
     /** Close the view — return to the workspace. */
     onClose?: () => void;
-    /** The online copy's last word for this book (the host's stream or the last Back up now). */
+    /** The online copy's last word for this book (the host's stream or the last Sync). */
     backup?: LastBackup | null;
     /** Automatic versions keep failing, and why. */
     versionsProblem?: { message: string | null } | null;
@@ -110,7 +110,7 @@
     onBackupSetUp?: (projectDir: string) => void;
     /** The Online copy tab just switched to, made or renamed a revision: the book's files changed on disk. */
     onProjectFilesChanged?: () => void;
-    /** The Online copy tab's Back up now: the page's backup. */
+    /** The Online copy tab's Sync now: the page's sync. */
     onBackUpNow?: () => Promise<void>;
     /** The Online copy tab's Repair the online copy: the page's repair. */
     onRepair?: () => Promise<void>;
