@@ -17,7 +17,7 @@
  * the Book setup writers use {@link setCheckOption}.
  */
 import { isMap, type Document } from "yaml";
-import type { ResolvedConfig } from "../schema/manifest.types";
+import type { CheckLevelInput, ResolvedConfig } from "../schema/manifest.types";
 import { UsageError } from "./cli-args";
 
 /** What an option's value is: points/bytes/DPI/a count, a `{ min, max }` range, or a list of file patterns. */
@@ -76,22 +76,53 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 }
 
 const isAmount = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
+const isRangeEnd = ([k, v]: [string, unknown]): boolean => (k === "min" || k === "max") && isAmount(v);
+
+/** What a value of each kind must be, as the messages say it. */
+const MUST_BE: Record<OptionKind, string> = {
+  number: "a number, 0 or more",
+  range: "`{ min, max }` (numbers, 0 or more)",
+  patterns: "a list of file patterns",
+};
+
+function fits(kind: OptionKind, value: unknown): boolean {
+  if (kind === "number") return isAmount(value);
+  if (kind === "range") return isPlainObject(value) && Object.entries(value).every(isRangeEnd);
+  return Array.isArray(value) && value.every((p) => typeof p === "string");
+}
 
 /** The value checked against its kind; a usage error names the entry and what it takes. */
 function checked(id: string, option: string, kind: OptionKind, value: unknown): unknown {
-  const where = `Manifest field \`checks.${id}.${option}\``;
-  if (kind === "number") {
-    if (isAmount(value)) return value;
-    throw new UsageError(`${where} must be a number, 0 or more, got ${JSON.stringify(value)}.`);
-  }
-  if (kind === "range") {
-    if (isPlainObject(value) && Object.entries(value).every(([k, v]) => (k === "min" || k === "max") && isAmount(v))) {
-      return value;
-    }
-    throw new UsageError(`${where} must be \`{ min, max }\` (numbers, 0 or more), got ${JSON.stringify(value)}.`);
-  }
-  if (Array.isArray(value) && value.every((p) => typeof p === "string")) return value;
-  throw new UsageError(`${where} must be a list of file patterns, got ${JSON.stringify(value)}.`);
+  if (fits(kind, value)) return value;
+  throw new UsageError(
+    `Manifest field \`checks.${id}.${option}\` must be ${MUST_BE[kind]}, got ${JSON.stringify(value)}.`,
+  );
+}
+
+/** A `checks:` level as a manifest may write it: `off`, `on`, `info`, `warn` (`warning`), `error`, or a boolean. */
+export function isCheckLevelInput(value: unknown): value is CheckLevelInput {
+  return typeof value === "boolean" || ["off", "on", "info", "warn", "warning", "error"].includes(value as string);
+}
+
+/**
+ * A 0.11.22 threshold (`validate.heuristics.maxDecorativeLayers`) read as
+ * the option it became, or undefined when the key was never a threshold.
+ * 0.11.22 passed any value through, and a check given one it could not use
+ * measured nothing, so a value the option cannot take is NOT an error here:
+ * `mustBe` says what it should have been and the caller reports it and
+ * ignores it, and a book that built in 0.11.22 still builds. A range keeps
+ * whichever of `min` and `max` are numbers, as 0.11.22's merge did.
+ */
+export function readOldThreshold(
+  at: string,
+  value: unknown,
+): { id: string; option: string; value?: unknown; mustBe?: string } | undefined {
+  const moved = optionForOldSpelling(at);
+  if (!moved) return undefined;
+  const { kind } = CHECK_OPTIONS[moved.id]![moved.option]!;
+  if (fits(kind, value)) return { ...moved, value };
+  const kept = kind === "range" && isPlainObject(value) ? Object.entries(value).filter(isRangeEnd) : [];
+  return { ...moved, ...(kept.length > 0 ? { value: Object.fromEntries(kept) } : {}), mustBe: MUST_BE[kind] };
 }
 
 /**

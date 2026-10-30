@@ -292,6 +292,9 @@ A manifest written for 0.11.22 spelled these `ink.maxTac`, `ink.tacTolerance`,
 `validate.pdf.bleedSize` and `validate.heuristics.*`. They still work in
 0.11.23: each is read as the option above, and one notice names its new
 spelling. Book setup writes them the new way the next time it saves the book.
+A value the option cannot take, such as a word where a number goes, is named
+in the notice and ignored, as it was in 0.11.22; written as an option of the
+check, the same value stops the build with an error naming it.
 
 The Markdown and HTML linters are opt-in: `source.markdownlint` reads a
 `.markdownlint.yaml` (or `.jsonc`, `.json`, `.yml`) and `source.htmlhint` reads

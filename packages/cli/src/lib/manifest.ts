@@ -19,7 +19,7 @@ import { overlayPreset, publishTargetFor, resolveTargets } from "./targets";
 import { UsageError } from "./cli-args";
 import { TWO_VERSIONS_OPEN } from "./two-versions-markers";
 import { readOldSpellings } from "./manifest-old-spellings";
-import { applyCheckOptions, readCheckOptions } from "./check-options";
+import { applyCheckOptions, isCheckLevelInput, readCheckOptions } from "./check-options";
 
 /**
  * The manifest file name Gutterpress recognizes.
@@ -526,13 +526,14 @@ function resolveWithPreset(
 
 /** A `checks:` value read as a level; anything else is a usage error naming the entry. */
 function checkLevel(id: string, value: unknown): CheckLevel {
+  if (!isCheckLevelInput(value)) {
+    throw new UsageError(
+      `Manifest field \`checks.${id}\` must be off, on, info, warn or error, got ${JSON.stringify(value)}.`
+    );
+  }
   if (value === false || value === "off") return "off";
   if (value === true || value === "on") return "on";
-  if (value === "warn" || value === "warning") return "warning";
-  if (value === "info" || value === "error") return value;
-  throw new UsageError(
-    `Manifest field \`checks.${id}\` must be off, on, info, warn or error, got ${JSON.stringify(value)}.`
-  );
+  return value === "warn" || value === "warning" ? "warning" : value;
 }
 
 /**

@@ -7,6 +7,7 @@ import {
   scaffoldExtension,
   BUILT_IN_TEMPLATE_IDS,
   EXTENSION_KINDS,
+  extensionKindFor,
   PRESET_IDS,
   TARGETS,
   TARGET_IDS,
@@ -275,16 +276,16 @@ export default defineCommand({
     );
 
     // `--kind` chooses the scaffolder. Absent = book, the behavior this
-    // command has always had. `theme` is what 0.11.22 called a look.
+    // command has always had. An older name (`theme`) means its kind, as
+    // `scaffoldExtension` reads it.
     const givenKind = typeof args.kind === "string" && args.kind ? args.kind : "book";
-    const rawKind = givenKind === "theme" ? "look" : givenKind;
-    if (rawKind !== "book" && !(EXTENSION_KINDS as readonly string[]).includes(rawKind)) {
+    const kind = givenKind === "book" ? "book" : extensionKindFor(givenKind);
+    if (!kind) {
       console.error(
-        `Unknown kind "${rawKind}". Choose one of: book, ${EXTENSION_KINDS.join(", ")}.`,
+        `Unknown kind "${givenKind}". Choose one of: book, ${EXTENSION_KINDS.join(", ")}.`,
       );
       process.exit(EXIT_CODES.USAGE);
     }
-    const kind = rawKind as "book" | ExtensionKind;
     rejectFlagsForKind(rawArgs, kind);
 
     if (kind !== "book") {

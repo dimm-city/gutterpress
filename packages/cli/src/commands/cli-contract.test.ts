@@ -231,6 +231,38 @@ describe("#483: the CLI still takes what 0.11.22 did", () => {
     }
   }, 60000);
 
+  test("a 0.11.22 book with a key no check takes and a string for a number builds and validates; the new spelling is refused (#488)", async () => {
+    const dir = await makeTempDir("gutterpress-cli-contract-488-");
+    try {
+      const old = path.join(dir, "old");
+      const now = path.join(dir, "new");
+      for (const [book, manifest] of [
+        [old, "title: Old\npreset: book\nvalidate:\n  heuristics:\n    mysteryLimit: 3\n    maxDecorativeLayers: many\n"],
+        [now, "title: New\npreset: book\nchecks:\n  heuristic.decoration.layer-count:\n    maxDecorativeLayers: many\n"],
+      ] as const) {
+        await mkdir(book, { recursive: true });
+        await writeFile(path.join(book, "a.md"), "# A\n\nText.\n");
+        await writeFile(path.join(book, "manifest.yaml"), manifest);
+      }
+
+      const build = runCli(["build", old, "--format", "html", "--out", path.join(dir, "out")]);
+      expect(build.exitCode).toBe(0);
+      expect(build.stderr + build.stdout).toContain("validate.heuristics.mysteryLimit — no longer a setting, ignored");
+      expect(build.stderr + build.stdout).toContain(
+        'validate.heuristics.maxDecorativeLayers: "many" is not a number, 0 or more — ignored',
+      );
+      expect(runCli(["validate", old]).exitCode).toBe(0);
+
+      const refused = runCli(["validate", now]);
+      expect(refused.exitCode).toBe(2);
+      expect(refused.stderr + refused.stdout).toContain(
+        "`checks.heuristic.decoration.layer-count.maxDecorativeLayers` must be a number, 0 or more",
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 60000);
+
   test("`validate --only asset.font.approved-files` runs the check with a 0.11.22 manifest's list", async () => {
     const dir = await makeTempDir("gutterpress-cli-contract-483-fonts-");
     try {

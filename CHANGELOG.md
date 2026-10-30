@@ -455,7 +455,11 @@ This project follows [Semantic Versioning](https://semver.org/).
     0.11.22 manifest's `ink.*`, `page.tolerance`, `validate.assets.*`,
     `validate.pdf.*` and `validate.heuristics.*` limits are read as these
     options again, instead of being dropped, and the notice names the new
-    spelling; Book setup writes them the new way when it saves.
+    spelling; Book setup writes them the new way when it saves. A 0.11.22
+    value no option can take (a word where a number goes, a key no check
+    has, a severity that is not one) is named in the notice and ignored, so
+    a book that built in 0.11.22 still builds; in the new spelling the same
+    value stops with an error naming it.
   - **`asset.font.approved-files`** is a check again: it reports a font file
     the book ships that no pattern in its `approvedFontFiles` matches, and
     `validate --only asset.font.approved-files` runs it.
@@ -476,7 +480,10 @@ This project follows [Semantic Versioning](https://semver.org/).
     lands on that note again: it goes to the first note with that number in
     reading order, where it went in 0.11.22. The notes keep the ids per file
     that fixed their backlinks.
-  - **`gutterpress new --kind theme`** makes a look again (it exited 2).
+  - **`gutterpress new --kind theme`** makes a look again (it exited 2), and
+    so does the library's `scaffoldExtension({ kind: "theme" })`.
+    `EXTENSION_KIND_ALIASES` and `extensionKindFor` read the old word; the
+    kinds offered stay `plugin` and `look`.
   - **The library's 0.11.22 exports work again.** `BUNDLED_EXTENSIONS` is the
     list of bundled names it was (it had become objects, so
     `.includes(name)` was always false); the objects are

@@ -183,6 +183,51 @@ describe("readOldSpellings", () => {
     });
   });
 
+  test("an old value nothing could use is named and ignored, never an error: a 0.11.22 book still builds (#488)", () => {
+    const old = (): GutterpressManifest & OldSpellings => ({
+      preset: "book",
+      validate: {
+        heuristics: { maxDecorativeLayers: "many", mysteryLimit: 3, textDensityRange: { min: 10, most: 99 } },
+        checks: { "pdf.nav.bookmarks": { severity: "critical" } },
+      },
+      lint: { rules: { "printsafe/no-remote-urls": "loud" as never } },
+      ink: { maxTac: -5 },
+    });
+    const out = read(old());
+    // Only what 0.11.22 could use is carried over: the range's min, and the
+    // bookmarks check, on at its own severity.
+    expect(out.checks).toEqual({
+      "pdf.nav.bookmarks": "on",
+      "heuristic.whitespace.text-density": { textDensityRange: { min: 10 } },
+    });
+    const config = resolveConfig({}, out);
+    expect(config.validate.heuristics).toEqual({
+      maxDecorativeLayers: 5,
+      textDensityRange: { min: 10, max: 5000 },
+      maxParagraphsPerSection: 10,
+    });
+    expect(config.ink.maxTac).toBe(400);
+    expect(config.checks["printsafe/no-remote-urls"]).toBeUndefined();
+    const notice = notices().join("\n");
+    for (const line of [
+      'validate.heuristics.maxDecorativeLayers: "many" is not a number, 0 or more — ignored',
+      "validate.heuristics.mysteryLimit — no longer a setting, ignored",
+      'validate.heuristics.textDensityRange: {"min":10,"most":99} is not `{ min, max }` (numbers, 0 or more) — kept min, ignored the rest',
+      'validate.checks.pdf.nav.bookmarks.severity: "critical" is not off, on, info, warn or error — ignored',
+      'lint.rules.printsafe/no-remote-urls: "loud" is not off, on, info, warn or error — ignored',
+      "ink.maxTac: -5 is not a number, 0 or more — ignored",
+    ]) {
+      expect(notice).toContain(line);
+    }
+    // The same values in the new spelling, written directly, are still refused.
+    expect(() =>
+      resolveConfig({}, { checks: { "heuristic.decoration.layer-count": { maxDecorativeLayers: "many" as never } } }),
+    ).toThrow("`checks.heuristic.decoration.layer-count.maxDecorativeLayers` must be a number, 0 or more");
+    expect(() => resolveConfig({}, { checks: { "heuristic.decoration.layer-count": { mysteryLimit: 3 } as never } })).toThrow(
+      "has no option `mysteryLimit`",
+    );
+  });
+
   test("ink keys that are no thresholds, validate.enabled and lint.configPath are dropped", () => {
     const out = read({
       title: "T",
@@ -370,6 +415,15 @@ describe("rewriteOldThresholds (Book setup's save, #483)", () => {
     );
     // What the rewritten manifest resolves to is what the old one did.
     expect(resolveConfig({}, parseDocument(out).toJS()).validate.pdf.minImageResolution).toBe(150);
+  });
+
+  test("a value its option cannot take stays where it is, so the save never makes the book fail to load (#488)", () => {
+    const yaml = "validate:\n  heuristics:\n    maxDecorativeLayers: many\n    maxParagraphsPerSection: 3\n";
+    const out = rewrite(yaml);
+    expect(out).toBe(
+      "validate:\n  heuristics:\n    maxDecorativeLayers: many\nchecks:\n  heuristic.chunking.section-density:\n    maxParagraphsPerSection: 3\n",
+    );
+    expect(() => resolveConfig({}, readOldSpellings(parseDocument(out).toJS()))).not.toThrow();
   });
 
   test("an option the new spelling already sets keeps its value; a manifest without old keys is untouched", () => {

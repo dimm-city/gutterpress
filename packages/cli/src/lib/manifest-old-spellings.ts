@@ -29,11 +29,17 @@
  *   validate.enabled, lint.configPath
  *   and the keys 0.11.22 already
  *   ignored                          -> dropped
+ *
+ * Nothing read from an old spelling can stop a book from building: 0.11.22
+ * passed any value through, so a threshold, a severity or a rule level it
+ * could not have used (`maxDecorativeLayers: many`, `severity: critical`) is
+ * named in the notice and ignored. The new spelling, written directly, is
+ * checked strictly (`resolveConfig`).
  */
 import { isMap, type Document } from "yaml";
 import type { CheckEntry, CheckLevelInput, GutterpressManifest } from "../schema/manifest.types";
 import { UsageError } from "./cli-args";
-import { optionForOldSpelling, setCheckOption } from "./check-options";
+import { isCheckLevelInput, readOldThreshold, setCheckOption } from "./check-options";
 import { warnOnce } from "./presets";
 
 type OldCheckEntry = boolean | { enabled?: boolean; severity?: string; options?: unknown };
@@ -101,18 +107,33 @@ export function readOldSpellings(raw: GutterpressManifest & OldSpellings): Gutte
 
   const renamed: string[] = [];
   const dropped: string[] = [];
+  /** Old values nothing could use: named, ignored, never an error. */
+  const unusable: string[] = [];
   const levels: Record<string, CheckLevelInput> = {};
   const options: Record<string, Record<string, unknown>> = {};
 
   /** An old threshold key (`ink.maxTac`) -> its check's option, or dropped when it is not one. */
   const threshold = (at: string, value: unknown): void => {
-    const moved = optionForOldSpelling(at);
-    if (!moved) {
+    const read = readOldThreshold(at, value);
+    if (!read) {
       dropped.push(at);
-    } else if (value !== null && value !== undefined) {
-      (options[moved.id] ??= {})[moved.option] = value;
-      renamed.push(`${at} -> ${optionSpelling(moved.id, moved.option, value)}`);
+      return;
     }
+    if (value === null || value === undefined) return;
+    if (read.value !== undefined) {
+      (options[read.id] ??= {})[read.option] = read.value;
+      renamed.push(`${at} -> ${optionSpelling(read.id, read.option, read.value)}`);
+    }
+    if (read.mustBe) {
+      const kept = read.value !== undefined ? `kept ${Object.keys(read.value as object).join(" and ")}, ignored the rest` : "ignored";
+      unusable.push(`${at}: ${JSON.stringify(value)} is not ${read.mustBe} — ${kept}`);
+    }
+  };
+  /** A level 0.11.22 could have used, or undefined (named in the notice) when it could not. */
+  const level = (at: string, value: unknown): CheckLevelInput | undefined => {
+    if (isCheckLevelInput(value)) return value;
+    unusable.push(`${at}: ${JSON.stringify(value)} is not off, on, info, warn or error — ignored`);
+    return undefined;
   };
 
   if (isObject(source) && "files" in source) {
@@ -125,13 +146,17 @@ export function readOldSpellings(raw: GutterpressManifest & OldSpellings): Gutte
   if (isObject(validate)) {
     for (const [id, entry] of Object.entries(validate.checks ?? {})) {
       if (entry === false || (isObject(entry) && entry.enabled === false)) levels[id] = "off";
-      else if (isObject(entry) && typeof entry.severity === "string") levels[id] = entry.severity as CheckLevelInput;
-      else levels[id] = "on";
+      else if (isObject(entry) && entry.severity !== undefined && entry.severity !== null) {
+        levels[id] = level(`validate.checks.${id}.severity`, entry.severity) ?? "on";
+      } else levels[id] = "on";
     }
     if (validate.checks !== undefined) renamed.push("validate.checks -> checks");
   }
   if (isObject(lint)) {
-    for (const [id, level] of Object.entries(lint.rules ?? {})) levels[id] = level;
+    for (const [id, value] of Object.entries(lint.rules ?? {})) {
+      const read = level(`lint.rules.${id}`, value);
+      if (read !== undefined) levels[id] = read;
+    }
     if (lint.rules !== undefined) renamed.push("lint.rules -> checks");
     if (lint.enabled === false) {
       levels["source.stylelint"] = "off";
@@ -198,6 +223,7 @@ export function readOldSpellings(raw: GutterpressManifest & OldSpellings): Gutte
   const lines = [
     ...renamed.map((r) => `  ${r}`),
     ...dropped.map((d) => `  ${d} — no longer a setting, ignored`),
+    ...unusable.map((u) => `  ${u}`),
   ];
   if (lines.length > 0) {
     warnOnce(
@@ -236,7 +262,10 @@ function mergeEntry(
  * (`ink.maxTac`, `validate.pdf.minImageResolution`, `page.tolerance`, …) to
  * its check's option, the way `setManifestFields` moves `source.files` to
  * `chapters`. An option the new spelling already sets keeps its value; a
- * block left empty goes. Every other key stays as written.
+ * block left empty goes. A value the option cannot take stays where it is,
+ * as written: moved, the new spelling's strict check would stop the book
+ * from building, and left, it is named and ignored at load. Every other key
+ * stays as written.
  */
 export function rewriteOldThresholds(doc: Document): void {
   const blocks: string[][] = [["ink"], ["page"], ["validate", "assets"], ["validate", "pdf"], ["validate", "heuristics"]];
@@ -245,11 +274,12 @@ export function rewriteOldThresholds(doc: Document): void {
     if (!isMap(node)) continue;
     for (const item of [...node.items]) {
       const key = String((item.key as { value?: unknown })?.value ?? item.key);
-      const moved = optionForOldSpelling([...block, key].join("."));
-      if (!moved) continue;
-      const value = doc.getIn([...block, key]);
-      if (value !== null && value !== undefined && doc.getIn(["checks", moved.id, moved.option]) === undefined) {
-        setCheckOption(doc, moved.id, moved.option, value);
+      const value = item.value as unknown;
+      const js = value && typeof value === "object" && "toJSON" in value ? (value as { toJSON(): unknown }).toJSON() : value;
+      const read = readOldThreshold([...block, key].join("."), js);
+      if (!read || (js !== null && js !== undefined && read.mustBe)) continue;
+      if (js !== null && js !== undefined && doc.getIn(["checks", read.id, read.option]) === undefined) {
+        setCheckOption(doc, read.id, read.option, value);
       }
       node.delete(key);
     }

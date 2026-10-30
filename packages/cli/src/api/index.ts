@@ -107,10 +107,13 @@ export {
   scaffoldExtension,
   resolveExtensionPrefix,
   EXTENSION_KINDS,
+  EXTENSION_KIND_ALIASES,
+  extensionKindFor,
   RESERVED_PREFIX,
 } from "../lib/extension-scaffold.ts";
 export type {
   ExtensionKind,
+  ExtensionKindAlias,
   ScaffoldExtensionOptions,
   ScaffoldExtensionResult,
 } from "../lib/extension-scaffold.ts";
