@@ -1,0 +1,15 @@
+title: "Justified Text"
+authors:
+  - "Gutterpress Fixture"
+
+preset: book
+
+styles:
+  - styles/style.css
+
+chapters:
+  - 01-justified.md
+
+page:
+  width: 432   # 6in
+  height: 648  # 9in

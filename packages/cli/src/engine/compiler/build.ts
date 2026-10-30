@@ -51,6 +51,7 @@ import { evaluate, formatCounter, needsMeasurement, parseContent } from "../shar
 import { inspectPdf } from "../shared/pdf-inspect.ts";
 import { getAssetPath } from "../../lib/embedded-assets.ts";
 import {
+  bleedMargin,
   classify,
   consumedStrings,
   pseudoVariants,
@@ -717,8 +718,9 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         // The measured numbers have to travel on the DIAGNOSTICS channel, not
         // `log`: `log` is `opts.onProgress`, which the product build paths
         // (`buildNativePdf`) never supply, so `log` would make opting IN
-        // strictly less informative than the error it replaces.
-        if (scale !== null) diagnose("engine.width.overflow", `${headline}.`);
+        // strictly less informative than the error it replaces. The scale the
+        // book actually printed at is read off the PDF after printing (the
+        // print-scale audit below), so only the offenders are reported here.
         for (const o of widthOffenders.boxes)
           diagnose(
             "engine.width.overflow",
@@ -745,6 +747,101 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           `${o.desc} has no width set and is naturally wider than the page — if the printed output comes out smaller than your CSS says, give it an explicit width (e.g. width: 100%).`,
         );
       log(`WARNING: ${msg}`);
+    }
+
+    // ---- hold the body's overflow to the page content box (#470) ---------
+    // Chromium shrinks the WHOLE print to fit any overflow that reaches the
+    // page area, however small, and the preview never shrinks. Justified text
+    // overflows on its own: LayoutNG lays each text item of a justified line
+    // out in 1/64 px units, and a line split by an emphasis, a link, inline
+    // code or a formula can end up to 1/64 px per item past the column
+    // (measured: 624.0156 and 624.0313px in a 624px column; up to 7/64 px with
+    // every word its own item; never with plain text). Chromium then lays the
+    // print out at that width rounded UP to a whole pixel and scales by the
+    // exact ratio: examples/academic-paper printed at 624/624.031 with its
+    // lines 625px long, a pixel longer than the preview's, and the last glyph
+    // of every full justified line cut at the page area's edge.
+    //
+    // `overflow-x: clip` on the body stops that overflow at the page content
+    // box on every page without changing layout: `clip` makes no scroll
+    // container and no formatting context. The body clips only once the
+    // root's overflow is not `visible`; until then the body's value is the
+    // viewport's, which print ignores — why `body { overflow-x: clip }` alone
+    // changed nothing (CLIP_EDGES_JS). So while the root is `visible` the root
+    // takes `clip` (passing it to the viewport) and the body's own value,
+    // which print never read, is replaced; when the author has already given
+    // the root an overflow, the body gets `clip` only if its x is `visible`.
+    //
+    // Print only — the preview never shrinks — and only where it cuts nothing
+    // print shows. Print already clips the page area at the page content box
+    // (ENGINE.md §5); the body's clip lands there when
+    //   - the body's padding box spans the page content box (no side margin,
+    //     border or root padding) — and its text cannot reach the page's edge
+    //     otherwise;
+    //   - no page is wider than the first. Overflow stops at each page's own
+    //     edge, but Chromium paints the clip on every page at the width of the
+    //     body's FIRST page: a plate on a full-bleed page after a margined one
+    //     was cut from 816px to 624px. A full-bleed cover first is fine;
+    //   - the width check found no offender. With one, the build has failed
+    //     or the author passed allowShrink to accept the shrink, and clipping
+    //     would cut that content off instead. What it lets through (up to
+    //     1px) is held here too.
+    // Otherwise the book prints as before, and the print-scale audit below
+    // reports the shrink, with this reason.
+    let unclipped: string | null = null;
+    if (!widthOffenders.boxes.length) {
+      const g = tier2.geometry;
+      const ext = g.bleed + g.slug;
+      const contentPx = (name: string, pseudos: string[]) => {
+        const { width, margin } = resolvePage(model, { name: name || undefined, pseudos }).geometry;
+        return ((width + 2 * ext - bleedMargin(margin.left, g) - bleedMargin(margin.right, g)) * 96) / 72;
+      };
+      const pages = await page.evaluate<{ first: string; used: string[]; reason: string }>(`(() => {
+        const body = document.body;
+        const named = (el) => { const p = getComputedStyle(el).page; return p && p !== "auto" ? p : ""; };
+        if (!body) return { first: "", used: [], reason: "there is no body" };
+        const bs = getComputedStyle(body);
+        const r = body.getBoundingClientRect();
+        if (
+          Math.abs(r.left + parseFloat(bs.borderLeftWidth)) > 0.01 ||
+          Math.abs(r.right - parseFloat(bs.borderRightWidth) - window.innerWidth) > 0.01
+        ) return { first: "", used: [], reason: "the body does not span the page content box" };
+        // The first page's name: the root's, overridden down the chain of
+        // first in-flow children (CSS Paged Media's start page value).
+        let first = named(document.documentElement) || named(body);
+        for (let el = body; el; ) {
+          el = [...el.children].find((c) => {
+            const cs = getComputedStyle(c);
+            return cs.display !== "none" && cs.position !== "absolute" && cs.position !== "fixed";
+          });
+          if (el && named(el)) first = named(el);
+        }
+        const used = new Set([""]);
+        for (const el of document.querySelectorAll("*")) used.add(named(el));
+        return { first, used: [...used], reason: "" };
+      })()`);
+      const firstPx = contentPx(pages.first, ["first", "right", "recto"]);
+      const wider = pages.used.find((name) =>
+        pseudoContexts.some((pseudos) => contentPx(name, pseudos) > firstPx + 0.01),
+      );
+      unclipped =
+        pages.reason ||
+        (wider !== undefined
+          ? `${wider ? `the page "${wider}"` : "the unnamed page"} is wider than the first page`
+          : await page.evaluate<string>(`(() => {
+              const hs = getComputedStyle(document.documentElement);
+              const bs = getComputedStyle(document.body);
+              let css;
+              if (hs.overflowX === "visible" && hs.overflowY === "visible")
+                css = "html { overflow-x: clip !important; } " +
+                  "body { overflow-x: clip !important; overflow-y: visible !important; }";
+              else if (bs.overflowX === "visible") css = "body { overflow-x: clip !important; }";
+              else return "the body clips its own overflow";
+              window.__gp.addCss("gp-root-clip", css);
+              return "";
+            })()`)) ||
+        null;
+      log(`body overflow ${unclipped ? `left as authored: ${unclipped}` : "held to the page content box"}`);
     }
 
     // Running heads, cross-references and recto/verso placement all need to
@@ -1551,6 +1648,49 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           : ""),
     );
 
+    // ---- print-scale audit -----------------------------------------------
+    // What Chromium actually did, read off the shipped print rather than
+    // predicted from element widths: any scale below 1 means shrink-to-fit
+    // laid the book out wider than the preview, whatever caused it and
+    // however small. The width check above names offenders past 1px before
+    // printing, and the body's clip holds anything smaller. What is left —
+    // content positioned against the whole document, a book the clip could
+    // not be applied to — is named here when an element reaches past the
+    // column at all.
+    {
+      const scale = post.scale;
+      if (scale !== null && scale < 1) {
+        const pct = (scale * 100).toPrecision(6);
+        const overPx = widthOffenders.defaultLimitPx * (1 / scale - 1);
+        diagnose(
+          "engine.width.overflow",
+          `This book printed at ${pct}% of its declared size: content reaches about ` +
+            `${overPx < 0.1 ? overPx.toFixed(3) : overPx.toFixed(2)}px past the ` +
+            `${Math.round(widthOffenders.defaultLimitPx)}px page content box, and Chromium shrinks ` +
+            `the WHOLE print to fit it. The preview is not shrunk, so its lines and page ` +
+            `breaks can differ from the PDF's.` +
+            (unclipped ? ` Gutterpress could not hold it at the page content box: ${unclipped}.` : ""),
+        );
+        if (!widthOffenders.boxes.length) {
+          const named = await findWidthOffenders(
+            page,
+            model,
+            2 * (tier2.geometry.bleed + tier2.geometry.slug),
+            sheetViewport,
+            0,
+          );
+          for (const o of named.boxes)
+            diagnose(
+              "engine.width.overflow",
+              `${o.desc} reaches ${Math.max(o.px + Math.min(0, o.left) - (o.limit ?? named.limitPx), -o.left).toFixed(2)}px ` +
+                `past the ${Math.round(o.limit ?? named.limitPx)}px page content box. Keep it ` +
+                `inside the page content box.`,
+            );
+        }
+        log(`audit: printed at ${pct}% (shrink-to-fit)`);
+      }
+    }
+
     return {
       bytes: post.bytes,
       tier,
@@ -1662,14 +1802,25 @@ function shrinkScale(
  * and the override is cleared before any print. Known approximation, on
  * purpose: elements are compared against the WIDEST page context (a
  * margin-0 full-bleed page raises the limit for the whole document).
+ *
+ * `tolerancePx` is how far past the content box a box may reach unreported.
+ * The pre-print check keeps 1px: the viewport is a whole number of px, so at
+ * a fractional content width an ordinary `width: 100%` box measures up to
+ * 1px over. Nothing smaller is lost: the body's clip holds it to the page
+ * content box before printing (`gp-root-clip` in `build`), and whatever still
+ * shrinks the print is reported off the PDF. That print-scale audit passes 0
+ * to name what reaches past the column at all; it still cannot see past the
+ * whole-px viewport.
  */
 async function findWidthOffenders(
   page: Session,
   model: GcpmModel,
   bleedSlugExtensionPt: number,
   restoreViewport: Record<string, unknown>,
+  tolerancePx = 1,
 ): Promise<{
   limitPx: number;
+  defaultLimitPx: number;
   boxes: Array<{ desc: string; px: number; left: number; limit?: number }>;
   intrinsics: Array<{ desc: string; px: number }>;
 }> {
@@ -1741,7 +1892,8 @@ async function findWidthOffenders(
       });
       boxes.push(...(JSON.parse(
       await page.evaluate<string>(`(() => {
-        const LIMIT = ${widthPx} + 1;
+        const TOL = ${tolerancePx};
+        const LIMIT = Math.max(${widthPx} + TOL, ${Math.ceil(widthPx)});
         const NAMED = ${JSON.stringify(namedLimits)};
         const DEFAULT_LIMIT = ${defaultLimitPx};
         // The page an element lands on: the nearest ancestor with a non-auto
@@ -1781,10 +1933,10 @@ async function findWidthOffenders(
           // pulls) AND left-edge protrusion (negative left with an ordinary
           // width) — both trigger the same whole-document shrink-to-fit,
           // measured: a left bleed alone cost 16%.
-          if (right <= LIMIT && r.width <= LIMIT && r.left >= -1) continue;
+          if (right <= LIMIT && r.width <= LIMIT && r.left >= -TOL) continue;
           // ...but only where it actually escapes its clipping ancestors.
           const clip = clipEdges(el).edges;
-          if (Math.min(right, clip.right) <= LIMIT && Math.max(r.left, clip.left) >= -1) continue;
+          if (Math.min(right, clip.right) <= LIMIT && Math.max(r.left, clip.left) >= -TOL) continue;
           let deepest = true;
           for (const c of el.children) {
             if (c.getBoundingClientRect().width >= r.width - 1) { deepest = false; break; }
@@ -1821,7 +1973,7 @@ async function findWidthOffenders(
           const over = el.scrollWidth - el.clientWidth;
           // clientWidth is 0 on inline/replaced boxes, where scrollWidth
           // carries no overflow information -- skip rather than guess.
-          if (el.clientWidth <= 0 || over <= 1) continue;
+          if (el.clientWidth <= 0 || over <= TOL) continue;
           // A descendant assigned to a DIFFERENT page is not overflowing this
           // element's page -- it is laid out against its own, wider one. The
           // full-bleed art plate is the standard case: it is legitimately
@@ -1880,7 +2032,7 @@ async function findWidthOffenders(
         return JSON.stringify(out);
       })()`),
     );
-    return { limitPx, boxes, intrinsics: replaced };
+    return { limitPx, defaultLimitPx, boxes, intrinsics: replaced };
   } finally {
     // Restore the pinned sheet viewport — never clear: a cleared override
     // reverts to the browser's window size, and vw/vh units make print

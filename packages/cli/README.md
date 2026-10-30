@@ -221,7 +221,7 @@ gutterpress build [input-dir] [options]
   --skip-lint             Skip the CSS print-safety check (default: it runs for pdf/pdfx)
   --skip-pre-validate     Skip pre-build validation
   --skip-post-validate    Skip post-build PDF/X validation
-  --allow-shrink          Build anyway when content is wider than the page content box. Chromium then scales the WHOLE book down to fit it — the build reports that whole-document scale (e.g. "about 0.72x its declared size") plus every offender, as warnings.
+  --allow-shrink          Build anyway when content is wider than the page content box. Chromium then scales the WHOLE book down to fit it — the build reports the scale the PDF printed at (e.g. "printed at 72.0000% of its declared size") plus every offender, as warnings.
 ```
 
 A `--out <dir>` is shared between formats safely: each build delivers only

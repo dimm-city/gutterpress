@@ -168,6 +168,14 @@ const DEFAULT_FIXTURES = [
   // every page (dc-op-manual field guide: 280 preview pages vs 288 printed —
   // see `runPageBox` in viewer/fragment.ts). Five pages reproduce it.
   join(REPO, "docs", "fixtures", "mirrored-margins", "book"),
+  // The justified-text fixture (committed, #470): justified prose with
+  // emphasis, links and inline code. Each splits a line into separate text
+  // items, and the line can end 1/64 px per item past the column; Chromium's
+  // print then shrank the whole book to fit (0.99992 here), its lines laid
+  // out a pixel longer than the preview's. The engine holds the body's
+  // overflow to the page content box, so both lay out at the same width;
+  // build.print-scale.test.ts asserts the scale off this book's PDF.
+  join(REPO, "docs", "fixtures", "justified-text", "book"),
   // The atomic-blocks fixture (committed): `break-inside: avoid` on a card
   // that is a direct child of the flow root. Print moves such a card whole and
   // leaves a short page; the viewer's own chrome carried a
@@ -1325,7 +1333,11 @@ async function runFixture(
   // fragmenter bug and is not one.
   if (result.diagnostics.some((d) => d.code === "engine.width.overflow"))
     console.log(
-      `   NOTE width overflow — Chromium shrank this print to fit; page counts below are NOT comparable`,
+      `   NOTE width overflow — Chromium shrank this print to fit` +
+        (result.post.scale !== null && result.post.scale < 1
+          ? ` (scale ${result.post.scale.toFixed(6)})`
+          : "") +
+        `; page counts below are NOT comparable`,
     );
   const divergences: Divergence[] = [];
   const url = pathToFileURL(htmlPath).href;

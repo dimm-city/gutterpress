@@ -8,6 +8,7 @@
  * pdfx pipeline (Ghostscript PDF/X-1a, ICC, ink coverage).
  */
 import { PDFDocument, PDFName, PDFNumber, rgb } from "pdf-lib";
+import { printScale } from "../shared/pdf-inspect.ts";
 import { signaturePadding, type LastPageMode } from "../shared/synthesis.ts";
 import type { PageTrim } from "./tier2.ts";
 
@@ -35,6 +36,9 @@ export interface PostprocessResult {
   pageCount: number;
   padded: number;
   boxes: { media: number[]; bleed: number[]; trim: number[] };
+  /** The scale Chromium printed at, read before anything here draws:
+   * `printScale` in shared/pdf-inspect.ts (1 = not shrunk). */
+  scale: number | null;
 }
 
 export async function postprocess(
@@ -45,6 +49,7 @@ export async function postprocess(
   // time, clobbering Chromium's. Gutterpress's postprocess edits boxes; it is not the
   // document's producer.
   const doc = await PDFDocument.load(input, { updateMetadata: false });
+  const scale = printScale(doc);
   const g = opts.geometry;
   const inset = g.bleed + g.slug;
 
@@ -105,6 +110,7 @@ export async function postprocess(
     pageCount: doc.getPageCount(),
     padded,
     boxes: { media, bleed: bleedBox, trim: trimBox },
+    scale,
   };
 }
 
