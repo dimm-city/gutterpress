@@ -5,7 +5,8 @@ import type { RequestHandler } from './$types';
 
 /**
  * Delete a revision that is not open (#448). By default only on this computer;
- * `everywhere` also removes it from the online copy. When it holds versions
+ * `everywhere` also removes it from the online copy; one that is only in the
+ * online copy is deleted from there. When it holds versions
  * found in no other revision, nothing is deleted and the result says how many
  * (`versionsOnlyHere`): the caller asks again, then calls with `discard: true`.
  */
