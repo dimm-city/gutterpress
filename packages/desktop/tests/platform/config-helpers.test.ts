@@ -5,6 +5,7 @@ import {
   extensionSourceLabel,
   extensionProblem,
   orderAfterMove,
+  pickerVersions,
   carriedKinds,
   sampleSrcdoc,
   searchKindLabel,
@@ -222,4 +223,18 @@ test("addedBuiltInIds ignores looks that live anywhere else, nested folders, and
 test("addedBuiltInIds reports a disabled copy too — the folder exists, so Use would only re-reference it", () => {
   const off = { ...onDisk("./extensions/technical-doc"), enabled: false };
   expect(addedBuiltInIds([off])).toEqual(new Set(["technical-doc"]));
+});
+
+test("pickerVersions: stable only unless asked, pre-release pin always kept, order preserved", () => {
+  const published = ["2.0.0-beta.1", "1.2.0", "1.2.0-alpha.2", "1.1.0+build-7", "1.0.0"];
+  expect(pickerVersions(published, "1.0.0", false)).toEqual(["1.2.0", "1.1.0+build-7", "1.0.0"]);
+  expect(pickerVersions(published, "1.0.0", true)).toEqual(published);
+  expect(pickerVersions(published, "1.2.0-alpha.2", false)).toEqual(["1.2.0", "1.2.0-alpha.2", "1.1.0+build-7", "1.0.0"]);
+  expect(pickerVersions(published, undefined, false)).toEqual(["1.2.0", "1.1.0+build-7", "1.0.0"]);
+});
+
+test("pickerVersions: a pin the registry does not list (or an unloaded list) is still offered, first", () => {
+  expect(pickerVersions([], "1.2.0-alpha.2", false)).toEqual(["1.2.0-alpha.2"]);
+  expect(pickerVersions(["1.1.0"], "9.9.9", false)).toEqual(["9.9.9", "1.1.0"]);
+  expect(pickerVersions([], undefined, true)).toEqual([]);
 });
