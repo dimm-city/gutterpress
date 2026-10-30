@@ -193,7 +193,7 @@ describe("Version history", () => {
 
   test("versions online and not here yet are listed under their own heading, and say when they come in (#484)", () => {
     expect(view).toContain("Online, not yet on this computer</h2>");
-    expect(view).toContain("They come in the next time this book backs up.");
+    expect(view).toContain("They come in with <strong>Get latest</strong>, or the next time this book backs up.");
   });
 
   test("each card names what its version changed, in 0.11.22's words (#484)", () => {

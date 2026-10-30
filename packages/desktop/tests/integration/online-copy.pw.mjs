@@ -512,7 +512,7 @@ check(online.heading === "Online, not yet on this computer" && online.atTop, "th
 check(online.rows.length === 2 && online.rows[0].note === "Wrote the gamma ending" && /· Grace$/.test(online.rows[0].meta) && /\d/.test(online.rows[0].meta), `each says what it is, when and by whom (${JSON.stringify(online.rows[0])})`);
 check(online.rows[0].files.join("|") === "03-gamma.md · 2 paragraphs changed", `and the files it changed (${online.rows[0].files.join(" | ")})`);
 check(online.rows[1].title === "Automatic version" && online.rows[1].files.length === 9 && online.rows[1].files[8] === "and 3 more", `past eight files, "and N more" (${online.rows[1].files.join(" | ")})`);
-check(online.selectable === 0 && online.note === "They come in the next time this book backs up.", `nothing to select there; they come in with the next backup (${online.note})`);
+check(online.selectable === 0 && online.note === "They come in with Get latest, or the next time this book backs up.", `nothing to select there; Get latest or the next backup brings them in (${online.note})`);
 
 // Every card lists what its version changed, loaded as it comes into view (#484).
 const cardsListed = `[...document.querySelectorAll('.vh button.ver')].filter((b) => b.getClientRects().length).map((b) => ({

@@ -565,8 +565,8 @@ buttons.
   them, and a card already seen selects instantly. With an online copy, the
   versions in it that are not on this computer yet are listed above the
   rest, under **Online, not yet on this computer**, each with its name, time,
-  author and changed files ("They come in the next time this book backs
-  up."); they are shown, not selected or restored.
+  author and changed files ("They come in with **Get latest**, or the next
+  time this book backs up."); they are shown, not selected or restored.
   Author-facing vocabulary says "revision", never "branch"; "copy" means only
   the online copy. The editor/file tree/preview show the new revision the same
   way they pick up any other external change.

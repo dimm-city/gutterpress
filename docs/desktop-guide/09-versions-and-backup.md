@@ -44,8 +44,8 @@ the versions listed there). **Version history** opens as a screen of its own:
 - The first version of a book is labelled **First version**. When the book has an online copy,
   each version says **Backed up** or **Only on this computer**, and the versions in the online
   copy that are not on this computer yet are listed at the top, under **Online, not yet on this
-  computer**: when each was saved, by whom, and the files it changed. They come in the next time
-  the book backs up.
+  computer**: when each was saved, by whom, and the files it changed. They come in with
+  **Get latest**, or the next time the book backs up.
 - Close Version history with **×** (or Esc) to go back to **Setup → Online copy**.
 
 ## Go back to an earlier version

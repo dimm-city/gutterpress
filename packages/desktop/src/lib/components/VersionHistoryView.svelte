@@ -20,7 +20,7 @@
    * On success the parent reloads the open editor and preview (`onRestored`).
    * Versions in the online copy that this computer hasn't got are listed at
    * the top, each with the files it changed (#484), once the list is shown:
-   * Sync (or automatic backing up) brings them in.
+   * Get latest, Sync or automatic backing up brings them in.
    *
    * PWA-clean (§8): api.* routes only.
    */
@@ -325,7 +325,7 @@
               {/if}
             {/each}
           </ul>
-          <p class="online-note">They come in the next time this book backs up.</p>
+          <p class="online-note">They come in with <strong>Get latest</strong>, or the next time this book backs up.</p>
         </section>
       {/if}
       {#if loading && entries.length === 0}
