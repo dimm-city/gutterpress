@@ -318,13 +318,6 @@ export function friendlyPublishError(e: unknown): FriendlyPublishError {
     };
   }
 
-  // Google Drive (#221): the configured folder was moved to trash or
-  // deleted. providers/gdrive.ts's folderId resolution already writes a
-  // specific, friendly "pick the folder again" sentence — passed through.
-  if (/drive folder.*can.?t be found/i.test(msg)) {
-    return { summary: msg };
-  }
-
   // A request that never reached (or never returned from) the publish route
   // at all — the renderer's own `fetch()` failing, not a host response.
   if (/failed to fetch|networkerror|econnrefused|enotfound|fetch failed/i.test(msg)) {

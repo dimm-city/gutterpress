@@ -114,6 +114,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   `--gp-page-margin-top`, `-bottom`, `-inside` and `-outside` (lengths in `pt`)
   instead of keeping a copy that stops following Book setup. They are the same in
   the preview and the PDF, and a named page has its own size and margins.
+- **Google Drive: your own folder when the book's is out of reach (#452).** It
+  is saved for you only and never changes the book's folder for the team;
+  `gutterpress publish --folder-id` or `--folder` publishes elsewhere for one run.
 
 ### Changed
 
@@ -380,6 +383,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   printed inset, and a sheet-wide one shrank the whole book to fit, while the
   preview showed them full bleed. A look's `@page` rules are now written
   after its layer, unlayered.
+- **The design settings read the book's stylesheet as the build does (#454).**
+  A plugin's `css` and a `:root` in a later stylesheet now show, a value with
+  `;` inside `url("data:…")` is no longer cut short, and an edit lands where
+  your stylesheet already sets the setting, never in a comment or `@media`.
 
 ## [0.11.22] - 2026-10-23
 

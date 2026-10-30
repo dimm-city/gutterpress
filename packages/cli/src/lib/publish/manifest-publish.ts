@@ -98,6 +98,12 @@ function insideBook(projectDir: string, dir: string): string | null {
  *   override). A folder inside the book is shared, and is written relative to
  *   it (an absolute in-book path is rewritten) so it means the same thing on
  *   every computer. An absolute path is never written to the manifest.
+ * - their own Google Drive folder for the book (`myFolderId`, `myFolder`; #452),
+ *   chosen when the book's folder is out of their reach or just for them. It is
+ *   recorded with the book's folder it stands in for (`myFolderFor`: the
+ *   manifest's `folderId`, else its `folder` name) and the account it was
+ *   chosen with (`myFolderAccount`), so it lapses when either changes (see
+ *   providers/gdrive.ts). Clearing `myFolderId` clears the whole record.
  *
  * Only the values passed are classified; the manifest is not rewritten unless
  * one of them changes it. Empty values clear. Returns the settings as the
@@ -118,7 +124,7 @@ export async function savePublishSettings(
     if (inside !== null) {
       shared[key] = inside;
       mine[key] = "";
-    } else if (isDir || key === "credential") {
+    } else if (isDir || key === "credential" || (providerId === "gdrive" && key.startsWith("myFolder"))) {
       mine[key] = isDir && text ? path.resolve(projectDir, text) : text;
       shared[key] = "";
     } else {
@@ -126,10 +132,18 @@ export async function savePublishSettings(
     }
   }
 
+  const inManifest = (await readPublishSettings(projectDir))[providerId] ?? {};
+  if ("myFolderId" in mine) {
+    const own = !!mine.myFolderId;
+    const account = mine.credential ?? (await selections.settings(projectDir))[providerId]?.credential;
+    mine.myFolder = own ? (mine.myFolder ?? "") : "";
+    mine.myFolderFor = own ? String(inManifest.folderId || inManifest.folder || "") : "";
+    mine.myFolderAccount = own ? (account ?? String(inManifest.credential ?? "")) : "";
+  }
+
   // The private side first: a value is never in neither place if the second
   // write fails. An older book's copy in the manifest goes only when there is one.
   if (Object.keys(mine).length > 0) await selections.setSettings(projectDir, providerId, mine);
-  const inManifest = (await readPublishSettings(projectDir))[providerId] ?? {};
   const changes = Object.fromEntries(
     Object.entries(shared).filter(([key, value]) => value !== "" || key in inManifest),
   );

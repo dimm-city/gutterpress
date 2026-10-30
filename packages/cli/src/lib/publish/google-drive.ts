@@ -160,7 +160,7 @@ const FOLDER_MIME = "application/vnd.google-apps.folder";
  * page — an author with more than one page of app-created folders would
  * otherwise see the destinations picker silently miss folders past the
  * first 100. (`ensureFolder`'s find-by-name lookup uses its own single
- * server-side query, {@link findFolderByName} below, and doesn't paginate.) */
+ * server-side query, {@link findFoldersByName} below, and doesn't paginate.) */
 export async function listFolders(
   fetchImpl: typeof fetch,
   accessToken: string,
@@ -188,8 +188,10 @@ export async function listFolders(
   return all;
 }
 
-/** Look up one folder by id (for verifying a manifest-recorded `folderId`
- * still exists and isn't trashed). Returns null when it's gone. */
+/** Look up one folder by id (for verifying a recorded `folderId` is reachable
+ * with this account). Returns null when it isn't: trashed or deleted, or never
+ * opened through Gutterpress by this account — `drive.file` answers 404 for a
+ * folder this connection can't see, so the cases are one (#452). */
 export async function getFolderById(
   fetchImpl: typeof fetch,
   accessToken: string,
@@ -221,23 +223,23 @@ export async function createFolder(
   return (await res.json()) as DriveFolder;
 }
 
-/** Look up one app-visible folder by exact name with a single server-side
- * query — the same `q=` pattern as {@link findFileInFolder} — rather than
- * paginating through every app-created folder client-side. `orderBy` keeps
- * the same "most recently modified match wins" tie-break `ensureFolder` had
- * when it picked the first hit from {@link listFolders}'s already-sorted
- * list. */
-async function findFolderByName(
+/** App-visible folders with exactly this name, most recently modified first,
+ * at most `limit` of them — a single server-side query (the same `q=` pattern
+ * as {@link findFileInFolder}), not a client-side scan of every app-created
+ * folder. `ensureFolder` asks for one; a caller that must know whether
+ * several share the name (#452: the CLI says which it used) asks for two. */
+export async function findFoldersByName(
   fetchImpl: typeof fetch,
   accessToken: string,
   name: string,
-): Promise<DriveFolder | null> {
+  limit = 1,
+): Promise<DriveFolder[]> {
   const q = `name='${escapeDriveQueryValue(name)}' and mimeType='${FOLDER_MIME}' and trashed=false`;
   const params = new URLSearchParams({
     q,
     fields: "files(id,name)",
     orderBy: "modifiedTime desc",
-    pageSize: "1",
+    pageSize: String(limit),
   });
   const res = await driveFetch(fetchImpl, `${DRIVE_API_BASE}/files?${params.toString()}`, {
     method: "GET",
@@ -245,19 +247,19 @@ async function findFolderByName(
   });
   if (!res.ok) throw await driveFailure(res, `Couldn't look up the Google Drive folder "${name}"`);
   const body = (await res.json()) as { files?: DriveFolder[] };
-  return body.files?.[0] ?? null;
+  return body.files ?? [];
 }
 
 /** Find-or-create a folder by name at My Drive root (D5's name-resolution
  * path, used when the manifest has no recorded `folderId` yet). One query,
  * not a client-side scan of every app-created folder — see
- * {@link findFolderByName}. */
+ * {@link findFoldersByName}. */
 export async function ensureFolder(
   fetchImpl: typeof fetch,
   accessToken: string,
   name: string,
 ): Promise<DriveFolder> {
-  const found = await findFolderByName(fetchImpl, accessToken, name);
+  const [found] = await findFoldersByName(fetchImpl, accessToken, name);
   if (found) return found;
   return createFolder(fetchImpl, accessToken, name);
 }

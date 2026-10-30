@@ -256,7 +256,52 @@ export interface ProjectStyle {
   active: boolean;
 }
 
-// Produced by `#lib/style-tokens`' `parseStyleTokens`. One editable `:root`
+// ── The book's stylesheet, for the design settings (#454) ────────────────────
+//
+// Mirrors the lib's `BookCss` (packages/cli/src/lib/book-css.ts), served by
+// `api/style/book-css` — defined locally so the SPA never value-imports the
+// lib (§8).
+
+/** Where one chunk of the book's stylesheet comes from. */
+export type CssChunkOrigin =
+  | { kind: "core" }
+  /** One extension's CSS: `file` (project-relative) for one of its stylesheets, none for its `css` export. */
+  | { kind: "extension"; name?: string; layer?: string; file?: string }
+  /** One of the book's own `styles:` sheets (project-relative). */
+  | { kind: "book"; file?: string };
+
+/** One root-level `:root` custom property, as a chunk declares it (`@internal` ones are left out). */
+export interface RootToken {
+  name: string;
+  /** The value as written (comments and trailing space included), so writing it back restores it. */
+  value: string;
+  /** An `@label` annotation's text. */
+  label?: string;
+  /** An `@group` annotation. */
+  group?: string;
+  /** The cascade layer its `:root` rule is in, dotted; absent when unlayered. */
+  layer?: string;
+}
+
+/** One chunk of the book's stylesheet, with the custom properties it declares. */
+export interface BookCssChunk {
+  origin: CssChunkOrigin;
+  css: string;
+  tokens: RootToken[];
+}
+
+/** The book's stylesheet in cascade order: joined with blank lines, it cascades as the built book's does. */
+export interface BookCss {
+  chunks: BookCssChunk[];
+}
+
+/** One pending token change: a new value, or null to take the book's declaration out. */
+export interface TokenUpdate {
+  name: string;
+  value: string | null;
+}
+
+// Built by `DesignSectionController` from `BookCss`. One editable `:root`
 // custom property surfaced to the guided Design panel.
 // `font` = a font-family stack (curated dropdown + free text); `number` = a
 // unitless number (e.g. `--leading: 1.55`) — same numeric control as `length`,
@@ -265,7 +310,7 @@ export type StyleTokenKind = "color" | "length" | "text" | "font" | "number";
 export interface StyleToken {
   /** The custom-property name, e.g. `--heading-color`. */
   name: string;
-  /** The raw declared value, e.g. `#cc0000` or `1.5rem`. */
+  /** Its value as the sample page computes it, e.g. `#cc0000` or `1.5rem`. */
   value: string;
   /** Which guided control to render. */
   kind: StyleTokenKind;
@@ -277,8 +322,8 @@ export interface StyleToken {
   unit?: string;
   /**
    * Theme-author-curated display group, from an `@group` annotation comment
-   * above the declaration (issue #244) — see `parseStyleTokens` in
-   * `#lib/style-tokens.ts` for the annotation grammar. Absent for every token in
+   * above the declaration (issue #244) — see the lib's `root-tokens.ts` for
+   * the annotation grammar. Absent for every token in
    * a theme that carries no annotations at all, which is what keeps an
    * unannotated theme's panel identical to the pre-#244 heuristic grouping. A
    * token with `group` set is shown under that named heading instead of the

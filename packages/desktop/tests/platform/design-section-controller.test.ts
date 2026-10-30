@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import { DesignSectionController } from "../../src/lib/routes/design-section-controller.svelte";
 import type { ProjectStyle } from "../../src/lib/platform/contract";
-import type { ProjectExtensionEntry } from "../../src/lib/platform/dtos";
+import type { BookCss, ProjectExtensionEntry, TokenUpdate } from "../../src/lib/platform/dtos";
+// The host's reader and writer are the lib's own (they run in the routes, never in the SPA).
+import { assembleCssChunks, type CssChunk } from "../../../cli/src/lib/markdown/assemble";
+import { applyTokenUpdates, rootTokens } from "../../../cli/src/lib/root-tokens";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests. The production compiler replaces $state; the class only
@@ -43,6 +46,54 @@ class FakeFs {
   };
 }
 
+/** An extension's CSS as the host serves it: `css` is what it carries (a file or its `css` export). */
+interface FakeExtension {
+  name: string;
+  css: string;
+  file?: string;
+}
+
+/**
+ * The host's `style/book-css` and `style/edit-tokens` over a FakeFs: the
+ * book's stylesheet assembled from the extensions' CSS and the book's active
+ * sheets (`assembleCssChunks`, `rootTokens`), and edits folded onto the
+ * active sheets by the lib's postcss writer (`applyTokenUpdates`).
+ */
+class FakeHost {
+  edits: Array<{ file: string; updates: TokenUpdate[] }> = [];
+  constructor(
+    private fs: Pick<FakeFs, "readFile" | "writeFile">,
+    private extensions: () => FakeExtension[],
+    private sheets: () => string[],
+  ) {}
+
+  readBookCss = async (): Promise<BookCss> => {
+    const extensions: CssChunk[] = this.extensions().map((e) => ({
+      origin: { kind: "extension", name: e.name, layer: `ext.${e.name}`, ...(e.file ? { file: e.file } : {}) },
+      css: `@layer ext.${e.name} {\n${e.css}\n}`,
+    }));
+    const book: CssChunk[] = [];
+    for (const file of this.sheets()) {
+      const css = await this.fs.readFile(file);
+      if (css.trim()) book.push({ origin: { kind: "book", file }, css });
+    }
+    return { chunks: assembleCssChunks({ extensions, book }).map((c) => ({ ...c, tokens: rootTokens(c.css) })) };
+  };
+
+  editTokens = async (_projectDir: string, file: string, updates: TokenUpdate[]): Promise<void> => {
+    this.edits.push({ file, updates });
+    const sheets = this.sheets();
+    const target = sheets.indexOf(file);
+    if (target < 0) throw new Error(`${file} is not one of the book's stylesheets.`);
+    const before = await Promise.all(sheets.map((path) => this.fs.readFile(path)));
+    const after = applyTokenUpdates(before, target, updates);
+    for (const [i, path] of sheets.entries()) if (after[i] !== before[i]) await this.fs.writeFile(path, after[i]!);
+  };
+}
+
+/** No sample page in bun: every value falls back to the last declaration. */
+const noSample = (): Promise<Record<string, string>> => Promise.resolve({});
+
 /** Single-slot fake timer: the controller only ever has one flush timer live. */
 class FakeTimer {
   pending: (() => void) | null = null;
@@ -66,6 +117,7 @@ const ROOT_CSS = `:root {\n  --heading-color: #cc0000;\n  --body-size: 1rem;\n}\
 interface Harness {
   ctrl: DesignSectionController;
   fs: FakeFs;
+  host: FakeHost;
   timer: FakeTimer;
   onError: ReturnType<typeof spy>;
   setActiveStyles: ReturnType<typeof spy>;
@@ -88,12 +140,14 @@ function make(over: Partial<{ cssPath: string; noProject: boolean; css: string }
     styles: [{ path: cssPath, displayName: "styles/theme.css", active: true }],
     projectDir: over.noProject ? null : "/proj",
   } as Harness;
+  h.host = new FakeHost(fs, () => [], () => h.styles.filter((x) => x.active).map((x) => x.path));
   h.ctrl = new DesignSectionController({
     projectDir: () => h.projectDir,
     listStyles: () => Promise.resolve(h.styles),
     listExtensions: () => Promise.resolve([]),
-    readCss: () => Promise.reject(new Error("no extensions")),
-    readFile: fs.readFile,
+    readBookCss: h.host.readBookCss,
+    computeValues: noSample,
+    editTokens: h.host.editTokens,
     writeFile: fs.writeFile,
     setActiveStyles: (dir, paths) => Promise.resolve(setActiveStyles(dir, paths)),
     onError: (m) => onError(m),
@@ -258,41 +312,33 @@ test("a stylesheet switch during a token-write commit never redirects the old sh
   const OLD = "/proj/styles/old.css";
   const NEW = "/proj/styles/new.css";
   const NEW_ORIGINAL = ":root {\n  --heading-color: #0000ff;\n}\n";
-  const files = new Map<string, string>([
-    [OLD, ":root {\n  --heading-color: #cc0000;\n}\n"],
-    [NEW, NEW_ORIGINAL],
-  ]);
-  const writes: Array<{ path: string; content: string }> = [];
+  const fs = new FakeFs();
+  fs.files.set(OLD, ":root {\n  --heading-color: #cc0000;\n  --old-only: 1;\n}\n");
+  fs.files.set(NEW, NEW_ORIGINAL);
+  let styles: ProjectStyle[] = [{ path: OLD, displayName: "old.css", active: true }];
+  const host = new FakeHost(fs, () => [{ name: "look", css: ":root { --brand-new: 1; }" }], () => [OLD, NEW]);
 
-  // A one-shot gate: the NEXT readFile blocks until released, so we can switch
-  // the active stylesheet while a commit is parked on its read-before-write.
-  let releaseGatedRead: (() => void) | null = null;
+  // A one-shot gate: the NEXT edit parks before the host runs it, so we can
+  // switch the active stylesheet while a commit is in flight.
+  let releaseGatedEdit: (() => void) | null = null;
   let armGate = false;
-  const readFile = (path: string): Promise<string> => {
-    const content = files.get(path) ?? "";
-    if (armGate) {
-      armGate = false;
-      return new Promise<string>((resolve) => {
-        releaseGatedRead = () => resolve(content);
-      });
-    }
-    return Promise.resolve(content);
-  };
-  const writeFile = (path: string, content: string): Promise<{ mtimeMs: number }> => {
-    writes.push({ path, content });
-    files.set(path, content);
-    return Promise.resolve({ mtimeMs: 1 });
+  const editTokens = (dir: string, file: string, updates: TokenUpdate[]): Promise<void> => {
+    if (!armGate) return host.editTokens(dir, file, updates);
+    armGate = false;
+    return new Promise<void>((resolve) => {
+      releaseGatedEdit = () => resolve(host.editTokens(dir, file, updates));
+    });
   };
 
   const timer = new FakeTimer();
-  let styles: ProjectStyle[] = [{ path: OLD, displayName: "old.css", active: true }];
   const ctrl = new DesignSectionController({
     projectDir: () => "/proj",
     listStyles: () => Promise.resolve(styles),
     listExtensions: () => Promise.resolve([]),
-    readCss: () => Promise.reject(new Error("no extensions")),
-    readFile,
-    writeFile,
+    readBookCss: host.readBookCss,
+    computeValues: noSample,
+    editTokens,
+    writeFile: fs.writeFile,
     setActiveStyles: () => Promise.resolve(),
     onError: () => {},
     debounceMs: 250,
@@ -300,37 +346,37 @@ test("a stylesheet switch during a token-write commit never redirects the old sh
     clearTimer: timer.clear,
   });
 
-  await ctrl.loadDesign(); // cssPath = OLD (this read is ungated)
+  await ctrl.loadDesign(); // cssPath = OLD
   expect(ctrl.cssPath).toBe(OLD);
-  ctrl.setToken(ctrl.colorTokens[0], "#00ff00"); // schedules a pending write on OLD
+  ctrl.setToken(ctrl.tokens.find((t) => t.name === "--old-only")!, "2"); // only OLD declares it
+  ctrl.setToken(ctrl.tokens.find((t) => t.name === "--brand-new")!, "3"); // only the look declares it: goes to cssPath
 
-  // Fire the debounce with the gate armed: commitPendingTokens reads OLD and
-  // parks on the gate, mid read-before-write.
+  // Fire the debounce with the gate armed: the commit parks mid-flight.
   armGate = true;
   timer.fire();
   await flush();
-  expect(releaseGatedRead).not.toBeNull(); // commit is parked on the read
+  expect(releaseGatedEdit).not.toBeNull();
 
   // Concurrent stylesheet switch while the commit is parked.
   styles = [{ path: NEW, displayName: "new.css", active: true }];
   await ctrl.loadDesign();
   expect(ctrl.cssPath).toBe(NEW);
 
-  // Release the parked read; the commit's write now runs.
-  releaseGatedRead!();
+  // Release the parked edit; the host runs it now.
+  releaseGatedEdit!();
   await flush();
 
-  // The write must land on OLD (the captured path), never the newly selected
-  // NEW file — and NEW's content must be exactly what loadDesign parsed.
-  expect(writes.map((w) => w.path)).toEqual([OLD]);
-  expect(files.get(NEW)).toBe(NEW_ORIGINAL);
-  expect(files.get(OLD)).toContain("--heading-color: #00ff00;");
+  // The batch targets OLD (the captured path), never the newly selected NEW
+  // file — and NEW's content is exactly what loadDesign parsed.
+  expect(host.edits.map((e) => e.file)).toEqual([OLD]);
+  expect(fs.files.get(NEW)).toBe(NEW_ORIGINAL);
+  expect(fs.files.get(OLD)).toBe(":root {\n  --brand-new: 3;\n  --heading-color: #cc0000;\n  --old-only: 2;\n}\n");
 });
 
 // ── Theme-curated groups (issue #244) ───────────────────────────────────────
 //
-// `parseStyleTokens` (unit-tested on its own in style-tokens.test.ts) does the
-// annotation scanning; these tests cover what the CONTROLLER does with the
+// The host's `rootTokens` (unit-tested in the lib's root-tokens.test.ts) does
+// the annotation scanning; these tests cover what the CONTROLLER does with the
 // result — claiming grouped tokens out of the heuristic buckets and exposing
 // them, in source order, via `customGroups`.
 
@@ -401,11 +447,11 @@ test("a stylesheet that is entirely @internal tokens loads as empty (the panel's
 
 // ── Every enabled look's tokens, written to the book's own stylesheet ────────
 //
-// The panel shows the `:root` tokens of every ENABLED extension that carries
-// styles — bundled, npm or path alike, read through `readCss` in cascade
-// order — overlaid with the book's active stylesheet, which loads last and
-// wins. An edit lands in that book stylesheet only; a look's files are never
-// written.
+// The panel shows the `:root` tokens of the book's stylesheet as the build
+// assembles it (#454) — every enabled extension's CSS, then the book's own
+// sheets, which load last and win — from the host's `style/book-css`. An
+// edit lands in the book's own sheets only (`style/edit-tokens`); a look's
+// files are never written.
 
 const STYLES_ONLY = { markdown: false, styles: true, snippets: false, components: false };
 const BOOK = "/proj/styles/book.css";
@@ -418,37 +464,66 @@ const CLEAN_BOOK = look({ use: "clean-book", kind: "bundled" });
 const HOUSE = look({ use: "./extensions/house", dir: "/proj/extensions/house" });
 const FROM_NPM = look({ use: "@acme/look@1.0.0", kind: "npm", name: "@acme/look", version: "1.0.0" });
 
-/** A book with looks: `css` maps each look's `use` to what `readCss` returns;
- *  a null `bookCss` is a book with no stylesheet of its own yet. */
-function lookHarness(extensions: ProjectExtensionEntry[], css: Record<string, string>, bookCss: string | null) {
+/**
+ * A book with looks: `css` maps each look's `use` to the CSS the build loads
+ * for it (the host leaves out a disabled entry, and one it cannot load); a
+ * null `bookCss` is a book with no stylesheet of its own yet. `sheets` are the
+ * book's active stylesheets after `styles/book.css`, with their text.
+ */
+function lookHarness(
+  extensions: ProjectExtensionEntry[],
+  css: Record<string, string>,
+  bookCss: string | null,
+  opts: {
+    /** Other extensions' CSS the host serves after the looks' (a plugin's files and `css` export). */
+    plugins?: FakeExtension[];
+    sheets?: Record<string, string>;
+    computeValues?: (css: string, names: string[]) => Promise<Record<string, string>>;
+  } = {},
+) {
   const fs = new FakeFs();
   if (bookCss !== null) fs.files.set(BOOK, bookCss);
+  for (const [path, text] of Object.entries(opts.sheets ?? {})) fs.files.set(path, text);
+  let active = [...(bookCss === null ? [] : [BOOK]), ...Object.keys(opts.sheets ?? {})];
   const timer = new FakeTimer();
-  const readCssCalls: string[] = [];
   const written: string[] = [];
   const setActive: string[][] = [];
+  const writeFile = (path: string, content: string) => {
+    written.push(path);
+    return fs.writeFile(path, content);
+  };
+  const host = new FakeHost(
+    { readFile: fs.readFile, writeFile },
+    () => [
+      ...extensions
+        .filter((e) => e.enabled && e.carries.styles && e.use in css)
+        .map((e, i) => ({ name: `look${i}`, css: css[e.use]! })),
+      ...(opts.plugins ?? []),
+    ],
+    () => active,
+  );
+  const computed: Array<{ css: string; names: string[] }> = [];
   const ctrl = new DesignSectionController({
     projectDir: () => "/proj",
     listStyles: () =>
-      Promise.resolve(bookCss === null ? [] : [{ path: BOOK, displayName: "styles/book.css", active: true }]),
+      Promise.resolve(active.map((path) => ({ path, displayName: path.replace("/proj/", ""), active: true }))),
     listExtensions: () => Promise.resolve(extensions),
-    readCss: (_dir, use) => {
-      readCssCalls.push(use);
-      return use in css ? Promise.resolve(css[use]!) : Promise.reject(new Error(`no stylesheets for ${use}`));
+    readBookCss: host.readBookCss,
+    computeValues: (sheet, names) => {
+      computed.push({ css: sheet, names });
+      return (opts.computeValues ?? noSample)(sheet, names);
     },
-    readFile: fs.readFile,
-    writeFile: (path, content) => {
-      written.push(path);
-      return fs.writeFile(path, content);
-    },
+    editTokens: host.editTokens,
+    writeFile,
     setActiveStyles: (_dir, paths) => {
       setActive.push(paths);
+      active = paths.map((p) => `/proj/${p}`);
       return Promise.resolve();
     },
     setTimer: timer.set,
     clearTimer: timer.clear,
   });
-  return { ctrl, fs, timer, readCssCalls, written, setActive };
+  return { ctrl, fs, timer, written, setActive, host, computed };
 }
 
 const tokenValues = (ctrl: DesignSectionController) => Object.fromEntries(ctrl.tokens.map((t) => [t.name, t.value]));
@@ -464,7 +539,6 @@ test("loadDesign shows the tokens of every enabled look — bundled, npm and pat
     "/* Your book's own styles. */\n",
   );
   await h.ctrl.loadDesign();
-  expect(h.readCssCalls).toEqual(["clean-book", "@acme/look@1.0.0", "./extensions/house"]);
   expect(h.ctrl.tokens.map((t) => t.name)).toEqual(["--color-accent", "--fs-body", "--acme-rule", "--house-tint"]);
   // The panel names the sheet it writes: the book's own, never a look's.
   expect(h.ctrl.cssPath).toBe(BOOK);
@@ -491,28 +565,6 @@ test("a later look wins a duplicate token, and the book's own sheet wins over ev
   // A token keeps the place and the group its first declaration gave it.
   expect(h.ctrl.tokens.map((t) => t.name)).toEqual(["--color-accent", "--fs-body", "--leading", "--book-only"]);
   expect(h.ctrl.customGroups.map((g) => [g.name, g.tokens.map((t) => t.name)])).toEqual([["Brand", ["--color-accent"]]]);
-});
-
-test("disabled looks and extensions that carry no styles contribute nothing", async () => {
-  const h = lookHarness(
-    [
-      { ...HOUSE, enabled: false },
-      look({ use: "markdown-it-mark", kind: "bundled", carries: { ...STYLES_ONLY, styles: false, markdown: true } }),
-      CLEAN_BOOK,
-    ],
-    { "clean-book": ":root { --color-accent: #2b4c7e; }", "./extensions/house": ":root { --house-tint: #eee; }" },
-    "",
-  );
-  await h.ctrl.loadDesign();
-  expect(h.readCssCalls).toEqual(["clean-book"]);
-  expect(h.ctrl.tokens.map((t) => t.name)).toEqual(["--color-accent"]);
-});
-
-test("a look whose CSS can't be read (a missing folder) is skipped; the rest still load", async () => {
-  const h = lookHarness([HOUSE, CLEAN_BOOK], { "clean-book": ":root { --color-accent: #2b4c7e; }" }, "");
-  await h.ctrl.loadDesign();
-  expect(h.ctrl.designError).toBeNull();
-  expect(h.ctrl.tokens.map((t) => t.name)).toEqual(["--color-accent"]);
 });
 
 test("editing a look's token adds it to the book's :root block — the look's CSS is never written", async () => {
@@ -681,12 +733,16 @@ test("revertAllTokens leaves stored overrides alone (it undoes this session only
 });
 
 test("loadDesign tolerates a failing extension list — the book's own tokens still load", async () => {
+  const fs = new FakeFs();
+  fs.files.set(BOOK, ":root { --c: 3; }\n");
+  const host = new FakeHost(fs, () => [], () => [BOOK]);
   const ctrl = new DesignSectionController({
     projectDir: () => "/proj",
     listStyles: () => Promise.resolve([{ path: BOOK, displayName: "styles/book.css", active: true }]),
     listExtensions: () => Promise.reject(new Error("no manifest")),
-    readCss: () => Promise.reject(new Error("unreachable")),
-    readFile: () => Promise.resolve(":root { --c: 3; }\n"),
+    readBookCss: host.readBookCss,
+    computeValues: noSample,
+    editTokens: host.editTokens,
     writeFile: () => Promise.resolve(undefined),
     setActiveStyles: () => Promise.resolve(),
   });
@@ -802,4 +858,114 @@ test("a book with no stylesheet still shows its look's settings; the first edit 
   // Once there is one, it is the one: nothing more is created.
   expect(await h.ctrl.ensureStylesheet()).toBe(BOOK);
   expect(h.setActive.length).toBe(1);
+});
+
+// ── The book's stylesheet as the build assembles it (#454) ───────────────────
+
+test("a plugin's css export is in the token list, with what the plugin's files declare", async () => {
+  // The host serves a plugin as two chunks: its stylesheet file and its `css` export.
+  const plugins = [
+    { name: "house", file: "ext/house/css/house.css", css: ":root { --house-rule: 1px; }" },
+    { name: "house", css: ":root { --plugin-tint: #abcdef; }" },
+  ];
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": ":root { --color-accent: #2b4c7e; }" }, ":root {\n  --fs-body: 10.5pt;\n}\n", { plugins });
+  await h.ctrl.loadDesign();
+  expect(tokenValues(h.ctrl)).toEqual({
+    "--color-accent": "#2b4c7e",
+    "--house-rule": "1px",
+    "--plugin-tint": "#abcdef",
+    "--fs-body": "10.5pt",
+  });
+  // Like any look's token, its value can be set over in the book's own sheet.
+  expect(h.ctrl.lookValue(h.ctrl.tokens.find((t) => t.name === "--plugin-tint")!)).toBe("#abcdef");
+});
+
+const LATE = "/proj/styles/late.css";
+
+test("a second book sheet's :root is visible, and an edit of its token lands there in place, not in the first sheet", async () => {
+  const LATE_CSS = "/* loads last */\n:root {\n  --color-accent: #c0392b;\n}\n";
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": CLEAN_CSS }, ":root {\n  --fs-body: 10.5pt;\n}\n", { sheets: { [LATE]: LATE_CSS } });
+  await h.ctrl.loadDesign();
+  // The later sheet wins the build, so its value is the one shown — and it overrides the look's.
+  const accent = h.ctrl.tokens.find((t) => t.name === "--color-accent")!;
+  expect(accent.value).toBe("#c0392b");
+  expect(h.ctrl.overridesLook(accent)).toBe(true);
+  expect(h.ctrl.cssName).toBe("styles/book.css");
+  h.ctrl.setToken(accent, "#112233");
+  // A token no sheet declares still goes into the first sheet's :root.
+  h.ctrl.setToken(h.ctrl.tokens.find((t) => t.name === "--color-ink")!, "#000000");
+  h.timer.fire();
+  await flush();
+  expect(h.host.edits.map((e) => e.file)).toEqual([BOOK]);
+  expect(h.fs.files.get(LATE)).toBe("/* loads last */\n:root {\n  --color-accent: #112233;\n}\n");
+  expect(h.fs.files.get(BOOK)).toBe(":root {\n  --color-ink: #000000;\n  --fs-body: 10.5pt;\n}\n");
+  // "Use the look's value" takes it out of every book sheet.
+  h.ctrl.resetToken(accent); // dirty: back to the late sheet's own value
+  h.timer.fire();
+  await flush();
+  expect(h.fs.files.get(LATE)).toBe(LATE_CSS);
+});
+
+test("a url(\"data:…\") value with ; inside is read whole and round-trips byte for byte", async () => {
+  const PAPER = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><path d='M0 0;L4 4'/></svg>")`;
+  const BOOK_CSS = `:root {\n  --paper: ${PAPER};\n  --gap: 1rem;\n}\n`;
+  const h = lookHarness([], {}, BOOK_CSS);
+  await h.ctrl.loadDesign();
+  const paper = h.ctrl.tokens.find((t) => t.name === "--paper")!;
+  expect(paper.value).toBe(PAPER);
+  // Editing another token leaves it alone; editing it and undoing gives the sheet back.
+  h.ctrl.setLength(h.ctrl.tokens.find((t) => t.name === "--gap")!, "2");
+  h.ctrl.setToken(paper, "none");
+  h.timer.fire();
+  await flush();
+  expect(h.fs.files.get(BOOK)).toBe(":root {\n  --paper: none;\n  --gap: 2rem;\n}\n");
+  h.ctrl.revertAllTokens();
+  h.timer.fire();
+  await flush();
+  expect(h.fs.files.get(BOOK)).toBe(BOOK_CSS);
+});
+
+test("a :root { inside a comment before the real block does not receive an insert", async () => {
+  const BOOK_CSS = "/* Example: :root { --color-accent: red; } */\n:root {\n  --book-only: 2;\n}\n";
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": CLEAN_CSS }, BOOK_CSS);
+  await h.ctrl.loadDesign();
+  expect(h.ctrl.tokens.find((t) => t.name === "--color-accent")!.value).toBe("#2b4c7e");
+  h.ctrl.setToken(h.ctrl.tokens.find((t) => t.name === "--color-accent")!, "#7b2f8a");
+  h.timer.fire();
+  await flush();
+  expect(h.fs.files.get(BOOK)).toBe(
+    "/* Example: :root { --color-accent: red; } */\n:root {\n  --color-accent: #7b2f8a;\n  --book-only: 2;\n}\n",
+  );
+});
+
+test("each value is what the sample page computes with the whole stylesheet; the look's, with the looks alone", async () => {
+  // A sample page that knows better than declaration order (a layer, an !important…).
+  const computeValues = async (sheet: string, names: string[]) =>
+    Object.fromEntries(names.map((n) => [n, sheet.includes("book-only") ? `${n}-whole` : `${n}-looks`]));
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": ":root { --color-accent: #2b4c7e; }" }, ":root {\n  --book-only: 2;\n}\n", { computeValues });
+  await h.ctrl.loadDesign();
+  expect(tokenValues(h.ctrl)).toEqual({ "--color-accent": "--color-accent-whole", "--book-only": "--book-only-whole" });
+  expect(h.ctrl.lookValue(h.ctrl.tokens[0]!)).toBe("--color-accent-looks");
+  // The whole stylesheet is the sample's: core, then the look, then the book's sheet.
+  const [whole, looks] = h.computed;
+  expect(whole!.names).toEqual(["--color-accent", "--book-only"]);
+  expect(whole!.css.indexOf("@layer gp.marker")).toBeLessThan(whole!.css.indexOf("--color-accent: #2b4c7e"));
+  expect(whole!.css.indexOf("--color-accent: #2b4c7e")).toBeLessThan(whole!.css.indexOf("--book-only: 2"));
+  expect(looks!.names).toEqual(["--color-accent"]);
+  expect(looks!.css).not.toContain("--book-only");
+  expect(h.ctrl.sampleDoc).toContain(whole!.css);
+});
+
+test("undoing an edit puts the book's declaration back as written, comment and all", async () => {
+  const BOOK_CSS = ":root {\n  --color-accent: #7b2f8a /* house red */;\n}\n";
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": ":root { --color-accent: #2b4c7e; }" }, BOOK_CSS);
+  await h.ctrl.loadDesign();
+  const accent = h.ctrl.tokens[0]!;
+  h.ctrl.setToken(accent, "#ff0000");
+  h.timer.fire();
+  await flush();
+  h.ctrl.resetToken(accent);
+  h.timer.fire();
+  await flush();
+  expect(h.fs.files.get(BOOK)).toBe(BOOK_CSS);
 });

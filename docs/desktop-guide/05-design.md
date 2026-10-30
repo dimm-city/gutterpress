@@ -64,8 +64,10 @@ again; **Undo changes** in Advanced brings them back.
 
 **All settings in Advanced** opens the **Advanced** tab at **All design settings**: every setting
 your look has, grouped into **Fonts**, **Colors**, **Sizes & numbers** and **Other**, each with the
-CSS name you would use in a stylesheet. The undo arrow beside a value you changed earlier offers
-**Use the look's value**; **Undo changes** undoes the changes made since you opened Book setup.
+CSS name you would use in a stylesheet. A setting one of your stylesheets already sets is changed
+in that stylesheet; a new one goes into the first. The undo arrow beside a value you changed
+earlier offers **Use the look's value**; **Undo changes** undoes the changes made since you opened
+Book setup.
 
 At the top of Advanced, **Open manifest.yaml** opens the book's manifest in the editor. Under
 **Stylesheets** are the book's own `.css` files, in the order they load: a later one wins where two

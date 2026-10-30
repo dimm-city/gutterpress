@@ -114,6 +114,7 @@ import type {
   UpdaterStatus,
   PublishProviderCard,
   PublishDestination,
+  PublishDestinationStatus,
   PublishRunResult,
   DesktopPrefs,
   LastFlushFailure,
@@ -138,6 +139,8 @@ export type {
   ExtensionSearchResult,
   ExtensionUpdatesResult,
   ProjectStyle,
+  BookCss,
+  TokenUpdate,
   RecoveryEntry,
   ProjectClassification,
   MediaImageEntry,
@@ -162,6 +165,8 @@ import type {
   ExtensionSearchResult,
   ExtensionUpdatesResult,
   ProjectStyle,
+  BookCss,
+  TokenUpdate,
   RecoveryEntry,
   ProjectClassification,
   MediaImageEntry,
@@ -641,7 +646,7 @@ export const api = {
     /** Each pinned npm extension against npm's latest, on demand (the Extensions tab, never project load). A network failure is data (`ok: false`), never a thrown error. */
     outdated: (projectDir: string) =>
       post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir }),
-    /** A configured extension's stylesheets, concatenated (a bundled look's inlined css, or the entry's folder) — for a sample thumbnail and the design settings. */
+    /** A configured extension's stylesheets, concatenated (a bundled look's inlined css, or the entry's folder) — for a sample thumbnail. */
     readCss: (projectDir: string, use: string) =>
       post<string>('/api/extension/read-css', { projectDir, use }),
     /** Native picker for a `.zip` package or bare `.css`, imported into `extensions/<id>/` (#106). Null when cancelled. */
@@ -689,6 +694,20 @@ export const api = {
     /** Replace the manifest's active `styles:` list (reorder + toggle). */
     setActive: (projectDir: string, paths: string[]) =>
       post<string[]>('/api/style/set-active', { projectDir, paths }),
+    /**
+     * The book's stylesheet as the build assembles it, as ordered chunks
+     * tagged with their origin (core, an extension's file or `css` export, a
+     * book sheet), each with its root-level `:root` custom properties, read
+     * host-side with postcss (#454).
+     */
+    bookCss: (projectDir: string) => post<BookCss>('/api/style/book-css', { projectDir }),
+    /**
+     * Write token edits with a postcss edit of the book's own stylesheets: in
+     * place where one declares the token, else into `file`'s `:root` (an
+     * absolute path, one of the book's sheets); null takes it out of every sheet.
+     */
+    editTokens: (projectDir: string, file: string, updates: TokenUpdate[]) =>
+      post<{ written: string[] }>('/api/style/edit-tokens', { projectDir, file, updates }),
   },
 
   // The /api/status route (a plain health-check GET) has no client wrapper.
@@ -958,5 +977,10 @@ export const api = {
     /** Create a new destination (gdrive: a Drive folder at My Drive root). */
     createDestination: (projectDir: string, providerId: string, name: string) =>
       post<PublishDestination>('/api/publish/destinations/create', { projectDir, providerId, name }),
+
+    /** Where this person publishes among the destinations, and whether they
+     *  must choose one (#452, gdrive: the book's folder or their own). */
+    destinationStatus: (projectDir: string, providerId: string) =>
+      post<PublishDestinationStatus>('/api/publish/destinations/status', { projectDir, providerId }),
   },
 };

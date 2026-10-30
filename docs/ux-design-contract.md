@@ -701,6 +701,24 @@ older book's account or absolute in-book folder is moved on the next save of
 it; opening the wizard rewrites nothing. Detail and the full table:
 `docs/publishing.md`.
 
+**The book's Drive folder and a person's own (binding, #452):** the Google
+Drive folder in the manifest is the team's, and is written only on the first
+pick ("Saved with the book, so everyone publishes here.") or on a deliberate
+change, which the step confirms first: "This changes the folder for everyone
+who publishes this book." When the book's folder is not reachable with the
+account the book publishes with (`drive.file` answers 404 for a folder the
+connection never opened), the Drive step says so in plain words and the pick is
+saved in the person's private settings only, recorded with the book's folder it
+stands in for and the account; the manifest is not written and publishing never
+creates a folder in its place. That own folder lapses when the book's folder or
+the account changes (the book's folder is used if reachable, else the step asks
+again), and is never switched silently: once the book's folder is reachable the
+step shows "You publish to your own folder 'X' instead of the book's 'Y'" with
+**Use the book's folder**. **Use a different folder just for me** makes a
+private choice while the book's folder is reachable. A folder named only by
+name is each person's own of that name. The CLI reads the manifest only and
+offers `--folder-id` / `--folder` for one run. Detail: `docs/publishing.md`.
+
 **One place for accounts (binding):** the **Accounts** page is where accounts
 are managed. The wizard lists the provider's saved accounts, lets the author
 pick one for this book, and adds or replaces one in place with the Accounts
@@ -1012,20 +1030,25 @@ built-in look defines, so a choice carries across looks. They sit beside a
 live sample page that redraws as each setting changes (a typed color or
 number counts once it is committed, on blur or Enter, and only a color is
 saved as a color). Every edit is written to
-the **book's own stylesheet** (`styles/book.css`, created with an empty
-`:root {}` and added to `styles:` on the first edit when the book has none):
-the token's `:root` declaration is updated if the sheet has one, otherwise
-added to its `:root` block; a declaration in any other rule or in a comment
-is left alone. **Reset to the look's settings** asks first ("Replace your
+the **book's own stylesheets** (`styles/book.css`, created with an empty
+`:root {}` and added to `styles:` on the first edit when the book has none),
+host-side with postcss (#454): the token's root-level `:root` declaration is
+updated in place in the last of the book's sheets that has one, otherwise it
+is added to the `:root` block of the first; a declaration in any other rule,
+in `@media` or `@supports`, or in a comment is left alone, and every other
+byte of the sheet is kept. **Reset to the look's settings** asks first ("Replace your
 settings with Clean book's?" **Replace** / **Keep mine**), then removes the
 book's declarations of the six, so the look's values show through; Advanced's
 Undo changes restores them. A look's own files are never
 written; there is no eject or copy of a look.
 
-**All design settings** (Advanced). `DesignSection` shows the `:root`
-custom properties of **every enabled look** — bundled, npm or path — in
-cascade order (a later look wins a duplicate), overlaid with the book's own
-stylesheet, which wins, with each variable's name, a per-row "Use the look's
+**All design settings** (Advanced). `DesignSection` shows the root-level
+`:root` custom properties of the book's stylesheet **as the build assembles
+it** (#454): every enabled extension's — bundled, npm or path, its
+stylesheet files and a plugin's `css` export — and every one of the book's
+own `styles:` sheets, read host-side with postcss (`style/book-css`), each
+with the value the sample page computes for it (`getComputedStyle`, so the
+cascade is the browser's), with each variable's name, a per-row "Use the look's
 value", and Undo changes for the visit. Derived labels are plain words
 (`--fs-display` → "Display size"); a look labels its own extra tokens with
 `@label`. A compound value (`1pt solid …`) is edited as text, never as a
