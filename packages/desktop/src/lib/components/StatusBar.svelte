@@ -1,19 +1,20 @@
 <script lang="ts">
   /**
    * StatusBar — slim bottom bar hosting the start-screen (Books) button, the
-   * book switcher, the one status control with Sync beside it, and the settings
-   * and help buttons.
+   * book switcher, the one status control with Get latest and Sync beside it,
+   * and the settings and help buttons.
    *
    * Layout (left → right):
-   *   [folder → start screen Books] | [book switcher] | [status] [Sync] ··· [settings] [help]
+   *   [folder → start screen Books] | [book switcher] | [status] [Get latest] [Sync] ··· [settings] [help]
    *
    * The status control is one line for saving AND the online copy ("Saved ·
    * Backed up"); clicking it opens Book setup → Online copy, the one place the
-   * rest lives. Sync (get the latest changes, then back up yours) sits beside
-   * it only while automatic backing up is off. A reader sees none of this: they
-   * get the latest on their own. The words come from the pure `statusLine`
-   * (#lib/save-status); the live state comes from the sync controller. The
-   * Problems badge stays on the editor toolbar.
+   * rest lives, Back up now and Get latest included. Get latest (bring in the
+   * online copy's changes, send nothing) and Sync (get the latest changes, then
+   * back up yours) sit beside it only while automatic backing up is off. A
+   * reader sees none of this: they get the latest on their own. The words come
+   * from the pure `statusLine` (#lib/save-status); the live state comes from
+   * the sync controller. The Problems badge stays on the editor toolbar.
    *
    * PWA-clean: all host work via api.* routes (CLAUDE.md §8).
    * No node: builtins or gutterpress value imports.
@@ -46,7 +47,7 @@
     forceSaving = false,
     /** Whether a manual Sync is in progress. */
     forceSyncing = false,
-    /** A reader sees no status control and no Sync. */
+    /** A reader sees no status control, no Get latest and no Sync. */
     readerMode = false,
     /** Books in the open project's repo; switcher shows only when > 1. */
     books = [] as ProjectBookEntry[],
@@ -60,6 +61,10 @@
     onSwitchBook = undefined as ((path: string) => void) | undefined,
     /** Called when the author clicks "Sync". */
     onForceSync = undefined as (() => void | Promise<void>) | undefined,
+    /** Called for "Get latest": bring in the online changes without sending any. */
+    onGetLatest = undefined as (() => void | Promise<void>) | undefined,
+    /** A "Get latest" is in progress. */
+    gettingLatest = false,
     /** The last check found changes online this computer has not got. */
     updatesAvailable = false,
     /** Called when the status control is clicked: opens Book setup → Online copy. */
@@ -85,6 +90,8 @@
     versionsProblem?: { message: string | null } | null;
     onSwitchBook?: (path: string) => void;
     onForceSync?: () => void | Promise<void>;
+    onGetLatest?: () => void | Promise<void>;
+    gettingLatest?: boolean;
     updatesAvailable?: boolean;
     onOpenOnlineCopy?: () => void;
     onOpenSettings?: () => void;
@@ -95,7 +102,7 @@
   // The status control: only for an open folder book, and never for a reader.
   let showStatus = $derived(!!projectDir && sourceMode === "folder" && !readerMode);
   // Manual mode: automatic backing up is off but the book can back up, so the
-  // bar offers Sync beside the control.
+  // bar offers Get latest and Sync beside the control.
   let showManualSync = $derived(showStatus && canSync && !autoBackup);
   let line = $derived(
     statusLine({
@@ -115,7 +122,7 @@
 </script>
 
 <div class="status-bar" role="status" aria-label="Application status">
-  <!-- Left cluster: [folder → start screen Books] | [book switcher] | [status] [Sync].
+  <!-- Left cluster: [folder → start screen Books] | [book switcher] | [status] [Get latest] [Sync].
        A divider precedes each group after the first, so a hidden switcher or
        status control leaves no stray line. Settings and help sit at the far right. -->
   <div class="status-left">
@@ -141,14 +148,24 @@
       ><Icon name={line.icon} size={13} /><span class="status-text" aria-live="polite" aria-atomic="true">{line.text}</span></button>
     {/if}
     {#if showManualSync}
-      <!-- Automatic backing up is off: one pass gets the latest changes, then
-           backs up this computer's. -->
+      <!-- Automatic backing up is off. Get latest brings in the online copy's
+           changes and never sends anything back; Sync is one pass that gets
+           the latest changes, then backs up this computer's. -->
+      <button
+        type="button"
+        class="status-icon-btn get-latest"
+        class:has-updates={updatesAvailable}
+        onclick={() => void onGetLatest?.()}
+        disabled={gettingLatest || forceSyncing}
+        title={updatesAvailable ? "New changes are online — get them (your changes stay on this computer)" : "Get latest: bring in changes from the online copy without sending yours"}
+        aria-label={updatesAvailable ? "Get latest — new changes are online" : "Get latest"}
+      ><Icon name="arrow-down-to-line" size={14} />{#if updatesAvailable || gettingLatest}<span>{gettingLatest ? "Getting…" : "New online"}</span>{/if}</button>
       <button
         type="button"
         class="status-icon-btn labelled"
         class:has-updates={updatesAvailable}
         onclick={() => void onForceSync?.()}
-        disabled={forceSyncing}
+        disabled={forceSyncing || gettingLatest}
         title={updatesAvailable ? "Sync — new changes are online: get them, then back up yours" : "Sync: get the latest changes from the online copy, then back up yours"}
         aria-label={updatesAvailable ? "Sync — new changes are online" : undefined}
       ><Icon name="refresh-cw" size={14} /><span>{forceSyncing ? "Syncing…" : "Sync"}</span></button>
@@ -193,7 +210,7 @@
     min-width: 0;
   }
 
-  /* ── Bare icon button (Books, Sync, settings, help) ──────────────────── */
+  /* ── Bare icon button (Books, Get latest, Sync, settings, help) ──────── */
   .status-icon-btn {
     display: inline-flex;
     align-items: center;
@@ -217,6 +234,16 @@
   .status-icon-btn:focus-visible {
     outline: 2px solid var(--app-focus-ring);
     outline-offset: 1px;
+  }
+  /* Get latest is an icon until changes are waiting online: then it names them
+     ("New online") and takes the accent, as it did in 0.11.22. */
+  .get-latest {
+    gap: 4px;
+    font-size: 11px;
+  }
+  .get-latest.has-updates {
+    color: var(--app-link);
+    font-weight: 600;
   }
   /* Sync is the one icon button with a word. With changes waiting online it
      takes the accent and a dot, so the cue is never colour alone. */

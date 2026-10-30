@@ -67,11 +67,12 @@ describe("status bar structure", () => {
     return i;
   };
 
-  test("left cluster: Books (folder) button, the book switcher, the one status control, then Sync", () => {
+  test("left cluster: Books (folder) button, the book switcher, the one status control, then Get latest and Sync", () => {
     const order = [
       at('<Icon name="folder"'),
       at("<BookSwitcher"),
       at('class="status-control'),
+      at('class="status-icon-btn get-latest"'),
       at('class="status-icon-btn labelled"'),
       at('class="shell-actions"'),
     ];
@@ -91,15 +92,34 @@ describe("status bar structure", () => {
     expect(markup).not.toContain("SyncStatusPill");
   });
 
-  test("a reader gets no status control or Sync", () => {
+  /** The buttons shown only with automatic backing up off, for an author whose book can back up (the last block of the left cluster). */
+  const manual = () => {
+    const start = at("{#if showManualSync}");
+    return markup.slice(start, markup.indexOf("</div>", start));
+  };
+
+  test("a reader gets no status control, Get latest or Sync (#485)", () => {
     expect(markup).toContain("{#if showStatus}");
     expect(src).toContain("showStatus = $derived(!!projectDir && sourceMode === \"folder\" && !readerMode)");
     expect(src).toContain("showManualSync = $derived(showStatus && canSync && !autoBackup)");
+    // Both buttons live inside the one block a reader never gets.
+    expect(manual()).toContain("onclick={() => void onGetLatest?.()}");
+    expect(manual()).toContain("onclick={() => void onForceSync?.()}");
+    expect(markup.match(/onGetLatest|onForceSync/g)).toHaveLength(2);
   });
 
-  test("Sync is the only manual online button: no Get latest or Back up now", () => {
-    expect(markup).toContain("Sync");
-    expect(markup).not.toMatch(/Get latest|Back up now|onGetLatest|gettingLatest/);
+  test("with automatic backing up off, Get latest (sends nothing) sits before Sync, as in 0.11.22 (#485)", () => {
+    const block = manual();
+    expect(block.indexOf("onGetLatest")).toBeLessThan(block.indexOf("onForceSync"));
+    expect(block).toContain('<Icon name="arrow-down-to-line"');
+    expect(block).toContain('aria-label={updatesAvailable ? "Get latest — new changes are online" : "Get latest"}');
+    expect(block).toContain('"Get latest: bring in changes from the online copy without sending yours"');
+    expect(block).toContain('{gettingLatest ? "Getting…" : "New online"}');
+    // Neither runs while the other does.
+    expect(block).toContain("disabled={gettingLatest || forceSyncing}");
+    expect(block).toContain("disabled={forceSyncing || gettingLatest}");
+    // Back up now lives in Book setup → Online copy, not in the bar.
+    expect(markup).not.toContain("Back up now");
   });
 
   test("a divider leads each group after Books, rendered only with its group", () => {

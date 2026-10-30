@@ -55,7 +55,12 @@ export interface ReadyView {
   detail: string;
   /** A backup is known to have worked, so the headline earns its check mark. */
   ok: boolean;
-  /** The one thing to do: sync now (get the latest, then back up), run it again after a failure, or sign in again. */
+  /**
+   * The one thing to do: back up now, run it again after a failure, or sign in again (nothing
+   * while a pass runs). Backing up now is one pass that gets the latest changes, then backs up
+   * yours, whatever "Back up online automatically" says (#485); Online copy names it Sync now
+   * while that is off. Get latest, which sends nothing, sits beside it and beside Try again.
+   */
   action: "back-up" | "try-again" | "sign-in" | null;
 }
 
@@ -68,17 +73,16 @@ export function readyView(copy: string, last: LastBackup | null, autoSync: boole
   const ongoing = autoSync
     ? "Gutterpress backs it up while you work."
     : "Backing up automatically is off, so this book gets the latest changes and backs up yours only when you ask.";
-  const manual = autoSync ? null : "back-up";
   switch (last?.state) {
     case "syncing":
       return { headline: `Backing up to ${copy}…`, detail: ongoing, ok: false, action: null };
     case "synced": {
       const at = Date.parse(last.lastSyncAt ?? "");
       if (Number.isNaN(at)) break;
-      return { headline: `Backed up · ${relativeTime(at, now)}`, detail: `Online copy: ${copy}. ${ongoing}`, ok: true, action: manual };
+      return { headline: `Backed up · ${relativeTime(at, now)}`, detail: `Online copy: ${copy}. ${ongoing}`, ok: true, action: "back-up" };
     }
     case "unsent":
-      return { headline: "Not backed up yet", detail: `Online copy: ${copy}. ${ongoing}`, ok: false, action: manual };
+      return { headline: "Not backed up yet", detail: `Online copy: ${copy}. ${ongoing}`, ok: false, action: "back-up" };
     case "offline":
       return { headline: `Couldn't reach ${copy}.`, detail: "Check your internet connection, or try again later. Your work is saved on this computer.", ok: false, action: "try-again" };
     case "auth":
@@ -86,5 +90,5 @@ export function readyView(copy: string, last: LastBackup | null, autoSync: boole
     case "error":
       return { headline: `Couldn't back up to ${copy}.`, detail: last.message || "Your work is saved on this computer.", ok: false, action: "try-again" };
   }
-  return { headline: `Online copy: ${copy}`, detail: ongoing, ok: false, action: manual };
+  return { headline: `Online copy: ${copy}`, detail: ongoing, ok: false, action: "back-up" };
 }
