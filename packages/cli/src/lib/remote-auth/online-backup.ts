@@ -100,8 +100,8 @@ export type BackupSetupResult =
 
 const MSG = {
   notConnected:
-    "Connect your GitHub account first (Settings > Accounts), then set up the online copy.",
-  auth: "GitHub didn't accept the saved sign-in. Sign in to GitHub again in Settings > Accounts and try again.",
+    "Connect your GitHub account first, then set up the online copy.",
+  auth: "GitHub didn't accept the saved sign-in. Sign in to GitHub again and try again.",
   offline:
     "Gutterpress couldn't reach GitHub. Check your internet connection and try again. Nothing was changed.",
   noHistory:

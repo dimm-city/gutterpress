@@ -30,13 +30,13 @@ export const MSG_BUSY =
  * always applies here) "Repair the online copy" is the way back.
  */
 export const MSG_HISTORY_UNREADABLE =
-  "This book's versions can't be read, so backing up can't continue. Your writing is safe — every file is still here on this computer. Use \"Repair the online copy\" (in Book setup → Online copy) to get versions and backing up working again.";
+  "This book's versions can't be read, so backing up can't continue. Your writing is safe — every file is still here on this computer. Use \"Repair the online copy\" in Book setup to get versions and backing up working again.";
 // Two DIFFERENT causes produce "no versions in common", and the message must
 // not assert one of them: the online copy's address may point at a different
 // book, or this book's own versions may have been lost and started over. Naming
 // both beats sending a writer whose versions are gone to inspect a correct address.
 export const MSG_UNRELATED =
-  "This book and the online copy have no versions in common, so they can't be combined. Either the online copy's address points at a different book, or this book's own versions were lost and started over. Your writing is safe — every file is still here on this computer. Check the online copy's address; if it is correct, use \"Repair the online copy\" (in Book setup → Online copy).";
+  "This book and the online copy have no versions in common, so they can't be combined. Either the online copy's address points at a different book, or this book's own versions were lost and started over. Your writing is safe — every file is still here on this computer. Check the online copy's address; if it is correct, use \"Repair the online copy\" in Book setup.";
 export const MSG_NO_REMOTE =
   "This book doesn't have an online copy yet.";
 export const MSG_SSH_REMOTE =
