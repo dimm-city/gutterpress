@@ -46,6 +46,20 @@ export type { ImageInfo, ColorSpace } from "./lib/image-inspect.ts";
 // desktop's host-side route share one implementation.
 export { checkCss } from "./lib/printsafe.ts";
 
+// The book's stylesheet as Book setup's design settings read it, and their
+// writer (#454) — postcss, so host-side only, served by the desktop's
+// `api/style/book-css` and `api/style/edit-tokens` routes like `checkCss`.
+export { readBookCss, bookTokenEdits } from "./lib/book-css.ts";
+export type {
+  BookCss,
+  BookCssChunk,
+  CssChunk,
+  CssChunkOrigin,
+  RootToken,
+  StylesheetEdit,
+  TokenUpdate,
+} from "./lib/book-css.ts";
+
 // Print-quality findings the render produces (native engine). The codes are
 // exported so a surface's plain-language label table can be asserted complete
 // against them rather than drifting as checks are added — the desktop

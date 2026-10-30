@@ -53,6 +53,7 @@
   import { ExtensionsSectionController } from "#lib/routes/extensions-section-controller.svelte.ts";
   import { StylesSectionController } from "#lib/routes/styles-section-controller.svelte.ts";
   import { DesignSectionController } from "#lib/routes/design-section-controller.svelte.ts";
+  import { sampleComputedValues } from "#lib/style-tokens.ts";
   import AppView from "#lib/components/AppView.svelte";
   import Tabs from "#lib/components/Tabs.svelte";
   import DetailsSection from "#lib/components/config/DetailsSection.svelte";
@@ -134,8 +135,9 @@
     projectDir: projectDirAccessor,
     listStyles: (dir) => api.project.listStyles(dir, repoRoot),
     listExtensions: (dir) => api.extension.list(dir),
-    readCss: (dir, use) => api.extension.readCss(dir, use),
-    readFile: (path) => api.fs.readFile(path),
+    readBookCss: (dir) => api.style.bookCss(dir),
+    computeValues: sampleComputedValues,
+    editTokens: (dir, file, updates) => api.style.editTokens(dir, file, updates),
     writeFile: (path, content) => api.fs.writeFile(path, content),
     setActiveStyles: (dir, paths) => api.style.setActive(dir, paths),
     onError: (msg) => toast?.error?.(msg),
@@ -190,8 +192,8 @@
     afterLookChange: () => design.loadDesign(),
   });
 
-  // ── Stylesheets — the manifest's `styles:` list. The design settings follow
-  //    the book's first stylesheet, so any change reloads them. ──────────────
+  // ── Stylesheets — the manifest's `styles:` list. The design settings read
+  //    every one of them, so any change reloads them. ────────────────────────
   const styles = new StylesSectionController({
     projectDir: projectDirAccessor,
     listStyles: (dir) => api.project.listStyles(dir, repoRoot),

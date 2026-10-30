@@ -357,6 +357,13 @@ This project follows [Semantic Versioning](https://semver.org/).
   row that still has more cells than the header is reported in Problems
   (`table_extra_cells`) instead of silently losing them.
 
+### Fixed
+
+- **The design settings read the book's stylesheet as the build does (#454).**
+  A plugin's `css` and a `:root` in a later stylesheet now show, a value with
+  `;` inside `url("data:…")` is no longer cut short, and an edit lands where
+  your stylesheet already sets the setting, never in a comment or `@media`.
+
 ## [0.11.22] - 2026-10-23
 
 ### Added
