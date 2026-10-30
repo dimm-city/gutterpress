@@ -861,12 +861,16 @@ export const api = {
     forgeTokenUrl: (host: string) =>
       post<string | null>('/api/remote/forge-token-url', { host }),
 
-    /** Sync the project with its online copy: get the latest, then back up. */
+    /** Sync / Back up now: get the latest from the online copy, then back up. */
     syncChanges: (projectDir: string, message?: string) =>
       post<SyncOutcome>('/api/remote/sync', {
         projectDir,
         ...(message ? { message } : {}),
       }),
+
+    /** "Get latest": the same pass with `push: false`: fetch and merge the online changes; never sends. */
+    getLatest: (projectDir: string) =>
+      post<SyncOutcome>('/api/remote/sync', { projectDir, push: false }),
 
     /** Whether the book's branch has moved online (reads refs only; never throws). */
     checkUpdates: (projectDir: string) =>

@@ -307,8 +307,8 @@ This project follows [Semantic Versioning](https://semver.org/).
   book, each saying whether it is also in the online copy), and, collapsed, the
   tools for when backing up keeps failing. Readers see no status control, Sync
   button or online toasts. Nothing an author reads says commit, branch, push,
-  pull, merge, remote, repository, snapshot or clone any more (the one manual
-  button is **Sync**); Help no longer describes the removed conflict model, and the two sides
+  pull, merge, remote, repository, snapshot or clone any more (the one
+  exception is the **Sync** button); Help no longer describes the removed conflict model, and the two sides
   of an overlapping passage are "two takes". Settings' switch is now **Keep
   version history**, and crash recovery's button is **Recover**.
 - **Honest backup status, and Readers only ever get the latest (#448).**
@@ -339,11 +339,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   with **Rename…** (every revision) and **Delete…** (all but the open one);
   New revision, Rename and Delete are dialogs. A revision that is **Only
   online** can now be renamed or deleted in the online copy (refused, changing
-  nothing, when it changed online since the list was checked). With automatic backing up off, one **Sync** button
-  (Setup → Online copy: **Sync now**; the new-changes toast: **Sync**) replaces
-  Back up now and Get latest; it runs the same backing up as before, which gets
-  the latest first. The status control and Sync sit on the left of the status
-  bar, after the book switcher.
+  nothing, when it changed online since the list was checked). With automatic backing up off, a **Sync** button
+  (Setup → Online copy: **Sync now**) sits beside Get latest; it runs the same
+  backing up as Back up now, which gets the latest first. The status control,
+  Get latest and Sync sit on the left of the status bar, after the book
+  switcher.
 - **History messages follow the vocabulary (#448).** New versions record
   "Automatic version", "First version", "Saved a version", "Automatic version
   before backing up", "Automatic version before restoring", "Saved before
@@ -390,6 +390,14 @@ This project follows [Semantic Versioning](https://semver.org/).
   GitHub had lost its link to Accounts for another Git host. They are back,
   under the same settings keys, so what 0.11.22 saved applies again, and the
   right-click menu can be turned off again (Shift+F10 too).
+- **Get latest and Back up now are back beside Sync (#485).** A regression
+  from 0.11.22: the 0.11.23 betas folded both into Sync. **Get latest** again
+  brings in the online copy's changes without sending yours: on the "New
+  changes are online for this book." toast, in Setup → Online copy, and beside
+  Sync in the status bar while automatic backing up is off. **Back up now** is
+  in Setup → Online copy whenever the book can back up, with automatic backing
+  up on as well as off (off, the same button reads **Sync now**). Readers still
+  see neither.
 - **The minus sign (−, U+2212) is typed as itself.** The character check no
   longer reports it as a look-alike hyphen, and the editor no longer outlines it.
 - **Named pages keep their margins under `page.margin` (#454).** Chromium

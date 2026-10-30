@@ -458,6 +458,7 @@
   // + buffer).
   const syncController = new SyncController({
     syncChanges: (dir) => api.remote.syncChanges(dir),
+    getLatest: (dir) => api.remote.getLatest(dir),
     checkUpdates: (dir) => api.remote.checkUpdates(dir),
     repair: (dir) => api.remote.repairOnlineBackup(dir),
     diagnose: (dir) => api.remote.diagnoseProjectRemote(dir),
@@ -3367,6 +3368,8 @@
     {versionsProblem}
     onSwitchBook={(path) => void switchBook(path)}
     onForceSync={() => syncController.handleForceSync()}
+    onGetLatest={() => syncController.handleGetLatest()}
+    gettingLatest={syncController.gettingLatest}
     updatesAvailable={syncController.updatesAvailable}
     onOpenOnlineCopy={openOnlineCopy}
     onOpenSettings={() => openSettings()}
@@ -3436,6 +3439,7 @@
     backup={syncController.backup}
     {versionsProblem}
     onBackUpNow={() => syncController.handleForceSync()}
+    onGetLatest={() => syncController.handleGetLatest()}
     onRepair={() => syncController.handleRepair()}
     onSaveVersion={saveVersion}
     onBrowseVersions={(id) => (versionsFor = { id: id ?? null })}
