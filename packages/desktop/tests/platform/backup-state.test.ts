@@ -53,9 +53,9 @@ describe("readyView: never claims a backup without evidence", () => {
     }
   });
 
-  test("automatic backup off: says so and offers a backup now", () => {
+  test("automatic backup off: says so and offers Sync now", () => {
     const off = readyView(copy, null, false, now);
-    expect(off.detail).toBe("Backing up automatically is off, so this book is backed up only when you ask.");
+    expect(off.detail).toBe("Backing up automatically is off, so this book gets the latest changes and backs up yours only when you ask.");
     expect(off.action).toBe("back-up");
   });
 
@@ -67,7 +67,7 @@ describe("readyView: never claims a backup without evidence", () => {
     expect(readyView(copy, { state: "synced", lastSyncAt: null }, true, now).ok).toBe(false);
   });
 
-  test("a pass that left work unsent says so, and offers a backup when it is up to the author", () => {
+  test("a pass that left work unsent says so, and offers Sync now when it is up to the author", () => {
     expect(readyView(copy, { state: "unsent", lastSyncAt: "2026-10-28T11:58:00Z" }, false, now)).toMatchObject({
       headline: "Not backed up yet",
       ok: false,

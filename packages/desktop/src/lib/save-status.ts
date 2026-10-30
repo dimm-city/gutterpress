@@ -23,11 +23,11 @@ export interface StatusLineInput {
   forceSaving: boolean;
   /** The host said automatic versions keep failing (and why). */
   versionsProblem: { message: string | null } | null;
-  /** The online copy's last word: the host's stream or the last manual Back up now (`null` until the first). */
+  /** The online copy's last word: the host's stream or the last manual Sync (`null` until the first). */
   backup: { state: SyncState; message?: string } | null;
   /** The book has an online copy at all (any address), so an unknown state is not "only on this computer". */
   hasRemote: boolean;
-  /** A manual Back up now is in progress. */
+  /** A manual Sync is in progress. */
   backingUp: boolean;
 }
 

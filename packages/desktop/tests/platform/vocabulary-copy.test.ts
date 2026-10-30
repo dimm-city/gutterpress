@@ -17,13 +17,25 @@ function markup(rel: string): string {
     .replace(/<!--[\s\S]*?-->/g, "");
 }
 
-// Never shown to an Author. Two exceptions: "(GitHub calls it a repository)" where the author acts on
-// github.com, and the command pasted into their own Git tool.
+// Never shown to an Author. Three exceptions: "(GitHub calls it a repository)" where the author acts on
+// github.com, the command pasted into their own Git tool, and the Sync button's own words (the contract's
+// **Sync** row): its labels and tooltips, and Help naming the button.
 const BANNED = [
   /\b(commits?|branch(es)?|push(ed|ing)?|pull(ed|ing)?|merge[ds]?|remote|repositor(y|ies)|snapshots?|sync(ing|ed)?|clone[ds]?|online backups?|previous versions|reconnect(ing)?)\b/gi,
   /\bHEAD\b/g,
 ];
-const EXCEPTIONS = [/GitHub calls it a repository/g, /<code>git remote set-url origin https:\/\/…<\/code>/g];
+const EXCEPTIONS = [
+  /GitHub calls it a repository/g,
+  /<code>git remote set-url origin https:\/\/…<\/code>/g,
+  // The Sync button: "Sync" / "Sync now" / "Syncing…", the tooltips, and Help's <em>Sync</em>.
+  /"Sync now"/g,
+  /"Syncing…"/g,
+  /"Sync"/g,
+  /"Sync — new changes are online: get them, then back up yours"/g,
+  /"Sync: get the latest changes from the online copy, then back up yours"/g,
+  /"Sync — new changes are online"/g,
+  /<em>Sync<\/em>/g,
+];
 
 /** The banned words a component draws. */
 function gitWords(rel: string): string[] {
@@ -47,6 +59,22 @@ describe("the screens that were reshaped use the product's words", () => {
       expect(gitWords(file)).toEqual([]);
     });
   }
+});
+
+describe("the one Sync button", () => {
+  test("the status bar says Sync, Syncing… and the tooltip the design gives; the Online copy tab says Sync now", () => {
+    const bar = markup("lib/components/StatusBar.svelte");
+    for (const text of ['"Sync"', '"Syncing…"', '"Sync: get the latest changes from the online copy, then back up yours"', '"Sync — new changes are online"']) {
+      expect(bar).toContain(text);
+    }
+    expect(markup("lib/components/ProjectConnectionsSection.svelte")).toContain('"Sync now"');
+  });
+
+  test("Get latest and Back up now are gone from the bar, the tab, Help and the toast", () => {
+    for (const file of ["lib/components/StatusBar.svelte", "lib/components/ProjectConnectionsSection.svelte", "lib/components/HelpContent.svelte", "lib/routes/sync-controller.svelte.ts"]) {
+      expect(markup(file)).not.toMatch(/Get latest|Back up now/);
+    }
+  });
 });
 
 describe("Book setup → Online copy", () => {

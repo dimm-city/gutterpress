@@ -61,7 +61,7 @@ describe("a Reader's toolbar", () => {
 });
 
 describe("a Reader's status bar and online copy", () => {
-  test("has no status control, Get latest or Back up now, and the flag reaches it", () => {
+  test("has no status control or Sync, and the flag reaches it", () => {
     expect(statusBar).toContain('let showStatus = $derived(!!projectDir && sourceMode === "folder" && !readerMode);');
     expect(statusBar).toContain("let showManualSync = $derived(showStatus && canSync && !autoBackup);");
     expect(page).toMatch(/<StatusBar[\s\S]*?\{readerMode\}[\s\S]*?\/>/);

@@ -1,18 +1,19 @@
 <script lang="ts">
   /**
    * StatusBar — slim bottom bar hosting the start-screen (Books) button, the
-   * book switcher, the one status control and the settings and help buttons.
+   * book switcher, the one status control with Sync beside it, and the settings
+   * and help buttons.
    *
    * Layout (left → right):
-   *   [folder → start screen Books] [book switcher] ··· [Get latest] [Back up now] [status] | [settings] [help]
+   *   [folder → start screen Books] | [book switcher] | [status] [Sync] ··· [settings] [help]
    *
    * The status control is one line for saving AND the online copy ("Saved ·
    * Backed up"); clicking it opens Book setup → Online copy, the one place the
-   * rest lives. Get latest and Back up now sit beside it only while automatic
-   * backing up is off. A reader sees none of this: they get the latest on their
-   * own. The words come from the pure `statusLine` (#lib/save-status); the live
-   * state comes from the sync controller. The Problems badge stays on the editor
-   * toolbar.
+   * rest lives. Sync (get the latest changes, then back up yours) sits beside
+   * it only while automatic backing up is off. A reader sees none of this: they
+   * get the latest on their own. The words come from the pure `statusLine`
+   * (#lib/save-status); the live state comes from the sync controller. The
+   * Problems badge stays on the editor toolbar.
    *
    * PWA-clean: all host work via api.* routes (CLAUDE.md §8).
    * No node: builtins or gutterpress value imports.
@@ -43,26 +44,22 @@
     autoBackup = true,
     /** Whether a manual force-save is in progress. */
     forceSaving = false,
-    /** Whether a manual Back up now is in progress. */
+    /** Whether a manual Sync is in progress. */
     forceSyncing = false,
-    /** A reader sees no status control, no Get latest and no Back up now. */
+    /** A reader sees no status control and no Sync. */
     readerMode = false,
     /** Books in the open project's repo; switcher shows only when > 1. */
     books = [] as ProjectBookEntry[],
     /** The book the session currently targets. */
     activeBookDir = null as string | null,
-    /** The online copy's last word for the open book (the host's stream or the last Back up now). */
+    /** The online copy's last word for the open book (the host's stream or the last manual Sync). */
     backup = null as LastBackup | null,
     /** Why automatic versions keep failing, once the host has said so (only while they are on: a failing safety net you turned off isn't news). */
     versionsProblem = null as { message: string | null } | null,
     /** Called with a book's folder path when the author switches books. */
     onSwitchBook = undefined as ((path: string) => void) | undefined,
-    /** Called when the author clicks "Back up now". */
+    /** Called when the author clicks "Sync". */
     onForceSync = undefined as (() => void | Promise<void>) | undefined,
-    /** Called for "Get latest": bring in the online changes without sending any. */
-    onGetLatest = undefined as (() => void | Promise<void>) | undefined,
-    /** A "Get latest" is in progress. */
-    gettingLatest = false,
     /** The last check found changes online this computer has not got. */
     updatesAvailable = false,
     /** Called when the status control is clicked: opens Book setup → Online copy. */
@@ -88,8 +85,6 @@
     versionsProblem?: { message: string | null } | null;
     onSwitchBook?: (path: string) => void;
     onForceSync?: () => void | Promise<void>;
-    onGetLatest?: () => void | Promise<void>;
-    gettingLatest?: boolean;
     updatesAvailable?: boolean;
     onOpenOnlineCopy?: () => void;
     onOpenSettings?: () => void;
@@ -100,7 +95,7 @@
   // The status control: only for an open folder book, and never for a reader.
   let showStatus = $derived(!!projectDir && sourceMode === "folder" && !readerMode);
   // Manual mode: automatic backing up is off but the book can back up, so the
-  // bar offers Get latest and Back up now beside the control.
+  // bar offers Sync beside the control.
   let showManualSync = $derived(showStatus && canSync && !autoBackup);
   let line = $derived(
     statusLine({
@@ -120,8 +115,9 @@
 </script>
 
 <div class="status-bar" role="status" aria-label="Application status">
-  <!-- Left cluster: [folder → start screen Books] [book switcher]. The online
-       copy and saving are grouped at the far right, next to settings and help. -->
+  <!-- Left cluster: [folder → start screen Books] | [book switcher] | [status] [Sync].
+       A divider precedes each group after the first, so a hidden switcher or
+       status control leaves no stray line. Settings and help sit at the far right. -->
   <div class="status-left">
     <button
       class="status-icon-btn"
@@ -134,34 +130,9 @@
     {#if showBookSwitcher}
       <span class="divider" aria-hidden="true"></span>
       <BookSwitcher {books} {activeBookDir} onSelect={(path) => onSwitchBook?.(path)} />
-      <span class="divider" aria-hidden="true"></span>
-    {/if}
-  </div>
-
-  <!-- Right cluster: [Get latest] [Back up now] [status control] -->
-  <div class="status-right">
-    {#if showManualSync}
-      <!-- Automatic backing up is off: the author gets and sends changes on
-           demand. Get latest never sends anything back. -->
-      <button
-        type="button"
-        class="status-icon-btn"
-        class:has-updates={updatesAvailable}
-        onclick={() => void onGetLatest?.()}
-        disabled={gettingLatest || forceSyncing}
-        title={updatesAvailable ? "New changes are online — get them (your changes stay on this computer)" : "Get latest: bring in changes from the online copy without sending yours"}
-        aria-label={updatesAvailable ? "Get latest — new changes are online" : "Get latest"}
-      ><Icon name="arrow-down-to-line" size={14} />{#if updatesAvailable}<span>{gettingLatest ? "Getting…" : "New online"}</span>{/if}</button>
-      <button
-        type="button"
-        class="status-icon-btn"
-        onclick={() => void onForceSync?.()}
-        disabled={gettingLatest || forceSyncing}
-        title="Back up now: send your versions to the online copy (it gets the latest first)"
-        aria-label="Back up now"
-      ><Icon name="cloud-upload" size={14} /></button>
     {/if}
     {#if showStatus}
+      <span class="divider" aria-hidden="true"></span>
       <button
         type="button"
         class="status-control {line.tone}"
@@ -169,9 +140,22 @@
         title={line.title}
       ><Icon name={line.icon} size={13} /><span class="status-text" aria-live="polite" aria-atomic="true">{line.text}</span></button>
     {/if}
+    {#if showManualSync}
+      <!-- Automatic backing up is off: one pass gets the latest changes, then
+           backs up this computer's. -->
+      <button
+        type="button"
+        class="status-icon-btn labelled"
+        class:has-updates={updatesAvailable}
+        onclick={() => void onForceSync?.()}
+        disabled={forceSyncing}
+        title={updatesAvailable ? "Sync — new changes are online: get them, then back up yours" : "Sync: get the latest changes from the online copy, then back up yours"}
+        aria-label={updatesAvailable ? "Sync — new changes are online" : undefined}
+      ><Icon name="refresh-cw" size={14} /><span>{forceSyncing ? "Syncing…" : "Sync"}</span></button>
+    {/if}
   </div>
 
-  <div class="shell-actions" class:divided={showStatus} aria-label="Application actions">
+  <div class="shell-actions" aria-label="Application actions">
     <button class="status-icon-btn" onclick={() => onOpenSettings?.()} title="Settings (Ctrl+,)" aria-label="Settings">
       <Icon name="settings" size={14} />
     </button>
@@ -196,30 +180,20 @@
     overflow: visible;
   }
 
-  /* ── Left cluster (Books button, book switcher) ─────────────────────────────────────── */
+  /* ── Left cluster (Books, book switcher, status control, Sync) ───────── */
+  /* It gives way before settings and help do: the status line is the one item
+     inside that shrinks (and ellipsizes). */
   .status-left {
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 0 10px;
     min-height: 28px;
-    flex: 0 0 auto;
+    flex: 0 1 auto;
     min-width: 0;
   }
 
-  /* ── Right cluster (Get latest, Back up now, status control) ─────────── */
-  .status-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 10px;
-    min-height: 28px;
-    flex: 0 0 auto;
-    min-width: 0;
-    margin-left: auto;
-  }
-
-  /* ── Bare icon button (Books, Get latest, Back up now, settings, help) ─ */
+  /* ── Bare icon button (Books, Sync, settings, help) ──────────────────── */
   .status-icon-btn {
     display: inline-flex;
     align-items: center;
@@ -244,12 +218,22 @@
     outline: 2px solid var(--app-focus-ring);
     outline-offset: 1px;
   }
-  /* With changes waiting online the Get latest button names them and takes the accent. */
-  .status-icon-btn.has-updates {
+  /* Sync is the one icon button with a word. With changes waiting online it
+     takes the accent and a dot, so the cue is never colour alone. */
+  .labelled {
     gap: 4px;
-    color: var(--app-link);
     font-size: 11px;
+  }
+  .labelled.has-updates {
+    color: var(--app-link);
     font-weight: 600;
+  }
+  .labelled.has-updates::after {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
   }
   .status-icon-btn:disabled {
     cursor: default;
@@ -280,13 +264,13 @@
   .status-control.pending { font-style: italic; }
   .status-control.warn { color: var(--app-warning-text); }
   .status-control.error { color: var(--app-error-text); font-weight: 600; }
-  /* Narrow (the app's single-pane layout): the line gives way to the buttons. */
+  /* Narrow (the app's single-pane layout): the line gives way to the buttons beside it. */
   @media screen and (max-width: 820px) {
     .status-control { max-width: 160px; }
   }
 
-  /* A `|` between status-bar groups: around the book switcher. Rendered only
-     beside the item it separates, so a hidden switcher leaves no stray line. */
+  /* A `|` before each group after the Books button. Rendered only with the
+     group it leads, so a hidden switcher or status control leaves no stray line. */
   .divider {
     align-self: stretch;
     width: 1px;
@@ -300,10 +284,6 @@
     gap: 8px;
     padding: 0 10px 0 8px;
     flex: 0 0 auto;
-  }
-  /* The `|` between the status control and settings/help: only when the
-     control is shown, so an empty right side has no stray divider. */
-  .shell-actions.divided {
-    border-left: 1px solid var(--app-border);
+    margin-left: auto;
   }
 </style>

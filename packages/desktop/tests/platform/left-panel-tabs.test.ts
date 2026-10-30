@@ -67,22 +67,22 @@ describe("status bar structure", () => {
     return i;
   };
 
-  test("left cluster: Books (folder) button precedes the book switcher; help is not there", () => {
-    expect(at('<Icon name="folder"')).toBeLessThan(at("<BookSwitcher"));
-    expect(at("<BookSwitcher")).toBeLessThan(at('class="status-right"'));
-    expect(markup.indexOf('name="circle-help"')).toBeGreaterThan(at('class="status-right"'));
-  });
-
-  test("right side: Get latest, Back up now, the one status control, then settings and help last", () => {
+  test("left cluster: Books (folder) button, the book switcher, the one status control, then Sync", () => {
     const order = [
-      at('aria-label={updatesAvailable ? "Get latest'),
-      at('aria-label="Back up now"'),
+      at('<Icon name="folder"'),
+      at("<BookSwitcher"),
       at('class="status-control'),
+      at('class="status-icon-btn labelled"'),
       at('class="shell-actions"'),
-      at('name="settings"'),
-      at('name="circle-help"'),
     ];
     expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(at('class="shell-actions"')).toBeGreaterThan(at('class="status-left"'));
+  });
+
+  test("right side: only settings then help", () => {
+    const order = [at('class="shell-actions"'), at('name="settings"'), at('name="circle-help"')];
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(markup).not.toContain("status-right");
   });
 
   test("there is one status control, and no second save indicator or sync pill", () => {
@@ -91,19 +91,22 @@ describe("status bar structure", () => {
     expect(markup).not.toContain("SyncStatusPill");
   });
 
-  test("a reader gets no status control, Get latest or Back up now", () => {
+  test("a reader gets no status control or Sync", () => {
     expect(markup).toContain("{#if showStatus}");
     expect(src).toContain("showStatus = $derived(!!projectDir && sourceMode === \"folder\" && !readerMode)");
     expect(src).toContain("showManualSync = $derived(showStatus && canSync && !autoBackup)");
   });
 
-  test("the divider only renders with the status control", () => {
-    expect(markup).toContain("class:divided={showStatus}");
+  test("Sync is the only manual online button: no Get latest or Back up now", () => {
+    expect(markup).toContain("Sync");
+    expect(markup).not.toMatch(/Get latest|Back up now|onGetLatest|gettingLatest/);
   });
 
-  test("dividers sit on both sides of the book switcher", () => {
+  test("a divider leads each group after Books, rendered only with its group", () => {
     expect(markup).toMatch(
-      /\{#if showBookSwitcher\}\s*<span class="divider" aria-hidden="true"><\/span>\s*<BookSwitcher[^\n]*\n\s*<span class="divider" aria-hidden="true"><\/span>\s*\{\/if\}/,
+      /\{#if showBookSwitcher\}\s*<span class="divider" aria-hidden="true"><\/span>\s*<BookSwitcher[^\n]*\n\s*\{\/if\}/,
     );
+    expect(markup).toMatch(/\{#if showStatus\}\s*<span class="divider" aria-hidden="true"><\/span>\s*<button[^>]*class="status-control/);
+    expect(markup.match(/class="divider"/g)).toHaveLength(2);
   });
 });

@@ -24,9 +24,15 @@
  *   4. Once backing up can work (the diagnosis is stubbed as ready), "If
  *      backing up keeps failing" holds Test connection, Repair the online
  *      copy, Start over from the online copy and Sign in again, collapsed.
- *   5. A Reader sees no status control, Get latest or Back up now.
+ *   5. For a book that can back up (closing Accounts makes the app look at its
+ *      online copy again, stubbed as ready) the status bar shows no Sync while
+ *      automatic backing up is on, and ONE Sync button after the status control
+ *      once it is off: it runs a pass, reads "Syncing…" while it runs, and
+ *      carries the "new changes are online" cue and toast action. It still
+ *      fits, with the status line ellipsized, at 700px and (cut short) at 260px.
+ *   6. A Reader sees no status control and no Sync, even in that state.
  *
- * Screenshots: <os tmpdir>/online-copy-{bar,tab,rename,delete,reader}.png.
+ * Screenshots: <os tmpdir>/online-copy-{bar,bar-auto,bar-sync,bar-sync-updates,bar-narrow,tab,rename,delete,reader}.png.
  *
  * Usage: node tests/integration/online-copy.pw.mjs [exe-or-main-js] [fixture-dir]
  * Exit 0 on pass, 1 on fail.
@@ -375,6 +381,115 @@ check(/^Online copy: github\.com\/ada\/harbor-lights$/.test(failing.headline), `
 await closeDialog();
 check(await waitFor(`!document.querySelector('#project-settings-panel')`), "Book setup closed again");
 
+// ── 12b. automatic backing up off: one Sync button beside the status control ─
+// The sync and update-check calls are stubbed in the page. Closing Accounts makes
+// the app look at the online copy again (now stubbed as ready), so the book can
+// back up; Sync shows only once Settings turns automatic backing up off.
+await evalJs(`(() => {
+  const real = window.fetch.bind(window);
+  const json = (v) => new Response(JSON.stringify(v), { status: 200, headers: { "content-type": "application/json" } });
+  window.__sync = { calls: [], release: null, updatesOnline: false, diagnosed: 0 };
+  window.fetch = (input, init) => {
+    const path = new URL(typeof input === "string" ? input : input.url, location.href).pathname;
+    if (path === "/api/remote/diagnose-project") window.__sync.diagnosed++;
+    if (path === "/api/remote/check-updates") return Promise.resolve(json({ available: window.__sync.updatesOnline }));
+    if (path === "/api/remote/sync") {
+      window.__sync.calls.push(JSON.parse(init.body));
+      return new Promise((resolve) => { window.__sync.release = () => resolve(json({ status: "synced", message: "", mergedRemoteChanges: false })); });
+    }
+    return real(input, init);
+  };
+  return true;
+})()`);
+const openSettings = async () => {
+  await click('.status-bar button[aria-label="Settings"]');
+  check(await waitFor(`!!document.querySelector('#settings-autosync')`), "Settings opened");
+};
+const closeSettings = async () => {
+  await click('button[aria-label="Close settings"]');
+  check(await waitFor(`!document.querySelector('#settings-autosync')`), "Settings closed");
+};
+await openSettings();
+await click("button", "Accounts…");
+check(await waitFor(`!!document.querySelector('button[aria-label="Close accounts"]')`), "Accounts opened over Settings");
+await click('button[aria-label="Close accounts"]');
+check(await waitFor(`window.__sync.diagnosed > 0`), "closing Accounts made the app look at the online copy again");
+await closeSettings();
+await sleep(500);
+const syncBtn = `[...document.querySelectorAll('.status-bar button')].find((b) => /^Sync/.test(b.textContent.trim()))`;
+check(!(await evalJs(`!!(${syncBtn})`)), "a book that can back up shows no Sync while automatic backing up is on");
+await screenshot(join(tmpdir(), "online-copy-bar-auto.png"));
+await openSettings();
+await evalJs(`(() => { const sw = document.querySelector('#settings-autosync'); sw.checked = false; sw.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+await closeSettings();
+check(await waitFor(`!!(${syncBtn})`), "the status bar offers Sync once automatic backing up is off");
+const shape = await evalJs(`(() => {
+  const bar = document.querySelector('.status-bar');
+  const btn = ${syncBtn};
+  const left = (el) => el.getBoundingClientRect().left;
+  return {
+    text: btn.textContent.trim(),
+    title: btn.title,
+    hasIcon: !!btn.querySelector('svg'),
+    disabled: btn.disabled,
+    order: [left(bar.querySelector('button[aria-label^="Books"]')), left(bar.querySelector('.status-control')), left(btn), left(bar.querySelector('button[aria-label="Settings"]'))],
+    labels: [...bar.querySelectorAll('button')].map((b) => b.getAttribute('aria-label') ?? b.textContent.trim()),
+  };
+})()`);
+log(`bar with Sync: ${JSON.stringify(shape)}`);
+check(shape.text === "Sync" && shape.hasIcon && !shape.disabled, "it is an icon and the word Sync");
+check(shape.title === "Sync: get the latest changes from the online copy, then back up yours", `its tooltip says what it does (${shape.title})`);
+check(shape.order.every((x, i) => i === 0 || x > shape.order[i - 1]), `the bar reads Books, status, Sync, then settings (${shape.order.map(Math.round)})`);
+check(!shape.labels.some((l) => /Get latest|Back up now/.test(l)), `no Get latest or Back up now beside it (${shape.labels.join(", ")})`);
+await screenshot(join(tmpdir(), "online-copy-bar-sync.png"));
+
+await click(".status-bar button", "Sync");
+check(await waitFor(`${syncBtn}?.textContent.trim() === 'Syncing…' && ${syncBtn}.disabled`), "while it runs it reads Syncing… and is disabled");
+check(await evalJs(`window.__sync.calls.length === 1 && window.__sync.calls[0].push === undefined`), "it ran one full pass (no get-only flag)");
+await evalJs(`window.__sync.release(); true`);
+check(await waitFor(`${syncBtn}?.textContent.trim() === 'Sync' && !${syncBtn}.disabled`), "it is back to Sync when the pass ends");
+
+await evalJs(`window.__sync.updatesOnline = true; window.dispatchEvent(new Event('focus')); true`);
+const prompt = `[...document.querySelectorAll('.toast')].find((t) => t.querySelector('.toast-message')?.textContent.trim() === 'New changes are online for this book.')`;
+check(await waitFor(`!!(${prompt})`), "new changes online raise the toast");
+const cue = await evalJs(`(() => ({
+  toast: (${prompt}).querySelector('.toast-message').textContent.trim(),
+  action: (${prompt}).querySelector('.toast-action')?.textContent.trim(),
+  label: (${syncBtn}).getAttribute('aria-label'),
+  title: (${syncBtn}).title,
+}))()`);
+check(cue.toast === "New changes are online for this book." && cue.action === "Sync", `the toast offers Sync (${cue.action})`);
+check(cue.label === "Sync — new changes are online" && /^Sync — new changes are online/.test(cue.title), `the Sync button carries the cue (${cue.label})`);
+await screenshot(join(tmpdir(), "online-copy-bar-sync-updates.png"));
+await click(".toast-action", "Sync");
+check(await waitFor(`${syncBtn}?.textContent.trim() === 'Syncing…'`), "the toast's Sync runs the same pass");
+check(await evalJs(`window.__sync.calls.length === 2`), "it made the second pass");
+await evalJs(`window.__sync.release(); true`);
+check(await waitFor(`${syncBtn}?.textContent.trim() === 'Sync' && !${syncBtn}.getAttribute('aria-label')`), "the cue clears once the pass ends");
+
+// Narrow: the status line gives way (ellipsis, truly cut at 260px) and everything stays on the bar.
+for (const width of [700, 260]) {
+  await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+  await sleep(800);
+  const narrow = await evalJs(`(() => {
+    const bar = document.querySelector('.status-bar').getBoundingClientRect();
+    const btn = ${syncBtn};
+    const text = document.querySelector('.status-bar .status-text');
+    const rects = [...document.querySelectorAll('.status-bar button')].map((b) => b.getBoundingClientRect());
+    return {
+      spill: rects.some((r) => r.right > bar.right + 1 || r.left < bar.left - 1),
+      syncShown: btn.getClientRects().length > 0,
+      ellipsis: getComputedStyle(text).textOverflow === 'ellipsis' && getComputedStyle(text).overflow === 'hidden',
+      cut: text.scrollWidth > text.clientWidth,
+      syncBeforeSettings: btn.getBoundingClientRect().right <= document.querySelector('.status-bar button[aria-label="Settings"]').getBoundingClientRect().left,
+    };
+  })()`);
+  check(!narrow.spill && narrow.syncShown && narrow.ellipsis && narrow.syncBeforeSettings && (width > 260 || narrow.cut), `at ${width}px it still fits (${JSON.stringify(narrow)})`);
+  if (width === 260) await screenshot(join(tmpdir(), "online-copy-bar-narrow.png"));
+}
+await send("Emulation.clearDeviceMetricsOverride");
+await sleep(500);
+
 // ── 13. a Reader sees none of it ─────────────────────────────────────────────
 await click('.status-bar button[aria-label="Settings"]');
 check(await waitFor(`!!document.querySelector('input[name="settings-role"][value="reader"]')`), "Settings opened");
@@ -384,7 +499,7 @@ await closeDialog();
 check(await waitFor(`!document.querySelector('input[name="settings-role"]')`), "Settings closed");
 check(await waitFor(`!document.querySelector('.status-bar .status-control')`), "a Reader has no status control");
 const readerBar = await evalJs(`[...document.querySelectorAll('.status-bar button')].map((b) => b.getAttribute('aria-label') ?? b.textContent.trim())`);
-check(!readerBar.some((l) => /Get latest|Back up now/.test(l)), `a Reader has no Get latest or Back up now (${readerBar.join(", ")})`);
+check(!readerBar.some((l) => /Sync|Get latest|Back up now/.test(l)), `a Reader has no Sync, even with automatic backing up off (${readerBar.join(", ")})`);
 await screenshot(join(tmpdir(), "online-copy-reader.png"));
 
 log("PASS: one status control, the Online copy tab, revisions (new, rename, delete, switch) and the Reader's bare status bar all verified");

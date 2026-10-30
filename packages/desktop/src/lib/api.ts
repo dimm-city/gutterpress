@@ -831,16 +831,12 @@ export const api = {
     listHostConnections: () =>
       post<HostConnectionInfo[]>('/api/remote/list-connections'),
 
-    /** Back up the project to its online copy. */
+    /** Sync the project with its online copy: get the latest, then back up. */
     syncChanges: (projectDir: string, message?: string) =>
       post<SyncOutcome>('/api/remote/sync', {
         projectDir,
         ...(message ? { message } : {}),
       }),
-
-    /** "Get latest": fetch and merge the online changes; never pushes. */
-    getLatest: (projectDir: string) =>
-      post<SyncOutcome>('/api/remote/sync', { projectDir, push: false }),
 
     /** Whether the book's branch has moved online (reads refs only; never throws). */
     checkUpdates: (projectDir: string) =>
