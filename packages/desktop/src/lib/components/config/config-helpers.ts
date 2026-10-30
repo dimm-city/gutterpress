@@ -191,3 +191,23 @@ export function extensionProblem(
     fix: entry.kind === "npm" ? "reinstall" : "check",
   };
 }
+
+/** A pre-release version (`1.2.0-alpha.2`)? Build metadata (`+…`) does not make one. */
+const isPrereleaseVersion = (version: string): boolean => version.split("+")[0]!.includes("-");
+
+/**
+ * The versions an npm row's picker offers: the registry's published versions
+ * as given (already newest first), stable only unless `includePrerelease`, and
+ * ALWAYS the version the book pins — even a pre-release the switch would hide —
+ * so the select can show what is actually in use. A pin the registry no longer
+ * lists (or a list that has not loaded) still appears, in its place by
+ * position: first, as the newest thing we know of.
+ */
+export function pickerVersions(
+  published: readonly string[],
+  pinned: string | undefined,
+  includePrerelease: boolean,
+): string[] {
+  const shown = published.filter((v) => v === pinned || includePrerelease || !isPrereleaseVersion(v));
+  return pinned && !shown.includes(pinned) ? [pinned, ...shown] : shown;
+}

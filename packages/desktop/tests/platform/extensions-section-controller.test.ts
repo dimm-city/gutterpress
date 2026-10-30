@@ -7,6 +7,7 @@ import type {
   ExtensionImportResult,
   ExtensionSearchResult,
   ExtensionUpdatesResult,
+  ExtensionVersionsResult,
   NpmExtensionMatch,
 } from "../../src/lib/platform/dtos";
 import { sampleSrcdoc, carriedKinds } from "../../src/lib/components/config/config-helpers";
@@ -76,6 +77,11 @@ interface Harness {
   updatesResult: ExtensionUpdatesResult;
   searchResult: ExtensionSearchResult;
   failSearch: boolean;
+  failOutdated: boolean;
+  /** What the registry says each package has, by name (a missing name is a failed lookup). */
+  published: Record<string, string[]>;
+  /** The "Include pre-release versions" preference the controller reads and writes. */
+  includePrerelease: boolean;
 }
 
 function make(
@@ -85,6 +91,8 @@ function make(
     bundled: BundledExtensionInfo[];
     updatesResult: ExtensionUpdatesResult;
     searchResult: ExtensionSearchResult;
+    published: Record<string, string[]>;
+    includePrerelease: boolean;
   }> = {},
 ): Harness {
   const afterLookChange = spy();
@@ -104,6 +112,9 @@ function make(
     updatesResult: over.updatesResult ?? { ok: true, checks: [] },
     searchResult: over.searchResult ?? { ok: true, matches: [FOUND_DC, FOUND_OTHER], total: 2 },
     failSearch: false,
+    failOutdated: false,
+    published: over.published ?? {},
+    includePrerelease: over.includePrerelease ?? false,
   } as Harness;
   const record = (name: string, ...args: unknown[]) => h.calls.push({ name, args });
   const named = (n: string) => h.calls.filter((c) => c.name === n);
@@ -121,9 +132,22 @@ function make(
       if (h.failSearch) return Promise.reject(new Error("search blew up"));
       return Promise.resolve(h.searchResult);
     },
-    outdated: (dir) => {
-      record("outdated", dir);
+    outdated: (dir, includePrerelease) => {
+      record("outdated", dir, includePrerelease);
+      if (h.failOutdated) return Promise.reject(new Error("offline"));
       return Promise.resolve(h.updatesResult);
+    },
+    versions: (name): Promise<ExtensionVersionsResult> => {
+      record("versions", name);
+      const versions = h.published[name];
+      return Promise.resolve(
+        versions ? { ok: true, versions } : { ok: false, message: `npm package "${name}" was not found.` },
+      );
+    },
+    includePrerelease: () => h.includePrerelease,
+    setIncludePrerelease: (on) => {
+      record("setIncludePrerelease", on);
+      h.includePrerelease = on;
     },
     validate: () => {
       if (h.failValidate) return Promise.reject(new Error("validate failed"));
@@ -212,6 +236,8 @@ test("initial public rune state matches the panel defaults", () => {
   expect(ctrl.search).toEqual({ status: "idle", query: "", matches: [], message: null });
   expect(ctrl.searchQuery).toBe("");
   expect(ctrl.searchResults).toEqual([]);
+  expect(ctrl.updates).toEqual({ status: "idle", checks: [], message: null });
+  expect(ctrl.versions).toEqual({});
   expect(ctrl.validation).toEqual({});
   expect(ctrl.validating).toBe(false);
   expect(ctrl.error).toBeNull();
@@ -594,7 +620,7 @@ test("checkUpdates asks the host once for the project and exposes the newer vers
   const h = make({ entries: [PINNED_DC, FEATURE], updatesResult: DC_BEHIND });
   await h.ctrl.loadExtensions();
   await h.ctrl.checkUpdates();
-  expect(named(h, "outdated").map((c) => c.args)).toEqual([["/proj"]]);
+  expect(named(h, "outdated").map((c) => c.args)).toEqual([["/proj", false]]);
   expect(h.ctrl.updates.status).toBe("ready");
   expect(h.ctrl.updateFor(PINNED_DC)).toBe("1.2.0");
   expect(h.ctrl.updateFor(FEATURE)).toBeNull(); // bundled: npm has nothing to say
@@ -604,9 +630,31 @@ test("checkUpdates surfaces an `ok: false` result as updates.message, not ctrl.e
   const h = make({ entries: [PINNED_DC], updatesResult: { ok: false, message: "Looking up dimm-city-components on npm failed." } });
   await h.ctrl.loadExtensions();
   await h.ctrl.checkUpdates();
-  expect(h.ctrl.updates).toEqual({ status: "error", checks: [] });
+  expect(h.ctrl.updates).toEqual({ status: "error", checks: [], message: "Looking up dimm-city-components on npm failed." });
   expect(h.ctrl.error).toBeNull();
   expect(h.ctrl.updateFor(PINNED_DC)).toBeNull();
+});
+
+test("Check for updates asks npm again once the last check finished, keeping the old answer on screen meanwhile", async () => {
+  const h = make({ entries: [PINNED_DC], updatesResult: { ok: true, checks: [] } });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.checkUpdates();
+  expect(h.ctrl.updateFor(PINNED_DC)).toBeNull();
+  h.updatesResult = DC_BEHIND; // npm published 1.2.0 since
+  const again = h.ctrl.checkUpdates();
+  expect(h.ctrl.updates.status).toBe("loading"); // the button reads "Checking npm…"
+  await again;
+  expect(named(h, "outdated").length).toBe(2);
+  expect(h.ctrl.updateFor(PINNED_DC)).toBe("1.2.0");
+});
+
+test("a check that throws is the same quiet message", async () => {
+  const h = make({ entries: [PINNED_DC] });
+  await h.ctrl.loadExtensions();
+  h.failOutdated = true;
+  await h.ctrl.checkUpdates();
+  expect(h.ctrl.updates).toEqual({ status: "error", checks: [], message: "offline" });
+  expect(h.ctrl.error).toBeNull();
 });
 
 test("checkUpdates refuses a second concurrent call while one is loading", async () => {
@@ -709,6 +757,136 @@ test("a failed install reports it in plain words and leaves the row, its pin and
   expect(h.ctrl.error).toBe("Couldn't install dimm-city-components@1.2.0-alpha.2. add failed");
   expect(h.ctrl.entries).toEqual([MISSING_DC]);
   expect(h.ctrl.busy).toBeNull(); // the Install button is usable again
+});
+
+
+// ── Version picker, pre-release preference ───────────────────────────────────
+
+const PUBLISHED_DC = ["1.3.0-rc.1", "1.2.0", "1.2.0-alpha.2", "1.1.0", "1.0.0"];
+
+test("versionChoices: stable only by default, pre-releases with the preference, the pin always listed", async () => {
+  const h = make({ entries: [PINNED_DC, MISSING_DC], published: { "dimm-city-components": PUBLISHED_DC } });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.loadVersions("dimm-city-components");
+  expect(h.ctrl.versionChoices(PINNED_DC)).toEqual(["1.2.0", "1.1.0", "1.0.0"]);
+  // A pre-release pin stays visible even with the preference off.
+  expect(h.ctrl.versionChoices(MISSING_DC)).toEqual(["1.2.0", "1.2.0-alpha.2", "1.1.0", "1.0.0"]);
+  h.ctrl.setIncludePrerelease(true);
+  expect(h.ctrl.versionChoices(PINNED_DC)).toEqual(PUBLISHED_DC);
+  // …and flipping it needed no second registry lookup.
+  expect(named(h, "versions").length).toBe(1);
+});
+
+test("versionChoices: before the list loads (or when it fails) the row still offers its pin; non-npm rows get no picker", async () => {
+  const h = make({ entries: [PINNED_DC, FEATURE, BOTH], published: {} });
+  expect(h.ctrl.versionChoices(PINNED_DC)).toEqual(["1.1.0"]);
+  const loading = h.ctrl.loadVersions("dimm-city-components");
+  expect(h.ctrl.versions["dimm-city-components"]!.status).toBe("loading"); // the row reads "Loading versions…"
+  await loading;
+  expect(h.ctrl.versions["dimm-city-components"]).toEqual({ status: "error", versions: [], message: 'npm package "dimm-city-components" was not found.' });
+  expect(h.ctrl.versionChoices(PINNED_DC)).toEqual(["1.1.0"]);
+  expect(h.ctrl.error).toBeNull(); // quiet: never blocks the tab
+  expect(h.ctrl.versionChoices(FEATURE)).toEqual([]);
+  expect(h.ctrl.versionChoices(BOTH)).toEqual([]);
+});
+
+test("loadVersions caches per package for the session, but retries after a failure", async () => {
+  const h = make({ entries: [PINNED_DC], published: {} });
+  await h.ctrl.loadVersions("dimm-city-components"); // fails
+  h.published = { "dimm-city-components": PUBLISHED_DC };
+  await h.ctrl.loadVersions("dimm-city-components"); // retried: picker focused again
+  await h.ctrl.loadVersions("dimm-city-components"); // cached
+  await Promise.all([h.ctrl.loadVersions("dimm-city-components"), h.ctrl.loadVersions("dimm-city-components")]);
+  expect(named(h, "versions").map((c) => c.args)).toEqual([["dimm-city-components"], ["dimm-city-components"]]);
+  expect(h.ctrl.versions["dimm-city-components"]!.status).toBe("ready");
+});
+
+test("loading the list never asks npm for versions — a row's picker does, when it is shown", async () => {
+  const h = make({ entries: [PINNED_DC], published: { "dimm-city-components": PUBLISHED_DC } });
+  await h.ctrl.loadExtensions();
+  await flush();
+  expect(named(h, "versions")).toEqual([]);
+  expect(named(h, "outdated")).toEqual([]);
+});
+
+test("switchVersion installs name@chosen keeping the export, then the row carries the new pin", async () => {
+  const h = make({ entries: [PINNED_DC], published: { "dimm-city-components": PUBLISHED_DC } });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.switchVersion(PINNED_DC, "1.0.0"); // down as well as up
+  expect(named(h, "add").map((c) => c.args)).toEqual([["/proj", "dimm-city-components@1.0.0", "full"]]);
+  expect(h.ctrl.entries.map((e) => [e.use, e.version])).toEqual([["dimm-city-components@1.0.0", "1.0.0"]]);
+  expect(h.ctrl.saveStatus).toBe("saved");
+  // npm is asked again what "newer" means for the new pin.
+  await flush();
+  expect(named(h, "outdated").length).toBe(1);
+});
+
+test("switchVersion to a pre-release works whatever the preference says (the picker only chooses what is offered)", async () => {
+  const h = make({ entries: [PINNED_DC] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.switchVersion(PINNED_DC, "1.3.0-rc.1");
+  expect(named(h, "add").map((c) => c.args[1])).toEqual(["dimm-city-components@1.3.0-rc.1"]);
+});
+
+test("switchVersion to the pinned version, a blank value, or on a non-npm row calls nothing", async () => {
+  const h = make({ entries: [PINNED_DC, FEATURE] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.switchVersion(PINNED_DC, "1.1.0");
+  await h.ctrl.switchVersion(PINNED_DC, "");
+  await h.ctrl.switchVersion(FEATURE, "1.0.0");
+  expect(named(h, "add")).toEqual([]);
+});
+
+test("a failed version switch keeps the old pin and says so; the host's rollback is what makes that true", async () => {
+  const h = make({ entries: [PINNED_DC], published: { "dimm-city-components": PUBLISHED_DC } });
+  await h.ctrl.loadExtensions();
+  h.failAdd = true;
+  await h.ctrl.switchVersion(PINNED_DC, "1.2.0");
+  expect(h.ctrl.error).toBe("Couldn't install dimm-city-components@1.2.0. This book still uses 1.1.0. add failed");
+  expect(h.ctrl.entries).toEqual([PINNED_DC]);
+  expect(h.ctrl.entries[0]!.version).toBe("1.1.0");
+  expect(h.ctrl.busy).toBeNull();
+  expect(named(h, "outdated")).toEqual([]); // nothing changed, nothing to re-check
+  // The next attempt starts clean.
+  h.failAdd = false;
+  await h.ctrl.switchVersion(PINNED_DC, "1.2.0");
+  expect(h.ctrl.error).toBeNull();
+  expect(h.ctrl.entries[0]!.version).toBe("1.2.0");
+});
+
+test("a cancelled trust prompt on a switch changes nothing and shows no error", async () => {
+  const h = make({ entries: [PINNED_DC] });
+  await h.ctrl.loadExtensions();
+  h.cancelAdd = true;
+  await h.ctrl.switchVersion(PINNED_DC, "1.2.0");
+  expect(named(h, "add").length).toBe(1); // the trust gate was asked
+  expect(h.ctrl.error).toBeNull();
+  expect(h.ctrl.entries).toEqual([PINNED_DC]);
+  expect(h.ctrl.busy).toBeNull();
+  expect(h.ctrl.saveStatus).toBe("idle");
+});
+
+test("only one install runs at a time: a second switch while one is in flight is refused", async () => {
+  const h = make({ entries: [PINNED_DC] });
+  await h.ctrl.loadExtensions();
+  const first = h.ctrl.switchVersion(PINNED_DC, "1.2.0");
+  expect(h.ctrl.busy).toBe(PINNED_DC.use); // the row reads "Installing…" and its picker disables
+  await h.ctrl.switchVersion(PINNED_DC, "1.0.0");
+  await first;
+  expect(named(h, "add").map((c) => c.args[1])).toEqual(["dimm-city-components@1.2.0"]);
+});
+
+test("the pre-release preference is read and written through the settings seam, and re-asks npm with it", async () => {
+  const h = make({ entries: [PINNED_DC] });
+  expect(h.ctrl.includePrerelease).toBe(false);
+  h.ctrl.setIncludePrerelease(true);
+  await flush();
+  expect(h.ctrl.includePrerelease).toBe(true);
+  expect(named(h, "setIncludePrerelease").map((c) => c.args)).toEqual([[true]]);
+  expect(named(h, "outdated").map((c) => c.args)).toEqual([["/proj", true]]);
+  // Every later check asks with it too.
+  await h.ctrl.checkUpdates();
+  expect(named(h, "outdated").map((c) => c.args)).toEqual([["/proj", true], ["/proj", true]]);
 });
 
 

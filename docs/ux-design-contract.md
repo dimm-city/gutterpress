@@ -185,7 +185,10 @@ gutterpress/
 │   │                                                    settings beside a live sample))
 │   ├── Extensions (id `extensions`)           SHIPPED  (ExtensionsSection: Your extensions (the
 │   │                                                    manifest's ordered list: checkbox, move,
-│   │                                                    Remove), then Add an extension: the
+│   │                                                    Remove; an npm row's version picker,
+│   │                                                    "x.y.z available" and Update; Check for
+│   │                                                    updates and Include pre-release
+│   │                                                    versions), then Add an extension: the
 │   │                                                    built-in extras the book does not list,
 │   │                                                    each with what to type, an npm search,
 │   │                                                    then exact-name, folder, .zip/.css and
@@ -925,11 +928,31 @@ to the Extensions tab instead of a guess. **Extensions** is the list itself
 and the only place its entries are changed: *Your extensions* shows the
 manifest's `extensions:` entries in order, each row a checkbox (on/off), the
 label, its kind and source in words ("Look · built in", "Extra · npm
-3.0.0"), move up/down and Remove. A row says something only when it needs
-attention: "Version x is available." with Update, "Not downloaded yet." with
-Install, "Couldn't load." with Show details and Check again. Updates are
-checked once when the tab opens, never at project load. Below the list, one
-*Add an extension* area, in three parts. The **built-in extras** the book does
+3.0.0"), move up/down and Remove. A row otherwise says something only when it
+needs attention: "Not downloaded yet." with Install, "Couldn't load." with
+Show details and Check again.
+
+The npm update tools (0.11.22's, restored in 0.11.23 after #442 dropped them,
+#479) show when the list holds an npm package. Every npm row has a **Version**
+line: a picker of the package's published versions (the lib's
+`listNpmVersions`, through `extension/versions`), newest first, stable only
+unless pre-releases are on, the pinned version always listed and marked
+"(current)". The list loads when the row is shown, and again when the picker
+is focused after a failure; it is cached for the session ("Loading versions…",
+"Couldn't load the version list." — one quiet line, never a toast). Choosing a
+version installs `name@version` through the same trust gate and install path
+as any npm add; the picker keeps showing the pin until that install has
+succeeded, and a failed one says "Couldn't install … This book still uses x."
+When npm has something newer the line also shows an "x.y.z available" badge
+and Update. Updates are checked when the tab opens, never at project load, and
+**Check for updates** in the list's head asks npm again ("Checking npm…" while
+it runs); under the list one quiet line says why a check failed, or "Every
+installed package is at its latest version." **Include pre-release versions**,
+above the list, is the app setting `includeExtensionPrereleases` (default off,
+for every book): it adds alpha, beta and rc versions to the pickers and counts
+them as updates (`extension/outdated`'s `includePrerelease`).
+
+Below the list, one *Add an extension* area, in three parts. The **built-in extras** the book does
 not list yet (Highlight, Callouts, Math…), each with what to type and an Add
 button. **Find one on npm** is the way to a published extension: a search box
 whose results are the lib's `searchNpmExtensions` (what `gutterpress ext
@@ -949,8 +972,7 @@ folder or file referenced in place, a `.zip`/`.css` import and a web address
 (§11). A built-in extra is never shown twice: while the book lists it, it is
 a row of the list; Remove puts it back among the ones to add. (Footnotes,
 tables and definition lists need no extension and are always on, which the
-area says.) No status badges, no version picker and no pre-release switch
-(`gutterpress ext add name@version`).
+area says.) No status badges beyond "x.y.z available".
 
 Refinements (PROPOSED): link each plugin to its npm page for
 author/version/last-published metadata; surface load errors inline.
