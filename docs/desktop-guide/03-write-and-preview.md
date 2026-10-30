@@ -105,7 +105,7 @@ The preview shows your book's pages exactly as they will print, and updates as y
 - **Turn pages** with the buttons above the preview (first, previous, the page picker, next,
   last) or with the keys below. The mouse wheel and trackpad scroll the preview like any page.
 - **Zoom** with the menu at the top right of the preview: **Fit to width** or 25%–200%. The app
-  remembers your zoom.
+  remembers your zoom; **Settings → Preview → Default zoom** sets it too.
 - **Check the print overlays** with the **print overlays** button beside the zoom menu. It draws
   four layers on every page, each in its own colour: the **bleed** (a tinted band outside the
   trim, with a solid line where the page is cut), the printer's safe area for text (**Safe area:
@@ -136,9 +136,9 @@ The preview shows your book's pages exactly as they will print, and updates as y
     that. With no bleed or safe area set, that part is not drawn and the legend says which setting
     to add.
   - **Strength and colours.** The lines stay the same thickness on screen at every zoom. To draw
-    them louder or quieter, or in other colours, edit `preview.marginOverlayStrength` (`subtle`,
-    `normal` or `strong`) and `preview.overlayColors` in the app's settings file,
-    `app-settings.json`. These are app settings, not book CSS.
+    them louder or quieter, or in other colours, choose the **Print overlay strength** and each
+    layer's colour in [Settings → Preview](10-settings.md#settings). These are app settings, not
+    book CSS.
 
 | Key | Does |
 | --- | --- |

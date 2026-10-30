@@ -35,6 +35,46 @@ breakwater. Mara counted them from the window, the way her father had taught her
 </body></html>`;
 }
 
+/** A fixed two-page sample: what the Look tab's enlarged hover preview shows a look over. Never the author's document. */
+const SAMPLE_SPREAD_BODY = `
+<article class="pm-sample-page">
+  <h1>Chapter One</h1>
+  <h2>The Harbor at Dusk</h2>
+  <p>The lamps along the quay came on one by one as the last boats rounded the
+  breakwater. Mara counted them from the window, the way her father had taught her.</p>
+  <blockquote>&ldquo;Every light is someone waiting to come home.&rdquo;</blockquote>
+  <h3>The Keeper&rsquo;s Log</h3>
+  <ul><li>Wind from the west, rising</li><li>Two boats still out</li><li>Fog by midnight</li></ul>
+  <p>She wrote the hour in the log, <code>18:42</code>, and turned to <a href="#">the next page</a>.</p>
+</article>
+<article class="pm-sample-page">
+  <h2>Before the Fog</h2>
+  <p>The second boat came in an hour later, low in the water, its crew too tired to
+  sing. Mara set the kettle on and opened the door before they knocked.</p>
+  <ol><li>Lamps trimmed</li><li>Ropes coiled</li></ol>
+  <h3>A Quiet Night</h3>
+  <p>Nothing else moved on the water but the <strong>tide</strong> and the
+  <em>slow turn</em> of the light.</p>
+  <blockquote>The sea keeps its own hours.</blockquote>
+</article>`;
+
+/**
+ * Build the srcdoc for the Look tab's enlarged hover preview: the look's CSS
+ * over a fixed two-page sample spread (0.11.22's, restored in #482). Like the
+ * thumbnail, it never renders the author's document.
+ */
+export function hoverPreviewSrcdoc(css: string): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+html,body{margin:0;padding:0;overflow:hidden;} *{box-sizing:border-box;}
+body{display:flex;gap:12px;padding:12px;background:#8883;align-items:flex-start;justify-content:center;}
+.pm-sample-page{flex:1 1 0;min-width:0;background:#fff;color:#111;padding:18px 20px;box-shadow:0 1px 6px rgba(0,0,0,0.25);overflow:hidden;}
+${css}
+</style></head><body>
+${SAMPLE_SPREAD_BODY}
+</body></html>`;
+}
+
 /**
  * Where an entry comes from, in words for its Extensions row caption: "built in"
  * for a bundled name, "npm 1.2.3" (or "npm" while unpinned) for a package, and
@@ -152,6 +192,16 @@ export function orderAfterMove(order: string[], item: string, delta: -1 | 1): st
  *  (Their text is the CLI's — `gutterpress ext add …` — so the desktop only
  *  matches it and never shows it.) */
 const NEEDS_INSTALL_RE = /^not (installed|pinned)\b/i;
+
+/**
+ * The notices the lib attached to an entry, for its Extensions row (a look
+ * row showed them in 0.11.22; restored in #482): everything but the "not
+ * installed / not pinned" ones, which the row already turns into "Not
+ * downloaded yet." with Install (their text is the CLI's instruction).
+ */
+export function entryWarnings(entry: ProjectExtensionEntry): string[] {
+  return (entry.warnings ?? []).filter((w) => !NEEDS_INSTALL_RE.test(w));
+}
 
 /** What is wrong with one configured extension, and the in-app fix. */
 export interface ExtensionProblem {

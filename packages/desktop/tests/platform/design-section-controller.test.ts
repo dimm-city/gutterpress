@@ -969,3 +969,30 @@ test("undoing an edit puts the book's declaration back as written, comment and a
   await flush();
   expect(h.fs.files.get(BOOK)).toBe(BOOK_CSS);
 });
+
+// #482: a color field saves a `var(--name)` reference too (0.11.22's); the
+// panel reads computed values (#454), so a reference the book wrote must show
+// as written, not as the color the page computes it to, and stay a color row.
+test("a color the book sets to another setting is saved and shown as written, still a color", async () => {
+  // The sample page resolves the reference to the referenced setting's color.
+  const computeValues = async (_sheet: string, names: string[]) =>
+    Object.fromEntries(names.map((n) => [n, n === "--color-accent" || n === "--color-ink" ? "#222222" : ""]));
+  const LOOK_CSS = ":root { --color-ink: #222222; --color-accent: #2b4c7e; }";
+  const h = lookHarness([CLEAN_BOOK], { "clean-book": LOOK_CSS }, ":root {\n}\n", { computeValues });
+  await h.ctrl.loadDesign();
+  const accent = h.ctrl.tokens.find((t) => t.name === "--color-accent")!;
+  h.ctrl.setToken(accent, "var(--color-ink)");
+  h.timer.fire();
+  await flush();
+  expect(h.fs.files.get(BOOK)).toBe(":root {\n  --color-accent: var(--color-ink);\n}\n");
+
+  await h.ctrl.loadDesign();
+  const reloaded = h.ctrl.tokens.find((t) => t.name === "--color-accent")!;
+  expect([reloaded.value, reloaded.kind]).toEqual(["var(--color-ink)", "color"]);
+  // The look's own value differs, so Reset to the look's settings is offered.
+  expect(h.ctrl.brandOverridden).toBe(true);
+  // A look's own reference is the look's business: only the book's is shown as written.
+  const other = lookHarness([CLEAN_BOOK], { "clean-book": ":root { --color-ink: #222222; --color-accent: var(--color-ink); }" }, ":root {\n}\n", { computeValues });
+  await other.ctrl.loadDesign();
+  expect(other.ctrl.tokens.find((t) => t.name === "--color-accent")!.value).toBe("#222222");
+});

@@ -12,21 +12,32 @@ does the **Settings** button at the top of the start screen; the **?** next to t
 ## Settings
 
 Settings is one page, the same whether a book is open or not. Every change applies at once: there
-is nothing to save.
+is nothing to save. **Reset** beside a group's name puts that group's settings back to how they
+were when you installed the app.
 
 - **How you use Gutterpress** — **Reader** or **Author**. A new install starts as a **Reader**:
   just the pages, with Edit, Setup and Publish out of the way, and only the table of contents in
   the left panel. **Author** is for writing and setting up your book, then publishing it. Creating
   a book switches you to Author.
-- **Appearance** — the **Theme** (**Match system**, **Light** or **Dark**), and **Mark problems
-  in the editor**, which underlines the lines the Problems list mentions.
+- **Appearance** — the **Theme** (**Match system**, **Light** or **Dark**), and the **Preview
+  background**, the colour around the pages in the preview.
+- **Preview** — the **Default zoom** a book opens at (**Fit to width** or 25%–200%; choosing a zoom
+  in the preview changes it too); **Right-click menu in the preview**, on unless you turn it off
+  (it also stops **Shift+F10** opening the menu); the **Print overlay strength** (**Subtle**,
+  **Normal** or **Strong**); and a colour for each print overlay: **Bleed**, **Safe area: text**,
+  **Safe area: art** and **Page margins** (see
+  [Check the print overlays](03-write-and-preview.md#preview)). Its **Reset** also puts back the
+  preview's other remembered choices: Edit or Read, one page or two, the print overlays and the
+  width of the editor beside the preview.
+- **Editor** — **Mark problems in the editor**, which underlines the lines the Problems list
+  mentions.
 - **Saving** — **Save changes automatically** (when it's off, press Ctrl+S to save), **Keep
   version history** and **Back up online automatically** (see
   [Keep versions and back up your work](09-versions-and-backup.md)).
 - **Accounts** — **Accounts…** opens the [Accounts](#accounts) page, where your name and email
   and every account Gutterpress uses are kept.
 
-![Settings: How you use Gutterpress, Appearance, Saving and Accounts](images/settings.jpg)
+![Settings: How you use Gutterpress, Appearance, Preview, Editor, Saving and Accounts](images/settings.jpg)
 
 ## Accounts
 
@@ -42,14 +53,16 @@ asks once more before it deletes an account.
 
 - **Your name and email** — saved with each version, so the version history shows who changed what.
   Left empty, a version uses the name and email already set for Git on this computer, or else
-  "gutterpress". They save as you type.
+  "gutterpress". They save as you type, and **Reset** empties both.
 - **GitHub** — **Connect GitHub…** signs you in. Once you are connected, **Test sign-in** checks
   that GitHub still accepts your sign-in, **Sign in again…** signs you in again (do this when
   backing up stops with a sign-in error) and **Disconnect** removes it.
 - **Other Git servers** — GitLab, Gitea, Forgejo, Bitbucket, Azure Repos or any server with an
   https:// address. **Add a Git server…** asks for the **Server address**, your **Username** if
   the server needs one and an **Access token**; the token is checked with the server before it is
-  saved. **How to make an access token** opens
+  saved. Once you type the address of a server Gutterpress recognises (Gitea, Forgejo, GitLab,
+  Bitbucket or Azure Repos), **Create an access token on …** opens that server's own page for
+  making one; for any other, **How to make an access token** opens
   [the guide](09-versions-and-backup.md#back-up-to-another-git-server), which lists where each
   server makes one. **Edit** replaces the username and token. A book whose online copy is on that
   server then backs up with them.

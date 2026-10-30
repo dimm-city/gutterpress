@@ -3,20 +3,24 @@
    * One color setting, for the Look tab and Advanced › All design settings:
    * the swatch (the system picker, which saves as it moves) and a text field
    * beside it. What is typed stays in the field until it is committed (blur or
-   * Enter), and only a color is saved — with or without its `#`
-   * (`typedColor`). Anything else keeps the last good color and says what to
-   * type. A value the swatch can't show (`rgba(…)`) gets a plain swatch.
+   * Enter), and only a color — with or without its `#` — or a reference to
+   * another setting, `var(--name)`, is saved (`typedColorValue`). Anything else
+   * keeps the last good value and says what to type. A value the swatch can't
+   * show (`rgba(…)`, a reference) gets a plain swatch.
    */
-  import { toHex, typedColor } from "#lib/style-tokens.ts";
+  import { toHex, typedColorValue } from "#lib/style-tokens.ts";
 
   let {
     id,
+    name,
     value,
     label,
     onCommit,
   }: {
     /** The text field's id (its `<label for>`). */
     id: string;
+    /** The setting's CSS name (`--color-accent`): a reference to itself is not saved. */
+    name: string;
     /** The saved value. */
     value: string;
     /** The setting's name, for the swatch's accessible name. */
@@ -31,7 +35,7 @@
 
   function commit() {
     if (draft === null) return;
-    const color = typedColor(draft);
+    const color = typedColorValue(draft, name);
     invalid = color === null;
     if (!color) return;
     draft = null;
@@ -66,7 +70,7 @@
     />
   </span>
   {#if invalid}
-    <span class="color-error" id={`${id}-error`} role="alert">Enter a color like #2b6cb0</span>
+    <span class="color-error" id={`${id}-error`} role="alert">Enter a color like #2b6cb0, or var(--color-ink)</span>
   {/if}
 </div>
 

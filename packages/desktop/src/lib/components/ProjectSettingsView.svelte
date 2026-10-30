@@ -81,6 +81,7 @@
     onBackupSetUp,
     onProjectFilesChanged,
     onBackUpNow,
+    onGetLatest,
     onRepair,
     onSaveVersion,
     onBrowseVersions,
@@ -109,8 +110,10 @@
     onBackupSetUp?: (projectDir: string) => void;
     /** The Online copy tab just switched to, made or renamed a revision: the book's files changed on disk. */
     onProjectFilesChanged?: () => void;
-    /** The Online copy tab's Sync now: the page's sync. */
+    /** The Online copy tab's Back up now / Sync now / Try again: the page's full pass. */
     onBackUpNow?: () => Promise<void>;
+    /** The Online copy tab's Get latest: the page's get-latest pass, which sends nothing. */
+    onGetLatest?: () => Promise<void>;
     /** The Online copy tab's Repair the online copy: the page's repair. */
     onRepair?: () => Promise<void>;
     /** The Online copy tab's Save a version: the page's save; resolves "unchanged" when there was nothing new. */
@@ -188,6 +191,7 @@
     validate: (dir) => api.extension.validate(dir),
     add: (dir, specifier, exportName) => api.extension.add(dir, specifier, exportName),
     addLocal: (dir) => api.extension.addLocal(dir),
+    addBuiltIn: (dir, id) => api.extension.addBuiltIn(dir, id),
     remove: (dir, use) => api.extension.remove(dir, use),
     setEnabled: (dir, use, enabled) => api.extension.setEnabled(dir, use, enabled),
     reorder: (dir, order) => api.extension.reorder(dir, order),
@@ -336,7 +340,7 @@
 
       {#if activeTab === "online-copy"}
         <!-- This book's versions, revisions and online copy: signing in to its GitHub account or server happens here, in place; Version history replaces the tab's content. -->
-        <ProjectConnectionsSection bind:this={onlineCopy} {projectDir} {backup} {versionsProblem} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} {onBackUpNow} {onRepair} {onSaveVersion} {onBrowseVersions} {onCloseBook} {onOpenAccounts} {toast} />
+        <ProjectConnectionsSection bind:this={onlineCopy} {projectDir} {backup} {versionsProblem} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} {onBackUpNow} {onGetLatest} {onRepair} {onSaveVersion} {onBrowseVersions} {onCloseBook} {onOpenAccounts} {toast} />
       {/if}
 
       {#if activeTab === "advanced"}

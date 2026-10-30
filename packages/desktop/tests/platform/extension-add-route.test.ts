@@ -17,11 +17,13 @@ import path from "node:path";
 
 import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
 import { POST as addRoute } from "../../src/routes/api/extension/add/+server";
+import { POST as addBuiltInRoute } from "../../src/routes/api/extension/add-built-in/+server";
 import { makeHostServices } from "../support/host-services-fake";
 import { caught, request } from "../support/route-test-helpers";
 
 type Event = Parameters<typeof addRoute>[0];
 const call = (body: unknown) => addRoute({ request: request(body) } as Event);
+const callBuiltIn = (body: unknown) => addBuiltInRoute({ request: request(body) } as Event);
 
 describe("POST /api/extension/add", () => {
   let root: string;
@@ -113,5 +115,29 @@ describe("POST /api/extension/add", () => {
     expect(existsSync(pluginFile)).toBe(true);
     expect(existsSync(path.join(projectDir, "extensions"))).toBe(false);
     expect(confirmations).toEqual([]);
+  });
+
+  // Book setup › Look's "Make an editable copy" (#482, 0.11.22's route restored).
+  test("add-built-in copies a built-in look into extensions/<id>/ and lists the copy in the built-in's place, with no trust prompt", async () => {
+    await writeFile(path.join(projectDir, "manifest.yaml"), "title: T\nextensions:\n  - markdown-it-mark\n  - zine\n", "utf8");
+    const response = await callBuiltIn({ projectDir, id: "zine" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ use: "./extensions/zine", kind: "path", label: "Zine", carries: { styles: true } });
+    expect(existsSync(path.join(projectDir, "extensions", "zine", "theme.css"))).toBe(true);
+    expect(await readFile(path.join(projectDir, "manifest.yaml"), "utf8")).toBe("title: T\nextensions:\n  - markdown-it-mark\n  - ./extensions/zine\n");
+    expect(confirmations).toEqual([]);
+  });
+
+  test("add-built-in refuses an outside directory, a missing id, and a name that is not a built-in look", async () => {
+    expect(await caught(callBuiltIn({ projectDir: outsideDir, id: "zine" }))).toEqual({
+      status: 403,
+      message: "extension/add-built-in: path is outside the open book",
+    });
+    expect((await caught(callBuiltIn({ projectDir, id: "  " }))).status).toBe(400);
+    const notALook = await caught(callBuiltIn({ projectDir, id: "../../outside" }));
+    expect(notALook.status).toBe(500);
+    expect(String(notALook.message)).toContain('Unknown built-in look "../../outside"');
+    expect(existsSync(path.join(projectDir, "extensions"))).toBe(false);
+    expect(existsSync(path.join(root, "outside", "extensions"))).toBe(false);
   });
 });

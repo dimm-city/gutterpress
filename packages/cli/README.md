@@ -404,7 +404,14 @@ Add an extension. What `SOURCE` is decides what happens:
   manifest-relative path, referenced in place — never copied;
 - a **`.zip` or `.css` file**, or an **http(s) URL**, is validated (every
   declared sheet must exist and parse; print-safety findings are warnings)
-  and landed in `extensions/<id>/`, then listed as `./extensions/<id>`.
+  and landed in `extensions/<id>/`, then listed as `./extensions/<id>`;
+- with `--look`, `SOURCE` is a built-in look (`clean-book`, `zine`,
+  `technical-doc`, `academic`), **copied** into `extensions/<id>/` (its
+  `theme.css` and a `package.json`) as the book's own editable files and
+  listed as `./extensions/<id>` — in the built-in's place when the book
+  already lists it by name, so the look is listed once. A folder already
+  there is kept as it is (your edits survive) and only referenced again. This
+  is what Book setup's **Make an editable copy** does.
 
 Adding something already listed re-pins or updates that entry instead of
 adding a second one.
@@ -438,6 +445,7 @@ folders it created and nothing else.
 gutterpress ext add <source> [dir] [options]
 
   --export <name>    Named module export to use as the plugin function (npm and path extensions only)
+  --look             Treat SOURCE as a built-in look (clean-book, zine, technical-doc, academic): copy it into extensions/ as your own files and list the copy
 ```
 
 ```sh
@@ -447,6 +455,7 @@ gutterpress ext add markdown-it-emoji@3.0.0 ./my-book --export full
 gutterpress ext add markdown-it-mark ./my-book
 gutterpress ext add ./plugins/field-notes ./my-book
 gutterpress ext add zine ./my-book
+gutterpress ext add zine ./my-book --look
 gutterpress ext add ./parchment.zip ./my-book
 gutterpress ext add https://example.com/looks/cool/ ./my-book
 ```

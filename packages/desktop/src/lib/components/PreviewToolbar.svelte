@@ -25,6 +25,7 @@
   import Icon from "#lib/components/Icon.svelte";
   import type { ReadLayout } from "#lib/platform/index.ts";
   import type { PageNavController } from "#lib/routes/page-nav-controller.svelte.ts";
+  import { ZOOM_LEVELS } from "#lib/editor/preview-layout.ts";
   import {
     OVERLAY_LAYERS,
     overlayLayersFrom,
@@ -72,16 +73,6 @@
   const overlayLabel = $derived(overlayTooltip(marginOverlay, overlaySummary));
   const overlayIssues = $derived(marginOverlay ? (overlaySummary?.issues ?? 0) : 0);
 
-  const ZOOM_LEVELS: Array<[string, string]> = [
-    ["fit-width", "Fit to width"],
-    ["0.25", "25%"],
-    ["0.5", "50%"],
-    ["0.75", "75%"],
-    ["1", "100%"],
-    ["1.25", "125%"],
-    ["1.5", "150%"],
-    ["2", "200%"],
-  ];
   const zoomLabel = $derived(ZOOM_LEVELS.find(([val]) => val === zoom)?.[1] ?? "Zoom");
 
   // Close the enclosing <details> menu after a menu item is chosen, and return

@@ -77,8 +77,11 @@ in one line where the book is kept, and offers the one next step:
   was nothing to send); **Not backed up yet** when this computer has versions the online copy
   lacks; **Couldn't reach …** when the server can't be reached; or **Couldn't back up to …**
   with the reason. The last two offer **Try again** (when the server no longer accepts the saved
-  sign-in, the sign-in step comes back instead). With automatic backing up off, it says so and
-  offers **Sync now**, which gets the latest changes and then backs up yours.
+  sign-in, the sign-in step comes back instead). Otherwise it offers **Back up now**, which gets
+  the latest changes from the online copy and then backs up yours straight away, without waiting
+  for the next automatic backup. With automatic backing up off, it says so and the same button
+  reads **Sync now**. **Get latest**, beside each of these buttons, brings in the changes from the
+  online copy without sending yours.
 - **This book's online copy uses an SSH address (git@…).** Gutterpress can't back up over SSH.
   Keep backing up with your usual Git tool, or give the book its https:// address with that tool
   (`git remote set-url origin https://…`) and come back to sign in.
@@ -206,14 +209,18 @@ the sign-in itself, while **Test connection** here checks this book's online cop
 ### Get and send changes yourself
 
 To get changes from the online copy and send yours only when you choose, turn off **Back up
-online automatically** in Settings. The status bar then shows a **Sync** button next to the
-status. **Sync** gets the latest changes from the online copy, then backs up yours.
+online automatically** in Settings. The status bar then shows two buttons next to the status:
 
-**Sync now** in **Setup → Online copy** does the same. While automatic backing up is off,
-Gutterpress checks for new changes in the online copy every few minutes and when you come back to
-the window. When it finds some, the **Sync** button is highlighted and a message says **New changes
-are online for this book**, with a **Sync** button. In Reader mode none of this shows: a reader
-gets the latest changes on their own.
+- **Get latest** (an arrow pointing down) brings in the changes from the online copy and sends
+  nothing. Your own versions stay on this computer until you back up, and the status says **Not
+  backed up yet** if there are any.
+- **Sync** gets the latest changes from the online copy, then backs up yours.
+
+**Get latest** and **Sync now** in **Setup → Online copy** do the same. While automatic backing up
+is off, Gutterpress checks for new changes in the online copy every few minutes and when you come
+back to the window. When it finds some, **Get latest** reads **New online**, **Sync** is
+highlighted, and a message says **New changes are online for this book**, with a **Get latest**
+button. In Reader mode none of this shows: a reader gets the latest changes on their own.
 
 ### When your changes and the online copy overlap
 

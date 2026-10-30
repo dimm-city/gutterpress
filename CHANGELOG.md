@@ -63,12 +63,12 @@ This project follows [Semantic Versioning](https://semver.org/).
   preset's 0.5pt. The `asset.font.approved-files` check, which nothing could
   switch on, is gone.
 - **Settings and Book setup, redesigned (#442).** Settings is one page with
-  no tabs: How you use Gutterpress (Reader or Author), Appearance, Saving and
-  Accounts. It opens in its own sheet from the status-bar gear, Ctrl+, or the
-  start screen's new Settings button, and looks the same with or without a
-  book open. Reader shows just the pages and Author adds Edit, Setup and
-  Publish; creating a book switches to Author. The preview, overlay-colour,
-  zoom, file-watcher and log-level options and every Reset button are gone.
+  no tabs: How you use Gutterpress (Reader or Author), Appearance, Preview,
+  Editor, Saving and Accounts. It opens in its own sheet from the status-bar
+  gear, Ctrl+, or the start screen's new Settings button, and looks the same
+  with or without a book open. Reader shows just the pages and Author adds
+  Edit, Setup and Publish; creating a book switches to Author. The
+  file-watcher and log-level options are gone.
   - **Accounts** is a page of its own. It opens from the start screen's
     Accounts button, Settings and Book setup → Backup, and is the one place
     for who you are and what Gutterpress signs in to, for every book:
@@ -307,8 +307,8 @@ This project follows [Semantic Versioning](https://semver.org/).
   book, each saying whether it is also in the online copy), and, collapsed, the
   tools for when backing up keeps failing. Readers see no status control, Sync
   button or online toasts. Nothing an author reads says commit, branch, push,
-  pull, merge, remote, repository, snapshot or clone any more (the one manual
-  button is **Sync**); Help no longer describes the removed conflict model, and the two sides
+  pull, merge, remote, repository, snapshot or clone any more (the one
+  exception is the **Sync** button); Help no longer describes the removed conflict model, and the two sides
   of an overlapping passage are "two takes". Settings' switch is now **Keep
   version history**, and crash recovery's button is **Recover**.
 - **Honest backup status, and Readers only ever get the latest (#448).**
@@ -339,11 +339,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   with **Rename…** (every revision) and **Delete…** (all but the open one);
   New revision, Rename and Delete are dialogs. A revision that is **Only
   online** can now be renamed or deleted in the online copy (refused, changing
-  nothing, when it changed online since the list was checked). With automatic backing up off, one **Sync** button
-  (Setup → Online copy: **Sync now**; the new-changes toast: **Sync**) replaces
-  Back up now and Get latest; it runs the same backing up as before, which gets
-  the latest first. The status control and Sync sit on the left of the status
-  bar, after the book switcher.
+  nothing, when it changed online since the list was checked). With automatic backing up off, a **Sync** button
+  (Setup → Online copy: **Sync now**) sits beside Get latest; it runs the same
+  backing up as Back up now, which gets the latest first. The status control,
+  Get latest and Sync sit on the left of the status bar, after the book
+  switcher.
 - **History messages follow the vocabulary (#448).** New versions record
   "Automatic version", "First version", "Saved a version", "Automatic version
   before backing up", "Automatic version before restoring", "Saved before
@@ -381,6 +381,23 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Settings, Accounts and Open from GitHub have the controls 0.11.22 had
+  (#481).** A regression from 0.11.22 in the 0.11.23 betas: Settings had lost
+  the Preview background, the Preview group (Default zoom, Right-click menu in
+  the preview, Print overlay strength and the overlay colours) and the Reset on
+  each group; Accounts had lost the Reset on Your name and email and, for a
+  server Gutterpress recognises, the link to its own token page; and Open from
+  GitHub had lost its link to Accounts for another Git host. They are back,
+  under the same settings keys, so what 0.11.22 saved applies again, and the
+  right-click menu can be turned off again (Shift+F10 too).
+- **Get latest and Back up now are back beside Sync (#485).** A regression
+  from 0.11.22: the 0.11.23 betas folded both into Sync. **Get latest** again
+  brings in the online copy's changes without sending yours: on the "New
+  changes are online for this book." toast, in Setup → Online copy, and beside
+  Sync in the status bar while automatic backing up is off. **Back up now** is
+  in Setup → Online copy whenever the book can back up, with automatic backing
+  up on as well as off (off, the same button reads **Sync now**). Readers still
+  see neither.
 - **The minus sign (−, U+2212) is typed as itself.** The character check no
   longer reports it as a look-alike hyphen, and the editor no longer outlines it.
 - **Named pages keep their margins under `page.margin` (#454).** Chromium
@@ -443,6 +460,30 @@ This project follows [Semantic Versioning](https://semver.org/).
   that works), and **Include pre-release versions**, an app setting, off by
   default, that adds alpha, beta and rc versions to the menus and the update
   check. Every install still asks you to trust the package first.
+- **The rest of Book setup's Look and Extensions tools are back (#482), a
+  regression from 0.11.22.** The Book setup redesign (#442) and the changes
+  before it (#427, #437) dropped them, unasked. Restored, in the current tabs:
+  - **Make an editable copy** of the built-in look in use (Look tab): it is
+    copied into `extensions/<id>` as your own files and the copy takes the
+    built-in's place. `gutterpress ext add <look> --look` does it again
+    (0.11.23 said "unknown option"), and copies 0.11.22 made keep building.
+  - **A second built-in look in one click**: Extensions → Add an extension →
+    **Built-in looks** stacks it on the book's look, while the Look tab still
+    chooses one.
+  - **Re-check** in the extension list's head, any time; it reads the list
+    again and says "Every extension loads."
+  - A built-in extra's row says **what to type**, and a row shows Gutterpress's
+    **notices** about it (such as "Not found: …").
+  - npm search results show **name@version**, an **npm page** link and
+    "Showing N of M"; **Exact name** takes a **named export** again, for a
+    package such as `markdown-it-emoji` that has no default plugin.
+  - A look's card names its **author**; pointing at a look shows the **enlarged
+    two-page sample** in a window wider than 1620 px.
+  - The Book tab says **what each print check does**, as the new-book wizard
+    does.
+  - A color setting takes **`var(--color-ink)`** (a reference to another
+    setting) as well as a color, and still refuses anything else; the
+    stylesheet write now refuses any value that would end its declaration.
 - **Version history lists the versions in the online copy, and what every
   version changed, again (#484), a regression from 0.11.22.** The Version
   history screen (#448, 0.11.23-alpha.7) and its speed-up (#461, beta.1) cut

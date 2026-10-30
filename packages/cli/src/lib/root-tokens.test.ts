@@ -244,6 +244,29 @@ describe("applyTokenUpdates: a postcss edit that changes only what it names", ()
     }
   });
 
+  test("a var(--name) reference is written as the value, like a color (#482)", () => {
+    const css = `:root {\n  --color-ink: #222222;\n  --color-accent: #2b6cb0;\n}`;
+    expect(update(css, "--color-accent", "var(--color-ink)")).toBe(
+      `:root {\n  --color-ink: #222222;\n  --color-accent: var(--color-ink);\n}`,
+    );
+  });
+
+  test("a value that would not stay one declaration's value is refused, and nothing is written", () => {
+    const css = `:root {\n  --a: #111111;\n}`;
+    for (const value of ["red; --b: blue", "red } body { display: none", "var(--x", "red; } :root {"]) {
+      expect(() => applyTokenUpdates([css], 0, [{ name: "--a", value }])).toThrow(/can't be saved as --a: it is not one CSS value/);
+    }
+    // The whole batch is refused, so a good update beside a bad one does not land either.
+    expect(() =>
+      applyTokenUpdates([css], 0, [
+        { name: "--b", value: "3rem" },
+        { name: "--a", value: "x; }" },
+      ]),
+    ).toThrow(/it is not one CSS value/);
+    // A semicolon inside a string or url() is part of one value.
+    expect(update(css, "--a", 'url("data:image/svg+xml;utf8,x")')).toBe(`:root {\n  --a: url("data:image/svg+xml;utf8,x");\n}`);
+  });
+
   test("an empty :root {} (a new book.css) gets the declaration with its semicolon", () => {
     expect(update(":root {\n}\n", "--a", "1")).toBe(":root {\n  --a: 1;\n}\n");
   });

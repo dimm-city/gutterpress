@@ -258,6 +258,28 @@ export function toHex(value: string): string | null {
   return color && /^#[0-9a-f]{6}$/i.test(color) ? color : null;
 }
 
+/** `var(--name)`: a reference to another setting, nothing more (no fallback, no second value). */
+const VAR_REFERENCE_RE = /^var\(\s*(--[A-Za-z0-9_-]+)\s*\)$/;
+
+/** Is `value` one `var(--name)` reference — what a color field may save besides a color? */
+export function isVarReference(value: string): boolean {
+  return VAR_REFERENCE_RE.test(value.trim());
+}
+
+/**
+ * What a color field saves (#482): a color as `typedColor` reads it, or a
+ * reference to another setting, `var(--name)` — what a color field took in
+ * 0.11.22. A reference is saved spaced the plain way; one to the setting
+ * itself (`self`) would make it a loop, so it is not saved. Anything else is
+ * null, so nothing but a color or one reference ever reaches the stylesheet.
+ */
+export function typedColorValue(text: string, self?: string): string | null {
+  const color = typedColor(text);
+  if (color) return color;
+  const ref = text.trim().match(VAR_REFERENCE_RE)?.[1];
+  return ref && ref !== self ? `var(${ref})` : null;
+}
+
 /**
  * A color as the author typed it into a color field, ready to save: `#rrggbb`
  * when it is one (bare hex digits get their `#`), any other CSS color as

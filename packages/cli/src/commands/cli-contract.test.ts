@@ -405,6 +405,42 @@ describe("ext usage errors", () => {
     }
   }, 30000);
 
+  test("add --look with an unknown id exits 2 naming the built-in looks", async () => {
+    const dir = await makeTempDir("gutterpress-cli-ext-look-");
+    try {
+      const { exitCode, stderr } = runCli(["ext", "add", "no-such-look", dir, "--look"]);
+      expect(exitCode).toBe(2);
+      expect(stderr).toContain('unknown built-in look "no-such-look"');
+      expect(stderr).toContain("clean-book, zine, technical-doc, academic");
+      expect(fs.existsSync(path.join(dir, "extensions"))).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  test("add --look copies the built-in look into extensions/ as the book's own files and lists the copy, end to end", async () => {
+    const dir = await makeTempDir("gutterpress-cli-ext-look-copy-");
+    try {
+      expect(runCli(["ext", "add", "zine", dir]).exitCode).toBe(0);
+      const added = runCli(["ext", "add", "zine", dir, "--look"]);
+      expect(added.exitCode).toBe(0);
+      expect(added.stdout).toContain("Added ./extensions/zine");
+      expect(fs.existsSync(path.join(dir, "extensions", "zine", "theme.css"))).toBe(true);
+      expect(fs.existsSync(path.join(dir, "extensions", "zine", "package.json"))).toBe(true);
+
+      // The copy takes the bundled entry's place: the look is listed once.
+      const listed = runCli(["ext", "list", dir]);
+      expect(listed.exitCode).toBe(0);
+      expect(listed.stdout).toContain("./extensions/zine  [path; styles]");
+      expect(listed.stdout).not.toContain("zine  [bundled");
+
+      expect(runCli(["ext", "disable", "./extensions/zine", dir]).exitCode).toBe(0);
+      expect(runCli(["ext", "list", dir]).stdout).toContain("(disabled)");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+
   test("add a bundled look, list, disable: the look is one enabled extension and nothing is copied, end to end", async () => {
     const dir = await makeTempDir("gutterpress-cli-ext-e2e-");
     try {

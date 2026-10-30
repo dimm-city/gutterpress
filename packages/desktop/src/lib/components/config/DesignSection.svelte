@@ -9,7 +9,8 @@
    * token state, the debounced read-modify-write token machinery, and the
    * host calls live in `DesignSectionController` (passed as the single
    * `controller` prop). A color is typed into `ColorField`, which saves only
-   * a color; a number is saved on change, never mid-number.
+   * a color or a `var(--name)` reference; a number is saved on change, never
+   * mid-number.
    *
    * Token annotations (issue #244): `controller.customGroups` (theme-author
    * `@group` headings, rendered first) and the four kind-based getters
@@ -126,7 +127,7 @@
         </div>
       {:else if t.kind === "color"}
         <div class="control color">
-          <ColorField id={`cfg-${t.name}`} value={t.value} label={t.label} onCommit={(value) => controller.setToken(t, value)} />
+          <ColorField id={`cfg-${t.name}`} name={t.name} value={t.value} label={t.label} onCommit={(value) => controller.setToken(t, value)} />
         </div>
       {:else if t.kind === "length" || t.kind === "number"}
         <div class="control size">

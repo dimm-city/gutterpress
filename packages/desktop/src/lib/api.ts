@@ -653,6 +653,9 @@ export const api = {
       post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir, includePrerelease }),
     /** Every published version of one npm package, newest first, pre-releases included (the Extensions tab's version picker). On demand; a network failure is data (`ok: false`). */
     versions: (name: string) => post<ExtensionVersionsResult>('/api/extension/versions', { name }),
+    /** Make an editable copy of a built-in look: copied into `extensions/<id>/` and listed as `./extensions/<id>`, in the built-in's place when the book lists it. */
+    addBuiltIn: (projectDir: string, id: string) =>
+      post<ProjectExtensionEntry>('/api/extension/add-built-in', { projectDir, id }),
     /** A configured extension's stylesheets, concatenated (a bundled look's inlined css, or the entry's folder) — for a sample thumbnail. */
     readCss: (projectDir: string, use: string) =>
       post<string>('/api/extension/read-css', { projectDir, use }),
@@ -860,12 +863,20 @@ export const api = {
     listHostConnections: () =>
       post<HostConnectionInfo[]>('/api/remote/list-connections'),
 
-    /** Sync the project with its online copy: get the latest, then back up. */
+    /** Token-settings deep link for recognized forges; null when unknown. */
+    forgeTokenUrl: (host: string) =>
+      post<string | null>('/api/remote/forge-token-url', { host }),
+
+    /** Sync / Back up now: get the latest from the online copy, then back up. */
     syncChanges: (projectDir: string, message?: string) =>
       post<SyncOutcome>('/api/remote/sync', {
         projectDir,
         ...(message ? { message } : {}),
       }),
+
+    /** "Get latest": the same pass with `push: false`: fetch and merge the online changes; never sends. */
+    getLatest: (projectDir: string) =>
+      post<SyncOutcome>('/api/remote/sync', { projectDir, push: false }),
 
     /** Whether the book's branch has moved online (reads refs only; never throws). */
     checkUpdates: (projectDir: string) =>

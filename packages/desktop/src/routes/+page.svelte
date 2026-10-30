@@ -315,8 +315,8 @@
   // ── User settings (#45) ────────────────────────────────────────────────
   // bgColor and zoom are sourced from the persisted settings store (defaults
   // in DEFAULT_SETTINGS). Local mutations write back through
-  // useSettings().set(). bgColor has no toolbar control; it is set via the
-  // Settings panel only.
+  // useSettings().set(). bgColor has no toolbar control; it is set in
+  // Settings → Appearance only.
   const settings = useSettings();
   _loadSettings();
   let zoom = $derived(settings.current.preview.defaultZoom);
@@ -458,6 +458,7 @@
   // + buffer).
   const syncController = new SyncController({
     syncChanges: (dir) => api.remote.syncChanges(dir),
+    getLatest: (dir) => api.remote.getLatest(dir),
     checkUpdates: (dir) => api.remote.checkUpdates(dir),
     repair: (dir) => api.remote.repairOnlineBackup(dir),
     diagnose: (dir) => api.remote.diagnoseProjectRemote(dir),
@@ -1408,6 +1409,13 @@
   // change won't clobber a per-project ratio applied at project-open, and the
   // controller's own persist writes this same value back (idempotent).
   const splitRatioSink = settingsChangeGuard<number>((r) => zoomView.restoreSplitRatio(r));
+  // Context menu (inline-editing plan §4.5): imperative teardown on toggle —
+  // if the author flips the setting off while the menu happens to be open,
+  // close it immediately rather than leaving a now-disabled affordance on
+  // screen until the next dismissal event.
+  const contextMenuSettingSink = settingsChangeGuard<boolean>((enabled) => {
+    if (!enabled) contextMenu.close();
+  });
   // Workspace mode: the live value is local $state, so the async settings load
   // has to be pushed into it. The guard dedupes against the last value seen,
   // so setMode's own write-back is a no-op.
@@ -1453,6 +1461,7 @@
     onSettingsChange((s) => {
       previewBgSink(s.appearance.previewBg);
       splitRatioSink(s.preview.splitRatio);
+      contextMenuSettingSink(s.preview.contextMenu);
       modeSink(effectiveMode(s));
       autoSaveSink(s.versionHistory.autoSave);
       readLayoutSink(s.preview.readLayout);
@@ -2214,6 +2223,7 @@
   // ----------------------------------------------------------------
   const contextMenu = new ContextMenuController({
     client: () => client,
+    enabled: () => settings.current.preview.contextMenu,
     rendering: () => lifecycle.rendering,
     currentDir: () => lifecycle.currentDir,
     openContent: (path) => (buffer?.filePath === path ? buffer.content : null),
@@ -3358,6 +3368,8 @@
     {versionsProblem}
     onSwitchBook={(path) => void switchBook(path)}
     onForceSync={() => syncController.handleForceSync()}
+    onGetLatest={() => syncController.handleGetLatest()}
+    gettingLatest={syncController.gettingLatest}
     updatesAvailable={syncController.updatesAvailable}
     onOpenOnlineCopy={openOnlineCopy}
     onOpenSettings={() => openSettings()}
@@ -3427,6 +3439,7 @@
     backup={syncController.backup}
     {versionsProblem}
     onBackUpNow={() => syncController.handleForceSync()}
+    onGetLatest={() => syncController.handleGetLatest()}
     onRepair={() => syncController.handleRepair()}
     onSaveVersion={saveVersion}
     onBrowseVersions={(id) => (versionsFor = { id: id ?? null })}
@@ -3466,6 +3479,7 @@
     invalidateDiscoveredProjects(); // a fresh clone is a new discoverable book
     return openProjectPath(projectDir);
   }}
+  onOpenAccounts={() => (accountsOpen = true)}
   onClosed={onConnectDialogClosed}
   triggerEl={leftPanelToggleBtn}
 />

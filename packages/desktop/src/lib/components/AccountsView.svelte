@@ -7,7 +7,8 @@
    * groups, each listing what is saved:
    *
    *   Your name and email — saved with each version; same settings keys and
-   *                    save-on-change as before, moved here from Settings.
+   *                    save-on-change as before, moved here from Settings,
+   *                    with the group's Reset (both back to empty).
    *   GitHub         — Connect (the device flow, GitHubConnect), then Test
    *                    sign-in, Sign in again… (an expired sign-in that makes
    *                    every backup fail; the flow's success replaces the
@@ -229,7 +230,10 @@
   <p class="hint">Who you are and the accounts Gutterpress uses, saved on this computer. Every book uses them.</p>
 
   <section class="group" aria-labelledby="accounts-identity">
-    <h2 id="accounts-identity">Your name and email</h2>
+    <div class="group-head">
+      <h2 id="accounts-identity">Your name and email</h2>
+      <button type="button" class="app-btn app-btn-ghost reset" onclick={() => settings.resetSection("gitIdentity")} aria-label="Reset Your name and email" title="Reset Your name and email to the defaults">Reset</button>
+    </div>
     <p class="hint">
       Saved with each version, so the version history shows who changed what. Left empty, a version uses the name and
       email already set for Git on this computer, or else "gutterpress".
@@ -355,6 +359,10 @@
   .accounts { display: flex; flex-direction: column; gap: 22px; outline: none; }
   .group { display: flex; flex-direction: column; gap: 8px; }
   h2 { margin: 0 0 2px; font-size: 15px; font-weight: 600; color: var(--app-text); }
+  /* A group's heading and its Reset, as on the Settings page. */
+  .group-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .group-head h2 { margin: 0; }
+  .reset { padding: 3px 10px; font-size: 12px; }
   /* Wraps, so a long Remove question takes its own line instead of crushing the row. */
   .acct { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 32px; font-size: 13px; }
   /* GitHub's second line: Test sign-in, Sign in again…. */
