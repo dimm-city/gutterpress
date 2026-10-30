@@ -67,6 +67,7 @@
     | "github"
     | "panel-left-close"
     | "chevron-up"
+    | "arrow-down-to-line"
     | "arrow-up-from-line"
     | "star"
     // SVG stand-ins for ✓ / → / 📖 / 💡 text glyphs.
@@ -195,6 +196,8 @@
       '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/>',
     "chevron-up":
       '<path d="m18 15-6-6-6 6"/>',
+    "arrow-down-to-line":
+      '<path d="M12 17V3"/><path d="m6 11 6 6 6-6"/><path d="M19 21H5"/>',
     "arrow-up-from-line":
       '<path d="m18 9-6-6-6 6"/><path d="M12 3v14"/><path d="M5 21h14"/>',
     "star":
