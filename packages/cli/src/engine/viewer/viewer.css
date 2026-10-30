@@ -140,6 +140,29 @@
    no extractable body text; `rabbit-walking.png` (1379x2530, unique) sits on
    PDF p134 vs viewer folio 135. */
 
+/* Repeated table headers and footers. Print draws a table's header group
+   (`thead`) at the top of every page the table spans, and its footer group
+   (`tfoot`) at the foot of each, and never leaves a header alone at the foot
+   of a page. Chromium does the same in a multicol column, through the same
+   table fragmentation, when the group is unbreakable; print media treats
+   every header and footer group so, the screen only one that is
+   `break-inside: avoid` (measured: on screen, a plain `thead` printed once and
+   a `break-inside: avoid` one on every column, exactly as print media does).
+   Setting it here makes the columns repeat the groups print repeats, where
+   print repeats them, and break around them as print does. A group the author
+   set to another `display` is not a header group and repeats in neither.
+
+   The viewer used to imitate this in script, cloning the header into each
+   continuation column and forcing a break before a table whose header would
+   be left alone. It moved a lead-in paragraph whole where print splits it,
+   left a clone at a column's foot, drew a second header wherever Chromium
+   already drew one, and shifted pages after the forced-break spacers had been
+   placed, losing a chapter's break (the gp-dimm-city design guide's reference
+   tables: #454). docs/fixtures/repeated-table-header pins it. */
+.gp-strip :is(thead, tfoot) {
+  break-inside: avoid;
+}
+
 /* View mode (`applySpreadMode` in fragment.ts): wraps this run's multicol
    columns into `--gp-wrap-cols` ROWS instead of one long row — 2 for
    two-up/spread, 1 for single (a plain vertical stack of pages), using

@@ -1,15 +1,15 @@
 /**
- * Regression guard (#370): the viewer's repeated-header compensation must not
- * strand the keep-with-next chain above a table it pushes.
+ * Regression guard (#370): a table whose header fits at a sheet's foot with no
+ * room for the first body row starts on the next sheet, and the keep-with-next
+ * chain above it — a heading, or, with the lead-in rule in MARKER_CSS, a
+ * lead-in paragraph — goes with it, as print does (print never strands a lone
+ * header).
  *
- * Chromium repeats a table's `<thead>` on every print page but not on every
- * multicol column, so `compensateRepeatedHeaders` forces a break before a
- * table whose header fits at a column foot with no room for the first body
- * row (print never strands a lone header). A forced break wins over the
- * `break-after: avoid` on the sibling above, so a heading — or, with the
- * lead-in rule in MARKER_CSS, a lead-in paragraph — was left at the foot of
- * the previous sheet while print moved it with the table. The break now lands
- * on the head of the keep-with-next chain that ends at the table.
+ * The viewer used to force a break before the chain's head itself, because
+ * multicol did not repeat a plain `thead`. viewer.css now makes the header
+ * group `break-inside: avoid`, and Chromium then repeats it and breaks around
+ * it in a column as it does on a page (#454), so this is its own fragmenter's
+ * answer.
  *
  * The fixture is sized so the header row fits in the space left after the
  * label and the first body row does not (the failing arrangement), once with a
@@ -58,10 +58,10 @@ h3 { break-after: avoid; }
 </main><script src="gutterpress-viewer.js"></script></body></html>`;
 }
 
-describe("viewer table push keeps its keep-with-next chain together (#370)", () => {
+describe("a table moved off a sheet keeps its keep-with-next chain together (#370)", () => {
   for (const label of ["p", "h3"] as const) {
     testIf(
-      `a ${label === "p" ? "lead-in paragraph" : "heading"} stays on the sheet its pushed <thead> table starts on`,
+      `a ${label === "p" ? "lead-in paragraph" : "heading"} stays on the sheet its <thead> table starts on`,
       async () => {
         const dir = await fsp.mkdtemp(path.join(path.dirname(FIXTURES_DIR), ".table-keep-chain-"));
         try {

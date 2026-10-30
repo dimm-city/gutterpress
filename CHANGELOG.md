@@ -422,6 +422,12 @@ This project follows [Semantic Versioning](https://semver.org/).
   versions could come back short with no **Show older versions**, and the next
   page could skip or repeat versions. Each version is now listed once, newest
   first, and **Show older versions** stays until the oldest.
+- **Long tables and overridden side breaks paginate the same in preview and
+  print (#454).** The preview now lets Chromium repeat a table's header row on
+  each page, as print does, instead of copying it in; the copies could fit a
+  different number of rows on a page or lose the page break after the table.
+  And a `break-before: left` or `right` that your stylesheet resets to `auto`
+  no longer adds a blank page, in the PDF or the preview.
 
 ## [0.11.22] - 2026-10-23
 
