@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import postcss from "postcss";
 import { createMarkdownRenderer, BUILTIN_OPTIONAL_PLUGINS } from "./renderer";
 import { findInlineMathEnd } from "./math";
 import { GUTTERPRESS_CSS } from "./gutterpress-css";
@@ -96,5 +97,33 @@ describe("gutterpress-math", () => {
   test("core CSS carries MathJax's rules for its output", () => {
     expect(GUTTERPRESS_CSS).toContain('mjx-container[jax="SVG"][display="true"]');
     expect(GUTTERPRESS_CSS).toContain("mjx-assistive-mml {");
+  });
+
+  // #469: the copy is laid out in the machine's math font and could be wider
+  // than the SVG; at a line's end it crossed the column and Chromium shrank
+  // the whole print. It must stay hidden by clipping, never removed, so
+  // screen readers still get it.
+  test("holds the hidden MathML copy to its formula's box, still clipped rather than removed", () => {
+    const decls: Record<string, string> = {};
+    postcss.parse(GUTTERPRESS_CSS).walkRules("mjx-assistive-mml", (rule) => {
+      rule.walkDecls((d) => {
+        decls[d.prop] = d.value + (d.important ? " !important" : "");
+      });
+    });
+    expect(decls["max-width"]).toBe("100% !important");
+    expect(decls).toMatchObject({
+      position: "absolute !important",
+      top: "0px",
+      left: "0px",
+      overflow: "hidden !important",
+      clip: "rect(1px, 1px, 1px, 1px)",
+    });
+    expect(decls.display).not.toContain("none");
+    expect(decls.visibility).toBeUndefined();
+    // 100% is the formula's width because MathJax makes its container the
+    // copy's containing block.
+    const html = withMath().render("Ends with $g_b$\n", {});
+    expect(containers(html)[0]).toContain('style="position: relative;"');
+    expect(html).toContain('<mjx-assistive-mml unselectable="on" display="inline"><math');
   });
 });

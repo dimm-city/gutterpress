@@ -404,6 +404,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   A display formula or an image has no text, so check (e) measured a later
   line instead and reported a sub-pixel boundary as a divergence. It now
   measures the element's box, as print draws it and the preview lays it out.
+- **A formula ending a line no longer shrinks the print (#469).** The hidden
+  MathML copy screen readers read is held to its formula's box, so a wider math
+  font can't push it past the column and make Chromium scale the whole PDF down.
 
 ## [0.11.22] - 2026-10-23
 
