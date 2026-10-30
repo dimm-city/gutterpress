@@ -1,5 +1,5 @@
 /**
- * repair.ts — "Repair online backup": one fixed sequence that replaces a
+ * repair.ts — "Repair the online copy": one fixed sequence that replaces a
  * broken `.git` with a fresh download of the online history, keeps every
  * file on this computer, restores files that exist only online, then saves a
  * version and backs up.

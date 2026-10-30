@@ -107,6 +107,7 @@
     friendlyPdfError,
     friendlyHostError,
     friendlyPreviewError,
+    unwrapRouteError,
   } from "#lib/errors.ts";
   import {
     PersistenceFailureNotifier,
@@ -328,11 +329,8 @@
 
   // Toast controller (populated by Toast.svelte via bind:api)
   let toast = $state<ToastController | null>(null);
-  // Operation-log desktop: opened from the StatusBar git/sync pill. Holds the
-  // current project's log path (carried on the sync status stream).
-  let logFilePath = $state<string | null>(null);
-  // Ref to the mounted ProjectActivityView so a sync completion can ask
-  // it to reload its snapshot list directly. Undefined whenever the
+  // Ref to the mounted ProjectActivityView so a backup completion can ask
+  // it to reload its version list directly. Undefined whenever the
   // activity view isn't the current editor-pane view.
   let activityViewRef = $state<{ refreshHistory: () => void } | undefined>(undefined);
   // The activity view borrows the editor pane and restores the workspace it
@@ -355,10 +353,6 @@
       focusEditorWhenReady();
     }
   }
-  function showProjectLog(filePath: string | null): void {
-    logFilePath = filePath;
-    showActivityView();
-  }
   function closeActivityView(): void {
     closePaneView();
   }
@@ -380,7 +374,7 @@
   }
   /**
    * Accounts: its own sheet too, opened from the start screen, Settings, Book
-   * setup → Backup and the missing name & email banner (which opens it with
+   * setup → Online copy and the missing name & email banner (which opens it with
    * the cursor in Name), over whichever opened it; closing it returns there.
    */
   let accountsOpen = $state(false);
@@ -435,8 +429,8 @@
       (!settings.current.gitIdentity.authorName.trim() ||
         !settings.current.gitIdentity.authorEmail.trim()),
   );
-  /** After a successful snapshot restore, or a copy switch in Book setup →
-   * Backup (#273 — passed as `onProjectFilesChanged` to ProjectSettingsView):
+  /** After a successful version restore, or a revision switch, new revision or rename in Book setup →
+   * Online copy (#273 — passed as `onProjectFilesChanged` to ProjectSettingsView):
    * reconcile the open editor buffer against disk — same reconciliation the
    * folder watcher runs for any external change (see
    * `startFolderWatch`/`onSyncFilesChanged`) — and re-check for print
@@ -464,7 +458,7 @@
       if (lifecycle.currentDir !== dir) return;
       versionPreview = { id, url, label };
       versionSide = "then";
-      // A narrow window shows one pane at a time, and the Versions view
+      // A narrow window shows one pane at a time, and the Version history view
       // occupies the editor pane: take the author to the preview, where the
       // version now is — the mirror of openProblem's switch to the editor.
       if (isNarrow) {
@@ -538,12 +532,17 @@
       onSyncCompleted(mergedRemoteChanges, filesChanged),
     onFilesChanged: () => onSyncFilesChanged(),
     autoBackup: () => settings.current.versionHistory.autoSync,
+    getStatus: (dir) => api.sync.getStatus(dir),
+    isReader: () => settings.current.workspace.role === "reader",
     // The combined-files toast's Review button: the Problems list names every
-    // passage with two versions, and each entry opens its file under the
-    // two-versions panel (combined paths come back repo-relative, so the
+    // passage with two takes, and each entry opens its file under the
+    // two-takes panel (combined paths come back repo-relative, so the
     // list is the one place that already knows where each file is).
     onReviewCombined: () => openProblemsList(),
   });
+
+  // Why the book's automatic versions keep failing: only news while they are on.
+  const versionsProblem = $derived(settings.current.versionHistory.autoSnapshot ? syncController.versionsProblem : null);
 
   // ── Project session capability state (#12) ───────────────────────────────────
   // The classification wiring (source detection → capabilities → subPath →
@@ -616,7 +615,6 @@
       buildProblemEntries = [];
       problemsLoading = false;
       problemsError = null;
-      logFilePath = null;
     },
     onProjectSwitch: () => setFocus(false),
     resetExtras: () => {
@@ -809,7 +807,7 @@
   // The extension download is pushed from the host while `startPreview` is
   // pending (no replay), so subscribe before any open can start.
   onMount(() => getPlatform().onRestoreProgress((event) => lifecycle.onRestoreProgress(event)));
-  // With automatic online backup off, look for new online changes now and then
+  // With automatic backing up off, look for new online changes now and then
   // and prompt (SyncController.checkForUpdates).
   onMount(() => syncController.watchForUpdates());
 
@@ -972,18 +970,18 @@
     refreshProblems();
   }
 
-  // Sync completed. Online changes may land on disk even when the final outcome
-  // is "up-to-date" (pull fast-forwarded, then push had nothing to send), so the
-  // file-change signal is separate from the user-facing merge/sync copy.
+  // Backing up completed. Online changes may land on disk even when the final outcome
+  // is "up-to-date" (get latest fast-forwarded, then there was nothing to send), so the
+  // file-change signal is separate from the user-facing merge/backup copy.
   function onSyncCompleted(mergedRemoteChanges: boolean, filesChanged = mergedRemoteChanges) {
     toast?.success(
       mergedRemoteChanges
-        ? "Backed up online — changes from the online backup were combined in, so the preview will refresh."
-        : "Backed up online — your changes are online.",
+        ? "Backed up — changes from the online copy were combined in, so the preview will refresh."
+        : "Backed up — your changes are in the online copy.",
     );
-    // A sync may add new commits to the project's version history (both push
-    // and pull sides) — refresh the activity view's snapshot list so new
-    // entries appear if it's open.
+    // Backing up may add new versions to the book's version history (both
+    // sending and getting latest) — refresh the Version history view's list
+    // so new entries appear if it's open.
     activityViewRef?.refreshHistory();
     // If remote changes landed on disk, re-lint immediately (the preview
     // file-watcher re-renders and fires refreshProblems via renderingComplete,
@@ -991,18 +989,10 @@
     if (filesChanged) onSyncFilesChanged();
   }
 
-  // The single Reconnect action: route to the matching connect
-  // flow — GitHub's device flow, or the book's Backup tab for every other
-  // server (it connects the book's own server, address and all).
-  function onSyncReconnect() {
-    if (syncController.syncDiag?.provider === "github") githubOpen = true;
-    else openBookConnections();
-  }
-
-  // Completes the Reconnect journey: a connect dialog closing may mean a
-  // new credential was just stored — re-check syncability so the Sync
-  // button and the dialog's auth state reflect it without a project reload.
-  // Called by onClosed on GitHubDialog.
+  // A sign-in dialog closing may mean a new credential was just stored —
+  // re-check whether the book can back up so the status control and the
+  // Online copy tab reflect it without a project reload. Called by onClosed
+  // on GitHubDialog and when Accounts closes.
   function onConnectDialogClosed() {
     if (lifecycle.currentDir && lifecycle.sourceMode === "folder") {
       void syncController.refreshSyncDiag(lifecycle.currentDir);
@@ -1013,19 +1003,22 @@
     if (landingVisible) landingRef?.focusLayer();
   }
 
-  // ── Converge-report subscription ────────────────────────────────────────────
-  // Subscribe to the host's sync:status channel for the converge report —
+  // ── Status subscription ─────────────────────────────────────────────────────
+  // The host's sync:status channel feeds the sync controller (the status control
+  // and the Online copy tab read it) and carries the converge report —
   // combined-with-markers files and side-by-side pairs each get a review
-  // toast. Per §8: runs in the SPA, no lib value imports, all host
-  // work through getPlatform().
+  // toast. A reader gets the latest quietly: files reload, no toasts. Per §8:
+  // runs in the SPA, no lib value imports, all host work through getPlatform().
   onMount(() => {
     const off = getPlatform().onSyncStatus((status) => {
       // Scope to the currently open project.
       if (status.projectDir !== lifecycle.currentDir) return;
-      if (status.state === "syncing") identityNoticeArmed = true;
+      syncController.applyStatus(status);
       if (shouldReconcileAfterSync(status)) {
         onSyncFilesChanged();
       }
+      if (readerMode) return;
+      if (status.state === "syncing") identityNoticeArmed = true;
       syncController.applyConvergeReport(status.combinedFiles, status.keptBothFiles);
     });
     return () => off?.();
@@ -1121,12 +1114,12 @@
     projectSettingsOpen = true;
   }
 
-  // Book setup opens on Book; the save-status dialog and Settings > Saving
-  // send writers to its Backup tab to see how an online backup gets set up.
-  let projectSettingsTab = $state<"book" | "extensions" | "backup">("book");
-  function openBookConnections(): void {
+  // Book setup opens on Book; the status control sends writers to its Online
+  // copy tab, the one place for saving versions, revisions and backing up.
+  let projectSettingsTab = $state<"book" | "extensions" | "online-copy">("book");
+  function openOnlineCopy(): void {
     openProjectConfig();
-    projectSettingsTab = "backup";
+    projectSettingsTab = "online-copy";
   }
   // A failed extension download's toast sends writers to Extensions, where the
   // row's Install button retries it.
@@ -1323,7 +1316,7 @@
   let externalChange = $derived(buffer?.externalChange ?? null);
   let externalFileName = $derived(editorFilePath ? basenameOf(editorFilePath) : "");
 
-  // ── Two versions after a sync (#407) ──────────────────────────────────────
+  // ── Two takes after getting the latest (#407) ──────────────────────────────────────
   // Passages the converge merge left with both versions, read from the live
   // buffer so a choice removes its passage from the panel at once. A choice
   // is an ordinary editor edit: it goes through the mounted CodeMirror view
@@ -1352,7 +1345,7 @@
 
   /**
    * The last passage in this file is settled: hand focus back to the text;
-   * point at the next file that still holds two versions, if any (the
+   * point at the next file that still holds two takes, if any (the
    * Problems list knows them); and, for a stylesheet that had kept the
    * preview from starting, try the preview again once the choice is saved.
    */
@@ -1368,13 +1361,13 @@
       // Long enough to be read and taken; not so long that it is still
       // claiming "this file" after the author has moved on by hand.
       toast?.show(
-        `All settled in this file. ${files.size === 1 ? "One more file has" : `${files.size} more files have`} two versions.`,
+        `All settled in this file. ${files.size === 1 ? "One more file has" : `${files.size} more files have`} two takes.`,
         "info",
         10_000,
         { label: "Next file", onClick: () => openProblem(next) },
       );
     }
-    // A stylesheet or the manifest with two versions takes the preview down;
+    // A stylesheet or the manifest with two takes takes the preview down;
     // with the file settled, the preview comes back without a trip to the
     // error card's button.
     if (lifecycle.previewError) {
@@ -1388,7 +1381,7 @@
   function keepVersion(block: TwoVersionsBlock, choice: TwoVersionsChoice): void {
     applyTwoVersionsEdits([resolveTwoVersions(block, choice)]);
     const kept =
-      choice === "yours" ? "Kept your version" : choice === "online" ? "Kept the online version" : "Kept both versions";
+      choice === "yours" ? "Kept yours" : choice === "online" ? "Kept the online one" : "Kept both";
     // Undo reverses the LAST choice, so only the last choice's message
     // offers it: a stack of two, each saying Undo, would undo the wrong one.
     if (keptToast !== null) toast?.dismiss(keptToast);
@@ -1984,7 +1977,7 @@
    */
   function openProblem(p: ProblemEntry) {
     if (!p.filePath || !lifecycle.currentDir) return;
-    // A Two versions entry opens its file under the two-versions panel,
+    // A Two takes entry opens its file under the two-takes panel,
     // which is that file's own list of these problems: closing the Problems
     // list keeps the editor from being squeezed between the two.
     if (p.source === "source.sync.merge-markers") problemsOpen = false;
@@ -2974,7 +2967,7 @@
     lifecycle.cancelOpen();
   }
 
-  // ── Force-save / Force-sync (status bar action buttons) ───────────────────
+  // ── Save now / Save a version ─────────────────────────────────────────────
   /**
    * Immediately flush the editor buffer to disk, bypassing the debounce.
    * Mirrors the same flush path used on project-switch and window-close.
@@ -2988,6 +2981,28 @@
       toast?.error(`Save failed: ${friendlyHostError(e instanceof Error ? e.message : String(e))}`);
     } finally {
       forceSaving = false;
+    }
+  }
+
+  /**
+   * Save a version now (Book setup → Online copy, Version history). Resolves
+   * "unchanged" when there was nothing new to save: a calm result, not a failure.
+   */
+  async function saveVersion(): Promise<"saved" | "unchanged"> {
+    const dir = lifecycle.currentDir;
+    if (!dir) return "unchanged";
+    try {
+      await api.vcs.saveSnapshot(dir);
+      identityNoticeArmed = true;
+      toast?.success("Saved a version.");
+      activityViewRef?.refreshHistory();
+      return "saved";
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // Local copy of the lib's isNoChangesError (the SPA can't import it).
+      if (/nothing new to save/i.test(msg)) return "unchanged";
+      toast?.error(friendlyHostError(unwrapRouteError(msg)));
+      throw e;
     }
   }
 
@@ -3154,7 +3169,6 @@
       onOpenUrl={openUrl}
       onOpenBook={() => { contextMenu.close(); void inlineEdit.endActive(true); openBookOpen = true; }}
       onNewProject={() => { contextMenu.close(); void inlineEdit.endActive(true); newProjectWizardRef?.show(); }}
-      onSyncReconnect={onSyncReconnect}
       onPanelStateChange={persistLeftPanelPrefs}
     />
 
@@ -3166,7 +3180,7 @@
   {#if showAdoptBanner}
     <div class="adopt-banner" role="status">
       <span class="adopt-banner-text">
-        This folder isn't set up as a book yet — set it up to edit its design and keep a history of changes.
+        This folder isn't set up as a book yet — set it up to edit its design and keep version history.
       </span>
       <div class="adopt-banner-actions">
         <button class="primary app-btn-primary" onclick={() => lifecycle.currentDir && setUpAsBook(lifecycle.currentDir)} disabled={lifecycle.adopting}>
@@ -3205,11 +3219,12 @@
               <ProjectActivityView
                 bind:this={activityViewRef}
                 projectDir={lifecycle.currentDir}
-                {logFilePath}
+                logFilePath={syncController.logFile}
                 hasRemote={projectSession.projectHasRemote}
                 viewingId={versionPreview?.id ?? null}
                 onClose={closeActivityView}
                 onRestored={onSnapshotRestored}
+                onSaveVersion={saveVersion}
                 onLookAt={(id, label) => void lookAtVersion(id, label)}
                 onStopLooking={() => void stopLookingAtVersion()}
               />
@@ -3246,7 +3261,7 @@
             />
             {/if}
             {#if editorFilePath && twoVersionsBlocks.length > 0}
-              <!-- Passages with two versions after a sync (#407): pick, right
+              <!-- Passages with two takes after getting the latest (#407): pick, right
                    above the text they rewrite. Shown in Focus too — the
                    markers are in the text either way, and this is the way
                    to settle them. Keyed on the file: another file's card
@@ -3481,68 +3496,32 @@
     </div> <!-- /main-content -->
   </div> <!-- /left-panel-region -->
 
-  <!-- StatusBar: always-visible bottom bar with the book switcher, sync pill
-       and app actions. Sits below the left-panel-region in the .shell flex
-       column so it spans the full window width. Never covers the preview
-       iframe (normal layout flow). -->
+  <!-- StatusBar: always-visible bottom bar with the book switcher, the one
+       status control and app actions. Sits below the left-panel-region in the
+       .shell flex column so it spans the full window width. Never covers the
+       preview iframe (normal layout flow). -->
   {#if !inFocus}
   <StatusBar
     projectDir={lifecycle.currentDir}
     sourceMode={lifecycle.sourceMode}
     canSync={!!(syncController.syncDiag?.canSync)}
     hasRemote={projectSession.projectHasRemote}
-    canSnapshot={projectSession.projectCapabilities ? !!projectSession.projectCapabilities.canSnapshot : null}
     savePhase={editorSavePhase}
     autoSave={settings.current.versionHistory.autoSave}
-    autoVersions={settings.current.versionHistory.autoSnapshot}
     autoBackup={settings.current.versionHistory.autoSync}
     {forceSaving}
     forceSyncing={syncController.forceSyncing}
+    {readerMode}
     books={projectSession.books}
     activeBookDir={projectSession.activeBookDir}
+    backup={syncController.backup}
+    {versionsProblem}
     onSwitchBook={(path) => void switchBook(path)}
-    onReconnect={onSyncReconnect}
-    onConnectOnline={onSyncReconnect}
-    onShowLog={showProjectLog}
-    onForceSave={handleForceSave}
     onForceSync={() => syncController.handleForceSync()}
     onGetLatest={() => syncController.handleGetLatest()}
     gettingLatest={syncController.gettingLatest}
     updatesAvailable={syncController.updatesAvailable}
-    onRepair={() => syncController.handleRepair()}
-    manualBackup={syncController.lastManual}
-    onSaveVersion={async () => {
-      const dir = lifecycle.currentDir;
-      if (!dir) return "unchanged";
-      try {
-        await api.vcs.saveSnapshot(dir);
-        identityNoticeArmed = true;
-        toast?.success("Saved a version.");
-        activityViewRef?.refreshHistory();
-        return "saved";
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        // A clean book is not a failure: the dialog says so calmly (no toast).
-        // Local copy of the lib's isNoChangesError (the SPA can't import it).
-        if (/no changes since the last snapshot/i.test(msg)) return "unchanged";
-        toast?.error(friendlyHostError(e instanceof Error ? e.message : String(e)));
-        throw e;
-      }
-    }}
-    onEnableVersionHistory={async () => {
-      const dir = lifecycle.currentDir;
-      if (!dir) return;
-      try {
-        await api.vcs.enableVersionHistory(dir);
-        await projectSession.classify(dir);
-        toast?.success("Version history is on.");
-      } catch (e) {
-        toast?.error("Couldn't turn on version history. Your book is unchanged.");
-        throw e;
-      }
-    }}
-    onShowVersions={showActivityView}
-    onOpenBookConnections={openBookConnections}
+    onOpenOnlineCopy={openOnlineCopy}
     onOpenSettings={() => openSettings()}
     onOpenHelp={openHelp}
     onOpenBooks={openBooks}
@@ -3606,12 +3585,12 @@
     onVersionHistoryEnabled={(dir) => void projectSession.classify(dir)}
     onBackupSetUp={(dir) => { void projectSession.classify(dir); void syncController.refreshSyncDiag(dir); }}
     onProjectFilesChanged={onSnapshotRestored}
-    onBackUpNow={async () => {
-      await syncController.handleForceSync();
-      const last = syncController.lastManual;
-      return last && last.dir === lifecycle.currentDir ? { state: last.state, lastSyncAt: last.at } : null;
-    }}
+    backup={syncController.backup}
+    {versionsProblem}
+    onBackUpNow={() => syncController.handleForceSync()}
     onRepair={() => syncController.handleRepair()}
+    onSaveVersion={saveVersion}
+    onShowVersions={() => { closeProjectSettings(); showActivityView(); }}
     onCloseBook={() => lifecycle.stopPreview()}
     onOpenAccounts={() => (accountsOpen = true)}
   />

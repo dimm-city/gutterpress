@@ -1,13 +1,13 @@
 /**
- * Book setup → Backup's states (#442): which of six situations a book is in,
- * read off `diagnoseProjectRemote`. ProjectConnectionsSection gives each one
- * headline and at most one next step.
+ * Book setup → Online copy's states (#442): which of six situations a book is
+ * in, read off `diagnoseProjectRemote`. ProjectConnectionsSection gives each
+ * one headline and at most one next step.
  */
 import type { ProjectRemoteDiagnosis, SyncStatus } from "./platform/contract";
 import { relativeTime } from "./format";
 
 export type BackupState =
-  /** A plain folder: previous versions are off. */
+  /** A plain folder: version history is off. */
   | "no-versions"
   /** Versions on, no online copy yet. */
   | "local-only"
@@ -47,7 +47,7 @@ export function onlineCopyName(remoteUrl: string): string {
     .replace(/(\.git)?\/?$/, "");
 }
 
-/** What is known about the book's last online backup: the host's last status, or a backup run from Backup. */
+/** What is known about the book's last backing up: the host's last status, or a backup run from Online copy. */
 export type LastBackup = Pick<SyncStatus, "state" | "lastSyncAt" | "message">;
 
 export interface ReadyView {
@@ -61,13 +61,13 @@ export interface ReadyView {
 
 /**
  * The "ready" situation's words. Access being set up is not a backup, so the
- * headline claims one only with evidence (a finished backup and its time) and
- * otherwise names the online copy.
+ * headline claims one only with evidence (a finished pass that sent your work,
+ * and its time) and otherwise names the online copy.
  */
 export function readyView(copy: string, last: LastBackup | null, autoSync: boolean, now: number): ReadyView {
   const ongoing = autoSync
     ? "Gutterpress backs it up while you work."
-    : "Automatic backup is off, so this book is backed up only when you ask.";
+    : "Backing up automatically is off, so this book is backed up only when you ask.";
   const manual = autoSync ? null : "back-up";
   switch (last?.state) {
     case "syncing":
@@ -75,12 +75,14 @@ export function readyView(copy: string, last: LastBackup | null, autoSync: boole
     case "synced": {
       const at = Date.parse(last.lastSyncAt ?? "");
       if (Number.isNaN(at)) break;
-      return { headline: `Backed up online to ${copy} · last backup ${relativeTime(at, now)}`, detail: ongoing, ok: true, action: manual };
+      return { headline: `Backed up · ${relativeTime(at, now)}`, detail: `Online copy: ${copy}. ${ongoing}`, ok: true, action: manual };
     }
+    case "unsent":
+      return { headline: "Not backed up yet", detail: `Online copy: ${copy}. ${ongoing}`, ok: false, action: manual };
     case "offline":
       return { headline: `Couldn't reach ${copy}.`, detail: "Check your internet connection, or try again later. Your work is saved on this computer.", ok: false, action: "try-again" };
     case "auth":
-      return { headline: `Couldn't back up to ${copy}: it didn't accept the saved sign-in.`, detail: "Connect again to keep backing up.", ok: false, action: "sign-in" };
+      return { headline: `Couldn't back up to ${copy}: it didn't accept the saved sign-in.`, detail: "Sign in again to keep backing up.", ok: false, action: "sign-in" };
     case "error":
       return { headline: `Couldn't back up to ${copy}.`, detail: last.message || "Your work is saved on this computer.", ok: false, action: "try-again" };
   }

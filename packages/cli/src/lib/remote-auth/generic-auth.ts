@@ -106,7 +106,7 @@ function connectError(result: Extract<RemoteAccessResult, { ok: false }>, host: 
       return new Error(result.message);
     case "not-found":
       return new Error(
-        "The server answered, but that repository wasn't found. Check the repository address and that the token has access to it.",
+        "The server answered, but that online copy wasn't found. Check its address and that the token has access to it.",
       );
     default:
       return new Error(

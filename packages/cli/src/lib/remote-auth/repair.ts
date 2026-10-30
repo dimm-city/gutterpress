@@ -1,5 +1,5 @@
 /**
- * Repair online backup — the ONE recovery for a book whose `.git` no longer
+ * Repair the online copy — the ONE recovery for a book whose `.git` no longer
  * works with its online copy (a damaged object or index, a lost branch, "no
  * history in common", an interrupted merge). One fixed sequence, no diagnosis:
  * download the online history, move the old `.git` aside (kept), put the fresh
@@ -24,8 +24,8 @@ import { syncProject } from "./sync.ts";
 import type { SyncOutcome, SyncProjectOptions } from "./sync-types.ts";
 import { repoDirFor, resolveTransport } from "./transport.ts";
 
-/** Message recorded on the version a repair saves. */
-export const REPAIR_SNAPSHOT_MESSAGE = "Repaired online backup";
+/** Message recorded on the version a repair saves (older history says "Repaired online backup"). */
+export const REPAIR_SNAPSHOT_MESSAGE = "Repaired the online copy";
 
 export interface RepairOnlineBackupOptions
   extends Pick<

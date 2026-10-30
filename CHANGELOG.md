@@ -5,6 +5,54 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Keeping an author's work safe has one set of words and one place to look
+  (#448).** The status bar's save indicator, sync pill and "Where your work is
+  kept" sheet are one status control ("Saved · Backed up", "Saved · Not backed
+  up yet", "Saved · Sign in to back up", …) that opens Book setup → Online
+  copy, the renamed Backup tab. There an author sees where the book is kept in
+  one sentence with its one next step, saves a version, opens Version history
+  (the renamed Versions view, with Save a version at the top), manages
+  revisions (switch, new, rename, delete: separate lines of work in the same
+  book, each saying whether it is also in the online copy), and, collapsed, the
+  tools for when backing up keeps failing. Readers see no status control, Get
+  latest, Back up now or online toasts. Nothing an author reads says commit,
+  branch, push, pull, merge, remote, repository, snapshot, sync or clone any
+  more; Help no longer describes the removed conflict model, and the two sides
+  of an overlapping passage are "two takes". Settings' switch is now **Keep
+  version history**, and crash recovery's button is **Recover**.
+- **Honest backup status, and Readers only ever get the latest (#448).**
+  "Backed up" now appears only after a pass that sent your work or found nothing
+  to send; a get-latest-only pass with unsent versions says "Not backed up yet",
+  and with automatic backing up off the status is checked at open and after
+  every version. A Reader gets the latest changes automatically whatever "Back up
+  online automatically" says, and never sends anything. Exporting a PDF gets the
+  latest first but no longer sends.
+- **Revisions are renamed and deleted in the online copy too, right away
+  (#448).** Renaming or deleting everywhere refuses, changing nothing, when the
+  online copy can't be reached or has versions this computer lacks; deleting a
+  revision whose versions are found nowhere else asks a second time with the
+  count.
+- **History messages follow the vocabulary (#448).** New versions record
+  "Automatic version", "First version", "Saved a version", "Automatic version
+  before backing up", "Automatic version before restoring", "Saved before
+  switching revision", "Repaired the online copy" and "Saved the edit you made
+  while backing up"; Version history still recognises every earlier spelling.
+- **Library:** `listLocalBranches` and its `LocalBranches` type are replaced by
+  `listRevisions`, with `createRevision`, `renameRevision`, `deleteRevision` and
+  `revisionNameFrom`; `SyncOutcome` gains `pushDeferred` on a get-latest pass
+  that left versions unsent. The desktop's `vcs/list-branches` and
+  `remote/refresh-copies` routes are replaced by `vcs/list-revisions` (with
+  `refresh`), `vcs/create-revision`, `vcs/rename-revision` and
+  `vcs/delete-revision`.
+
+### Fixed
+
+- **The first backup of a new revision works (#448).** It used to stop with
+  "sign in again" because a revision the online copy didn't have yet was taken
+  for a rejected sign-in.
+
 ## [0.11.23] - 2026-10-26
 
 ### Added

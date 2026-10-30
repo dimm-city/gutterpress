@@ -28,8 +28,8 @@ function isMissingManifestError(msg: string): boolean {
  * screen. Pure string classification — no host coupling.
  */
 export function friendlyFolderError(msg: string): string {
-  if (/has two versions of a setting/i.test(msg)) {
-    return "A sync left two versions of a setting in this book's manifest.yaml. Open the file, keep the one you want and delete the marker lines, then try again.";
+  if (/has two takes of a setting/i.test(msg)) {
+    return "Getting the latest changes left two takes of a setting in this book's manifest.yaml. Open the file, keep the one you want and delete the marker lines, then try again.";
   }
   const yamlPosition = msg.match(
     /Invalid YAML in [^\n]+ at line (\d+), column (\d+)/i,
@@ -60,11 +60,11 @@ export function friendlyPreviewError(raw: string): FriendlyPreviewError {
   const details = friendlyHostError(raw)
     .replace(/^Preview server failed to start:\s*/i, "")
     .trim();
-  if (/has two versions of a setting/i.test(details)) {
+  if (/has two takes of a setting/i.test(details)) {
     return {
-      title: "This book's settings have two versions.",
+      title: "This book's settings have two takes.",
       message:
-        "A sync found a setting changed both here and online, and kept both in manifest.yaml. Open the Files panel, open manifest.yaml, and choose which version to keep.",
+        "Getting the latest changes found a setting changed both here and in the online copy, and kept both in manifest.yaml. Open the Files panel, open manifest.yaml, and choose which take to keep.",
       details,
     };
   }
@@ -224,7 +224,7 @@ export interface FriendlyPublishError {
  * `r.text()` and throw `new Error(text)` verbatim — they never JSON.parse
  * it — so a `catch (e)` on any `api.*` call sees this raw `{"message": "…"}`
  * envelope as `e.message` instead of the message itself. Peel it back before
- * showing it (publish errors below; Book setup → Backup) so an author is
+ * showing it (publish errors below; Book setup → Online copy) so an author is
  * never shown a bare JSON blob.
  */
 export function unwrapRouteError(text: string): string {

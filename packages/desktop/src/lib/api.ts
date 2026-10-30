@@ -65,6 +65,8 @@ export type {
   VersionEntry,
   VersionFileChange,
   CompareRow,
+  Revision,
+  RevisionList,
   RemoteConnection,
   RemoteRepository,
   BackupTarget,
@@ -94,6 +96,8 @@ import type {
   VersionEntry,
   VersionFileChange,
   CompareRow,
+  Revision,
+  RevisionList,
   RemoteConnection,
   RemoteRepository,
   BackupTarget,
@@ -750,13 +754,23 @@ export const api = {
       post<{ changedFiles: number | null; stale: boolean }>('/api/vcs/unversioned-changes', { projectDir }),
     saveSnapshot: (projectDir: string, message?: string) =>
       post<SnapshotEntry>('/api/vcs/save-snapshot', { projectDir, message }),
-    /** The project's local copies (git branches) and which one is open;
-     *  `null` when the source has nothing to switch between (#273). */
-    listBranches: (projectDir: string) =>
-      post<{ current: string | null; branches: string[]; remoteOnly: string[] } | null>('/api/vcs/list-branches', { projectDir }),
-    /** Switch the project's working tree to another local copy (#273). */
+    /** Switch the project's working tree to another revision (#273). */
     switchBranch: (projectDir: string, branch: string) =>
       post<{ current: string; changedFiles: string[] }>('/api/vcs/switch-branch', { projectDir, branch }),
+    /** The book's revisions and where each is kept (#448); `null` without version history.
+     *  `refresh` checks the online copy first (best-effort; see `checkedOnline`). */
+    listRevisions: (projectDir: string, options?: { refresh?: boolean }) =>
+      post<RevisionList | null>('/api/vcs/list-revisions', { projectDir, ...options }),
+    /** Start a new revision from what is open now and switch to it (#448). */
+    createRevision: (projectDir: string, name: string) =>
+      post<{ current: string }>('/api/vcs/create-revision', { projectDir, name }),
+    /** Rename a revision; an online one is renamed in the online copy too (#448). */
+    renameRevision: (projectDir: string, from: string, to: string) =>
+      post<{ current: string | null; name: string }>('/api/vcs/rename-revision', { projectDir, from, to }),
+    /** Delete a revision that is not open (#448). Without `discard`, a revision holding versions
+     *  found nowhere else is not deleted: the result says how many would be lost. */
+    deleteRevision: (projectDir: string, name: string, options?: { everywhere?: boolean; discard?: boolean }) =>
+      post<{ deleted: true } | { deleted: false; versionsOnlyHere: number }>('/api/vcs/delete-revision', { projectDir, name, ...options }),
   },
 
   remote: {
@@ -795,15 +809,6 @@ export const api = {
     diagnoseProjectRemote: (projectDir: string) =>
       post<ProjectRemoteDiagnosis>('/api/remote/diagnose-project', { projectDir }),
 
-    /** Fetch every remote branch so the copy picker sees copies made elsewhere
-     *  (#273). Best-effort: `refreshed: false` with the `reason` when the check
-     *  could not run, so the picker can say the list may be incomplete. */
-    refreshCopies: (projectDir: string) =>
-      post<{ refreshed: boolean; reason?: 'no-remote' | 'auth' | 'offline' }>(
-        '/api/remote/refresh-copies',
-        { projectDir },
-      ),
-
     /** Explicit, user-initiated remote probe (the git ls-remote equivalent). */
     testRemoteAccess: (url: string) =>
       post<RemoteAccessResult>('/api/remote/test-remote-access', { url }),
@@ -826,7 +831,7 @@ export const api = {
     listHostConnections: () =>
       post<HostConnectionInfo[]>('/api/remote/list-connections'),
 
-    /** Snapshot-first sync of the project to its online repository. */
+    /** Back up the project to its online copy. */
     syncChanges: (projectDir: string, message?: string) =>
       post<SyncOutcome>('/api/remote/sync', {
         projectDir,
@@ -842,7 +847,7 @@ export const api = {
       post<{ available: boolean; reason?: 'no-remote' | 'auth' | 'offline' }>('/api/remote/check-updates', { projectDir }),
 
     /**
-     * "Repair online backup": replace the book's broken history with a fresh
+     * "Repair the online copy": replace the book's broken history with a fresh
      * download of the online copy, keep every file on this computer, restore
      * files that exist only online, then save a version and back up. The old
      * history is kept aside, never deleted.

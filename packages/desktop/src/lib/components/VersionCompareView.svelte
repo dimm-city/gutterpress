@@ -2,7 +2,7 @@
   /**
    * VersionCompareView — one file at an earlier version beside the file as
    * it is in the book now (#408), lines aligned and changed lines marked.
-   * The columns are "That version" and "Current": the words the Versions
+   * The columns are "That version" and "Current": the words the Version history
    * view and the preview bar use, never a bare Then/Now. Read-only:
    * nothing here edits, and nothing is merged. The rows arrive aligned from
    * the host (`api.vcs.compareFile`), so this is layout only.
@@ -33,7 +33,7 @@
 
 <div class="compare-view">
   <header class="compare-header">
-    <button class="back" onclick={onBack}><Icon name="chevron-left" size={14} /> Versions</button>
+    <button class="back" onclick={onBack}><Icon name="chevron-left" size={14} /> Version history</button>
     <h2 title={path}>{path}</h2>
   </header>
   {#if binary}

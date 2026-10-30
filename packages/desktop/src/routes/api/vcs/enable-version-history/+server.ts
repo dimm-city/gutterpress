@@ -4,7 +4,7 @@ import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 // The "turn a plain local-folder into a versioned project" half of the
-// CLAUDE.md §7 escape hatch. Book setup → Backup calls it for a
+// CLAUDE.md §7 escape hatch. Book setup → Online copy calls it for a
 // plain folder (ProjectConnectionsSection, #310).
 
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
@@ -20,12 +20,12 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
     await lib.ensureProjectGitignore(body.projectDir);
     await lib.providerFor(source).initVersionHistory({
       projectDir: body.projectDir,
-      initialMessage: 'Initial snapshot',
+      initialMessage: 'First version',
       ...(await gitIdentityArgs()),
     });
     // Re-classify so the renderer gets the upgraded source + capabilities.
     const upgraded = await lib.detectProjectSource(body.projectDir);
     return { source: upgraded, capabilities: lib.capabilitiesFor(upgraded) };
   },
-  onError: (e) => friendlyVcsError(e, 'enableVersionHistory', 'vcs/enable-version-history'),
+  onError: (e) => friendlyVcsError(e, 'vcs/enable-version-history'),
 });

@@ -105,7 +105,7 @@ export class CrashRecoveryController {
       if (generation !== this.generation) return;
       this.reoffer(item, itemIndex, generation);
       d.toast()?.error(
-        `Could not restore: ${d.friendlyHostError(e instanceof Error ? e.message : String(e))}`,
+        `Could not recover: ${d.friendlyHostError(e instanceof Error ? e.message : String(e))}`,
       );
     }
   }

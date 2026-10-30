@@ -106,7 +106,7 @@ export const newArgs = {
   },
   git: {
     type: "boolean",
-    description: "Initialise local version history (default: true; use --no-git to skip)",
+    description: "Keep version history on this computer (default: true; use --no-git to skip)",
     default: true,
   },
 } as const;
@@ -360,10 +360,10 @@ export default defineCommand({
       console.log(`  publish targets: ${written.targets.length > 0 ? written.targets.join(", ") : "none"}`);
       console.log(`  start writing in: ${result.openFile}`);
       if (result.versionHistory === "local-git") {
-        console.log("  version history: enabled (local snapshots)");
+        console.log("  version history: on (kept on this computer)");
       } else if (result.versionHistoryError) {
         console.log(
-          `  version history: not enabled (${result.versionHistoryError})`,
+          `  version history: not on (${result.versionHistoryError})`,
         );
       }
 

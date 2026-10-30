@@ -131,6 +131,7 @@ jobs:
           xvfb-run -a node tests/integration/editor-toggle-loads-module.pw.mjs
           xvfb-run -a node tests/integration/panel-reopen-on-failed-open.pw.mjs
           xvfb-run -a node tests/integration/problems-panel.pw.mjs
+          xvfb-run -a node tests/integration/online-copy.pw.mjs
           xvfb-run -a node tests/integration/block-properties.pw.mjs
           xvfb-run -a node tests/integration/editor-dropdown-sync.pw.mjs out/main/main.js
           xvfb-run -a node tests/integration/preview-zoom-wheel.pw.mjs out/main/main.js

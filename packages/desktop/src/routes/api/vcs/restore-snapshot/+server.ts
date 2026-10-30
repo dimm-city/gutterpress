@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { gitIdentityArgs } from '#lib/server/settings.ts';
 import { friendlyVcsError } from '../../../../../electron/server-bridge/friendly-errors';
-import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
+import { defineRoute, getHostServices, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute<{ projectDir: string; id: string }>({
@@ -21,11 +21,13 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; id: string
     // Safety contract (#13): the lib snapshots the current
     // state before restoring, so a restore can never lose author work. That
     // backup is a commit like any other — attribute it to the author.
-    return lib.restoreVersionWithBackup({
+    const restored = await lib.restoreVersionWithBackup({
       projectDir: body.projectDir,
       id: body.id,
       ...(await gitIdentityArgs()),
     });
+    if (restored.backupId) getHostServices().vcs.refreshOnlineStatus?.(body.projectDir);
+    return restored;
   },
-  onError: (e) => friendlyVcsError(e, 'restoreSnapshot', 'vcs/restore-snapshot'),
+  onError: (e) => friendlyVcsError(e, 'vcs/restore-snapshot'),
 });

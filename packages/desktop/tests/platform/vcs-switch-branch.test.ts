@@ -1,18 +1,16 @@
 /**
- * Route-level coverage for #273's copy-switching surface (`vcs/list-branches`
- * and `vcs/switch-branch`), which route-scoping.test.ts only covers for the
- * project-path guard. This file covers:
- *  - happy-path forwarding to the lib, including `list-branches`' `null`
- *    passthrough (nothing to switch between);
- *  - `switch-branch`'s 400 on a missing/blank branch name;
- *  - `switch-branch` pauses the host's auto-snapshot/auto-sync timers around
- *    the checkout and always resumes them, success or failure (VcsHooks
+ * Route-level coverage for `vcs/switch-branch` (switching revisions), which
+ * route-scoping.test.ts only covers for the project-path guard:
+ *  - the 400 on a missing/blank revision name;
+ *  - it pauses the host's auto-snapshot/auto-sync timers around the checkout
+ *    and always resumes them, success or failure (VcsHooks
  *    `pauseTimers`/`resumeTimers`);
- *  - `switch-branch` clears the crash-recovery draft for every path the lib
- *    reports as changed — the mechanism recovery.ts's header (#273) documents
- *    for "a draft from the old copy must never be offered over the new
- *    copy's version of the same file", and does so best-effort (a recovery
- *    failure never turns a successful switch into a reported error).
+ *  - it clears the crash-recovery draft for every path the lib reports as
+ *    changed (recovery.ts's header: a draft from the revision just left must
+ *    never be offered over the new revision's version of the same file), and
+ *    does so best-effort (a recovery failure never turns a successful switch
+ *    into a reported error).
+ * The other revision routes are covered by vcs-revisions.test.ts.
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { isHttpError } from "@sveltejs/kit";
@@ -22,7 +20,6 @@ import {
 } from "../../electron/server-bridge/host-services";
 import { makeHostServices } from "../support/host-services-fake";
 import { setLibForTests, type LibModule } from "../../src/routes/api/_lib/route";
-import { POST as vcsListBranches } from "../../src/routes/api/vcs/list-branches/+server";
 import { POST as vcsSwitchBranch } from "../../src/routes/api/vcs/switch-branch/+server";
 
 function request(body?: unknown): Request {
@@ -60,29 +57,6 @@ function fakeLib(lib: Record<string, unknown>): void {
 afterEach(() => {
   registerHostServices(undefined as unknown as HostServices);
   setLibForTests(null);
-});
-
-describe("POST /api/vcs/list-branches", () => {
-  test("forwards to lib.listLocalBranches and returns its result", async () => {
-    const calls: string[] = [];
-    openProject();
-    fakeLib({
-      listLocalBranches: async (dir: string) => {
-        calls.push(dir);
-        return { current: "main", branches: ["main", "second-copy"] };
-      },
-    });
-    const res = await vcsListBranches({ request: request({ projectDir: "/abs/project" }) } as never);
-    expect(await res.json()).toEqual({ current: "main", branches: ["main", "second-copy"] });
-    expect(calls).toEqual(["/abs/project"]);
-  });
-
-  test("passes a null result straight through (nothing to switch between)", async () => {
-    openProject();
-    fakeLib({ listLocalBranches: async () => null });
-    const res = await vcsListBranches({ request: request({ projectDir: "/abs/project" }) } as never);
-    expect(await res.json()).toBeNull();
-  });
 });
 
 describe("POST /api/vcs/switch-branch", () => {
@@ -153,7 +127,7 @@ describe("POST /api/vcs/switch-branch", () => {
     fakeLib({
       switchBranch: async () => {
         order.push("switchBranch:throw");
-        throw new Error("no version history yet. Enable version history first.");
+        throw new Error("This book isn't keeping version history yet. Turn on version history first.");
       },
     });
 

@@ -45,7 +45,7 @@ import { POST as vcsRestoreSnapshot } from "../../src/routes/api/vcs/restore-sna
 import { POST as vcsListSnapshotsPage } from "../../src/routes/api/vcs/list-snapshots-page/+server";
 import { POST as vcsUnversionedChanges } from "../../src/routes/api/vcs/unversioned-changes/+server";
 import { POST as vcsEnableVersionHistory } from "../../src/routes/api/vcs/enable-version-history/+server";
-import { POST as vcsListBranches } from "../../src/routes/api/vcs/list-branches/+server";
+import { POST as vcsListRevisions } from "../../src/routes/api/vcs/list-revisions/+server";
 import { POST as vcsSwitchBranch } from "../../src/routes/api/vcs/switch-branch/+server";
 import { POST as remoteSync } from "../../src/routes/api/remote/sync/+server";
 import { POST as remoteDiagnoseProject } from "../../src/routes/api/remote/diagnose-project/+server";
@@ -97,7 +97,7 @@ const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) =
   { name: "vcs/list-snapshots-page", handler: vcsListSnapshotsPage as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "vcs/unversioned-changes", handler: vcsUnversionedChanges as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "vcs/enable-version-history", handler: vcsEnableVersionHistory as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "vcs/list-branches", handler: vcsListBranches as RouteHandler, body: (d) => ({ projectDir: d }) },
+  { name: "vcs/list-revisions", handler: vcsListRevisions as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "vcs/switch-branch", handler: vcsSwitchBranch as RouteHandler, body: (d) => ({ projectDir: d, branch: "main" }) },
   { name: "remote/sync", handler: remoteSync as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "remote/diagnose-project", handler: remoteDiagnoseProject as RouteHandler, body: (d) => ({ projectDir: d }) },

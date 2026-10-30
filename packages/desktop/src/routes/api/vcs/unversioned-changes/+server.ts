@@ -20,5 +20,5 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
     const found = await lib.countUnversionedChanges(body.projectDir);
     return { changedFiles: found ? found.changedFiles : null, stale: found ? found.stale : false };
   },
-  onError: (e) => friendlyVcsError(e, 'unversionedChanges', 'vcs/unversioned-changes'),
+  onError: (e) => friendlyVcsError(e, 'vcs/unversioned-changes'),
 });

@@ -83,9 +83,9 @@ export class InsecureTransportError extends Error {
     // No literal scheme tokens ("http://") in this copy: the desktop redacts
     // anything matching /https?:\/\/\S+/, which would garble the message.
     super(
-      "This online address isn't secure, so the saved connection wasn't sent — " +
-        "connections are never sent over an insecure address. Switch the address " +
-        "to a secure one (starting with https) to sync with a saved connection.",
+      "This online copy's address isn't secure, so the saved sign-in wasn't sent — " +
+        "sign-ins are never sent over an insecure address. Switch the address " +
+        "to a secure one (starting with https) to use a saved sign-in.",
     );
     this.name = "InsecureTransportError";
   }
@@ -230,7 +230,7 @@ export function failureOutcome(
   return {
     status: "error",
     message:
-      "Syncing didn't complete. Your work is saved on this computer — please try again.",
+      "Backing up didn't finish. Your work is saved on this computer — please try again.",
     ...base,
   };
 }
@@ -346,7 +346,8 @@ export async function guardTrackingRef<T>(
 
 /**
  * Fetch the tracked branch's online tip. Returns `null` when the online
- * repository has no such branch yet (a freshly created empty repo).
+ * copy has no such revision yet (a freshly created empty repo, or a revision
+ * started on this computer).
  */
 export async function fetchRemoteTip(
   dir: string,
@@ -392,12 +393,17 @@ export async function fetchRemoteTip(
     // instead of lying.
     const code = (e as { code?: string })?.code;
     if (code === "NoRefspecError") return null;
+    // The online copy has other revisions but not this one: it was started on
+    // this computer and its first backup creates it online.
+    if (code === "NotFoundError" && (e as { data?: { what?: string } }).data?.what === branch) {
+      return null;
+    }
     if (
       code === "NotFoundError" ||
       (e as { data?: { statusCode?: number } })?.data?.statusCode === 404
     ) {
       const err = new Error(
-        "The online repository couldn't be accessed with the saved connection. Reconnect and try again.",
+        "The online copy couldn't be reached with the saved sign-in. Sign in again and try again.",
         { cause: e },
       ) as Error & { code: string; data: { statusCode: number } };
       err.code = "HttpError";
@@ -406,6 +412,27 @@ export async function fetchRemoteTip(
     }
     throw e;
   }
+}
+
+/**
+ * The online copy's tip for `branch` as the server advertises it right now.
+ * Reads refs only (`listServerRefs`: no objects downloaded, no history walked,
+ * nothing written); `undefined` when the online copy has no such revision.
+ */
+export async function serverTip(
+  transport: RemoteTransport,
+  branch: string,
+  http: typeof httpNode,
+): Promise<string | undefined> {
+  const refs = await git.listServerRefs({
+    http,
+    url: transport.url,
+    prefix: `refs/heads/${branch}`,
+    ...onAuthFor(transport.credential),
+    // One shot: never loop on a rejected credential.
+    ...(transport.credential ? { onAuthFailure: () => ({ cancel: true }) } : {}),
+  });
+  return refs.find((r) => r.ref === `refs/heads/${branch}`)?.oid;
 }
 
 /** First 8 chars of an oid for diagnostic log lines (null-safe). */

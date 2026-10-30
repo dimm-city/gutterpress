@@ -12,7 +12,7 @@
    * The children carry no state — the `api.*` calls live in the controllers
    * under `#lib/routes/*-section-controller.svelte.ts`.
    *
-   * Tabs Book · Look · Extensions · Backup, and Advanced set apart at the
+   * Tabs Book · Look · Extensions · Online copy, and Advanced set apart at the
    * right; four controllers (no `$effect`: data loads on mount + after
    * mutations):
    *   1. Book     — title, authors, page size and margins, print checks,
@@ -24,8 +24,9 @@
    *   3. Extensions — the manifest's ordered extension list and the one Add
    *                 area: built-in extras, npm, folders and web addresses
    *                 (`ExtensionsSection`).
-   *   4. Backup (id `backup`) — this book's online copy
-   *                 (`ProjectConnectionsSection`, self-loading — no controller).
+   *   4. Online copy (id `online-copy`) — saved versions, revisions and this
+   *                 book's online copy (`ProjectConnectionsSection`,
+   *                 self-loading — no controller).
    *   5. Advanced — the one place for developer controls: the manifest file,
    *                 the stylesheet list (`StylesSection`), and every design
    *                 setting (`DesignSection`).
@@ -71,11 +72,15 @@
     toast = null,
     onOpenFile,
     onClose,
+    backup = null,
+    versionsProblem = null,
     onVersionHistoryEnabled,
     onBackupSetUp,
     onProjectFilesChanged,
     onBackUpNow,
     onRepair,
+    onSaveVersion,
+    onShowVersions,
     onCloseBook,
     onOpenAccounts,
     triggerEl,
@@ -84,24 +89,32 @@
     /** The repo the open book belongs to — lets the pickers offer SHARED styles. */
     repoRoot?: string | null;
     /** Tab to open on. Read once at mount (the view is keyed per open). */
-    initialTab?: "book" | "extensions" | "backup";
+    initialTab?: "book" | "extensions" | "online-copy";
     toast?: ToastController | null;
     /** Open one of the book's files (absolute path) in the editor; the parent
      *  closes this view first. Advanced › Open manifest.yaml, and a stylesheet's Open. */
     onOpenFile?: (path: string) => void;
     /** Close the view — return to the workspace. */
     onClose?: () => void;
-    /** The Backup tab just turned on version history: re-read the project's classification. */
+    /** The online copy's last word for this book (the host's stream or the last Back up now). */
+    backup?: LastBackup | null;
+    /** Automatic versions keep failing, and why. */
+    versionsProblem?: { message: string | null } | null;
+    /** The Online copy tab just turned on version history: re-read the project's classification. */
     onVersionHistoryEnabled?: (projectDir: string) => void;
-    /** The Backup tab just set up or connected online backup: re-read the project's state. */
+    /** The Online copy tab just set up or signed in to the online copy: re-read the project's state. */
     onBackupSetUp?: (projectDir: string) => void;
-    /** The Backup tab just switched to another copy: the book's files changed on disk. */
+    /** The Online copy tab just switched to, made or renamed a revision: the book's files changed on disk. */
     onProjectFilesChanged?: () => void;
-    /** The Backup tab's Back up now: the status bar's backup, and what it ended with. */
-    onBackUpNow?: () => Promise<LastBackup | null>;
-    /** The Backup tab's Repair online backup: the status bar's repair. */
+    /** The Online copy tab's Back up now: the page's backup. */
+    onBackUpNow?: () => Promise<void>;
+    /** The Online copy tab's Repair the online copy: the page's repair. */
     onRepair?: () => Promise<void>;
-    /** Close the book: the Backup tab's Start over from the online copy ends with it. */
+    /** The Online copy tab's Save a version: the page's save; resolves "unchanged" when there was nothing new. */
+    onSaveVersion?: () => Promise<"saved" | "unchanged">;
+    /** The Online copy tab's Version history…: the parent closes this view and opens it. */
+    onShowVersions?: () => void;
+    /** Close the book: the Online copy tab's Start over from the online copy ends with it. */
     onCloseBook?: () => Promise<boolean>;
     /** Open the Accounts page, over this one. */
     onOpenAccounts?: () => void;
@@ -214,12 +227,12 @@
   });
 
   // ── Tabs (the start screen's strip; Advanced sits apart at the right) ────
-  type BookSetupTab = "book" | "look" | "extensions" | "backup" | "advanced";
+  type BookSetupTab = "book" | "look" | "extensions" | "online-copy" | "advanced";
   const TABS: Array<{ id: BookSetupTab; label: string }> = [
     { id: "book", label: "Book" },
     { id: "look", label: "Look" },
     { id: "extensions", label: "Extensions" },
-    { id: "backup", label: "Backup" },
+    { id: "online-copy", label: "Online copy" },
     { id: "advanced", label: "Advanced" },
   ];
   // svelte-ignore state_referenced_locally
@@ -268,6 +281,11 @@
     if (await flushAll()) onOpenFile?.(path);
   }
 
+  /** Online copy › Version history…: leave Book setup for the view. */
+  async function showVersions() {
+    if (await flushAll()) onShowVersions?.();
+  }
+
   // "Save as template…" (Book tab) — mounted fresh per open so its form
   // resets; the opening button is remembered for focus restore.
   let templateDialogTrigger = $state<HTMLButtonElement | null>(null);
@@ -307,9 +325,9 @@
         <ExtensionsSection controller={extensions} />
       {/if}
 
-      {#if activeTab === "backup"}
-        <!-- This book's backup: connecting its GitHub account or server happens here, in place. -->
-        <ProjectConnectionsSection {projectDir} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} {onBackUpNow} {onRepair} {onCloseBook} {onOpenAccounts} {toast} />
+      {#if activeTab === "online-copy"}
+        <!-- This book's versions, revisions and online copy: signing in to its GitHub account or server happens here, in place. -->
+        <ProjectConnectionsSection {projectDir} {backup} {versionsProblem} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} {onBackUpNow} {onRepair} {onSaveVersion} onShowVersions={showVersions} {onCloseBook} {onOpenAccounts} {toast} />
       {/if}
 
       {#if activeTab === "advanced"}

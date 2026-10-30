@@ -28,7 +28,7 @@
 //
 // CROSS-COPY RULE (#273). A draft is keyed by an absolute file path, not by
 // which local copy (git branch) of the project was open when it was taken.
-// Switching copies (Book setup → Backup) can silently invalidate a pending
+// Switching revisions (Book setup → Online copy) can silently invalidate a pending
 // draft: the file at that path on the NEW copy may be entirely different
 // content than what the draft was written against. `listRecovery`'s
 // baseMtimeMs staleness check catches most of this incidentally (a checkout

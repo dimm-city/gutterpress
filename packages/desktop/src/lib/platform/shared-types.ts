@@ -571,6 +571,9 @@ export type SyncOutcome =
       // (both sides moved, the push was held). Mirrors the lib.
       combinedFiles?: string[];
       keptBothFiles?: KeptBothFile[];
+      // A pull-only pass that held the push: this computer has versions the
+      // online copy lacks. Mirrors the lib.
+      pushDeferred?: true;
     }
   | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
@@ -757,6 +760,22 @@ export interface VersionFileChange {
   hint: string;
   /** Both sides are text, so the compare view can show them. */
   text: boolean;
+}
+
+/** One revision of a book (mirrors the lib's `Revision`, #448). */
+export interface Revision {
+  name: string;
+  current: boolean;
+  where: "online" | "this-computer" | "online-only";
+  notBackedUp: boolean;
+}
+
+/** The book's revisions (mirrors the lib's `RevisionList`) plus whether the online copy was checked just now. */
+export interface RevisionList {
+  current: string | null;
+  revisions: Revision[];
+  /** The refresh from the online copy ran and succeeded; false = the list is what this computer last knew. */
+  checkedOnline: boolean;
 }
 
 /** A history entry with what it changed and where it is kept (#408). */

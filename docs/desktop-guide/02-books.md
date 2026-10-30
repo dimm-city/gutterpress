@@ -27,7 +27,7 @@ of the status bar ("Books — open the start screen") to get back to it from a b
      choose where to send the PDF when you publish.
    - Under **Where should we save it?** click **Choose folder…** (or leave it: **Create book**
      asks for a folder if none is chosen).
-   - Leave **Keep a history of my changes** ticked. It keeps earlier versions of your book on your
+   - Leave **Keep version history** ticked. It keeps earlier versions of your book on your
      computer, with no account needed (see
      [Keep versions and back up your work](09-versions-and-backup.md)).
 5. Click **Create book**.
@@ -40,14 +40,14 @@ On the Books tab, choose **Open a folder** and pick the book's folder. You can a
 folder path into the search box above **Your books** and click **Open**.
 
 If the folder isn't set up as a book yet, Gutterpress offers **Set up as a book**, which lets you
-edit its design and keep a history of changes. **Not now** opens it as it is.
+edit its design and keep version history. **Not now** opens it as it is.
 
 ## Open a book from GitHub
 
 1. On the Books tab, choose **Open from GitHub**.
 2. Click **Connect GitHub**, then enter the code Gutterpress shows on the GitHub page that opens.
-3. Choose the repository. If it holds more than one book, choose the book.
-4. Pick the version to open, a name, and where to save it on your computer, then open it.
+3. Choose the online copy. If it holds more than one book, choose the book.
+4. Pick the revision to open, a name, and where to save it on your computer, then open it.
 
 ## Find your books again
 

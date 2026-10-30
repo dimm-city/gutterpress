@@ -273,7 +273,9 @@ export {
   AUTO_SNAPSHOT_MESSAGE,
   RESTORE_BACKUP_MESSAGE,
   HISTORY_PAGE_LIMIT,
-  listLocalBranches,
+  listRevisions,
+  createRevision,
+  revisionNameFrom,
   switchBranch,
   SWITCH_BRANCH_SNAPSHOT_MESSAGE,
 } from "../lib/source-provider.ts";
@@ -282,7 +284,9 @@ export type {
   ListHistoryOptions,
   HistoryPage,
   UnversionedChanges,
-  LocalBranches,
+  Revision,
+  RevisionList,
+  CreateRevisionOptions,
   SwitchBranchOptions,
   SwitchBranchResult,
 } from "../lib/source-provider.ts";
@@ -440,6 +444,8 @@ export {
   checkRemoteUpdates,
   SYNC_SNAPSHOT_MESSAGE,
 } from "../lib/remote-auth/sync.ts";
+export { renameRevision, deleteRevision } from "../lib/remote-auth/revisions.ts";
+export type { RenameRevisionOptions, DeleteRevisionOptions } from "../lib/remote-auth/revisions.ts";
 export {
   repairOnlineBackup,
   REPAIR_SNAPSHOT_MESSAGE,

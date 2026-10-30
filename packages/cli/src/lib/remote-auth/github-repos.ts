@@ -48,9 +48,9 @@ export interface GitHubApiOptions {
   fetchImpl?: typeof fetch;
 }
 
-/** "Reconnect" message for revoked/expired tokens. */
+/** "Sign in again" message for revoked/expired tokens. */
 const RECONNECT_MESSAGE =
-  "Your GitHub connection has expired. Reconnect GitHub and try again.";
+  "Your GitHub sign-in has expired. Sign in to GitHub again and try again.";
 
 async function apiGet(
   fetchImpl: typeof fetch,
