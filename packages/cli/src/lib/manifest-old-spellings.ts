@@ -2,8 +2,10 @@
  * The manifest spellings 0.11.23 replaced, read for this release only so a
  * book written for 0.11.22 still builds. Every old key found is translated
  * to its new spelling (or dropped, when nothing replaces it) and named in ONE
- * notice. Delete this module, and its call in `loadManifestWithPath`, in the
- * release after 0.11.23.
+ * notice. Book setup writes the new spelling of a threshold when it saves
+ * (`rewriteOldThresholds`). Delete this module, its call in
+ * `loadManifestWithPath` and the two calls of `rewriteOldThresholds`
+ * (manifest-config.ts, page-size.ts) in the release after 0.11.23.
  *
  *   source.files                     -> chapters
  *   validate.checks, lint.rules      -> checks (off | on | info | warn | error)
@@ -14,19 +16,30 @@
  *   validate.pdf.requireBookmarks,
  *   validate.pdf.requireTocLinks,
  *   validate.pdf.requireBleed,
- *   validate.pdf.forbidTransparency  -> the matching check, on or off
+ *   validate.pdf.forbidTransparency  -> the matching check, on or off; a level
+ *                                       the same book set for it is kept
+ *   ink.*, page.tolerance and the
+ *   validate.assets / pdf /
+ *   heuristics thresholds            -> an option of their check:
+ *                                       checks: { <id>: { <option>: value } }
+ *                                       (lib/check-options.ts)
  *   validate.source.<tool>: <path>   -> dropped: the config file is found by
  *                                       its usual name in the book's folder
  *                                       or a folder above it
- *   ink.*, page.tolerance,
- *   validate thresholds,
- *   validate.enabled, lint.configPath,
- *   and the keys
- *   0.11.22 already ignored           -> dropped: the preset and the publish
- *                                       target set the thresholds
+ *   validate.enabled, lint.configPath
+ *   and the keys 0.11.22 already
+ *   ignored                          -> dropped
+ *
+ * Nothing read from an old spelling can stop a book from building: 0.11.22
+ * passed any value through, so a threshold, a severity or a rule level it
+ * could not have used (`maxDecorativeLayers: many`, `severity: critical`) is
+ * named in the notice and ignored. The new spelling, written directly, is
+ * checked strictly (`resolveConfig`).
  */
-import type { CheckLevelInput, GutterpressManifest } from "../schema/manifest.types";
+import { isMap, type Document } from "yaml";
+import type { CheckEntry, CheckLevelInput, GutterpressManifest } from "../schema/manifest.types";
 import { UsageError } from "./cli-args";
+import { isCheckLevelInput, readOldThreshold, setCheckOption } from "./check-options";
 import { warnOnce } from "./presets";
 
 type OldCheckEntry = boolean | { enabled?: boolean; severity?: string; options?: unknown };
@@ -69,6 +82,10 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+/** How a translated option is named in the notice: `checks: { id: { option: value } }`. */
+const optionSpelling = (id: string, option: string, value: unknown): string =>
+  `checks: { ${id}: { ${option}: ${JSON.stringify(value)} } }`;
+
 /**
  * Translate a parsed manifest's old spellings to the current ones. A key
  * written both ways keeps the new spelling. Throws for `source.assets`,
@@ -90,25 +107,71 @@ export function readOldSpellings(raw: GutterpressManifest & OldSpellings): Gutte
 
   const renamed: string[] = [];
   const dropped: string[] = [];
-  const checks: Record<string, CheckLevelInput> = {};
+  /** Old values nothing could use: named, ignored, never an error. */
+  const unusable: string[] = [];
+  const levels: Record<string, CheckLevelInput> = {};
+  const options: Record<string, Record<string, unknown>> = {};
+
+  /** An old threshold key (`ink.maxTac`) -> its check's option, or dropped when it is not one. */
+  const threshold = (at: string, value: unknown): void => {
+    const read = readOldThreshold(at, value);
+    if (!read) {
+      dropped.push(at);
+      return;
+    }
+    if (value === null || value === undefined) return;
+    if (read.value !== undefined) {
+      (options[read.id] ??= {})[read.option] = read.value;
+      renamed.push(`${at} -> ${optionSpelling(read.id, read.option, read.value)}`);
+    }
+    if (read.mustBe) {
+      const kept = read.value !== undefined ? `kept ${Object.keys(read.value as object).join(" and ")}, ignored the rest` : "ignored";
+      unusable.push(`${at}: ${JSON.stringify(value)} is not ${read.mustBe} — ${kept}`);
+    }
+  };
+  /** A level 0.11.22 could have used, or undefined (named in the notice) when it could not. */
+  const level = (at: string, value: unknown): CheckLevelInput | undefined => {
+    if (isCheckLevelInput(value)) return value;
+    unusable.push(`${at}: ${JSON.stringify(value)} is not off, on, info, warn or error — ignored`);
+    return undefined;
+  };
 
   if (isObject(source) && "files" in source) {
     renamed.push("source.files -> chapters");
     if (manifest.chapters === undefined) manifest.chapters = source.files ?? null;
   }
 
+  // The level each check had in 0.11.22: `validate.checks` set it, and the
+  // runner then applied `lint.rules` over it.
   if (isObject(validate)) {
     for (const [id, entry] of Object.entries(validate.checks ?? {})) {
-      if (entry === false || (isObject(entry) && entry.enabled === false)) checks[id] = "off";
-      else if (isObject(entry) && typeof entry.severity === "string") checks[id] = entry.severity as CheckLevelInput;
-      else checks[id] = "on";
+      if (entry === false || (isObject(entry) && entry.enabled === false)) levels[id] = "off";
+      else if (isObject(entry) && entry.severity !== undefined && entry.severity !== null) {
+        levels[id] = level(`validate.checks.${id}.severity`, entry.severity) ?? "on";
+      } else levels[id] = "on";
     }
     if (validate.checks !== undefined) renamed.push("validate.checks -> checks");
+  }
+  if (isObject(lint)) {
+    for (const [id, value] of Object.entries(lint.rules ?? {})) {
+      const read = level(`lint.rules.${id}`, value);
+      if (read !== undefined) levels[id] = read;
+    }
+    if (lint.rules !== undefined) renamed.push("lint.rules -> checks");
+    if (lint.enabled === false) {
+      levels["source.stylelint"] = "off";
+      renamed.push("lint.enabled: false -> checks: { source.stylelint: off }");
+    } else if (lint.enabled !== undefined) {
+      dropped.push("lint.enabled");
+    }
+    if (lint.configPath !== undefined) dropped.push("lint.configPath");
+  }
 
+  if (isObject(validate)) {
     for (const [tool, value] of Object.entries(validate.source ?? {})) {
       const id = SOURCE_TOOL_CHECKS[tool];
       if (id && value === false) {
-        checks[id] = "off";
+        levels[id] = "off";
         renamed.push(`validate.source.${tool}: false -> checks: { ${id}: off }`);
       } else if (id && tool !== "stylelint" && typeof value === "string") {
         dropped.push(`validate.source.${tool} (the config file is found by its usual name in the book's folder or a folder above it)`);
@@ -121,11 +184,15 @@ export function readOldSpellings(raw: GutterpressManifest & OldSpellings): Gutte
       for (const [key, value] of Object.entries(validate[block] ?? {})) {
         const flag = FLAG_CHECKS[`${block}.${key}`];
         if (flag && typeof value === "boolean") {
-          const level = value === flag.trueMeansOn ? "on" : "off";
-          checks[flag.check] = level;
-          renamed.push(`validate.${block}.${key}: ${value} -> checks: { ${flag.check}: ${level} }`);
+          // A flag set off meant the check found nothing, whatever its level.
+          // Set on, it ran at the level `validate.checks` / `lint.rules` gave
+          // it, so that level stays (#483).
+          const on = value === flag.trueMeansOn;
+          if (!on) levels[flag.check] = "off";
+          else levels[flag.check] ??= "on";
+          renamed.push(`validate.${block}.${key}: ${value} -> checks: { ${flag.check}: ${String(levels[flag.check])} }`);
         } else {
-          dropped.push(`validate.${block}.${key} (the preset and the publish target set it)`);
+          threshold(`validate.${block}.${key}`, value);
         }
       }
     }
@@ -134,31 +201,29 @@ export function readOldSpellings(raw: GutterpressManifest & OldSpellings): Gutte
     }
   }
 
-  if (isObject(lint)) {
-    for (const [id, level] of Object.entries(lint.rules ?? {})) checks[id] = level;
-    if (lint.rules !== undefined) renamed.push("lint.rules -> checks");
-    if (lint.enabled === false) {
-      checks["source.stylelint"] = "off";
-      renamed.push("lint.enabled: false -> checks: { source.stylelint: off }");
-    } else if (lint.enabled !== undefined) {
-      dropped.push("lint.enabled");
-    }
-    if (lint.configPath !== undefined) dropped.push("lint.configPath");
+  if (isObject(ink)) {
+    for (const [key, value] of Object.entries(ink)) threshold(`ink.${key}`, value);
+  } else if (ink !== undefined && ink !== null) {
+    dropped.push("ink");
   }
-
-  if (ink !== undefined) dropped.push("ink (the preset and the publish target set it)");
 
   if (tolerance) {
-    const { tolerance: _, ...page } = raw.page!;
+    const { tolerance: value, ...page } = raw.page!;
     manifest.page = page;
-    dropped.push("page.tolerance (the preset sets it)");
+    threshold("page.tolerance", value);
   }
 
-  if (Object.keys(checks).length > 0) manifest.checks = { ...checks, ...manifest.checks };
+  const ids = new Set([...Object.keys(levels), ...Object.keys(options)]);
+  if (ids.size > 0) {
+    const checks: Record<string, CheckLevelInput | CheckEntry> = { ...manifest.checks };
+    for (const id of ids) checks[id] = mergeEntry(levels[id], options[id], manifest.checks?.[id]);
+    manifest.checks = checks;
+  }
 
   const lines = [
     ...renamed.map((r) => `  ${r}`),
     ...dropped.map((d) => `  ${d} — no longer a setting, ignored`),
+    ...unusable.map((u) => `  ${u}`),
   ];
   if (lines.length > 0) {
     warnOnce(
@@ -169,4 +234,58 @@ export function readOldSpellings(raw: GutterpressManifest & OldSpellings): Gutte
     );
   }
   return manifest;
+}
+
+/**
+ * One check's entry from its translated level and options, under what the
+ * manifest's own `checks:` already says for it: the new spelling wins, field
+ * by field (its level over the old level, its options over the old ones).
+ */
+function mergeEntry(
+  level: CheckLevelInput | undefined,
+  options: Record<string, unknown> | undefined,
+  own: CheckLevelInput | CheckEntry | undefined,
+): CheckLevelInput | CheckEntry {
+  const ownEntry: CheckEntry = isObject(own) ? (own as CheckEntry) : own === undefined ? {} : { level: own as CheckLevelInput };
+  const merged: CheckEntry = {
+    ...(level !== undefined ? { level } : {}),
+    ...options,
+    ...ownEntry,
+  };
+  if (ownEntry.level === undefined && level !== undefined) merged.level = level;
+  const keys = Object.keys(merged);
+  return keys.length === 1 && keys[0] === "level" ? merged.level! : merged;
+}
+
+/**
+ * Book setup's save: move every 0.11.22 threshold key in a manifest Document
+ * (`ink.maxTac`, `validate.pdf.minImageResolution`, `page.tolerance`, …) to
+ * its check's option, the way `setManifestFields` moves `source.files` to
+ * `chapters`. An option the new spelling already sets keeps its value; a
+ * block left empty goes. A value the option cannot take stays where it is,
+ * as written: moved, the new spelling's strict check would stop the book
+ * from building, and left, it is named and ignored at load. Every other key
+ * stays as written.
+ */
+export function rewriteOldThresholds(doc: Document): void {
+  const blocks: string[][] = [["ink"], ["page"], ["validate", "assets"], ["validate", "pdf"], ["validate", "heuristics"]];
+  for (const block of blocks) {
+    const node = doc.getIn(block, true);
+    if (!isMap(node)) continue;
+    for (const item of [...node.items]) {
+      const key = String((item.key as { value?: unknown })?.value ?? item.key);
+      const value = item.value as unknown;
+      const js = value && typeof value === "object" && "toJSON" in value ? (value as { toJSON(): unknown }).toJSON() : value;
+      const read = readOldThreshold([...block, key].join("."), js);
+      if (!read || (js !== null && js !== undefined && read.mustBe)) continue;
+      if (js !== null && js !== undefined && doc.getIn(["checks", read.id, read.option]) === undefined) {
+        setCheckOption(doc, read.id, read.option, value);
+      }
+      node.delete(key);
+    }
+  }
+  for (const block of [...blocks, ["validate"]]) {
+    const node = doc.getIn(block, true);
+    if (isMap(node) && node.items.length === 0) doc.deleteIn(block);
+  }
 }

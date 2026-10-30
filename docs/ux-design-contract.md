@@ -1151,7 +1151,8 @@ up/down, **Open** (the file opens in the editor and Book setup closes) and
 **Remove**, in load order ("a later one wins where two disagree"; they load
 after every extension). Remove takes a stylesheet off `styles:` and never
 deletes the file, and the last one has no Remove — an empty `styles:` falls
-back to `styles/book.css`, else the first `.css` the book has, so the list
+back to `styles/book.css`, else `css/print.css`, `css/index.css`,
+`css/style.css` or `css/main.css`, else the first `.css` the book has, so the list
 would show it again. **Add a stylesheet** offers the book's other `.css`
 files (its folder, `styles/` and `css/`, and a repository's shared ones) to
 add at the end of the list. A book with no stylesheet says so and offers

@@ -19,6 +19,8 @@ import {
   scaffoldExtension,
   resolveExtensionPrefix,
   EXTENSION_KINDS,
+  EXTENSION_KIND_ALIASES,
+  extensionKindFor,
   RESERVED_PREFIX,
 } from "./extension-scaffold.ts";
 import type { CreateProjectError } from "./project-scaffold.ts";
@@ -270,6 +272,35 @@ describe("scaffoldExtension --kind plugin", () => {
 });
 
 // ── Theme-specific: the #233 layered stack ─────────────────────────────────
+
+describe("the `theme` kind, 0.11.22's word for a look (#483)", () => {
+  test("scaffoldExtension({ kind: \"theme\" }) creates a look, exactly as kind look does", async () => {
+    const parent = await tmpParent();
+    const theme = await scaffoldExtension({ name: "Old Style", kind: "theme", parentDir: parent });
+    const look = await scaffoldExtension({ name: "New Style", kind: "look", parentDir: parent });
+    expect(theme.kind).toBe("look");
+    expect(theme.files).toEqual(look.files);
+    expect(extensionStyleList(await readExtensionMeta(theme.extensionDir))).toEqual(
+      extensionStyleList(await readExtensionMeta(look.extensionDir)),
+    );
+  });
+
+  test("the alias map reads theme as look; the kinds offered stay one word each", () => {
+    expect(EXTENSION_KIND_ALIASES).toEqual({ theme: "look" });
+    expect(extensionKindFor("theme")).toBe("look");
+    expect(extensionKindFor("look")).toBe("look");
+    expect(extensionKindFor("plugin")).toBe("plugin");
+    expect(extensionKindFor("widget")).toBeUndefined();
+    expect(extensionKindFor("constructor")).toBeUndefined();
+    expect([...EXTENSION_KINDS]).toEqual(["plugin", "look"]);
+  });
+
+  test("an unknown kind is still refused, naming the kinds", async () => {
+    await expect(
+      scaffoldExtension({ name: "X", kind: "widget" as never, parentDir: await tmpParent() }),
+    ).rejects.toThrow('Unknown extension kind "widget". Choose one of: plugin, look.');
+  });
+});
 
 describe("scaffoldExtension --kind look", () => {
   test("declares the six layered sheets in cascade order, plus the component catalog", async () => {

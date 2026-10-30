@@ -141,10 +141,13 @@ test("setPageSetup to a preset drops a custom page: block and uses the preset's 
   try {
     const setup = await setPageSetup(dir, { size: { preset: "dtrpg" } });
     expect(setup.preset).toBe("dtrpg");
-    expect(setup.bounds).toEqual({ width: 621, height: 810, tolerance: 0.5 });
+    // The tolerance is the page-size check's option now (#483), not part of
+    // the size, so it outlives the size it was written beside.
+    expect(setup.bounds).toEqual({ width: 621, height: 810, tolerance: 2 });
     const manifest = await manifestOf(dir);
     expect(manifest).toContain("preset: dtrpg");
     expect(manifest).not.toContain("page:");
+    expect(manifest).toContain("checks:\n  pdf.print.page-size:\n    tolerance: 2\n");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -225,14 +228,34 @@ test("setPageSetup treats an empty page: key as no block", async () => {
   }
 });
 
-test("setPageSetup drops an older book's tolerance and keeps the manifest's comments", async () => {
+test("setPageSetup writes an older book's tolerance as the page-size check's option and keeps the manifest's comments (#483)", async () => {
   const dir = await book("", ["# keep this comment", "preset: custom", "page:", "  width: 432", "  height: 648", "  tolerance: 2"]);
   try {
     const setup = await setPageSetup(dir, { size: { preset: "custom", page: LETTER } });
-    expect(setup.bounds).toEqual({ ...LETTER, tolerance: 0.5 });
+    expect(setup.bounds).toEqual({ ...LETTER, tolerance: 2 });
     const manifest = await manifestOf(dir);
     expect(manifest).toContain("# keep this comment");
-    expect(manifest).not.toContain("tolerance");
+    expect(manifest).toContain("page:\n  width: 612\n  height: 792\n");
+    expect(manifest).toContain("checks:\n  pdf.print.page-size:\n    tolerance: 2\n");
+    expect(resolveConfig({}, await loadManifest(dir)).page.tolerance).toBe(2);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("setPageSetup takes 0.11.22's call shape, a size choice, instead of doing nothing (#483)", async () => {
+  const dir = await book("", ["preset: custom", "page:", "  width: 360", "  height: 504"]);
+  try {
+    // 0.11.22: setPageSetup(dir, { preset, page? }).
+    const asBook = await setPageSetup(dir, { preset: "book" });
+    expect(asBook.preset).toBe("book");
+    expect(asBook.bounds).toEqual({ width: 432, height: 648, tolerance: 0.5 });
+    expect(await manifestOf(dir)).toContain("preset: book");
+    const asLetter = await setPageSetup(dir, { preset: "custom", page: LETTER });
+    expect(asLetter.bounds).toEqual({ ...LETTER, tolerance: 0.5 });
+    // Anything else is refused, never a silent no-op.
+    await expect(setPageSetup(dir, { kind: "preset" } as never)).rejects.toThrow(/setPageSetup takes \{ size/);
+    await expect(setPageSetup(dir, null as never)).rejects.toThrow(/setPageSetup takes/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

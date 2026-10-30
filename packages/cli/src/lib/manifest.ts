@@ -3,6 +3,7 @@ import { existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { parse as parseYaml, YAMLParseError } from "yaml";
 import type {
+  CheckEntry,
   CheckLevel,
   CheckLevelInput,
   GutterpressManifest,
@@ -18,6 +19,7 @@ import { overlayPreset, publishTargetFor, resolveTargets } from "./targets";
 import { UsageError } from "./cli-args";
 import { TWO_VERSIONS_OPEN } from "./two-versions-markers";
 import { readOldSpellings } from "./manifest-old-spellings";
+import { applyCheckOptions, isCheckLevelInput, readCheckOptions } from "./check-options";
 
 /**
  * The manifest file name Gutterpress recognizes.
@@ -327,7 +329,7 @@ export function resolveConfigForTarget(
 /**
  * `custom` supplies no geometry, so the manifest (or CLI) must: width and
  * height in points are required (the page-size check allows the same 0.5pt
- * the other presets do). The error
+ * the other presets do, unless its `checks:` entry sets `tolerance`). The error
  * names exactly what to add — this is the contract that makes
  * `preset: custom` safe to offer non-technical authors.
  */
@@ -483,8 +485,10 @@ function resolveWithPreset(
 
   const page = preset.page ? mergeShape(c.page, m.page, preset.page) : resolveCustomPage(c, m);
   if (page.margin !== undefined && page.margin !== null) validatePageMargin(page.margin, page);
+  const manifestChecks = resolveChecks(m.checks);
+  const cliChecks = resolveChecks(c.checks);
 
-  return {
+  const config: ResolvedConfig = {
     title: c.title ?? m.title ?? "Document",
     authors: c.authors ?? m.authors ?? [],
     language: resolveLanguage(c.language ?? m.language),
@@ -501,7 +505,7 @@ function resolveWithPreset(
     // An open dictionary keyed by check or rule id: merged key by key, the
     // preset's (and the target's) levels first, then the manifest's, then
     // the CLI's.
-    checks: { ...preset.checks, ...resolveCheckLevels(m.checks), ...resolveCheckLevels(c.checks) },
+    checks: { ...preset.checks, ...manifestChecks.levels, ...cliChecks.levels },
     pdfx: mergeShape(c.pdfx, m.pdfx, preset.pdfx),
     // `book` defaults to signature: 1 = no padding (postprocess only pads
     // when > 1). `dtrpg` defaults to signature 4 + reserveLastPage so the
@@ -510,36 +514,55 @@ function resolveWithPreset(
     // only exists when an author writes it, and then wins over reserveLastPage.
     print: mergeShape(c.print, m.print, preset.print),
     page,
-    // The thresholds are the preset's and the publish target's: a printer's
-    // specification, not a book's choice. A book changes a check's level.
+    // The thresholds are the preset's and the publish target's (a printer's
+    // specification); a book overrides one as an option of its check, below.
     ink: structuredClone(preset.ink),
     validate: structuredClone(preset.validate),
   };
+  applyCheckOptions(config, manifestChecks.options);
+  applyCheckOptions(config, cliChecks.options);
+  return config;
+}
+
+/** A `checks:` value read as a level; anything else is a usage error naming the entry. */
+function checkLevel(id: string, value: unknown): CheckLevel {
+  if (!isCheckLevelInput(value)) {
+    throw new UsageError(
+      `Manifest field \`checks.${id}\` must be off, on, info, warn or error, got ${JSON.stringify(value)}.`
+    );
+  }
+  if (value === false || value === "off") return "off";
+  if (value === true || value === "on") return "on";
+  return value === "warn" || value === "warning" ? "warning" : value;
 }
 
 /**
- * Read a manifest's (or the CLI's) `checks:` map: `off` / `false` switch a
- * check or rule off, `on` / `true` switch it on at its own severity, and
- * `info`, `warn` (or `warning`) and `error` set the severity its findings
- * are reported at. Anything else is a usage error naming the entry, so a
- * typo never silently does nothing.
+ * Read a manifest's (or the CLI's) `checks:` map. An entry is a level —
+ * `off` / `false` switch a check or rule off, `on` / `true` switch it on at
+ * its own severity, and `info`, `warn` (or `warning`) and `error` set the
+ * severity its findings are reported at — or an object carrying an optional
+ * `level` and the options its check takes (lib/check-options.ts). Anything
+ * else is a usage error naming the entry, so a typo never silently does
+ * nothing.
  */
-function resolveCheckLevels(input: Record<string, CheckLevelInput> | undefined): Record<string, CheckLevel> {
-  if (input === undefined || input === null) return {};
+function resolveChecks(input: Record<string, CheckLevelInput | CheckEntry> | undefined): {
+  levels: Record<string, CheckLevel>;
+  options: Record<string, Record<string, unknown>>;
+} {
+  const levels: Record<string, CheckLevel> = {};
+  const options: Record<string, Record<string, unknown>> = {};
+  if (input === undefined || input === null) return { levels, options };
   if (!isPlainObject(input)) {
     throw new UsageError("Manifest field `checks` must map check ids to off, on, info, warn or error.");
   }
-  const out: Record<string, CheckLevel> = {};
   for (const [id, value] of Object.entries(input)) {
-    if (value === false || value === "off") out[id] = "off";
-    else if (value === true || value === "on") out[id] = "on";
-    else if (value === "warn" || value === "warning") out[id] = "warning";
-    else if (value === "info" || value === "error") out[id] = value;
-    else {
-      throw new UsageError(
-        `Manifest field \`checks.${id}\` must be off, on, info, warn or error, got ${JSON.stringify(value)}.`
-      );
+    if (!isPlainObject(value)) {
+      levels[id] = checkLevel(id, value);
+      continue;
     }
+    if (value.level !== undefined && value.level !== null) levels[id] = checkLevel(`${id}.level`, value.level);
+    const own = readCheckOptions(id, value);
+    if (Object.keys(own).length > 0) options[id] = own;
   }
-  return out;
+  return { levels, options };
 }

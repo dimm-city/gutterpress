@@ -9,7 +9,8 @@ import { describe, test, expect, spyOn } from "bun:test";
 import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveConfig } from "../lib/manifest";
+import { resolveConfig, resolveConfigForTarget } from "../lib/manifest";
+import { UsageError } from "../lib/cli-args";
 import type { ResolvedConfig } from "../schema/manifest.types";
 import type { CheckResult, Check } from "./types";
 import {
@@ -86,6 +87,7 @@ describe("Check Registry", () => {
     const assetIds = ids.filter((id) => id.startsWith("asset."));
     expect(assetIds).toContain("asset.image.file-size");
     expect(assetIds).toContain("asset.image.alpha-channel");
+    expect(assetIds).toContain("asset.font.approved-files");
     expect(assetIds).toContain("asset.font.license");
   });
 
@@ -193,7 +195,7 @@ describe("Check Registry", () => {
     // checks are namespaced by category (pdf/source/asset/heuristic) and never
     // start with `test.`, so excluding those makes the count deterministic.
     const all = getAllCheckIds().filter((id) => !id.startsWith("test."));
-    // 17 pdf + 11 source + 3 asset + 4 heuristic = 35
+    // 17 pdf + 11 source + 4 asset + 4 heuristic = 36
     // (source.sync.merge-markers added 0.10.1 — the converge merge's marker
     // blocks and kept-both `.online` siblings were invisible until print;
     // source.callout-validation removed with ::: container syntax, 2026-05-17;
@@ -214,8 +216,9 @@ describe("Check Registry", () => {
     // trim; asset.image.color-space, asset.image.resolution,
     // asset.image.tac-raster and pdf.print.rasterized-pages removed 0.11.21 —
     // each guessed at print output the build and the PDF checks measure;
-    // asset.font.approved-files removed 0.11.23 (#443).)
-    expect(all.length).toBe(35);
+    // asset.font.approved-files removed in 0.11.23's betas (#443) and restored
+    // before its release, its list a `checks:` option (#483).)
+    expect(all.length).toBe(36);
   });
 });
 
@@ -644,6 +647,90 @@ describe("Manifest checks and thresholds", () => {
     expect(config.checks["pdf.structure.qpdf"]).toBe("off");
     expect(config.checks["heuristic.whitespace.text-density"]).toBe("info");
     expect(config.checks["pdf.print.pdfx-markers"]).toBe("error");
+  });
+
+  // #483: a book overrides a threshold as an option of its check (#443's
+  // "a threshold override is a checks.<id> option"), as 0.11.22's ink /
+  // validate / page.tolerance keys did.
+  test("a check's options override the preset's and the target's numbers", () => {
+    const manifest = {
+      preset: "book" as const,
+      checks: {
+        "pdf.print.ink-coverage": { maxTac: 300, tacTolerance: 2 },
+        "pdf.print.page-size": { tolerance: 3 },
+        "pdf.print.image-resolution": { minImageResolution: 150 },
+        "pdf.print.bleed": { bleedSize: 12 },
+        "asset.image.file-size": { maxImageSize: 5000 },
+        "asset.font.approved-files": { approvedFontFiles: ["fonts/*.otf"] },
+        "heuristic.decoration.layer-count": { maxDecorativeLayers: 2 },
+        "heuristic.whitespace.text-density": { textDensityRange: { max: 4000 } },
+        "heuristic.chunking.section-density": { maxParagraphsPerSection: 3 },
+      },
+    };
+    const config = resolveConfig({}, manifest);
+    // `ink.maxTac` is also what a PDF/X build holds the ink to (build-runner).
+    expect(config.ink).toEqual({ maxTac: 300, tacTolerance: 2 });
+    expect(config.page.tolerance).toBe(3);
+    expect(config.validate).toEqual({
+      assets: { maxImageSize: 5000, approvedFontFiles: ["fonts/*.otf"] },
+      pdf: { minImageResolution: 150, bleedSize: 12 },
+      // A range merges key by key: the preset's min stays.
+      heuristics: { maxDecorativeLayers: 2, textDensityRange: { min: 200, max: 4000 }, maxParagraphsPerSection: 3 },
+    });
+    // The book's option beats the publish target's (itch sets 0 = no floor).
+    expect(resolveConfigForTarget({}, manifest, "itch").validate.pdf.minImageResolution).toBe(150);
+    expect(resolveConfigForTarget({}, { preset: "book" }, "itch").validate.pdf.minImageResolution).toBe(0);
+  });
+
+  test("an entry with options keeps the preset's level unless it sets `level`", () => {
+    const config = resolveConfig({}, {
+      preset: "book",
+      checks: {
+        "pdf.print.bleed": { bleedSize: 12 },
+        "pdf.nav.bookmarks": { level: "warn" },
+        "pdf.print.ink-coverage": { level: "error", maxTac: 300 },
+      },
+    });
+    expect(config.checks["pdf.print.bleed"]).toBe("off");
+    expect(config.checks["pdf.nav.bookmarks"]).toBe("warning");
+    expect(config.checks["pdf.print.ink-coverage"]).toBe("error");
+    expect(config.ink.maxTac).toBe(300);
+  });
+
+  test("an option the check does not take, or a value of the wrong kind, is a usage error naming it", () => {
+    const resolve = (checks: Record<string, unknown>) => () => resolveConfig({}, { checks } as never);
+    expect(resolve({ "pdf.print.ink-coverage": { maxTAC: 300 } })).toThrow(UsageError);
+    expect(resolve({ "pdf.print.ink-coverage": { maxTAC: 300 } })).toThrow(
+      "`checks.pdf.print.ink-coverage` has no option `maxTAC`. It takes `level` and `maxTac`, `tacTolerance`.",
+    );
+    expect(resolve({ "pdf.nav.bookmarks": { maxTac: 1 } })).toThrow("It takes only `level`");
+    expect(resolve({ "pdf.print.ink-coverage": { maxTac: "high" } })).toThrow(
+      "`checks.pdf.print.ink-coverage.maxTac` must be a number, 0 or more",
+    );
+    expect(resolve({ "asset.font.approved-files": { approvedFontFiles: "fonts/*.otf" } })).toThrow("list of file patterns");
+    expect(resolve({ "heuristic.whitespace.text-density": { textDensityRange: { most: 1 } } })).toThrow("`{ min, max }`");
+    expect(resolve({ "pdf.print.ink-coverage": { level: "loud" } })).toThrow("`checks.pdf.print.ink-coverage.level` must be");
+  });
+});
+
+describe("Approved font files check (#483)", () => {
+  test("reports a font file no pattern approves, and nothing without a list", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-approved-fonts-"));
+    try {
+      await mkdir(join(dir, "fonts"), { recursive: true });
+      await writeFile(join(dir, "fonts", "body.otf"), "");
+      await writeFile(join(dir, "fonts", "stray.ttf"), "");
+      const check = getCheckById("asset.font.approved-files")!;
+      expect(check).toBeDefined();
+      expect(await check.run(makeCtx({ inputDir: dir }))).toEqual([]);
+      const config = resolveConfig({}, { checks: { "asset.font.approved-files": { approvedFontFiles: ["fonts/*.otf"] } } });
+      const results = await check.run(makeCtx({ config, inputDir: dir }));
+      expect(results.map((r) => [r.severity, r.message, r.file])).toEqual([
+        ["warning", "Font file not in approved list", join(dir, "fonts", "stray.ttf")],
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

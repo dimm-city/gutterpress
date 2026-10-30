@@ -13,8 +13,8 @@ import {
  * selection-search.ts (inline-editing plan §4.6, PR 4) — rendered-text →
  * markdown-source matching for the selection-formatting menu row.
  *
- * The typography reverse-map fixtures below mirror the two rules the
- * renderer runs: Gutterpress's own `gp_typography`
+ * The typography fixtures below mirror the two rules the renderer runs:
+ * Gutterpress's own `gp_typography`
  * (`packages/cli/src/lib/markdown/typography.ts`) and markdown-it's
  * `smartquotes` with the default `quotes:"“”‘’"` — see
  * `packages/cli/src/lib/markdown/renderer.ts`.
@@ -89,13 +89,30 @@ describe("normalizeForSearch — typography reverse map (every rule)", () => {
   }
 
   test("reverses inside a full sentence, preserving surrounding text", () => {
-    const raw = "She said “wait—really… fine” then it’s © 2026, (c) literal.";
+    const raw = "She said “wait—really… fine” then it’s © 2026, (c) too.";
     const r = normalizeForSearch(raw, { stripDelimiters: false });
-    expect(r.normalized).toBe(
-      'She said "wait---really... fine" then it"s © 2026, (c) literal.',
-    );
+    expect(r.normalized).toBe('She said "wait---really... fine" then it"s © 2026, © too.');
     assertValidIndexMap(raw, r);
   });
+
+  // #483: the renderer prints (c) (r) (tm) +- as © ® ™ ± again and collapses
+  // runs of dots, commas and ?/!. Folded FORWARD on both sides, so what the
+  // author typed and what the page shows meet, many-to-one as they are.
+  const folds: Array<[string, string, string]> = [
+    ["(c) / (C) -> ©", "(c) (C) ©", "© © ©"],
+    ["(r) / (R) -> ®, (tm) any case -> ™", "(r) (R) (tm) (TM) ®™", "® ® ™ ™ ®™"],
+    ["+- -> ±", "10 +- 2 ±", "10 ± 2 ±"],
+    ["any run of dots, and …, -> ...", "a..b c....d e…f", "a...b c...d e...f"],
+    ["four or more ?/! -> three of the last", "huh????? wow!!!!! ok?!?! fine!!!", "huh??? wow!!! ok!!! fine!!!"],
+    ["a run of commas -> one", "one,, two,,, three, four", "one, two, three, four"],
+  ];
+  for (const [label, raw, folded] of folds) {
+    test(`folds ${label}`, () => {
+      const r = normalizeForSearch(raw, { stripDelimiters: false });
+      expect(r.normalized).toBe(folded);
+      assertValidIndexMap(raw, r);
+    });
+  }
 
   test("every quotation mark, straight or printed in any language, folds to one character on both sides", () => {
     // What the author typed, and what the renderer prints for it in
@@ -400,6 +417,27 @@ describe("locateSelectionInSource", () => {
   test("returns null for an empty/whitespace-only selection", () => {
     expect(locateSelectionInSource("anything", "   ")).toBeNull();
     expect(locateSelectionInSource("anything", "")).toBeNull();
+  });
+
+  test("finds what the typographer printed in the source the author typed (#483)", () => {
+    expect(locateSelectionInSource("Copyright (c) 2026 Studio", "© 2026 Studio")).toEqual({
+      start: 10,
+      end: 25,
+      matchedText: "(c) 2026 Studio",
+    });
+    expect(locateSelectionInSource("wait.. really", "wait… really")?.matchedText).toBe("wait.. really");
+    expect(locateSelectionInSource("one,, two and three", "one, two")?.matchedText).toBe("one,, two");
+    expect(locateSelectionInSource("so what?... no", "what?.. no")?.matchedText).toBe("what?... no");
+    expect(locateSelectionInSource("10 +- 2 units", "10 ± 2")?.matchedText).toBe("10 +- 2");
+    // A list label the renderer keeps as typed is found too.
+    expect(locateSelectionInSource("(a) run, (b) hide, or (c) fight", "(c) fight")?.matchedText).toBe("(c) fight");
+    // A comma or an ellipsis is never refused for being one.
+    expect(locateSelectionInSource("Yes, and... more", "Yes, and… more")?.matchedText).toBe("Yes, and... more");
+  });
+
+  test("two spellings that print alike are ambiguous, never guessed (#483)", () => {
+    expect(locateSelectionInSource("a,, b then a, b", "a, b")).toBeNull();
+    expect(locateSelectionInSource("go.. and go...", "go…")).toBeNull();
   });
 
   test("finds a rendered ellipsis as the three dots the author typed", () => {

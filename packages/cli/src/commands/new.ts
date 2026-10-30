@@ -7,6 +7,7 @@ import {
   scaffoldExtension,
   BUILT_IN_TEMPLATE_IDS,
   EXTENSION_KINDS,
+  extensionKindFor,
   PRESET_IDS,
   TARGETS,
   TARGET_IDS,
@@ -61,7 +62,7 @@ export const newArgs = {
   },
   kind: {
     type: "string",
-    description: `What to create: book (default), ${EXTENSION_KINDS.join(", ")}`,
+    description: `What to create: book (default), ${EXTENSION_KINDS.join(", ")} (theme is look's older name)`,
   },
   prefix: {
     type: "string",
@@ -104,6 +105,11 @@ export const newArgs = {
     type: "string",
     description: "Trim height in points, 72pt = 1in (required with --preset custom; optional override otherwise)",
   },
+  "page-tolerance": {
+    type: "string",
+    description:
+      "Allowed trim deviation in points when validating a built PDF (default: 0.5); with --page-width/--page-height, written as checks: { pdf.print.page-size: { tolerance } }",
+  },
   git: {
     type: "boolean",
     description: "Keep version history on this computer (default: true; use --no-git to skip)",
@@ -142,6 +148,7 @@ const BOOK_ONLY_FLAGS = [
   "template",
   "page-width",
   "page-height",
+  "page-tolerance",
   "git",
 ] as const;
 const EXTENSION_ONLY_FLAGS = ["prefix", "description"] as const;
@@ -269,15 +276,16 @@ export default defineCommand({
     );
 
     // `--kind` chooses the scaffolder. Absent = book, the behavior this
-    // command has always had.
-    const rawKind = typeof args.kind === "string" && args.kind ? args.kind : "book";
-    if (rawKind !== "book" && !(EXTENSION_KINDS as readonly string[]).includes(rawKind)) {
+    // command has always had. An older name (`theme`) means its kind, as
+    // `scaffoldExtension` reads it.
+    const givenKind = typeof args.kind === "string" && args.kind ? args.kind : "book";
+    const kind = givenKind === "book" ? "book" : extensionKindFor(givenKind);
+    if (!kind) {
       console.error(
-        `Unknown kind "${rawKind}". Choose one of: book, ${EXTENSION_KINDS.join(", ")}.`,
+        `Unknown kind "${givenKind}". Choose one of: book, ${EXTENSION_KINDS.join(", ")}.`,
       );
       process.exit(EXIT_CODES.USAGE);
     }
-    const kind = rawKind as "book" | ExtensionKind;
     rejectFlagsForKind(rawArgs, kind);
 
     if (kind !== "book") {
@@ -328,8 +336,11 @@ export default defineCommand({
 
     const pageWidth = parsePoints(args["page-width"], "--page-width");
     const pageHeight = parsePoints(args["page-height"], "--page-height");
+    const pageTolerance = parsePoints(args["page-tolerance"], "--page-tolerance");
     const customPage =
-      pageWidth !== undefined && pageHeight !== undefined ? { width: pageWidth, height: pageHeight } : undefined;
+      pageWidth !== undefined && pageHeight !== undefined
+        ? { width: pageWidth, height: pageHeight, ...(pageTolerance !== undefined ? { tolerance: pageTolerance } : {}) }
+        : undefined;
     if (preset === "custom" && !customPage) {
       console.error(
         "The custom preset needs a trim size: --page-width and --page-height in points (72pt = 1in — e.g. US Letter is 612 x 792).",

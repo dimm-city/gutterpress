@@ -33,7 +33,7 @@ describe("summarizeManifest", () => {
         extensions: ["dc-components", { use: "./plugins/local.js" }],
         chapters: null,
         page: { width: 6, height: 9 },
-        checks: { "source.stylelint": "off" },
+        checks: { "source.stylelint": "off", "pdf.print.ink-coverage": { maxTac: 300 } },
         // title/authors are not part of ManifestLike and must not leak even if present
         ...({ title: "Secret Book", authors: ["Ada"] } as object),
       },
@@ -44,7 +44,7 @@ describe("summarizeManifest", () => {
     expect(text).toContain("extensions: dc-components, ./plugins/local.js");
     expect(text).toContain("all chapter files (12 .md in book folder)");
     expect(text).toContain("page: 6 × 9");
-    expect(text).toContain("checks: source.stylelint off");
+    expect(text).toContain('checks: source.stylelint off, pdf.print.ink-coverage {"maxTac":300}');
     expect(text).not.toContain("Secret Book");
     expect(text).not.toContain("Ada");
   });

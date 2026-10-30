@@ -21,7 +21,9 @@
  *
  * The same `page:` block also carries the print area (`bleed`, `safe`,
  * `artSafe`, `gutter`); this module writes only its own keys and leaves the
- * rest as the author wrote them.
+ * rest as the author wrote them. How far the built PDF may differ from the
+ * size is the page-size check's `tolerance` option
+ * (`checks: { pdf.print.page-size: { tolerance } }`).
  *
  * Host-side (node:fs). Bundle-safe (CLAUDE.md §1/§3): no runtime package.json
  * reads, no computed dynamic imports, no bundlers.
@@ -35,6 +37,8 @@ import { UsageError } from "./cli-args.ts";
 import { listProjectExtensions, readEntryCss } from "./extension-manager.ts";
 import { MARGIN_EDGES, validatePageMargin } from "./manifest.ts";
 import { loadManifestDoc, writeManifestDoc } from "./manifest-doc.ts";
+import { setCheckOption } from "./check-options.ts";
+import { rewriteOldThresholds } from "./manifest-old-spellings.ts";
 import { PRESET_IDS, PRESETS, type PresetId } from "./presets.ts";
 import { resolveActiveStyles } from "./style-resolver.ts";
 import { DEFAULT_PAGE_MARGIN_PT, extract, resolvePage } from "../engine/shared/gcpm-extract.ts";
@@ -52,7 +56,12 @@ export interface CustomPageOptions {
   width: number;
   /** Trim height in points (72pt = 1in). */
   height: number;
+  /** How far (pt) the built PDF may differ from it, written as the page-size check's option. Default: the preset's 0.5. */
+  tolerance?: number;
 }
+
+/** The check that compares the built PDF's page with the manifest's size, and whose option the tolerance is. */
+const PAGE_SIZE_CHECK = "pdf.print.page-size";
 
 /** A page size in points. */
 export interface PageSizePoints {
@@ -95,15 +104,16 @@ export interface PageSetup {
 }
 
 /**
- * Write the manifest's `page:` bounds. A `tolerance` an older book carries
- * goes (the preset sets it); the block's other keys stay as written; a
- * `page:` that is not a map is replaced.
+ * Write the manifest's `page:` bounds, and a `tolerance` given with them as
+ * the page-size check's option (one already recorded stays when none is
+ * given). The block's other keys stay as written; a `page:` that is not a
+ * map is replaced.
  */
 export function writePageBounds(doc: Document, page: CustomPageOptions): void {
   ensurePageMap(doc);
   doc.setIn(["page", "width"], page.width);
   doc.setIn(["page", "height"], page.height);
-  doc.deleteIn(["page", "tolerance"]);
+  if (page.tolerance !== undefined) setCheckOption(doc, PAGE_SIZE_CHECK, "tolerance", page.tolerance);
 }
 
 /** Remove the bounds a preset owns and nothing else; a `page:` left empty goes too. */
@@ -113,7 +123,7 @@ export function deletePageBounds(doc: Document): void {
     doc.delete("page");
     return;
   }
-  for (const key of ["width", "height", "tolerance"]) block.delete(key);
+  for (const key of ["width", "height"]) block.delete(key);
   if (block.items.length === 0) doc.delete("page");
 }
 
@@ -179,7 +189,8 @@ function manifestGeometry(
   const base = preset ? PRESETS[preset].page : null;
   const width = numberAt(doc, ["page", "width"]) ?? base?.width;
   const height = numberAt(doc, ["page", "height"]) ?? base?.height;
-  const tolerance = base?.tolerance ?? 0.5;
+  const tolerance =
+    numberAt(doc, ["checks", PAGE_SIZE_CHECK, "tolerance"]) ?? numberAt(doc, ["page", "tolerance"]) ?? base?.tolerance ?? 0.5;
   const bounds = width !== undefined && height !== undefined ? { width, height, tolerance } : null;
   const presetSizeOverridden =
     base !== null && (numberAt(doc, ["page", "width"]) !== undefined || numberAt(doc, ["page", "height"]) !== undefined);
@@ -246,6 +257,8 @@ export async function readPageSetup(projectDir: string): Promise<PageSetup> {
   return setupOf(projectDir, doc);
 }
 
+/** @deprecated 0.11.22's call shape: pass `{ size: { preset, page } }`. */
+export async function setPageSetup(projectDir: string, choice: PageSizeChoice): Promise<PageSetup>;
 /**
  * Change a book's page geometry in the manifest. The size mirrors what the
  * wizard records — `dtrpg` / `book` carry their own bounds (the `page:` block's
@@ -253,13 +266,19 @@ export async function readPageSetup(projectDir: string): Promise<PageSetup> {
  * other keys stay), `custom` records the typed trim. The margins go to
  * `page.margin`, validated against the size being written, else the recorded
  * one; `margins: null` removes `page.margin`. Nothing is written unless the
- * whole change validates.
+ * whole change validates. A 0.11.22 caller's `{ preset, page? }` (a size
+ * choice, before margins joined it) is read as `{ size: { preset, page } }`.
+ * The thresholds a 0.11.22 manifest spells the old way are written the new
+ * way (`rewriteOldThresholds`).
  */
+export async function setPageSetup(projectDir: string, change: PageSetupChange): Promise<PageSetup>;
 export async function setPageSetup(
   projectDir: string,
-  change: PageSetupChange,
+  given: PageSetupChange | PageSizeChoice,
 ): Promise<PageSetup> {
+  const change = toPageSetupChange(given);
   const { doc, file } = await loadManifestDoc(projectDir);
+  rewriteOldThresholds(doc);
   const size = change.size ? pageSizeForChoice(change.size) : null;
   let margins: PageMargin | undefined;
   if (change.margins) {
@@ -276,4 +295,23 @@ export async function setPageSetup(
   else if (change.margins === null) deletePageMargin(doc);
   await writeManifestDoc(file, doc);
   return setupOf(projectDir, doc);
+}
+
+/**
+ * The change a `setPageSetup` call asks for. 0.11.22 took the size choice
+ * itself, `{ preset, page? }`; that shape is still read as the size, so an
+ * older caller changes the size instead of silently doing nothing (#483). An
+ * object that is neither shape is refused, naming both.
+ */
+function toPageSetupChange(change: PageSetupChange | PageSizeChoice): PageSetupChange {
+  const keys = typeof change === "object" && change !== null ? Object.keys(change) : null;
+  if (keys?.includes("preset") && !keys.includes("size") && !keys.includes("margins")) {
+    return { size: change as PageSizeChoice };
+  }
+  if (!keys || keys.some((k) => k !== "size" && k !== "margins")) {
+    throw new UsageError(
+      `setPageSetup takes { size?: { preset, page? }, margins? } (or 0.11.22's { preset, page? }), got ${JSON.stringify(change)}.`,
+    );
+  }
+  return change as PageSetupChange;
 }

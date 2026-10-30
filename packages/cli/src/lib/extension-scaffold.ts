@@ -49,6 +49,23 @@ export type ExtensionKind = "plugin" | "look";
 export const EXTENSION_KINDS = ["plugin", "look"] as const satisfies readonly ExtensionKind[];
 
 /**
+ * Older names for a kind, read wherever a kind is given (`scaffoldExtension`,
+ * `gutterpress new --kind`) and never offered: 0.11.22 called a look a
+ * `theme` (#483). Kept apart from {@link EXTENSION_KINDS} so help text and
+ * pickers keep showing one word per kind.
+ */
+export const EXTENSION_KIND_ALIASES = { theme: "look" } as const satisfies Record<string, ExtensionKind>;
+
+/** An older name {@link EXTENSION_KIND_ALIASES} reads. */
+export type ExtensionKindAlias = keyof typeof EXTENSION_KIND_ALIASES;
+
+/** The kind a word names — a kind, or an older name for one — or undefined. */
+export function extensionKindFor(word: string): ExtensionKind | undefined {
+  if ((EXTENSION_KINDS as readonly string[]).includes(word)) return word as ExtensionKind;
+  return Object.hasOwn(EXTENSION_KIND_ALIASES, word) ? EXTENSION_KIND_ALIASES[word as ExtensionKindAlias] : undefined;
+}
+
+/**
  * The class/property prefix a scaffolded extension is FORBIDDEN to take.
  * `gp-` is Gutterpress core's own vocabulary (CLAUDE.md §6); an extension
  * using it does not conflict with core, it silently overrides it.
@@ -106,8 +123,8 @@ const DEFAULT_AUTHOR = "Anonymous";
 export interface ScaffoldExtensionOptions {
   /** Human-friendly package name, e.g. "Field Notes". Required. */
   name: string;
-  /** Which starter to create. Required. */
-  kind: ExtensionKind;
+  /** Which starter to create. Required. `theme` (0.11.22's word) makes a look. */
+  kind: ExtensionKind | ExtensionKindAlias;
   /** Absolute path to the PARENT directory the folder is created in. */
   parentDir: string;
   /** Folder name under `parentDir`. Defaults to a slug of `name`. */
@@ -205,11 +222,11 @@ function escapeJsonScalar(value: string): string {
 export async function scaffoldExtension(
   options: ScaffoldExtensionOptions,
 ): Promise<ScaffoldExtensionResult> {
-  const kind = options.kind;
-  if (kind !== "plugin" && kind !== "look") {
+  const kind = extensionKindFor(String(options.kind));
+  if (!kind) {
     throw new ExtensionScaffoldError(
       "invalid-name",
-      `Unknown extension kind "${String(kind)}". Choose one of: ${EXTENSION_KINDS.join(", ")}.`,
+      `Unknown extension kind "${String(options.kind)}". Choose one of: ${EXTENSION_KINDS.join(", ")}.`,
     );
   }
 

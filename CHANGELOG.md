@@ -51,17 +51,17 @@ This project follows [Semantic Versioning](https://semver.org/).
   `validate.assets` and `validate.pdf` such as `allowAlpha` and
   `requireBookmarks`). `validate`, `lint` and `ink` are no longer settings:
   the limits a check measures against come from the preset and the publish
-  target, and the markdownlint, HTMLHint and CSS-ownership checks find their
+  target unless a book sets one as an option in that check's `checks:` entry
+  (#483), and the markdownlint, HTMLHint and CSS-ownership checks find their
   own config file (`.markdownlint.yaml`, `.htmlhintrc`,
   `.gutterpress/css-contract.yaml`) in the book's folder or the nearest folder
   above it, up to the repository root, so a repository's
   `../.markdownlint.jsonc` needs no setting. A manifest written for 0.11.22
   still builds in 0.11.23: the old spellings are read and named, with their
   new spelling, in one notice. Book setup rewrites `source.files` as
-  `chapters` when it saves the chapter list. `page.tolerance` (and `gutterpress
-  new --page-tolerance`) went the same way: the page-size check allows the
-  preset's 0.5pt. The `asset.font.approved-files` check, which nothing could
-  switch on, is gone.
+  `chapters` when it saves the chapter list, and the old thresholds as their
+  checks' options. `page.tolerance` became the page-size check's `tolerance`
+  option the same way.
 - **Settings and Book setup, redesigned (#442).** Settings is one page with
   no tabs: How you use Gutterpress (Reader or Author), Appearance, Preview,
   Editor, Saving and Accounts. It opens in its own sheet from the status-bar
@@ -138,13 +138,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   about 1.3:1, so an empty Name or Email field was close to invisible).
 - **`gutterpress new` no longer insists on `--preset`.** Every starter
   template carries a preset, so leaving the flag out keeps the template's;
-  the flag overrides it. `--kind theme` is `--kind look`, the word the rest of
-  Gutterpress uses, and the help no longer calls a preset a "vendor preset".
-- **A stylesheet is `styles/book.css` or whatever `styles:` lists.** The four
-  legacy names (`css/print.css`, `css/index.css`, `css/style.css`,
-  `css/main.css`) are no longer looked for by name; a project that has only
-  such a file still gets it, because the first `.css` found under the project
-  root, `styles/` or `css/` is used when nothing is listed.
+  the flag overrides it. The help says `--kind look`, the word the rest of
+  Gutterpress uses (`--kind theme` still works), and no longer calls a preset
+  a "vendor preset".
 - **Downloaded npm extensions live under `extensions/npm/`**, beside the
   looks and components a book imports, instead of `plugins/npm/`. New books
   ignore `extensions/npm/` in their `.gitignore`; a book vendored earlier
@@ -265,14 +261,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   the number alone, so in a book with notes in two files a note's return arrow,
   or a tap on a number, could land in the other file. The links now carry the
   file's name too; the numbers an author sees are unchanged.
-- **Plain typing makes only the typography Gutterpress promises.** `---`,
-  `--`, `...` and straight quotes still print as an em dash, an en dash, an
-  ellipsis and curly quotes, exactly as the character check says. Nothing else
-  is rewritten any more: markdown-it's `typographer` option had also been
-  turning `(c)`, `(r)` and `(tm)` into ©, ® and ™, `+-` into ±, and collapsing
-  runs of `..`, `??`, `!!` and `,,`, conversions nothing documented and that
-  broke every list labelled (a), (b), (c). A symbol you want is typed as
-  itself. The desktop's selection-formatting menu, which had to reverse those
+- **A list labelled (a), (b), (c) keeps its labels.** The typographer turned
+  the third label into ©. A `(c)` after a `(b)` in the same file (or an `(r)`
+  after a `(q)`, in the same case) now prints as typed; every other
+  conversion plain typing makes is as before, and the user guide lists them.
+  The desktop's selection-formatting menu, which had to reverse those
   conversions to find selected text in the source, no longer refuses any
   selection containing a comma or an ellipsis.
 - **The character check's advice fits every language, and lets ’90s through.**
@@ -484,6 +477,55 @@ This project follows [Semantic Versioning](https://semver.org/).
   - A color setting takes **`var(--color-ink)`** (a reference to another
     setting) as well as a color, and still refuses anything else; the
     stylesheet write now refuses any value that would end its declaration.
+- **What 0.11.23's betas lost or silently changed from 0.11.22 is back (#483).**
+  None of it had been approved.
+  - **A book's own thresholds.** `checks:` takes a check's options beside its
+    level, as #443 asked: `pdf.print.ink-coverage: { maxTac: 300 }`, or
+    `{ level: error, minImageResolution: 200 }`. The options are `maxTac` and
+    `tacTolerance` (ink coverage; `maxTac` is also what a PDF/X build holds
+    the ink to), `tolerance` (page size), `minImageResolution`, `bleedSize`,
+    `maxImageSize`, `approvedFontFiles` and the three heuristics' limits. A
+    0.11.22 manifest's `ink.*`, `page.tolerance`, `validate.assets.*`,
+    `validate.pdf.*` and `validate.heuristics.*` limits are read as these
+    options again, instead of being dropped, and the notice names the new
+    spelling; Book setup writes them the new way when it saves. A 0.11.22
+    value no option can take (a word where a number goes, a key no check
+    has, a severity that is not one) is named in the notice and ignored, so
+    a book that built in 0.11.22 still builds; in the new spelling the same
+    value stops with an error naming it.
+  - **`asset.font.approved-files`** is a check again: it reports a font file
+    the book ships that no pattern in its `approvedFontFiles` matches, and
+    `validate --only asset.font.approved-files` runs it.
+  - **`gutterpress new --page-tolerance`** works again (it exited 2 as an
+    unknown option), and so does the library's `customPage.tolerance`.
+  - **A severity set beside an on/off flag keeps it.** A 0.11.22 manifest with
+    `validate.checks: { pdf.nav.bookmarks: { severity: error } }` and
+    `requireBookmarks: true` reports at `error` again, not `warning`.
+  - **The typographer's other conversions are back.** `(c)`, `(r)`, `(tm)` and
+    `+-` print ©, ®, ™ and ±, a run of dots prints one ellipsis, and runs of
+    `,,`, `????` and `!!!!` collapse, as in every book through 0.11.22 (whose
+    own design guide taught them). Only a lettered list's labels are kept.
+  - **The stylesheet a book without `styles:` gets** is `styles/book.css`,
+    then `css/print.css`, `css/index.css`, `css/style.css` and `css/main.css`,
+    as in 0.11.22, before the first `.css` by name; a `css/extra.css` no
+    longer wins over `css/print.css`.
+  - **A link written to a footnote in 0.11.22** (`[note 1](#fn1)`, `#fnref1`)
+    lands on that note again: it goes to the first note with that number in
+    reading order, where it went in 0.11.22. The notes keep the ids per file
+    that fixed their backlinks.
+  - **`gutterpress new --kind theme`** makes a look again (it exited 2), and
+    so does the library's `scaffoldExtension({ kind: "theme" })`.
+    `EXTENSION_KIND_ALIASES` and `extensionKindFor` read the old word; the
+    kinds offered stay `plugin` and `look`.
+  - **The library's 0.11.22 exports work again.** `BUNDLED_EXTENSIONS` is the
+    list of bundled names it was (it had become objects, so
+    `.includes(name)` was always false); the objects are
+    `BUNDLED_EXTENSION_DETAILS`. `PLUGINS_DIR` is exported again, as another
+    name for `EXTENSIONS_DIR`. `setPageSetup(dir, { preset, page })`, the
+    0.11.22 call, changes the size instead of doing nothing, and a call of
+    neither shape is refused. `PublishSelectionsStore` reads a file 0.11.22
+    wrote (one account per provider for a book) as that book's account, and
+    keeps it on the next write instead of mangling it.
 - **Version history lists the versions in the online copy, and what every
   version changed, again (#484), a regression from 0.11.22.** The Version
   history screen (#448, 0.11.23-alpha.7) and its speed-up (#461, beta.1) cut
