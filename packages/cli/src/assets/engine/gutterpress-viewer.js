@@ -34,6 +34,7 @@
     makeOverflowFragmentable: () => makeOverflowFragmentable,
     loadStyleSources: () => loadStyleSources,
     injectViewerCss: () => injectViewerCss,
+    injectPageVars: () => injectPageVars,
     injectBreakMapping: () => injectBreakMapping,
     indexInStrip: () => indexInStrip,
     fragmentDocument: () => fragmentDocument,
@@ -1118,6 +1119,7 @@
   }
 
   // src/engine/shared/print-area.ts
+  var round3 = (n) => Math.round(n * 1000) / 1000;
   function printAreaFromMeta(doc) {
     const raw = doc.querySelector('meta[name="gp-print-area"]')?.getAttribute("content");
     if (!raw)
@@ -1200,6 +1202,33 @@
     return { kind, gap, need };
   }
 
+  // src/engine/shared/page-vars.ts
+  var decls = (pairs) => pairs.map(([name, n]) => `--gp-page-${name}: ${round3(n)}pt;`).join(" ");
+  function pageDecls(model, name) {
+    const { width, height, margin } = resolvePage(model, { name, pseudos: ["right"] }).geometry;
+    return decls([
+      ["width", width],
+      ["height", height],
+      ["margin-top", margin.top],
+      ["margin-bottom", margin.bottom],
+      ["margin-inside", margin.left],
+      ["margin-outside", margin.right]
+    ]);
+  }
+  function pageGeometryVarsCss(model, area) {
+    const bookWide = decls([
+      ["bleed", area?.bleed ?? 0],
+      ["safe", area?.safe ?? 0],
+      ["gutter", area?.gutter ?? 0],
+      ["art-safe", area?.artSafe ?? 0]
+    ]);
+    return [
+      `:root { ${pageDecls(model)} ${bookWide} }`,
+      ...model.pageAssignments.map((a) => `${a.selector} { ${pageDecls(model, a.page)} }`)
+    ].join(`
+`);
+  }
+
   // src/engine/viewer/fragment.ts
   var PX_PER_PT = 96 / 72;
   function injectViewerCss(doc = document) {
@@ -1209,6 +1238,15 @@
     style.id = "gp-viewer-css";
     style.textContent = viewer_default;
     doc.head.appendChild(style);
+  }
+  function injectPageVars(model, doc = document) {
+    let style = doc.getElementById("gp-page-vars");
+    if (!style) {
+      style = doc.createElement("style");
+      style.id = "gp-page-vars";
+      doc.head.appendChild(style);
+    }
+    style.textContent = pageGeometryVarsCss(model, printAreaFromMeta(doc));
   }
   var pt = (v) => v * PX_PER_PT;
   function collectCssText(doc = document) {
@@ -1793,13 +1831,13 @@
     return shim;
   }
   function compensateRectoBreaks(model, strips) {
-    const decls = model.breaks.filter(isRectoVersoBreak);
+    const decls2 = model.breaks.filter(isRectoVersoBreak);
     for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
       spacer.remove();
-    if (!decls.length)
+    if (!decls2.length)
       return 0;
     const sites = [];
-    for (const d of decls) {
+    for (const d of decls2) {
       let els = [];
       try {
         els = Array.from(document.querySelectorAll(d.selector));
@@ -1993,6 +2031,7 @@
       document.head.appendChild(style);
     }
     const model = extract(css);
+    injectPageVars(model);
     injectBreakMapping(model);
     const authoring = [];
     const strips = buildStrips(model, opts, authoring);
@@ -2861,8 +2900,8 @@
     } catch {}
     return document.getElementById(id);
   }
-  function applyPageBackground(sheet, decls) {
-    for (const [prop, value] of Object.entries(decls)) {
+  function applyPageBackground(sheet, decls2) {
+    for (const [prop, value] of Object.entries(decls2)) {
       const p = prop.toLowerCase();
       if (p !== "background" && !p.startsWith("background-"))
         continue;
@@ -2941,8 +2980,8 @@
       }
       if (blankPages.has(bookIndex)) {
         const pseudos2 = ["blank"];
-        const { geometry: geometry2, marginBoxes: marginBoxes2, decls: decls2 } = resolvePage(model, { pseudos: pseudos2 });
-        return { index: bookIndex, strip, pseudos: pseudos2, geometry: geometry2, marginBoxes: marginBoxes2, decls: decls2 };
+        const { geometry: geometry2, marginBoxes: marginBoxes2, decls: decls3 } = resolvePage(model, { pseudos: pseudos2 });
+        return { index: bookIndex, strip, pseudos: pseudos2, geometry: geometry2, marginBoxes: marginBoxes2, decls: decls3 };
       }
       const pseudos = [];
       if (bookIndex === 0)
@@ -2950,11 +2989,11 @@
       if (indexInStrip2 === 0)
         pseudos.push("nth-first-of-run");
       pseudos.push(bookIndex % 2 === 0 ? "right" : "left");
-      const { geometry, marginBoxes, decls } = resolvePage(model, {
+      const { geometry, marginBoxes, decls: decls2 } = resolvePage(model, {
         name: strip.page,
         pseudos
       });
-      return { index: bookIndex, strip, pseudos, geometry, marginBoxes, decls };
+      return { index: bookIndex, strip, pseudos, geometry, marginBoxes, decls: decls2 };
     }
     function buildMaps() {
       api.stringMap = new Map;
@@ -3150,10 +3189,10 @@
     function drawMarginBoxes(sheet, ctx, totalPages) {
       const g = ctx.geometry;
       for (const name of MARGIN_BOX_NAMES) {
-        const decls = ctx.marginBoxes[`@${name}`];
-        if (!decls?.content)
+        const decls2 = ctx.marginBoxes[`@${name}`];
+        if (!decls2?.content)
           continue;
-        const text = evaluate(decls.content, {
+        const text = evaluate(decls2.content, {
           page: api.pageNumbers[ctx.index] ?? ctx.index + 1,
           pages: totalPages,
           strings: (n, w) => stringAt(n, w, ctx.index),
@@ -3169,7 +3208,7 @@
         const content = document.createElement("span");
         content.className = "gp-marginbox-content";
         content.textContent = text;
-        for (const [prop, value] of Object.entries(decls)) {
+        for (const [prop, value] of Object.entries(decls2)) {
           if (prop.toLowerCase() === "content" || isIgnoredMarginBoxProperty(prop))
             continue;
           content.style.setProperty(prop, value);

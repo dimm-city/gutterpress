@@ -1,0 +1,23 @@
+title: "Page Variables"
+authors:
+  - "Gutterpress Fixture"
+
+preset: book
+
+styles:
+  - styles/style.css
+
+chapters:
+  - 01-pages.md
+
+# The numbers the look's rules read as --gp-page-*. The margins are asymmetric
+# on purpose: 63pt inside and 45pt outside differ from each other, from the
+# stylesheet's 0.5in, and from the 1in default.
+page:
+  width: 432   # 6in
+  height: 648  # 9in
+  margin:
+    top: 54
+    bottom: 72
+    inside: 63
+    outside: 45
