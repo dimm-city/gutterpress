@@ -227,8 +227,8 @@
 
   <!-- Publish targets (ADR 0008): each one is a destination's validation
        policy. Same choices and wording as the new-book wizard (shared
-       #lib/publish-targets), so the two surfaces never describe a destination
-       differently. -->
+       #lib/publish-targets) — its label and what checking against it does — so
+       the two surfaces never describe a destination differently. -->
   <fieldset class="group">
     <legend class="lbl">Check the PDF against</legend>
     {#each PUBLISH_TARGET_CHOICES as choice (choice.id)}
@@ -239,6 +239,7 @@
           onchange={() => controller.toggleTarget(choice.id)}
         />
         <span class="choice-label">{choice.label}</span>
+        <span class="choice-desc">{choice.description}</span>
       </label>
     {/each}
     {#if targetToolGap}

@@ -62,7 +62,7 @@ import type {
   StyleToken,
   TokenUpdate,
 } from "#lib/platform/dtos.ts";
-import { makeStyleToken } from "#lib/style-tokens.ts";
+import { isVarReference, makeStyleToken } from "#lib/style-tokens.ts";
 import { sampleSrcdoc } from "#lib/components/config/config-helpers.ts";
 import { joinPath } from "#lib/platform/paths.ts";
 
@@ -289,6 +289,11 @@ export class DesignSectionController {
       const lastOf = (ds: Array<{ value: string }>): string => ds.at(-1)?.value.trim() ?? "";
       this.tokens = [...byName].map(([name, ds]) => {
         const token = makeStyleToken(name, values[name] || lastOf(ds));
+        // A color the book's own sheet sets to another setting (`var(--color-ink)`,
+        // what a color field saves besides a color, #482) shows as written — the
+        // page computes it to that setting's color — and stays a color.
+        const own = ds.filter((d) => d.fromBook).at(-1)?.value.trim();
+        if (token.kind === "color" && own && isVarReference(own)) token.value = own;
         // Place and label come from the first declaration; the group from
         // the first that has one.
         const label = ds[0]!.label;

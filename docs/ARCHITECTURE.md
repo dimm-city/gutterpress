@@ -677,8 +677,10 @@ A built-in look is a bundled extension: its stylesheet is compiled into
 Gutterpress and loads like a plugin's own CSS, so `clean-book` in
 `extensions:` installs and copies nothing. The book styles over it from its
 own `styles:` sheets, which load after every extension.
-`.zip` / `.css` / URL imports are the one thing that lands a copy, in
-`extensions/<id>/`, listed as `./extensions/<id>`.
+`.zip` / `.css` / URL imports land a copy in `extensions/<id>/`, listed as
+`./extensions/<id>`; so does an editable copy of a built-in look, made only
+when asked (`addBuiltInStyleSet`: `ext add <look> --look`, Book setup's "Make
+an editable copy"), which then loads as the path extension it is.
 
 ### Plugin Resolution
 

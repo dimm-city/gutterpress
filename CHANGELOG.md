@@ -443,6 +443,30 @@ This project follows [Semantic Versioning](https://semver.org/).
   that works), and **Include pre-release versions**, an app setting, off by
   default, that adds alpha, beta and rc versions to the menus and the update
   check. Every install still asks you to trust the package first.
+- **The rest of Book setup's Look and Extensions tools are back (#482), a
+  regression from 0.11.22.** The Book setup redesign (#442) and the changes
+  before it (#427, #437) dropped them, unasked. Restored, in the current tabs:
+  - **Make an editable copy** of the built-in look in use (Look tab): it is
+    copied into `extensions/<id>` as your own files and the copy takes the
+    built-in's place. `gutterpress ext add <look> --look` does it again
+    (0.11.23 said "unknown option"), and copies 0.11.22 made keep building.
+  - **A second built-in look in one click**: Extensions → Add an extension →
+    **Built-in looks** stacks it on the book's look, while the Look tab still
+    chooses one.
+  - **Re-check** in the extension list's head, any time; it reads the list
+    again and says "Every extension loads."
+  - A built-in extra's row says **what to type**, and a row shows Gutterpress's
+    **notices** about it (such as "Not found: …").
+  - npm search results show **name@version**, an **npm page** link and
+    "Showing N of M"; **Exact name** takes a **named export** again, for a
+    package such as `markdown-it-emoji` that has no default plugin.
+  - A look's card names its **author**; pointing at a look shows the **enlarged
+    two-page sample** in a window wider than 1620 px.
+  - The Book tab says **what each print check does**, as the new-book wizard
+    does.
+  - A color setting takes **`var(--color-ink)`** (a reference to another
+    setting) as well as a color, and still refuses anything else; the
+    stylesheet write now refuses any value that would end its declaration.
 
 ## [0.11.22] - 2026-10-23
 

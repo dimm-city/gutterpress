@@ -217,6 +217,25 @@ function insertDeclaration(root: Root, name: string, value: string): void {
 }
 
 /**
+ * Refuse a value that would not stay one declaration's value: a `;`, a `}` or
+ * an unbalanced bracket ends the declaration (or the `:root` rule) and writes
+ * CSS of its own. Every value Book setup writes — a color, a `var(--name)`
+ * reference, a length, a font stack — is one declaration's, so one that is
+ * not would corrupt the sheet, never set a token.
+ */
+function assertDeclarationValue(name: string, value: string): void {
+  let single = false;
+  try {
+    const nodes = postcss.parse(`:root{${name}:${value}}`).nodes;
+    const rule = nodes[0];
+    single = nodes.length === 1 && rule?.type === "rule" && rule.nodes.length === 1 && rule.nodes[0]!.type === "decl";
+  } catch {
+    single = false;
+  }
+  if (!single) throw new Error(`"${value}" can't be saved as ${name}: it is not one CSS value.`);
+}
+
+/**
  * Apply a batch of token updates to a book's stylesheets, in cascade order,
  * folding each onto the result of the last so none is lost. A value is set
  * where the book already declares the token — every root-level declaration
@@ -224,13 +243,15 @@ function insertDeclaration(root: Root, name: string, value: string): void {
  * added to `sheets[target]`. A null value removes the token from every
  * sheet, so what the looks set shows through. Returns the sheets' new text;
  * a sheet nothing changed comes back as it was given. Throws postcss's
- * `CssSyntaxError` for a sheet it cannot parse.
+ * `CssSyntaxError` for a sheet it cannot parse, and refuses the whole batch,
+ * writing nothing, when a value is not one declaration's value.
  */
 export function applyTokenUpdates(
   sheets: readonly string[],
   target: number,
   updates: readonly TokenUpdate[],
 ): string[] {
+  for (const { name, value } of updates) if (value !== null) assertDeclarationValue(name, value);
   const roots = sheets.map((css) => postcss.parse(css));
   const changed = new Set<number>();
   for (const { name, value } of updates) {
