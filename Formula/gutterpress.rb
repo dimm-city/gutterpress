@@ -1,26 +1,26 @@
 class Gutterpress < Formula
   desc "Convert Markdown and CSS into print-ready PDFs"
   homepage "https://github.com/dimm-city/gutterpress"
-  version "0.11.22"
+  version "0.11.23"
   license "MPL-2.0"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/dimm-city/gutterpress/releases/download/v0.11.22/gutterpress-cli-macos-arm64"
-      sha256 "605e66174b76b3d7b403e82f16ace2f67cb59d21d8d434a79e48bc22deb748ab"
+      url "https://github.com/dimm-city/gutterpress/releases/download/v0.11.23/gutterpress-cli-macos-arm64"
+      sha256 "1152ca09b739b673e03f54cc92b615b76f9f3e0aedc70d96badf2260845c4ba5"
     else
-      url "https://github.com/dimm-city/gutterpress/releases/download/v0.11.22/gutterpress-cli-macos-x64"
-      sha256 "5a2b97a505e2af1327b376bcff1ca7d029debb35434bf255cc1f39d8ef6570e6"
+      url "https://github.com/dimm-city/gutterpress/releases/download/v0.11.23/gutterpress-cli-macos-x64"
+      sha256 "450c3736ae92b9b3d4bb475a2d2e3e02d3f4cfceb062ed9e999365ba325aa596"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/dimm-city/gutterpress/releases/download/v0.11.22/gutterpress-cli-linux-arm64"
-      sha256 "1aa44bd6e2b27a0d357607b7a48b198a41ca957319ad1243c08d6d1a710482c0"
+      url "https://github.com/dimm-city/gutterpress/releases/download/v0.11.23/gutterpress-cli-linux-arm64"
+      sha256 "a37456953b55af4e77f3d7354c757649942a2cfc7f6918d016ecae3b5e7e4baa"
     else
-      url "https://github.com/dimm-city/gutterpress/releases/download/v0.11.22/gutterpress-cli-linux-x64"
-      sha256 "8eaca31e48d33d4ab704b4b3808c53358a23f406df467a0012ab4900fffbc07e"
+      url "https://github.com/dimm-city/gutterpress/releases/download/v0.11.23/gutterpress-cli-linux-x64"
+      sha256 "77576b3754d9968b0e74e2bc755246f59810117a23fc4ed968f0872bd866115f"
     end
   end
 
