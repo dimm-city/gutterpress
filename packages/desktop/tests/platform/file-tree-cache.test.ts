@@ -6,6 +6,7 @@ import {
   invalidateSubtree,
   collapseDir,
   renameExpanded,
+  visibleEntries,
 } from "../../src/lib/components/file-tree-cache";
 import { isPathAtOrUnder } from "../../src/lib/platform/paths";
 
@@ -158,4 +159,19 @@ test("isPathAtOrUnder: a Windows child matches its backslash-separated parent", 
   // separator, so on Windows the subtree's cached listings were never
   // invalidated after a rename/delete.
   expect(isPathAtOrUnder("C:\\Users\\proj\\chapters\\ch1.md", "C:\\Users\\proj")).toBe(true);
+});
+
+// ── which entries a listing keeps ────────────────────────────────────────
+
+test("visibleEntries lists a folder's SVG figures, so a figures folder isn't shown empty", () => {
+  const entry = (name: string, isDir = false) => ({ name, path: `/paper/figures/${name}`, isDir });
+  const listed = visibleEntries([
+    entry("pipeline.svg"),
+    entry("Fixpoint.SVG"),
+    entry("photo.png"),
+    entry(".DS_Store"),
+    entry("drafts", true),
+    entry("notes.md"),
+  ]);
+  expect(listed.map((e) => e.name)).toEqual(["drafts", "Fixpoint.SVG", "notes.md", "pipeline.svg"]);
 });

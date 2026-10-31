@@ -410,6 +410,9 @@ key, and the build ignores it.
 
 ### Fixed
 
+- **The Files tab lists SVG files.** It showed only Markdown, YAML, CSS and
+  text files, so a folder of SVG figures, such as the example paper's
+  `figures`, looked empty. An SVG opens in the editor as text.
 - **Settings, Accounts and Open from GitHub have the controls 0.11.22 had
   (#481).** A regression from 0.11.22 in the 0.11.23 betas: Settings had lost
   the Preview background, the Preview group (Default zoom, Right-click menu in
