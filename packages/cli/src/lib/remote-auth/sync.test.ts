@@ -32,7 +32,8 @@ import {
   syncProject,
   SYNC_SNAPSHOT_MESSAGE,
 } from "./sync.ts";
-import { listLocalBranches } from "../source-provider.ts";
+import { listRevisions, providerFor } from "../source-provider.ts";
+import { detectProjectSource } from "../project-source.ts";
 import { mergeWithMarkers } from "./converge-merge.ts";
 import { MSG_HISTORY_UNREADABLE } from "./sync-messages.ts";
 import type { HostCredential } from "./token-store.ts";
@@ -194,7 +195,7 @@ describe("syncProject", () => {
       const outcome = await syncProject({ projectDir: h.projectDir });
       expect(outcome.status).toBe("up-to-date");
       if (outcome.status !== "up-to-date") throw new Error("unreachable");
-      expect(outcome.message).toBe("Everything is in sync.");
+      expect(outcome.message).toBe("You're up to date with the online copy.");
     } finally {
       await h.cleanup();
     }
@@ -444,7 +445,7 @@ describe("syncProject", () => {
       });
       expect(outcome.status).toBe("error");
       if (outcome.status !== "error") throw new Error("unreachable");
-      expect(outcome.message).toContain("try Sync again in a moment");
+      expect(outcome.message).toContain("try again in a moment");
       // The snapshot protected the work; nothing was lost or left dirty.
       expect(outcome.snapshotId).toBeDefined();
       expect(await isClean(h.projectDir)).toBe(true);
@@ -463,7 +464,7 @@ describe("syncProject", () => {
 // autosave fires 500 ms after the last keystroke — so an edit routinely lands
 // on disk after the pre-sync snapshot committed the tree and before the merge
 // ends in a checkout. Whatever the checkout writes over that edit is gone: it
-// was never in a commit, so no "Previous versions" entry holds it.
+// was never in a commit, so no "Version history" entry holds it.
 //
 // Every test below asserts the same rule from a different angle: an edit that
 // reaches disk mid-sync must still be there afterwards, and must be reachable
@@ -559,7 +560,7 @@ describe("an edit that lands on disk mid-sync is never discarded", () => {
       const snapshotId = "snapshotId" in outcome ? outcome.snapshotId : undefined;
       expect(snapshotId).toBeDefined();
       const snap = await git.readCommit({ fs, dir: h.projectDir, oid: snapshotId! });
-      expect(snap.commit.message.trim()).toBe("Saved the edit you made while syncing");
+      expect(snap.commit.message.trim()).toBe("Saved the edit you made while backing up");
       expect(outcome.status).toBe("synced");
     } finally {
       await h.cleanup();
@@ -788,7 +789,7 @@ describe("sync convergence policy", () => {
         const outcome = await syncProject({ projectDir: h.projectDir });
         expect(outcome.status).toBe("error");
         if (outcome.status !== "error") throw new Error("unreachable");
-        expect(outcome.message).toContain("no history in common");
+        expect(outcome.message).toContain("no versions in common");
         // NOTHING was merged or committed — the local history is untouched.
         expect(await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" })).toBe(before);
       } finally {
@@ -1287,7 +1288,7 @@ describe("syncProject retry budget (BUG 6)", () => {
       });
       expect(outcome.status).toBe("error");
       if (outcome.status !== "error") throw new Error("unreachable");
-      expect(outcome.message).toContain("try Sync again in a moment");
+      expect(outcome.message).toContain("try again in a moment");
       expect(outcome.snapshotId).toBeDefined();
       expect(await isClean(h.projectDir)).toBe(true);
       // The loop is BOUNDED: it tried exactly `attempts` times, no more.
@@ -1341,7 +1342,7 @@ describe("syncProject — a history that cannot be read", () => {
     ["`.git/HEAD` emptied", (d: string) => fs.writeFileSync(path.join(d, ".git", "HEAD"), "")],
     ["`.git` removed entirely", (d: string) => fs.rmSync(path.join(d, ".git"), { recursive: true, force: true })],
   ] as const) {
-    test(`${label}: says the history can't be read, never "try again"`, async () => {
+    test(`${label}: says the versions can't be read, never "try again"`, async () => {
       const h = await setupClone();
       try {
         await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nUnsaved work.\n");
@@ -1353,9 +1354,9 @@ describe("syncProject — a history that cannot be read", () => {
         if (outcome.status !== "error") throw new Error("unreachable");
         expect(outcome.message).toBe(MSG_HISTORY_UNREADABLE);
         // The three things the message promises are all true.
-        expect(outcome.message).toContain("version history can't be read");
+        expect(outcome.message).toContain("versions can't be read");
         expect(outcome.message).toContain("Your writing is safe");
-        expect(outcome.message).toContain("Repair online backup");
+        expect(outcome.message).toContain("Repair the online copy");
         expect(outcome.message).not.toContain("try again");
         // And the book really IS intact — that is what makes it honest.
         expect(await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8")).toContain(
@@ -1368,7 +1369,7 @@ describe("syncProject — a history that cannot be read", () => {
   }
 });
 
-test("a damaged object file (masked by isomorphic-git as a TypeError) says the history can't be read", async () => {
+test("a damaged object file (masked by isomorphic-git as a TypeError) says the versions can't be read", async () => {
   // 0.11.6 field report: pako throws a STRING for a damaged object and
   // isomorphic-git's wrapper crashes assigning `err.caller` to it, so the
   // failure reached the writer as a bare "merge failed". HEAD, its commit
@@ -1469,8 +1470,10 @@ describe("pull-merge-only pass (push: false)", () => {
         httpClient: receivePackCountingClient(counter),
       });
 
-      // The pass reports complete; the push is deferred, not failed.
+      // The pass reports complete; the push is deferred, not failed — and it
+      // says so, because this computer now has versions the online copy lacks.
       expect(outcome.status).toBe("up-to-date");
+      expect(outcome.status === "up-to-date" && outcome.pushDeferred).toBe(true);
       expect(outcome.filesChanged).toBe(true);
       // The online file is on disk locally…
       expect(await readFile(path.join(h.projectDir, "chapter-02.md"), "utf8")).toBe(
@@ -1510,6 +1513,8 @@ describe("pull-merge-only pass (push: false)", () => {
       });
 
       expect(outcome.status).toBe("up-to-date");
+      // Typing that is not in a version yet is not "unsent": nothing was saved to send.
+      expect(outcome).not.toHaveProperty("pushDeferred");
       // No snapshot was minted: the remote did not move, so no merge could
       // touch the tree — the edit stays an ordinary unsaved change for the
       // auto-snapshot debounce (or the next push-enabled pass) to commit.
@@ -1554,6 +1559,25 @@ describe("pull-merge-only pass (push: false)", () => {
       expect(merged).toContain("The local rewrite.");
       // The combined result exists ONLY locally until a push-enabled pass.
       expect(await serverHead(h.serverDir)).toBe(remoteCommit);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("a saved version the online copy lacks makes a quiet pass report pushDeferred; once sent, it does not", async () => {
+    const h = await setupClone();
+    try {
+      await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nA saved draft.\n");
+      const source = await detectProjectSource(h.projectDir);
+      await providerFor(source).snapshot({ projectDir: h.projectDir, message: "A saved draft" });
+
+      const quiet = await syncProject({ projectDir: h.projectDir, push: false });
+      expect(quiet.status === "up-to-date" && quiet.pushDeferred).toBe(true);
+
+      expect((await syncProject({ projectDir: h.projectDir })).status).toBe("synced");
+      const after = await syncProject({ projectDir: h.projectDir, push: false });
+      expect(after.status).toBe("up-to-date");
+      expect(after).not.toHaveProperty("pushDeferred");
     } finally {
       await h.cleanup();
     }
@@ -1674,6 +1698,7 @@ describe("push-cadence e2e — two clones, pull-only ticks, push-due ticks", () 
         httpClient: receivePackCountingClient(counterA3),
       });
       expect(idle.status).toBe("up-to-date");
+      expect(idle).not.toHaveProperty("pushDeferred");
       expect(counterA3.receivePack).toBe(0);
       expect(await serverHead(serverDir)).toBe(mergedTipA);
 
@@ -1743,7 +1768,7 @@ describe("isUnrelatedHistories", () => {
 });
 
 describe("refreshRemoteCopies", () => {
-  test("makes a copy that exists only on the server visible to the copy picker", async () => {
+  test("makes a revision that exists only on the server visible in the revision list", async () => {
     const h = await setupClone();
     try {
       // A branch pushed from somewhere else — another machine, the web UI, or
@@ -1751,15 +1776,14 @@ describe("refreshRemoteCopies", () => {
       const tip = await git.resolveRef({ fs, dir: h.serverDir, ref: "main" });
       await git.branch({ fs, dir: h.serverDir, ref: "made-elsewhere", object: tip });
 
-      const before = await listLocalBranches(h.projectDir);
-      expect(before!.branches).not.toContain("made-elsewhere");
+      const before = await listRevisions(h.projectDir);
+      expect(before!.revisions.map((r) => r.name)).not.toContain("made-elsewhere");
 
       const result = await refreshRemoteCopies({ projectDir: h.projectDir });
       expect(result.refreshed).toBe(true);
 
-      const after = await listLocalBranches(h.projectDir);
-      expect(after!.branches).toContain("made-elsewhere");
-      expect(after!.remoteOnly).toContain("made-elsewhere");
+      const after = await listRevisions(h.projectDir);
+      expect(after!.revisions.find((r) => r.name === "made-elsewhere")?.where).toBe("online-only");
       // Refreshing must not touch the working tree or move HEAD.
       expect(after!.current).toBe(before!.current);
     } finally {
@@ -1767,23 +1791,24 @@ describe("refreshRemoteCopies", () => {
     }
   });
 
-  test("drops a copy that was deleted online, so the picker cannot offer a dead one", async () => {
+  test("drops a revision that was deleted online, so the list cannot offer a dead one", async () => {
     const h = await setupClone();
     try {
       const tip = await git.resolveRef({ fs, dir: h.serverDir, ref: "main" });
       await git.branch({ fs, dir: h.serverDir, ref: "short-lived", object: tip });
       await refreshRemoteCopies({ projectDir: h.projectDir });
-      expect((await listLocalBranches(h.projectDir))!.branches).toContain("short-lived");
+      const names = async () => (await listRevisions(h.projectDir))!.revisions.map((r) => r.name);
+      expect(await names()).toContain("short-lived");
 
       await git.deleteBranch({ fs, dir: h.serverDir, ref: "short-lived" });
       await refreshRemoteCopies({ projectDir: h.projectDir });
-      expect((await listLocalBranches(h.projectDir))!.branches).not.toContain("short-lived");
+      expect(await names()).not.toContain("short-lived");
     } finally {
       await h.cleanup();
     }
   });
 
-  test("reports reason 'auth' for a private repo with no saved connection, so the UI can say the list is short", async () => {
+  test("reports reason 'auth' for a private repo with no saved sign-in, so the UI can say the list is short", async () => {
     const h = await setupClone({ requireAuth: { username: "u", password: "p" } });
     try {
       const tip = await git.resolveRef({ fs, dir: h.serverDir, ref: "main" });
@@ -1791,8 +1816,8 @@ describe("refreshRemoteCopies", () => {
       // No credential passed: exactly the 401 a private repo returns.
       const result = await refreshRemoteCopies({ projectDir: h.projectDir });
       expect(result).toEqual({ refreshed: false, reason: "auth" });
-      // The picker still lists what is on disk rather than erroring out.
-      expect((await listLocalBranches(h.projectDir))!.branches).toContain("main");
+      // The list still shows what is on disk rather than erroring out.
+      expect((await listRevisions(h.projectDir))!.revisions.map((r) => r.name)).toContain("main");
     } finally {
       await h.cleanup();
     }
@@ -1802,12 +1827,12 @@ describe("refreshRemoteCopies", () => {
     const dir = await tempDir("gutterpress-copies-noremote-");
     try {
       await createFixtureRepo(dir);
-      // No remote configured at all: the picker must still list local copies.
+      // No remote configured at all: the list must still show the local revisions.
       expect(await refreshRemoteCopies({ projectDir: dir })).toEqual({
         refreshed: false,
         reason: "no-remote",
       });
-      expect((await listLocalBranches(dir))!.branches).toContain("main");
+      expect((await listRevisions(dir))!.revisions.map((r) => r.name)).toContain("main");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -1979,7 +2004,7 @@ describe("sync diagnostics", () => {
       const result = await syncProject({ projectDir: h.projectDir });
       expect(result.status).toBe("error");
       expect(result.message).not.toContain("different");
-      expect(result.message).toContain("Syncing didn't complete");
+      expect(result.message).toContain("Backing up didn't finish");
     } finally { mergeSpy?.mockRestore(); await h.cleanup(); }
   });
 

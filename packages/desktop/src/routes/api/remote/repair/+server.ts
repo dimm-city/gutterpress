@@ -4,7 +4,7 @@ import { handleRemoteErrors } from '../../../../../electron/server-bridge/friend
 import { defineRoute, getHostServices, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-// "Repair online backup" (lib remote-auth/repair.ts): replace a book's broken
+// "Repair the online copy" (lib remote-auth/repair.ts): replace a book's broken
 // `.git` with a fresh download of its online history, keep every file on this
 // computer, bring back files that exist only online, then save a version and
 // back up. The old `.git` is moved (never deleted) to a per-repair folder

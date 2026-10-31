@@ -18,8 +18,10 @@
  *      offending line scrolled into view.
  *   5. At 700px window width the toolbar still has zero pairwise overlaps
  *      (getBoundingClientRect audit of every visible toolbar control), and the
- *      status bar still shows its save-state text and the Problems badge (#316),
- *      and the left-panel drawer stops at the status bar's top edge (#307).
+ *      status bar still shows its status-control text and the Problems badge (#316),
+ *      its controls read Books, status, then settings and help, left to right,
+ *      none overlapping or spilling past the bar, and the left-panel drawer
+ *      stops at the status bar's top edge (#307).
  *
  * Screenshots: <os tmpdir>/problems-panel-{wide,narrow}.png.
  * Prints the audit JSON for the report.
@@ -456,8 +458,8 @@ await evalJs(`document.querySelector('#mobile-tab-markdown')?.click(); true`);
 await sleep(600);
 
 // ── 9. #316: the save state keeps its words at 700px ─────────────────────────
-// "Edits saved" (in the status bar since 0.11.16) must not collapse to a bare
-// icon at this width; the Problems control on the editor toolbar is a compact
+// The status control's line ("Saved on this computer", in the status bar) must
+// not collapse to a bare icon at this width; the Problems control on the editor toolbar is a compact
 // badge (icon + count, no text label) with an accessible name that carries the
 // breakdown.
 const bar = await evalJs(`(() => {
@@ -466,8 +468,8 @@ const bar = await evalJs(`(() => {
     return !!el && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none';
   };
   return {
-    saveText: document.querySelector('.status-bar .save-text')?.textContent?.trim() ?? null,
-    saveTextShown: shown('.status-bar .save-text'),
+    saveText: document.querySelector('.status-bar .status-text')?.textContent?.trim() ?? null,
+    saveTextShown: shown('.status-bar .status-text'),
     stripShown: shown('.toggle-strip'),
     stripCountShown: shown('.toggle-strip .error-count, .toggle-strip .warning-count'),
     stripHasText: /problems/i.test(document.querySelector('.toggle-strip')?.textContent ?? ''),
@@ -479,6 +481,31 @@ if (!bar.saveTextShown || !bar.saveText) fail(`save-state text is not visible at
 if (!bar.stripShown || !bar.stripCountShown) fail(`Problems badge (icon + count) is not visible at 700px: ${JSON.stringify(bar)}`);
 if (bar.stripHasText) fail(`Problems badge should carry no visible text label: ${JSON.stringify(bar)}`);
 if (!/^Problems: .*(error|warning)/.test(bar.stripLabel ?? "")) fail(`Problems badge accessible name is wrong: ${JSON.stringify(bar)}`);
+
+// The status bar's own controls: Books, the status control, then settings and
+// help at the far right; none overlapping, none past the bar's edge.
+const sb = await evalJs(`(() => {
+  const bar = document.querySelector('.status-bar').getBoundingClientRect();
+  const els = [...document.querySelectorAll('.status-bar button')].filter((b) => b.getClientRects().length > 0);
+  const rects = els.map((el) => ({ label: (el.getAttribute('aria-label') ?? el.textContent).trim().slice(0, 30), r: el.getBoundingClientRect() }));
+  const overlaps = [];
+  for (let i = 0; i < rects.length; i++) {
+    for (let j = i + 1; j < rects.length; j++) {
+      if (Math.min(rects[i].r.right, rects[j].r.right) - Math.max(rects[i].r.left, rects[j].r.left) > 1) overlaps.push([rects[i].label, rects[j].label]);
+    }
+  }
+  return {
+    labels: rects.map((x) => x.label),
+    lefts: rects.map((x) => Math.round(x.r.left)),
+    overlaps,
+    spill: rects.filter((x) => x.r.right > bar.right + 1 || x.r.left < bar.left - 1).map((x) => x.label),
+  };
+})()`);
+console.log(`[problems-panel] 700px status bar: ${JSON.stringify(sb)}`);
+if (sb.overlaps.length > 0 || sb.spill.length > 0) fail(`status bar controls overlap or spill at 700px: ${JSON.stringify(sb)}`);
+if (!/^Books/.test(sb.labels[0]) || !/^Saved/.test(sb.labels[1]) || sb.labels.slice(-2).join() !== "Settings,Help" || sb.lefts.some((x, i) => i > 0 && x <= sb.lefts[i - 1])) {
+  fail(`status bar order at 700px should be Books, status, Settings, Help: ${JSON.stringify(sb)}`);
+}
 
 // ── 10. #307: at 700px the left-panel drawer overlays the workspace but stops
 // at the status bar's top edge — viewport-fixed with bottom:0 it would run

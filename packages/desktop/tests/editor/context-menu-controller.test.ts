@@ -240,6 +240,19 @@ describe("open", () => {
     expect(h.ctrl.open).toBe(false);
   });
 
+  test("does nothing for Shift+F10 either when preview.contextMenu is disabled, and opens again once it is on (#481)", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "a\nb\nc\n";
+    h.enabled = false;
+    h.client.emit({ name: "contextMenuRequested", detail: detail({ via: "keyboard" }) });
+    await flush();
+    expect(h.ctrl.open).toBe(false);
+    h.enabled = true;
+    h.client.emit({ name: "contextMenuRequested", detail: detail({ via: "keyboard" }) });
+    await flush();
+    expect(h.ctrl.open).toBe(true);
+  });
+
   test("keyboard invocation (via: 'keyboard') opens normally", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] = "a\nb\nc\n";
@@ -1434,7 +1447,7 @@ describe("selection formatting (plan §4.6, PR 4)", () => {
     expect(bold.enabled).toBe(false);
   });
 
-  test("collapsed-punctuation needle (ellipsis) disables every format item", async () => {
+  test("a rendered ellipsis is found as the three dots the author typed, so formatting stays enabled", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] = "wait... really\n";
     h.client.emit({
@@ -1446,10 +1459,7 @@ describe("selection formatting (plan §4.6, PR 4)", () => {
     });
     await flush();
     const bold = h.ctrl.items.find((i) => i.id === "format-bold")!;
-    expect(bold.enabled).toBe(false);
-    expect(bold.disabledReason).toBe(
-      "Couldn't locate this text uniquely in the source — open the editor",
-    );
+    expect(bold.enabled).toBe(true);
   });
 
   test("a selection spanning INTO a code span (matched text includes a backtick) disables ALL format items", async () => {

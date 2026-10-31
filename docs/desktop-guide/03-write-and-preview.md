@@ -13,7 +13,7 @@ Across the top of the window, from the left:
 - **Edit** (Ctrl+E) puts the editor and the preview side by side;
 - **Read** shows the preview on its own, two pages at a time;
 - **Focus** hides the panels and toolbars; press Esc to bring them back;
-- **Setup** (the wrench) opens [Book settings](05-design.md);
+- **Setup** (the wrench) opens [Book setup](05-design.md);
 - **Publish** opens the [Publish](08-publish.md) view.
 
 ![Edit mode: the table of contents, the editor and the live preview side by side](images/workspace-edit.jpg)
@@ -32,8 +32,9 @@ bulleted and numbered lists, and a heading picker. Its **Insert** menu adds a la
 table, an image or a [snippet](04-snippets.md).
 
 **Save** (Ctrl+S) saves now; it turns blue when there are unsaved changes. Edits are also saved
-automatically unless you turn that off in Settings → Saving. The indicator in the status bar
-reads **Edits saved**, **Saving…** or **Unsaved changes**.
+automatically unless you turn that off in Settings → Saving. The status control in the
+status bar starts with **Saved** (for example **Saved on this computer**) and reads **Saving…**
+or **Unsaved changes** while edits are not written yet; [more on it here](09-versions-and-backup.md#the-status-control).
 
 ### Pick a class from a list
 
@@ -89,8 +90,8 @@ nothing changed writes nothing. Edits made from the editor go into its undo hist
 The left panel has three tabs:
 
 - **TOC** — the table of contents; click a heading to go to it.
-- **Files** — your book's chapters. **New chapter** and **New folder** are at the top; hover a
-  file for **Rename** and **Delete**. Deleting asks you to confirm, and the "Deleted" message
+- **Files** — your book's chapters, stylesheets and SVG figures; an SVG opens as text. **New
+  chapter** and **New folder** are at the top; hover a file for **Rename** and **Delete**. Deleting asks you to confirm, and the "Deleted" message
   that follows has an **Undo** button for the most recent delete.
 - **Media** — your book's images. **Add images…** adds images to the book; select one and
   choose **Insert into document** to put it at the cursor.
@@ -102,9 +103,9 @@ The left panel has three tabs:
 The preview shows your book's pages exactly as they will print, and updates as you type.
 
 - **Turn pages** with the buttons above the preview (first, previous, the page picker, next,
-  last), with a flick of the mouse wheel over the preview, or with the keys below.
-- **Zoom** with the menu at the top right of the preview: **Fit to width** or 25%–200%. The
-  starting zoom is set in Settings → App → Preview.
+  last) or with the keys below. The mouse wheel and trackpad scroll the preview like any page.
+- **Zoom** with the menu at the top right of the preview: **Fit to width** or 25%–200%. The app
+  remembers your zoom; **Settings → Preview → Default zoom** sets it too.
 - **Check the print overlays** with the **print overlays** button beside the zoom menu. It draws
   four layers on every page, each in its own colour: the **bleed** (a tinted band outside the
   trim, with a solid line where the page is cut), the printer's safe area for text (**Safe area:
@@ -123,9 +124,10 @@ The preview shows your book's pages exactly as they will print, and updates as y
     margins**. Ticking one while the overlays are off turns them on.
   - **Where the lines come from.** The bleed and the safe lines come only from your project's print
     settings: `page.width` and `page.height`, `page.bleed`, `page.safe`, `page.artSafe` and
-    `page.gutter` in `manifest.yaml`, or your preset's values. Only the **Page margins** layer reads
-    your stylesheet: your `@page` margins place your text and never move the printer's lines, and no
-    stylesheet or plugin can hide or restyle the overlays. A DriveThruRPG (`dtrpg`) file already
+    `page.gutter` in `manifest.yaml`, or your preset's values. The **Page margins** layer shows your
+    own choice: the margins from Book setup > Book (`page.margin`), or a stylesheet's `@page`
+    margins for a book that has not set its own. They place your text and never move the printer's
+    lines, and no stylesheet or plugin can hide or restyle the overlays. A DriveThruRPG (`dtrpg`) file already
     contains 0.125in of bleed on the top, bottom and outer edges (none on the binding edge), so the
     band and the trim line appear inside the page on those edges. The `dtrpg` preset asks for text
     at least 0.5in inside the trim and art at least 0.25in from the outside edges (0.5in at the
@@ -133,11 +135,10 @@ The preview shows your book's pages exactly as they will print, and updates as y
     points) for your printer's, and `page.gutter` if your book keeps further from the spine than
     that. With no bleed or safe area set, that part is not drawn and the legend says which setting
     to add.
-  - **Make it louder or quieter, or change the colours** in Settings → App → Preview: *Print overlay
-    strength* (Subtle, Normal or Strong: line width, tint and bleed band) and a colour for each
-    layer (*Bleed overlay colour*, *Safe area: text overlay colour*, *Safe area: art overlay
-    colour*, *Page margins overlay colour*). The lines stay the same thickness on screen at every
-    zoom. These are app settings, not book CSS.
+  - **Strength and colours.** The lines stay the same thickness on screen at every zoom. To draw
+    them louder or quieter, or in other colours, choose the **Print overlay strength** and each
+    layer's colour in [Settings → Preview](10-settings.md#settings). These are app settings, not
+    book CSS.
 
 | Key | Does |
 | --- | --- |

@@ -1,0 +1,18 @@
+title: "Exact-Fit Formula"
+authors:
+  - "Gutterpress Fixture"
+
+preset: book
+
+styles:
+  - styles/style.css
+
+chapters:
+  - 01-formula.md
+
+extensions:
+  - gutterpress-math
+
+page:
+  width: 595.28
+  height: 841.89

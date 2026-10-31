@@ -1,0 +1,3 @@
+/* book.css — the book's own unnamed page margin. It beats the look's 0.5in
+   and core's 1in default, and loses to the manifest's `page.margin`. */
+@page { margin: 0.75in; }

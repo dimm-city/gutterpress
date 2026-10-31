@@ -158,14 +158,7 @@ export interface ProjectExtensionEntry {
   author?: string;
   /** Preview image path relative to the extension folder, when declared. */
   preview?: string | null;
-  /** The sheet carrying the `:root` token surface (the Design panel's
-   *  target), relative to the folder, when declared. */
-  tokensFile?: string;
-  /** Declared stylesheets relative to the folder, in cascade order. Absent
-   *  when there is no folder. */
-  styles?: string[];
-  /** What it declares — a styles-carrier shows in the Look view, a
-   *  markdown-carrier in Features; one that carries both shows in both. */
+  /** What it declares — the Extensions tab names each kind in its row caption. */
   carries: ExtensionCarries;
   /** Absolute folder its metadata was read from. Absent for a bundled name,
    *  a bare JS file, an uninstalled npm entry, or a missing path. */
@@ -186,19 +179,14 @@ export interface ExtensionValidationResult {
   error?: string;
 }
 
-/** A bundled markdown feature the author can turn on — "Add" writes `use`. */
-export interface RecommendedExtension {
+/** A bundled extension (compiled into Gutterpress) the author can turn on — "Add" writes `use`. */
+export interface BundledExtensionInfo {
   use: string;
-  /** Short plain-language feature name (the row title). */
+  /** Short plain-language name (the row title). */
   label: string;
   description: string;
-}
-
-/** A built-in look (embedded assets); `id` is its folder name under `extensions/` once used. */
-export interface BuiltInStyleSet {
-  id: string;
-  name: string;
-  description: string;
+  /** A look (styles only), as opposed to a markdown feature. */
+  look: boolean;
 }
 
 /** A non-fatal issue surfaced after a successful `.zip`/`.css`/URL import (#106). */
@@ -222,7 +210,7 @@ export type { NpmExtensionMatch };
 /**
  * Result of searching npm. A fetch/parse failure is DATA (`ok: false`), never
  * a thrown error or an HTTP 500 — the search route always resolves, and the
- * panel shows `message` as one quiet line beside the box.
+ * Extensions tab shows `message` as one quiet line under the search box.
  */
 export type ExtensionSearchResult =
   | { ok: true; matches: NpmExtensionMatch[]; total: number }
@@ -233,7 +221,7 @@ export type ExtensionSearchResult =
 // extension-manager.ts) — defined locally so the SPA never value-imports the
 // lib (§8).
 
-/** One pinned npm extension against npm's `latest` tag. */
+/** One pinned npm extension against npm's `latest` tag (or, with pre-releases, its newest version). */
 export interface ExtensionUpdateCheck {
   /** The specifier as written in the manifest (`name@current`). */
   use: string;
@@ -245,9 +233,9 @@ export interface ExtensionUpdateCheck {
 }
 
 /**
- * Result of checking npm for updates. As with search, a fetch failure is DATA
- * (`ok: false`): the Features tab shows `message` as one quiet line and the
- * list itself is never blocked by the network.
+ * Result of checking npm for updates. A fetch failure is DATA (`ok: false`),
+ * never a thrown error or an HTTP 500: the Extensions tab shows one quiet line
+ * and the list itself is never blocked by the network.
  */
 export type ExtensionUpdatesResult =
   | { ok: true; checks: ExtensionUpdateCheck[] }
@@ -277,7 +265,52 @@ export interface ProjectStyle {
   active: boolean;
 }
 
-// Produced by `#lib/style-tokens`' `parseStyleTokens`. One editable `:root`
+// ── The book's stylesheet, for the design settings (#454) ────────────────────
+//
+// Mirrors the lib's `BookCss` (packages/cli/src/lib/book-css.ts), served by
+// `api/style/book-css` — defined locally so the SPA never value-imports the
+// lib (§8).
+
+/** Where one chunk of the book's stylesheet comes from. */
+export type CssChunkOrigin =
+  | { kind: "core" }
+  /** One extension's CSS: `file` (project-relative) for one of its stylesheets, none for its `css` export. */
+  | { kind: "extension"; name?: string; layer?: string; file?: string }
+  /** One of the book's own `styles:` sheets (project-relative). */
+  | { kind: "book"; file?: string };
+
+/** One root-level `:root` custom property, as a chunk declares it (`@internal` ones are left out). */
+export interface RootToken {
+  name: string;
+  /** The value as written (comments and trailing space included), so writing it back restores it. */
+  value: string;
+  /** An `@label` annotation's text. */
+  label?: string;
+  /** An `@group` annotation. */
+  group?: string;
+  /** The cascade layer its `:root` rule is in, dotted; absent when unlayered. */
+  layer?: string;
+}
+
+/** One chunk of the book's stylesheet, with the custom properties it declares. */
+export interface BookCssChunk {
+  origin: CssChunkOrigin;
+  css: string;
+  tokens: RootToken[];
+}
+
+/** The book's stylesheet in cascade order: joined with blank lines, it cascades as the built book's does. */
+export interface BookCss {
+  chunks: BookCssChunk[];
+}
+
+/** One pending token change: a new value, or null to take the book's declaration out. */
+export interface TokenUpdate {
+  name: string;
+  value: string | null;
+}
+
+// Built by `DesignSectionController` from `BookCss`. One editable `:root`
 // custom property surfaced to the guided Design panel.
 // `font` = a font-family stack (curated dropdown + free text); `number` = a
 // unitless number (e.g. `--leading: 1.55`) — same numeric control as `length`,
@@ -286,7 +319,7 @@ export type StyleTokenKind = "color" | "length" | "text" | "font" | "number";
 export interface StyleToken {
   /** The custom-property name, e.g. `--heading-color`. */
   name: string;
-  /** The raw declared value, e.g. `#cc0000` or `1.5rem`. */
+  /** Its value as the sample page computes it, e.g. `#cc0000` or `1.5rem`. */
   value: string;
   /** Which guided control to render. */
   kind: StyleTokenKind;
@@ -298,8 +331,8 @@ export interface StyleToken {
   unit?: string;
   /**
    * Theme-author-curated display group, from an `@group` annotation comment
-   * above the declaration (issue #244) — see `parseStyleTokens` in
-   * `#lib/style-tokens.ts` for the annotation grammar. Absent for every token in
+   * above the declaration (issue #244) — see the lib's `root-tokens.ts` for
+   * the annotation grammar. Absent for every token in
    * a theme that carries no annotations at all, which is what keeps an
    * unannotated theme's panel identical to the pre-#244 heuristic grouping. A
    * token with `group` set is shown under that named heading instead of the

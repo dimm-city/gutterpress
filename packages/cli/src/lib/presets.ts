@@ -7,10 +7,12 @@ import { UsageError } from "./cli-args";
  * book of this kind validates against when the manifest lists none. Where
  * the book is PUBLISHED is a separate concern — see ./targets.ts.
  *
- * Every preset value is overridable from the manifest, leaf by leaf
- * (resolveConfig's mergeShape; precedence cli > manifest > target > preset).
+ * Geometry, build and print values are overridable from the manifest, leaf
+ * by leaf (resolveConfig's mergeShape; precedence cli > manifest > target >
+ * preset). The check thresholds (`ink`, `validate`, `page.tolerance`) are
+ * overridden in the check's own `checks:` entry (lib/check-options.ts).
  */
-export interface VendorPreset extends Omit<ResolvedConfig, "title" | "authors" | "preset" | "targets" | "page"> {
+export interface VendorPreset extends Omit<ResolvedConfig, "title" | "authors" | "language" | "preset" | "targets" | "page"> {
   /** This preset's id: what the manifest's `preset:` names and a resolved config reports. */
   id: PresetId;
   /**
@@ -55,12 +57,8 @@ export const DTRPG_PRESET: VendorPreset = {
   // documented fallback chain and make every styles:-less project silently
   // link a phantom stylesheet, whether or not it existed on disk.
   extensions: [],
-  // No `assets` list and no `output` block: assets are discovered from the
-  // book's own references (lib/asset-inline.ts) and the output location is a
-  // convention (lib/output-paths.ts), so neither is configuration any more.
-  source: {
-    files: null,
-  },
+  // Every top-level .md file unless the manifest lists its chapters.
+  chapters: null,
   // `lastPage` is listed (undefined) only so the manifest merge, which copies
   // the preset's keys, carries an author's value; no preset sets it.
   // SPEC: the page count must be one less than a signature multiple, or the
@@ -116,69 +114,45 @@ export const DTRPG_PRESET: VendorPreset = {
     // declared so a book inherits its binding allowance visibly (#401); a
     // manifest `page.gutter` still merges over it.
     gutter: 36,
+    // No preset margins: a book's margins are its own (`page.margin`, which
+    // Setup > Book writes) or its stylesheets'. Listed so a manifest value
+    // merges in — resolveConfig only merges keys a preset has.
+    margin: undefined,
   },
   ink: {
     // SPEC: total ink coverage must not exceed 240%.
     maxTac: 240,
     tacTolerance: 0.5, // CONVENTION: measurement noise
   },
-  lint: {
-    enabled: true,
-    configPath: null,
-    rules: {},
+  checks: {
+    // SPEC: PDF/X conformance (markers + metadata) and "all fonts embedded".
+    "pdf.structure.qpdf": "error",
+    "pdf.print.pdfx-markers": "error",
+    "pdf.print.pdfx-metadata": "error",
+    "pdf.print.embedded-fonts": "error",
+    // SPEC: text at least 0.5in inside the trim on every edge (`page.safe`).
+    "pdf.print.safe-margins": "error",
+    // Stays off on purpose: `pdf.print.bleed` compares MediaBox with TrimBox
+    // and expects the bleed OUTSIDE the trim on every side. Here the bleed is
+    // inside the sheet on three edges and TrimBox == MediaBox, so the check
+    // would warn on every correct DriveThruRPG file.
+    "pdf.print.bleed": "off",
+    // Not printer rules: a book switches them on in `checks:`.
+    "pdf.nav.bookmarks": "off",
+    "pdf.nav.toc-links": "off",
+    "asset.font.license": "off",
+    // On (no entry): `pdf.print.transparency` and `asset.image.alpha-channel`
+    // (DERIVED: PDF/X-1a forbids transparency, which an alpha channel needs).
   },
   validate: {
-    enabled: true,
-    checks: {
-      // SPEC: PDF/X conformance (markers + metadata) and "all fonts embedded".
-      "pdf.structure.qpdf": {
-        enabled: true,
-        severity: "error",
-      },
-      "pdf.print.pdfx-markers": {
-        enabled: true,
-        severity: "error",
-      },
-      "pdf.print.pdfx-metadata": {
-        enabled: true,
-        severity: "error",
-      },
-      "pdf.print.embedded-fonts": {
-        enabled: true,
-        severity: "error",
-      },
-      // SPEC: text at least 0.5in inside the trim on every edge (`page.safe`).
-      "pdf.print.safe-margins": {
-        enabled: true,
-        severity: "error",
-      },
-    },
-    source: {
-      markdownlint: null,
-      htmlhint: null,
-      stylelint: null,
-      cssOwnership: null,
-    },
     assets: {
       maxImageSize: 10_000_000,
-      // DERIVED: PDF/X-1a forbids transparency, which an alpha channel needs.
-      allowAlpha: false,
       approvedFontFiles: [],
-      requireFontLicense: false,
     },
     pdf: {
-      requireBookmarks: false,
-      requireTocLinks: false,
       // CONVENTION: 300 dpi is the common print minimum; DriveThru's quick
       // spec does not state one.
       minImageResolution: 300,
-      // DERIVED: PDF/X-1a forbids transparency; DriveThru asks for X-1a/X-3.
-      forbidTransparency: true,
-      // Stays false on purpose: `pdf.print.bleed` compares MediaBox with
-      // TrimBox and expects the bleed OUTSIDE the trim on every side. Here the
-      // bleed is inside the sheet on three edges and TrimBox == MediaBox, so
-      // the check would warn on every correct DriveThruRPG file.
-      requireBleed: false,
       // SPEC: 0.125in (the size `page.bleed` above is declared at).
       bleedSize: 9,
     },
@@ -198,16 +172,16 @@ export const DTRPG_PRESET: VendorPreset = {
  * - `page`: 6in x 9in (432 x 648pt) — the common generic trade paperback trim.
  *   Authors targeting a different size still set `page.width`/`page.height`
  *   directly; this is a starting point, not a lock-in.
- * - `ink.maxTac: 400` — 400% is the physical ceiling for 4-color process ink
+ * - `ink.maxTac` 400 — 400% is the physical ceiling for 4-color process ink
  *   (100% each of C+M+Y+K), so `pdf.print.ink-coverage` effectively never
  *   fires unless the author opts into a real vendor limit.
- * - `validate.checks`: keeps the generic, vendor-agnostic PDF health checks
+ * - `checks`: keeps the generic, vendor-agnostic PDF health checks
  *   (`pdf.structure.qpdf` parses/traverses, `pdf.print.embedded-fonts` are
- *   embedded) but does NOT force `pdf.print.pdfx-markers` /
+ *   embedded) but switches off `pdf.print.pdfx-markers` /
  *   `pdf.print.pdfx-metadata` — those assert PDF/X OutputIntent/DOCINFO
- *   structure, which only applies to a PDF/X build (`--format pdfx`).
- * - `validate.pdf.forbidTransparency: false` and `assets.allowAlpha: true` —
- *   PDF/X forbids both; a plain PDF/HTML book has no such restriction.
+ *   structure, which only applies to a PDF/X build (`--format pdfx`) — and
+ *   the transparency and alpha-channel checks: PDF/X forbids both; a plain
+ *   PDF/HTML book has no such restriction.
  */
 export const BOOK_PRESET: VendorPreset = {
   id: "book",
@@ -216,12 +190,7 @@ export const BOOK_PRESET: VendorPreset = {
   defaultTargets: [],
   // No default `styles:` — see the matching comment on DTRPG_PRESET.
   extensions: [],
-  // No `assets` list and no `output` block: assets are discovered from the
-  // book's own references (lib/asset-inline.ts) and the output location is a
-  // convention (lib/output-paths.ts), so neither is configuration any more.
-  source: {
-    files: null,
-  },
+  chapters: null,
   print: { signature: 1, reserveLastPage: false, lastPage: undefined },
   pdfx: {
     flavor: "x1a",
@@ -245,54 +214,35 @@ export const BOOK_PRESET: VendorPreset = {
     artSafe: undefined,
     // The binding allowance is too; listed so a manifest `page.gutter` merges in.
     gutter: undefined,
+    // No preset margins (see DTRPG_PRESET); listed so a manifest `page.margin` merges in.
+    margin: undefined,
   },
   ink: {
     maxTac: 400,
     tacTolerance: 0.5,
   },
-  lint: {
-    enabled: true,
-    configPath: null,
-    rules: {},
+  checks: {
+    "pdf.structure.qpdf": "error",
+    "pdf.print.embedded-fonts": "error",
+    // CONVENTION: text stays `page.safe` inside the trim. A warning: no
+    // printer's rule stands behind this preset's number.
+    "pdf.print.safe-margins": "warning",
+    "pdf.print.pdfx-markers": "off",
+    "pdf.print.pdfx-metadata": "off",
+    "pdf.print.transparency": "off",
+    "asset.image.alpha-channel": "off",
+    "pdf.print.bleed": "off",
+    "pdf.nav.bookmarks": "off",
+    "pdf.nav.toc-links": "off",
+    "asset.font.license": "off",
   },
   validate: {
-    enabled: true,
-    checks: {
-      "pdf.structure.qpdf": {
-        enabled: true,
-        severity: "error",
-      },
-      "pdf.print.embedded-fonts": {
-        enabled: true,
-        severity: "error",
-      },
-      // CONVENTION: text stays `page.safe` inside the trim. A warning: no
-      // printer's rule stands behind this preset's number.
-      "pdf.print.safe-margins": {
-        enabled: true,
-        severity: "warning",
-      },
-      "pdf.print.pdfx-markers": false,
-      "pdf.print.pdfx-metadata": false,
-    },
-    source: {
-      markdownlint: null,
-      htmlhint: null,
-      stylelint: null,
-      cssOwnership: null,
-    },
     assets: {
       maxImageSize: 10_000_000,
-      allowAlpha: true,
       approvedFontFiles: [],
-      requireFontLicense: false,
     },
     pdf: {
-      requireBookmarks: false,
-      requireTocLinks: false,
       minImageResolution: 300,
-      forbidTransparency: false,
-      requireBleed: false,
       bleedSize: 9,
     },
     heuristics: {

@@ -159,7 +159,7 @@ test("upload resolves an explicit folderId directly, without listing or creating
   }
 });
 
-test("upload throws a friendly 'pick the folder again' error when folderId no longer exists, and never starts the upload", async () => {
+test("upload throws a friendly error naming the folder when folderId can't be reached, and never starts the upload", async () => {
   const dir = await tempProject(MANIFEST);
   try {
     const artifactPath = await fakeArtifact(dir);
@@ -170,7 +170,7 @@ test("upload throws a friendly 'pick the folder again' error when folderId no lo
     const req = await requestFor(dir, deps, artifactPath);
     req.config = { folderId: "folder-123" };
 
-    await expect(gdriveProvider.upload(req)).rejects.toThrow(/can't be found.*pick the folder again/i);
+    await expect(gdriveProvider.upload(req)).rejects.toThrow(/Drive folder "folder-123", which this Google account can't reach/);
     expect(calls.some((c) => c.url.includes("uploadType=resumable"))).toBe(false);
   } finally {
     await rm(dir, { recursive: true, force: true });

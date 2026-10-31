@@ -40,7 +40,7 @@
     /** Basename of the file open in the editor. */
     currentFile: string | null;
     onSelectFile: (name: string) => void | Promise<void>;
-    /** Reader (Settings → App): no Edit/Read switch. */
+    /** Reader (Settings → How you use Gutterpress): no Edit/Read switch. */
     readerMode?: boolean;
   } = $props();
 

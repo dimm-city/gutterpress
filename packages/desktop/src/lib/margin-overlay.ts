@@ -14,7 +14,7 @@
  */
 import { DEFAULT_SETTINGS } from "./platform/shared-types";
 
-/** The layers, in the order the toolbar menu and the settings list them. */
+/** The layers, in the order the toolbar menu and Settings → Preview list them. */
 export const OVERLAY_LAYERS = [
   { id: "bleed", label: "Bleed" },
   { id: "safe", label: "Safe area: text" },
@@ -82,6 +82,7 @@ export interface MarginOverlayStyle {
   colors: MarginOverlayColors;
 }
 
+/** The strengths Settings → Preview offers, in order. */
 export const MARGIN_OVERLAY_STRENGTHS: ReadonlyArray<{ value: MarginOverlayStyle["strength"]; label: string }> = [
   { value: "subtle", label: "Subtle" },
   { value: "normal", label: "Normal" },

@@ -10,7 +10,6 @@ const check: Check = {
   category: "asset",
   phase: "pre-build",
   async run(ctx: CheckContext): Promise<CheckResult[]> {
-    if (ctx.config.validate.assets.allowAlpha) return [];
     // `preserve-text` flattens a transparent page's artwork and keeps its text
     // live, so an alpha channel costs nothing in print; only `flatten-page`
     // loses the page's text to it.

@@ -1,0 +1,18 @@
+/* look.css — a look's page margin, which the book's own sheet overrides.
+
+   A look's `@page` rules are written after its cascade layer, unlayered
+   (#454). The book's own `@page` comes later still, so at the same page
+   selector the book's margin wins, as it did while the look's rule was
+   layered. With `page.margin` in the manifest, the manifest's beats both. */
+
+@layer margin-look.pages {
+  @page { margin: 0.5in; }
+}
+
+body {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 10.5pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}

@@ -40,6 +40,11 @@ export interface RunPublishOptions {
   /** Stop after preflight — report issues without contacting the platform. */
   dryRun?: boolean;
   /**
+   * Provider settings for this run only, laid over the saved ones and never
+   * written anywhere: the CLI's `--folder-id` / `--folder` (#452).
+   */
+  settings?: Record<string, string>;
+  /**
    * The provider, when the caller has already resolved it (the CLI does, to
    * map a failed restore to its own exit code): no second lookup or restore.
    * Default: {@link resolvePublishProvider}(`providerId`).
@@ -83,7 +88,10 @@ export function resolvePublishFormat(
   return info.format;
 }
 
-type RequestOptions = Pick<RunPublishOptions, "projectDir" | "providerId" | "manifestPath" | "artifactPath">;
+type RequestOptions = Pick<
+  RunPublishOptions,
+  "projectDir" | "providerId" | "manifestPath" | "artifactPath" | "settings"
+>;
 
 /**
  * Resolve the {@link PublishRequest} for a BUILT-IN provider from the
@@ -110,15 +118,20 @@ async function requestFor(
   const config = resolveConfig({}, manifest);
   // The manifest `publish:` section is keyed by the provider id itself —
   // one spelling everywhere (`--provider azure-swa` ↔ `publish.azure-swa:`).
+  // The person's PRIVATE values for this book (deps.selections) win over what
+  // the manifest shares: this run's, then private, then manifest, then the
+  // provider's default.
   const publishSettings = (manifest.publish ?? {}) as Record<string, unknown>;
-  const providerConfig =
-    (publishSettings[provider.info.id] as Record<string, unknown> | undefined) ??
-    {};
+  const providerConfig = {
+    ...((publishSettings[provider.info.id] as Record<string, unknown> | undefined) ?? {}),
+    ...((await deps.selections?.settings(options.projectDir))?.[provider.info.id] ?? {}),
+    ...options.settings,
+  };
 
-  // Which SAVED credential (account label) to use for this provider. The
-  // book's own manifest (`publish.<id>.credential`) is the most specific and
-  // overrides the front-end's project/global default (passed in via
-  // `deps.credentialAccount`); empty means the default (bare-host) credential.
+  // Which SAVED credential (account label) to use for this provider: the
+  // private choice, else the manifest's `publish.<id>.credential` (older
+  // books), else the front-end's default (`deps.credentialAccount`); empty
+  // means the default (bare-host) credential.
   const bookAccount =
     typeof providerConfig.credential === "string"
       ? providerConfig.credential.trim()

@@ -19,6 +19,8 @@ import {
   scaffoldExtension,
   resolveExtensionPrefix,
   EXTENSION_KINDS,
+  EXTENSION_KIND_ALIASES,
+  extensionKindFor,
   RESERVED_PREFIX,
 } from "./extension-scaffold.ts";
 import type { CreateProjectError } from "./project-scaffold.ts";
@@ -41,6 +43,9 @@ async function tmpParent(): Promise<string> {
 function stripCssComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, "");
 }
+
+/** How a desktop tab is named in text the CLI writes into a book: say the action instead. */
+const DESKTOP_TAB = /Setup >|Book setup >|> Look|> Advanced|> Details|Look tab|Design tab/;
 
 /** A manifest `extensions:` path entry with the defaults the loader expects. */
 function pluginCfg(path: string): ResolvedExtensionConfig {
@@ -114,6 +119,15 @@ describe.each([...EXTENSION_KINDS])("scaffoldExtension --kind %s", (kind) => {
     for (const rel of result.files) {
       const text = await readFile(path.join(result.extensionDir, rel), "utf8");
       expect(text).not.toMatch(/\{\{[A-Z_]+\}\}/);
+    }
+  });
+
+  test("names the action in Book setup, never a desktop tab, in any file", async () => {
+    const parent = await tmpParent();
+    const result = await scaffoldExtension({ name: "Field Notes", kind, parentDir: parent });
+    for (const rel of result.files) {
+      const text = await readFile(path.join(result.extensionDir, rel), "utf8");
+      expect(text, rel).not.toMatch(DESKTOP_TAB);
     }
   });
 
@@ -259,10 +273,39 @@ describe("scaffoldExtension --kind plugin", () => {
 
 // ── Theme-specific: the #233 layered stack ─────────────────────────────────
 
-describe("scaffoldExtension --kind theme", () => {
-  test("declares the six layered sheets in cascade order, plus the token surface", async () => {
+describe("the `theme` kind, 0.11.22's word for a look (#483)", () => {
+  test("scaffoldExtension({ kind: \"theme\" }) creates a look, exactly as kind look does", async () => {
     const parent = await tmpParent();
-    const result = await scaffoldExtension({ name: "House Style", kind: "theme", parentDir: parent });
+    const theme = await scaffoldExtension({ name: "Old Style", kind: "theme", parentDir: parent });
+    const look = await scaffoldExtension({ name: "New Style", kind: "look", parentDir: parent });
+    expect(theme.kind).toBe("look");
+    expect(theme.files).toEqual(look.files);
+    expect(extensionStyleList(await readExtensionMeta(theme.extensionDir))).toEqual(
+      extensionStyleList(await readExtensionMeta(look.extensionDir)),
+    );
+  });
+
+  test("the alias map reads theme as look; the kinds offered stay one word each", () => {
+    expect(EXTENSION_KIND_ALIASES).toEqual({ theme: "look" });
+    expect(extensionKindFor("theme")).toBe("look");
+    expect(extensionKindFor("look")).toBe("look");
+    expect(extensionKindFor("plugin")).toBe("plugin");
+    expect(extensionKindFor("widget")).toBeUndefined();
+    expect(extensionKindFor("constructor")).toBeUndefined();
+    expect([...EXTENSION_KINDS]).toEqual(["plugin", "look"]);
+  });
+
+  test("an unknown kind is still refused, naming the kinds", async () => {
+    await expect(
+      scaffoldExtension({ name: "X", kind: "widget" as never, parentDir: await tmpParent() }),
+    ).rejects.toThrow('Unknown extension kind "widget". Choose one of: plugin, look.');
+  });
+});
+
+describe("scaffoldExtension --kind look", () => {
+  test("declares the six layered sheets in cascade order, plus the component catalog", async () => {
+    const parent = await tmpParent();
+    const result = await scaffoldExtension({ name: "House Style", kind: "look", parentDir: parent });
     const meta = await readExtensionMeta(result.extensionDir);
 
     expect(extensionStyleList(meta)).toEqual([
@@ -273,8 +316,6 @@ describe("scaffoldExtension --kind theme", () => {
       "styles/page-rules.css",
       "styles/book.css",
     ]);
-    // The Design panel's guided editor reads this.
-    expect(meta.tokensFile).toBe("styles/tokens.css");
     expect(meta.components).toBe("components.yaml");
   });
 
@@ -282,7 +323,7 @@ describe("scaffoldExtension --kind theme", () => {
     // #233's actual ask: the rules from contextual-cascade-principle.md moved
     // INTO the files so they travel with the code.
     const parent = await tmpParent();
-    const result = await scaffoldExtension({ name: "House Style", kind: "theme", parentDir: parent });
+    const result = await scaffoldExtension({ name: "House Style", kind: "look", parentDir: parent });
     const meta = await readExtensionMeta(result.extensionDir);
 
     for (const rel of extensionStyleList(meta)) {
@@ -294,7 +335,7 @@ describe("scaffoldExtension --kind theme", () => {
 
   test("declares the layer order once and puts every sheet inside its layer", async () => {
     const parent = await tmpParent();
-    const result = await scaffoldExtension({ name: "House Style", kind: "theme", parentDir: parent });
+    const result = await scaffoldExtension({ name: "House Style", kind: "look", parentDir: parent });
     const read = (rel: string) => readFile(path.join(result.extensionDir, rel), "utf8");
 
     // The order statement lives in the FIRST sheet, because a layer's position
@@ -320,25 +361,32 @@ describe("scaffoldExtension --kind theme", () => {
     }
   });
 
-  test("declares an explicit @page size", async () => {
-    // Measured, not assumed: with no `size:` anywhere in a book's CSS,
-    // Chromium falls back to US Letter and prints the whole book at the wrong
-    // trim with no error. The three built-in themes all declare it; so does
-    // this one.
+  test("sets no page size or margin: the geometry is the book's manifest's", async () => {
+    // The build writes the manifest's `@page { size; margin }` after every
+    // stylesheet, so a size here would be ignored (and reported by the
+    // print-safety check) and a margin would hold only until the author sets
+    // margins in the app. The starter owns the margin boxes and named pages.
     const parent = await tmpParent();
-    const result = await scaffoldExtension({ name: "House Style", kind: "theme", parentDir: parent });
+    const result = await scaffoldExtension({ name: "House Style", kind: "look", parentDir: parent });
     const pageRules = await readFile(
       path.join(result.extensionDir, "styles", "page-rules.css"),
       "utf8",
     );
-    expect(pageRules).toMatch(/@page\s*\{[^}]*\bsize:\s*6in\s+9in\s*;/);
+    for (const m of pageRules.matchAll(/@page\b[^{]*\{([^}]*)/g)) {
+      const body = m[1]!.replace(/@[a-z-]+\s*\{[^}]*\}?/g, "");
+      expect(body).not.toMatch(/(?<![\w-])size\s*:/);
+      expect(body).not.toMatch(/(?<![\w-])margin(-[a-z]+)?\s*:/);
+    }
+    expect(pageRules).toMatch(/@bottom-right\s*\{\s*content:\s*counter\(page\)/);
+    const tokens = await readFile(path.join(result.extensionDir, "styles", "tokens.css"), "utf8");
+    expect(tokens).not.toContain("page-margin");
   });
 
   test("the worked component demonstrates the token pattern end to end", async () => {
     const parent = await tmpParent();
     const result = await scaffoldExtension({
       name: "House Style",
-      kind: "theme",
+      kind: "look",
       parentDir: parent,
       prefix: "hs",
     });

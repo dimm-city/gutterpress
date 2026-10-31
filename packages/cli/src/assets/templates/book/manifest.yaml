@@ -1,9 +1,18 @@
 title: "{{TITLE}}"
 authors:
   - "{{AUTHOR}}"
-source:
-  files:
-    - chapter-01.md
+chapters:
+  - chapter-01.md
 styles:
   - styles/book.css
+extensions:
+  - clean-book
+# Page margins in points (72 = 1 in): top, bottom, inside (the binding edge)
+# and outside. Change them, and the page size, in Book setup.
+page:
+  margin:
+    top: 61.2
+    bottom: 61.2
+    inside: 54
+    outside: 54
 preset: book

@@ -44,14 +44,12 @@ export interface DesktopHooks {
   confirmNpmPluginInstall: (packageName: string) => Promise<boolean>;
   /**
    * Native Save / Don't Save / Cancel prompt for leaving a file with unsaved
-   * edits while "Save edits automatically" is off. `fileName` null = the
+   * edits while "Save changes automatically" is off. `fileName` null = the
    * whole window is closing.
    */
   confirmUnsavedChanges: (fileName: string | null) => Promise<UnsavedChoice>;
   openExternal: (url: string) => Promise<void>;
   showItemInFolder: (filePath: string) => void;
-  /** Create (if needed) and open the diagnostic logs folder in the OS file manager. */
-  openLogsFolder: () => Promise<void>;
   getNativeTheme: () => { shouldUseDarkColors: boolean };
   getUserDataPath: () => string;
 }

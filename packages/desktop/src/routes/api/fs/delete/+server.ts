@@ -49,6 +49,7 @@ export const POST: RequestHandler = defineRoute<{ path: string; projectDir: stri
           ...(await gitIdentityArgs()),
           logFile: getHostServices().vcs.operationLogPath(path.basename(repoRoot)),
         });
+        getHostServices().vcs.refreshOnlineStatus?.(body.projectDir);
       }
     } catch (e) {
       // "Nothing new to save" means the pre-delete state is ALREADY the most
@@ -57,7 +58,7 @@ export const POST: RequestHandler = defineRoute<{ path: string; projectDir: stri
       // restoreVersionWithBackup: a failed backup blocks the destructive op).
       if (!lib.isNoChangesError(e)) {
         throw new Error(
-          `Could not save a safety snapshot before deleting — nothing was deleted. (${
+          `Couldn't save a version before deleting — nothing was deleted. (${
             e instanceof Error ? e.message : String(e)
           })`,
         );

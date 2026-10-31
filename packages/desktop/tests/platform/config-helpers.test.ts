@@ -1,14 +1,19 @@
 import { test, expect } from "bun:test";
 import {
+  addedBuiltInIds,
   describeSegments,
-  extensionSourceLabel,
-  extensionStatus,
-  pickerVersions,
-  orderAfterMove,
-  sampleSrcdoc,
+  entryWarnings,
   hoverPreviewSrcdoc,
+  extensionSourceLabel,
+  extensionProblem,
+  orderAfterMove,
+  pickerVersions,
+  carriedKinds,
+  sampleSrcdoc,
+  searchKindLabel,
+  searchMatchesQuery,
 } from "../../src/lib/components/config/config-helpers";
-import type { ProjectExtensionEntry, ExtensionValidationResult } from "../../src/lib/api";
+import type { ProjectExtensionEntry, ExtensionValidationResult, NpmExtensionMatch } from "../../src/lib/api";
 
 const NONE = { markdown: false, styles: false, snippets: false, components: false };
 
@@ -24,30 +29,26 @@ function entry(overrides: Partial<ProjectExtensionEntry> = {}): ProjectExtension
   };
 }
 
-// ── #106: hover preview renders a fixed 2-page sample, never the document ──────
+// ── The sample thumbnail: a fixed sample, never the document ──────────────────
 
-test("hoverPreviewSrcdoc inlines the look's CSS into a fixed two-page spread", () => {
+test("sampleSrcdoc inlines the look's CSS into a self-contained sample document that never scrolls", () => {
   const css = ":root { --accent: #036; }";
-  const doc = hoverPreviewSrcdoc(css);
+  const doc = sampleSrcdoc(css);
+  expect(doc.startsWith("<!DOCTYPE html>")).toBe(true);
   expect(doc).toContain(css);
-  expect((doc.match(/pm-sample-page/g) ?? []).length).toBeGreaterThanOrEqual(2);
-  expect(doc).toContain("Chapter One");
-});
-
-test("hoverPreviewSrcdoc is a superset sample of the thumbnail (both self-contained docs)", () => {
-  const css = "h1 { color: red; }";
-  expect(sampleSrcdoc(css).startsWith("<!DOCTYPE html>")).toBe(true);
-  expect(hoverPreviewSrcdoc(css).startsWith("<!DOCTYPE html>")).toBe(true);
+  expect(doc).toContain("<h1>Chapter One</h1>");
+  expect(doc).toContain("html,body{margin:0;padding:0;overflow:hidden;}");
 });
 
 // ── extensionSourceLabel: where a row comes from, in one caption ───────────
 
-test("extensionSourceLabel names the three sources", () => {
+test("extensionSourceLabel names the three sources in words", () => {
   expect(extensionSourceLabel(entry())).toBe("built in");
   expect(extensionSourceLabel(entry({ kind: "npm", use: "markdown-it-emoji@3.0.0", name: "markdown-it-emoji", version: "3.0.0" }))).toBe("npm 3.0.0");
   expect(extensionSourceLabel(entry({ kind: "npm", use: "markdown-it-emoji", name: "markdown-it-emoji" }))).toBe("npm");
-  expect(extensionSourceLabel(entry({ kind: "path", use: "./extensions/clean-book", name: "./extensions/clean-book" }))).toBe("extensions/clean-book");
-  expect(extensionSourceLabel(entry({ kind: "path", use: "../shared/house", name: "../shared/house" }))).toBe("../shared/house");
+  expect(extensionSourceLabel(entry({ kind: "path", use: "./extensions/clean-book", name: "./extensions/clean-book" }))).toBe("folder extensions/clean-book");
+  expect(extensionSourceLabel(entry({ kind: "path", use: "../shared/house", name: "../shared/house" }))).toBe("folder ../shared/house");
+  expect(extensionSourceLabel(entry({ kind: "path", use: "./plugins/x.js", name: "./plugins/x.js" }))).toBe("file plugins/x.js");
 });
 
 // ── describeSegments (#309): "what to type" spans set in code type ─────────
@@ -76,58 +77,92 @@ test("describeSegments leaves plain text alone, drops empty pieces, and never re
   expect(describeSegments("Type `oops").map((s) => s.text).join("")).toBe("Type oops");
 });
 
-// ── orderAfterMove: a move inside one view, expressed as the full order ────
+// ── orderAfterMove: a move in the one list, expressed as the full order ────
 
 const LOOK_A = entry({ use: "./extensions/a", kind: "path", carries: { ...NONE, styles: true } });
 const FEAT = entry({ use: "markdown-it-mark" });
 const LOOK_B = entry({ use: "./extensions/b", kind: "path", carries: { ...NONE, styles: true } });
 const ALL = [LOOK_A, FEAT, LOOK_B];
-const LOOKS = [LOOK_A, LOOK_B];
 
-test("orderAfterMove moves an entry past its neighbour IN THE VIEW, keeping outsiders in place", () => {
-  expect(orderAfterMove(ALL, LOOKS, LOOK_B, -1)).toEqual(["./extensions/b", "./extensions/a", "markdown-it-mark"]);
-  expect(orderAfterMove(ALL, LOOKS, LOOK_A, 1)).toEqual(["markdown-it-mark", "./extensions/b", "./extensions/a"]);
+const ORDER = ALL.map((e) => e.use);
+
+test("orderAfterMove swaps an item with its neighbour, keeping the rest in place", () => {
+  expect(orderAfterMove(ORDER, LOOK_B.use, -1)).toEqual(["./extensions/a", "./extensions/b", "markdown-it-mark"]);
+  expect(orderAfterMove(ORDER, LOOK_A.use, 1)).toEqual(["markdown-it-mark", "./extensions/a", "./extensions/b"]);
 });
 
-test("orderAfterMove lists every configured entry exactly once (what reorderExtensions insists on)", () => {
-  const order = orderAfterMove(ALL, LOOKS, LOOK_B, -1)!;
-  expect([...order].sort()).toEqual(ALL.map((e) => e.use).sort());
+test("orderAfterMove lists every item exactly once (what reorderExtensions insists on) and leaves its input alone", () => {
+  const order = orderAfterMove(ORDER, LOOK_B.use, -1)!;
+  expect([...order].sort()).toEqual([...ORDER].sort());
+  expect(ORDER).toEqual(["./extensions/a", "markdown-it-mark", "./extensions/b"]);
 });
 
-test("orderAfterMove returns null at the view's edge or for an entry outside the view", () => {
-  expect(orderAfterMove(ALL, LOOKS, LOOK_A, -1)).toBeNull();
-  expect(orderAfterMove(ALL, LOOKS, LOOK_B, 1)).toBeNull();
-  expect(orderAfterMove(ALL, LOOKS, FEAT, 1)).toBeNull();
+test("orderAfterMove returns null at the list's edge or for an item not in it", () => {
+  expect(orderAfterMove(ORDER, LOOK_A.use, -1)).toBeNull();
+  expect(orderAfterMove(ORDER, LOOK_B.use, 1)).toBeNull();
+  expect(orderAfterMove([LOOK_A.use, LOOK_B.use], FEAT.use, 1)).toBeNull();
 });
 
-// ── extensionStatus: tri-state + the one warning class with an in-app fix ──
+// ── searchKindLabel: a search result's kind, when npm's keywords say ──────────
 
-test("extensionStatus: disabled entry always reads Disabled, regardless of anything else", () => {
-  const st = extensionStatus(entry({ enabled: false, warnings: ["Not installed — run x"] }), {}, true);
-  expect(st).toEqual({ label: "Disabled", kind: "disabled" });
+const found = (over: Partial<NpmExtensionMatch>): NpmExtensionMatch => ({
+  name: "x", version: "1.0.0", kind: "gutterpress", keywords: ["gutterpress"], ...over,
 });
 
-test("extensionStatus: in-flight validation with no result yet reads Checking…", () => {
-  const st = extensionStatus(entry(), {}, /* validating */ true);
-  expect(st.kind).toBe("checking");
-  expect(st.label).toBe("Checking…");
+test("searchKindLabel: a gutterpress-look package is a look, a plain markdown-it plugin an extra", () => {
+  expect(searchKindLabel(found({ keywords: ["gutterpress", "gutterpress-look"] }))).toBe("Look");
+  expect(searchKindLabel(found({ kind: "markdown-it", keywords: ["markdown-it-plugin"] }))).toBe("Extra");
 });
 
-test("extensionStatus: NOT validating and no result is a distinct 'check failed' state, not stuck Checking…", () => {
-  const st = extensionStatus(entry(), {}, /* validating */ false);
-  expect(st.kind).toBe("stale");
-  expect(st.label).toMatch(/check failed/i);
-  expect(st.label).toMatch(/re-check/i);
+test("searchKindLabel says nothing for a Gutterpress extension that is not tagged as a look, rather than guess", () => {
+  expect(searchKindLabel(found({ keywords: ["gutterpress", "markdown-it-plugin"] }))).toBeNull();
+  expect(searchKindLabel(found({}))).toBeNull();
 });
 
-test("extensionStatus: ok result reads Loads OK", () => {
-  const validation: Record<string, ExtensionValidationResult> = {
-    "markdown-it-mark": { use: "markdown-it-mark", kind: "bundled", enabled: true, ok: true },
-  };
-  expect(extensionStatus(entry(), validation, false)).toEqual({ label: "Loads OK", kind: "ok" });
+test("searchMatchesQuery: every typed word must appear in the name, description or keywords, inside other words too", () => {
+  const m = found({ name: "markdown-it-task-lists", description: "Create GitHub-style task lists", keywords: ["markdown-it-plugin", "checkbox"] });
+  expect(searchMatchesQuery(m, "task")).toBe(true);
+  expect(searchMatchesQuery(m, "  TASK  list ")).toBe(true); // case and spacing do not matter; list is in lists
+  expect(searchMatchesQuery(m, "checkbox github")).toBe(true); // words from different fields
+  expect(searchMatchesQuery(m, "task emoji")).toBe(false); // all of them, not any
+  expect(searchMatchesQuery(m, "zzzzqqqq")).toBe(false);
 });
 
-test("extensionStatus: an npm entry the lib flagged as not installed / not pinned points to the in-app installer, ahead of any load-test result", () => {
+test("searchMatchesQuery: nothing typed keeps everything, and a package with no description still matches its name", () => {
+  expect(searchMatchesQuery(found({}), "")).toBe(true);
+  expect(searchMatchesQuery(found({}), "   ")).toBe(true);
+  expect(searchMatchesQuery(found({ name: "gp-house" }), "house")).toBe(true);
+});
+
+// ── carriedKinds: a row's kinds, in words ──────────────────────────────────
+
+test("carriedKinds names each kind an entry carries, in author words and a fixed order", () => {
+  expect(carriedKinds(FEAT)).toEqual(["Extra"]);
+  expect(carriedKinds(LOOK_A)).toEqual(["Look"]);
+  // Styles beside markdown are a component library's own, not a look: "Styles".
+  expect(
+    carriedKinds(entry({ carries: { markdown: true, styles: true, snippets: true, components: true, publish: true } })),
+  ).toEqual(["Extra", "Styles", "Snippets", "Components", "Publish destination"]);
+  expect(carriedKinds(entry({ carries: NONE }))).toEqual([]);
+});
+
+// ── extensionProblem: silence is success; a problem names its fix ──────────
+
+const OK_MARK: Record<string, ExtensionValidationResult> = {
+  "markdown-it-mark": { use: "markdown-it-mark", kind: "bundled", enabled: true, ok: true },
+};
+
+test("extensionProblem: a working, switched-off or still-checking entry has nothing to say", () => {
+  expect(extensionProblem(entry(), OK_MARK, false)).toBeNull();
+  expect(extensionProblem(entry({ enabled: false, warnings: ["Not installed — run x"] }), {}, false)).toBeNull();
+  expect(extensionProblem(entry(), {}, /* validating */ true)).toBeNull();
+});
+
+test("extensionProblem: a check that never finished is not success — it offers Check again", () => {
+  expect(extensionProblem(entry(), {}, /* validating */ false)).toEqual({ label: "Couldn't check it.", fix: "check" });
+});
+
+test("extensionProblem: an npm entry the lib flagged as not installed / not pinned offers Install, ahead of any load-test result", () => {
   for (const warning of [
     "Not installed — run `gutterpress ext add markdown-it-footnote@4.0.0`.",
     "Not pinned — run `gutterpress ext add markdown-it-footnote` to install it and pin an exact version.",
@@ -136,47 +171,60 @@ test("extensionStatus: an npm entry the lib flagged as not installed / not pinne
     const validation: Record<string, ExtensionValidationResult> = {
       [e.use]: { use: e.use, kind: "npm", enabled: true, ok: false, error: "Plugin not found" },
     };
-    const st = extensionStatus(e, validation, false);
-    expect(st.label).toBe("Needs install");
-    expect(st.kind).toBe("error");
-    // The row offers an Install button; the lib's text (the CLI's `gutterpress ext add …`) is never shown.
-    expect(st.fix).toBe("install");
-    expect(st.detail).not.toContain("Advanced");
-    expect(st.detail).not.toContain("gutterpress");
-    expect(st.raw).toBeUndefined();
+    // The lib's text (the CLI's `gutterpress ext add …`) is never shown.
+    expect(extensionProblem(e, validation, false)).toEqual({ label: "Not downloaded yet.", fix: "install" });
   }
 });
 
-test("extensionStatus: a failed load on a path entry remains a generic load error with the loader's message", () => {
+test("extensionProblem: a failed load says Couldn't load, keeps the loader's message, and offers Check again", () => {
   const e = entry({ use: "./plugins/broken.js", kind: "path", name: "./plugins/broken.js" });
   const validation: Record<string, ExtensionValidationResult> = {
     "./plugins/broken.js": { use: "./plugins/broken.js", kind: "path", enabled: true, ok: false, error: "SyntaxError: unexpected token" },
   };
-  const st = extensionStatus(e, validation, false);
-  expect(st.label).toBe("Error");
-  expect(st.detail).toContain("couldn't load");
-  expect(st.raw).toBe("SyntaxError: unexpected token");
+  expect(extensionProblem(e, validation, false)).toEqual({ label: "Couldn't load.", raw: "SyntaxError: unexpected token", fix: "check" });
 });
 
-test("extensionStatus: a failed load on an installed npm entry says to reinstall", () => {
+test("extensionProblem: an installed npm entry that fails to load offers Reinstall", () => {
   const e = entry({ use: "markdown-it-x@1.0.0", kind: "npm", name: "markdown-it-x", version: "1.0.0" });
   const validation: Record<string, ExtensionValidationResult> = {
     "markdown-it-x@1.0.0": { use: "markdown-it-x@1.0.0", kind: "npm", enabled: true, ok: false },
   };
-  const st = extensionStatus(e, validation, false);
-  expect(st.label).toBe("Error");
-  expect(st.detail).toContain("reinstall");
-  expect(st.raw).toBe("Unknown load error");
-  expect(st.fix).toBe("reinstall");
+  expect(extensionProblem(e, validation, false)).toEqual({ label: "Couldn't load.", raw: "Unknown load error", fix: "reinstall" });
 });
 
-test("extensionStatus: only npm rows have an in-app fix", () => {
-  const e = entry({ use: "./plugins/broken.js", kind: "path", name: "./plugins/broken.js" });
-  const validation: Record<string, ExtensionValidationResult> = {
-    "./plugins/broken.js": { use: "./plugins/broken.js", kind: "path", enabled: true, ok: false, error: "x" },
-  };
-  expect(extensionStatus(e, validation, false).fix).toBeUndefined();
-  expect(extensionStatus(entry(), { x: { use: "x", kind: "path", enabled: true, ok: true } }, false).fix).toBeUndefined();
+// ── addedBuiltInIds: an older version's ./extensions/<id> copy of a look ──────
+
+/** A path entry, the way a copied look (or anything else on disk) is listed. */
+const onDisk = (use: string, kind: ProjectExtensionEntry["kind"] = "path") =>
+  entry({ use, kind, name: use, label: use, carries: { ...NONE, styles: true } });
+
+test("addedBuiltInIds is empty when nothing is configured", () => {
+  expect(addedBuiltInIds([])).toEqual(new Set());
+});
+
+test("addedBuiltInIds recognizes a built-in copied to ./extensions/<id> (#265)", () => {
+  const ids = addedBuiltInIds([onDisk("./extensions/clean-book"), entry()]);
+  expect(ids).toEqual(new Set(["clean-book"]));
+});
+
+test("addedBuiltInIds tolerates a trailing slash and backslashes as written by hand", () => {
+  expect(addedBuiltInIds([onDisk("./extensions/zine/")])).toEqual(new Set(["zine"]));
+  expect(addedBuiltInIds([onDisk(".\\extensions\\zine")])).toEqual(new Set(["zine"]));
+});
+
+test("addedBuiltInIds ignores looks that live anywhere else, nested folders, and npm entries", () => {
+  const ids = addedBuiltInIds([
+    onDisk("./themes/clean-book"),
+    onDisk("./extensions/vendor/clean-book"),
+    onDisk("../shared/extensions/zine"),
+    onDisk("clean-book@1.0.0", "npm"),
+  ]);
+  expect(ids).toEqual(new Set());
+});
+
+test("addedBuiltInIds reports a disabled copy too — the folder exists, so Use would only re-reference it", () => {
+  const off = { ...onDisk("./extensions/technical-doc"), enabled: false };
+  expect(addedBuiltInIds([off])).toEqual(new Set(["technical-doc"]));
 });
 
 test("pickerVersions: stable only unless asked, pre-release pin always kept, order preserved", () => {
@@ -191,4 +239,32 @@ test("pickerVersions: a pin the registry does not list (or an unloaded list) is 
   expect(pickerVersions([], "1.2.0-alpha.2", false)).toEqual(["1.2.0-alpha.2"]);
   expect(pickerVersions(["1.1.0"], "9.9.9", false)).toEqual(["9.9.9", "1.1.0"]);
   expect(pickerVersions([], undefined, true)).toEqual([]);
+});
+
+// ── #482: what 0.11.22 showed, restored ──────────────────────────────────────
+
+test("hoverPreviewSrcdoc lays the look's CSS over a fixed two-page sample, never the document", () => {
+  const doc = hoverPreviewSrcdoc(":root { --color-accent: #8a3b12; }");
+  expect(doc).toContain(":root { --color-accent: #8a3b12; }");
+  expect(doc.match(/class="pm-sample-page"/g)?.length).toBe(2);
+  // The look's CSS comes after the spread's own layout, so the look wins ties.
+  expect(doc.indexOf(".pm-sample-page{")).toBeLessThan(doc.indexOf("--color-accent: #8a3b12"));
+  expect(doc).not.toContain("<script");
+});
+
+test("entryWarnings keeps the lib's notices for a row, except the not-installed ones its Install already speaks for", () => {
+  expect(entryWarnings(entry())).toEqual([]);
+  expect(entryWarnings(entry({ warnings: ["Not found: /book/looks/later"] }))).toEqual(["Not found: /book/looks/later"]);
+  const look = entry({
+    use: "house-look@1.0.0",
+    kind: "npm",
+    name: "house-look",
+    carries: { ...NONE, styles: true },
+    warnings: [
+      "Not installed — run `gutterpress ext add house-look@1.0.0`.",
+      "Vendor install root is not a normal directory.",
+      "Not pinned — run `gutterpress ext add house-look` to install it and pin an exact version.",
+    ],
+  });
+  expect(entryWarnings(look)).toEqual(["Vendor install root is not a normal directory."]);
 });

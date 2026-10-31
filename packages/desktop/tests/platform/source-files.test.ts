@@ -1,11 +1,13 @@
 /**
- * Unit tests for the source-files list model (book settings → Details →
- * the drag-and-drop include/exclude editor that replaced the textarea).
+ * Unit tests for the source-files list model (Book setup → Book → Chapters:
+ * the drag-and-drop include/exclude editor) and how a chapter is named.
  */
 import { describe, test, expect } from "bun:test";
 import {
   buildSourceList,
+  firstHeading,
   moveEntry,
+  readableFileName,
   setIncluded,
   toManifestFiles,
   naturalOrder,
@@ -77,6 +79,48 @@ describe("setIncluded", () => {
     const next = setIncluded(entries, 1, false);
     expect(next[1]!.included).toBe(false);
     expect(entries[1]!.included).toBe(true);
+  });
+
+  test("an excluded chapter heads the files left out; the book's chapters keep their order", () => {
+    const entries = buildSourceList(["a.md", "b.md", "c.md", "d.md"], ["a.md", "b.md", "c.md"]);
+    const next = setIncluded(entries, 0, false);
+    expect(next).toEqual([
+      { path: "b.md", included: true },
+      { path: "c.md", included: true },
+      { path: "a.md", included: false },
+      { path: "d.md", included: false },
+    ]);
+  });
+
+  test("an included file joins the end of the book", () => {
+    const entries = buildSourceList(["a.md", "b.md", "c.md", "d.md"], ["b.md"]);
+    const next = setIncluded(entries, 3, true);
+    expect(next.map((e) => [e.path, e.included])).toEqual([
+      ["b.md", true],
+      ["d.md", true],
+      ["a.md", false],
+      ["c.md", false],
+    ]);
+  });
+});
+
+describe("chapter names", () => {
+  test("firstHeading reads the first `# ` heading, without an attribute block or closing #s", () => {
+    expect(firstHeading("# Getting Started {#ch-getting-started}\n\nText")).toBe("Getting Started");
+    expect(firstHeading("<!-- cover -->\n\n# Gutterpress User Guide\n## Not this")).toBe("Gutterpress User Guide");
+    expect(firstHeading("# Closed heading ##")).toBe("Closed heading");
+  });
+
+  test("firstHeading is null without a level-one heading", () => {
+    expect(firstHeading("## Only a section\n#hashtag")).toBeNull();
+    expect(firstHeading("")).toBeNull();
+  });
+
+  test("readableFileName makes a file name readable when there is no heading", () => {
+    expect(readableFileName("01-getting-started.md")).toBe("Getting started");
+    expect(readableFileName("README.md")).toBe("Readme");
+    expect(readableFileName("chapters/02_the_end.md")).toBe("The end");
+    expect(readableFileName("01.md")).toBe("01");
   });
 });
 

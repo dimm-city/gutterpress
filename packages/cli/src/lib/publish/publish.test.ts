@@ -818,6 +818,103 @@ test("connectPublishProvider verifies the pasted key and only then stores it", a
   }
 });
 
+test("connectPublishProvider with no book (the desktop's Accounts page) verifies the key the same way, without reading a manifest", async () => {
+  // No manifest anywhere: the store lives in a bare folder, and no projectDir is passed.
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-publish-nobook-"));
+  try {
+    const seen: string[] = [];
+    const fetchFn = (async (_url: unknown, init?: RequestInit) => {
+      const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+      seen.push(auth);
+      return new Response("{}", { status: auth.includes("good-key") ? 200 : 401 });
+    }) as typeof globalThis.fetch;
+    const deps = await depsFor(dir, { fetch: fetchFn, env: { BUTLER_API_KEY: "env-key" } });
+    await deps.tokenStore.set("itch.io", { host: "itch.io", kind: "token", token: "old-working-key", createdAt: 1 });
+
+    // A rejected key leaves the saved one as it was.
+    await expect(
+      connectPublishProvider({ providerId: "itch", token: "bad-key" }, deps),
+    ).rejects.toThrow(/didn't accept the API key/);
+    expect((await deps.tokenStore.get("itch.io"))?.token).toBe("old-working-key");
+    expect(seen.pop()).toContain("bad-key");
+
+    // An accepted one replaces it, as a named account too.
+    await connectPublishProvider({ providerId: "itch", token: "good-key" }, deps);
+    expect((await deps.tokenStore.get("itch.io"))?.token).toBe("good-key");
+    await connectPublishProvider({ providerId: "itch", token: "good-key", account: "Studio" }, deps);
+    expect((await deps.tokenStore.get("itch.io#Studio"))?.username).toBe("Studio");
+
+    // The same refusals as with a book.
+    await expect(connectPublishProvider({ providerId: "kdp", token: "x" }, deps)).rejects.toThrow(/needs no API key/);
+    await expect(connectPublishProvider({ providerId: "gdrive", token: "x" }, deps)).rejects.toThrow(/connects through your browser/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a book with no Shopify store still fails the key check: connect stores nothing", async () => {
+  const dir = await tempProject("title: T\nauthors: [A]\n");
+  try {
+    const { fetch: fetchFn, requests } = shopifyFetch([{ body: { data: { shop: { name: "S" } } } }]);
+    const deps = await depsFor(dir, { fetch: fetchFn });
+    // The same through the provider's own check (what Publish runs) and through connect.
+    await deps.tokenStore.set("shopify", { host: "shopify", kind: "token", token: "shpat_x", createdAt: 1 });
+    const auth = await shopifyProvider.authenticate(await requestFor(dir, "shopify", deps));
+    expect(auth.ok).toBe(false);
+    expect(auth.message).toMatch(/Set the store first/);
+    await deps.tokenStore.delete("shopify");
+    await expect(
+      connectPublishProvider({ projectDir: dir, providerId: "shopify", token: "shpat_x", shop: "my-store.myshopify.com" }, deps),
+    ).rejects.toThrow(/Set the store first/); // a book's own settings win over a `shop` that was passed
+    expect(await deps.tokenStore.get("shopify")).toBeNull();
+    expect(requests).toEqual([]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a Shopify key added with no book needs the store address, which is used for the check and never stored", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-publish-nobook-"));
+  try {
+    const { fetch: fetchFn, requests } = shopifyFetch([
+      { body: { data: { shop: { name: "My Store" } } } },
+      { status: 401, body: {} },
+    ]);
+    const deps = await depsFor(dir, { fetch: fetchFn });
+
+    // No address: refused in plain words, before anything is asked of Shopify or stored.
+    await expect(connectPublishProvider({ providerId: "shopify", token: "shpat_x" }, deps)).rejects.toThrow(
+      /Enter your Shopify store's address \(like my-store.myshopify.com\)/,
+    );
+    await expect(connectPublishProvider({ providerId: "shopify", token: "shpat_x", shop: "  " }, deps)).rejects.toThrow(
+      /store's address/,
+    );
+    expect(requests).toEqual([]);
+
+    // With one: checked through adminGraphQL (the token goes only to the myshopify.com store), then stored.
+    await connectPublishProvider({ providerId: "shopify", token: "shpat_x", shop: " My-Store.myshopify.com " }, deps);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.url).toContain("https://my-store.myshopify.com/admin/api/");
+    expect((requests[0]!.init?.headers as Record<string, string>)["X-Shopify-Access-Token"]).toBe("shpat_x");
+    const stored = await deps.tokenStore.get("shopify");
+    expect(stored?.token).toBe("shpat_x");
+    expect(JSON.stringify(stored)).not.toContain("myshopify");
+
+    // A rejected key is not stored over it, and an address that isn't a myshopify.com one never receives the token.
+    await expect(connectPublishProvider({ providerId: "shopify", token: "shpat_bad", shop: "my-store.myshopify.com" }, deps)).rejects.toThrow(
+      /rejected the access token/,
+    );
+    expect((await deps.tokenStore.get("shopify"))?.token).toBe("shpat_x");
+    await expect(connectPublishProvider({ providerId: "shopify", token: "shpat_y", shop: "attacker.example" }, deps)).rejects.toThrow(
+      /myshopify\.com/,
+    );
+    expect(requests).toHaveLength(2);
+    expect((await deps.tokenStore.get("shopify"))?.token).toBe("shpat_x");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("connectPublishProvider refuses guided providers and empty tokens", async () => {
   const dir = await tempProject(MANIFEST);
   try {

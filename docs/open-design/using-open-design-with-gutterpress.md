@@ -78,16 +78,15 @@ Open Design can see the shared foundation and all books. Gutterpress renders onl
 
 Gutterpress recognizes `manifest.yaml`.
 
-When `source.files` is explicit, a root-level `DESIGN.md` is safe:
+When `chapters` is explicit, a root-level `DESIGN.md` is safe:
 
 ```yaml
-source:
-  files:
-    - chapters/01-introduction.md
-    - chapters/02-rules.md
+chapters:
+  - chapters/01-introduction.md
+  - chapters/02-rules.md
 ```
 
-When `source.files` is absent or empty, Gutterpress renders every top-level `.md` file in the book folder alphabetically — and only top-level files, so a `chapters/` folder needs an explicit list. Put book-specific guidance under `design/DESIGN.md` when discovery is implicit.
+When `chapters` is absent or empty, Gutterpress renders every top-level `.md` file in the book folder alphabetically — and only top-level files, so a `chapters/` folder needs an explicit list. Put book-specific guidance under `design/DESIGN.md` when discovery is implicit.
 
 The Gutterpress Publishing plugin checks this before editing and warns when a control document could enter the publication.
 
@@ -188,7 +187,7 @@ Open Design may edit prose and manuscript structure as well as design files. Use
 
 Gutterpress keeps two different CSS locations:
 
-- `extensions/<id>/` holds a look: an extension folder containing the sheets its `package.json` declares under `gutterpress.styles` (`theme.css`, by convention), plus optional look-owned assets, listed in the manifest's `extensions:` list as `./extensions/<id>`. Built-in looks (`gutterpress ext add <id> --look`) and zip imports copy complete packages there; bare CSS and URL imports create only the stylesheet plus metadata, and URL imports do not fetch referenced assets. A folder that already exists anywhere (`gutterpress ext add ./path`) is referenced in place, not copied.
+- `extensions/<id>/` holds a look: an extension folder containing the sheets its `package.json` declares under `gutterpress.styles` (`theme.css`, by convention), plus optional look-owned assets, listed in the manifest's `extensions:` list as `./extensions/<id>`. Zip imports copy complete packages there; bare CSS and URL imports create only the stylesheet plus metadata, and URL imports do not fetch referenced assets. A built-in look (`gutterpress ext add academic`) is listed by name and copies nothing. A folder that already exists anywhere (`gutterpress ext add ./path`) is referenced in place, not copied.
 - `styles/` contains ordinary publication CSS such as `book.css` and reusable component rules, listed under `styles:`.
 
 A small project may use only:
@@ -215,10 +214,9 @@ Extensions load in list order (a later entry's CSS wins ties), and every `styles
 An `extensions:` path entry and a `styles:` entry are both paths Gutterpress **reads**, not files it copies. Point a book straight at the shared foundation and list the book's own CSS after it:
 
 ```yaml
-source:
-  files:
-    - chapters/01-introduction.md
-    - chapters/02-rules.md
+chapters:
+  - chapters/01-introduction.md
+  - chapters/02-rules.md
 extensions:
   - ../../shared/extensions/publisher
 styles:
@@ -329,9 +327,9 @@ For a package whose plugin function is a named export:
 gutterpress ext add markdown-it-emoji@3.0.0 ./books/core-book --export full
 ```
 
-Gutterpress verifies and vendors the exact runtime graph beneath the book's `plugins/npm/` directory and writes the entry back pinned (`markdown-it-highlightjs@4.3.0`). Commit the manifest entry (the pin); the managed tree is gitignored and a fresh clone downloads exactly that version on its first build, validate, preview or open. Do not hand-edit it or move it into `shared/`.
+Gutterpress verifies and vendors the exact runtime graph beneath the book's `extensions/npm/` directory and writes the entry back pinned (`markdown-it-highlightjs@4.3.0`). Commit the manifest entry (the pin); the managed tree is gitignored and a fresh clone downloads exactly that version on its first build, validate, preview or open. Do not hand-edit it or move it into `shared/`.
 
-`gutterpress ext list|remove|enable|disable` cover the rest of the list from the terminal; the desktop's Look and Features views are the same list.
+`gutterpress ext list|remove|enable|disable` cover the rest of the list from the terminal; the desktop's Book setup › Extensions tab is the same list.
 
 ## Use the companion design guide
 
@@ -369,7 +367,7 @@ Use `gutterpress doctor` when diagnosing missing external tools or installation 
 - List the look under `extensions:` (normally first) and let the book's
   `styles:` load after it. The list order is the cascade, so move an entry
   rather than adding an override merely to force a winner.
-- Let Gutterpress manage registry-installed packages under `plugins/npm/`.
+- Let Gutterpress manage registry-installed packages under `extensions/npm/`.
 - Never edit generated `book.html` or build output.
 - Use the Gutterpress preview as the final authority for pagination.
 

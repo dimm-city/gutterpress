@@ -1,6 +1,6 @@
 ---
 title: The desktop app
-description: What the Gutterpress app is, the one setting to change first, and a how-to guide for each thing you will do in it.
+description: What the Gutterpress app is, and a how-to guide for each thing you will do in it.
 ---
 
 # The desktop app
@@ -10,8 +10,8 @@ turn it into a PDF and publish it, in one window. It is self-contained: there is
 install. These guides walk through doing things in it, one task per page.
 
 **Change one setting first.** A new install starts in **Reader** mode, which shows just the pages.
-To write and set up a book, open Settings (the gear in the bottom-right corner, or Ctrl+,), and
-under **App → How you use Gutterpress** choose **Author**.
+To write and set up a book, open Settings (the gear at the right of the status bar, or Ctrl+,), and
+under **How you use Gutterpress** choose **Author**. Creating a book does it for you.
 
 ## How-to guides
 

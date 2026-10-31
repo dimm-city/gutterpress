@@ -32,7 +32,7 @@ import { getAssetPath } from "./embedded-assets.ts";
 import { MANIFEST_FILENAMES } from "./manifest.ts";
 import { loadManifestDoc, writeManifestDoc } from "./manifest-doc.ts";
 import { PRESET_IDS, PRESETS, type PresetId } from "./presets.ts";
-import { isPositivePoints, writePageBounds, type CustomPageOptions } from "./page-size.ts";
+import { deletePageBounds, isPositivePoints, writePageBounds, type CustomPageOptions } from "./page-size.ts";
 import { TARGETS, TARGET_IDS } from "./targets.ts";
 import { ensureProjectGitignore } from "./project-gitignore.ts";
 import { slugify } from "./slug.ts";
@@ -43,17 +43,19 @@ import { slugify } from "./slug.ts";
  * into the binary via `embedded-assets.ts`. `"book"` is the default; the others
  * give non-technical authors a head start for common formats (#29).
  */
-export type ProjectTemplateId = "book" | "zine" | "technical";
+export type ProjectTemplateId = "book" | "zine" | "technical" | "paper";
 
 function starterOverridesCss(): string {
   return `/**
- * Your book's own styles.
+ * Your book's own styles. Rules here win over your look's.
  *
- * This file loads AFTER every extension, so any rule you add here overrides
- * a look's defaults. A new book has no look until you add one:
- *   gutterpress ext add clean-book <book> --look   (a built-in look)
- *   gutterpress ext add <package> <book>           (a look from npm)
- * A book has one look at a time; adding another turns the current one off.
+ * In the app you rarely need this file: Book setup chooses a look, changes
+ * its fonts and colors (those changes are saved here as :root custom
+ * properties), lists every setting, and sets the page size and margins (in
+ * the manifest).
+ *
+ * To change the look from the command line: gutterpress ext remove <old>
+ * <book>, then gutterpress ext add <look> <book>.
  */
 `;
 }
@@ -95,12 +97,10 @@ export interface CreateProjectOptions {
    */
   templateDir?: string;
   /**
-   * Which vendor preset the new book is designed for (ADR 0008). REQUIRED
-   * when scaffolding a built-in template — creation flows make the author
-   * choose; the resolveConfig dtrpg fallback exists for hand-written
-   * manifests, not for tooling. Written into the generated manifest as an
-   * explicit `preset:` line. Ignored with `templateDir`: a saved template's
-   * manifest carries its preset as part of the captured design.
+   * Which preset the new book is designed for (ADR 0008), written into the
+   * generated manifest as an explicit `preset:` line. Optional: left out, the
+   * template's own `preset:` stands (every starter carries one, and a saved
+   * template's manifest carries its preset as part of the captured design).
    */
   preset?: PresetId;
   /**
@@ -197,19 +197,16 @@ export function escapeYamlScalar(value: string): string {
 const DEFAULT_AUTHOR = "Anonymous";
 
 /**
- * Validate the preset + page inputs for a built-in-template scaffold
- * (ADR 0008). Returns the validated preset; throws `preset-required` /
- * `custom-page-required` with author-actionable messages.
+ * Validate an explicitly chosen preset + page inputs (ADR 0008). Returns the
+ * validated preset; throws `preset-required` for an unknown id and
+ * `custom-page-required` for a custom preset without a trim, with
+ * author-actionable messages.
  */
-function requirePreset(
-  preset: PresetId | undefined,
-  customPage: CustomPageOptions | undefined,
-): PresetId {
-  if (!preset || !(PRESET_IDS as readonly string[]).includes(preset)) {
-    const got = preset ? ` (got "${preset}")` : "";
+function requirePreset(preset: PresetId, customPage: CustomPageOptions | undefined): PresetId {
+  if (!(PRESET_IDS as readonly string[]).includes(preset)) {
     throw new CreateProjectErrorImpl(
       "preset-required",
-      `A preset is required to create a book${got}. Choose one of: ${PRESET_IDS.join(", ")}.`,
+      `Unknown preset "${preset}". Choose one of: ${PRESET_IDS.join(", ")}.`,
     );
   }
 
@@ -325,20 +322,13 @@ export async function scaffoldProject(
   const template = options.template ?? "book";
   const customTemplateDir = options.templateDir;
 
-  // ADR 0008: creating a book from a built-in template REQUIRES choosing a
-  // preset (and a trim size when it's `custom`) — validated before anything
-  // touches disk. The publish targets are resolved alongside it, so the
-  // manifest always records both choices explicitly.
-  //
-  // A saved custom template supplies its OWN preset/targets (its captured
-  // design), so they are optional there: pass them to override — the wizard
-  // pre-fills its pickers from the template and sends back whatever is shown,
-  // so leaving them alone reproduces the template exactly — or omit them to
-  // keep the template's manifest untouched.
+  // ADR 0008: a chosen preset (and a trim size when it's `custom`) is
+  // validated before anything touches disk, and the publish targets are
+  // resolved alongside it, so the manifest records both choices explicitly.
+  // Left out, the template's own `preset:` stands: every starter carries one,
+  // and a saved template's manifest carries its captured design.
   const preset =
-    customTemplateDir && options.preset === undefined
-      ? undefined
-      : requirePreset(options.preset, options.customPage);
+    options.preset === undefined ? undefined : requirePreset(options.preset, options.customPage);
   const targets = preset ? resolveScaffoldTargets(options.targets, preset) : undefined;
 
   // 1. COPY the template files to the target.
@@ -366,8 +356,9 @@ export async function scaffoldProject(
       await mkdir(path.join(projectDir, "assets"), { recursive: true });
       await copyFile(tplManifest, path.join(projectDir, MANIFEST_FILENAMES[0]));
       await copyFile(tplChapter, path.join(projectDir, "chapter-01.md"));
-      // styles/book.css is the project's OWN stylesheet. No look is applied:
-      // the author adds one (`gutterpress ext add … --look`, or from npm).
+      // styles/book.css is the project's OWN stylesheet. A look is separate:
+      // the template's manifest lists one, or the author adds one later
+      // (`gutterpress ext add academic`, or a look from npm).
       await mkdir(path.join(projectDir, "styles"), { recursive: true });
       await writeFile(path.join(projectDir, "styles", "book.css"), starterOverridesCss(), "utf8");
     }
@@ -379,7 +370,7 @@ export async function scaffoldProject(
   }
 
   // 1b. Ensure `dist/` (the build output dir — lib/output-paths.ts) and
-  // `plugins/npm/` (downloaded extensions) are gitignored. See
+  // `extensions/npm/` (downloaded extensions) are gitignored. See
   // `project-gitignore.ts`: without it, auto-snapshot commits and pushes every
   // build's output by default.
   try {
@@ -407,15 +398,19 @@ export async function scaffoldProject(
   let openFile = path.join(projectDir, "chapter-01.md");
   try {
     await fillTemplateFile(manifestPath, substitutions);
-    if (preset) {
-      // Overwrite the template's placeholder `preset:` with the author's
-      // choice (and their trim, for `custom` or an explicit override) via the
-      // comment-preserving YAML document helpers. The target list is always
-      // written — an explicit `targets: []` is the visible, editable record
-      // of "no destination policies", not an accident of omission.
+    if (preset || options.customPage) {
+      // Overwrite the template's `preset:` with the author's choice, via the
+      // comment-preserving YAML document helpers. The target list is written
+      // with it — an explicit `targets: []` is the visible, editable record
+      // of "no destination policies", not an accident of omission. A trim
+      // the author gave is written whether or not a preset was.
       const { doc, file } = await loadManifestDoc(projectDir);
-      doc.set("preset", preset);
-      doc.set("targets", doc.createNode(targets ?? []));
+      if (preset) {
+        doc.set("preset", preset);
+        doc.set("targets", doc.createNode(targets ?? []));
+        // A template's own `page:` size must not shadow the chosen preset's.
+        if (preset !== "custom") deletePageBounds(doc);
+      }
       if (options.customPage) writePageBounds(doc, options.customPage);
       await writeManifestDoc(file, doc);
     }
@@ -458,7 +453,7 @@ export async function scaffoldProject(
       const { findEnclosingRepoDir } = await import("./project-source.ts");
       const enclosingRepoDir = await findEnclosingRepoDir(projectDir);
       versionHistoryError = enclosingRepoDir
-        ? `This book was added to ${path.basename(enclosingRepoDir)}'s shared version history; save a snapshot to record it.`
+        ? `This book was added to ${path.basename(enclosingRepoDir)}'s shared version history; save a version to record it.`
         : e instanceof Error
           ? e.message
           : String(e);
@@ -500,8 +495,8 @@ function prettifyFolderName(base: string): string {
 /**
  * Adopt an EXISTING folder as a gutterpress project, in place (no new subfolder).
  * Writes a `manifest.yaml` (using the folder's existing top-level `.md` files as
- * `source.files`, or scaffolding a `chapter-01.md` when there are none), copies
- * a starter `styles/book.css`, ensures `dist/` and `plugins/npm/` are gitignored
+ * `chapters`, or scaffolding a `chapter-01.md` when there are none), copies
+ * a starter `styles/book.css`, ensures `dist/` and `extensions/npm/` are gitignored
  * (see `ensureProjectGitignore`), and optionally initialises local version history.
  *
  * NON-DESTRUCTIVE (global never-overwrite rule): refuses if the folder is
@@ -564,18 +559,18 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
     // Explicit `preset:` and `targets:` (ADR 0008): adoption is a one-click
     // rescue affordance, so it takes the product default — but written out,
     // visible and editable, never implicit.
-    const filesYaml = mdFiles.map((f) => `    - "${escapeYamlScalar(f)}"`).join("\n");
+    const filesYaml = mdFiles.map((f) => `  - "${escapeYamlScalar(f)}"`).join("\n");
     const manifest =
       `title: "${escapeYamlScalar(title)}"\n` +
       `authors:\n  - "${escapeYamlScalar(author)}"\n` +
       `preset: dtrpg\n` +
       `targets:\n  - dtrpg\n` +
-      `source:\n  files:\n${filesYaml}\n` +
+      `chapters:\n${filesYaml}\n` +
       `styles:\n  - styles/book.css\n`;
     await writeFile(path.join(dir, MANIFEST_FILENAMES[0]), manifest, "utf8");
     await mkdir(path.join(dir, "assets"), { recursive: true });
 
-    // 4. Ensure `dist/` and `plugins/npm/` are gitignored — same reasoning as scaffoldProject's
+    // 4. Ensure `dist/` and `extensions/npm/` are gitignored — same reasoning as scaffoldProject's
     // step 1b. An ADOPTED folder is even more likely to already be under
     // some other version control the author set up by hand, so this is
     // never-overwrite: it only creates or appends, never replaces.
@@ -619,7 +614,7 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
 }
 
 /**
- * Best-effort: read the first `source.files` entry from a manifest so the wizard
+ * Best-effort: read the first `chapters` entry from a manifest so the wizard
  * can open it. A light regex (not a full YAML parse) keeps this dependency-free;
  * returns undefined when no list item is found.
  */
@@ -630,8 +625,9 @@ async function firstSourceFile(manifestPath: string): Promise<string | undefined
   } catch {
     return undefined;
   }
-  // Find the `files:` list and return its first `- value` entry.
-  const filesIdx = text.search(/^\s*files:\s*$/m);
+  // Find the `chapters:` list (or a custom template's older `source.files:`)
+  // and return its first `- value` entry.
+  const filesIdx = text.search(/^(?:chapters|\s+files):\s*$/m);
   if (filesIdx === -1) return undefined;
   const rest = text.slice(filesIdx);
   const m = rest.match(/^\s*-\s*"?([^"\n]+?)"?\s*$/m);

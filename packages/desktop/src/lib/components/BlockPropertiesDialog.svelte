@@ -110,7 +110,7 @@
   .check-label { color: var(--app-text); }
   .check-note { color: var(--app-text-muted); font-size: 12px; }
   .check-note.hint { font-style: italic; }
-  select { box-sizing: border-box; width: 100%; min-width: 0; padding: 8px 10px; color: var(--app-text); background: var(--app-control-bg); border: 1px solid var(--app-border); border-radius: 5px; font: inherit; }
+  select { box-sizing: border-box; width: 100%; min-width: 0; padding: 8px 10px; font: inherit; }
   input:focus-visible, select:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   select:disabled { opacity: 0.55; }
   .class-note { margin: 0; padding: 4px 18px 14px; color: var(--app-text-muted); font-size: 12px; }

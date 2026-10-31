@@ -27,12 +27,21 @@ import {
 
 test("mergeSettings patches one field in a section, preserving sibling fields", () => {
   const merged = mergeSettings(DEFAULT_SETTINGS, {
-    advanced: { fileWatcherInterval: 22 },
+    gitIdentity: { authorName: "Ada" },
   } as DeepPartialSettings);
 
-  expect(merged.advanced.fileWatcherInterval).toBe(22);
+  expect(merged.gitIdentity.authorName).toBe("Ada");
   // Sibling fields in the same section survive.
-  expect(merged.advanced.logLevel).toBe(DEFAULT_SETTINGS.advanced.logLevel);
+  expect(merged.gitIdentity.authorEmail).toBe(DEFAULT_SETTINGS.gitIdentity.authorEmail);
+});
+
+test("a fresh profile is a Reader; mergeSettings changes the role and nothing else", () => {
+  expect(DEFAULT_SETTINGS.workspace.role).toBe("reader");
+
+  const merged = mergeSettings(DEFAULT_SETTINGS, { workspace: { role: "author" } } as DeepPartialSettings);
+
+  expect(merged.workspace.role).toBe("author");
+  expect({ ...merged, workspace: DEFAULT_SETTINGS.workspace }).toEqual(DEFAULT_SETTINGS);
 });
 
 test("mergeSettings patches preview.splitRatio, preserving sibling preview fields (#103)", () => {
@@ -55,28 +64,28 @@ test("mergeSettings leaves untouched sections intact", () => {
   expect(merged.versionHistory.autoSyncMinutes).toBe(5);
   // A section not present in the patch is carried through unchanged.
   expect(merged.appearance).toEqual(DEFAULT_SETTINGS.appearance);
-  expect(merged.advanced).toEqual(DEFAULT_SETTINGS.advanced);
+  expect(merged.gitIdentity).toEqual(DEFAULT_SETTINGS.gitIdentity);
 });
 
 test("mergeSettings ignores a section whose patch value is a non-object", () => {
   const merged = mergeSettings(DEFAULT_SETTINGS, {
-    advanced: 42,
+    gitIdentity: 42,
   } as unknown as DeepPartialSettings);
 
   // A malformed (non-object) section patch is skipped entirely.
-  expect(merged.advanced).toEqual(DEFAULT_SETTINGS.advanced);
+  expect(merged.gitIdentity).toEqual(DEFAULT_SETTINGS.gitIdentity);
 });
 
 test("mergeSettings does not mutate the base object", () => {
   const baseSnapshot = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   const merged = mergeSettings(DEFAULT_SETTINGS, {
-    advanced: { fileWatcherInterval: 99 },
+    versionHistory: { autoSyncMinutes: 99 },
   } as DeepPartialSettings);
 
   expect(merged).not.toBe(DEFAULT_SETTINGS);
   // Base untouched.
   expect(DEFAULT_SETTINGS).toEqual(baseSnapshot);
-  expect(DEFAULT_SETTINGS.advanced.fileWatcherInterval).toBe(baseSnapshot.advanced.fileWatcherInterval);
+  expect(DEFAULT_SETTINGS.versionHistory.autoSyncMinutes).toBe(baseSnapshot.versionHistory.autoSyncMinutes);
 });
 
 test("mergeSettings ignores an ARRAY-valued section patch (audit A1 array guard)", () => {
@@ -84,11 +93,11 @@ test("mergeSettings ignores an ARRAY-valued section patch (audit A1 array guard)
   // into `{0:…,1:…}` and corrupts the section; the guard ignores it, leaving
   // the section untouched.
   const merged = mergeSettings(DEFAULT_SETTINGS, {
-    advanced: [1, 2, 3],
+    gitIdentity: [1, 2, 3],
   } as unknown as DeepPartialSettings);
 
-  expect(merged.advanced).toEqual(DEFAULT_SETTINGS.advanced);
-  expect(Array.isArray(merged.advanced)).toBe(false);
+  expect(merged.gitIdentity).toEqual(DEFAULT_SETTINGS.gitIdentity);
+  expect(Array.isArray(merged.gitIdentity)).toBe(false);
 });
 
 // ── createSettingsStore (injected fs + userDataDir) ───────────────────────
@@ -199,11 +208,19 @@ test("readSettings deep-merges a stored partial over DEFAULT_SETTINGS", async ()
   // A file written before autosave became a switch still saves automatically.
   expect(s.versionHistory.autoSave).toBe(true);
   // Untouched sections keep their defaults.
-  expect(s.advanced).toEqual(DEFAULT_SETTINGS.advanced);
+  expect(s.gitIdentity).toEqual(DEFAULT_SETTINGS.gitIdentity);
   expect(s.appearance).toEqual(DEFAULT_SETTINGS.appearance);
 });
 
-test("readSettings loads a file still carrying keys deleted from the schema, dropping them (#274, #384)", async () => {
+test("readSettings keeps a saved Author role; a file with no role is a Reader", async () => {
+  const saved = makeStore({ readFileImpl: async () => JSON.stringify({ workspace: { role: "author" } }) });
+  expect((await saved.store.readSettings()).workspace.role).toBe("author");
+
+  const older = makeStore({ readFileImpl: async () => JSON.stringify({ appearance: { theme: "dark" } }) });
+  expect((await older.store.readSettings()).workspace.role).toBe("reader");
+});
+
+test("readSettings loads a file still carrying keys deleted from the schema, dropping them (#274, #384, #442)", async () => {
   const { store, renames } = makeStore({
     readFileImpl: async () =>
       JSON.stringify({
@@ -211,6 +228,9 @@ test("readSettings loads a file still carrying keys deleted from the schema, dro
         editor: { fontSize: 18, autoSaveDelay: 2500, crashRecovery: false },
         versionHistory: { autoSnapshotMinutes: 30, autoSave: false },
         appearance: { theme: "dark" },
+        // The dead developer knobs (#442).
+        advanced: { fileWatcherInterval: 300, logLevel: "warn" },
+        preview: { mode: "viewer" },
       }),
   });
   const s = await store.readSettings();
@@ -223,7 +243,44 @@ test("readSettings loads a file still carrying keys deleted from the schema, dro
   // The removed keys do not survive the merge.
   expect(s.editor).toEqual(DEFAULT_SETTINGS.editor);
   expect(s.versionHistory).not.toHaveProperty("autoSnapshotMinutes");
+  expect(s).not.toHaveProperty("advanced");
+  expect(s.preview.mode).toBe("viewer");
   expect(s.versionHistory.autoSnapshot).toBe(DEFAULT_SETTINGS.versionHistory.autoSnapshot);
+});
+
+test("a file 0.11.22 wrote keeps its Settings choices: background, zoom, right-click menu off, overlay look (#481)", async () => {
+  const saved = {
+    appearance: { theme: "dark", previewBg: "#202830" },
+    preview: {
+      defaultZoom: "1.5",
+      contextMenu: false,
+      marginOverlayStrength: "strong",
+      overlayColors: { bleed: "#111111", safe: "#222222", art: "#333333", margins: "#444444" },
+    },
+  };
+  const { store, writes, renames } = makeStore({ readFileImpl: async () => JSON.stringify(saved) });
+  const s = await store.readSettings();
+
+  expect(renames).toHaveLength(0);
+  expect(s.appearance.previewBg).toBe("#202830");
+  expect(s.preview.defaultZoom).toBe("1.5");
+  expect(s.preview.contextMenu).toBe(false);
+  expect(s.preview.marginOverlayStrength).toBe("strong");
+  expect(s.preview.overlayColors).toEqual(saved.preview.overlayColors);
+
+  // A later write (any setting) carries them on rather than dropping them.
+  await store.updateSettings({ preview: { splitRatio: 0.5 } });
+  const written = JSON.parse(writes[0]!.data) as AppSettings;
+  expect(written.preview.contextMenu).toBe(false);
+  expect(written.preview.defaultZoom).toBe("1.5");
+  expect(written.appearance.previewBg).toBe("#202830");
+});
+
+test("the right-click menu in the preview is on for a fresh profile and a file that never set it (#481)", async () => {
+  expect(DEFAULT_SETTINGS.preview.contextMenu).toBe(true);
+  expect((await makeStore().store.readSettings()).preview.contextMenu).toBe(true);
+  const legacy = makeStore({ readFileImpl: async () => JSON.stringify({ preview: { mode: "viewer" } }) });
+  expect((await legacy.store.readSettings()).preview.contextMenu).toBe(true);
 });
 
 test("updateSettings drops the removed editor keys from the file on the next write (#384)", async () => {
@@ -290,7 +347,7 @@ test("writeSettings mkdirs the userDataDir, writes pretty JSON to <settingsPath>
   const { store, writes, mkdirs, renames, userDataDir } = makeStore();
   const settings: AppSettings = {
     ...DEFAULT_SETTINGS,
-    advanced: { ...DEFAULT_SETTINGS.advanced, fileWatcherInterval: 18 },
+    versionHistory: { ...DEFAULT_SETTINGS.versionHistory, autoSyncMinutes: 18 },
   };
 
   await store.writeSettings(settings);
@@ -335,7 +392,7 @@ test("writeSettings serializes overlapping writers (no interleaved tmp writes)",
         throw new Error("ENOENT");
       },
       writeFile: async (_p: string, data: string) => {
-        const which = (JSON.parse(data) as AppSettings).advanced.fileWatcherInterval;
+        const which = (JSON.parse(data) as AppSettings).versionHistory.autoSyncMinutes;
         order.push(`write:${which}`);
         // Hold the FIRST write open so the second writer, if unserialized,
         // would push its own write before the first's rename.
@@ -352,8 +409,8 @@ test("writeSettings serializes overlapping writers (no interleaved tmp writes)",
   };
   const store = createSettingsStore(deps);
 
-  const a: AppSettings = { ...DEFAULT_SETTINGS, advanced: { ...DEFAULT_SETTINGS.advanced, fileWatcherInterval: 1 } };
-  const b: AppSettings = { ...DEFAULT_SETTINGS, advanced: { ...DEFAULT_SETTINGS.advanced, fileWatcherInterval: 2 } };
+  const a: AppSettings = { ...DEFAULT_SETTINGS, versionHistory: { ...DEFAULT_SETTINGS.versionHistory, autoSyncMinutes: 1 } };
+  const b: AppSettings = { ...DEFAULT_SETTINGS, versionHistory: { ...DEFAULT_SETTINGS.versionHistory, autoSyncMinutes: 2 } };
 
   const p1 = store.writeSettings(a);
   const p2 = store.writeSettings(b);
@@ -395,20 +452,20 @@ test("updateSettings composes concurrent patches instead of dropping one", async
 
   const store = createSettingsStore(deps);
   const [a, b] = await Promise.all([
-    store.updateSettings({ advanced: { fileWatcherInterval: 21 } } as never),
+    store.updateSettings({ versionHistory: { autoSyncMinutes: 21 } } as never),
     store.updateSettings({ preview: { splitRatio: 0.42 } } as never),
   ]);
 
   // Both patches survive in the final persisted object.
   const final = JSON.parse(stored) as AppSettings;
-  expect(final.advanced.fileWatcherInterval).toBe(21);
+  expect(final.versionHistory.autoSyncMinutes).toBe(21);
   expect(final.preview.splitRatio).toBe(0.42);
   // The second update's return value reflects both merged patches.
-  expect(b.advanced.fileWatcherInterval).toBe(21);
+  expect(b.versionHistory.autoSyncMinutes).toBe(21);
   expect(b.preview.splitRatio).toBe(0.42);
   // The first return value has its own patch (and not yet the second's, since
   // it committed first).
-  expect(a.advanced.fileWatcherInterval).toBe(21);
+  expect(a.versionHistory.autoSyncMinutes).toBe(21);
 });
 
 // ── transient read errors must not wipe settings ─────────
@@ -425,7 +482,7 @@ test("updateSettings rejects WITHOUT writing when readFile fails with a non-ENOE
     },
   });
 
-  await expect(store.updateSettings({ advanced: { fileWatcherInterval: 22 } } as never)).rejects.toThrow(
+  await expect(store.updateSettings({ versionHistory: { autoSyncMinutes: 22 } } as never)).rejects.toThrow(
     "EACCES",
   );
   // Nothing was persisted — no tmp write, no rename (neither atomic-commit
@@ -448,9 +505,9 @@ test("first-run updateSettings (ENOENT) still writes defaults merged with the pa
   // working: defaults + patch, written atomically.
   const { store, writes, renames } = makeStore();
 
-  const next = await store.updateSettings({ advanced: { fileWatcherInterval: 22 } } as never);
+  const next = await store.updateSettings({ versionHistory: { autoSyncMinutes: 22 } } as never);
 
-  expect(next.advanced.fileWatcherInterval).toBe(22);
+  expect(next.versionHistory.autoSyncMinutes).toBe(22);
   expect(next.preview).toEqual(DEFAULT_SETTINGS.preview);
   expect(writes).toHaveLength(1);
   expect(JSON.parse(writes[0]!.data)).toEqual({ settingsSchemaVersion: 2, ...next });

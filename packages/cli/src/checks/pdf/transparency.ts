@@ -11,8 +11,6 @@ const check: Check = {
   phase: "post-build",
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
-    if (!ctx.config.validate.pdf.forbidTransparency) return [];
-
     // Raw byte scan — in-process replacement for the previous `grep -ao` usage
     // (same uncompressed-bytes-only behavior). Unreadable file → no findings.
     const bytes = await readPdfBytes(ctx.pdfPath).catch(() => "");

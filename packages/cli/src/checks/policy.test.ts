@@ -63,16 +63,18 @@ describe("isCheckEnabled — single source for enable/disable", () => {
     expect(isCheckEnabled(fakeCheck(), makeConfig())).toBe(true);
   });
 
-  test("manifest boolean false disables", () => {
+  test("level off disables", () => {
     const config = makeConfig();
-    config.validate.checks["test.fake"] = false;
+    config.checks["test.fake"] = "off";
     expect(isCheckEnabled(fakeCheck(), config)).toBe(false);
   });
 
-  test("manifest object {enabled:false} disables", () => {
+  test("level on or a severity keeps the check enabled", () => {
     const config = makeConfig();
-    config.validate.checks["test.fake"] = { enabled: false };
-    expect(isCheckEnabled(fakeCheck(), config)).toBe(false);
+    for (const level of ["on", "info", "warning", "error"] as const) {
+      config.checks["test.fake"] = level;
+      expect(isCheckEnabled(fakeCheck(), config)).toBe(true);
+    }
   });
 
   test("declarative enabledWhen(config) gate disables", () => {
@@ -85,11 +87,11 @@ describe("isCheckEnabled — single source for enable/disable", () => {
     expect(isCheckEnabled(check, makeConfig())).toBe(true);
   });
 
-  test("stylelint check carries the enabledWhen gate for source.stylelint=false", () => {
+  test("the stylelint check is switched off by its level, like every other check", () => {
     const check = getCheckById("source.stylelint")!;
     const config = makeConfig();
     expect(isCheckEnabled(check, config)).toBe(true);
-    (config.validate.source.stylelint as unknown) = false;
+    config.checks["source.stylelint"] = "off";
     expect(isCheckEnabled(check, config)).toBe(false);
   });
 });

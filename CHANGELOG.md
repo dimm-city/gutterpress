@@ -5,6 +5,580 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.23] - 2026-10-31
+
+### Added
+
+- **Math is a bundled feature (#425).** `gutterpress-math`, listed under
+  `extensions:` or added under Setup → Extensions → Math, typesets
+  `$…$` in a line and `$$…$$` on lines of their own with MathJax. Each formula is
+  written as a drawing of its own glyphs, so a PDF needs no math font, no
+  stylesheet and no font files in the project, and the preview paginates like
+  the PDF. The `$` grammar is Pandoc's, so `$5 and $10` stays prose. A formula
+  MathJax cannot typeset prints in red and is reported in Problems with its
+  line and the reason (`math_error`). Nothing is downloaded: the feature ships
+  inside Gutterpress like Callouts does.
+- **An `academic` built-in look and a `paper` starter template.** The look is
+  a journal article in the spirit of LaTeX's `article` class (serif, justified
+  and hyphenated, ruled tables, notes and references set smaller), with the
+  title block, abstract, figures, tables and references styled by the
+  `@section` each sits in. `gutterpress new … --template paper` starts a paper
+  with the look, math and superscripts already listed.
+- **A `language` manifest field** (a BCP 47 tag such as `en`, `de-CH` or
+  `pt-BR`; default `en`). It is the `lang` of the built HTML, which is what
+  hyphenation follows (every book hyphenated as English before), and the
+  quotation marks straight quotes print as follow it: „…“ in German, «…» in
+  French, Spanish, Italian and Russian, and so on.
+- **An example paper**, `examples/academic-paper`: a complete, genuine
+  research article with numbered equations, a theorem and proof, a figure,
+  tables, a listing, footnotes and linked references, from Markdown alone.
+- **The page's own numbers, as `--gp-page-*` (#454).** A look or a book's
+  stylesheet reads `--gp-page-width`, `--gp-page-height`, `--gp-page-bleed`,
+  `--gp-page-safe`, `--gp-page-gutter`, `--gp-page-art-safe` and
+  `--gp-page-margin-top`, `-bottom`, `-inside` and `-outside` (lengths in `pt`)
+  instead of keeping a copy that stops following Book setup. They are the same in
+  the preview and the PDF, and a named page has its own size and margins.
+- **Google Drive: your own folder when the book's is out of reach (#452).** It
+  is saved for you only and never changes the book's folder for the team;
+  `gutterpress publish --folder-id` or `--folder` publishes elsewhere for one run.
+
+### Changed
+
+- **One flat manifest: `chapters` and `checks` (#443).** The chapter list is
+  `chapters:` (was `source.files`). Every check and lint rule is set in one
+  `checks:` map, id to `off`, `on`, `info`, `warn` or `error` (was
+  `validate.checks`, `lint.rules`, and the on/off flags under
+  `validate.assets` and `validate.pdf` such as `allowAlpha` and
+  `requireBookmarks`). `validate`, `lint` and `ink` are no longer settings:
+  the limits a check measures against come from the preset and the publish
+  target unless a book sets one as an option in that check's `checks:` entry
+  (#483), and the markdownlint, HTMLHint and CSS-ownership checks find their
+  own config file (`.markdownlint.yaml`, `.htmlhintrc`,
+  `.gutterpress/css-contract.yaml`) in the book's folder or the nearest folder
+  above it, up to the repository root, so a repository's
+  `../.markdownlint.jsonc` needs no setting. A manifest written for 0.11.22
+  still builds in 0.11.23: the old spellings are read and named, with their
+  new spelling, in one notice. Book setup rewrites `source.files` as
+  `chapters` when it saves the chapter list, and the old thresholds as their
+  checks' options. `page.tolerance` became the page-size check's `tolerance`
+  option the same way.
+- **Settings and Book setup, redesigned (#442).** Settings is one page with
+  no tabs: How you use Gutterpress (Reader or Author), Appearance, Preview,
+  Editor, Saving and Accounts. It opens in its own sheet from the status-bar
+  gear, Ctrl+, or the start screen's new Settings button, and looks the same
+  with or without a book open. Reader shows just the pages and Author adds
+  Edit, Setup and Publish; creating a book switches to Author. The
+  file-watcher and log-level options are gone.
+  - **Accounts** is a page of its own. It opens from the start screen's
+    Accounts button, Settings and Book setup → Backup, and is the one place
+    for who you are and what Gutterpress signs in to, for every book:
+    - your name and email (moved from Settings);
+    - GitHub, with Test connection and Reconnect…;
+    - other Git servers (GitLab, Gitea, Bitbucket, Azure Repos), each
+      added, edited or removed;
+    - publishing keys (itch.io, Azure, Shopify) and Google Drive, each
+      added, edited or removed.
+
+    A key is checked with its service before it is saved. Backup and Publish
+    still connect in place.
+  - **Book setup** has the tabs Book, Look, Extensions and Backup, with
+    Advanced set apart:
+    - **Book** holds the title, authors, page size, margins, the print
+      checks and the chapters, listed by their titles, with the files left
+      out grouped under "Not in the book".
+    - **Look** chooses a look from a gallery, and adjusts six brand settings
+      (fonts, text size, line spacing, text and accent colour) beside a live
+      sample page.
+    - **Extensions** is the book's ordered list of looks and extras. Built-in
+      extras the book doesn't use (Callouts, Math…) are offered with what to
+      type. Published ones are found with a search of npm (with **Find
+      extensions** for the website's finder), or added by exact name, from a
+      folder, a .zip or .css file, or a web address.
+    - **Backup** says in one sentence where the book is kept and offers the
+      one next step. GitHub and the book's own Git server connect right
+      there, and the copy switcher moved here from Settings. Once the backup
+      is set up, Test connection, Repair online backup and Start over from
+      the online copy sit below it.
+    - **Advanced** lists the book's stylesheets in load order (move, Open,
+      Remove, or add another of the book's .css files), every design
+      setting, and a button that opens `manifest.yaml`.
+  - **Troubleshooting** is Logs, Diagnostics and Report a problem. Its Sync
+    tab is gone, and its tools moved to Backup and Accounts. Diagnostics
+    shows Check now and the update channel beside the version. The separate
+    Updates section, the Lib version and the Logs tab's Open folder are gone.
+- **Publishing: the team's settings live in the book, your account on your
+  computer.** The Publish wizard saves where the book is published in its
+  manifest, so everyone who opens it sees the same destinations ticked:
+  - the destinations ticked;
+  - the itch project, the Shopify store, the Azure environment and the
+    DriveThruRPG product;
+  - the Google Drive folder and the format.
+
+  Each person only connects or picks their own account. The wizard uses the
+  accounts saved on the Accounts page, and adds or replaces one with the same
+  form. Which of your accounts a book uses stays on your computer, keyed to
+  the book. Older books that recorded it in the manifest still publish, and
+  the next change moves it out. Fixed: choosing an output folder wrote your
+  computer's full path into the manifest. A folder inside the book is now
+  saved relative to it (`dist`), and a folder outside it is kept on your
+  computer only.
+- **The mouse wheel scrolls the preview.** The wheel and trackpad move the
+  preview as far as you turn them, like any page. The page-flip that took
+  them over (#301) is gone: it cancelled the scroll, did nothing for the
+  first stretch, jumped a whole page, and then ignored the rest of the
+  gesture, so scrolling felt sticky and jumpy. The toolbar and the keys
+  still turn a page at a time.
+- **Text fields can be seen (#447).** Every text field, select and text area
+  in the desktop app takes its look from one shared rule, and its edge now
+  stands out at 3:1 or more against every background in both themes (it was
+  about 1.3:1, so an empty Name or Email field was close to invisible).
+- **`gutterpress new` no longer insists on `--preset`.** Every starter
+  template carries a preset, so leaving the flag out keeps the template's;
+  the flag overrides it. The help says `--kind look`, the word the rest of
+  Gutterpress uses (`--kind theme` still works), and no longer calls a preset
+  a "vendor preset".
+- **Downloaded npm extensions live under `extensions/npm/`**, beside the
+  looks and components a book imports, instead of `plugins/npm/`. New books
+  ignore `extensions/npm/` in their `.gitignore`; a book vendored earlier
+  keeps working from `plugins/npm/` until its next `ext add` or `ext update`,
+  which moves that package to `extensions/npm/`, removes its old copies and
+  the `plugins/` folder once it is empty, and replaces the `plugins/npm/` line
+  in the book's `.gitignore` (the alphas left both behind).
+- **The built-in looks are bundled extensions, listed by name.** `clean-book`,
+  `zine`, `technical-doc` and `academic` join the bundled names: `gutterpress
+  ext add academic` (or Add on the desktop's Looks & features tab) writes `- academic` to the
+  manifest and copies nothing, the way `gutterpress-math` already worked. The
+  look's stylesheet is compiled into Gutterpress and loads like a plugin's own
+  CSS; a book styles over it from its own `styles:` sheets, which load after
+  every extension.
+  Several looks may be listed at once, later ones winning ties, as before.
+- **Book setup shows one Looks & features list.** The Look and Features tabs
+  are one **Looks & features** tab: every `extensions:` entry in order, looks
+  and features side by side, each with a badge for what it carries (Look,
+  Feature, Snippets, Components; a component library's CSS reads Styles, not
+  Look), its switch, Move up and down, Remove, and an npm package's version
+  and update controls; every look row shows its preview
+  thumbnail, in the list and before it is added. Below the list, one Add
+  area: *Built in* (every bundled look, then every bundled feature), *Search*
+  (npm) and *Advanced* (install by name, a folder or file used in place, a
+  `.zip`, `.css` or URL import). A failed download's notice now offers **Open
+  Looks & features**.
+- **Design tokens come from every look and are saved to your stylesheet.** The
+  **Design** tab (with the stylesheet list) shows the settings of every look
+  that is switched on (built in, from npm or a folder) in list order, as
+  your own stylesheet sets them, and saves a change to that stylesheet
+  (`styles/book.css` unless `styles:` names another), in its `:root` block,
+  which is added if missing; rules elsewhere in the sheet are left alone.
+  **Revert** is an undo: a value only a look sets is taken back out of your
+  stylesheet, not copied into it, and a value your stylesheet already set over
+  a look's can be dropped at any time with **Use the look's value**. The tab
+  names the look it edits, labels every setting in plain words (`--fs-display`
+  is "Display size"; a look names its own extras with an `@label` comment),
+  and offers the text box, not a number box, for a value such as `1pt solid`.
+  It used to edit only the first look kept in a folder, in the look's own
+  file; a look's files are never written now, and a built-in or npm look is no
+  longer left out. A look's `gutterpress.tokensFile` is no longer read, and
+  `gutterpress new --kind look` no longer writes it; a package that still
+  declares it loads unchanged. A book with no look switched on is pointed at
+  **Choose a look**. A look curates the tab in one line: `@group` or
+  `@internal` in a comment right above a `:root` selector applies to the
+  whole block (a declaration's own comment still wins), so a sheet of
+  component defaults is hidden with one `/* @internal */`. A `}` inside a
+  comment in a `:root` block no longer ends the block early, which hid every
+  token after it and showed a value read out of the comment; a shadow such as
+  `3pt 7pt 12pt -5pt var(--shadow-soft)` is edited as text, never as the
+  single number that would have replaced it.
+- **Provisional until 0.12 (#457).** The `@group`, `@label` and `@internal`
+  comment directives and the six names on the Look tab (`--font-body`,
+  `--font-display`, `--fs-body`, `--leading`, `--color-ink`, `--color-accent`)
+  change in 0.12; don't build on them yet.
+- **Every new book comes with its look, and the page size and margins live
+  in the manifest alone.** The Book, Zine and Technical document templates
+  list `clean-book`, `zine` and `technical-doc` the way the Academic paper
+  template already listed `academic`, so a new book is styled from its first
+  page and the template picker says which look each one brings. No bundled
+  look sets a page size or a page margin any more: the manifest's `preset:`
+  and `page:` decide the size, the new `page.margin` (`top`, `bottom`,
+  `inside`, `outside`, in points) the margins, and the build writes both as
+  the `@page` rule after every stylesheet, so a `size` in a stylesheet is
+  overridden (the CSS check reports it, `printsafe/page-size-in-stylesheet`)
+  and so is an `@page` margin once the manifest has margins. A book that sets
+  no `page.margin` keeps its stylesheets' margins, so a 0.11.22 book prints
+  as it did; every template records its look's old margins, so a new book
+  does too. A book with no margin anywhere now prints with 1in margins, which
+  the build writes ahead of every stylesheet as the default: it used to print
+  with Chromium's own default of about 0.4in while the preview assumed 1in,
+  so the two paginated differently. A 0.11.23-alpha book that lists clean-book, zine or technical-doc
+  by name now prints at its manifest size (a manifest with no `preset:` means
+  DriveThruRPG) with 1in margins — set both under Setup > Details. The Zine
+  and Technical document templates carry their size (Digest, US Letter) in
+  the manifest, and the wizard shows it pre-filled; choosing another preset
+  on top of a template replaces the template's size and keeps its margins and
+  safe area (`gutterpress new --template paper --preset book` used to keep
+  US Letter).
+- **Book setup > Details edits the page size and the margins.** Choose
+  DriveThruRPG print, Trade paperback or Other size (a common size, or one
+  you type), and type the top, bottom, inside and outside margins in inches:
+  a change is recorded in the manifest at once and wins over any margin a
+  look sets. A book that has not set margins yet shows the ones its
+  stylesheets give it (or the 1in default) and says so, and **Use the look's
+  margins** (or **Use the default margins**) takes a book's own margins out
+  again. A book whose manifest overrides its preset's size (`preset: book`
+  with a `page:` width and height) is told so, and that choosing a size here
+  replaces the override; the academic-paper example now uses the Paper
+  template's shape instead. Nothing is written to a stylesheet any more, and
+  nothing can drift: the "Use this size in the stylesheet too" note is gone,
+  and the stylesheet editor no longer offers a `size` completion inside
+  `@page`.
+- **The editor highlights `manifest.yaml`.** A `.yaml` or `.yml` file opens
+  with YAML highlighting instead of plain text.
+- **Book setup's Details tab saves as you go.** There is no Save button and no
+  "saved" toast: a choice (page size, print checks, chapter order) is written
+  at once, a title or author when you leave the field or press Enter, and
+  anything still pending when you switch tabs or close the panel. Each write
+  touches only what changed, so renaming a book no longer rewrites its
+  `targets:` or its page size; a book with no `targets:` key keeps following
+  its preset's default until a service is ticked or unticked.
+- **Plainer words in the new-book wizard and Book setup.** Step 3 asks "What
+  size should the pages be?" (DriveThruRPG print, Trade paperback, Other
+  size) and "Check the finished PDF against a print service's rules?";
+  Details calls its lists **Chapters** and **Check the PDF against**. **Create
+  book** is never greyed out for want of a folder: pressing it asks for one.
+  The toolbar, the page, the docs and the preview's missing-extension notice
+  all say **Book setup**, the status-bar gear says **Settings**, and the
+  book's online copy lives on a **Backup** tab (**Settings > Saving** links
+  there for a book that is not backed up yet).
+  The **Create a new book** card shows for a Reader too; creating a book
+  switches you to Author. Help gains a step on setting up and styling a book.
+- **A footnote links to its own note in a book of several files.** Each file
+  numbers its notes from 1, and the links behind the numbers were named after
+  the number alone, so in a book with notes in two files a note's return arrow,
+  or a tap on a number, could land in the other file. The links now carry the
+  file's name too; the numbers an author sees are unchanged.
+- **A list labelled (a), (b), (c) keeps its labels.** The typographer turned
+  the third label into ©. A `(c)` after a `(b)` in the same file (or an `(r)`
+  after a `(q)`, in the same case) now prints as typed; every other
+  conversion plain typing makes is as before, and the user guide lists them.
+  The desktop's selection-formatting menu, which had to reverse those
+  conversions to find selected text in the source, no longer refuses any
+  selection containing a comma or an ellipsis.
+- **The character check's advice fits every language, and lets ’90s through.**
+  The curly quotes are now named by their side (left, right) rather than
+  opening and closing, which was wrong for German, where “ closes; the
+  advice to type a straight quote was right all along. A right single quote
+  that starts a word (’90s, ’tis) is no longer reported: a typed ' there
+  prints straight, so there was nothing to type instead.
+- **The shipped example books and starter templates type what the character
+  check asks for.** Their sources had 430 em and en dashes, ellipses and curly
+  quotes typed as the characters themselves; they are now the plain spellings
+  (`---`, `--`, `...`, `"`, `'`), which print the same. Opening one of them
+  no longer starts with hundreds of findings. The validation example's
+  README is documentation, not a page, and is no longer built into its book.
+- **A `|` inside a code span or a formula stays in its table cell.** GFM
+  splits a row at every `|` before reading what is between them, so a pipe in
+  code or math split the cell and the cells past the header's count vanished.
+  Gutterpress's own table rule now treats a code span, and a formula when the
+  Math feature is on, as one piece; `\|` still escapes a pipe in plain cell
+  text and, as on GitHub, inside a code span (a table written for GitHub or
+  markdownlint prints `|`, not `\|`; the alphas printed the backslash). A
+  row that still has more cells than the header is reported in Problems
+  (`table_extra_cells`) instead of silently losing them.
+- **Keeping an author's work safe has one set of words and one place to look
+  (#448).** The status bar's save indicator, sync pill and "Where your work is
+  kept" sheet are one status control ("Saved · Backed up", "Saved · Not backed
+  up yet", "Saved · Sign in to back up", …) that opens Book setup → Online
+  copy, the renamed Backup tab. There an author sees where the book is kept in
+  one sentence with its one next step, saves a version, opens Version history
+  (the renamed Versions view, with Save a version at the top), manages
+  revisions (switch, new, rename, delete: separate lines of work in the same
+  book, each saying whether it is also in the online copy), and, collapsed, the
+  tools for when backing up keeps failing. Readers see no status control, Sync
+  button or online toasts. Nothing an author reads says commit, branch, push,
+  pull, merge, remote, repository, snapshot or clone any more (the one
+  exception is the **Sync** button); Help no longer describes the removed conflict model, and the two sides
+  of an overlapping passage are "two takes". Settings' switch is now **Keep
+  version history**, and crash recovery's button is **Recover**.
+- **Honest backup status, and Readers only ever get the latest (#448).**
+  "Backed up" now appears only after a pass that sent your work or found nothing
+  to send; a get-latest-only pass with unsent versions says "Not backed up yet",
+  and with automatic backing up off the status is checked at open and after
+  every version. A Reader gets the latest changes automatically whatever "Back up
+  online automatically" says, and never sends anything. Exporting a PDF gets the
+  latest first but no longer sends.
+- **Revisions are renamed and deleted in the online copy too, right away
+  (#448).** Renaming or deleting everywhere refuses, changing nothing, when the
+  online copy can't be reached or has versions this computer lacks; deleting a
+  revision whose versions are found nowhere else asks a second time with the
+  count.
+- **Online copy is laid out as three cards (#448).** A status card (where the
+  book is kept, its one next step, and **Backing up keeps failing?** at its
+  foot with Test connection, Sign in again, Repair and Start over), a
+  **Revisions** card, and a short **Version history** card (the newest versions,
+  Save a version, Browse versions).
+- **Version history is a screen of its own (#448).** Browse versions (or a
+  version in the card) opens it over Book setup: the versions on the left,
+  grouped by day; the selected version on the right, its **Pages** rendered as
+  they were or its **Changed files** line by line; **Restore this version** at
+  the top. × or Esc returns to Book setup. It replaces looking at a version
+  beside the live preview, and never takes over the editor. Revisions: the open one first,
+  five shown with **Show all**, **Find a revision** past five, **New
+  revision** in the card's header, and each row's **Switch** plus a ⋯ menu
+  with **Rename…** (every revision) and **Delete…** (all but the open one);
+  New revision, Rename and Delete are dialogs. A revision that is **Only
+  online** can now be renamed or deleted in the online copy (refused, changing
+  nothing, when it changed online since the list was checked). With automatic backing up off, a **Sync** button
+  (Setup → Online copy: **Sync now**) sits beside Get latest; it runs the same
+  backing up as Back up now, which gets the latest first. The status control,
+  Get latest and Sync sit on the left of the status bar, after the book
+  switcher.
+- **History messages follow the vocabulary (#448).** New versions record
+  "Automatic version", "First version", "Saved a version", "Automatic version
+  before backing up", "Automatic version before restoring", "Saved before
+  switching revision", "Repaired the online copy" and "Saved the edit you made
+  while backing up"; combining with the online copy records "Combined your
+  changes with the online copy's" and "Kept both takes of the files that can't
+  be combined", no longer "the online version" and "both versions". Version
+  history still recognises every earlier spelling.
+- **Version history is quick to browse.** Selecting a version shows its
+  **Changed files** straight away; its **Pages** render only when you click
+  Pages, and selecting another version goes back to its changed files, so
+  clicking down the list no longer renders every version on the way. Opening
+  the screen and **Show older versions** no longer work out what every listed
+  version changed, and a book with many versions not backed up yet no longer
+  walks its whole history once for each of them. Library: `describeVersions`
+  entries no longer carry `changes`/`moreChanges`;
+  `listVersionChanges(projectDir, id)` lists one version's changed files
+  (desktop route `vcs/version-changes`).
+- **Library:** `listLocalBranches` and its `LocalBranches` type are replaced by
+  `listRevisions`, with `createRevision`, `renameRevision`, `deleteRevision` and
+  `revisionNameFrom`; `SyncOutcome` gains `pushDeferred` on a get-latest pass
+  that left versions unsent. The desktop's `vcs/list-branches` and
+  `remote/refresh-copies` routes are replaced by `vcs/list-revisions` (with
+  `refresh`), `vcs/create-revision`, `vcs/rename-revision` and
+  `vcs/delete-revision`.
+- **The example paper is now about Gutterpress.** `examples/academic-paper`
+  is a peer-review-style article on how the system compiles CSS Paged Media on
+  an unmodified Chromium (the three synthesis tiers, the `/Dests` measurement
+  channel, predict-then-verify), how the preview and the PDF are held to the
+  same pages, and the geometry behind the print checks (page boxes, bleed,
+  signature padding, ink coverage, effective resolution), with a worked LaTeX
+  demonstration and fresh measurements of the parity gate over the corpus. Its
+  figures are hand-written SVG; the Romberg sample paper and its matplotlib
+  script are gone.
+
+### Removed
+
+Each of these was removed on purpose and is described under Changed. A 0.11.22
+manifest that still has a removed key builds anyway: the load notice names the
+key, and the build ignores it.
+
+- **`validate.enabled`.** `gutterpress build --skip-pre-validate
+  --skip-post-validate` skips validation for one build.
+- **`lint.configPath` and a config path under `validate.source.<tool>`.** Each
+  checker finds its own config file by its usual name, in the book's folder or
+  a folder above it. The keys 0.11.22 already ignored, such as
+  `validate.assets.minImageDpi`, are dropped the same way.
+- **A stylesheet's `@page size`.** The manifest's `preset:` and `page:` set the
+  page size, and the CSS check reports a `size` in a stylesheet. The
+  stylesheet editor no longer suggests `size` inside `@page`.
+- **A look's `gutterpress.tokensFile`.** The design settings come from every
+  look that is switched on and are saved to the book's own stylesheet. A
+  package that still declares it loads unchanged.
+- **One person's publishing details in the manifest.** Which account a book
+  publishes with, and an output folder outside the book, stay on that
+  person's computer.
+- **Settings:** the file-watcher and log-level options.
+- **Troubleshooting:** the Sync tab (its tools are in Book setup → Online copy
+  and Accounts), the separate Updates section and its Reset, the Lib version
+  line, the update-channel hint, and the Logs tab's Open folder.
+- **The status bar's save indicator, sync pill and "Where your work is kept"
+  sheet,** with that sheet's explanations and its advice after a failed save.
+  One status control replaces them.
+- **Backup controls for Readers.** A Reader gets the latest changes
+  automatically and never sends anything.
+- **Looking at a past version beside the current book, and the docked version
+  history.** Version history is a screen of its own.
+- **Backing up when a PDF is exported.** Exporting gets the latest changes
+  first, and nothing more.
+- **The mouse-wheel page flip (#301).** The wheel scrolls the preview; the
+  toolbar and the keys turn a page at a time.
+- **Library exports renamed with no alias:**
+  `listBuiltInStyleSets` (use `listBundledExtensions`),
+  `BUILT_IN_STYLE_SET_IDS` and `RECOMMENDED_EXTENSIONS` (use
+  `BUNDLED_EXTENSION_DETAILS`), and `listLocalBranches` with its
+  `LocalBranches` type (use `listRevisions`).
+
+### Fixed
+
+- **The Files tab lists SVG files.** It showed only Markdown, YAML, CSS and
+  text files, so a folder of SVG figures, such as the example paper's
+  `figures`, looked empty. An SVG opens in the editor as text.
+- **Settings, Accounts and Open from GitHub have the controls 0.11.22 had
+  (#481).** A regression from 0.11.22 in the 0.11.23 betas: Settings had lost
+  the Preview background, the Preview group (Default zoom, Right-click menu in
+  the preview, Print overlay strength and the overlay colours) and the Reset on
+  each group; Accounts had lost the Reset on Your name and email and, for a
+  server Gutterpress recognises, the link to its own token page; and Open from
+  GitHub had lost its link to Accounts for another Git host. They are back,
+  under the same settings keys, so what 0.11.22 saved applies again, and the
+  right-click menu can be turned off again (Shift+F10 too).
+- **Get latest and Back up now are back beside Sync (#485).** A regression
+  from 0.11.22: the 0.11.23 betas folded both into Sync. **Get latest** again
+  brings in the online copy's changes without sending yours: on the "New
+  changes are online for this book." toast, in Setup → Online copy, and beside
+  Sync in the status bar while automatic backing up is off. **Back up now** is
+  in Setup → Online copy whenever the book can back up, with automatic backing
+  up on as well as off (off, the same button reads **Sync now**). Readers still
+  see neither.
+- **The minus sign (−, U+2212) is typed as itself.** The character check no
+  longer reports it as a look-alike hyphen, and the editor no longer outlines it.
+- **Named pages keep their margins under `page.margin` (#454).** Chromium
+  ranks `@page` rules by cascade layer first, so the manifest's margins beat a
+  look's layered `@page full { margin: 0 }` and core's `@page full-bleed` and
+  `.gp-bleed`: full-bleed pages printed inset, and a sheet-wide plate shrank
+  the whole book to fit, while the preview showed them full bleed. A look's
+  and core's `@page` rules are now written after their layers, unlayered.
+- **The design settings read the book's stylesheet as the build does (#454).**
+  A plugin's `css` and a `:root` in a later stylesheet now show, a value with
+  `;` inside `url("data:…")` is no longer cut short, and an edit lands where
+  your stylesheet already sets the setting, never in a comment or `@media`.
+- **Escape inside Book setup, Settings and Accounts acts on the control first
+  (#448).** Escape in a revision's name form cancels the form, and Escape on
+  the look's "Replace / Keep mine" question keeps yours, instead of closing the
+  whole page: the page's own Escape now waits for the control's.
+- **The first backup of a new revision works (#448).** It used to stop with
+  "sign in again" because a revision the online copy didn't have yet was taken
+  for a rejected sign-in.
+- **The parity gate measures an exact fit at a formula or an image (#465).**
+  A display formula or an image has no text, so check (e) measured a later
+  line instead and reported a sub-pixel boundary as a divergence. It now
+  measures the element's box, as print draws it and the preview lays it out.
+- **A formula ending a line no longer shrinks the print (#469).** The hidden
+  MathML copy screen readers read is held to its formula's box, so a wider math
+  font can't push it past the column and make Chromium scale the whole PDF down.
+- **Justified text no longer shrinks the print (#470).** A justified line split
+  by emphasis, a link or inline code can end a fraction of a pixel past the
+  column, and Chromium scaled the whole PDF down to fit it: the example paper,
+  the user guide and the design guide printed at 99.995%, their lines laid out
+  a pixel longer than the preview's and the last letter of each full line cut
+  at the column's edge, so a page break could fall differently. The build
+  holds that overflow to the page content box, where print already clips
+  (unless a page is wider than the first, such as a full-bleed plate after
+  margined pages), and now warns whenever a PDF comes out scaled at all,
+  naming what reaches past the column.
+- **Version history reaches every version after changes are combined (#472).**
+  In a book whose changes were combined with the online copy's, a page of
+  versions could come back short with no **Show older versions**, and the next
+  page could skip or repeat versions. Each version is now listed once, newest
+  first, and **Show older versions** stays until the oldest.
+- **Version history counts every version in the online copy (#477).** After
+  changes were combined with the online copy's, the versions in the online
+  copy and not on this computer yet could be counted short: one dated before
+  the versions it builds on, such as a collaborator's with their clock behind,
+  was missed, and a long list stopped early. Each one is now counted once, and
+  none this computer already has.
+- **Long tables and overridden side breaks paginate the same in preview and
+  print (#454).** The preview now lets Chromium repeat a table's header row on
+  each page, as print does, instead of copying it in; the copies could fit a
+  different number of rows on a page or lose the page break after the table.
+  And a `break-before: left` or `right` that your stylesheet resets to `auto`
+  no longer adds a blank page, in the PDF or the preview.
+- **Book setup's extension update tools are back (#479), a regression from
+  0.11.22.** The Book setup redesign (#442) dropped them in 0.11.23-alpha.4.
+  The Extensions tab has them again for a book with a plugin from npm:
+  **Check for updates**, an "x.y.z available" badge with **Update**, a
+  **Version** menu on each npm row (newest first, the book's version marked
+  "(current)"; choosing one installs it, and the book keeps its version until
+  that works), and **Include pre-release versions**, an app setting, off by
+  default, that adds alpha, beta and rc versions to the menus and the update
+  check. Every install still asks you to trust the package first.
+- **The rest of Book setup's Look and Extensions tools are back (#482), a
+  regression from 0.11.22.** The Book setup redesign (#442) and the changes
+  before it (#427, #437) dropped them, unasked. Restored, in the current tabs:
+  - **Make an editable copy** of the built-in look in use (Look tab): it is
+    copied into `extensions/<id>` as your own files and the copy takes the
+    built-in's place. `gutterpress ext add <look> --look` does it again
+    (0.11.23 said "unknown option"), and copies 0.11.22 made keep building.
+  - **A second built-in look in one click**: Extensions → Add an extension →
+    **Built-in looks** stacks it on the book's look, while the Look tab still
+    chooses one.
+  - **Re-check** in the extension list's head, any time; it reads the list
+    again and says "Every extension loads."
+  - A built-in extra's row says **what to type**, and a row shows Gutterpress's
+    **notices** about it (such as "Not found: …").
+  - npm search results show **name@version**, an **npm page** link and
+    "Showing N of M"; **Exact name** takes a **named export** again, for a
+    package such as `markdown-it-emoji` that has no default plugin.
+  - A look's card names its **author**; pointing at a look shows the **enlarged
+    two-page sample** in a window wider than 1620 px.
+  - The Book tab says **what each print check does**, as the new-book wizard
+    does.
+  - A color setting takes **`var(--color-ink)`** (a reference to another
+    setting) as well as a color, and still refuses anything else; the
+    stylesheet write now refuses any value that would end its declaration.
+- **What 0.11.23's betas lost or silently changed from 0.11.22 is back (#483).**
+  None of it had been approved.
+  - **A book's own thresholds.** `checks:` takes a check's options beside its
+    level, as #443 asked: `pdf.print.ink-coverage: { maxTac: 300 }`, or
+    `{ level: error, minImageResolution: 200 }`. The options are `maxTac` and
+    `tacTolerance` (ink coverage; `maxTac` is also what a PDF/X build holds
+    the ink to), `tolerance` (page size), `minImageResolution`, `bleedSize`,
+    `maxImageSize`, `approvedFontFiles` and the three heuristics' limits. A
+    0.11.22 manifest's `ink.*`, `page.tolerance`, `validate.assets.*`,
+    `validate.pdf.*` and `validate.heuristics.*` limits are read as these
+    options again, instead of being dropped, and the notice names the new
+    spelling; Book setup writes them the new way when it saves. A 0.11.22
+    value no option can take (a word where a number goes, a key no check
+    has, a severity that is not one) is named in the notice and ignored, so
+    a book that built in 0.11.22 still builds; in the new spelling the same
+    value stops with an error naming it.
+  - **`asset.font.approved-files`** is a check again: it reports a font file
+    the book ships that no pattern in its `approvedFontFiles` matches, and
+    `validate --only asset.font.approved-files` runs it.
+  - **`gutterpress new --page-tolerance`** works again (it exited 2 as an
+    unknown option), and so does the library's `customPage.tolerance`.
+  - **A severity set beside an on/off flag keeps it.** A 0.11.22 manifest with
+    `validate.checks: { pdf.nav.bookmarks: { severity: error } }` and
+    `requireBookmarks: true` reports at `error` again, not `warning`.
+  - **The typographer's other conversions are back.** `(c)`, `(r)`, `(tm)` and
+    `+-` print ©, ®, ™ and ±, a run of dots prints one ellipsis, and runs of
+    `,,`, `????` and `!!!!` collapse, as in every book through 0.11.22 (whose
+    own design guide taught them). Only a lettered list's labels are kept.
+  - **The stylesheet a book without `styles:` gets** is `styles/book.css`,
+    then `css/print.css`, `css/index.css`, `css/style.css` and `css/main.css`,
+    as in 0.11.22, before the first `.css` by name; a `css/extra.css` no
+    longer wins over `css/print.css`.
+  - **A link written to a footnote in 0.11.22** (`[note 1](#fn1)`, `#fnref1`)
+    lands on that note again: it goes to the first note with that number in
+    reading order, where it went in 0.11.22. The notes keep the ids per file
+    that fixed their backlinks.
+  - **`gutterpress new --kind theme`** makes a look again (it exited 2), and
+    so does the library's `scaffoldExtension({ kind: "theme" })`.
+    `EXTENSION_KIND_ALIASES` and `extensionKindFor` read the old word; the
+    kinds offered stay `plugin` and `look`.
+  - **The library's 0.11.22 exports work again.** `BUNDLED_EXTENSIONS` is the
+    list of bundled names it was (it had become objects, so
+    `.includes(name)` was always false); the objects are
+    `BUNDLED_EXTENSION_DETAILS`. `PLUGINS_DIR` is exported again, as another
+    name for `EXTENSIONS_DIR`. `setPageSetup(dir, { preset, page })`, the
+    0.11.22 call, changes the size instead of doing nothing, and a call of
+    neither shape is refused. `PublishSelectionsStore` reads a file 0.11.22
+    wrote (one account per provider for a book) as that book's account, and
+    keeps it on the next write instead of mangling it.
+- **Version history lists the versions in the online copy, and what every
+  version changed, again (#484), a regression from 0.11.22.** The Version
+  history screen (#448, 0.11.23-alpha.7) and its speed-up (#461, beta.1) cut
+  the versions in the online copy and not on this computer yet down to a
+  count, and showed changed files only for the selected version. As in
+  0.11.22, those versions are listed at the top again, under **Online, not yet
+  on this computer**, each with its name, time, author and the files it
+  changed, and every version lists its changed files (`chapter-02.md · 3
+  paragraphs changed`, **and N more**, **No changes**). A version's files load
+  as it scrolls into view, so opening the screen and **Show older versions**
+  stay as quick as #461 made them, and selecting a version already shown is
+  instant. Library: `listOnlineVersions` entries carry `changes` and
+  `moreChanges` again (`OnlineVersionEntry`).
+
 ## [0.11.22] - 2026-10-23
 
 ### Added

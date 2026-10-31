@@ -62,6 +62,9 @@ export type SyncOutcome =
        *  and then hold the push — the converge report still surfaces here. */
       combinedFiles?: string[];
       keptBothFiles?: KeptBothFile[];
+      /** A pull-merge-only pass that held the push: this computer has versions
+       *  the online copy lacks. Never set when the tips already matched. */
+      pushDeferred?: true;
     }
   | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }

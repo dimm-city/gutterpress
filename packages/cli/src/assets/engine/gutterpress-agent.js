@@ -59,6 +59,7 @@
   });
 
   // src/engine/shared/synthesis.ts
+  var RECTO_VERSO_VALUES = /^(right|recto|left|verso)$/;
   var WHICH_VALUES = new Set(["first", "start", "last", "first-except"]);
   var LEADER_RE = /\uE000([^\uE001]*)\uE001/;
   function leaderFillCount(gapPx, gluePx) {
@@ -422,7 +423,8 @@
     return out;
   }
   function forcedBreakSites(decls) {
-    const out = [];
+    const found = [];
+    const seen = new Set;
     for (const d of decls) {
       let els = [];
       try {
@@ -430,10 +432,17 @@
       } catch {
         continue;
       }
-      for (const el of els)
-        out.push({ id: ensureAnchor(el), prop: d.prop, value: d.value, selector: d.selector });
+      for (const el of els) {
+        const id = ensureAnchor(el);
+        const value = getComputedStyle(el).breakBefore;
+        if (seen.has(el) || !RECTO_VERSO_VALUES.test(value))
+          continue;
+        seen.add(el);
+        found.push({ el, id, prop: d.prop, value, selector: d.selector });
+      }
     }
-    return out;
+    found.sort((a, b) => a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
+    return found.map(({ el: _el, ...site }) => site);
   }
   function counterResetSites(resets) {
     const out = [];

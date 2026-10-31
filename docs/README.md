@@ -149,7 +149,6 @@ docs/
 ├── installing.md                           # Install channels, platform support, unsigned-app guidance
 ├── known-limitations.md                   # Silent Chromium print gaps (upstream-tracked)
 ├── local-extension-development.md         # Develop an extension against a book, unpublished
-├── SOURCE-FILES-GUIDE.md                  # Deep-dive into source.files configuration
 ├── migrations/                            # Migration guides
 ├── docker.md                              # Running Gutterpress in Docker
 ├── publishing.md                          # Publishing built output to platforms
@@ -162,7 +161,7 @@ docs/
 ├── css-ownership-contract.md              # Rules for themes with several CSS files
 ├── native-engine-styling-guide.md         # Field notes on styling for the engine
 ├── filing-upstream-chromium-bugs.md       # How to file the known-limitations bugs
-├── sync-diagnostics.md                    # Diagnosing a failed sync
+├── sync-diagnostics.md                    # Diagnosing a failed backup
 ├── remaining-work.md                      # Engine/tooling work tracker (living)
 ├── ux-design-contract.md                  # Desktop app UX contract
 ├── inline-editing-plan.md                 # Inline editing design as built (ADR 0009)

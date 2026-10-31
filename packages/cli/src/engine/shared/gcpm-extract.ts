@@ -731,6 +731,15 @@ export function parseMargin(value: string): {
  * Later rules win; specificity follows the spec's simplified order
  * (unnamed < named, no-pseudo < pseudo).
  */
+/**
+ * The margin a page has when no `@page` rule sets one: what `resolvePage`
+ * assumes, and what the assembly writes ahead of every stylesheet
+ * (`defaultPageMarginCss`, lib/markdown/assemble.ts) so Chromium prints with
+ * the same number instead of its own default of about 0.4in, which would
+ * make the preview and the PDF paginate differently.
+ */
+export const DEFAULT_PAGE_MARGIN_PT = 72;
+
 export function resolvePage(
   model: GcpmModel,
   ctx: { name?: string; pseudos?: string[] } = {},
@@ -750,7 +759,12 @@ export function resolvePage(
   // margin-left: .75in }` would override `@page cover { margin: 0 }` and inset
   // a full-bleed cover by three quarters of an inch. (Observed in the
   // Gutterpress user-guide theme.)
-  const margin = { top: 72, right: 72, bottom: 72, left: 72 };
+  const margin = {
+    top: DEFAULT_PAGE_MARGIN_PT,
+    right: DEFAULT_PAGE_MARGIN_PT,
+    bottom: DEFAULT_PAGE_MARGIN_PT,
+    left: DEFAULT_PAGE_MARGIN_PT,
+  };
   for (const rule of applicable) {
     for (const [prop, value] of Object.entries(rule.decls)) {
       if (prop === "margin") Object.assign(margin, parseMargin(value));

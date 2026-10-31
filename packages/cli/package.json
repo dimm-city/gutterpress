@@ -1,6 +1,6 @@
 {
   "name": "gutterpress",
-  "version": "0.11.22",
+  "version": "0.11.23-beta.3",
   "description": "Markdown-to-PDF converter for professional print layout using a native Chromium print engine and Ghostscript.",
   "author": "itlackey",
   "license": "MPL-2.0",
@@ -78,6 +78,7 @@
     "markdown-it-sub": "^2.0.0",
     "markdown-it-sup": "^2.0.0",
     "markdownlint": "^0.40.0",
+    "mathjax-full": "^3.2.2",
     "pdf-lib": "^1.17.1",
     "postcss": "^8.5.18",
     "resolve.exports": "2.0.3",

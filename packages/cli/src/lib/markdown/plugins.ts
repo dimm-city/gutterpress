@@ -14,6 +14,7 @@ import {
   safePackageTarget,
   vendoredNpmPluginPackageDir,
 } from "../plugin-vendor";
+import { bundledExtension } from "../extension-specifier";
 // #239: the SAME declared-stylesheet resolver a theme's `styles` resolve
 // through (extension-manager.ts) — see
 // resolvePluginStyles's doc comment below for why this is the literal
@@ -207,7 +208,7 @@ async function importVendoredEntry(
     entry = await resolvePackageEntry(packageDir);
   } catch (cause) {
     throw new Error(
-      `the downloaded copy of ${spec} under plugins/npm/ is incomplete ` +
+      `the downloaded copy of ${spec} under extensions/npm/ is incomplete ` +
         `(${cause instanceof Error ? cause.message : String(cause)}). ` +
         `Reinstall it with \`gutterpress ext add ${spec}\`.`,
       { cause },
@@ -224,7 +225,7 @@ async function importVendoredEntry(
  *
  * Resolution order:
  *   1. The project-local vendored copy `gutterpress ext add` installed
- *      (`plugins/npm/<name>/<version>/`), when the entry is pinned and that
+ *      (`extensions/npm/<name>/<version>/`), when the entry is pinned and that
  *      folder exists
  *   2. User's project node_modules (legacy unpinned entries)
  *   3. gutterpress's own dependencies — for built-in/legacy plugins
@@ -248,8 +249,8 @@ async function loadNpmPackage(
   // copy is an error pointing at reinstall, never a silent fall-through to
   // some other package of the same name. A pinned entry with NO vendored
   // folder falls through to the legacy lookups below and ends at the "not
-  // found — install it" error, which is what the desktop's Features tab
-  // surfaces as "Needs install".
+  // found — install it" error, which the desktop's Advanced tab surfaces as
+  // "Not downloaded yet." with Install.
   const installRoot = await vendoredInstallRoot(packageName, baseDir, version);
   if (installRoot) {
     const packageDir = vendoredNpmPluginPackageDir(installRoot, packageName);
@@ -297,14 +298,14 @@ async function loadNpmPackage(
   if (!looksLikeJsFilename && (!version || !isExactNpmVersion(version))) {
     throw new Error(
       `Extension "${packageName}${version ? `@${version}` : ""}" is not pinned to an exact version, so it can't be ` +
-        `downloaded automatically. Run \`gutterpress ext add ${packageName}\` (or use Book settings > ` +
-        `Features in the desktop app) to download it and pin its version in your manifest.`
+        `downloaded automatically. Run \`gutterpress ext add ${packageName}\` (or add it in Book setup) ` +
+        `to download it and pin its version in your manifest.`
     );
   }
 
   throw new Error(
     `Extension "${packageName}" not found. Install it with ` +
-      `\`gutterpress ext add ${version ? `${packageName}@${version}` : packageName}\` (or Book settings > Features > Advanced in the desktop app),\n` +
+      `\`gutterpress ext add ${version ? `${packageName}@${version}` : packageName}\` (or add it in Book setup),\n` +
       `or reference a local file under \`extensions:\`:\n` +
       `  extensions:\n` +
       `    - ${suggestedPath}`
@@ -658,7 +659,7 @@ function staleManifestHint(dir: string): string {
  * order within that module's CSS itself, exactly as they would for two files
  * in one plain `styles` export).
  *
- * `tokensFile`/`components`/`snippets` are parsed and validated (existence +
+ * `components`/`snippets` are parsed and validated (existence +
  * containment, via `resolveExtension`) but not otherwise consumed HERE —
  * `snippets.ts`'s `listMergedSnippets` (#242) is the actual snippet-picker
  * consumer, reached through its own `declaredSnippetsFolder` (which reads
@@ -759,20 +760,22 @@ export async function loadPlugin(
     );
   }
 
-  // Built-in opt-in plugins resolve from the bundled registry — no project
-  // install, no network, works offline and in the compiled binary. This is the
-  // happy path for the desktop's recommended plugins.
-  if (
-    !config.path &&
-    !config.version &&
-    config.name &&
-    BUILTIN_OPTIONAL_PLUGINS[config.name]
-  ) {
-    return {
-      name: config.name,
-      plugin: BUILTIN_OPTIONAL_PLUGINS[config.name]!,
-      options: config.options,
-    };
+  // Bundled extensions resolve from the binary — no project install, no
+  // network, works offline. A markdown feature is a plugin function in
+  // BUILTIN_OPTIONAL_PLUGINS; a look is its stylesheet, carried as text the
+  // way a plugin's `css` export is.
+  if (!config.path && !config.version && config.name) {
+    const bundled = bundledExtension(config.name);
+    if (bundled?.css !== undefined) {
+      return { name: config.name, plugin: noopPlugin, css: bundled.css, options: config.options };
+    }
+    if (BUILTIN_OPTIONAL_PLUGINS[config.name]) {
+      return {
+        name: config.name,
+        plugin: BUILTIN_OPTIONAL_PLUGINS[config.name]!,
+        options: config.options,
+      };
+    }
   }
 
   // #241 — a `path` entry may name an EXTENSION FOLDER (a package.json

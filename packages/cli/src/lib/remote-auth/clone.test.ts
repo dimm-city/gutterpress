@@ -204,7 +204,7 @@ test("failed clone removes the partially-created directory; a retry then succeed
     const badCred: HostCredential = { ...CRED, token: "wrong_token" };
     await expect(
       cloneRepository({ url: server.url, dir: dest, credential: badCred }),
-    ).rejects.toThrow(/reconnect github/i);
+    ).rejects.toThrow(/sign in to github again/i);
     expect(fs.existsSync(dest)).toBe(false);
 
     // Retry with the correct credential succeeds into the same path.
@@ -233,7 +233,7 @@ test("failed clone into a pre-existing (empty) folder keeps the user's folder", 
     const badCred: HostCredential = { ...CRED, token: "wrong_token" };
     await expect(
       cloneRepository({ url: server.url, dir: workDir, credential: badCred }),
-    ).rejects.toThrow(/reconnect github/i);
+    ).rejects.toThrow(/sign in to github again/i);
     // The directory existed before the clone — it must NOT be deleted.
     expect(fs.existsSync(workDir)).toBe(true);
   } finally {
@@ -331,7 +331,7 @@ test("SSH URLs are rejected with author-friendly guidance", async () => {
         url: "git@github.com:octocat/book.git",
         dir: path.join(workDir, "book"),
       }),
-    ).rejects.toThrow(/not a valid web url|https/i);
+    ).rejects.toThrow(/not a valid web address|https/i);
     await expect(
       cloneRepository({
         url: "ssh://git@github.com/octocat/book.git",

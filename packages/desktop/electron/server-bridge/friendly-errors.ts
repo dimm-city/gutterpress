@@ -46,30 +46,29 @@ function logFailure(line: string): void {
 // pass through to the renderer verbatim. Anything else is an unexpected
 // internal failure.
 const VCS_FRIENDLY_ERROR =
-  /no changes since the last snapshot|no version history yet|your work is safe|book files were not changed|requires an absolute project path|valid snapshot id|already inside a versioned book|couldn't switch copies|requires a branch name/i;
+  /nothing new to save|isn't keeping version history|your work is safe|book files were not changed|requires an absolute project path|valid snapshot id|already inside a book that keeps version history|revision|online copy|requires a branch name/i;
 
 /**
  * Classify a version-history failure. Logs the full error under `logLabel`,
  * then returns the HTTP-shaped result: a lib author-friendly message becomes a
- * 422 passthrough; anything else becomes a terse 500 naming the operation.
+ * 422 passthrough; anything else becomes a terse 500.
  * Callers throw the SvelteKit `error(status, message)` with the return value.
  */
 export function friendlyVcsError(
   e: unknown,
-  op: string,
   logLabel: string,
 ): { status: number; message: string } {
   const msg = e instanceof Error ? e.message : String(e);
-  logFailure(`[${logLabel}] failed: ${msg}`);
+  logFailure(`[${logLabel}] failed: ${redactUrlCredentials(msg)}`);
   if (e instanceof Error && (e as Error & { stack?: string }).stack) {
-    logFailure((e as Error & { stack?: string }).stack!);
+    logFailure(redactUrlCredentials((e as Error & { stack?: string }).stack!));
   }
   if (VCS_FRIENDLY_ERROR.test(msg)) {
     return { status: 422, message: msg };
   }
   return {
     status: 500,
-    message: `Version history could not complete the ${op} operation. See the app log for details.`,
+    message: "Couldn't finish that. Your work is safe — see the app log for details.",
   };
 }
 
@@ -80,7 +79,7 @@ export function friendlyVcsError(
 // never appear in lib messages by construction (remote-auth redaction
 // invariant).
 const REMOTE_FRIENDLY_ERROR =
-  /couldn't reach github|reconnect github|connect github|sign-?in|declined|expired|canceled|already has files|valid web url|https|repository couldn't be found|couldn't be downloaded|try again|in progress|access token|web address|couldn't reach|didn't accept|wasn't found|certificate|git server/i;
+  /couldn't reach github|connect github|sign[- ]?in|declined|expired|canceled|already has files|https|online copy|couldn't be downloaded|try again|in progress|access token|web address|couldn't reach|didn't accept|wasn't found|certificate|git server/i;
 
 /**
  * Strip credential-bearing URL userinfo ("https://user:token@host/…") from any
@@ -111,7 +110,7 @@ export async function handleRemoteErrors<T>(
     }
     if (REMOTE_FRIENDLY_ERROR.test(msg)) throw new Error(msg);
     throw new Error(
-      "The online repository operation could not be completed. See the app log for details.",
+      "Couldn't finish that with the online copy. See the app log for details.",
     );
   }
 }

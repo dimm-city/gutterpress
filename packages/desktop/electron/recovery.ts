@@ -9,7 +9,7 @@
 // route paths) keep the word "recovery".
 //
 // The in-app editor (#38) auto-saves on a debounce — or, with Settings →
-// Saving's "Save edits automatically" off, only when the author saves;
+// Saving's "Save changes automatically" off, only when the author saves;
 // between an edit and that disk write the buffer differs from disk and an
 // unclean exit would lose it.
 // This module persists a debounced *sidecar snapshot* of the open buffer under
@@ -28,7 +28,7 @@
 //
 // CROSS-COPY RULE (#273). A draft is keyed by an absolute file path, not by
 // which local copy (git branch) of the project was open when it was taken.
-// Switching copies (Settings → Saving) can silently invalidate a pending
+// Switching revisions (Book setup → Online copy) can silently invalidate a pending
 // draft: the file at that path on the NEW copy may be entirely different
 // content than what the draft was written against. `listRecovery`'s
 // baseMtimeMs staleness check catches most of this incidentally (a checkout

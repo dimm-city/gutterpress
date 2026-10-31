@@ -284,8 +284,9 @@ export class ExportController {
     // exportId, so an id minted after the gate would leave a slow/flaky sync
     // as an uncancelable "Preparing PDF…" stall. The "started" progress event
     // (the existing wire state + free-text `message`) lets the renderer adopt
-    // the id — lighting up Cancel immediately — and label the pill "Syncing
-    // latest changes…" for as long as the gate takes.
+    // the id — lighting up Cancel immediately. When the gate goes on to get the
+    // latest changes, a second "started" event labels the pill "Getting the
+    // latest changes…" for as long as that takes.
 
     // HTML takes none of the temp/workspace machinery below: `out` is a
     // DIRECTORY the author chose (or one inside the book) and IS the
@@ -319,20 +320,17 @@ export class ExportController {
       win: null,
     };
     this.deps.setActiveExportSession(exportSession);
-    this.deps.sendProgress({
-      exportId: exportSession.id,
-      state: "started",
-      message: "Syncing latest changes…",
-    });
+    this.deps.sendProgress({ exportId: exportSession.id, state: "started" });
 
     try {
       // ── PDF-export safety gate (transparent-sync plan §5.3) ────────────────
       // Before building, a local-git project that can sync (canSync, i.e. an
-      // HTTPS remote + credential) and is online syncs first, so the PDF
+      // HTTPS remote + credential) and is online gets the latest changes first
+      // (`push: false`: an export never sends the book anywhere), so the PDF
       // includes teammate changes; anything else builds from local content.
-      // Sync always converges — there is no conflict state to block on; the
-      // PDF is built from whatever the converged local content is, which is
-      // always valid and fully snapshotted. Gate errors are non-fatal.
+      // Getting them always converges — there is no conflict state to block
+      // on; the PDF is built from whatever the converged local content is,
+      // which is always valid and fully snapshotted. Gate errors are non-fatal.
       const exportDir = path.resolve(args.input);
       try {
         const exportSource = await lib.detectProjectSource(exportDir);
@@ -346,10 +344,16 @@ export class ExportController {
           });
           this.deps.throwIfCanceled(exportSession);
           if (exportDiag.canSync && this.deps.isOnline()) {
+            this.deps.sendProgress({
+              exportId: exportSession.id,
+              state: "started",
+              message: "Getting the latest changes…",
+            });
             const syncOutcome = await lib.syncProject({
               projectDir: exportDir,
               tokenStore: this.deps.tokenStore,
               ...(await this.deps.gitIdentity()),
+              push: false,
             });
             this.deps.throwIfCanceled(exportSession);
             void syncOutcome;

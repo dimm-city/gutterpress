@@ -1,17 +1,16 @@
 import { expect, test } from "bun:test";
-import { ExtensionsSectionController, FEATURES_TABS } from "../../src/lib/routes/extensions-section-controller.svelte";
+import { ExtensionsSectionController } from "../../src/lib/routes/extensions-section-controller.svelte";
 import type {
   ProjectExtensionEntry,
   ExtensionValidationResult,
-  RecommendedExtension,
-  BuiltInStyleSet,
+  BundledExtensionInfo,
   ExtensionImportResult,
-  NpmExtensionMatch,
   ExtensionSearchResult,
   ExtensionUpdatesResult,
   ExtensionVersionsResult,
+  NpmExtensionMatch,
 } from "../../src/lib/platform/dtos";
-import { sampleSrcdoc, hoverPreviewSrcdoc } from "../../src/lib/components/config/config-helpers";
+import { sampleSrcdoc, carriedKinds, hoverPreviewSrcdoc } from "../../src/lib/components/config/config-helpers";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests (same shim as design-section-controller.test.ts).
@@ -37,41 +36,34 @@ function entry(over: Partial<ProjectExtensionEntry> & { use: string }): ProjectE
   return { kind: "path", name: over.use, enabled: true, label: over.use, carries: NONE, ...over };
 }
 
-// ONE list, several shapes: two looks the author owns, a bundled feature, a
-// component library that carries both, and a missing folder carrying nothing.
-const LOOK_A = entry({ use: "./extensions/clean-book", label: "Clean Book", carries: STYLES, dir: "/proj/extensions/clean-book", styles: ["theme.css"] });
-const LOOK_B = entry({ use: "./extensions/zine", label: "Zine", carries: STYLES, dir: "/proj/extensions/zine", styles: ["theme.css"] });
+// ONE list, several shapes: two looks the author owns on disk (the first an
+// older version's copy of the built-in clean-book), a bundled feature, a
+// bundled look, a component library that carries both, and a missing folder
+// carrying nothing.
+const LOOK_A = entry({ use: "./extensions/clean-book", label: "Clean Book", carries: STYLES, dir: "/proj/extensions/clean-book" });
+const LOOK_B = entry({ use: "./extensions/zine", label: "Zine", carries: STYLES, dir: "/proj/extensions/zine" });
 const FEATURE = entry({ use: "markdown-it-mark", kind: "bundled", label: "Highlight", carries: MARKDOWN });
-const BOTH = entry({ use: "../shared/house", label: "House", carries: { markdown: true, styles: true, snippets: true, components: false }, dir: "/shared/house", styles: ["theme.css"] });
+const BUNDLED_LOOK = entry({ use: "academic", kind: "bundled", label: "Academic", carries: STYLES });
+const BOTH = entry({ use: "../shared/house", label: "House", carries: { markdown: true, styles: true, snippets: true, components: false }, dir: "/shared/house" });
+const NPM_LOOK = entry({ use: "house-look@1.0.0", kind: "npm", name: "house-look", version: "1.0.0", label: "House look", carries: STYLES });
 const BROKEN = entry({ use: "./missing", label: "missing", warnings: ["Not found: /proj/missing"] });
 
-const REC_MARK: RecommendedExtension = { use: "markdown-it-mark", label: "Highlight", description: "d" };
-const REC_SUB: RecommendedExtension = { use: "markdown-it-sub", label: "Subscript", description: "d" };
-const BUILTIN_CLEAN: BuiltInStyleSet = { id: "clean-book", name: "Clean Book", description: "d" };
-const BUILTIN_ZINE: BuiltInStyleSet = { id: "zine", name: "Zine", description: "d" };
+const REC_MARK: BundledExtensionInfo = { use: "markdown-it-mark", label: "Highlight", description: "d", look: false };
+const REC_SUB: BundledExtensionInfo = { use: "markdown-it-sub", label: "Subscript", description: "d", look: false };
+const BUILTIN_CLEAN: BundledExtensionInfo = { use: "clean-book", label: "Clean Book", description: "d", look: true };
+const BUILTIN_ZINE: BundledExtensionInfo = { use: "zine", label: "Zine", description: "d", look: true };
+const BUNDLED = [REC_MARK, REC_SUB, BUILTIN_CLEAN, BUILTIN_ZINE];
 
-const FOUND_DC: NpmExtensionMatch = {
-  name: "dimm-city-components",
-  version: "1.2.0",
-  description: "d",
-  kind: "gutterpress",
-  keywords: ["gutterpress"],
-  npmUrl: "https://www.npmjs.com/package/dimm-city-components",
-};
-const FOUND_OTHER: NpmExtensionMatch = {
-  name: "markdown-it-other",
-  version: "2.0.0",
-  description: "d",
-  kind: "markdown-it",
-  keywords: ["markdown-it-plugin"],
-};
+// What npm search finds: a Gutterpress package (the one the book may already
+// list) and a plain markdown-it plugin.
+const FOUND_DC: NpmExtensionMatch = { name: "dimm-city-components", version: "1.2.0", description: "Components", kind: "gutterpress", keywords: ["gutterpress"] };
+const FOUND_OTHER: NpmExtensionMatch = { name: "markdown-it-emoji", version: "3.0.0", kind: "markdown-it", keywords: ["markdown-it-plugin"] };
 
 interface Harness {
   ctrl: ExtensionsSectionController;
   projectDir: string | null;
   entries: ProjectExtensionEntry[];
-  recommended: RecommendedExtension[];
-  builtIns: BuiltInStyleSet[];
+  bundled: BundledExtensionInfo[];
   validation: ExtensionValidationResult[];
   /** Every host call, in order — `list` included, so "did it reload" is observable. */
   calls: Array<{ name: string; args: unknown[] }>;
@@ -81,10 +73,11 @@ interface Harness {
   addWarnings: string[];
   addLocalResult: ProjectExtensionEntry | null;
   importFileResult: ExtensionImportResult | null;
-  onLookAdded: ReturnType<typeof spy>;
   afterLookChange: ReturnType<typeof spy>;
-  searchResult: ExtensionSearchResult;
   updatesResult: ExtensionUpdatesResult;
+  searchResult: ExtensionSearchResult;
+  failSearch: boolean;
+  failOutdated: boolean;
   /** What the registry says each package has, by name (a missing name is a failed lookup). */
   published: Record<string, string[]>;
   /** The "Include pre-release versions" preference the controller reads and writes. */
@@ -95,23 +88,19 @@ function make(
   over: Partial<{
     noProject: boolean;
     entries: ProjectExtensionEntry[];
-    recommended: RecommendedExtension[];
-    builtIns: BuiltInStyleSet[];
-    searchResult: ExtensionSearchResult;
+    bundled: BundledExtensionInfo[];
     updatesResult: ExtensionUpdatesResult;
+    searchResult: ExtensionSearchResult;
     published: Record<string, string[]>;
     includePrerelease: boolean;
   }> = {},
 ): Harness {
-  const onLookAdded = spy();
   const afterLookChange = spy();
   const h = {
-    onLookAdded,
     afterLookChange,
     projectDir: over.noProject ? null : "/proj",
     entries: over.entries ?? [LOOK_A, FEATURE],
-    recommended: over.recommended ?? [REC_MARK, REC_SUB],
-    builtIns: over.builtIns ?? [BUILTIN_CLEAN, BUILTIN_ZINE],
+    bundled: over.bundled ?? BUNDLED,
     validation: [],
     calls: [],
     failValidate: false,
@@ -120,8 +109,10 @@ function make(
     addWarnings: [],
     addLocalResult: null,
     importFileResult: null,
-    searchResult: over.searchResult ?? { ok: true, matches: [FOUND_DC, FOUND_OTHER], total: 42 },
     updatesResult: over.updatesResult ?? { ok: true, checks: [] },
+    searchResult: over.searchResult ?? { ok: true, matches: [FOUND_DC, FOUND_OTHER], total: 2 },
+    failSearch: false,
+    failOutdated: false,
     published: over.published ?? {},
     includePrerelease: over.includePrerelease ?? false,
   } as Harness;
@@ -135,14 +126,15 @@ function make(
       record("list");
       return Promise.resolve(h.entries);
     },
-    recommended: () => Promise.resolve(h.recommended),
-    listBuiltIn: () => Promise.resolve(h.builtIns),
+    bundled: () => Promise.resolve(h.bundled),
     search: (query) => {
       record("search", query);
+      if (h.failSearch) return Promise.reject(new Error("search blew up"));
       return Promise.resolve(h.searchResult);
     },
     outdated: (dir, includePrerelease) => {
       record("outdated", dir, includePrerelease);
+      if (h.failOutdated) return Promise.reject(new Error("offline"));
       return Promise.resolve(h.updatesResult);
     },
     versions: (name): Promise<ExtensionVersionsResult> => {
@@ -167,33 +159,41 @@ function make(
       record("add", dir, specifier, exportName);
       if (h.failAdd) return Promise.reject(new Error("add failed"));
       if (h.cancelAdd) return Promise.resolve(null);
+      // A bundled look (by name) carries styles and has no folder, as the lib describes it; anything else here is a markdown plugin.
+      const look = h.bundled.some((b) => b.look && b.use === specifier);
       const added = entry({
         use: specifier,
-        kind: specifier.startsWith("./") ? "path" : "npm",
+        kind: specifier.startsWith("./") ? "path" : look ? "bundled" : "npm",
         label: specifier,
-        carries: MARKDOWN,
+        carries: look ? STYLES : MARKDOWN,
         ...(exportName ? { export: exportName } : {}),
         ...(h.addWarnings.length ? { warnings: h.addWarnings } : {}),
       });
-      // An npm re-pin replaces the entry for that package (what the host's `upsertEntry` does).
+      // An npm re-pin replaces the entry for that package in place (what the
+      // host's `upsertEntry` does); the package still carries what it did.
       const npmAt = added.kind === "npm" ? h.entries.findIndex((e) => e.kind === "npm" && e.name === specifier.replace(/@[^@]*$/, "")) : -1;
       if (npmAt >= 0) {
         added.name = h.entries[npmAt]!.name;
+        added.label = h.entries[npmAt]!.label;
+        added.carries = h.entries[npmAt]!.carries;
         added.version = specifier.slice(added.name.length + 1);
         h.entries = h.entries.map((e, i) => (i === npmAt ? added : e));
       } else h.entries = [...h.entries, added];
       return Promise.resolve(added);
     },
+    addBuiltIn: (dir, id) => {
+      record("addBuiltIn", dir, id);
+      if (h.failAdd) return Promise.reject(new Error("copy failed"));
+      // The host copies the look into extensions/<id>/ and lists the copy where the built-in was.
+      const copy = entry({ use: `./extensions/${id}`, label: id, carries: STYLES, dir: `/proj/extensions/${id}`, author: "gutterpress" });
+      const at = h.entries.findIndex((e) => e.use === id);
+      h.entries = at >= 0 ? h.entries.map((e, i) => (i === at ? { ...copy, enabled: e.enabled } : e)) : [...h.entries, copy];
+      return Promise.resolve(copy);
+    },
     addLocal: (dir) => {
       record("addLocal", dir);
       if (h.addLocalResult) h.entries = [...h.entries, h.addLocalResult];
       return Promise.resolve(h.addLocalResult);
-    },
-    addBuiltIn: (dir, id) => {
-      record("addBuiltIn", dir, id);
-      const added = entry({ use: `./extensions/${id}`, label: id, carries: STYLES, dir: `/proj/extensions/${id}`, styles: ["theme.css"] });
-      h.entries = [...h.entries, added];
-      return Promise.resolve(added);
     },
     remove: (dir, use) => {
       record("remove", dir, use);
@@ -224,7 +224,6 @@ function make(
       h.entries = [...h.entries, LOOK_B];
       return Promise.resolve({ entry: LOOK_B, warnings: [{ code: "no-theme-json", message: "No package.json found" }] });
     },
-    onLookAdded: (label) => onLookAdded(label),
     afterLookChange: () => {
       afterLookChange();
       return Promise.resolve();
@@ -235,51 +234,60 @@ function make(
 
 const named = (h: Harness, n: string) => h.calls.filter((c) => c.name === n);
 
-// ── Load: ONE list, two views ─────────────────────────────────────────────────
+// ── Load: ONE list ────────────────────────────────────────────────────────────
 
 test("initial public rune state matches the panel defaults", () => {
   const { ctrl } = make();
   expect(ctrl.entries).toEqual([]);
-  expect(ctrl.recommended).toEqual([]);
-  expect(ctrl.builtIns).toEqual([]);
+  expect(ctrl.bundled).toEqual([]);
+  expect(ctrl.galleryLooks).toEqual([]);
+  expect(ctrl.unlistedExtras).toEqual([]);
+  expect(ctrl.search).toEqual({ status: "idle", query: "", matches: [], total: 0, message: null });
+  expect(ctrl.searchQuery).toBe("");
+  expect(ctrl.searchResults).toEqual([]);
+  expect(ctrl.updates).toEqual({ status: "idle", checks: [], message: null });
+  expect(ctrl.versions).toEqual({});
   expect(ctrl.validation).toEqual({});
   expect(ctrl.validating).toBe(false);
   expect(ctrl.error).toBeNull();
   expect(ctrl.notice).toBeNull();
   expect(ctrl.busy).toBeNull();
+  expect(ctrl.saveStatus).toBe("idle");
   expect(ctrl.importWarnings).toEqual([]);
   expect(ctrl.url).toBe("");
   expect(ctrl.npmName).toBe("");
   expect(ctrl.npmExport).toBe("");
   expect(ctrl.thumbs).toEqual({});
-  expect(ctrl.hoverUse).toBeNull();
   expect(ctrl.hoverPreview).toBeNull();
-  expect(ctrl.looks).toEqual([]);
-  expect(ctrl.features).toEqual([]);
-  expect(ctrl.search).toEqual({ status: "idle", query: "", matches: [], total: 0, message: null });
-  expect(ctrl.searchQuery).toBe("");
-  expect(ctrl.availableSearch).toEqual([]);
+  expect(ctrl.rechecked).toBe(false);
+  expect(ctrl.unlistedLooks).toEqual([]);
 });
 
-test("loadExtensions populates the list, the recommended + built-in catalogs, and the validation map keyed by use", async () => {
+test("loadExtensions populates the list, the bundled catalog, and the validation map keyed by use", async () => {
   const h = make();
   await h.ctrl.loadExtensions();
   expect(h.ctrl.entries).toEqual([LOOK_A, FEATURE]);
-  expect(h.ctrl.recommended).toEqual([REC_MARK, REC_SUB]);
-  expect(h.ctrl.builtIns).toEqual([BUILTIN_CLEAN, BUILTIN_ZINE]);
+  expect(h.ctrl.bundled).toEqual(BUNDLED);
   expect(h.ctrl.validation["markdown-it-mark"]).toEqual({ use: "markdown-it-mark", kind: "bundled", enabled: true, ok: true });
   expect(h.ctrl.validating).toBe(false);
   expect(h.ctrl.error).toBeNull();
 });
 
-test("loadExtensions lazy-loads a sample thumbnail for looks with a folder only", async () => {
-  const h = make({ entries: [LOOK_A, FEATURE, BROKEN] });
+test("loadExtensions lazy-loads a gallery thumbnail for every listed look and every built-in look, listed or not", async () => {
+  const h = make({ entries: [LOOK_A, FEATURE, BROKEN, BUNDLED_LOOK, BOTH] });
   await h.ctrl.loadExtensions();
   await flush();
   expect(h.ctrl.thumbs[LOOK_A.use]).toBe(sampleSrcdoc(":root { --x: 1; }"));
+  expect(h.ctrl.thumbs[BUNDLED_LOOK.use]).toBe(sampleSrcdoc(":root { --x: 1; }"));
+  // A built-in look shows what it looks like before it is chosen, too.
+  expect(h.ctrl.thumbs[BUILTIN_CLEAN.use]).toBe(sampleSrcdoc(":root { --x: 1; }"));
+  expect(h.ctrl.thumbs[BUILTIN_ZINE.use]).toBe(sampleSrcdoc(":root { --x: 1; }"));
+  // No card, no thumbnail: an extra, a broken entry, a component library.
   expect(h.ctrl.thumbs[FEATURE.use]).toBeUndefined();
+  expect(h.ctrl.thumbs[REC_MARK.use]).toBeUndefined();
   expect(h.ctrl.thumbs[BROKEN.use]).toBeUndefined();
-  expect(named(h, "readCss").map((c) => c.args[1])).toEqual([LOOK_A.use]);
+  expect(h.ctrl.thumbs[BOTH.use]).toBeUndefined();
+  expect(named(h, "readCss").map((c) => c.args[1])).toEqual([LOOK_A.use, BUNDLED_LOOK.use, BUILTIN_CLEAN.use, BUILTIN_ZINE.use]);
 });
 
 test("loadExtensions no-ops without a project dir", async () => {
@@ -298,178 +306,17 @@ test("a failed validate surfaces error via loadExtensions' awaited validateExten
   expect(h.ctrl.validating).toBe(false);
 });
 
-test("looks and features are two views over the one list; an extension carrying both is in both", async () => {
+test("the list is every manifest entry in cascade order, each naming the kinds it carries", async () => {
   const h = make({ entries: [LOOK_A, FEATURE, BOTH, BROKEN] });
   await h.ctrl.loadExtensions();
-  expect(h.ctrl.looks.map((e) => e.use)).toEqual([LOOK_A.use, BOTH.use]);
-  // An entry carrying nothing recognizable lands in Features so it is never invisible.
-  expect(h.ctrl.features.map((e) => e.use)).toEqual([FEATURE.use, BOTH.use, BROKEN.use]);
-});
-
-test("availableRecommended hides bundled features already in the list", async () => {
-  const h = make();
-  await h.ctrl.loadExtensions();
-  expect(h.ctrl.availableRecommended).toEqual([REC_SUB]);
-});
-
-test("isBuiltInAdded reflects a ./extensions/<id> entry", async () => {
-  const h = make();
-  await h.ctrl.loadExtensions();
-  expect(h.ctrl.isBuiltInAdded("clean-book")).toBe(true);
-  expect(h.ctrl.isBuiltInAdded("zine")).toBe(false);
-});
-
-// ── Search: npm (#246) ──────────────────────────────────────────────────────
-
-test("loadExtensions never touches search — npm is only searched on demand", async () => {
-  const h = make();
-  await h.ctrl.loadExtensions();
-  expect(h.ctrl.search).toEqual({ status: "idle", query: "", matches: [], total: 0, message: null });
-  expect(named(h, "search")).toEqual([]);
-});
-
-test("runSearch populates matches + total and records the query it ran", async () => {
-  const h = make();
-  h.ctrl.searchQuery = "  footnote  ";
-  await h.ctrl.runSearch();
-  expect(named(h, "search").map((c) => c.args)).toEqual([["footnote"]]);
-  expect(h.ctrl.search).toEqual({
-    status: "ready",
-    query: "footnote",
-    matches: [FOUND_DC, FOUND_OTHER],
-    total: 42,
-    message: null,
-  });
-});
-
-test("runSearch surfaces an `ok: false` result as search.message, not ctrl.error", async () => {
-  const h = make({ searchResult: { ok: false, message: "Couldn't reach the npm registry." } });
-  await h.ctrl.runSearch("");
-  expect(h.ctrl.search).toEqual({
-    status: "error",
-    query: "",
-    matches: [],
-    total: 0,
-    message: "Couldn't reach the npm registry.",
-  });
-  expect(h.ctrl.error).toBeNull();
-});
-
-test("runSearch refuses a second concurrent call while one is loading", async () => {
-  const h = make();
-  const first = h.ctrl.runSearch("");
-  expect(h.ctrl.search.status).toBe("loading");
-  const second = h.ctrl.runSearch(""); // issued while the first is still in flight
-  await Promise.all([first, second]);
-  expect(named(h, "search").length).toBe(1);
-  expect(h.ctrl.search.status).toBe("ready");
-});
-
-test("availableSearch hides packages already configured, matching an npm entry by NAME not by its pin", async () => {
-  const h = make({
-    entries: [entry({ use: "dimm-city-components@1.1.0", kind: "npm", name: "dimm-city-components", carries: MARKDOWN })],
-  });
-  await h.ctrl.loadExtensions();
-  await h.ctrl.runSearch("");
-  expect(h.ctrl.availableSearch).toEqual([FOUND_OTHER]);
-});
-
-// ── Features tabs ────────────────────────────────────────────────────────────
-
-test("the Features tabs are Installed & built-in, Search, Advanced — in that order", () => {
-  expect(FEATURES_TABS.map((t) => t.label)).toEqual(["Installed & built-in", "Search", "Advanced"]);
-});
-
-test("the npm search runs the first time the Search tab is shown — not before, not for other tabs", async () => {
-  const h = make();
-  h.ctrl.showFeaturesTab("installed");
-  h.ctrl.showFeaturesTab("advanced");
-  await flush();
-  expect(named(h, "search")).toEqual([]);
-  expect(h.ctrl.search.status).toBe("idle");
-
-  h.ctrl.showFeaturesTab("search");
-  await flush();
-  expect(named(h, "search").map((c) => c.args)).toEqual([[""]]);
-  expect(h.ctrl.search.status).toBe("ready");
-
-  // Showing it again (a tab round trip) reuses the result instead of asking npm again.
-  h.ctrl.showFeaturesTab("installed");
-  h.ctrl.showFeaturesTab("search");
-  await flush();
-  expect(named(h, "search").length).toBe(1);
-});
-
-test("a remembered Search tab searches when a fresh controller mounts onto it, and the tab outlives the controller", async () => {
-  const first = make();
-  first.ctrl.showFeaturesTab("search");
-  await flush();
-
-  // ProjectSettingsView builds a new controller per open: the selection carries over,
-  // the (per-controller) search state does not — so the view's mount call must search.
-  const second = make();
-  expect(second.ctrl.featuresTab).toBe("search");
-  expect(second.ctrl.search.status).toBe("idle");
-  second.ctrl.showFeaturesTab(second.ctrl.featuresTab);
-  await flush();
-  expect(named(second, "search").length).toBe(1);
-
-  second.ctrl.showFeaturesTab("installed"); // leave module state as a restart would find it
-  expect(make().ctrl.featuresTab).toBe("installed");
-});
-
-test("showFeaturesTab does not re-search while the first search is still in flight", async () => {
-  const h = make();
-  h.ctrl.showFeaturesTab("search");
-  h.ctrl.showFeaturesTab("installed");
-  h.ctrl.showFeaturesTab("search");
-  await flush();
-  expect(named(h, "search").length).toBe(1);
-  h.ctrl.showFeaturesTab("installed");
-});
-
-test("an add from Search stays on its tab and says where the row went", async () => {
-  const h = make();
-  h.ctrl.showFeaturesTab("search");
-  await flush();
-  await h.ctrl.addSearched(FOUND_DC);
-  expect(h.ctrl.featuresTab).toBe("search");
-  expect(h.ctrl.notice).toBe("Added dimm-city-components — find it under Installed & built-in.");
-  expect(h.ctrl.features.some((e) => e.use === "dimm-city-components")).toBe(true);
-  expect(h.ctrl.availableSearch.some((m) => m.name === "dimm-city-components")).toBe(false);
-  h.ctrl.showFeaturesTab("installed");
-});
-
-test("install by name confirms too, and keeps an installer warning after the confirmation", async () => {
-  const h = make({ entries: [] });
-  h.addWarnings = ["Registry provided legacy SHA-1 integrity."];
-  h.ctrl.npmName = "old-plugin";
-  await h.ctrl.addNpm();
-  expect(h.ctrl.notice).toBe("Added old-plugin — find it under Installed & built-in. Registry provided legacy SHA-1 integrity.");
-});
-
-test("turning on a Formatting extra (Installed tab) adds no confirmation — the row appears right there", async () => {
-  const h = make({ entries: [] });
-  await h.ctrl.addRecommended(REC_MARK);
-  expect(h.ctrl.notice).toBeNull();
-});
-
-test("addSearched adds by the package name and reloads the list", async () => {
-  const h = make();
-  await h.ctrl.runSearch("");
-  await h.ctrl.addSearched(FOUND_DC);
-  expect(named(h, "add").map((c) => c.args)).toEqual([["/proj", "dimm-city-components", undefined]]);
-  expect(h.entries.some((e) => e.use === "dimm-city-components")).toBe(true);
-  expect(named(h, "list").length).toBeGreaterThan(0); // reloaded after the add
-});
-
-test("addSearched refreshes Styles+Design when the INSTALLED package turns out to carry styles", async () => {
-  // The search result says nothing about what a package carries; the host's
-  // described entry does, and that is what decides.
-  const h = make();
-  h.addWarnings = [];
-  await h.ctrl.addSearched(FOUND_DC);
-  expect(h.afterLookChange.calls.length).toBe(0); // the fake host echoes a markdown-only entry
+  expect(h.ctrl.entries.map((e) => [e.use, carriedKinds(e)])).toEqual([
+    [LOOK_A.use, ["Look"]],
+    [FEATURE.use, ["Extra"]],
+    // A component library's styles serve its own markdown: "Styles", not "Look".
+    [BOTH.use, ["Extra", "Styles", "Snippets"]],
+    // An entry carrying nothing recognizable is still a row, so it is never invisible or un-removable.
+    [BROKEN.use, []],
+  ]);
 });
 
 // ── One verb set: toggle / remove / move ──────────────────────────────────────
@@ -504,20 +351,28 @@ test("remove is a single click: drops the entry, reloads, refreshes for a look o
   expect(h.afterLookChange.calls.length).toBe(1);
 });
 
-test("move sends the FULL order with the entry past its neighbour in that view", async () => {
+test("move sends the FULL order with the entry past its neighbour in the list", async () => {
   const h = make({ entries: [LOOK_A, FEATURE, LOOK_B] });
   await h.ctrl.loadExtensions();
-  await h.ctrl.move(LOOK_B, -1, "looks");
-  expect(named(h, "reorder").map((c) => c.args[1])).toEqual([[LOOK_B.use, LOOK_A.use, FEATURE.use]]);
-  expect(h.ctrl.looks.map((e) => e.use)).toEqual([LOOK_B.use, LOOK_A.use]);
+  await h.ctrl.move(LOOK_B, -1);
+  expect(named(h, "reorder").map((c) => c.args[1])).toEqual([[LOOK_A.use, LOOK_B.use, FEATURE.use]]);
+  expect(h.ctrl.entries.map((e) => e.use)).toEqual([LOOK_A.use, LOOK_B.use, FEATURE.use]);
   expect(h.afterLookChange.calls.length).toBe(1);
 });
 
-test("move at the edge of the view is a no-op — no host call", async () => {
+test("moving a markdown-only feature reorders without refreshing Styles+Design", async () => {
+  const h = make({ entries: [LOOK_A, FEATURE] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.move(FEATURE, -1);
+  expect(named(h, "reorder").map((c) => c.args[1])).toEqual([[FEATURE.use, LOOK_A.use]]);
+  expect(h.afterLookChange.calls.length).toBe(0);
+});
+
+test("move at the edge of the list is a no-op — no host call", async () => {
   const h = make({ entries: [LOOK_A, FEATURE, LOOK_B] });
   await h.ctrl.loadExtensions();
-  await h.ctrl.move(LOOK_A, -1, "looks");
-  await h.ctrl.move(LOOK_B, 1, "looks");
+  await h.ctrl.move(LOOK_A, -1);
+  await h.ctrl.move(LOOK_B, 1);
   expect(named(h, "reorder")).toEqual([]);
 });
 
@@ -532,7 +387,136 @@ test("a failed verb surfaces error, does not refresh, and clears busy", async ()
   expect(h.ctrl.busy).toBeNull();
 });
 
-// ── Add, four ways to name the extension ──────────────────────────────────────
+// ── Search: npm (#246) ────────────────────────────────────────────────────────
+
+test("loading the list never searches — npm is only asked when the author submits", async () => {
+  const h = make();
+  await h.ctrl.loadExtensions();
+  expect(h.ctrl.search.status).toBe("idle");
+  expect(named(h, "search")).toEqual([]);
+});
+
+test("runSearch asks npm for the trimmed query and keeps the matches with the query they are for", async () => {
+  const h = make();
+  h.ctrl.searchQuery = "  emoji  ";
+  await h.ctrl.runSearch();
+  expect(named(h, "search").map((c) => c.args)).toEqual([["emoji"]]);
+  expect(h.ctrl.search).toEqual({ status: "ready", query: "emoji", matches: [FOUND_OTHER], total: 2, message: null });
+});
+
+test("npm ranks by the words but filters only by keyword, so a typed search keeps only what mentions them; nothing typed keeps all", async () => {
+  const h = make();
+  h.ctrl.searchQuery = "emoji";
+  await h.ctrl.runSearch();
+  expect(h.ctrl.search.matches).toEqual([FOUND_OTHER]); // dimm-city-components says nothing of emoji
+  h.ctrl.searchQuery = "zzzz";
+  await h.ctrl.runSearch();
+  expect(h.ctrl.search).toEqual({ status: "ready", query: "zzzz", matches: [], total: 2, message: null });
+  h.ctrl.searchQuery = "";
+  await h.ctrl.runSearch();
+  expect(h.ctrl.search.matches).toEqual([FOUND_DC, FOUND_OTHER]);
+});
+
+test("a search with nothing typed asks for the most relevant (an empty query)", async () => {
+  const h = make();
+  await h.ctrl.runSearch();
+  expect(named(h, "search").map((c) => c.args)).toEqual([[""]]);
+});
+
+test("a search that finds nothing is a ready state with no matches, for the view's empty message", async () => {
+  const h = make({ searchResult: { ok: true, matches: [], total: 0 } });
+  h.ctrl.searchQuery = "zzzz";
+  await h.ctrl.runSearch();
+  expect(h.ctrl.search).toEqual({ status: "ready", query: "zzzz", matches: [], total: 0, message: null });
+  expect(h.ctrl.searchResults).toEqual([]);
+});
+
+test("an `ok: false` search is one quiet message in search.message, not ctrl.error, and drops the old matches", async () => {
+  const h = make();
+  await h.ctrl.runSearch();
+  h.searchResult = { ok: false, message: "Couldn't reach the npm registry. Check your connection and try again." };
+  await h.ctrl.runSearch();
+  expect(h.ctrl.search).toEqual({
+    status: "error",
+    query: "",
+    matches: [],
+    total: 0,
+    message: "Couldn't reach the npm registry. Check your connection and try again.",
+  });
+  expect(h.ctrl.error).toBeNull();
+});
+
+test("a search that throws is the same quiet message", async () => {
+  const h = make();
+  h.failSearch = true;
+  await h.ctrl.runSearch();
+  expect(h.ctrl.search).toEqual({ status: "error", query: "", matches: [], total: 0, message: "search blew up" });
+  expect(h.ctrl.error).toBeNull();
+});
+
+test("runSearch refuses a second call while one is loading", async () => {
+  const h = make();
+  const first = h.ctrl.runSearch();
+  expect(h.ctrl.search.status).toBe("loading");
+  const second = h.ctrl.runSearch();
+  await Promise.all([first, second]);
+  expect(named(h, "search").length).toBe(1);
+  expect(h.ctrl.search.status).toBe("ready");
+});
+
+test("searchResults marks the packages the book lists, matching an npm entry by NAME not by its pin, and keeps them in the list", async () => {
+  const h = make({
+    entries: [entry({ use: "dimm-city-components@1.1.0", kind: "npm", name: "dimm-city-components", carries: MARKDOWN })],
+  });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.runSearch();
+  expect(h.ctrl.searchResults.map((m) => [m.name, m.added])).toEqual([
+    ["dimm-city-components", true],
+    ["markdown-it-emoji", false],
+  ]);
+});
+
+test("addSearched adds the package by name, the way the typed name does, and the result then reads as added", async () => {
+  const h = make({ entries: [] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.runSearch();
+  h.ctrl.npmName = "draft";
+  await h.ctrl.addSearched(FOUND_OTHER);
+  expect(named(h, "add").map((c) => c.args)).toEqual([["/proj", "markdown-it-emoji", undefined]]);
+  expect(h.ctrl.entries.map((e) => e.use)).toEqual(["markdown-it-emoji"]);
+  expect(h.ctrl.searchResults.map((m) => [m.name, m.added])).toEqual([
+    ["dimm-city-components", false],
+    ["markdown-it-emoji", true],
+  ]);
+  expect(h.ctrl.saveStatus).toBe("saved");
+  // The typed name's draft is not the search's to clear.
+  expect(h.ctrl.npmName).toBe("draft");
+});
+
+test("addSearched keeps the installer's warnings as the tab's notice", async () => {
+  const h = make({ entries: [] });
+  h.addWarnings = ["Skipped an optional dependency."];
+  await h.ctrl.addSearched(FOUND_DC);
+  expect(h.ctrl.notice).toBe("Skipped an optional dependency.");
+});
+
+test("a cancelled trust gate or a failed add leaves the result to add again", async () => {
+  const h = make({ entries: [] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.runSearch();
+  h.cancelAdd = true;
+  await h.ctrl.addSearched(FOUND_DC);
+  expect(h.ctrl.entries).toEqual([]);
+  expect(h.ctrl.error).toBeNull();
+  h.cancelAdd = false;
+  h.failAdd = true;
+  await h.ctrl.addSearched(FOUND_DC);
+  expect(h.ctrl.error).toBe("add failed");
+  expect(h.ctrl.searchResults.every((m) => !m.added)).toBe(true);
+  expect(h.ctrl.busy).toBeNull();
+});
+
+// ── Add: several ways to name the extension ───────────────────────────────────
 
 test("addNpm rejects a blank name without calling the host", async () => {
   const h = make();
@@ -550,16 +534,6 @@ test("addNpm trims, adds, clears the draft, and reloads", async () => {
   expect(h.ctrl.npmName).toBe("");
   expect(h.ctrl.entries.some((e) => e.use === "markdown-it-footnote")).toBe(true);
   expect(named(h, "list").length).toBe(1);
-});
-
-test("addNpm forwards and clears an optional named export", async () => {
-  const h = make({ entries: [] });
-  h.ctrl.npmName = "markdown-it-emoji@3.0.0";
-  h.ctrl.npmExport = "  full  ";
-  await h.ctrl.addNpm();
-  expect(named(h, "add").map((c) => c.args)).toEqual([["/proj", "markdown-it-emoji@3.0.0", "full"]]);
-  expect(h.ctrl.npmName).toBe("");
-  expect(h.ctrl.npmExport).toBe("");
 });
 
 test("cancelling the native npm trust gate keeps the draft and does not reload", async () => {
@@ -581,43 +555,31 @@ test("a non-fatal installer warning is surfaced as a notice after a successful a
   expect(h.ctrl.notice).toContain("legacy SHA-1");
 });
 
-test("addRecommended writes the bundled name", async () => {
-  const h = make({ entries: [] });
-  await h.ctrl.addRecommended(REC_SUB);
-  expect(named(h, "add").map((c) => c.args)).toEqual([["/proj", "markdown-it-sub", undefined]]);
-  expect(h.ctrl.availableRecommended.map((r) => r.use)).toEqual(["markdown-it-mark"]);
-});
-
-test("addLocal: a cancelled picker changes nothing; a picked look announces itself and refreshes", async () => {
+test("addLocal: a cancelled picker changes nothing; a picked look is listed and refreshes the design settings", async () => {
   const h = make({ entries: [] });
   await h.ctrl.addLocal();
   expect(named(h, "list")).toEqual([]);
-  expect(h.onLookAdded.calls.length).toBe(0);
+  expect(h.ctrl.saveStatus).toBe("idle");
 
-  h.addLocalResult = BOTH;
+  h.addLocalResult = LOOK_B;
   await h.ctrl.addLocal();
-  expect(h.ctrl.looks).toEqual([BOTH]);
-  expect(h.ctrl.features).toEqual([BOTH]);
-  expect(h.onLookAdded.calls).toEqual([["House"]]);
+  expect(h.ctrl.entries).toEqual([LOOK_B]);
   expect(h.afterLookChange.calls.length).toBe(1);
+  expect(h.ctrl.saveStatus).toBe("saved");
 });
 
-test("useBuiltIn copies the look in, marks it added, announces it, and refreshes Styles+Design", async () => {
-  const h = make({ entries: [] });
+test("a component library (markdown and styles) also refreshes the design settings", async () => {
+  const h = make({ entries: [LOOK_A] });
   await h.ctrl.loadExtensions();
-  expect(h.ctrl.isBuiltInAdded("zine")).toBe(false);
-  await h.ctrl.useBuiltIn("zine");
-  expect(named(h, "addBuiltIn").map((c) => c.args)).toEqual([["/proj", "zine"]]);
-  expect(h.ctrl.isBuiltInAdded("zine")).toBe(true);
-  expect(h.ctrl.looks.map((e) => e.use)).toEqual(["./extensions/zine"]);
-  expect(h.onLookAdded.calls).toEqual([["zine"]]);
+  h.addLocalResult = BOTH;
+  await h.ctrl.addLocal();
+  expect(h.ctrl.entries).toEqual([LOOK_A, BOTH]);
   expect(h.afterLookChange.calls.length).toBe(1);
-  expect(h.ctrl.busy).toBeNull();
 });
 
 // ── #106: file / URL import ───────────────────────────────────────────────────
 
-test("importFile surfaces the host warnings, announces the look, and reloads on success", async () => {
+test("importFile surfaces the host warnings and reloads on success", async () => {
   const h = make({ entries: [] });
   h.importFileResult = {
     entry: LOOK_B,
@@ -628,25 +590,24 @@ test("importFile surfaces the host warnings, announces the look, and reloads on 
   };
   await h.ctrl.importFile();
   expect(h.ctrl.importWarnings).toEqual(["Remote URL is not allowed", "No package.json found"]);
-  expect(h.ctrl.looks).toEqual([LOOK_B]);
-  expect(h.onLookAdded.calls).toEqual([["Zine"]]);
+  expect(h.ctrl.entries).toEqual([LOOK_B]);
   expect(h.afterLookChange.calls.length).toBe(1);
   expect(h.ctrl.error).toBeNull();
   expect(h.ctrl.busy).toBeNull();
 });
 
-test("importFile leaves warnings empty and announces nothing when the picker is cancelled", async () => {
+test("importFile leaves warnings empty and reloads nothing when the picker is cancelled", async () => {
   const h = make();
   await h.ctrl.importFile();
   expect(h.ctrl.importWarnings).toEqual([]);
-  expect(h.onLookAdded.calls.length).toBe(0);
+  expect(named(h, "list")).toEqual([]);
 });
 
 test("importUrl rejects a blank URL without calling the host", async () => {
   const h = make();
   h.ctrl.url = "   ";
   await h.ctrl.importUrl();
-  expect(h.ctrl.error).toContain("Enter a URL");
+  expect(h.ctrl.error).toContain("Enter a web address");
   expect(named(h, "importFromUrl")).toEqual([]);
 });
 
@@ -657,28 +618,8 @@ test("importUrl trims, imports, clears the draft, surfaces warnings, and reloads
   expect(named(h, "importFromUrl").map((c) => c.args)).toEqual([["/proj", "https://example.com/theme.css"]]);
   expect(h.ctrl.url).toBe("");
   expect(h.ctrl.importWarnings).toEqual(["No package.json found"]);
-  expect(h.ctrl.looks).toEqual([LOOK_B]);
+  expect(h.ctrl.entries).toEqual([LOOK_B]);
   expect(h.ctrl.error).toBeNull();
-});
-
-// ── #106: hover preview ───────────────────────────────────────────────────────
-
-test("showHoverPreview renders the fixed 2-page spread with the look's CSS", async () => {
-  const h = make();
-  await h.ctrl.showHoverPreview(LOOK_A);
-  expect(h.ctrl.hoverUse).toBe(LOOK_A.use);
-  expect(h.ctrl.hoverPreview).toBe(hoverPreviewSrcdoc(":root { --x: 1; }"));
-  h.ctrl.hideHoverPreview();
-  expect(h.ctrl.hoverUse).toBeNull();
-  expect(h.ctrl.hoverPreview).toBeNull();
-});
-
-test("showHoverPreview has nothing to render for an entry without a folder", async () => {
-  const h = make();
-  await h.ctrl.showHoverPreview(FEATURE);
-  expect(h.ctrl.hoverUse).toBeNull();
-  expect(h.ctrl.hoverPreview).toBeNull();
-  expect(named(h, "readCss")).toEqual([]);
 });
 
 // ── Updates ──────────────────────────────────────────────────────────────────
@@ -708,6 +649,28 @@ test("checkUpdates surfaces an `ok: false` result as updates.message, not ctrl.e
   expect(h.ctrl.updateFor(PINNED_DC)).toBeNull();
 });
 
+test("Check for updates asks npm again once the last check finished, keeping the old answer on screen meanwhile", async () => {
+  const h = make({ entries: [PINNED_DC], updatesResult: { ok: true, checks: [] } });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.checkUpdates();
+  expect(h.ctrl.updateFor(PINNED_DC)).toBeNull();
+  h.updatesResult = DC_BEHIND; // npm published 1.2.0 since
+  const again = h.ctrl.checkUpdates();
+  expect(h.ctrl.updates.status).toBe("loading"); // the button reads "Checking npm…"
+  await again;
+  expect(named(h, "outdated").length).toBe(2);
+  expect(h.ctrl.updateFor(PINNED_DC)).toBe("1.2.0");
+});
+
+test("a check that throws is the same quiet message", async () => {
+  const h = make({ entries: [PINNED_DC] });
+  await h.ctrl.loadExtensions();
+  h.failOutdated = true;
+  await h.ctrl.checkUpdates();
+  expect(h.ctrl.updates).toEqual({ status: "error", checks: [], message: "offline" });
+  expect(h.ctrl.error).toBeNull();
+});
+
 test("checkUpdates refuses a second concurrent call while one is loading", async () => {
   const h = make({ entries: [PINNED_DC], updatesResult: DC_BEHIND });
   const first = h.ctrl.checkUpdates();
@@ -727,6 +690,25 @@ test("update re-pins through add(name@latest) keeping the export, reloads, and c
   expect(h.ctrl.busy).toBeNull();
 });
 
+test("update and install re-pin in place; the host's warnings still show", async () => {
+  const h = make({
+    entries: [NPM_LOOK, BUNDLED_LOOK],
+    updatesResult: {
+      ok: true,
+      checks: [{ use: NPM_LOOK.use, name: "house-look", current: "1.0.0", latest: "1.1.0", outdated: true }],
+    },
+  });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.checkUpdates();
+  h.addWarnings = ["Registry provided legacy SHA-1 integrity."];
+  await h.ctrl.update(NPM_LOOK);
+  await h.ctrl.install(h.ctrl.entries[0]!);
+  expect(named(h, "add").map((c) => c.args[1])).toEqual(["house-look@1.1.0", "house-look@1.1.0"]);
+  expect(h.ctrl.entries.map((e) => e.use)).toEqual(["house-look@1.1.0", "academic"]); // still first, re-pinned in place
+  expect(h.ctrl.entries[0]!.carries).toEqual(STYLES); // still a look
+  expect(h.ctrl.notice).toContain("legacy SHA-1");
+});
+
 test("update is a no-op for an entry with nothing newer, and a cancelled trust gate changes nothing", async () => {
   const h = make({ entries: [PINNED_DC], updatesResult: DC_BEHIND });
   await h.ctrl.loadExtensions();
@@ -740,10 +722,9 @@ test("update is a no-op for an entry with nothing newer, and a cancelled trust g
 });
 
 
-// ── Install button, version picker, pre-release preference ───────────────────
+// ── Install button ───────────────────────────────────────────────────────────
 
-const PUBLISHED_DC = ["1.3.0-rc.1", "1.2.0", "1.2.0-alpha.2", "1.1.0", "1.0.0"];
-/** The screenshot's state: a pin whose downloaded copy is missing. */
+/** A pin whose downloaded copy is missing. */
 const MISSING_DC = entry({
   use: "dimm-city-components@1.2.0-alpha.2",
   kind: "npm",
@@ -752,41 +733,6 @@ const MISSING_DC = entry({
   export: "full",
   carries: MARKDOWN,
   warnings: ["Not installed — run `gutterpress ext add dimm-city-components@1.2.0-alpha.2`."],
-});
-
-test("versionChoices: stable only by default, pre-releases with the preference, the pin always listed", async () => {
-  const h = make({ entries: [PINNED_DC, MISSING_DC], published: { "dimm-city-components": PUBLISHED_DC } });
-  await h.ctrl.loadExtensions();
-  await h.ctrl.loadVersions("dimm-city-components");
-  expect(h.ctrl.versionChoices(PINNED_DC)).toEqual(["1.2.0", "1.1.0", "1.0.0"]);
-  // A pre-release pin stays visible even with the preference off.
-  expect(h.ctrl.versionChoices(MISSING_DC)).toEqual(["1.2.0", "1.2.0-alpha.2", "1.1.0", "1.0.0"]);
-  h.ctrl.setIncludePrerelease(true);
-  expect(h.ctrl.versionChoices(PINNED_DC)).toEqual(PUBLISHED_DC);
-  // …and flipping it needed no second registry lookup.
-  expect(named(h, "versions").length).toBe(1);
-});
-
-test("versionChoices: before the list loads (or when it fails) the row still offers its pin; non-npm rows get no picker", async () => {
-  const h = make({ entries: [PINNED_DC, FEATURE, BOTH], published: {} });
-  expect(h.ctrl.versionChoices(PINNED_DC)).toEqual(["1.1.0"]);
-  await h.ctrl.loadVersions("dimm-city-components");
-  expect(h.ctrl.versions["dimm-city-components"]).toEqual({ status: "error", versions: [], message: 'npm package "dimm-city-components" was not found.' });
-  expect(h.ctrl.versionChoices(PINNED_DC)).toEqual(["1.1.0"]);
-  expect(h.ctrl.error).toBeNull(); // quiet: never blocks the panel
-  expect(h.ctrl.versionChoices(FEATURE)).toEqual([]);
-  expect(h.ctrl.versionChoices(BOTH)).toEqual([]);
-});
-
-test("loadVersions caches per package for the session, but retries after a failure", async () => {
-  const h = make({ entries: [PINNED_DC], published: {} });
-  await h.ctrl.loadVersions("dimm-city-components"); // fails
-  h.published = { "dimm-city-components": PUBLISHED_DC };
-  await h.ctrl.loadVersions("dimm-city-components"); // retried: picker opened again
-  await h.ctrl.loadVersions("dimm-city-components"); // cached
-  await Promise.all([h.ctrl.loadVersions("dimm-city-components"), h.ctrl.loadVersions("dimm-city-components")]);
-  expect(named(h, "versions").map((c) => c.args)).toEqual([["dimm-city-components"], ["dimm-city-components"]]);
-  expect(h.ctrl.versions["dimm-city-components"]!.status).toBe("ready");
 });
 
 test("install on a Needs-install row calls add with exactly the pinned spec and the entry's export, then refreshes the row", async () => {
@@ -827,13 +773,65 @@ test("a failed install reports it in plain words and leaves the row, its pin and
   expect(h.ctrl.busy).toBeNull(); // the Install button is usable again
 });
 
+
+// ── Version picker, pre-release preference ───────────────────────────────────
+
+const PUBLISHED_DC = ["1.3.0-rc.1", "1.2.0", "1.2.0-alpha.2", "1.1.0", "1.0.0"];
+
+test("versionChoices: stable only by default, pre-releases with the preference, the pin always listed", async () => {
+  const h = make({ entries: [PINNED_DC, MISSING_DC], published: { "dimm-city-components": PUBLISHED_DC } });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.loadVersions("dimm-city-components");
+  expect(h.ctrl.versionChoices(PINNED_DC)).toEqual(["1.2.0", "1.1.0", "1.0.0"]);
+  // A pre-release pin stays visible even with the preference off.
+  expect(h.ctrl.versionChoices(MISSING_DC)).toEqual(["1.2.0", "1.2.0-alpha.2", "1.1.0", "1.0.0"]);
+  h.ctrl.setIncludePrerelease(true);
+  expect(h.ctrl.versionChoices(PINNED_DC)).toEqual(PUBLISHED_DC);
+  // …and flipping it needed no second registry lookup.
+  expect(named(h, "versions").length).toBe(1);
+});
+
+test("versionChoices: before the list loads (or when it fails) the row still offers its pin; non-npm rows get no picker", async () => {
+  const h = make({ entries: [PINNED_DC, FEATURE, BOTH], published: {} });
+  expect(h.ctrl.versionChoices(PINNED_DC)).toEqual(["1.1.0"]);
+  const loading = h.ctrl.loadVersions("dimm-city-components");
+  expect(h.ctrl.versions["dimm-city-components"]!.status).toBe("loading"); // the row reads "Loading versions…"
+  await loading;
+  expect(h.ctrl.versions["dimm-city-components"]).toEqual({ status: "error", versions: [], message: 'npm package "dimm-city-components" was not found.' });
+  expect(h.ctrl.versionChoices(PINNED_DC)).toEqual(["1.1.0"]);
+  expect(h.ctrl.error).toBeNull(); // quiet: never blocks the tab
+  expect(h.ctrl.versionChoices(FEATURE)).toEqual([]);
+  expect(h.ctrl.versionChoices(BOTH)).toEqual([]);
+});
+
+test("loadVersions caches per package for the session, but retries after a failure", async () => {
+  const h = make({ entries: [PINNED_DC], published: {} });
+  await h.ctrl.loadVersions("dimm-city-components"); // fails
+  h.published = { "dimm-city-components": PUBLISHED_DC };
+  await h.ctrl.loadVersions("dimm-city-components"); // retried: picker focused again
+  await h.ctrl.loadVersions("dimm-city-components"); // cached
+  await Promise.all([h.ctrl.loadVersions("dimm-city-components"), h.ctrl.loadVersions("dimm-city-components")]);
+  expect(named(h, "versions").map((c) => c.args)).toEqual([["dimm-city-components"], ["dimm-city-components"]]);
+  expect(h.ctrl.versions["dimm-city-components"]!.status).toBe("ready");
+});
+
+test("loading the list never asks npm for versions — a row's picker does, when it is shown", async () => {
+  const h = make({ entries: [PINNED_DC], published: { "dimm-city-components": PUBLISHED_DC } });
+  await h.ctrl.loadExtensions();
+  await flush();
+  expect(named(h, "versions")).toEqual([]);
+  expect(named(h, "outdated")).toEqual([]);
+});
+
 test("switchVersion installs name@chosen keeping the export, then the row carries the new pin", async () => {
   const h = make({ entries: [PINNED_DC], published: { "dimm-city-components": PUBLISHED_DC } });
   await h.ctrl.loadExtensions();
-  await h.ctrl.switchVersion(PINNED_DC, "1.2.0");
-  expect(named(h, "add").map((c) => c.args)).toEqual([["/proj", "dimm-city-components@1.2.0", "full"]]);
-  expect(h.ctrl.entries.map((e) => [e.use, e.version])).toEqual([["dimm-city-components@1.2.0", "1.2.0"]]);
+  await h.ctrl.switchVersion(PINNED_DC, "1.0.0"); // down as well as up
+  expect(named(h, "add").map((c) => c.args)).toEqual([["/proj", "dimm-city-components@1.0.0", "full"]]);
+  expect(h.ctrl.entries.map((e) => [e.use, e.version])).toEqual([["dimm-city-components@1.0.0", "1.0.0"]]);
+  expect(h.ctrl.saveStatus).toBe("saved");
   // npm is asked again what "newer" means for the new pin.
+  await flush();
   expect(named(h, "outdated").length).toBe(1);
 });
 
@@ -875,15 +873,18 @@ test("a cancelled trust prompt on a switch changes nothing and shows no error", 
   await h.ctrl.loadExtensions();
   h.cancelAdd = true;
   await h.ctrl.switchVersion(PINNED_DC, "1.2.0");
+  expect(named(h, "add").length).toBe(1); // the trust gate was asked
   expect(h.ctrl.error).toBeNull();
   expect(h.ctrl.entries).toEqual([PINNED_DC]);
   expect(h.ctrl.busy).toBeNull();
+  expect(h.ctrl.saveStatus).toBe("idle");
 });
 
 test("only one install runs at a time: a second switch while one is in flight is refused", async () => {
   const h = make({ entries: [PINNED_DC] });
   await h.ctrl.loadExtensions();
   const first = h.ctrl.switchVersion(PINNED_DC, "1.2.0");
+  expect(h.ctrl.busy).toBe(PINNED_DC.use); // the row reads "Installing…" and its picker disables
   await h.ctrl.switchVersion(PINNED_DC, "1.0.0");
   await first;
   expect(named(h, "add").map((c) => c.args[1])).toEqual(["dimm-city-components@1.2.0"]);
@@ -897,4 +898,298 @@ test("the pre-release preference is read and written through the settings seam, 
   expect(h.ctrl.includePrerelease).toBe(true);
   expect(named(h, "setIncludePrerelease").map((c) => c.args)).toEqual([[true]]);
   expect(named(h, "outdated").map((c) => c.args)).toEqual([["/proj", true]]);
+  // Every later check asks with it too.
+  await h.ctrl.checkUpdates();
+  expect(named(h, "outdated").map((c) => c.args)).toEqual([["/proj", true], ["/proj", true]]);
+});
+
+
+// ── The Look tab: a gallery of looks, and the extras ─────────────────────────
+
+const ZINE_CARD = { use: "zine", label: "Zine", description: "d", from: null };
+const CLEAN = entry({ use: "clean-book", kind: "bundled", label: "Clean Book", carries: STYLES });
+const SUB = entry({ use: "markdown-it-sub", kind: "bundled", label: "Subscript", carries: MARKDOWN });
+
+test("galleryLooks: the look in use first, then the built-ins in bundled order, then npm and folder looks, on or off", async () => {
+  const house = entry({ use: "../shared/house-style", label: "House style", carries: STYLES });
+  const h = make({ entries: [FEATURE, { ...NPM_LOOK, enabled: false }, house] });
+  await h.ctrl.loadExtensions();
+  expect(h.ctrl.galleryLooks).toEqual([
+    { use: house.use, label: "House style", description: "", from: "From a folder" },
+    { use: "clean-book", label: "Clean Book", description: "d", from: null },
+    ZINE_CARD,
+    { use: NPM_LOOK.use, label: "House look", description: "", from: "From npm" },
+  ]);
+});
+
+test("galleryLooks shows a built-in once: as the ./extensions/<id> copy an older version made of it", async () => {
+  const h = make(); // LOOK_A is ./extensions/clean-book
+  await h.ctrl.loadExtensions();
+  expect(h.ctrl.galleryLooks.map((c) => c.use)).toEqual([LOOK_A.use, "zine"]);
+});
+
+test("galleryLooks keeps the order freezeGalleryOrder fixed, so choosing never moves a card", async () => {
+  const h = make({ entries: [CLEAN, FEATURE] });
+  await h.ctrl.loadExtensions();
+  h.ctrl.freezeGalleryOrder();
+  await h.ctrl.chooseLook(ZINE_CARD);
+  expect(h.ctrl.galleryLooks.map((c) => c.use)).toEqual(["clean-book", "zine"]);
+  // The next time the tab opens, the look in use comes first.
+  h.ctrl.freezeGalleryOrder();
+  expect(h.ctrl.galleryLooks.map((c) => c.use)).toEqual(["zine", "clean-book"]);
+});
+
+test("chooseLook: a built-in replaces a built-in at the same place in the list", async () => {
+  const h = make({ entries: [FEATURE, CLEAN, SUB] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.chooseLook(ZINE_CARD);
+  expect(named(h, "add").map((c) => c.args[1])).toEqual(["zine"]);
+  expect(named(h, "reorder").map((c) => c.args[1])).toEqual([[FEATURE.use, "zine", "clean-book", SUB.use]]);
+  expect(named(h, "remove").map((c) => c.args[1])).toEqual(["clean-book"]);
+  expect(h.ctrl.entries.map((e) => e.use)).toEqual([FEATURE.use, "zine", SUB.use]);
+  expect(h.afterLookChange.calls.length).toBe(1);
+  expect(h.ctrl.saveStatus).toBe("saved");
+  expect(h.ctrl.busy).toBeNull();
+});
+
+test("chooseLook: an npm look that is replaced is switched off, not removed", async () => {
+  const h = make({ entries: [NPM_LOOK, FEATURE] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.chooseLook(ZINE_CARD);
+  expect(named(h, "remove")).toEqual([]);
+  expect(named(h, "setEnabled").map((c) => c.args.slice(1))).toEqual([[NPM_LOOK.use, false]]);
+  expect(h.ctrl.entries.map((e) => [e.use, e.enabled])).toEqual([
+    ["zine", true],
+    [NPM_LOOK.use, false],
+    [FEATURE.use, true],
+  ]);
+});
+
+test("chooseLook: a look already listed but off is switched on in the old look's place", async () => {
+  const h = make({ entries: [CLEAN, { ...NPM_LOOK, enabled: false }] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.chooseLook({ use: NPM_LOOK.use, label: "House look", description: "", from: "From npm" });
+  expect(named(h, "add")).toEqual([]);
+  expect(named(h, "setEnabled").map((c) => c.args.slice(1))).toEqual([[NPM_LOOK.use, true]]);
+  expect(h.ctrl.entries.map((e) => [e.use, e.enabled])).toEqual([[NPM_LOOK.use, true]]);
+});
+
+test("chooseLook on a book with no look adds it and moves nothing", async () => {
+  const h = make({ entries: [FEATURE] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.chooseLook(ZINE_CARD);
+  expect(named(h, "add").map((c) => c.args[1])).toEqual(["zine"]);
+  expect(named(h, "reorder")).toEqual([]);
+  expect(h.ctrl.enabledLooks.map((e) => e.use)).toEqual(["zine"]);
+});
+
+test("chooseLook is refused with two looks on (the Extensions tab's to change), and choosing the look in use does nothing", async () => {
+  const h = make({ entries: [CLEAN, LOOK_B] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.chooseLook({ use: "academic", label: "Academic", description: "d", from: null });
+  const one = make({ entries: [CLEAN] });
+  await one.ctrl.loadExtensions();
+  await one.ctrl.chooseLook({ use: "clean-book", label: "Clean Book", description: "d", from: null });
+  for (const x of [h, one]) {
+    expect(x.calls.filter((c) => !["list", "readCss"].includes(c.name))).toEqual([]);
+    expect(x.ctrl.saveStatus).toBe("idle");
+  }
+});
+
+test("a failed chooseLook says the book still uses its look", async () => {
+  const h = make({ entries: [CLEAN] });
+  await h.ctrl.loadExtensions();
+  h.failAdd = true;
+  await h.ctrl.chooseLook(ZINE_CARD);
+  expect(h.ctrl.error).toBe("Couldn't switch to Zine. Your book still uses Clean Book. add failed");
+  expect(h.ctrl.saveStatus).toBe("idle");
+  expect(named(h, "remove")).toEqual([]);
+});
+
+test("unlistedExtras: the built-in extras the book does not list, whether or not they are on; never a look", async () => {
+  const h = make({ entries: [FEATURE, { ...SUB, enabled: false }, CLEAN] });
+  await h.ctrl.loadExtensions();
+  // Highlight and the switched-off Subscript are rows of the list; the rest is for the Add area.
+  expect(h.ctrl.unlistedExtras).toEqual([]);
+  const book = make({ entries: [FEATURE, CLEAN] });
+  await book.ctrl.loadExtensions();
+  expect(book.ctrl.unlistedExtras.map((x) => x.use)).toEqual(["markdown-it-sub"]);
+  const none = make({ entries: [] });
+  await none.ctrl.loadExtensions();
+  expect(none.ctrl.unlistedExtras.map((x) => x.use)).toEqual(["markdown-it-mark", "markdown-it-sub"]);
+});
+
+test("addExtra adds the built-in by its bundled name, moves it out of the Add area and into the list; nothing to refresh", async () => {
+  const h = make({ entries: [FEATURE] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.addExtra(REC_SUB);
+  expect(named(h, "add").map((c) => c.args.slice(1))).toEqual([["markdown-it-sub", undefined]]);
+  expect(h.ctrl.entries.map((e) => e.use)).toEqual(["markdown-it-mark", "markdown-it-sub"]);
+  expect(h.ctrl.unlistedExtras).toEqual([]);
+  expect(h.ctrl.saveStatus).toBe("saved");
+  expect(h.afterLookChange.calls.length).toBe(0);
+});
+
+test("removing a built-in extra from the list offers it in the Add area again", async () => {
+  const h = make({ entries: [FEATURE] });
+  await h.ctrl.loadExtensions();
+  expect(h.ctrl.unlistedExtras.map((x) => x.use)).toEqual(["markdown-it-sub"]);
+  await h.ctrl.remove(FEATURE);
+  expect(h.ctrl.unlistedExtras.map((x) => x.use)).toEqual(["markdown-it-mark", "markdown-it-sub"]);
+});
+
+test("a failed addExtra says why and leaves the list as it was", async () => {
+  const h = make({ entries: [FEATURE] });
+  await h.ctrl.loadExtensions();
+  h.failAdd = true;
+  await h.ctrl.addExtra(REC_SUB);
+  expect(h.ctrl.error).toBe("add failed");
+  expect(h.ctrl.saveStatus).toBe("idle");
+  expect(h.ctrl.entries.map((e) => e.use)).toEqual(["markdown-it-mark"]);
+});
+
+// ── #482: what 0.11.22's Look and Extensions tabs did, restored ──────────────
+
+test("copyLook makes an editable copy of the built-in look in use: the copy takes its place in the list and its card in the gallery", async () => {
+  const h = make({ entries: [FEATURE, CLEAN, SUB] });
+  await h.ctrl.loadExtensions();
+  h.ctrl.freezeGalleryOrder();
+  expect(h.ctrl.galleryLooks.map((c) => c.use)).toEqual(["clean-book", "zine"]);
+  const card = h.ctrl.galleryLooks[0]!;
+  await h.ctrl.copyLook(card);
+  expect(named(h, "addBuiltIn").map((c) => c.args)).toEqual([["/proj", "clean-book"]]);
+  expect(h.ctrl.entries.map((e) => e.use)).toEqual([FEATURE.use, "./extensions/clean-book", SUB.use]);
+  // The copy is a folder look now, in the card the built-in had: nothing moved.
+  expect(h.ctrl.galleryLooks.map((c) => [c.use, c.from])).toEqual([
+    ["./extensions/clean-book", "From a folder"],
+    ["zine", null],
+  ]);
+  expect(h.ctrl.enabledLooks.map((e) => e.use)).toEqual(["./extensions/clean-book"]);
+  expect(h.afterLookChange.calls.length).toBe(1);
+  expect(h.ctrl.saveStatus).toBe("saved");
+  expect(h.ctrl.busy).toBeNull();
+});
+
+test("copyLook is only for a built-in look; a failed copy says which look and changes nothing", async () => {
+  const h = make({ entries: [NPM_LOOK] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.copyLook({ use: NPM_LOOK.use, label: "House look", description: "", from: "From npm" });
+  expect(named(h, "addBuiltIn")).toEqual([]);
+
+  const failing = make({ entries: [CLEAN] });
+  await failing.ctrl.loadExtensions();
+  failing.failAdd = true;
+  await failing.ctrl.copyLook({ use: "clean-book", label: "Clean Book", description: "d", from: null });
+  expect(failing.ctrl.error).toBe("Couldn't copy Clean Book. copy failed");
+  expect(failing.ctrl.entries.map((e) => e.use)).toEqual(["clean-book"]);
+  expect(failing.ctrl.saveStatus).toBe("idle");
+});
+
+test("unlistedLooks: the built-in looks the book does not list, by name or as a copy — the one-click way to stack a second look", async () => {
+  const h = make({ entries: [CLEAN, FEATURE] });
+  await h.ctrl.loadExtensions();
+  expect(h.ctrl.unlistedLooks.map((b) => b.use)).toEqual(["zine"]);
+  const copied = make({ entries: [LOOK_A] }); // ./extensions/clean-book
+  await copied.ctrl.loadExtensions();
+  expect(copied.ctrl.unlistedLooks.map((b) => b.use)).toEqual(["zine"]);
+  // Never an extra.
+  expect(h.ctrl.unlistedLooks.every((b) => b.look)).toBe(true);
+});
+
+test("adding a second built-in look stacks it: listed last, both on, the design settings reloaded, the Look tab's gallery then hands the pair to Extensions", async () => {
+  const h = make({ entries: [CLEAN, FEATURE] });
+  await h.ctrl.loadExtensions();
+  await h.ctrl.addExtra(BUILTIN_ZINE);
+  expect(named(h, "add").map((c) => c.args.slice(1))).toEqual([["zine", undefined]]);
+  expect(h.ctrl.entries.map((e) => e.use)).toEqual(["clean-book", FEATURE.use, "zine"]);
+  expect(h.ctrl.enabledLooks.map((e) => e.use)).toEqual(["clean-book", "zine"]);
+  expect(h.ctrl.unlistedLooks).toEqual([]);
+  expect(h.afterLookChange.calls.length).toBe(1);
+  // Two looks on: the gallery's single choice is refused (the Look tab says so and links to Extensions).
+  await h.ctrl.chooseLook({ use: "clean-book", label: "Clean Book", description: "d", from: null });
+  expect(named(h, "remove")).toEqual([]);
+});
+
+test("recheck reads the list again and load-tests it, and only then says every extension loads", async () => {
+  const h = make({ entries: [LOOK_A, BROKEN] });
+  await h.ctrl.loadExtensions();
+  expect(h.ctrl.rechecked).toBe(false);
+  const lists = named(h, "list").length;
+  // The missing folder was put back since the list loaded.
+  h.entries = [LOOK_A, { ...BROKEN, warnings: undefined, carries: MARKDOWN }];
+  const run = h.ctrl.recheck();
+  await run;
+  expect(named(h, "list").length).toBe(lists + 1);
+  expect(h.ctrl.entries[1]!.warnings).toBeUndefined();
+  expect(h.ctrl.validation[BROKEN.use]?.ok).toBe(true);
+  expect(h.ctrl.rechecked).toBe(true);
+});
+
+test("runSearch keeps what npm said it has, for Showing N of M", async () => {
+  const h = make({ searchResult: { ok: true, matches: [FOUND_DC, FOUND_OTHER], total: 140 } });
+  await h.ctrl.runSearch();
+  expect(h.ctrl.search.total).toBe(140);
+  expect(h.ctrl.searchResults.map((m) => `${m.name}@${m.version}`)).toEqual(["dimm-city-components@1.2.0", "markdown-it-emoji@3.0.0"]);
+  h.searchResult = { ok: false, message: "offline" };
+  await h.ctrl.runSearch();
+  expect(h.ctrl.search.total).toBe(0);
+});
+
+test("addNpm passes the named export when one is typed, then clears both drafts; a cancelled gate keeps them", async () => {
+  const h = make({ entries: [] });
+  h.ctrl.npmName = "markdown-it-emoji@3.0.0";
+  h.ctrl.npmExport = "  full  ";
+  h.cancelAdd = true;
+  await h.ctrl.addNpm();
+  expect([h.ctrl.npmName, h.ctrl.npmExport]).toEqual(["markdown-it-emoji@3.0.0", "  full  "]);
+  h.cancelAdd = false;
+  await h.ctrl.addNpm();
+  expect(named(h, "add").map((c) => c.args.slice(1))).toEqual([
+    ["markdown-it-emoji@3.0.0", "full"],
+    ["markdown-it-emoji@3.0.0", "full"],
+  ]);
+  expect(h.ctrl.entries[0]!.export).toBe("full");
+  expect([h.ctrl.npmName, h.ctrl.npmExport]).toEqual(["", ""]);
+  // With nothing typed, no export is sent (the package's default plugin).
+  h.ctrl.npmName = "markdown-it-footnote";
+  await h.ctrl.addNpm();
+  expect(named(h, "add").at(-1)!.args.slice(1)).toEqual(["markdown-it-footnote", undefined]);
+});
+
+test("a look card names who made it when its package says", async () => {
+  const house = entry({ use: "../shared/house-style", label: "House style", carries: STYLES, author: "Ada Lovelace", enabled: false });
+  const h = make({ entries: [house] });
+  await h.ctrl.loadExtensions();
+  expect(h.ctrl.galleryLooks.find((c) => c.use === house.use)).toEqual({
+    use: house.use,
+    label: "House style",
+    description: "",
+    from: "From a folder",
+    author: "Ada Lovelace",
+  });
+  // A built-in card says nothing of an author.
+  expect(h.ctrl.galleryLooks.find((c) => c.use === "zine")!.author).toBeUndefined();
+});
+
+test("showHoverPreview shows the look over the fixed two-page sample, from the CSS its thumbnail read; leaving hides it", async () => {
+  const h = make({ entries: [CLEAN] });
+  await h.ctrl.loadExtensions();
+  await flush();
+  const reads = named(h, "readCss").length;
+  await h.ctrl.showHoverPreview("zine");
+  expect(h.ctrl.hoverPreview).toBe(hoverPreviewSrcdoc(":root { --x: 1; }"));
+  expect(h.ctrl.hoverPreview).toContain('class="pm-sample-page"');
+  expect(named(h, "readCss").length).toBe(reads); // no second host call
+  h.ctrl.hideHoverPreview();
+  expect(h.ctrl.hoverPreview).toBeNull();
+});
+
+test("a hover preview whose CSS arrives after the pointer left is not shown", async () => {
+  const h = make({ entries: [] });
+  // Nothing loaded yet, so the CSS is read on demand.
+  const pending = h.ctrl.showHoverPreview("zine");
+  h.ctrl.hideHoverPreview();
+  await pending;
+  expect(h.ctrl.hoverPreview).toBeNull();
+  expect(named(h, "readCss").map((c) => c.args[1])).toEqual(["zine"]);
 });

@@ -30,7 +30,7 @@ export function logsDir(userDataDir: string): string {
   return path.join(userDataDir, "logs");
 }
 
-// Where "Repair online backup" moves a book's old `.git` (lib repair.ts). Under
+// Where "Repair the online copy" moves a book's old `.git` (lib repair.ts). Under
 // userData — never inside the book, where it would be committed — one folder
 // per repair so nothing is ever overwritten, and kept indefinitely: it is the
 // only copy of versions that were never backed up online.

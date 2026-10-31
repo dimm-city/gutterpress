@@ -254,7 +254,7 @@ export class ExportController {
 
   /** Recompute `pdfProgress` from the current FSM state + counters. */
   updateLabel(): void {
-    // A host-supplied pre-build label (e.g. "Syncing latest changes…")
+    // A host-supplied pre-build label (e.g. "Getting the latest changes…")
     // wins over the normal FSM label until it is cleared — re-asserted here
     // so the 1s ticker doesn't overwrite it with "Preparing PDF… Ns".
     if (this.pendingMessage) {

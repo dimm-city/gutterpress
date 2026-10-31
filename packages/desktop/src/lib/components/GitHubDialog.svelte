@@ -2,10 +2,10 @@
   import Icon from "#lib/components/Icon.svelte";
   /**
    * "Open from GitHub" flow (#15): Connect (device-flow code) →
-   * choose repository → choose branch + destination folder → download → the
-   * project opens through the same path as any local folder. All copy is
-   * author-friendly — no clone/remote/token vocabulary. The renderer never
-   * sees a token: connection status is redacted by the host.
+   * choose the online copy → choose revision + destination folder → download →
+   * the project opens through the same path as any local folder. All copy is
+   * author-friendly (docs/ux-design-contract.md, Vocabulary). The renderer never
+   * sees a token: sign-in status is redacted by the host.
    */
   import { tick } from "svelte";
   import { getPlatform } from "#lib/platform/index.ts";
@@ -24,15 +24,15 @@
   let {
     open = $bindable(false),
     onOpened,
-    onAdvancedSetup,
+    onOpenAccounts,
     onClosed,
     triggerEl,
   }: {
     open?: boolean;
     /** Called with the new local project folder once the download finishes. */
     onOpened?: (projectDir: string) => void;
-    /** "Using a different Git host?" — closes this dialog, opens Advanced Setup (#14). */
-    onAdvancedSetup?: () => void;
+    /** "Using a different Git host?" — closes this dialog, opens the Accounts page. */
+    onOpenAccounts?: () => void;
     /** Called whenever the dialog closes (any path). Useful for post-close refresh. */
     onClosed?: () => void;
     triggerEl?: HTMLButtonElement | undefined;
@@ -164,13 +164,13 @@
     (repos.length > 0 ? filterEl : (refreshBtn ?? filterEl))?.focus();
   }
 
-  /** Hand off to Advanced Setup (#14) — shared by the connect + repos steps. */
-  function goAdvancedSetup() {
+  /** Hand off to the Accounts page (other Git servers) — shared by the connect + repos steps. */
+  function goAccounts() {
     open = false;
     onClosed?.();
-    // No triggerEl?.focus() here: Advanced Setup opens next and takes focus
-    // itself; it restores focus when IT closes.
-    onAdvancedSetup?.();
+    // No triggerEl?.focus() here: Accounts opens next and takes focus itself;
+    // it restores focus when IT closes.
+    onOpenAccounts?.();
   }
 
   async function chooseRepo(repo: RemoteRepository) {
@@ -319,7 +319,7 @@
   >
     <header class="dlg-header">
       <h2 id="github-dialog-title">
-        {#if step === "connect" || step === "code"}Connect GitHub{:else if step === "repos"}Choose a repository{:else if step === "configure"}Open book{:else if step === "books"}Choose a book{:else}Downloading…{/if}
+        {#if step === "connect" || step === "code"}Connect GitHub{:else if step === "repos"}Choose the online copy{:else if step === "configure"}Open book{:else if step === "books"}Choose a book{:else}Downloading…{/if}
       </h2>
       <button
         class="dlg-close"
@@ -347,14 +347,11 @@
           Connect your GitHub account to open the books stored there.
           A browser window will ask you to enter a short code — that's it.
         </p>
-        {#if onAdvancedSetup}
+        {#if onOpenAccounts}
           <p class="hint subtle">
             Using a different Git host (Gitea, GitLab, Bitbucket, …)?
-            <button
-              type="button"
-              class="link-btn"
-              onclick={goAdvancedSetup}
-            >Open Connections settings</button>
+            <button type="button" class="link-btn" onclick={goAccounts}>Open Accounts</button>
+            to sign in to it, then download the book with your usual Git tool and open the folder.
           </p>
         {/if}
         <footer class="dlg-actions">
@@ -392,28 +389,28 @@
             bind:this={filterEl}
             type="text"
             class="filter"
-            placeholder="Search repositories…"
-            aria-label="Search repositories"
+            placeholder="Search online copies…"
+            aria-label="Search online copies"
             bind:value={filter}
             spellcheck="false"
             autocomplete="off"
           />
         {/if}
         {#if reposLoading}
-          <p class="hint subtle">Loading your repositories…</p>
+          <p class="hint subtle">Loading your online copies…</p>
         {:else if repos.length === 0}
           <!-- The OAuth `repo` scope sees every repository the account can
                access, so an empty list means the account truly has none yet. -->
           <p class="hint">
-            There are no repositories on this GitHub account yet. Once you (or
+            There are no online copies on this GitHub account yet. Once you (or
             a collaborator) create one, use Refresh and it will show up here.
           </p>
         {:else if filteredRepos.length === 0}
-          <p class="hint subtle">No repositories match your search.</p>
+          <p class="hint subtle">No online copies match your search.</p>
         {:else}
           <!-- Pick-and-go list: each repo is a real button (native keyboard
                + focus semantics), not a listbox with managed selection. -->
-          <ul class="repo-list" role="list" aria-label="Your repositories">
+          <ul class="repo-list" role="list" aria-label="Your online copies">
             {#each filteredRepos as repo (repo.fullName)}
               <li role="listitem">
                 <button type="button" class="repo-row" onclick={() => chooseRepo(repo)}>
@@ -424,11 +421,10 @@
             {/each}
           </ul>
         {/if}
-        {#if onAdvancedSetup}
+        {#if onOpenAccounts}
           <p class="hint subtle">
             Or connect a different Git server in
-            <button type="button" class="link-btn" onclick={goAdvancedSetup}
-            >Connections settings</button>
+            <button type="button" class="link-btn" onclick={goAccounts}>Accounts</button>
           </p>
         {/if}
         <footer class="dlg-actions">
@@ -443,7 +439,7 @@
       {:else if step === "configure" && selectedRepo}
         <p class="hint"><strong>{selectedRepo.fullName}</strong></p>
         <label class="field">
-          <span>Version to open</span>
+          <span>Revision to open</span>
           <select bind:value={branch}>
             {#each branches as b (b.name)}
               <option value={b.name}>
@@ -479,7 +475,7 @@
         </p>
         <!-- svelte-ignore a11y_no_redundant_roles -- list-style:none strips
              list semantics in some screen readers; role="list" restores it. -->
-        <ul class="repo-list" role="list" aria-label="Books in this repository">
+        <ul class="repo-list" role="list" aria-label="Books in this online copy">
           {#each books as book (book.path)}
             <li role="listitem">
               <button type="button" class="repo-row" onclick={() => startClone(book.path)}>
@@ -569,20 +565,10 @@
   .filter,
   .field input,
   .field select {
-    background: var(--app-surface-sunken);
-    border: 1px solid var(--app-border);
-    color: var(--app-text-secondary);
     padding: 8px 10px;
-    border-radius: 6px;
     font-size: 13px;
     width: 100%;
     box-sizing: border-box;
-  }
-  .filter:focus,
-  .field input:focus,
-  .field select:focus {
-    outline: none;
-    border-color: var(--app-focus-ring);
   }
   .field {
     display: flex;

@@ -97,7 +97,7 @@ packages/cli/src/
 │   ├── manifest.ts         # Manifest loading + config resolution
 │   ├── extension-manager.ts # The `extensions:` list: list/add/remove/toggle/reorder
 │   ├── extension-import.ts # .zip / .css / URL look import → extensions/<id>/
-│   ├── presets.ts          # Vendor presets (DTRPG)
+│   ├── presets.ts          # Presets (dtrpg, book, custom)
 │   ├── pdf-parse.ts        # PDF parsing utilities
 │   ├── ghostscript.ts      # PDF/X CMYK conversion
 │   ├── chromium.ts         # Chromium executable resolution
@@ -157,14 +157,14 @@ Check Registry ← registerCheck() at import time
     ↓
 Tool Check (tool-check.ts)
     ├── Collect requiredTools from active checks
-    ├── Filter out disabled checks (manifest + source tool config)
+    ├── Filter out checks the manifest turns off
     ├── Probe system for each tool via `which`
     ├── Warn about missing tools → list affected check IDs
     └── Pass skipped check IDs to runner
     ↓
 Runner (runner.ts)
     ├── Get checks from registry (filtered by category/phase/IDs)
-    ├── Apply manifest enable/disable (validate.checks map)
+    ├── Drop checks the manifest's `checks` map sets to off
     ├── Apply CLI --only/--skip filters
     ├── Skip checks with missing tools (from tool-check)
     ├── Execute each check → CheckResult[]
@@ -176,7 +176,7 @@ Formatter (formatter.ts)
     └── JSON format (structured, for CI)
 ```
 
-**40 checks across 4 categories:**
+**35 checks across 4 categories:**
 - **Source (11)**: markdownlint + htmlhint wrappers, print-safety CSS checks
   (PostCSS), an optional CSS ownership contract check (PostCSS —
   [docs/css-ownership-contract.md](./css-ownership-contract.md)), local
@@ -184,7 +184,7 @@ Formatter (formatter.ts)
   accessibility checks, leftover sync-merge-marker detection, and unusual
   characters pasted into the markdown
 - **PDF (17)**: Structure, page size, text safe margins, color spaces, fonts, ink coverage, transparency, bleed, bookmarks, etc.
-- **Asset (4)**: Size and alpha of the images the book ships, and font approval/license checks
+- **Asset (3)**: Size and alpha of the images the book ships, and the font license check
 - **Heuristic (4)**: Text density, section density, layer count, placement variance
 
 ## Build Pipeline
@@ -203,7 +203,7 @@ Precedence order (highest to lowest):
 
 1. **CLI arguments** (highest priority)
 2. **manifest.yaml** (project configuration)
-3. **Vendor preset defaults** (fallback, e.g. DTRPG)
+3. **Preset defaults** (fallback, e.g. dtrpg)
 
 ```typescript
 // resolveConfig merges CLI overrides > manifest > preset defaults
@@ -241,6 +241,7 @@ support. Custom plugins from the manifest are applied at creation time via
 // Creates a new MarkdownIt instance with all built-in plugins
 function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
   const md = new MarkdownIt({ html: true, linkify: true, typographer: true });
+  md.use(gpTypography); // ---, -- and ... only (typography.ts); replaces markdown-it's `replacements`
 
   md.use(markdownItAttrs);
   md.use(markdownItFootnote);
@@ -273,12 +274,7 @@ never a `<link>` — in a fixed cascade order (`markdown/assemble.ts`):
    (page/section/spread mechanics). Always present.
 2. **Core utilities** — `GUTTERPRESS_CSS`, exported by
    `gutterpress-css.ts` (`gp-*` image, positioning, and column vocabulary).
-3. **Page size default** — `@page { size: <w>pt <h>pt }` from the manifest's
-   `page` block, unlayered, written only when neither an extension's nor the
-   project's CSS sets a plain `@page { size }` (#415): Chromium prints the
-   stylesheet's `size`, and this is where the manifest's becomes one. An
-   author's own `size` wins by the cascade.
-4. **Extension CSS** - each `extensions:` entry's stylesheets, in list order:
+3. **Extension CSS** - each `extensions:` entry's stylesheets, in list order:
    a look's or component library's declared `styles` (from its
    `package.json`'s `gutterpress` block), or a plugin module's `styles` files
    (paths relative to the module) followed by its `css` string export. All
@@ -287,7 +283,7 @@ never a `<link>` — in a fixed cascade order (`markdown/assemble.ts`):
    wrapped in its own cascade layer (`@layer ext.<name>`, declared in list
    order after core's), so a later entry's CSS wins ties whatever the
    extension's own CSS does, and every extension beats core.
-5. **Project CSS** - the manifest's `styles:` list, resolved and inlined last
+4. **Project CSS** - the manifest's `styles:` list, resolved and inlined
    (so project rules win at equal specificity, over every extension) by
    `lib/asset-inline.ts`: each
    file is *read*, not linked — local `@import`s are followed and inlined in
@@ -300,6 +296,13 @@ never a `<link>` — in a fixed cascade order (`markdown/assemble.ts`):
    (`../design-guide/styles/guide.css`) — with no copying and no destination
    indirection. An `extensions:` path entry (`./extensions/<id>`,
    `../../shared/house-style`) is read the same way.
+5. **Page geometry** — `@page { size }` from the manifest's `page` block,
+   with `@page`, `@page :left` and `@page :right` margins when it sets
+   `page.margin`; unlayered and LAST, so the manifest wins by the cascade: a
+   `size` in an extension's or the project's CSS is overridden (the
+   print-safety check reports it), and so is an `@page` margin once the
+   manifest has margins (`pageGeometryCss`). Left out of the manifest,
+   margins stay the stylesheets', else the engine's 1in.
 
 **Design Rationale**:
 - Self-contained HTML output (no external dependencies, no `<link>` that can 404)
@@ -504,16 +507,15 @@ styles:
   - css/print.css
   - css/custom.css
 
-# Source files (optional)
-source:
-  files:                    # If specified, only these files are included in order
-    - intro.md
-    - chapter-01.md
-    - chapter-02.md
+# Chapters (optional)
+chapters:                   # If specified, only these files are included, in order
+  - intro.md
+  - chapter-01.md
+  - chapter-02.md
 
 # No `output:` block — every build writes to `<manifestDir>/dist/<title-slug>/`,
 # and artifacts are named `<title-slug>-<format>.<ext>` (lib/output-paths.ts).
-# `--out <path>` overrides this per invocation. There is also no `source.assets`
+# `--out <path>` overrides this per invocation. There is also no assets
 # list: CSS is read and inlined (fonts embedded as data: URIs), and images are
 # copied because the book's own markdown/CSS references them, not because a
 # directory was declared (lib/asset-inline.ts).
@@ -522,7 +524,6 @@ source:
 page:
   width: 621
   height: 810
-  tolerance: 0.5
 
 # PDF/X settings
 pdfx:
@@ -530,19 +531,13 @@ pdfx:
   icc: profiles/color-profile.icc
   stripAnnotations: true
 
-# Validation settings
-validate:
-  enabled: true
-  checks:                   # Per-check overrides
-    pdf.structure.qpdf: false
-  source:
-    markdownlint: ".markdownlint.yaml"
-  assets:
-    maxImageSize: 10000000
-  pdf:
-    forbidTransparency: true
-  heuristics:
-    textDensityRange: { min: 200, max: 5000 }
+# Check levels: off | on | info | warn | error. Thresholds come from the
+# preset and the publish target (lib/presets.ts, lib/targets.ts); a book
+# overrides one as an option of its check (lib/check-options.ts).
+checks:
+  pdf.structure.qpdf: off
+  pdf.print.transparency: on
+  pdf.print.ink-coverage: { maxTac: 300 }
 ```
 
 See the [`with-validation` example](../examples/with-validation/README.md) for a
@@ -598,10 +593,11 @@ Everything a book loads beyond core — markdown-it plugins, looks
 `extensions:` list (#265). An entry is a bare specifier whose FORM says what
 it is; there is no `path:`/`name:` wrapper and no `priority`:
 
-1. a **bundled** name (`BUNDLED_EXTENSIONS`: `markdown-it-mark`, `-sub`,
-   `-sup`, `-abbr`, `gutterpress-gfm-alerts`) resolves to the copy compiled
-   into Gutterpress — no install, no network; bundled names shadow npm and
-   cannot be pinned;
+1. a **bundled** name (`BUNDLED_EXTENSIONS`: the markdown features
+   `markdown-it-mark`, `-sub`, `-sup`, `-abbr`, `gutterpress-gfm-alerts`,
+   `gutterpress-math`, and the looks `clean-book`, `zine`, `technical-doc`,
+   `academic`) resolves to the copy compiled into Gutterpress — no install,
+   no network; bundled names shadow npm and cannot be pinned;
 2. `./x`, `../x`, `/x` or a Windows drive path is a **path** relative to the
    manifest — a folder with a `package.json` or a bare `.js` plugin file —
    referenced in place, never copied;
@@ -611,7 +607,7 @@ it is; there is no `path:`/`name:` wrapper and no `priority`:
 ```yaml
 # manifest.yaml
 extensions:
-  - ./extensions/clean-book            # a look, copied in by `ext add --look`
+  - clean-book                         # a built-in look, bundled
   - ./plugins/my-custom-plugin.js      # a bare plugin file, referenced in place
   - markdown-it-footnote@4.0.0         # npm, pinned by `ext add`
   - use: markdown-it-anchor@9.2.0      # object form: only when an entry needs more
@@ -673,17 +669,20 @@ A path entry that names a FOLDER is loaded through its `package.json`
 (`lib/extension-manifest.ts`): npm's own `name`, `description`, `author`,
 `keywords` and `main` (the markdown-it entry, loaded through the exact same
 plain-markdown-it contract as a bare file), plus a `gutterpress` block —
-`styles` (ordered sheets), `tokensFile`, `preview`, `snippets`, `components`,
+`styles` (ordered sheets), `preview`, `snippets`, `components`,
 and `markdown` for the one case `main` cannot express. A package maintainer
 writes no second manifest, so a plain markdown-it plugin package is a valid
 extension unchanged, and "look" and "plugin" are just what a package happens
 to declare. The removed `gutterpress.json`/`theme.json` are not read: a folder
 still carrying one fails to load with the package.json shape spelled out.
-The three built-in looks are the one thing the manager COPIES into a project
-(`extensions/<id>/`, then referenced as `./extensions/<id>`): a book's look
-must be the author's own editable files, never a hidden dependency on the CSS
-embedded in whichever Gutterpress version is installed. `.zip` / `.css` / URL
-imports land the same way.
+A built-in look is a bundled extension: its stylesheet is compiled into
+Gutterpress and loads like a plugin's own CSS, so `clean-book` in
+`extensions:` installs and copies nothing. The book styles over it from its
+own `styles:` sheets, which load after every extension.
+`.zip` / `.css` / URL imports land a copy in `extensions/<id>/`, listed as
+`./extensions/<id>`; so does an editable copy of a built-in look, made only
+when asked (`addBuiltInStyleSet`: `ext add <look> --look`, Book setup's "Make
+an editable copy"), which then loads as the path extension it is.
 
 ### Plugin Resolution
 
@@ -693,7 +692,7 @@ The specifier's form picks the branch:
    before any other lookup
 2. **Paths** → the file or folder, relative to the manifest
 3. **npm** → the project-local vendored copy
-   (`plugins/npm/<name>/<version>/`, selected by the pinned `name@version`; the
+   (`extensions/npm/<name>/<version>/`, selected by the pinned `name@version`; the
    copy is gitignored, and every build/export, check run and `preview` and the
    desktop's book open download a missing one first — `extension-restore.ts`, never the
    loader); an unpinned name

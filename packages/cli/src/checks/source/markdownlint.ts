@@ -73,26 +73,14 @@ const check: Check = {
   category: "source",
   phase: "pre-build",
   async run(ctx: CheckContext): Promise<CheckResult[]> {
-    const sourceConfig = ctx.config.validate.source;
-    if (sourceConfig.markdownlint === false) return [];
-
     const files = ctx.markdownFiles;
     if (!files || files.length === 0) return [];
 
-    const configPath =
-      typeof sourceConfig.markdownlint === "string"
-        ? sourceConfig.markdownlint
-        : null;
-    const resolvedConfig = findConfigFile(ctx.inputDir, CONFIG_NAMES, configPath);
-
-    // If no config found and not explicitly set, skip silently
-    if (!resolvedConfig && !configPath) return [];
-
-    // Explicit-but-missing config falls back to defaults (matches prior CLI run
-    // with no --config flag).
-    const config = resolvedConfig
-      ? await loadConfig(resolvedConfig)
-      : { default: true };
+    // Opt-in: a book (or the repository it is in) that has no markdownlint
+    // config is not linted.
+    const resolvedConfig = findConfigFile(ctx.inputDir, CONFIG_NAMES);
+    if (!resolvedConfig) return [];
+    const config = await loadConfig(resolvedConfig);
 
     const results = lint({ files, config }) as Record<
       string,

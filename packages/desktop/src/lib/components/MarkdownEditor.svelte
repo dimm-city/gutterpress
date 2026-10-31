@@ -54,6 +54,7 @@
   import type { ToolbarAction, ToolbarPayload } from "#lib/components/EditorToolbar.svelte";
   import { markdown } from "@codemirror/lang-markdown";
   import { css } from "@codemirror/lang-css";
+  import { yaml } from "@codemirror/lang-yaml";
   import { languages } from "@codemirror/language-data";
   import {
     syntaxHighlighting,
@@ -167,7 +168,7 @@
   // switchFile() to no-op a call that doesn't actually change the open file.
   // Seeded at mount alongside the initial document.
   let appliedPath: string | null = null;
-  // Settings → Editor, "Highlight problems in the editor" (#383). Kept current
+  // Settings → Appearance, "Mark problems in the editor" (#383). Kept current
   // by the onSettingsChange sink registered in onMount.
   let highlightProblems = useSettings().current.editor.highlightProblems;
 
@@ -175,6 +176,7 @@
   function languageExtension(lang: EditorLanguage): Extension {
     if (lang === "css") return css();
     if (lang === "markdown") return markdown({ codeLanguages: languages });
+    if (lang === "yaml") return yaml();
     return [];
   }
 

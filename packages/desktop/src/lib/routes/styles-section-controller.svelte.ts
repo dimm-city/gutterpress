@@ -1,44 +1,46 @@
 /**
- * StylesSectionController — the single owner of the Styles section's
- * active-stylesheet toggle state + logic.
+ * StylesSectionController — the single owner of the manifest's `styles:`
+ * list in Book setup › Advanced: the stylesheets the book uses, in load order
+ * (`used`), and the other `.css` files of the book it could add (`unused`).
+ * The verbs are the extension list's: move up/down, Remove, and Add; each
+ * rewrites the whole `styles:` list in one write (`setActive`), so a later
+ * entry in it wins where two disagree. Remove takes a stylesheet off the list
+ * and never touches the file.
  *
- * Centralises the resolved stylesheet list (`styles`), the busy/error flags,
- * and the active-set toggle intent.
- *
- * Single-owner discipline mirrors `DesignSectionController`
- * (`design-section-controller.svelte.ts`): the component reads the public
- * rune fields and calls the intent methods.
+ * A book always uses a stylesheet: with `styles:` empty the renderer falls
+ * back to `styles/book.css`, else the first `.css` it finds
+ * (`resolveActiveStyles`), so the last one listed cannot be removed — the
+ * list would show it again. A book with no `.css` at all gets `styles/book.css`
+ * from `create`, the design controller's `ensureStylesheet` (what its first
+ * design edit does).
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
- * (§8): the reactive `projectDir` accessor, the `listStyles` /
- * `setActive` host calls, the `onToggled` callback (the panel wires this to a
- * toast), the `onEditRawCss` escape hatch, and `afterStyleChange` — a
- * cross-section refresh hook the panel wires to reload the Design section
- * (its tokens live on the possibly-now-different active stylesheet).
- * `ProjectStyle` is a type-only import — ZERO `node:*` / lib value imports.
+ * (§8): `ProjectStyle` is a type-only import.
  */
 
 import type { ProjectStyle } from "#lib/platform/dtos.ts";
+import { orderAfterMove } from "#lib/components/config/config-helpers.ts";
 
 export interface StylesSectionDeps {
   /** The open project directory (reactive prop), or null when none is open. */
   projectDir: () => string | null;
+  /** The book's stylesheets: those in use, in order (`active`), then its other `.css` files. */
   listStyles: (projectDir: string) => Promise<ProjectStyle[]>;
-  /** Replace the manifest's active `styles:` list (reorder + toggle). */
-  setActive: (projectDir: string, paths: string[]) => Promise<string[]>;
-  /** Fired after a successful toggle (the panel wires this to a toast). */
-  onToggled?: (nowOn: boolean) => void;
-  /** Escape hatch: open a stylesheet in the raw-CSS editor. */
-  onEditRawCss?: (cssPath: string) => void;
-  /** Design tokens live on the active stylesheet — refresh it after a toggle. */
-  afterStyleChange?: () => Promise<void>;
+  /** Replace the manifest's `styles:` list (project-relative paths). */
+  setActiveStyles: (projectDir: string, paths: string[]) => Promise<unknown>;
+  /** Give a book with no stylesheet `styles/book.css`. */
+  createStylesheet: () => Promise<unknown>;
+  /** After any change: the design settings follow the book's first stylesheet. */
+  afterChange?: () => Promise<void>;
 }
 
 export class StylesSectionController {
-  // ── Public rune state (read by the template; mutated only via methods) ──────
   styles = $state<ProjectStyle[]>([]);
-  stylesError = $state<string | null>(null);
-  stylesBusy = $state(false);
+  error = $state<string | null>(null);
+  /** An action is in flight. */
+  busy = $state(false);
+  /** The Book setup header's Saving… / Saved, for this list's writes. */
+  saveStatus = $state<"idle" | "saving" | "saved">("idle");
 
   private readonly deps: StylesSectionDeps;
 
@@ -46,42 +48,62 @@ export class StylesSectionController {
     this.deps = deps;
   }
 
-  // ── Load ────────────────────────────────────────────────────────────────────
+  /** The stylesheets the book uses, in load order. */
+  get used(): ProjectStyle[] {
+    return this.styles.filter((s) => s.active);
+  }
+
+  /** The book's other `.css` files: what the Add area offers. */
+  get unused(): ProjectStyle[] {
+    return this.styles.filter((s) => !s.active);
+  }
+
   loadStyles = async (): Promise<void> => {
     const projectDir = this.deps.projectDir();
     if (!projectDir) return;
-    this.stylesError = null;
     try {
       this.styles = await this.deps.listStyles(projectDir);
     } catch (e) {
-      this.stylesError = e instanceof Error ? e.message : String(e);
+      this.error = e instanceof Error ? e.message : String(e);
     }
   };
 
-  // ── Intents ───────────────────────────────────────────────────────────────
-  toggleStyleActive = async (s: ProjectStyle, on: boolean): Promise<void> => {
+  /** Move `s` one slot up (-1) or down (+1) in load order. */
+  move = (s: ProjectStyle, delta: -1 | 1): Promise<void> => {
+    const order = orderAfterMove(this.used.map((x) => x.displayName), s.displayName, delta);
+    return order ? this.write(order) : Promise.resolve();
+  };
+
+  /** Take `s` off the list; the file stays. Refused for the last one (see above). */
+  remove = (s: ProjectStyle): Promise<void> =>
+    this.used.length > 1 ? this.write(this.used.filter((x) => x.path !== s.path).map((x) => x.displayName)) : Promise.resolve();
+
+  /** Add one of the book's `.css` files at the end, where it wins. */
+  add = (s: ProjectStyle): Promise<void> => this.write([...this.used.map((x) => x.displayName), s.displayName]);
+
+  create = (): Promise<void> => this.run(() => this.deps.createStylesheet());
+
+  private write(paths: string[]): Promise<void> {
+    return this.run((dir) => this.deps.setActiveStyles(dir, paths));
+  }
+
+  /** Every verb: refuse while busy, run, reload the list and the design settings, surface a failure. */
+  private async run(action: (projectDir: string) => Promise<unknown>): Promise<void> {
     const projectDir = this.deps.projectDir();
-    if (!projectDir || this.stylesBusy) return;
-    this.stylesBusy = true;
-    this.stylesError = null;
+    if (!projectDir || this.busy) return;
+    this.busy = true;
+    this.error = null;
+    this.saveStatus = "saving";
     try {
-      // Rebuild the active paths list after this toggle.
-      const next = this.styles
-        .filter((x) => (x.path === s.path ? on : x.active))
-        .map((x) => x.displayName);
-      await this.deps.setActive(projectDir, next);
+      await action(projectDir);
       await this.loadStyles();
-      // Design tokens live on the (possibly changed) active stylesheet — refresh.
-      await this.deps.afterStyleChange?.();
-      this.deps.onToggled?.(on);
+      await this.deps.afterChange?.();
+      this.saveStatus = "saved";
     } catch (e) {
-      this.stylesError = e instanceof Error ? e.message : String(e);
+      this.error = e instanceof Error ? e.message : String(e);
+      this.saveStatus = "idle";
     } finally {
-      this.stylesBusy = false;
+      this.busy = false;
     }
-  };
-
-  editStyle = (s: ProjectStyle): void => {
-    this.deps.onEditRawCss?.(s.path);
-  };
+  }
 }

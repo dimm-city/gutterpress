@@ -25,11 +25,9 @@
   import StatusBar from "#lib/components/StatusBar.svelte";
   import ProblemsPanel from "#lib/components/ProblemsPanel.svelte";
   import ActivityIndicator from "#lib/components/ActivityIndicator.svelte";
-  import { openFeaturesOn } from "#lib/routes/extensions-section-controller.svelte.ts";
   import Spinner from "#lib/components/Spinner.svelte";
   import { ActivityGate } from "#lib/loading/activity-gate.svelte.ts";
   import { deriveOpenStage, exportStage, UPDATING_STAGE } from "#lib/loading/activity-stage.ts";
-  import ProjectActivityView from "#lib/components/ProjectActivityView.svelte";
   import NewProjectWizard from "#lib/components/NewProjectWizard.svelte";
   import GitHubDialog from "#lib/components/GitHubDialog.svelte";
   import OpenBookDialog from "#lib/components/OpenBookDialog.svelte";
@@ -37,7 +35,10 @@
   import Icon from "#lib/components/Icon.svelte";
   import AppToolbar from "#lib/components/AppToolbar.svelte";
   import FocusBar from "#lib/components/FocusBar.svelte";
+  import VersionHistoryView from "#lib/components/VersionHistoryView.svelte";
   import ProjectSettingsView from "#lib/components/ProjectSettingsView.svelte";
+  import SettingsView from "#lib/components/SettingsView.svelte";
+  import AccountsView from "#lib/components/AccountsView.svelte";
   import EditorToolbar from "#lib/components/EditorToolbar.svelte";
   import type { ToolbarAction, ToolbarPayload } from "#lib/components/EditorToolbar.svelte";
   import SnippetPicker from "#lib/components/SnippetPicker.svelte";
@@ -88,7 +89,6 @@
   import { escapeExitsFocus } from "#lib/routes/focus-mode.ts";
   import { splitTemplateColumns, shouldRefitPreview } from "#lib/editor/preview-layout.ts";
   import { useSettings, _loadSettings, settingsChangeGuard, onSettingsChange } from "#lib/settings.svelte.ts";
-  import { sanitizeSettingsTab, type SettingsTab } from "#lib/settings-tabs.ts";
   import { clampPanelWidth, viewportWidth } from "#lib/left-panel-width.ts";
   import { showReadLayoutToggle, viewModeFor } from "#lib/read-layout.ts";
   import {
@@ -107,6 +107,7 @@
     friendlyPdfError,
     friendlyHostError,
     friendlyPreviewError,
+    unwrapRouteError,
   } from "#lib/errors.ts";
   import {
     PersistenceFailureNotifier,
@@ -226,20 +227,13 @@
     listProviders: (dir) => api.publish.listProviders(dir),
     preflight: (dir, providerIds) => api.publish.preflight(dir, providerIds),
     setConfig: (dir, providerId, values) => api.publish.setConfig(dir, providerId, values),
-    connect: (dir, providerId, token, account) => api.publish.connect(dir, providerId, token, account),
-    disconnect: (providerId, account) => api.publish.disconnect(providerId, account),
-    // #221 — oauth connect trio goes through getPlatform() (the narrow
-    // adapter seam for interactive OAuth connects), not api.publish.*.
-    connectGoogleStart: (account) => getPlatform().connectGoogleStart(account),
-    connectGoogleWait: () => getPlatform().connectGoogleWait(),
-    connectGoogleCancel: () => getPlatform().connectGoogleCancel(),
     // #221 — provider-neutral destinations picker.
     listDestinations: (dir, providerId) => api.publish.listDestinations(dir, providerId),
     createDestination: (dir, providerId, name) => api.publish.createDestination(dir, providerId, name),
+    destinationStatus: (dir, providerId) => api.publish.destinationStatus(dir, providerId),
     run: (dir, providerId, options) => api.publish.run(dir, providerId, options),
     openExternal: (url) => api.shell.openExternal(url),
     onSaved: () => toast?.success?.("Publish settings saved."),
-    onConnected: () => toast?.success?.("Connected — the key is stored securely on this computer."),
     onPublished: (guided) =>
       toast?.success?.(guided ? "Upload package ready — follow the checklist to finish." : "Published!"),
   });
@@ -321,8 +315,8 @@
   // ── User settings (#45) ────────────────────────────────────────────────
   // bgColor and zoom are sourced from the persisted settings store (defaults
   // in DEFAULT_SETTINGS). Local mutations write back through
-  // useSettings().set(). bgColor has no toolbar control; it is set via the
-  // Settings panel only.
+  // useSettings().set(). bgColor has no toolbar control; it is set in
+  // Settings → Appearance only.
   const settings = useSettings();
   _loadSettings();
   let zoom = $derived(settings.current.preview.defaultZoom);
@@ -336,64 +330,46 @@
 
   // Toast controller (populated by Toast.svelte via bind:api)
   let toast = $state<ToastController | null>(null);
-  // Operation-log desktop: opened from the StatusBar git/sync pill. Holds the
-  // current project's log path (carried on the sync status stream).
-  let logFilePath = $state<string | null>(null);
-  // Ref to the mounted ProjectActivityView so a sync completion can ask
-  // it to reload its snapshot list directly. Undefined whenever the
-  // activity view isn't the current editor-pane view.
-  let activityViewRef = $state<{ refreshHistory: () => void } | undefined>(undefined);
-  // The activity view borrows the editor pane and restores the workspace it
-  // displaces, avoiding an editor left open without a loaded file on close.
-  let paneViewRestore: { mode: WorkspaceMode } | null = null;
-  function showActivityView(): void {
-    if (editorView === "editor") {
-      paneViewRestore = { mode };
-    }
-    editorView = "activity";
-    setMode("editor");
-  }
-  function closePaneView(): void {
-    editorView = "editor";
-    const restore = paneViewRestore;
-    paneViewRestore = null;
-    if (restore) setMode(restore.mode);
-    if (editorVisible) {
-      void ensureEditorFile();
-      focusEditorWhenReady();
-    }
-  }
-  function showProjectLog(filePath: string | null): void {
-    logFilePath = filePath;
-    showActivityView();
-  }
-  function closeActivityView(): void {
-    closePaneView();
-  }
+  // Ref to the mounted Book setup so a backup completion can ask its Online
+  // copy tab to reload the Version history list. Undefined while Book setup is closed.
+  let settingsViewRef = $state<{ refreshHistory: () => void } | undefined>(undefined);
+  /** The Version history screen, over Book setup: open on this version (the newest when null). */
+  let versionsFor = $state<{ id: string | null } | null>(null);
   /**
-   * Open Settings — the start screen's Settings tab, which embeds the WHOLE
-   * settings surface. There is no separate settings window: one surface, one
-   * way in, and closing it returns the author exactly where they were (the
-   * workspace stays mounted, inert, underneath) — the same shape the help
-   * button uses.
-   *
-   * `tab` is `unknown` on purpose: entry points are click handlers, and an
-   * `onclick={onOpenSettings}` call site hands the MouseEvent in as `tab` —
-   * unsanitized, that left NO tab active and an empty settings body.
+   * Settings: its own sheet (AppView), the same over a book and over the start
+   * screen; closing it returns the author exactly where they were.
    */
-  function openSettings(tab: unknown = "app"): void {
-    landingSettingsTab = sanitizeSettingsTab(tab);
-    landingRef?.showTab("settings");
-    landingForcedOpen = true;
+  let settingsOpen = $state(false);
+  function openSettings(): void {
+    settingsOpen = true;
   }
   function toggleSettings(): void {
-    if (landingForcedOpen) dismissLanding();
+    if (settingsOpen) closeSettings();
     else openSettings();
+  }
+  function closeSettings(): void {
+    settingsOpen = false;
+    if (landingVisible) landingRef?.focusLayer();
+  }
+  /**
+   * Accounts: its own sheet too, opened from the start screen, Settings, Book
+   * setup → Online copy and the missing name & email banner (which opens it with
+   * the cursor in Name), over whichever opened it; closing it returns there.
+   */
+  let accountsOpen = $state(false);
+  let accountsFocus = $state<"name" | undefined>(undefined);
+  function closeAccounts(): void {
+    accountsOpen = false;
+    accountsFocus = undefined;
+    // A GitHub connect or a removed key may have changed whether the open book can back up.
+    onConnectDialogClosed();
+    // ...and which accounts the Publish wizard underneath can use.
+    if (publishOpen) void publishController.loadPublish();
   }
   /**
    * No author name/email yet: what a project with version history keeps would
    * be attributed to a placeholder, so the workspace carries a persistent notice
-   * with a one-click route to Settings → Accounts. It clears itself the moment
+   * with a one-click route to Accounts, cursor in Name. It clears itself the moment
    * both fields are filled.
    *
    * It waits until that is about to matter: the open project HAS version
@@ -432,8 +408,8 @@
       (!settings.current.gitIdentity.authorName.trim() ||
         !settings.current.gitIdentity.authorEmail.trim()),
   );
-  /** After a successful snapshot restore, or a Saving-tab copy switch
-   * (#273 — passed as `onProjectFilesChanged` to WelcomeLanding/SettingsView):
+  /** After a successful version restore, or a revision switch, new revision or rename in Book setup →
+   * Online copy (#273 — passed as `onProjectFilesChanged` to ProjectSettingsView):
    * reconcile the open editor buffer against disk — same reconciliation the
    * folder watcher runs for any external change (see
    * `startFolderWatch`/`onSyncFilesChanged`) — and re-check for print
@@ -443,49 +419,6 @@
     refreshProblems();
   }
 
-  // ── Look at a version (#408) ───────────────────────────────────────────────
-  // The host renders a past version read-only from a scratch copy (a second
-  // preview server); the preview pane shows it in a frame beside the live
-  // one, following the live frame's page. Nothing on disk changes. The host
-  // closes it with the project; the renderer forgets it in the same resets.
-  let versionPreview = $state<{ id: string; url: string; label: string } | null>(null);
-  let versionClient = $state<PreviewClient | undefined>(undefined);
-  // Narrow windows have room for one frame: that version, or the current book.
-  let versionSide = $state<"then" | "now">("then");
-
-  async function lookAtVersion(id: string, label: string): Promise<void> {
-    const dir = lifecycle.currentDir;
-    if (!dir) return;
-    try {
-      const { url } = await api.vcs.openVersionPreview(dir, id);
-      if (lifecycle.currentDir !== dir) return;
-      versionPreview = { id, url, label };
-      versionSide = "then";
-      // A narrow window shows one pane at a time, and the Versions view
-      // occupies the editor pane: take the author to the preview, where the
-      // version now is — the mirror of openProblem's switch to the editor.
-      if (isNarrow) {
-        closePaneView();
-        setPaneMode("view");
-      }
-    } catch (e) {
-      toast?.error(`Couldn't show that version. ${friendlyHostError(e instanceof Error ? e.message : String(e))}`);
-    }
-  }
-
-  async function stopLookingAtVersion(): Promise<void> {
-    if (!versionPreview) return;
-    versionPreview = null;
-    await api.vcs.closeVersionPreview().catch(() => {});
-  }
-
-  /** The version frame: pinned to its own origin; once laid out, it opens on the live page. */
-  function onVersionClientReady(c: PreviewClient): void {
-    c.setExpectedOrigin(versionPreview?.url);
-    c.on((e) => {
-      if (e.name === "renderingComplete") void c.call("goToPage", [pageNav.currentPage]).catch(() => {});
-    });
-  }
   // A loose markdown folder opens fine (no manifest = defaults), but has no
   // editable styles or version history. When the OPENED folder has no manifest,
   // offer a non-blocking "set it up as a book" affordance. Default true (on the
@@ -521,7 +454,7 @@
   // forceSyncing runes (sync always converges — 2026-08-14). Host coupling
   // injected so the routing is
   // unit-testable and PWA-clean (§8). onSyncCompleted / onSyncFilesChanged
-  // stay component methods (they touch toast + activityViewRef.refreshHistory
+  // stay component methods (they touch toast + settingsViewRef.refreshHistory
   // + buffer).
   const syncController = new SyncController({
     syncChanges: (dir) => api.remote.syncChanges(dir),
@@ -535,12 +468,17 @@
       onSyncCompleted(mergedRemoteChanges, filesChanged),
     onFilesChanged: () => onSyncFilesChanged(),
     autoBackup: () => settings.current.versionHistory.autoSync,
+    getStatus: (dir) => api.sync.getStatus(dir),
+    isReader: () => settings.current.workspace.role === "reader",
     // The combined-files toast's Review button: the Problems list names every
-    // passage with two versions, and each entry opens its file under the
-    // two-versions panel (combined paths come back repo-relative, so the
+    // passage with two takes, and each entry opens its file under the
+    // two-takes panel (combined paths come back repo-relative, so the
     // list is the one place that already knows where each file is).
     onReviewCombined: () => openProblemsList(),
   });
+
+  // Why the book's automatic versions keep failing: only news while they are on.
+  const versionsProblem = $derived(settings.current.versionHistory.autoSnapshot ? syncController.versionsProblem : null);
 
   // ── Project session capability state (#12) ───────────────────────────────────
   // The classification wiring (source detection → capabilities → subPath →
@@ -570,7 +508,7 @@
   // startFolderWatch, crashRecovery, dismissLanding, …) are safe closures,
   // the same pattern `pageNav`'s `savePrefs` already uses above.
   const lifecycle: ProjectLifecycleController = new ProjectLifecycleController({
-    openFeatures: () => openBookFeatures(),
+    openExtensions: () => openBookExtensions(),
     startPreviewHost: (input) => getPlatform().startPreview({ input }),
     stopPreviewHost: () => getPlatform().stopPreview(),
     adoptFolder: (dir) => api.app.adoptFolder({ dir }),
@@ -605,7 +543,6 @@
     dismissLanding: (runPendingRecoveryScan) => dismissLanding(runPendingRecoveryScan),
     toast: () => toast,
     clearStaleProjectState: () => {
-      versionPreview = null;
       problems = [];
       projectComponents = [];
       projectVariants = [];
@@ -613,7 +550,6 @@
       buildProblemEntries = [];
       problemsLoading = false;
       problemsError = null;
-      logFilePath = null;
     },
     onProjectSwitch: () => setFocus(false),
     resetExtras: () => {
@@ -628,11 +564,7 @@
       // mode is untouched (a reset is not a choice; forcing Read here once
       // saved it for good).
       focus = false;
-      // A project closed while activity borrowed the editor must not reopen the
-      // next project on that stale view.
-      editorView = "editor";
-      paneViewRestore = null;
-      versionPreview = null;
+      versionsFor = null;
       resetEditorBuffer();
       crashRecovery.reset();
       pendingRecoveryScanDir = null;
@@ -719,11 +651,9 @@
   // the inert workspace, which is a spec no-op).
   let landingRef = $state<{
     focusLayer: () => void;
-    showTab: (tab: "projects" | "settings" | "help" | "troubleshooting", sub?: TroubleshootingTab) => void;
+    showTab: (tab: "projects" | "help" | "troubleshooting", sub?: TroubleshootingTab) => void;
   } | null>(null);
-  /** Sub-tab the start screen's embedded Settings opens on. */
-  let landingSettingsTab = $state<SettingsTab>("app");
-  // The global help and settings buttons re-open the landing (on their tab)
+  // The global help and books buttons re-open the landing (on their tab)
   // OVER an open workspace; closing it returns the author exactly where they
   // left off (the workspace stays mounted, just inert, underneath). One
   // flag for both: they are the same affordance pointed at different tabs.
@@ -808,7 +738,7 @@
   // The extension download is pushed from the host while `startPreview` is
   // pending (no replay), so subscribe before any open can start.
   onMount(() => getPlatform().onRestoreProgress((event) => lifecycle.onRestoreProgress(event)));
-  // With automatic online backup off, look for new online changes now and then
+  // With automatic backing up off, look for new online changes now and then
   // and prompt (SyncController.checkForUpdates).
   onMount(() => syncController.watchForUpdates());
 
@@ -865,13 +795,12 @@
     void tick().then(() => leftPanelToggleBtn?.focus());
   }
 
-  // There is deliberately NO launch-time tab hijack here. Sending the start
-  // screen to Settings → Accounts on a missing git identity would open EVERY
-  // first run on account settings instead of the author's books — the
-  // screen's whole job is to pick or continue a book. The missing-identity
-  // nudge is the workspace banner (`needsGitIdentity` above, owner ruling
-  // 2026-07-30); the landing opens on Books and stays there until the author
-  // asks for another tab.
+  // There is deliberately NO launch-time Settings here. Opening Settings on a
+  // missing git identity would open EVERY first run on account settings
+  // instead of the author's books — the start screen's whole job is to pick
+  // or continue a book. The missing-identity nudge is the workspace banner
+  // (`needsGitIdentity` above, owner ruling 2026-07-30); the landing opens on
+  // Books and stays there until the author asks for another tab.
 
   /**
    * The ONE open-a-project-folder pipeline behind the folder picker, the
@@ -958,8 +887,6 @@
     readRecoveryFile: (path) => api.fs.readFile(path),
     restoreIntoBuffer: (filePath, content) => restoreRecoveredFile(filePath, content),
     showEditor: () => {
-      editorView = "editor";
-      paneViewRestore = null;
       openEditorPane({ ensureFile: false });
       if (isNarrow && paneMode !== "edit") setPaneMode("edit");
     },
@@ -972,36 +899,29 @@
     refreshProblems();
   }
 
-  // Sync completed. Online changes may land on disk even when the final outcome
-  // is "up-to-date" (pull fast-forwarded, then push had nothing to send), so the
-  // file-change signal is separate from the user-facing merge/sync copy.
+  // Backing up completed. Online changes may land on disk even when the final outcome
+  // is "up-to-date" (the pass got the latest first, then there was nothing to send), so the
+  // file-change signal is separate from the user-facing merge/backup copy.
   function onSyncCompleted(mergedRemoteChanges: boolean, filesChanged = mergedRemoteChanges) {
     toast?.success(
       mergedRemoteChanges
-        ? "Backed up online — changes from the online backup were combined in, so the preview will refresh."
-        : "Backed up online — your changes are online.",
+        ? "Backed up — changes from the online copy were combined in, so the preview will refresh."
+        : "Backed up — your changes are in the online copy.",
     );
-    // A sync may add new commits to the project's version history (both push
-    // and pull sides) — refresh the activity view's snapshot list so new
-    // entries appear if it's open.
-    activityViewRef?.refreshHistory();
+    // Backing up may add new versions to the book's version history (both
+    // sending and getting latest) — refresh the Version history list so new
+    // entries appear if it's open in Book setup.
+    settingsViewRef?.refreshHistory();
     // If remote changes landed on disk, re-lint immediately (the preview
     // file-watcher re-renders and fires refreshProblems via renderingComplete,
     // but a manual refresh here catches edge cases where no re-render fires).
     if (filesChanged) onSyncFilesChanged();
   }
 
-  // The single Reconnect action: route to the matching connect
-  // flow — GitHub's device flow, or Settings → Accounts for every other server.
-  function onSyncReconnect() {
-    if (syncController.syncDiag?.provider === "github") githubOpen = true;
-    else openSettings("connections");
-  }
-
-  // Completes the Reconnect journey: a connect dialog closing may mean a
-  // new credential was just stored — re-check syncability so the Sync
-  // button and the dialog's auth state reflect it without a project reload.
-  // Called by onClosed on GitHubDialog.
+  // A sign-in dialog closing may mean a new credential was just stored —
+  // re-check whether the book can back up so the status control and the
+  // Online copy tab reflect it without a project reload. Called by onClosed
+  // on GitHubDialog and when Accounts closes.
   function onConnectDialogClosed() {
     if (lifecycle.currentDir && lifecycle.sourceMode === "folder") {
       void syncController.refreshSyncDiag(lifecycle.currentDir);
@@ -1012,19 +932,22 @@
     if (landingVisible) landingRef?.focusLayer();
   }
 
-  // ── Converge-report subscription ────────────────────────────────────────────
-  // Subscribe to the host's sync:status channel for the converge report —
+  // ── Status subscription ─────────────────────────────────────────────────────
+  // The host's sync:status channel feeds the sync controller (the status control
+  // and the Online copy tab read it) and carries the converge report —
   // combined-with-markers files and side-by-side pairs each get a review
-  // toast. Per §8: runs in the SPA, no lib value imports, all host
-  // work through getPlatform().
+  // toast. A reader gets the latest quietly: files reload, no toasts. Per §8:
+  // runs in the SPA, no lib value imports, all host work through getPlatform().
   onMount(() => {
     const off = getPlatform().onSyncStatus((status) => {
       // Scope to the currently open project.
       if (status.projectDir !== lifecycle.currentDir) return;
-      if (status.state === "syncing") identityNoticeArmed = true;
+      syncController.applyStatus(status);
       if (shouldReconcileAfterSync(status)) {
         onSyncFilesChanged();
       }
+      if (readerMode) return;
+      if (status.state === "syncing") identityNoticeArmed = true;
       syncController.applyConvergeReport(status.combinedFiles, status.keptBothFiles);
     });
     return () => off?.();
@@ -1049,9 +972,9 @@
   // (before the deriveds that read it) so it is initialised ahead of them.
   // A local $state that `setMode` writes through to settings and `modeSink`
   // below reads back on load.
-  // Reader or author (Settings → App). A reader only reads: the workspace
-  // stays in Read, and the toolbar hides Edit/Read, Setup and Publish. The
-  // author's saved Edit/Read choice is kept untouched underneath.
+  // Reader or author (Settings → How you use Gutterpress). A reader only
+  // reads: the workspace stays in Read, and the toolbar hides Edit/Read, Setup
+  // and Publish. The author's saved Edit/Read choice is kept untouched underneath.
   let readerMode = $derived(settings.current.workspace.role === "reader");
   const effectiveMode = (s: typeof settings.current): WorkspaceMode =>
     s.workspace.role === "reader" ? "viewer" : s.preview.mode;
@@ -1103,36 +1026,33 @@
     snippetPickerRef?.show();
   }
 
-  // ── Book settings view ──────────────────────────────────────────────────
-  // Book settings open in the shared AppView layer, like every task screen:
+  // ── Book setup view ────────────────────────────────────────────────────
+  // Book setup opens in the shared AppView layer, like every task screen:
   // the workspace underneath is inert until the writer closes them (X or
   // Esc) — a sidebar tab or docked panel squeezes manifest editing, theme
-  // browsing and plugin management into a strip. Activity is the only alternate
-  // editor-pane view.
-  let editorView = $state<"editor" | "activity">("editor");
+  // browsing and plugin management into a strip.
   let projectSettingsOpen = $state(false);
 
-  /** One button → the whole book settings view (manifest details, look &
-   *  style, plugins), covering the workspace. */
+  /** One button → the whole Book setup view (book, look, extensions,
+   *  backup, advanced), covering the workspace. */
   function openProjectConfig(): void {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
-    projectSettingsTab = "details";
+    projectSettingsTab = "book";
     projectSettingsOpen = true;
   }
 
-  // Book settings opens on Details; the save-status dialog sends writers to
-  // Connections to see how an online backup gets set up.
-  let projectSettingsTab = $state<"details" | "features" | "connections">("details");
-  function openBookConnections(): void {
+  // Book setup opens on Book; the status control sends writers to its Online
+  // copy tab, the one place for saving versions, revisions and backing up.
+  let projectSettingsTab = $state<"book" | "extensions" | "online-copy">("book");
+  function openOnlineCopy(): void {
     openProjectConfig();
-    projectSettingsTab = "connections";
+    projectSettingsTab = "online-copy";
   }
-  // A failed extension download's toast sends writers to Features, where the
-  // "Needs install" row's Install button retries it.
-  function openBookFeatures(): void {
-    openFeaturesOn("installed");
+  // A failed extension download's toast sends writers to Extensions, where the
+  // row's Install button retries it.
+  function openBookExtensions(): void {
     openProjectConfig();
-    projectSettingsTab = "features";
+    projectSettingsTab = "extensions";
   }
 
   function closeProjectSettings(): void {
@@ -1140,18 +1060,14 @@
   }
 
   /**
-   * Open one stylesheet (absolute path) in the shared editor and reveal it.
-   * Used as the "Edit raw CSS" escape hatch from the Config view's Design
-   * section AND from its Styles section's per-row "Edit" button — both routes
-   * flip `editorView` back to "editor" so the author lands on the file.
+   * Open one of the book's files (absolute path) in the shared editor and
+   * reveal it: Book setup's Advanced (Open manifest.yaml, a stylesheet's Open).
    */
-  async function openStyleFile(absPath: string): Promise<void> {
+  async function openFileInEditor(absPath: string): Promise<void> {
     if (!(await selectEditorFile(absPath))) return;
-    editorView = "editor";
-    paneViewRestore = null;
     if (mode === "viewer") setMode("editor");
     // Narrow single-pane layout keys editor visibility off paneMode, not
-    // the workspace mode — switch panes too, or the loaded stylesheet stays hidden
+    // the workspace mode — switch panes too, or the loaded file stays hidden
     // behind the preview with no way to reveal it (the Markdown tab would
     // swap the file away first).
     if (isNarrow && paneMode !== "edit") setPaneMode("edit");
@@ -1187,11 +1103,10 @@
   // Whether the editor pane is shown. A persisted narrow Edit preference
   // alone never opens it.
   let editorPaneOpen = $derived(
-    editorView === "activity" ||
-      (!!lifecycle.currentDir &&
-        lifecycle.sourceMode === "folder" &&
-        editorVisible &&
-        (!isNarrow || paneMode === "edit")),
+    !!lifecycle.currentDir &&
+      lifecycle.sourceMode === "folder" &&
+      editorVisible &&
+      (!isNarrow || paneMode === "edit"),
   );
   // ── Global find (Ctrl+F) — VIEWER only (owner ruling 2026-08-15) ──────────
   // The FindBar drives the native window find over the preview (the only way
@@ -1199,10 +1114,7 @@
   // preview's "Go to source"; the editor has no search surface of its own.
   let findBarOpen = $state(false);
   let findBarRef = $state<{ focusInput: () => void } | null>(null);
-  const viewerVisibleForFind = $derived(
-    !!lifecycle.previewUrl &&
-      !(isNarrow && (editorPaneOpen || editorView !== "editor")),
-  );
+  const viewerVisibleForFind = $derived(!!lifecycle.previewUrl && !(isNarrow && editorPaneOpen));
 
   let splitGridColumns = $derived(
     editorPaneOpen && !isNarrow
@@ -1324,7 +1236,7 @@
   let externalChange = $derived(buffer?.externalChange ?? null);
   let externalFileName = $derived(editorFilePath ? basenameOf(editorFilePath) : "");
 
-  // ── Two versions after a sync (#407) ──────────────────────────────────────
+  // ── Two takes after getting the latest (#407) ──────────────────────────────────────
   // Passages the converge merge left with both versions, read from the live
   // buffer so a choice removes its passage from the panel at once. A choice
   // is an ordinary editor edit: it goes through the mounted CodeMirror view
@@ -1353,7 +1265,7 @@
 
   /**
    * The last passage in this file is settled: hand focus back to the text;
-   * point at the next file that still holds two versions, if any (the
+   * point at the next file that still holds two takes, if any (the
    * Problems list knows them); and, for a stylesheet that had kept the
    * preview from starting, try the preview again once the choice is saved.
    */
@@ -1369,13 +1281,13 @@
       // Long enough to be read and taken; not so long that it is still
       // claiming "this file" after the author has moved on by hand.
       toast?.show(
-        `All settled in this file. ${files.size === 1 ? "One more file has" : `${files.size} more files have`} two versions.`,
+        `All settled in this file. ${files.size === 1 ? "One more file has" : `${files.size} more files have`} two takes.`,
         "info",
         10_000,
         { label: "Next file", onClick: () => openProblem(next) },
       );
     }
-    // A stylesheet or the manifest with two versions takes the preview down;
+    // A stylesheet or the manifest with two takes takes the preview down;
     // with the file settled, the preview comes back without a trip to the
     // error card's button.
     if (lifecycle.previewError) {
@@ -1389,7 +1301,7 @@
   function keepVersion(block: TwoVersionsBlock, choice: TwoVersionsChoice): void {
     applyTwoVersionsEdits([resolveTwoVersions(block, choice)]);
     const kept =
-      choice === "yours" ? "Kept your version" : choice === "online" ? "Kept the online version" : "Kept both versions";
+      choice === "yours" ? "Kept yours" : choice === "online" ? "Kept the online one" : "Kept both";
     // Undo reverses the LAST choice, so only the last choice's message
     // offers it: a stack of two, each saying Undo, would undo the wrong one.
     if (keptToast !== null) toast?.dismiss(keptToast);
@@ -1513,9 +1425,9 @@
   // independent async starts: when settings land LAST, the project-open path
   // already ran `ensureEditorFile()` while the workspace still looked like
   // viewer mode, and nothing else would ever load the editor component.
-  // A role change (Settings → App) arrives here too, and it changes the
-  // derived view mode: push it to the viewer the way setMode does, or the
-  // pages stay in the old column count until the next full render.
+  // A role change (Settings → How you use Gutterpress) arrives here too, and
+  // it changes the derived view mode: push it to the viewer the way setMode
+  // does, or the pages stay in the old column count until the next full render.
   const modeSink = settingsChangeGuard<WorkspaceMode>((m) => {
     mode = m;
     zoomView.applyViewMode(viewMode);
@@ -1833,8 +1745,6 @@
    * editor, loads the owning file, then places the caret on the source line.
    */
   function goToSource(chapter: string, line: number): void {
-    editorView = "editor";
-    paneViewRestore = null;
     openEditorPane({ focus: false, ensureFile: false });
     if (isNarrow && paneMode !== "edit") setPaneMode("edit");
     void revealInEditor(chapter, line);
@@ -1842,11 +1752,6 @@
 
   function toggleEditor() {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
-    // Manually toggling while activity borrows the editor exits that view.
-    if (editorView !== "editor") {
-      editorView = "editor";
-      paneViewRestore = null;
-    }
     // Closing the editor always lands on the viewer — there is no stored
     // "what was showing before" to consult, and nothing else it could mean.
     if (editorVisible) {
@@ -1993,7 +1898,7 @@
    */
   function openProblem(p: ProblemEntry) {
     if (!p.filePath || !lifecycle.currentDir) return;
-    // A Two versions entry opens its file under the two-versions panel,
+    // A Two takes entry opens its file under the two-takes panel,
     // which is that file's own list of these problems: closing the Problems
     // list keeps the editor from being squeezed between the two.
     if (p.source === "source.sync.merge-markers") problemsOpen = false;
@@ -2132,8 +2037,6 @@
 
       if (!(await selectEditorFile(event.filePath))) return;
       if (generation !== markdownFileLaunchGeneration) return;
-      editorView = "editor";
-      paneViewRestore = null;
       if (isNarrow && paneMode !== "edit") setPaneMode("edit");
       else openEditorPane({ ensureFile: false });
     })();
@@ -2429,12 +2332,6 @@
     contextMenu.subscribe(c);
     inlineEdit.subscribe(c);
     c.on(onPreviewEscape);
-    // A version shown beside the book keeps the same page in view (#408).
-    c.on((e) => {
-      if (e.name === "pageChanged" && versionClient && typeof e.detail.currentPage === "number") {
-        void versionClient.call("goToPage", [e.detail.currentPage]).catch(() => {});
-      }
-    });
   }
 
   // ----------------------------------------------------------------
@@ -2467,10 +2364,10 @@
         toggleSettings();
         return;
       }
-      // The start screen owns the rest of the keyboard while it's up (its own
-      // Esc handling); workspace shortcuts must not act on the inert UI
-      // behind it.
-      if (landingVisible) return;
+      // The start screen and Settings own the rest of the keyboard while they
+      // are up (their own Esc handling); workspace shortcuts must not act on
+      // the inert UI behind them.
+      if (landingVisible || settingsOpen || accountsOpen) return;
       // Esc leaves Focus, but ONLY when nothing else wants the key: an open
       // dialog/menu/popover, the find bar, or a handler that already consumed
       // it (editor, context menu) keeps Esc. An Esc pressed inside the preview
@@ -2525,8 +2422,8 @@
       // Only active when a preview URL is loaded.
       if (!lifecycle.previewUrl) return;
       if (e.defaultPrevented) return;
-      // Never page/zoom the pre-rendering preview from behind the start screen.
-      if (landingVisible) return;
+      // Never page/zoom the preview from behind the start screen, Settings or Accounts.
+      if (landingVisible || settingsOpen || accountsOpen) return;
       // Don't intercept when focus is in a form control or the CodeMirror
       // editor (#38) — preview-nav keys (arrows, Home/End, +/-/=, f) must
       // never hijack editing. Shared guard: #lib/a11y isEditableTarget.
@@ -2686,8 +2583,7 @@
 
   /**
    * Keep an ALREADY-OPEN editor in step with a preview navigation. Never opens
-   * the pane and never switches away from the activity view — the explicit
-   * "Go to source" action owns opening the editor.
+   * the pane — the explicit "Go to source" action owns opening the editor.
    *
    * Shared by the two preview→editor navigations: a TOC jump (`focus`, because
    * the author asked to go there) and a click on a block in the book (no
@@ -2695,7 +2591,7 @@
    * stealing focus mid-gesture would break selecting/copying from the book).
    */
   function syncOpenEditorTo(chapter: string | null, line: number | null, focus: boolean) {
-    if (line == null || !editorPaneOpen || editorView !== "editor") return;
+    if (line == null || !editorPaneOpen) return;
     void revealInEditor(chapter, line, focus);
   }
 
@@ -2889,7 +2785,7 @@
   // The single-column (narrow) layout switches the one visible pane between the
   // editor and the preview. `editorPaneOpen` is the visible source of truth;
   // the persisted paneMode is only consulted after the editor was explicitly
-  // opened. Project styling lives in the Book settings view, not a tab.
+  // opened. Project styling lives in the Book setup view, not a tab.
   //
   // Single source of truth: whether the shared editor is on a CSS file is
   // derived SOLELY from the open file's extension (`openFileIsCss`) — no
@@ -2984,7 +2880,7 @@
     lifecycle.cancelOpen();
   }
 
-  // ── Force-save / Force-sync (status bar action buttons) ───────────────────
+  // ── Save now / Save a version ─────────────────────────────────────────────
   /**
    * Immediately flush the editor buffer to disk, bypassing the debounce.
    * Mirrors the same flush path used on project-switch and window-close.
@@ -2998,6 +2894,27 @@
       toast?.error(`Save failed: ${friendlyHostError(e instanceof Error ? e.message : String(e))}`);
     } finally {
       forceSaving = false;
+    }
+  }
+
+  /**
+   * Save a version now (Book setup → Online copy, Version history). Resolves
+   * "unchanged" when there was nothing new to save: a calm result, not a failure.
+   */
+  async function saveVersion(): Promise<"saved" | "unchanged"> {
+    const dir = lifecycle.currentDir;
+    if (!dir) return "unchanged";
+    try {
+      await api.vcs.saveSnapshot(dir);
+      identityNoticeArmed = true;
+      toast?.success("Saved a version.");
+      return "saved";
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // Local copy of the lib's isNoChangesError (the SPA can't import it).
+      if (/nothing new to save/i.test(msg)) return "unchanged";
+      toast?.error(friendlyHostError(unwrapRouteError(msg)));
+      throw e;
     }
   }
 
@@ -3042,10 +2959,10 @@
   <title>{lifecycle.docTitle ? `${lifecycle.docTitle} — Gutterpress` : "Gutterpress"}</title>
 </svelte:head>
 
-<!-- inert while the start screen or Book settings is up: the workspace keeps
-      rendering (a stylesheet written from Book settings re-renders the preview
+<!-- inert while the start screen or Book setup is up: the workspace keeps
+      rendering (a stylesheet written from Book setup re-renders the preview
       live) but never accepts interaction underneath the layer. -->
-<div class="app-root" inert={landingVisible || projectSettingsOpen || publishOpen} use:activity.track={activityStages}>
+<div class="app-root" inert={landingVisible || settingsOpen || accountsOpen || projectSettingsOpen || publishOpen} use:activity.track={activityStages}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}
@@ -3075,7 +2992,7 @@
     <span class="identity-banner-msg">
       Add your name and email so the changes you save are credited to you.
     </span>
-    <button class="identity-action" onclick={() => openSettings("connections")}>
+    <button class="identity-action" onclick={() => { accountsFocus = "name"; accountsOpen = true; }}>
       Add your name &amp; email
     </button>
     <button class="identity-dismiss" onclick={() => (identityNoticeDismissed = true)}>
@@ -3163,8 +3080,7 @@
       onProjectChosen={(path) => void openProjectPath(path)}
       onOpenUrl={openUrl}
       onOpenBook={() => { contextMenu.close(); void inlineEdit.endActive(true); openBookOpen = true; }}
-      onNewProject={readerMode ? undefined : () => { contextMenu.close(); void inlineEdit.endActive(true); newProjectWizardRef?.show(); }}
-      onSyncReconnect={onSyncReconnect}
+      onNewProject={() => { contextMenu.close(); void inlineEdit.endActive(true); newProjectWizardRef?.show(); }}
       onPanelStateChange={persistLeftPanelPrefs}
     />
 
@@ -3176,7 +3092,7 @@
   {#if showAdoptBanner}
     <div class="adopt-banner" role="status">
       <span class="adopt-banner-text">
-        This folder isn't set up as a book yet — set it up to edit its design and keep a history of changes.
+        This folder isn't set up as a book yet — set it up to edit its design and keep version history.
       </span>
       <div class="adopt-banner-actions">
         <button class="primary app-btn-primary" onclick={() => lifecycle.currentDir && setUpAsBook(lifecycle.currentDir)} disabled={lifecycle.adopting}>
@@ -3206,118 +3122,98 @@
           role={isNarrow ? "tabpanel" : undefined}
           aria-label={openFileIsCss ? "CSS editor" : "Markdown editor"}
         >
-          {#if editorView === "activity"}
-            <!-- Remount on project switch so a stale snapshot/log list from a
-                 previously-open project can never linger under the new one
-                 (mirrors LeftPanel's {#key projectDir} FileTree/MediaPanel
-                 pattern). -->
-            {#key lifecycle.currentDir}
-              <ProjectActivityView
-                bind:this={activityViewRef}
-                projectDir={lifecycle.currentDir}
-                {logFilePath}
-                hasRemote={projectSession.projectHasRemote}
-                viewingId={versionPreview?.id ?? null}
-                onClose={closeActivityView}
-                onRestored={onSnapshotRestored}
-                onLookAt={(id, label) => void lookAtVersion(id, label)}
-                onStopLooking={() => void stopLookingAtVersion()}
-              />
-            {/key}
-          {:else}
-            {#if externalChange}
-              <ExternalEditBanner
-                fileName={externalFileName}
-                onReload={reloadExternal}
-                onKeepMine={keepMineExternal}
-              />
-            {/if}
-            <!-- Editor toolbar (#31): compact formatting bar, visible only when a
-                 markdown file is open. Placed above the editor, within the pane. -->
-            {#if !inFocus}
-            <EditorToolbar
-              filePath={editorFilePath}
-              projectDir={lifecycle.currentDir}
-              onAction={(action, payload) => {
-                if (action === "snippet") {
-                  openSnippetPicker();
-                  return;
-                }
-                editorRef?.runToolbarAction(action, payload);
-              }}
-              onSave={handleForceSave}
-              savePending={editorSavePhase !== "clean"}
-              saving={forceSaving}
-              problems={displayedProblems}
-              problemsLoading={problemsLoading || lifecycle.rendering}
-              {problemsError}
-              {problemsOpen}
-              onToggleProblems={toggleProblems}
+          {#if externalChange}
+            <ExternalEditBanner
+              fileName={externalFileName}
+              onReload={reloadExternal}
+              onKeepMine={keepMineExternal}
             />
-            {/if}
-            {#if editorFilePath && twoVersionsBlocks.length > 0}
-              <!-- Passages with two versions after a sync (#407): pick, right
-                   above the text they rewrite. Shown in Focus too — the
-                   markers are in the text either way, and this is the way
-                   to settle them. Keyed on the file: another file's card
-                   starts at its first passage, with the text folded away. -->
-              {#key editorFilePath}
-              <TwoVersionsPanel
-                blocks={twoVersionsBlocks}
-                isCss={openFileIsCss}
-                onChoose={keepVersion}
-                onReveal={(line) => {
-                  // The editor and the preview both go to the passage in
-                  // question. A programmatic reveal does not echo to the
-                  // preview on its own, so the preview is sent the same
-                  // top-anchored target the editor's scrolling would send.
-                  whenEditorReady(() => editorRef?.revealLine(line, false));
-                  editorSync.onEditorAnchorLine(line, "scroll", editorChapter);
-                }}
-                onSettled={() => void onTwoVersionsSettled()}
-              />
-              {/key}
-            {/if}
-            {#if MarkdownEditor}
-              <!-- No per-file `{#key}` remount: MarkdownEditor keeps ONE
-                   EditorView, while EditorFileSession gives it exactly ONE
-                   source file via a synchronous switchFile() handoff. -->
-              <MarkdownEditor
-                bind:this={editorRef}
-                filePath={editorFilePath}
-                content={editorContent}
-                onChange={onEditorChange}
-                onSave={() => void handleForceSave()}
-                onAnchorLine={(line, origin) =>
-                  editorSync.onEditorAnchorLine(line, origin, editorChapter)}
-                components={projectComponents}
-                variants={projectVariants}
-                classes={projectClasses}
-                problems={displayedProblems}
-                onBlockProperties={() => void openBlockPropertiesAtCaret()}
-              />
-            {:else if editorModuleFailed}
-              <div class="editor-loading" role="alert">
-                <p>The editor failed to load.</p>
-                <button class="primary app-btn-primary" onclick={retryEditorLoad}>Retry</button>
-              </div>
-            {:else}
-              <div class="editor-loading" role="status" aria-live="polite">
-                <Spinner size={14} />
-                Loading editor…
-              </div>
-            {/if}
-            {#if !inFocus}
-              <ProblemsPanel
-                bind:this={problemsPanelRef}
-                problems={displayedProblems}
-                loading={problemsLoading || lifecycle.rendering}
-                error={problemsError}
-                bind:open={problemsOpen}
-                onSelect={openProblem}
-                toggleEl={problemsToggleEl}
-              />
-            {/if}
+          {/if}
+          <!-- Editor toolbar (#31): compact formatting bar, visible only when a
+               markdown file is open. Placed above the editor, within the pane. -->
+          {#if !inFocus}
+          <EditorToolbar
+            filePath={editorFilePath}
+            projectDir={lifecycle.currentDir}
+            onAction={(action, payload) => {
+              if (action === "snippet") {
+                openSnippetPicker();
+                return;
+              }
+              editorRef?.runToolbarAction(action, payload);
+            }}
+            onSave={handleForceSave}
+            savePending={editorSavePhase !== "clean"}
+            saving={forceSaving}
+            problems={displayedProblems}
+            problemsLoading={problemsLoading || lifecycle.rendering}
+            {problemsError}
+            {problemsOpen}
+            onToggleProblems={toggleProblems}
+          />
+          {/if}
+          {#if editorFilePath && twoVersionsBlocks.length > 0}
+            <!-- Passages with two takes after getting the latest (#407): pick, right
+                 above the text they rewrite. Shown in Focus too — the
+                 markers are in the text either way, and this is the way
+                 to settle them. Keyed on the file: another file's card
+                 starts at its first passage, with the text folded away. -->
+            {#key editorFilePath}
+            <TwoVersionsPanel
+              blocks={twoVersionsBlocks}
+              isCss={openFileIsCss}
+              onChoose={keepVersion}
+              onReveal={(line) => {
+                // The editor and the preview both go to the passage in
+                // question. A programmatic reveal does not echo to the
+                // preview on its own, so the preview is sent the same
+                // top-anchored target the editor's scrolling would send.
+                whenEditorReady(() => editorRef?.revealLine(line, false));
+                editorSync.onEditorAnchorLine(line, "scroll", editorChapter);
+              }}
+              onSettled={() => void onTwoVersionsSettled()}
+            />
+            {/key}
+          {/if}
+          {#if MarkdownEditor}
+            <!-- No per-file `{#key}` remount: MarkdownEditor keeps ONE
+                 EditorView, while EditorFileSession gives it exactly ONE
+                 source file via a synchronous switchFile() handoff. -->
+            <MarkdownEditor
+              bind:this={editorRef}
+              filePath={editorFilePath}
+              content={editorContent}
+              onChange={onEditorChange}
+              onSave={() => void handleForceSave()}
+              onAnchorLine={(line, origin) =>
+                editorSync.onEditorAnchorLine(line, origin, editorChapter)}
+              components={projectComponents}
+              variants={projectVariants}
+              classes={projectClasses}
+              problems={displayedProblems}
+              onBlockProperties={() => void openBlockPropertiesAtCaret()}
+            />
+          {:else if editorModuleFailed}
+            <div class="editor-loading" role="alert">
+              <p>The editor failed to load.</p>
+              <button class="primary app-btn-primary" onclick={retryEditorLoad}>Retry</button>
+            </div>
+          {:else}
+            <div class="editor-loading" role="status" aria-live="polite">
+              <Spinner size={14} />
+              Loading editor…
+            </div>
+          {/if}
+          {#if !inFocus}
+            <ProblemsPanel
+              bind:this={problemsPanelRef}
+              problems={displayedProblems}
+              loading={problemsLoading || lifecycle.rendering}
+              error={problemsError}
+              bind:open={problemsOpen}
+              onSelect={openProblem}
+              toggleEl={problemsToggleEl}
+            />
           {/if}
         </section>
         {#if !isNarrow}
@@ -3356,7 +3252,7 @@
         id="mobile-panel-preview"
         role={isNarrow ? "tabpanel" : undefined}
         aria-labelledby={isNarrow ? "mobile-tab-preview" : undefined}
-        inert={isNarrow && (editorPaneOpen || editorView !== "editor") ? true : undefined}
+        inert={isNarrow && editorPaneOpen ? true : undefined}
       >
         {#if !inFocus && lifecycle.previewUrl}
           <!-- Page navigation and zoom sit on the pane they act on (the
@@ -3388,49 +3284,8 @@
         {/if}
         <FindBar bind:this={findBarRef} bind:open={findBarOpen} {client} />
         {#if lifecycle.previewUrl}
-          {#if versionPreview}
-            <!-- Looking at a version (#408): a read-only frame of that version
-                 beside the live one, on the same page. -->
-            <div class="version-bar" role="status">
-              <span class="version-bar-label">
-                <Icon name="history" size={14} />
-                <span>Looking at <strong>{versionPreview.label}</strong> beside the current book</span>
-              </span>
-              {#if isNarrow}
-                <span class="version-toggle" role="group" aria-label="Which to show">
-                  <button class:active={versionSide === "then"} aria-pressed={versionSide === "then"} onclick={() => (versionSide = "then")}>That version</button>
-                  <button class:active={versionSide === "now"} aria-pressed={versionSide === "now"} onclick={() => (versionSide = "now")}>Current book</button>
-                </span>
-              {/if}
-              <button
-                class="version-bar-close"
-                onclick={() => void stopLookingAtVersion()}
-                aria-label="Stop looking at this version"
-                title="Back to the live preview"
-              >
-                <Icon name="x" size={14} />
-              </button>
-            </div>
-          {/if}
-          <div
-            class="preview-frames"
-            class:split={!!versionPreview}
-            class:show-then={!!versionPreview && isNarrow && versionSide === "then"}
-            class:show-now={!!versionPreview && isNarrow && versionSide === "now"}
-          >
-            {#if versionPreview}
-              {#key versionPreview.url}
-                <div class="frame-slot then-slot">
-                  <PreviewFrame
-                    url={versionPreview.url}
-                    bind:client={versionClient}
-                    onClientReady={onVersionClientReady}
-                    onError={(msg) => toast?.error(msg)}
-                  />
-                </div>
-              {/key}
-            {/if}
-            <div class="frame-slot now-slot">
+          <div class="preview-frames">
+            <div class="frame-slot">
               {#key lifecycle.previewUrl}
                 <PreviewFrame
                   bind:this={previewFrameRef}
@@ -3491,69 +3346,33 @@
     </div> <!-- /main-content -->
   </div> <!-- /left-panel-region -->
 
-  <!-- StatusBar: always-visible bottom bar with the book switcher, sync pill
-       and app actions. Sits below the left-panel-region in the .shell flex
-       column so it spans the full window width. Never covers the preview
-       iframe (normal layout flow). -->
+  <!-- StatusBar: always-visible bottom bar with the book switcher, the one
+       status control and app actions. Sits below the left-panel-region in the
+       .shell flex column so it spans the full window width. Never covers the
+       preview iframe (normal layout flow). -->
   {#if !inFocus}
   <StatusBar
     projectDir={lifecycle.currentDir}
     sourceMode={lifecycle.sourceMode}
     canSync={!!(syncController.syncDiag?.canSync)}
     hasRemote={projectSession.projectHasRemote}
-    canSnapshot={projectSession.projectCapabilities ? !!projectSession.projectCapabilities.canSnapshot : null}
     savePhase={editorSavePhase}
     autoSave={settings.current.versionHistory.autoSave}
-    autoVersions={settings.current.versionHistory.autoSnapshot}
     autoBackup={settings.current.versionHistory.autoSync}
     {forceSaving}
     forceSyncing={syncController.forceSyncing}
+    {readerMode}
     books={projectSession.books}
     activeBookDir={projectSession.activeBookDir}
+    backup={syncController.backup}
+    {versionsProblem}
     onSwitchBook={(path) => void switchBook(path)}
-    onReconnect={onSyncReconnect}
-    onConnectOnline={onSyncReconnect}
-    onShowLog={showProjectLog}
-    onForceSave={handleForceSave}
     onForceSync={() => syncController.handleForceSync()}
     onGetLatest={() => syncController.handleGetLatest()}
     gettingLatest={syncController.gettingLatest}
     updatesAvailable={syncController.updatesAvailable}
-    onRepair={() => syncController.handleRepair()}
-    manualBackup={syncController.lastManual}
-    onSaveVersion={async () => {
-      const dir = lifecycle.currentDir;
-      if (!dir) return "unchanged";
-      try {
-        await api.vcs.saveSnapshot(dir);
-        identityNoticeArmed = true;
-        toast?.success("Saved a version.");
-        activityViewRef?.refreshHistory();
-        return "saved";
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        // A clean book is not a failure: the dialog says so calmly (no toast).
-        // Local copy of the lib's isNoChangesError (the SPA can't import it).
-        if (/no changes since the last snapshot/i.test(msg)) return "unchanged";
-        toast?.error(friendlyHostError(e instanceof Error ? e.message : String(e)));
-        throw e;
-      }
-    }}
-    onEnableVersionHistory={async () => {
-      const dir = lifecycle.currentDir;
-      if (!dir) return;
-      try {
-        await api.vcs.enableVersionHistory(dir);
-        await projectSession.classify(dir);
-        toast?.success("Version history is on.");
-      } catch (e) {
-        toast?.error("Couldn't turn on version history. Your book is unchanged.");
-        throw e;
-      }
-    }}
-    onShowVersions={showActivityView}
-    onOpenBookConnections={openBookConnections}
-    onOpenSettings={openSettings}
+    onOpenOnlineCopy={openOnlineCopy}
+    onOpenSettings={() => openSettings()}
     onOpenHelp={openHelp}
     onOpenBooks={openBooks}
   />
@@ -3587,7 +3406,7 @@
   onSwitchBook={(path) => void switchBook(path)}
   onOpenUrl={openUrl}
   onBrowse={() => void browseFromLanding()}
-  onNewProject={readerMode ? undefined : () => newProjectWizardRef?.show()}
+  onNewProject={() => newProjectWizardRef?.show()}
   onOpenGitHub={() => (githubOpen = true)}
   onOpenGuide={openSetupGuide}
   onWhatsNew={openReleaseNotes}
@@ -3596,28 +3415,54 @@
   onUpdateDownload={() => updateController.download()}
   onCheckForUpdates={() => updateController.check()}
   onDismiss={() => dismissLanding()}
-  settingsTab={landingSettingsTab}
-  onProjectFilesChanged={onSnapshotRestored}
-  onCloseBook={() => lifecycle.stopPreview()}
+  onOpenSettings={() => openSettings()}
+  onOpenAccounts={() => (accountsOpen = true)}
 />
 {#if projectSettingsOpen}
-  <!-- Book settings (manifest), in the shared AppView layer. Mounted fresh per
+  <!-- Book setup (manifest), in the shared AppView layer. Mounted fresh per
        open; a project switch closes it (lifecycle resetExtras), so no stale
        section state can outlive its project. No {#key} wrapper: Svelte 5
        transitions are local, and a key block between the {#if} and the view
        would swallow AppView's fade in both directions. -->
   <ProjectSettingsView
+    bind:this={settingsViewRef}
     projectDir={lifecycle.currentDir}
     repoRoot={projectSession.repoRoot}
     initialTab={projectSettingsTab}
     {toast}
     triggerEl={projectSettingsBtnEl}
     onClose={closeProjectSettings}
-    onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}
-    onOpenAccounts={() => { closeProjectSettings(); openSettings("connections"); }}
+    onOpenFile={(path) => { closeProjectSettings(); openFileInEditor(path); }}
     onVersionHistoryEnabled={(dir) => void projectSession.classify(dir)}
-    onBackupSetUp={(dir) => void projectSession.classify(dir)}
+    onBackupSetUp={(dir) => { void projectSession.classify(dir); void syncController.refreshSyncDiag(dir); }}
+    onProjectFilesChanged={onSnapshotRestored}
+    backup={syncController.backup}
+    {versionsProblem}
+    onBackUpNow={() => syncController.handleForceSync()}
+    onGetLatest={() => syncController.handleGetLatest()}
+    onRepair={() => syncController.handleRepair()}
+    onSaveVersion={saveVersion}
+    onBrowseVersions={(id) => (versionsFor = { id: id ?? null })}
+    onCloseBook={() => lifecycle.stopPreview()}
+    onOpenAccounts={() => (accountsOpen = true)}
   />
+{/if}
+{#if versionsFor && lifecycle.currentDir}
+  <!-- Version history opens over Book setup; closing it returns there. -->
+  <VersionHistoryView
+    projectDir={lifecycle.currentDir}
+    hasRemote={projectSession.projectHasRemote}
+    logFilePath={syncController.logFile}
+    initialId={versionsFor.id}
+    onClose={() => (versionsFor = null)}
+    onRestored={() => { onSnapshotRestored(); settingsViewRef?.refreshHistory(); }}
+  />
+{/if}
+{#if settingsOpen}
+  <SettingsView onClose={closeSettings} onOpenAccounts={() => (accountsOpen = true)} />
+{/if}
+{#if accountsOpen}
+  <AccountsView onClose={closeAccounts} focus={accountsFocus} />
 {/if}
 
 {#if openBookOpen}
@@ -3634,7 +3479,7 @@
     invalidateDiscoveredProjects(); // a fresh clone is a new discoverable book
     return openProjectPath(projectDir);
   }}
-  onAdvancedSetup={() => openSettings("connections")}
+  onOpenAccounts={() => (accountsOpen = true)}
   onClosed={onConnectDialogClosed}
   triggerEl={leftPanelToggleBtn}
 />
@@ -3649,6 +3494,7 @@
     onShowInFolder={(path) => void api.shell.showInFolder(path).catch(() => {})}
     triggerEl={publishBtnEl}
     onClose={() => (publishOpen = false)}
+    onManageAccounts={() => (accountsOpen = true)}
     onNavigate={(entry) => {
       // A preflight "Go to" — close the wizard, then reveal the finding
       // in the editor via the shared Problems-panel navigation affordance.
@@ -3661,6 +3507,9 @@
   bind:this={newProjectWizardRef}
   onCreated={(projectDir) => {
     invalidateDiscoveredProjects(); // the new book must show up in lists now
+    // Creating a book is authoring: a reader who creates one becomes an
+    // author, so the new book opens with Edit, Setup and Publish in reach.
+    if (settings.current.workspace.role === "reader") settings.set({ workspace: { role: "author" } });
     return openProjectPath(projectDir);
   }}
   onClosed={() => {
@@ -3845,7 +3694,7 @@
     container-type: inline-size;
     container-name: preview-pane;
   }
-  /* The live frame, or (looking at a version) that version's frame beside it. */
+  /* The live frame. */
   .preview-frames {
     flex: 1;
     min-height: 0;
@@ -3856,66 +3705,6 @@
     min-width: 0;
     min-height: 0;
     display: flex;
-  }
-  .preview-frames.split .then-slot {
-    border-right: 2px solid var(--app-accent);
-  }
-  /* Narrow: one frame at a time. The hidden one has already laid out, so
-     the cross-origin throttling PreviewFrame warns about does not bite. */
-  .preview-frames.show-then .now-slot,
-  .preview-frames.show-now .then-slot {
-    display: none;
-  }
-  .version-bar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 12px;
-    background: var(--app-accent-subtle);
-    border-bottom: 1px solid var(--app-accent-border);
-    color: var(--app-accent-text);
-    font-size: 12px;
-    flex: 0 0 auto;
-  }
-  .version-bar-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .version-toggle {
-    display: inline-flex;
-    border: 1px solid var(--app-accent-border);
-    border-radius: 6px;
-    overflow: hidden;
-  }
-  .version-toggle button {
-    padding: 2px 10px;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    font-size: 12px;
-    cursor: pointer;
-  }
-  .version-toggle button.active {
-    background: var(--app-accent);
-    color: var(--app-text-on-accent);
-  }
-  .version-bar-close {
-    display: inline-flex;
-    padding: 3px;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-  }
-  .version-bar-close:hover {
-    background: var(--app-control-hover-bg);
   }
   .preview-error-view {
     flex: 1;

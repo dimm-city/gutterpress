@@ -1,0 +1,85 @@
+/* ===========================================================================
+ * {{NAME}} — 1. TOKENS
+ *
+ * OWNS
+ *   `:root` custom properties, and nothing else. The palette, the type scale,
+ *   the spacing scale, the measure. This is the file to edit to rebrand the
+ *   look. The desktop app's Book setup lists these tokens and saves a
+ *   book's changes to that book's own stylesheet, never to this file.
+ *
+ * MUST NOT CONTAIN
+ *   - Any selector other than `:root`. The moment a rule here targets `h1`,
+ *     "change the brand" and "change the look of a heading" stop being
+ *     separable, and Book setup starts showing settings that do not
+ *     do what they say.
+ *   - `var()` references to component tokens. Tokens flow one way: brand →
+ *     component. A brand token that depends on a component token is a cycle
+ *     waiting to happen.
+ *   - Anything a specific book needs. Book-specific values go in book.css.
+ *
+ * WHAT BOOK SETUP SHOWS is curated with comments. Right above one
+ * declaration: `@label Accent color` (its plain-words name), `@group Paper`
+ * (its heading), `@internal` (not shown). Right above a `:root` selector:
+ * `@group` or `@internal` for the whole block, which a declaration's own
+ * comment overrides. One `@internal` line above a block of component
+ * defaults keeps them out of Book setup.
+ *
+ * LOADS FIRST, and therefore declares the layer order for the whole stack.
+ * ======================================================================== */
+
+/* ---------------------------------------------------------------------------
+ * THE LAYER ORDER. Declared once, here, because this sheet loads first.
+ *
+ * Each file below puts everything it owns inside the matching layer, so the
+ * cascade is settled by THIS line rather than by which file `styles:` happens
+ * to list last. Split a file in two, reorder the manifest, add a sheet in the
+ * middle — who wins does not change.
+ *
+ * Two things worth knowing before you edit this:
+ *
+ *   - Gutterpress wraps this whole extension in a cascade layer of its own
+ *     (`ext.<name>`), after core's `gp.marker`/`gp.vocab` and before the
+ *     book's own stylesheets. These layers nest inside it, so declaring an
+ *     order only changes how YOUR OWN files settle ties with each other; the
+ *     book's rules still beat every one of them.
+ *
+ *   - A rule left OUTSIDE all of these layers beats every layered rule here,
+ *     at any specificity. That is the one real trap: adopt the convention
+ *     per whole sheet, never for a few rules inside an otherwise plain file.
+ * ------------------------------------------------------------------------ */
+@layer tokens, base, components, templates, pages, book;
+
+@layer tokens {
+  :root {
+    /* -- Palette ------------------------------------------------------- */
+    --{{PREFIX}}ink: #1a1a1a;
+    --{{PREFIX}}ink-soft: #55575c;
+    --{{PREFIX}}paper: #ffffff;
+    --{{PREFIX}}rule: #d8d8d8;
+    --{{PREFIX}}accent: #2f5d8a;
+    --{{PREFIX}}accent-warm: #9a5b12;
+
+    /* -- Typefaces ----------------------------------------------------- */
+    /* Keep a real fallback stack: a print build that cannot find a face
+       silently substitutes, and the substitution is what gets printed. */
+    --{{PREFIX}}font-body: "Iowan Old Style", Georgia, "Times New Roman", serif;
+    --{{PREFIX}}font-display: var(--{{PREFIX}}font-body);
+    --{{PREFIX}}font-mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+    /* -- Type scale ---------------------------------------------------- */
+    /* Absolute units, because this is print: 1pt is a physical size on the
+       page, whereas `rem` is whatever the viewport decided. */
+    --{{PREFIX}}fs-body: 10.5pt;
+    --{{PREFIX}}fs-small: 9pt;
+    --{{PREFIX}}fs-h1: 24pt;
+    --{{PREFIX}}fs-h2: 16pt;
+    --{{PREFIX}}fs-h3: 12.5pt;
+    --{{PREFIX}}leading: 1.45;
+
+    /* -- Spacing scale ------------------------------------------------- */
+    --{{PREFIX}}space-1: 0.25em;
+    --{{PREFIX}}space-2: 0.5em;
+    --{{PREFIX}}space-3: 1em;
+    --{{PREFIX}}space-4: 1.75em;
+  }
+}

@@ -2,16 +2,16 @@
  * Scorched earth — the last-resort reset for a book folder whose Git state is
  * beyond {@link repairOnlineBackup}. Four fixed steps:
  *
- *   1. copy the whole folder (its `.git` included) to `backupDir`
+ *   1. keep a safety folder: copy the whole folder (its `.git` included) to `backupDir`
  *   2. delete everything inside the folder
- *   3. download a fresh copy from the online address into the now-empty folder
- *   4. copy the backup's files (NOT its `.git` — that is the broken part) back
- *      on top of the fresh copy
+ *   3. download the online copy fresh into the now-empty folder
+ *   4. copy the safety folder's files (NOT its `.git` — that is the broken part)
+ *      back on top of the fresh download
  *
  * The files on this computer win; files only the online copy has stay. Nothing
- * is saved or backed up afterwards — the result is the fresh history plus the
+ * is saved or backed up afterwards — the result is the fresh versions plus the
  * author's files as unsaved changes, which the normal save/back-up picks up.
- * The backup in `backupDir` is never deleted.
+ * The safety folder in `backupDir` is never deleted.
  */
 import { gitFs as fs } from "../git-fs.ts";
 import git from "isomorphic-git";
@@ -26,14 +26,14 @@ import { repoDirFor, resolveTransport } from "./transport.ts";
 
 export interface ScorchedEarthOptions
   extends Pick<SyncProjectOptions, "projectDir" | "credential" | "tokenStore" | "logFile" | "httpClient"> {
-  /** Where the full copy of the folder goes — OUTSIDE the folder. Kept indefinitely. */
+  /** Where the safety folder goes — OUTSIDE the book's folder. Kept indefinitely. */
   backupDir: string;
 }
 
 export interface ScorchedEarthResult {
   /** The folder that was reset (the repo root of `projectDir`). */
   dir: string;
-  /** Where the full copy of the folder (old `.git` included) was kept. */
+  /** Where the safety folder (the old folder, `.git` included) was kept. */
   backupDir: string;
   /** The branch the fresh copy has checked out. */
   branch?: string;

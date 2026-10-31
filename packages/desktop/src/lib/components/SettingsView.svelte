@@ -1,727 +1,286 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import Icon from "#lib/components/Icon.svelte";
-  import ConnectionsSettings from "#lib/components/ConnectionsSettings.svelte";
-  import GitIdentitySection from "#lib/components/GitIdentitySection.svelte";
+  /**
+   * SettingsView — the app's Settings: one page in the shared AppView layer,
+   * the same from the start screen and over a book (it never reads the open
+   * book). Every control applies at once. The first group, Reader or Author,
+   * decides how much of the app shows; Appearance, Preview, Editor and Saving
+   * each show one settings section and have a Reset that puts that section
+   * back to its defaults. Your name and email and every account have their
+   * own page (AccountsView), which the last group opens.
+   *
+   * The controls and keys are the ones 0.11.22 had (#481): a saved
+   * app-settings.json reads the same.
+   */
+  import AppView from "#lib/components/AppView.svelte";
   import { useSettings } from "#lib/settings.svelte.ts";
-  import { setThemeMode } from "#lib/theme.svelte.ts";
+  import { setThemeMode, syncThemeFromSettings, type ThemeMode } from "#lib/theme.svelte.ts";
   import { getPlatform } from "#lib/platform/index.ts";
-  import { sanitizeSettingsTab, type SettingsTab } from "#lib/settings-tabs.ts";
-  import { api } from "#lib/api.ts";
+  import type { WorkspaceRole } from "#lib/platform/shared-types.ts";
   import { MARGIN_OVERLAY_STRENGTHS, OVERLAY_LAYERS, overlayStyleFrom } from "#lib/margin-overlay.ts";
-  import { friendlyHostError } from "#lib/errors.ts";
+  import { ZOOM_LEVELS } from "#lib/editor/preview-layout.ts";
 
   let {
     onClose,
-    projectDir = null,
-    initialTab = "app",
-    embedded = false,
-    idPrefix = "settings",
-    onProjectFilesChanged,
+    onOpenAccounts,
   }: {
-    onClose?: () => void;
-    /** The open project dir (Connections tab: adding a publishing key verifies
-     *  against the platform, and some checks read the project's settings;
-     *  the Saving tab's online-backup switch uses it to check canSync). */
-    projectDir?: string | null;
-    /** The tab to land on when the view opens (e.g. "connections" from the
-     *  reconnect / advanced-setup entry points). */
-    initialTab?: SettingsTab;
-    /** Rendered INSIDE another surface (the start screen's Settings tab)
-     *  rather than as the full-window sheet: drops the title bar and close
-     *  button — that surface has its own — and stops owning a scroll region,
-     *  so the host scrolls as one page. */
-    embedded?: boolean;
-    /** Element-id namespace. Two instances can be mounted at once (the
-     *  start screen's tab and the full-window sheet opened over it), and
-     *  duplicate ids would break the tab/panel aria wiring for both. */
-    idPrefix?: string;
-    /** Called after the Saving tab's copy switcher (#273) successfully checks
-     *  out another local copy — the files under `projectDir` just changed out
-     *  from under whatever the workspace has open. The parent reconciles the
-     *  open editor buffer/preview the same way it does after a version
-     *  restore (`ProjectActivityView`'s `onRestored`); the file tree and
-     *  preview pick up the change on their own via the existing folder-
-     *  changed push stream, since the checkout's writes are ordinary disk
-     *  writes to the watched folder. */
-    onProjectFilesChanged?: () => void;
+    onClose: () => void;
+    /** Open the Accounts page in place of this one. */
+    onOpenAccounts: () => void;
   } = $props();
 
   const settings = useSettings();
-
-  function close() {
-    onClose?.();
-  }
-
-  // ── Tabs ────────────────────────────────────────────────────────────────────
-  // The stacked-sections layout outgrew one scroll (six groups + the new
-  // Connections management), so the panel is tabbed: each tab renders one
-  // cohesive slice. The active tab persists across opens within a session —
-  // reopening lands where the user last was.
-  const TABS: Array<{ id: SettingsTab; label: string }> = [
-    { id: "app", label: "App" },
-    { id: "connections", label: "Accounts" },
-    { id: "editor", label: "Editor" },
-    { id: "saving", label: "Saving" },
-  ];
-  // Mounted fresh per open ({#if settingsOpen}) — the initial value is the
-  // requested landing tab; navigation from there is user-driven. Sanitized:
-  // an unknown value here would leave NO tab active (empty settings body).
-  // svelte-ignore state_referenced_locally
-  let activeTab = $state<SettingsTab>(sanitizeSettingsTab(initialTab));
-  let tabEls = $state<Record<SettingsTab, HTMLButtonElement | undefined>>({
-    app: undefined,
-    editor: undefined,
-    saving: undefined,
-    connections: undefined,
-  });
-
-  function onTablistKeydown(e: KeyboardEvent) {
-    const ids = TABS.map((tab) => tab.id);
-    const current = ids.indexOf(activeTab);
-    let next: number | undefined;
-    if (e.key === "ArrowRight") next = (current + 1) % ids.length;
-    else if (e.key === "ArrowLeft") next = (current - 1 + ids.length) % ids.length;
-    else if (e.key === "Home") next = 0;
-    else if (e.key === "End") next = ids.length - 1;
-    if (next === undefined) return;
-    e.preventDefault();
-    activeTab = ids[next]!;
-    tabEls[activeTab]?.focus();
-  }
-
-  // ── Saving tab — can this project sync? (#274) ────────────────────────────
-  // The online-backup switch only makes sense for a project that can sync;
-  // otherwise it is a control that would do nothing, per issue #274. Checked
-  // once on mount (no `$effect` in this repo — CLAUDE.md §8), same as
-  // ConnectionsSettings/ProjectConnectionsSection's own diagnoseProjectRemote
-  // load. `projectDir === null` (the start screen) is treated as "cannot
-  // sync" without a round-trip.
-  let canSyncLoading = $state(true);
-  let canSync = $state(false);
-
-  onMount(() => {
-    if (!projectDir) {
-      canSyncLoading = false;
-      return;
-    }
-    api.remote
-      .diagnoseProjectRemote(projectDir)
-      .then((diag) => {
-        canSync = diag.canSync;
-      })
-      .catch(() => {
-        canSync = false;
-      })
-      .finally(() => {
-        canSyncLoading = false;
-      });
-  });
-
-  // ── Saving tab — the copy this project is on (#273) ───────────────────────
-  // Every copy is listed, including ones that so far exist only online;
-  // switching to one of those creates it locally first. Hidden entirely — not
-  // shown with an error — when there's nothing to switch between: no project
-  // open, or `listBranches` reports `null` (a plain local-folder, which has no
-  // repository). Loaded
-  // once on mount, reloaded after a switch; no `$effect` (CLAUDE.md §8).
-  let copies = $state<{ current: string | null; branches: string[]; remoteOnly: string[] } | null>(null);
-  let copiesLoading = $state(true);
-  /** The online check failed, so the copy list may be missing copies made elsewhere. */
-  let copiesStale = $state(false);
-  let selectedCopy = $state("");
-  let copySwitching = $state(false);
-  let copySwitchError = $state<string | null>(null);
-
-  /**
-   * `listBranches` reads refs off disk, so a copy pushed from somewhere else
-   * is invisible until this clone fetches. Refreshing first is what makes a
-   * copy created on another machine — or by a pull request opened for you —
-   * show up here without dropping to a terminal. Best-effort: offline or
-   * unconnected simply lists what is already on disk.
-   */
-  async function loadCopies(options: { refresh?: boolean } = {}) {
-    if (!projectDir) {
-      copies = null;
-      copiesLoading = false;
-      return;
-    }
-    copiesLoading = true;
-    try {
-      if (options.refresh) {
-        const r = await api.remote
-          .refreshCopies(projectDir)
-          .catch(() => ({ refreshed: false, reason: "offline" as const }));
-        // "no-remote" is not a problem — a project with no online copy has
-        // nothing to check for. The other two mean the list may be short.
-        copiesStale = !r.refreshed && r.reason !== "no-remote";
-      }
-      copies = await api.vcs.listBranches(projectDir);
-    } catch {
-      copies = null;
-    } finally {
-      copiesLoading = false;
-    }
-  }
-
-  onMount(() => {
-    void loadCopies({ refresh: true });
-  });
-
-  async function switchCopy() {
-    if (!projectDir || !selectedCopy || copySwitching) return;
-    const target = selectedCopy;
-    copySwitching = true;
-    copySwitchError = null;
-    try {
-      await api.vcs.switchBranch(projectDir, target);
-      selectedCopy = "";
-      await loadCopies();
-      // The files under projectDir just changed out from under the open
-      // workspace — reconcile the open editor buffer the same way a version
-      // restore does (the file tree/preview pick up the change on their own
-      // via the folder-changed push stream, which the checkout's writes fire
-      // just like any other external disk change).
-      onProjectFilesChanged?.();
-    } catch (e) {
-      copySwitchError = friendlyHostError(e instanceof Error ? e.message : String(e));
-    } finally {
-      copySwitching = false;
-    }
-  }
-
-  // ── Typed setters (one line per control, per the "one-line setting" goal) ──
   const s = $derived(settings.current);
   const overlayStyle = $derived(overlayStyleFrom(s.preview.overlayColors, s.preview.marginOverlayStrength));
+  // A zoom the + and - keys stepped to (175%) is not one of the levels: it is listed as it is.
+  const zoomLevels = $derived.by(() => {
+    const zoom = s.preview.defaultZoom;
+    const pct = Math.round(parseFloat(zoom) * 100);
+    return ZOOM_LEVELS.some(([value]) => value === zoom) || !Number.isFinite(pct) ? ZOOM_LEVELS : [...ZOOM_LEVELS, [zoom, `${pct}%`] as const];
+  });
+
+  const ROLES: Array<{ value: WorkspaceRole; label: string; hint: string }> = [
+    { value: "reader", label: "Reader", hint: "Just the pages. Edit, Setup and Publish stay out of the way. Creating a book switches you to Author." },
+    { value: "author", label: "Author", hint: "Write and set up your book, then publish it." },
+  ];
+  const THEMES: Array<{ value: ThemeMode; label: string }> = [
+    { value: "system", label: "Match system" },
+    { value: "light", label: "Light" },
+    { value: "dark", label: "Dark" },
+  ];
+  const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
+
+  function setAutoSync(on: boolean) {
+    settings.set({ versionHistory: { autoSync: on } });
+    // Tell the host now, so the change applies without a settings reload.
+    getPlatform().setAutoSync(on).catch(() => {});
+  }
+
+  // The theme and automatic backing up take effect through the theme
+  // controller and the host, not the store alone, so their Reset tells them too.
+  function resetAppearance() {
+    settings.resetSection("appearance");
+    syncThemeFromSettings();
+  }
+  function resetSaving() {
+    settings.resetSection("versionHistory");
+    getPlatform().setAutoSync(settings.current.versionHistory.autoSync).catch(() => {});
+  }
 </script>
 
-<div class="settings-view" class:embedded>
-  {#if !embedded}
-    <header class="settings-header">
-      <h2 id="{idPrefix}-title">Settings</h2>
-      <button class="settings-close" onclick={close} title="Close settings" aria-label="Close settings"><Icon name="x" size={16} /></button>
-    </header>
-  {/if}
-
-  <div class="tab-bar app-tab-bar" role="tablist" aria-label="Settings sections" onkeydown={onTablistKeydown} tabindex="-1">
-    {#each TABS as tab (tab.id)}
-      <button
-        id="{idPrefix}-tab-{tab.id}"
-        role="tab"
-        class="app-tab"
-        class:active={activeTab === tab.id}
-        aria-selected={activeTab === tab.id}
-        aria-controls="{idPrefix}-panel"
-        tabindex={activeTab === tab.id ? 0 : -1}
-        bind:this={tabEls[tab.id]}
-        onclick={() => (activeTab = tab.id)}
-      >{tab.label}</button>
-    {/each}
+{#snippet toggle(id: string, label: string, hint: string, checked: boolean, set: (on: boolean) => void, disabled = false)}
+  <div class="row">
+    <div class="row-text">
+      <label for={id}>{label}</label>
+      <span class="hint" id="{id}-hint">{hint}</span>
+    </div>
+    <input
+      {id}
+      type="checkbox"
+      role="switch"
+      aria-describedby="{id}-hint"
+      {checked}
+      {disabled}
+      onchange={(e) => set(e.currentTarget.checked)}
+    />
   </div>
+{/snippet}
 
-  <div
-    id="{idPrefix}-panel"
-    class="settings-body"
-    role="tabpanel"
-    aria-labelledby="{idPrefix}-tab-{activeTab}"
-  >
-      <!-- App appearance (light/dark chrome) --------------------------------
-           Qualified as "App appearance" so it can't be confused with the
-           book's print look ("Look & style" in Book settings). -->
-      {#if activeTab === "app"}
-      <!-- Reader or author: the one switch that decides how much of the app
-           shows. Reader is the default; the choice is remembered. -->
-      <section class="group">
-        <div class="group-head">
-          <h3>How you use Gutterpress</h3>
-        </div>
-        <div class="role-options" role="radiogroup" aria-label="How you use Gutterpress">
-          <label class="role-option" class:selected={s.workspace.role === "reader"}>
-            <input type="radio" name="set-role" value="reader" checked={s.workspace.role === "reader"} onchange={() => settings.set({ workspace: { role: "reader" } })} />
-            <span class="role-text">
-              <span class="role-title">Reader</span>
-              <span class="role-desc">Just the pages. Edit, Setup and Publish stay out of the way.</span>
-            </span>
+<!-- A group's Reset, beside its heading: puts that group's settings back to the defaults. -->
+{#snippet reset(group: string, run: () => void)}
+  <button type="button" class="app-btn app-btn-ghost reset" onclick={run} aria-label="Reset {group}" title="Reset {group} to the defaults">Reset</button>
+{/snippet}
+
+<AppView title="Settings" icon="settings" measure={640} {onClose} closeLabel="Close settings" closeTitle="Close (Esc)">
+  <!-- The one choice that decides how much of the app shows. Reader is the
+       default; creating a book switches to Author; it is remembered. -->
+  <section class="group" aria-labelledby="settings-role">
+    <h2 id="settings-role">How you use Gutterpress</h2>
+    <div class="radios roles" role="radiogroup" aria-labelledby="settings-role">
+      {#each ROLES as r (r.value)}
+        <label>
+          <input type="radio" name="settings-role" value={r.value} checked={s.workspace.role === r.value} onchange={() => settings.set({ workspace: { role: r.value } })} />
+          <span class="row-text">
+            <span class="role-title">{r.label}</span>
+            <span class="hint">{r.hint}</span>
+          </span>
+        </label>
+      {/each}
+    </div>
+  </section>
+
+  <section class="group" aria-labelledby="settings-appearance">
+    <div class="group-head">
+      <h2 id="settings-appearance">Appearance</h2>
+      {@render reset("Appearance", resetAppearance)}
+    </div>
+    <fieldset class="row">
+      <legend>Theme</legend>
+      <div class="radios">
+        {#each THEMES as t (t.value)}
+          <label>
+            <input type="radio" name="settings-theme" value={t.value} checked={s.appearance.theme === t.value} onchange={() => setThemeMode(t.value)} />
+            {t.label}
           </label>
-          <label class="role-option" class:selected={s.workspace.role === "author"}>
-            <input type="radio" name="set-role" value="author" checked={s.workspace.role === "author"} onchange={() => settings.set({ workspace: { role: "author" } })} />
-            <span class="role-text">
-              <span class="role-title">Author</span>
-              <span class="role-desc">Write and set up your book, then publish it.</span>
-            </span>
-          </label>
-        </div>
-      </section>
-
-      <section class="group">
-        <div class="group-head">
-          <h3>App appearance</h3>
-          <button class="reset" onclick={() => settings.resetSection("appearance")} title="Reset appearance to defaults">Reset</button>
-        </div>
-        <div class="row">
-          <label for="set-theme">Theme</label>
-          <select
-            id="set-theme"
-            value={s.appearance.theme}
-            onchange={(e) => setThemeMode((e.currentTarget as HTMLSelectElement).value as "light" | "dark" | "system")}
-          >
-            <option value="system">System</option>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-          </select>
-        </div>
-        <div class="row">
-          <label for="set-bg">Preview background</label>
-          <input
-            id="set-bg"
-            type="color"
-            value={s.appearance.previewBg}
-            oninput={(e) => settings.set({ appearance: { previewBg: (e.currentTarget as HTMLInputElement).value } })}
-          />
-        </div>
-      </section>
-
-      <!-- Preview ---------------------------------------------------------- -->
-      <section class="group">
-        <div class="group-head">
-          <h3>Preview</h3>
-          <button class="reset" onclick={() => settings.resetSection("preview")} title="Reset preview settings to defaults">Reset</button>
-        </div>
-        <div class="row">
-          <label for="set-zoom">Default zoom</label>
-          <select
-            id="set-zoom"
-            value={s.preview.defaultZoom}
-            onchange={(e) => settings.set({ preview: { defaultZoom: (e.currentTarget as HTMLSelectElement).value } })}
-          >
-            <option value="fit-width">Fit to width</option>
-            <option value="0.5">50%</option>
-            <option value="0.75">75%</option>
-            <option value="1">100%</option>
-            <option value="1.25">125%</option>
-            <option value="1.5">150%</option>
-            <option value="2">200%</option>
-          </select>
-        </div>
-        <div class="row">
-          <div class="row-label">
-            <label for="set-context-menu">Right-click menu in the preview</label>
-            <span class="row-hint">Right-click (or Shift+F10) an image, link, or block in the preview for quick edit actions.</span>
-          </div>
-          <input
-            id="set-context-menu"
-            type="checkbox"
-            checked={s.preview.contextMenu}
-            onchange={(e) => settings.set({ preview: { contextMenu: (e.currentTarget as HTMLInputElement).checked } })}
-          />
-        </div>
-        <div class="row">
-          <div class="row-label">
-            <label for="set-overlay-strength">Print overlay strength</label>
-            <span class="row-hint">How strongly the preview's print overlays (the toolbar button) are drawn. The bleed and safe area come from your book's print settings (manifest.yaml); the page margins are your stylesheet's own.</span>
-          </div>
-          <select
-            id="set-overlay-strength"
-            value={overlayStyle.strength}
-            onchange={(e) => settings.set({ preview: { marginOverlayStrength: (e.currentTarget as HTMLSelectElement).value as "subtle" | "normal" | "strong" } })}
-          >
-            {#each MARGIN_OVERLAY_STRENGTHS as o (o.value)}
-              <option value={o.value}>{o.label}</option>
-            {/each}
-          </select>
-        </div>
-        {#each OVERLAY_LAYERS as layer (layer.id)}
-          <div class="row">
-            <label for="set-overlay-color-{layer.id}">{layer.label} overlay colour</label>
-            <input
-              id="set-overlay-color-{layer.id}"
-              type="color"
-              value={overlayStyle.colors[layer.id]}
-              oninput={(e) => settings.set({ preview: { overlayColors: { ...overlayStyle.colors, [layer.id]: (e.currentTarget as HTMLInputElement).value } } })}
-            />
-          </div>
         {/each}
-      </section>
+      </div>
+    </fieldset>
+    <div class="row">
+      <div class="row-text">
+        <label for="settings-preview-bg">Preview background</label>
+        <span class="hint" id="settings-preview-bg-hint">The colour around the pages.</span>
+      </div>
+      <input id="settings-preview-bg" type="color" aria-describedby="settings-preview-bg-hint" value={s.appearance.previewBg} oninput={(e) => settings.set({ appearance: { previewBg: e.currentTarget.value } })} />
+    </div>
+  </section>
 
-      {/if}
+  <section class="group" aria-labelledby="settings-preview">
+    <div class="group-head">
+      <h2 id="settings-preview">Preview</h2>
+      {@render reset("Preview", () => settings.resetSection("preview"))}
+    </div>
+    <div class="row">
+      <div class="row-text">
+        <label for="settings-zoom">Default zoom</label>
+        <span class="hint" id="settings-zoom-hint">The zoom a book opens at. Choosing a zoom in the preview changes it too.</span>
+      </div>
+      <select id="settings-zoom" aria-describedby="settings-zoom-hint" value={s.preview.defaultZoom} onchange={(e) => settings.set({ preview: { defaultZoom: e.currentTarget.value } })}>
+        {#each zoomLevels as [value, label] (value)}
+          <option {value}>{label}</option>
+        {/each}
+      </select>
+    </div>
+    {@render toggle("settings-context-menu", "Right-click menu in the preview", "Right-click (or Shift+F10) an image, link, or block in the preview for quick edit actions.", s.preview.contextMenu, (on) => settings.set({ preview: { contextMenu: on } }))}
+    <div class="row wrap">
+      <div class="row-text">
+        <span id="settings-overlay-strength">Print overlay strength</span>
+        <span class="hint" id="settings-overlay-strength-hint">How strongly the print overlays (the preview's toolbar button) are drawn. The bleed and safe areas come from the book's print settings; the page margins are its stylesheet's own.</span>
+      </div>
+      <div class="radios" role="radiogroup" aria-labelledby="settings-overlay-strength" aria-describedby="settings-overlay-strength-hint">
+        {#each MARGIN_OVERLAY_STRENGTHS as o (o.value)}
+          <label>
+            <input type="radio" name="settings-overlay-strength" value={o.value} checked={overlayStyle.strength === o.value} onchange={() => settings.set({ preview: { marginOverlayStrength: o.value } })} />
+            {o.label}
+          </label>
+        {/each}
+      </div>
+    </div>
+    {#each OVERLAY_LAYERS as layer (layer.id)}
+      <div class="row">
+        <label for="settings-overlay-color-{layer.id}">{layer.label} overlay colour</label>
+        <input
+          id="settings-overlay-color-{layer.id}"
+          type="color"
+          value={overlayStyle.colors[layer.id]}
+          oninput={(e) => settings.set({ preview: { overlayColors: { ...overlayStyle.colors, [layer.id]: e.currentTarget.value } } })}
+        />
+      </div>
+    {/each}
+  </section>
 
-      {#if activeTab === "editor"}
-      <!-- Editor ----------------------------------------------------------- -->
-      <section class="group">
-        <div class="group-head">
-          <h3>Editor</h3>
-          <button class="reset" onclick={() => settings.resetSection("editor")} title="Reset editor settings to defaults">Reset</button>
-        </div>
-        <div class="row">
-          <div class="row-label">
-            <label for="set-highlight-problems">Highlight problems in the editor</label>
-            <span class="row-hint">Mark each line the Problems list reports, and outline unusual characters such as em dashes and curly quotes.</span>
-          </div>
-          <input
-            id="set-highlight-problems"
-            type="checkbox"
-            checked={s.editor.highlightProblems}
-            onchange={(e) => settings.set({ editor: { highlightProblems: (e.currentTarget as HTMLInputElement).checked } })}
-          />
-        </div>
-      </section>
+  <section class="group" aria-labelledby="settings-editor">
+    <div class="group-head">
+      <h2 id="settings-editor">Editor</h2>
+      {@render reset("Editor", () => settings.resetSection("editor"))}
+    </div>
+    {@render toggle("settings-problems", "Mark problems in the editor", "Underlines lines the Problems list mentions.", s.editor.highlightProblems, (on) => settings.set({ editor: { highlightProblems: on } }))}
+  </section>
 
-      <!-- Advanced (for developers) — a section, not a tab: two developer
-           knobs don't justify a whole tab. -->
-      <section class="group advanced">
-        <div class="group-head">
-          <h3>Advanced <span class="advanced-hint">for developers</span></h3>
-          <button class="reset" onclick={() => settings.resetSection("advanced")} title="Reset advanced settings to defaults">Reset</button>
-        </div>
-        <div class="row">
-          <label for="set-watcher">File watcher interval (ms)</label>
-          <input
-            id="set-watcher"
-            type="number"
-            min="50"
-            max="5000"
-            step="50"
-            value={s.advanced.fileWatcherInterval}
-            onchange={(e) => settings.set({ advanced: { fileWatcherInterval: Number((e.currentTarget as HTMLInputElement).value) } })}
-          />
-        </div>
-        <div class="row">
-          <label for="set-loglevel">Log level</label>
-          <select
-            id="set-loglevel"
-            value={s.advanced.logLevel}
-            onchange={(e) => settings.set({ advanced: { logLevel: (e.currentTarget as HTMLSelectElement).value as "error" | "warn" | "info" | "debug" } })}
-          >
-            <option value="error">Error</option>
-            <option value="warn">Warn</option>
-            <option value="info">Info</option>
-            <option value="debug">Debug</option>
-          </select>
-        </div>
-      </section>
+  <section class="group" aria-labelledby="settings-saving">
+    <div class="group-head">
+      <h2 id="settings-saving">Saving</h2>
+      {@render reset("Saving", resetSaving)}
+    </div>
+    {@render toggle("settings-autosave", "Save changes automatically", `When off, press ${isMac ? "⌘S" : "Ctrl+S"} to save.`, s.versionHistory.autoSave, (on) => settings.set({ versionHistory: { autoSave: on } }))}
+    {@render toggle("settings-versions", "Keep version history", "So you can go back to an earlier version of a book.", s.versionHistory.autoSnapshot, (on) => settings.set({ versionHistory: { autoSnapshot: on } }))}
+    <!-- Backing up sends the versions, so it needs them on. -->
+    {@render toggle("settings-autosync", "Back up online automatically", s.versionHistory.autoSnapshot ? "For books with an online copy." : "Turn on Keep version history first.", s.versionHistory.autoSync, setAutoSync, !s.versionHistory.autoSnapshot)}
+  </section>
 
-      {/if}
-
-      {#if activeTab === "saving"}
-      <!-- Saving (#274 cut five controls to switches a writer can actually
-           decide). Saving automatically is an on/off switch (owner request
-           2026-09-25): #274 had dropped its old delay field because 0s was
-           never off, but with no way to turn autosave off the Save button did
-           nothing. The delay and crash recovery (1s emergency draft) stay
-           fixed, not settings. Every switch persists under `versionHistory`,
-           so this group's Reset restores the whole group in one call. -->
-      <section class="group">
-        <div class="group-head">
-          <h3>Saving &amp; recovery</h3>
-          <button class="reset" onclick={() => settings.resetSection("versionHistory")} title="Reset saving settings to defaults">Reset</button>
-        </div>
-        <!-- Saving on this computer -->
-        <div class="row row-toggle">
-          <div class="row-label">
-            <label for="set-auto-save">Save edits automatically</label>
-            <span class="row-hint">Writes your changes to this computer as you type. When off, they're saved when you press Save, the preview updates then, and leaving a file with unsaved changes asks whether to save them.</span>
-          </div>
-          <input
-            id="set-auto-save"
-            type="checkbox"
-            checked={s.versionHistory.autoSave}
-            onchange={(e) => settings.set({ versionHistory: { autoSave: (e.currentTarget as HTMLInputElement).checked } })}
-          />
-        </div>
-        <!-- Previous versions -->
-        <div class="row row-toggle">
-          <div class="row-label">
-            <label for="set-auto-snapshot">Keep previous versions</label>
-            <span class="row-hint">Lets you return to earlier versions of the book.</span>
-          </div>
-          <input
-            id="set-auto-snapshot"
-            type="checkbox"
-            checked={s.versionHistory.autoSnapshot}
-            onchange={(e) => settings.set({ versionHistory: { autoSnapshot: (e.currentTarget as HTMLInputElement).checked } })}
-          />
-        </div>
-        <!-- Online backup. Shown only
-             for a project that can sync — canSyncLoading/canSync are read
-             once on mount from diagnoseProjectRemote (no live re-check while
-             this view stays open, matching ConnectionsSettings/
-             ProjectConnectionsSection); a local-only project or the start
-             screen (projectDir === null) gets one status line instead of a
-             switch that would do nothing. Disabled when previous versions is
-             off: a backup with nothing to push is not a backup. -->
-        {#if canSyncLoading}
-          <div class="row"><span class="row-hint">Checking this book's online status…</span></div>
-        {:else if canSync}
-          <div class="row row-toggle">
-            <div class="row-label">
-              <label for="set-auto-sync">Keep this book backed up online</label>
-              <span class="row-hint">
-                {#if s.versionHistory.autoSnapshot}
-                  Sends your previous versions to your connected online service in the background.
-                {:else}
-                  Needs "Keep previous versions" turned on — a backup is made of your versions.
-                {/if}
-              </span>
-            </div>
-            <input
-              id="set-auto-sync"
-              type="checkbox"
-              checked={s.versionHistory.autoSync}
-              disabled={!s.versionHistory.autoSnapshot}
-              onchange={(e) => {
-                const enabled = (e.currentTarget as HTMLInputElement).checked;
-                settings.set({ versionHistory: { autoSync: enabled } });
-                // Notify the host orchestrator immediately so the change takes effect
-                // without waiting for a settings reload cycle (§4.3).
-                getPlatform().setAutoSync(enabled).catch(() => {});
-              }}
-            />
-          </div>
-        {:else}
-          <div class="row"><span class="row-hint">This book isn't connected to an online service yet. Connect one in Settings &gt; Accounts to back it up.</span></div>
-        {/if}
-        <!-- Copy switching (#273): which copy (git branch) the project is on,
-             and a way to switch to another. Copies that exist only online are
-             listed too and marked as such — switching to one creates it
-             locally on the way in. Listing local copies alone made this look
-             broken: the copy you went looking for was simply missing, with
-             nothing to tell that apart from a bug. Hidden entirely, never
-             shown as a dead control, when there's nothing to switch between:
-             no project open, or `copies` is null (a plain
-             local-folder has no repository to have copies of). Vocabulary:
-             "copy", never "branch", in every string below. -->
-        {#if projectDir && !copiesLoading && copies}
-          {@const otherCopies = copies.branches.filter((name) => name !== copies?.current)}
-          {@const onlineOnly = new Set(copies.remoteOnly ?? [])}
-          <div class="row">
-            <div class="row-label">
-              <span class="row-title">Copy of this book you're working on</span>
-              <span class="row-hint">{copies.current ?? "Unknown — this book's history looks unusual."}</span>
-            </div>
-            {#if otherCopies.length > 0}
-              <div class="row-actions">
-                <select
-                  aria-label="Switch to another copy"
-                  bind:value={selectedCopy}
-                  disabled={copySwitching}
-                >
-                  <option value="" disabled>Switch to…</option>
-                  {#each otherCopies as name (name)}
-                    <option value={name}
-                      >{name}{onlineOnly.has(name) ? " (online only)" : ""}</option
-                    >
-                  {/each}
-                </select>
-                <button
-                  class="action"
-                  disabled={!selectedCopy || copySwitching}
-                  onclick={switchCopy}
-                >{copySwitching ? "Switching…" : "Switch"}</button>
-              </div>
-            {/if}
-          </div>
-          {#if copiesStale}
-            <p class="row-hint">
-              Couldn't check online for copies made elsewhere, so this list may be
-              incomplete. It shows the copies already on this computer.
-            </p>
-          {/if}
-          {#if copySwitchError}
-            <p class="row-error" role="alert">{copySwitchError}</p>
-          {/if}
-        {/if}
-      </section>
-
-      {/if}
-
-      {#if activeTab === "connections"}
-      <!-- Accounts — who you are (git identity, first) plus the ONE place to
-           manage every stored credential AND this project's sync surface:
-           publishing accounts, GitHub, other Git servers (incl. the former
-           Advanced-setup token flow — consolidated 2026-07-22; the duplicate
-           connect form and connected-servers list it carried are gone). -->
-      <GitIdentitySection />
-      <section class="group">
-        <ConnectionsSettings {projectDir} />
-      </section>
-      {/if}
-  </div>
-</div>
+  <section class="group" aria-labelledby="settings-accounts">
+    <h2 id="settings-accounts">Accounts</h2>
+    <div class="row">
+      <span class="hint">Your name and email, GitHub, Git servers and publishing accounts, used by every book.</span>
+      <button class="app-btn" onclick={onOpenAccounts}>Accounts…</button>
+    </div>
+  </section>
+</AppView>
 
 <style>
-  .settings-view {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    background: var(--app-bg);
-    color: var(--app-text-secondary);
-  }
-  .settings-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--app-border);
-    background: var(--app-surface-raised);
-  }
-  .settings-header h2 {
-    margin: 0;
-    color: var(--app-text);
-    font-size: 15px;
-  }
-  .settings-close {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px;
-    border: 1px solid var(--app-border);
-    border-radius: 5px;
-    background: transparent;
-    color: var(--app-text-muted);
-    cursor: pointer;
-  }
-  .settings-close:hover { background: var(--app-control-hover-bg); color: var(--app-text); }
-  .settings-close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
-  .settings-body {
-    flex: 1;
-    min-height: 0;
-    padding: 16px 18px;
-    overflow-y: auto;
-  }
-  /* Embedded in the start screen's Settings tab: the landing column is the
-     scroller and owns the horizontal rhythm, so this instance sizes to its
-     content and adds no chrome of its own. */
-  .settings-view.embedded {
-    height: auto;
-    background: transparent;
-  }
-  .settings-view.embedded .settings-body {
-    flex: none;
-    overflow-y: visible;
-    padding: 16px 0 0;
-  }
-  .settings-view.embedded .tab-bar {
-    padding: 0;
-  }
-  /* ── Tab bar ── (recipe: .app-tab-bar / .app-tab in theme.css) */
-  .tab-bar { padding: 0 16px; }
-  .group { margin-bottom: 20px; }
-  .group-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 8px;
-    border-bottom: 1px solid var(--app-border-subtle);
-    padding-bottom: 6px;
-  }
-  .group-head h3 {
-    margin: 0;
-    font-size: 10.5px;
-    font-weight: 600;
-    text-transform: uppercase;
-    color: var(--app-text-muted);
-    letter-spacing: 0.09em;
-  }
-  .reset {
-    background: transparent;
-    border: 1px solid var(--app-border);
-    color: var(--app-text-muted);
-    font-size: 11px;
-    padding: 3px 8px;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .reset:hover { background: var(--app-surface-hover); color: var(--app-text); }
+  .group { display: flex; flex-direction: column; gap: 8px; }
+  h2 { margin: 0 0 2px; font-size: 15px; font-weight: 600; color: var(--app-text); }
+  .group-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .group-head h2 { margin: 0; }
+  .reset { padding: 3px 10px; font-size: 12px; }
   .row {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 0;
-    font-size: 13px;
-  }
-  .row label { color: var(--app-text-secondary); }
-  .row-toggle { align-items: center; }
-  .row-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .row-hint { font-size: 11px; line-height: 1.3; color: var(--app-text-muted); }
-  .row input[type="number"],
-  .row select {
-    background: var(--app-surface-sunken);
-    border: 1px solid var(--app-control-border);
-    color: var(--app-text-secondary);
-    padding: 5px 8px;
-    border-radius: 6px;
-    font-size: 13px;
-    min-width: 160px;
-  }
-  /* Reset the native select chrome (Linux GTK ignores `background` otherwise,
-     so the dropdowns rendered as light OS widgets against the dark panel) and
-     draw a consistent custom chevron. */
-  .row select {
-    appearance: none;
-    -webkit-appearance: none;
-    padding-right: 28px;
-    /* Chevron stroke #8a8a8a is baked into the data URI (var() can't reach
-       inside it) — a mid-grey chosen to stay legible on both themes. */
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a8a8a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
-    background-repeat: no-repeat;
-    background-position: right 9px center;
-  }
-  .row input[type="color"] {
-    width: 40px;
-    height: 28px;
-    padding: 0;
-    border: 1px solid var(--app-control-border);
-    border-radius: 6px;
-    background: none;
-    cursor: pointer;
-  }
-  /* Action rows (the Saving tab's copy switcher) — a button pair + inline
-     result lines rather than a value control. */
-  .row-actions { display: inline-flex; gap: 6px; align-items: center; }
-  /* Matches `.row label`'s look — an action row's title is a span, not a
-     label, so it must not inherit a different colour by accident. */
-  .row-title { color: var(--app-text-secondary); }
-  .action {
-    background: var(--app-surface-raised);
-    border: 1px solid var(--app-control-border);
-    color: var(--app-text);
-    font-size: 12px;
-    padding: 5px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .action:hover:not(:disabled) { background: var(--app-control-hover-bg); }
-  .action:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
-  .action:disabled { opacity: 0.6; cursor: default; }
-  .row-error { font-size: 12px; line-height: 1.4; color: var(--app-error-text); margin: 6px 0 0; }
-  .advanced-hint {
-    text-transform: none;
-    letter-spacing: 0;
-    color: var(--app-text-muted);
-    font-weight: 400;
-  }
-  /* Reader / Author choice */
-  .role-options { display: flex; flex-direction: column; gap: 8px; }
-  .role-option {
     display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 10px;
-    border: 1px solid var(--app-border);
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+    font-size: 13px;
+    color: var(--app-text-secondary);
+  }
+  .row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .hint { margin: 0; font-size: 12px; line-height: 1.4; color: var(--app-text-muted); }
+  /* A legend is not a flex item; floated, it sits on the row like a label. */
+  legend { float: left; padding: 0; }
+  .radios { display: flex; gap: 16px; }
+  .row > .radios { flex-shrink: 0; }
+  /* A row whose control is wide (three choices) puts it under its words when the page is narrow. */
+  .row.wrap { flex-wrap: wrap; }
+  .row.wrap .row-text { flex: 1 1 260px; }
+  .radios label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .radios input { margin: 0; accent-color: var(--app-accent); }
+  /* Reader / Author: stacked, each with its description under the name. */
+  .radios.roles { flex-direction: column; gap: 10px; }
+  .radios.roles label { align-items: flex-start; }
+  .radios.roles input { margin-top: 2px; }
+  .role-title { font-size: 13px; color: var(--app-text); }
+  select { flex-shrink: 0; min-width: 140px; padding: 5px 8px; font: inherit; font-size: 13px; }
+  input[type="color"] {
+    flex-shrink: 0;
+    width: 40px;
+    height: 26px;
+    padding: 0 2px;
+    border: 1px solid var(--app-field-border);
     border-radius: 6px;
     background: var(--app-surface-sunken);
     cursor: pointer;
   }
-  .role-option:hover { background: var(--app-surface-hover); }
-  .role-option.selected { border-color: var(--app-focus-ring); background: var(--app-surface-hover); }
-  .role-option input { margin-top: 2px; flex-shrink: 0; }
-  .role-text { display: flex; flex-direction: column; gap: 2px; }
-  .role-title { font-size: 13px; font-weight: 600; color: var(--app-text); }
-  .role-desc { font-size: 11px; color: var(--app-text-muted); line-height: 1.35; }
+  input[type="color"]:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+
+  /* The switch: a native checkbox, so it keeps the keyboard and the
+     accessibility of one; the thumb's side says on or off, not colour alone.
+     Off is an outline and a muted thumb (as in Fluent), so the control keeps
+     3:1 against the page in both themes (WCAG 1.4.11); on is a filled track. */
+  input[role="switch"] {
+    appearance: none;
+    flex-shrink: 0;
+    position: relative;
+    width: 36px;
+    height: 20px;
+    margin: 0;
+    border: 1px solid var(--app-text-muted);
+    border-radius: 10px;
+    background: transparent;
+    cursor: pointer;
+  }
+  input[role="switch"]::before {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--app-text-muted);
+    transition: transform 0.15s;
+  }
+  input[role="switch"]:checked { background: var(--app-focus-ring); border-color: var(--app-focus-ring); }
+  input[role="switch"]:checked::before { top: 1px; left: 1px; width: 16px; height: 16px; background: var(--app-text-on-accent); transform: translateX(16px); }
+  input[role="switch"]:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+  input[role="switch"]:disabled { opacity: 0.45; cursor: default; }
 </style>

@@ -55,9 +55,11 @@ import tplZineManifest from "../assets/templates/zine/manifest.yaml" with { type
 import tplZineChapter01 from "../assets/templates/zine/chapter-01.md" with { type: "file" };
 import tplTechnicalManifest from "../assets/templates/technical/manifest.yaml" with { type: "file" };
 import tplTechnicalChapter01 from "../assets/templates/technical/chapter-01.md" with { type: "file" };
+import tplPaperManifest from "../assets/templates/paper/manifest.yaml" with { type: "file" };
+import tplPaperChapter01 from "../assets/templates/paper/chapter-01.md" with { type: "file" };
 
 // Extension starter packages (#233 / #245) — `gutterpress new --kind plugin`
-// and `--kind theme`. Baked in the same way the book templates above are, so
+// and `--kind look`. Baked in the same way the book templates above are, so
 // scaffolding an extension works from the compiled binary and the desktop
 // alike.
 //
@@ -77,25 +79,16 @@ import tplPluginFixture from "../assets/extension-templates/plugin/test/fixture.
 import tplPluginExpected from "../assets/extension-templates/plugin/test/expected.html" with { type: "file" };
 import tplPluginTest from "../assets/extension-templates/plugin/test/plugin.test.js.tpl" with { type: "file" };
 
-import tplThemePackageJson from "../assets/extension-templates/theme/package.json" with { type: "file" };
-import tplThemeReadme from "../assets/extension-templates/theme/README.md" with { type: "file" };
-import tplThemeCatalog from "../assets/extension-templates/theme/components.yaml" with { type: "file" };
-import tplThemeSnippet from "../assets/extension-templates/theme/snippets/callout.md" with { type: "file" };
-import tplThemeTokensCss from "../assets/extension-templates/theme/styles/tokens.css" with { type: "file" };
-import tplThemeBaseCss from "../assets/extension-templates/theme/styles/base.css" with { type: "file" };
-import tplThemeComponentsCss from "../assets/extension-templates/theme/styles/components.css" with { type: "file" };
-import tplThemePageTemplatesCss from "../assets/extension-templates/theme/styles/page-templates.css" with { type: "file" };
-import tplThemePageRulesCss from "../assets/extension-templates/theme/styles/page-rules.css" with { type: "file" };
-import tplThemeBookCss from "../assets/extension-templates/theme/styles/book.css" with { type: "file" };
-
-// Built-in looks (#32, #276). Each = theme.css + package.json, baked in so the
-// look list (compiled binary + desktop) reads from one embedded source.
-import themeCleanBookCss from "../assets/themes/clean-book/theme.css" with { type: "file" };
-import themeCleanBookJson from "../assets/themes/clean-book/package.json" with { type: "file" };
-import themeZineCss from "../assets/themes/zine/theme.css" with { type: "file" };
-import themeZineJson from "../assets/themes/zine/package.json" with { type: "file" };
-import themeTechnicalCss from "../assets/themes/technical-doc/theme.css" with { type: "file" };
-import themeTechnicalJson from "../assets/themes/technical-doc/package.json" with { type: "file" };
+import tplLookPackageJson from "../assets/extension-templates/look/package.json" with { type: "file" };
+import tplLookReadme from "../assets/extension-templates/look/README.md" with { type: "file" };
+import tplLookCatalog from "../assets/extension-templates/look/components.yaml" with { type: "file" };
+import tplLookSnippet from "../assets/extension-templates/look/snippets/callout.md" with { type: "file" };
+import tplLookTokensCss from "../assets/extension-templates/look/styles/tokens.css" with { type: "file" };
+import tplLookBaseCss from "../assets/extension-templates/look/styles/base.css" with { type: "file" };
+import tplLookComponentsCss from "../assets/extension-templates/look/styles/components.css" with { type: "file" };
+import tplLookPageTemplatesCss from "../assets/extension-templates/look/styles/page-templates.css" with { type: "file" };
+import tplLookPageRulesCss from "../assets/extension-templates/look/styles/page-rules.css" with { type: "file" };
+import tplLookBookCss from "../assets/extension-templates/look/styles/book.css" with { type: "file" };
 
 // Resolve paths relative to this module's location so that relative string
 // paths produced by bun build --target node work regardless of CWD.
@@ -121,6 +114,8 @@ const EMBEDDED_ASSETS: Record<string, string> = {
   "templates/zine/chapter-01.md":           abs(filePath(tplZineChapter01)),
   "templates/technical/manifest.yaml":      abs(filePath(tplTechnicalManifest)),
   "templates/technical/chapter-01.md":      abs(filePath(tplTechnicalChapter01)),
+  "templates/paper/manifest.yaml":          abs(filePath(tplPaperManifest)),
+  "templates/paper/chapter-01.md":          abs(filePath(tplPaperChapter01)),
   "extension-templates/plugin/package.json":            abs(filePath(tplPluginPackageJson)),
   "extension-templates/plugin/README.md":               abs(filePath(tplPluginReadme)),
   "extension-templates/plugin/plugin.js.tpl":           abs(filePath(tplPluginModule)),
@@ -129,22 +124,16 @@ const EMBEDDED_ASSETS: Record<string, string> = {
   "extension-templates/plugin/test/fixture.md":         abs(filePath(tplPluginFixture)),
   "extension-templates/plugin/test/expected.html":      abs(filePath(tplPluginExpected)),
   "extension-templates/plugin/test/plugin.test.js.tpl": abs(filePath(tplPluginTest)),
-  "extension-templates/theme/package.json":             abs(filePath(tplThemePackageJson)),
-  "extension-templates/theme/README.md":                abs(filePath(tplThemeReadme)),
-  "extension-templates/theme/components.yaml":          abs(filePath(tplThemeCatalog)),
-  "extension-templates/theme/snippets/callout.md":      abs(filePath(tplThemeSnippet)),
-  "extension-templates/theme/styles/tokens.css":        abs(filePath(tplThemeTokensCss)),
-  "extension-templates/theme/styles/base.css":          abs(filePath(tplThemeBaseCss)),
-  "extension-templates/theme/styles/components.css":    abs(filePath(tplThemeComponentsCss)),
-  "extension-templates/theme/styles/page-templates.css": abs(filePath(tplThemePageTemplatesCss)),
-  "extension-templates/theme/styles/page-rules.css":    abs(filePath(tplThemePageRulesCss)),
-  "extension-templates/theme/styles/book.css":          abs(filePath(tplThemeBookCss)),
-  "themes/clean-book/theme.css":            abs(filePath(themeCleanBookCss)),
-  "themes/clean-book/package.json":         abs(filePath(themeCleanBookJson)),
-  "themes/zine/theme.css":                  abs(filePath(themeZineCss)),
-  "themes/zine/package.json":               abs(filePath(themeZineJson)),
-  "themes/technical-doc/theme.css":         abs(filePath(themeTechnicalCss)),
-  "themes/technical-doc/package.json":      abs(filePath(themeTechnicalJson)),
+  "extension-templates/look/package.json":             abs(filePath(tplLookPackageJson)),
+  "extension-templates/look/README.md":                abs(filePath(tplLookReadme)),
+  "extension-templates/look/components.yaml":          abs(filePath(tplLookCatalog)),
+  "extension-templates/look/snippets/callout.md":      abs(filePath(tplLookSnippet)),
+  "extension-templates/look/styles/tokens.css":        abs(filePath(tplLookTokensCss)),
+  "extension-templates/look/styles/base.css":          abs(filePath(tplLookBaseCss)),
+  "extension-templates/look/styles/components.css":    abs(filePath(tplLookComponentsCss)),
+  "extension-templates/look/styles/page-templates.css": abs(filePath(tplLookPageTemplatesCss)),
+  "extension-templates/look/styles/page-rules.css":    abs(filePath(tplLookPageRulesCss)),
+  "extension-templates/look/styles/book.css":          abs(filePath(tplLookBookCss)),
 };
 
 let extractPromise: Promise<string> | null = null;

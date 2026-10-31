@@ -10,21 +10,24 @@ of the status bar ("Books — open the start screen") to get back to it from a b
 
 ## Create a new book
 
-Creating books is for authors: if you don't see it, [switch to Author](01-install.md#switch-to-author).
-
 1. On the Books tab, choose **Create a new book**.
 2. **Name & author:** type the book's name under "What's your book called?" and, if you like,
    your name.
 3. **Template:** pick a starting point — **Book** (a novel, memoir or any long-form book),
-   **Zine**, or **Technical document** — or one of your own saved templates.
+   **Zine**, **Technical document**, or **Academic paper** (a journal-style article with LaTeX
+   math) — or one of your own saved templates. Each template comes with its look (Clean book,
+   Zine, Technical doc or Academic), so the new book is styled from the first page.
 4. **Print & save:**
-   - Under **What are you designing it for?** choose **DriveThruRPG print**, **Trade book**
-     (a neutral 6×9in book), or **Custom size** and then a page size (US Letter, Trade paperback,
-     Digest, A4, A5, or your own width and height).
-   - Under **Where will you publish it?** tick DriveThruRPG and/or itch.io. You can change this
-     later.
-   - Under **Where should we save it?** click **Choose folder…**.
-   - Leave **Keep a history of my changes** ticked. It keeps earlier versions of your book on your
+   - Under **What size should the pages be?** choose **DriveThruRPG print** (US Letter),
+     **Trade paperback** (6 × 9 in), or **Another size** and then a size (US Letter, Trade
+     paperback, Digest, A4, A5, or your own width and height). The Zine and Technical document
+     templates start on their own size (Digest and US Letter).
+   - Under **Check the finished PDF against a print service's rules?** tick DriveThruRPG and/or
+     itch.io if you publish there. Gutterpress has no checks for other places you publish to; you
+     choose where to send the PDF when you publish.
+   - Under **Where should we save it?** click **Choose folder…** (or leave it: **Create book**
+     asks for a folder if none is chosen).
+   - Leave **Keep version history** ticked. It keeps earlier versions of your book on your
      computer, with no account needed (see
      [Keep versions and back up your work](09-versions-and-backup.md)).
 5. Click **Create book**.
@@ -37,14 +40,18 @@ On the Books tab, choose **Open a folder** and pick the book's folder. You can a
 folder path into the search box above **Your books** and click **Open**.
 
 If the folder isn't set up as a book yet, Gutterpress offers **Set up as a book**, which lets you
-edit its design and keep a history of changes. **Not now** opens it as it is.
+edit its design and keep version history. **Not now** opens it as it is.
 
 ## Open a book from GitHub
 
 1. On the Books tab, choose **Open from GitHub**.
 2. Click **Connect GitHub**, then enter the code Gutterpress shows on the GitHub page that opens.
-3. Choose the repository. If it holds more than one book, choose the book.
-4. Pick the version to open, a name, and where to save it on your computer, then open it.
+3. Choose the online copy. If it holds more than one book, choose the book.
+4. Pick the revision to open, a name, and where to save it on your computer, then open it.
+
+Is your book on another Git server (Gitea, GitLab, Bitbucket, …)? **Open Accounts**, in the same
+window, takes you to [Accounts](10-settings.md#accounts) to sign in to that server. Then download
+the book with your usual Git tool and open its folder.
 
 ## Find your books again
 

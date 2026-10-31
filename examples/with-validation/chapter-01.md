@@ -28,12 +28,13 @@ The validation system checks four categories:
 
 ## Configuration
 
-All validation settings live in the `validate` section of `manifest.yaml`. You can:
-
-- Disable individual checks by ID
-- Override severity levels (error, warning, info)
-- Point to external linter configs (markdownlint, htmlhint)
-- Set thresholds for image size, DPI, text density, and more
+The `checks` map in `manifest.yaml` sets each check's level by its ID: `off`,
+`on`, `info`, `warn` or `error`. The markdownlint and htmlhint checks read
+their own config files (`.markdownlint.yaml`, `.htmlhintrc`) from the book's
+folder or a folder above it. The thresholds the checks measure against (image
+size, DPI, ink coverage, text density) come from the preset and the publish
+target; a book overrides one as an option in that check's entry, as this
+example's manifest does for the largest image file.
 
 > **Tip:** Run `gutterpress validate --format json` to get machine-readable output for CI pipelines.
 
@@ -52,6 +53,6 @@ gutterpress validate --pdf dist/validation-example/validation-example-pdf.pdf --
 gutterpress validate --input . --skip source.stylelint
 ```
 
-> **Note:** Almost all validation runs in-process — no tools to install. Only the PDF/X
+> **Note:** Almost all validation runs in-process --- no tools to install. Only the PDF/X
 > checks need `qpdf` and ink-coverage needs Ghostscript (`gs`); install those, or
 > use the Docker image, only when producing PDF/X.

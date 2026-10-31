@@ -108,7 +108,7 @@ function set(patch: DeepPartial<AppSettings>): void {
   api.app.setSettings(patch as Record<string, unknown>).catch(() => {});
 }
 
-/** Reset one section to its defaults and persist. */
+/** Reset one section to its defaults and persist (a Settings group's Reset). */
 function resetSection(section: keyof AppSettings): void {
   const defaults = structuredClone(DEFAULT_SETTINGS[section]);
   set({ [section]: defaults } as DeepPartial<AppSettings>);

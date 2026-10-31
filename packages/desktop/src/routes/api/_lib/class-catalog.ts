@@ -221,7 +221,7 @@ export async function collectClassCatalog(projectDir: string, lib: CatalogLib): 
       const text = await readFile(path.join(entry.dir, rel), 'utf8');
       out.push(...parseCatalogClasses(text, { kind: 'extension', ref: entry.use, name: entry.label }));
     } catch {
-      // An unreadable catalog just lists nothing; the Features tab reports broken extensions.
+      // An unreadable catalog just lists nothing; Book setup › Extensions reports broken extensions.
     }
   }
 

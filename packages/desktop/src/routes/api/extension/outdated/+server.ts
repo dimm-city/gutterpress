@@ -2,12 +2,13 @@ import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 // Each pinned npm extension against npm's `latest` (or, with `includePrerelease`,
-// the newest version of any kind), fetched ON DEMAND when the
-// Features tab opens or the author asks — never at project load, never by the
-// loader/build/preview paths (a book builds offline from its vendored copy).
-// A fetch failure is DATA, not a 500: the tab shows one quiet line and the
-// extension list itself is never blocked by the network. Updating is the
-// ordinary `extension/add` with `name@latest`, behind the same trust gate.
+// the newest version of any kind), fetched ON DEMAND when Book setup's
+// Extensions tab opens or the author asks (Check for updates) — never at
+// project load, never by the loader/build/preview paths (a book builds offline
+// from its vendored copy). A fetch failure is DATA, not a 500: the tab shows
+// one quiet line and the extension list itself is never blocked by the
+// network. Updating is the ordinary `extension/add` with `name@latest`, behind
+// the same trust gate.
 export const POST: RequestHandler = defineRoute<{ projectDir: string; includePrerelease: boolean }>({
   validate: async (raw) => ({
     projectDir: await requireProjectDir((raw as { projectDir?: string }).projectDir, 'extension/outdated'),

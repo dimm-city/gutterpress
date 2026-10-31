@@ -11,17 +11,16 @@ preset: book
 styles:
   - styles/guide.css
 
-source:
-  files:
-    - 00-toc.md
-    - 00-overview.md
-    - 01-typography.md
-    - 02-palette.md
-    - 03-components.md
-    - 04-page-templates.md
-    - 05-layout.md
-    - 06-markdown-reference.md
-    - 101-publishing.md
+chapters:
+  - 00-toc.md
+  - 00-overview.md
+  - 01-typography.md
+  - 02-palette.md
+  - 03-components.md
+  - 04-page-templates.md
+  - 05-layout.md
+  - 06-markdown-reference.md
+  - 101-publishing.md
 
 # Page geometry — change here to match your book's trim size.
 # Values are in points (72pt = 1in). Common sizes:
@@ -31,4 +30,3 @@ source:
 page:
   width: 612
   height: 792
-  tolerance: 0.5

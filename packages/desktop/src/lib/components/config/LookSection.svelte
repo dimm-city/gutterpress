@@ -1,258 +1,379 @@
 <script lang="ts">
   /**
-   * Look view of the Extensions surface (#243, #265): the extensions that
-   * carry STYLES, as one view over the ONE `extensions:` list the shared
-   * `ExtensionsSectionController` owns — `FeaturesSection` is the other view,
-   * over the same list and the same verbs (an extension that carries both
-   * styles and markdown is the same row in both). No section wrapper or
-   * `<h3>` of its own: the parent (ProjectSettingsView) owns the outer
-   * "Look & style" block, exactly as before.
+   * Book setup › Look: how the book looks, top to bottom — *Choose a look*
+   * (a single-choice gallery of thumbnails) and *Adjust the look* (six brand
+   * settings beside a live sample page). The extension list (several looks,
+   * npm, folders) is the Extensions tab and every design setting is Advanced;
+   * this tab links to both.
    *
-   * There is no active look and no Apply/Revert (#265). Several looks can be
-   * on at once; they stack in list order (a later one wins ties) and the
-   * project's own stylesheets always come last. So a configured look is a ROW
-   * in that stack — toggle, move up/down, remove — and the built-in looks are
-   * a grid of things to ADD: "Use" copies one into `extensions/<id>/` as the
-   * author's own editable files, after which the card reads "Added". A folder
-   * the author already has is referenced in place (never copied); a `.zip`,
-   * a `.css`, or a URL is unpacked into `extensions/<id>/` by the host (#106).
+   * It reads two controllers: `ExtensionsSectionController` for the looks
+   * and the thumbnails, and `DesignSectionController` for the brand settings
+   * and the sample. Both write as they go; the Book setup header says
+   * Saving… / Saved.
    *
-   * Thumbnails render an entry's stylesheets (`readCss` — entries with a
-   * folder only) into a fixed sample through the same sandboxed-iframe
-   * mechanism as before; hovering a row enlarges it to a two-page spread.
+   * Choosing: the gallery is a radio group, so arrowing through it selects
+   * each card in turn. The choice is written once the selection has rested
+   * for 400 ms (WCAG 3.2.2), and the card order is fixed while the tab is
+   * open, so nothing moves under the pointer. A card names who made the look
+   * when it says.
+   *
+   * A built-in look in use can be turned into the book's own files: *Make an
+   * editable copy* copies it into `extensions/<id>/` and the copy takes its
+   * place (`copyLook`). Pointing at or tabbing to a card shows the look over
+   * an enlarged two-page sample beside the column, in a window wide enough
+   * to hold it (over 1620 px); narrower, the thumbnail is the preview.
    */
+  import { onDestroy, tick } from "svelte";
   import Icon from "#lib/components/Icon.svelte";
-  import type { ProjectExtensionEntry } from "#lib/platform/dtos.ts";
-  import { extensionSourceLabel } from "./config-helpers";
-  import type { ExtensionsSectionController } from "#lib/routes/extensions-section-controller.svelte.ts";
+  import ColorField from "./ColorField.svelte";
+  import { extensionProblem } from "./config-helpers";
+  import { firstFontFamily, PRINT_SAFE_FONT_STACKS, SHARED_TOKEN_LABELS } from "#lib/style-tokens.ts";
+  import type { StyleToken } from "#lib/platform/dtos.ts";
+  import type { ExtensionsSectionController, LookCard } from "#lib/routes/extensions-section-controller.svelte.ts";
+  import type { DesignSectionController } from "#lib/routes/design-section-controller.svelte.ts";
 
-  let { controller }: { controller: ExtensionsSectionController } = $props();
+  let {
+    extensions,
+    design,
+    onOpenTab,
+  }: {
+    extensions: ExtensionsSectionController;
+    design: DesignSectionController;
+    /** Show the Extensions tab, or the Advanced tab — at "All design settings" for `"design"`. */
+    onOpenTab: (tab: "extensions" | "advanced", at?: "design") => void;
+  } = $props();
 
-  /** The row's sample srcdoc, or null while loading / when there is no CSS to render. */
-  function thumbOf(e: ProjectExtensionEntry): string | null {
-    const t = controller.thumbs[e.use];
+  // Once, as the tab opens: the cards keep this order while it is open.
+  // svelte-ignore state_referenced_locally
+  extensions.freezeGalleryOrder();
+
+  const cards = $derived(extensions.galleryLooks);
+  const looks = $derived(extensions.enabledLooks);
+  const current = $derived(looks.length === 1 ? looks[0]!.use : null);
+
+  // The card the author picked, until its write has finished.
+  let pending = $state<string | null>(null);
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const selected = $derived(pending ?? current);
+  const selectedCard = $derived(cards.find((c) => c.use === selected));
+  /** The built-in look the book uses, once its choice is written: the one an editable copy can be made of. */
+  const copyable = $derived(!pending && selectedCard?.from === null && selectedCard.use === current ? selectedCard : null);
+
+  function pick(use: string) {
+    pending = use;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(commit, 400);
+  }
+
+  function commit() {
+    timer = null;
+    const card = cards.find((c) => c.use === pending);
+    if (!card) return;
+    // One write at a time: a pick made while the last one saves waits for it.
+    if (extensions.busy) {
+      timer = setTimeout(commit, 400);
+      return;
+    }
+    void extensions.chooseLook(card).finally(() => {
+      if (pending === card.use) pending = null;
+      refreshSample();
+    });
+  }
+
+  // Leaving the tab (or closing Book setup) writes a pick still waiting.
+  onDestroy(() => {
+    extensions.hideHoverPreview();
+    if (sampleTimer) clearTimeout(sampleTimer);
+    if (!timer) return;
+    clearTimeout(timer);
+    commit();
+  });
+
+  const thumbOf = (use: string): string | null => {
+    const t = extensions.thumbs[use];
     return t && t !== "__fallback__" ? t : null;
+  };
+
+  const broken = (card: LookCard): boolean => {
+    const entry = extensions.entries.find((e) => e.use === card.use);
+    return !!entry && extensionProblem(entry, extensions.validation, extensions.validating) !== null;
+  };
+
+  // The live sample follows the settings 150 ms after the last change.
+  // svelte-ignore state_referenced_locally
+  let sample = $state(design.sampleDoc);
+  let sampleTimer: ReturnType<typeof setTimeout> | null = null;
+  function refreshSample() {
+    if (sampleTimer) clearTimeout(sampleTimer);
+    sampleTimer = setTimeout(() => (sample = design.sampleDoc), 150);
+  }
+  function setToken(t: StyleToken, value: string) {
+    design.setToken(t, value);
+    refreshSample();
+  }
+  function setLength(t: StyleToken, value: string) {
+    design.setLength(t, value);
+    refreshSample();
   }
 
-  function removeTitle(e: ProjectExtensionEntry): string {
-    return e.kind === "npm"
-      ? "Remove from this book (deletes its downloaded copy)"
-      : "Remove from this book (the folder stays on disk)";
+  // "Reset to the look's settings" asks first (Replace / Keep mine); the
+  // focus stays on the question, then returns to the row.
+  let actionsEl = $state<HTMLElement | null>(null);
+  const lookName = $derived(design.lookLabels.length === 1 ? `${design.lookLabels[0]}'s` : "the look's");
+  async function askReset() {
+    design.askBrandReset();
+    await tick();
+    actionsEl?.querySelector<HTMLButtonElement>(".keep")?.focus();
   }
+
+  // Escape on the open question answers it (Keep mine) instead of closing Book setup.
+  function keepOnEscape(e: KeyboardEvent) {
+    if (e.key !== "Escape") return;
+    e.stopPropagation();
+    answerReset(false);
+  }
+
+  async function answerReset(replace: boolean) {
+    if (replace) {
+      design.resetBrand();
+      refreshSample();
+    } else design.keepBrand();
+    await tick();
+    const reset = actionsEl?.querySelector<HTMLButtonElement>(".reset");
+    (reset && !reset.disabled ? reset : actionsEl)?.focus();
+  }
+
+  const fontPreset = (value: string): string =>
+    PRINT_SAFE_FONT_STACKS.some((f) => f.value === value) ? value : "__custom__";
+
 </script>
 
-<div class="look-subsection theme-subsection">
-  <h4 class="subhead">Look</h4>
-  {#if controller.error}
-    <p class="error" role="alert">{controller.error}</p>
-  {/if}
-  {#if controller.notice}
-    <p class="notice" role="status">{controller.notice}</p>
-  {/if}
-  {#if controller.importWarnings.length > 0}
-    <div class="theme-warnings" role="status">
-      <p class="warn-title">Imported with warnings:</p>
-      <ul>
-        {#each controller.importWarnings as w (w)}
-          <li>{w}</li>
-        {/each}
-      </ul>
-    </div>
-  {/if}
-  <p class="hint">Looks stack from top to bottom — a lower one wins where they disagree, and your own stylesheets always come last. Hover a look to preview a two-page spread.</p>
-
-  {#if controller.looks.length === 0}
-    <p class="muted">No look added yet. Use a built-in look below, or bring in your own.</p>
-  {:else}
-    <ul class="look-list">
-      {#each controller.looks as e, i (e.use)}
-        <li
-          class="look-row"
-          class:disabled={!e.enabled}
-          onmouseenter={() => controller.showHoverPreview(e)}
-          onmouseleave={controller.hideHoverPreview}
-          onfocusin={() => controller.showHoverPreview(e)}
-          onfocusout={controller.hideHoverPreview}
+{#snippet brandRow(t: StyleToken)}
+  {@const label = SHARED_TOKEN_LABELS[t.name] ?? t.label}
+  <div class="brand-row">
+    <label for={`look-${t.name}`}>{label}</label>
+    <div class="brand-control">
+      {#if t.kind === "font"}
+        <select
+          id={`look-${t.name}`}
+          class="input"
+          value={fontPreset(t.value)}
+          onchange={(e) => {
+            if (e.currentTarget.value !== "__custom__") setToken(t, e.currentTarget.value);
+          }}
         >
-          <div class="thumb">
-            {#if thumbOf(e)}
-              <iframe title={`Preview of ${e.label}`} srcdoc={thumbOf(e)} sandbox="allow-same-origin" loading="lazy"></iframe>
-            {:else}
-              {@render placeholder(e.label)}
-            {/if}
-          </div>
-          <div class="look-info">
-            <span class="look-name">{e.label}</span>
-            {#if e.author}<span class="look-author">{e.author}</span>{/if}
-            <span class="look-meta">
-              <span class="kind">{extensionSourceLabel(e)}</span>
-              {#if e.carries.markdown}
-                <span class="badge" title="This extension also adds markdown features — see the Features tab.">+ features</span>
-              {/if}
-              {#if !e.enabled}<span class="badge">off</span>{/if}
-            </span>
-            {#if e.warnings?.length}<p class="status-detail">{e.warnings.join(" ")}</p>{/if}
-          </div>
-          <div class="look-actions">
-            <button class="ghost icononly" onclick={() => controller.move(e, -1, "looks")} disabled={i === 0 || controller.busy !== null} title="Move up" aria-label={`Move ${e.label} up`}>
-              <Icon name="chevron-up" size={13} />
-            </button>
-            <button class="ghost icononly" onclick={() => controller.move(e, 1, "looks")} disabled={i === controller.looks.length - 1 || controller.busy !== null} title="Move down (wins over the looks above it)" aria-label={`Move ${e.label} down`}>
-              <Icon name="chevron-down" size={13} />
-            </button>
-            <button class="toggle" class:on={e.enabled} role="switch" aria-checked={e.enabled} aria-label={`${e.enabled ? "Turn off" : "Turn on"} ${e.label}`} disabled={controller.busy !== null} onclick={() => controller.toggle(e)}>
-              <span class="knob"></span>
-            </button>
-            <button class="ghost icononly" onclick={() => controller.remove(e)} disabled={controller.busy !== null} title={removeTitle(e)} aria-label={`Remove ${e.label}`}>
-              <Icon name="trash" size={13} />
-            </button>
-          </div>
-        </li>
-      {/each}
-    </ul>
-  {/if}
-
-  <h4 class="subhead">Built-in looks</h4>
-  <p class="hint">Use one and it's copied into your book's <code>extensions</code> folder as your own files, ready to fine-tune under Design.</p>
-  <ul class="theme-grid">
-    {#each controller.builtIns as b (b.id)}
-      <li class="theme-card">
-        <div class="thumb">{@render placeholder(b.name)}</div>
-        <div class="theme-info">
-          <span class="theme-name">{b.name}</span>
-          {#if b.description}<span class="theme-desc">{b.description}</span>{/if}
-        </div>
-        <div class="theme-actions">
-          {#if controller.isBuiltInAdded(b.id)}
-            <span class="muted dim added"><Icon name="circle-check" size={12} /> Added</span>
-          {:else}
-            <button class="primary small app-btn-primary" onclick={() => controller.useBuiltIn(b.id)} disabled={controller.busy !== null}>{controller.busy === b.id ? "Adding..." : "Use"}</button>
+          {#each PRINT_SAFE_FONT_STACKS as f (f.value)}
+            <option value={f.value}>{f.label}</option>
+          {/each}
+          {#if fontPreset(t.value) === "__custom__"}
+            <option value="__custom__">{firstFontFamily(t.value)} (this book's font)</option>
           {/if}
+        </select>
+      {:else if t.kind === "color"}
+        <div class="hex">
+          <ColorField id={`look-${t.name}`} name={t.name} value={t.value} {label} onCommit={(value) => setToken(t, value)} />
         </div>
-      </li>
-    {/each}
-  </ul>
+        {#if t.name === "--color-accent"}<span class="hint">Headings and links</span>{/if}
+      {:else if t.kind === "length" || t.kind === "number"}
+        <!-- Saved on change (blur, Enter or the arrows), never mid-number. -->
+        <span class="size">
+          <input id={`look-${t.name}`} class="input" type="number" value={parseFloat(t.value)} step={t.name === "--fs-body" ? 0.5 : 0.05} onchange={(e) => setLength(t, e.currentTarget.value)} />
+          {#if t.unit}<span class="unit">{t.unit}</span>{/if}
+        </span>
+      {:else}
+        <input id={`look-${t.name}`} class="input" type="text" value={t.value} oninput={(e) => setToken(t, e.currentTarget.value)} />
+      {/if}
+    </div>
+  </div>
+{/snippet}
 
-  <div class="actions row">
-    <button class="ghost small" onclick={controller.importFile} disabled={controller.busy !== null} title="Import an extension package (.zip) or a stylesheet (.css) into this book">
-      <Icon name="cloud-upload" size={13} /> Import a look (.zip/.css)...
-    </button>
-    <button class="ghost small" onclick={controller.addLocal} disabled={controller.busy !== null} title="Add a folder on disk — it is used where it is, not copied">
-      <Icon name="folder" size={13} /> Add from folder...
-    </button>
-  </div>
-  <div class="add-row">
-    <input
-      class="input"
-      type="text"
-      aria-label="Look URL"
-      placeholder="URL (.css or an extension folder)"
-      bind:value={controller.url}
-      onkeydown={(e) => { if (e.key === "Enter") controller.importUrl(); }}
-    />
-    <button class="ghost small" onclick={controller.importUrl} disabled={controller.busy !== null}>Import</button>
-  </div>
-</div>
+{#if extensions.error}
+  <p class="error" role="alert">{extensions.error}</p>
+{/if}
+
+<section class="block">
+  <fieldset class="group">
+    <legend><h3>Choose a look</h3></legend>
+    {#if looks.length > 1}
+      <div class="notice-box">
+        <p>This book combines {looks.length} looks: {looks.map((e) => e.label).join(", ")}. Change them in Extensions.</p>
+        <button class="ghost small" onclick={() => onOpenTab("extensions")}>Open Extensions</button>
+      </div>
+    {:else if looks.length === 0 && !pending}
+      <p class="hint">Choose a look for your book.</p>
+    {/if}
+    <div class="gallery">
+      {#each cards as card (card.use)}
+        {@const src = thumbOf(card.use)}
+        {@const isSelected = selected === card.use}
+        <label
+          class="card"
+          class:selected={isSelected}
+          onmouseenter={() => extensions.showHoverPreview(card.use)}
+          onmouseleave={extensions.hideHoverPreview}
+          onfocusin={() => extensions.showHoverPreview(card.use)}
+          onfocusout={extensions.hideHoverPreview}
+        >
+          <span class="thumb" aria-hidden="true">
+            {#if src}
+              <iframe title={`Sample of ${card.label}`} srcdoc={src} sandbox="allow-same-origin" tabindex="-1" loading="lazy"></iframe>
+            {:else}
+              <span class="thumb-placeholder"><span class="fallback-title">Aa</span><span class="fallback-line"></span><span class="fallback-line short"></span></span>
+            {/if}
+          </span>
+          <span class="card-foot">
+            <input type="radio" name="book-look" value={card.use} checked={isSelected} disabled={looks.length > 1} onchange={() => pick(card.use)} />
+            <span class="card-name">{card.label}</span>
+            {#if isSelected}<span class="card-check"><Icon name="check" size={15} /></span>{/if}
+          </span>
+          {#if card.from}<span class="card-note">{card.from}</span>{/if}
+          {#if card.author}<span class="card-note author">By {card.author}</span>{/if}
+          {#if broken(card)}<span class="card-note warn">Couldn't load. See Extensions.</span>{/if}
+        </label>
+      {/each}
+    </div>
+    {#if selectedCard?.description}
+      <p class="look-desc">{selectedCard.label}: {selectedCard.description}</p>
+    {/if}
+    {#if copyable}
+      <div class="row copy-row">
+        <button class="ghost small" onclick={() => extensions.copyLook(copyable)} disabled={extensions.busy !== null}>
+          {extensions.busy === copyable.use ? "Copying…" : "Make an editable copy"}
+        </button>
+        <span class="hint">Copies {copyable.label} into your book's <code>extensions</code> folder as files of your own to change.</span>
+      </div>
+    {/if}
+  </fieldset>
+</section>
 
 <!--
-  #106 hover preview: an enlarged, FIXED two-page sample spread rendered with the
-  hovered look's CSS (reusing the thumbnail readCss -> srcdoc -> sandboxed iframe
-  mechanism). It never renders the author's document. pointer-events:none so it
-  can't steal the hover; aria-hidden as it's a decorative enlargement of the row.
+  The enlarged sample (0.11.22's hover preview): the look under the pointer
+  over a FIXED two-page spread, never the author's document. Decorative and
+  out of the way: no pointer events, hidden from assistive technology (the
+  card's thumbnail and description say the same), and shown only where it
+  clears the 860 px column.
 -->
-{#if controller.hoverPreview}
+{#if extensions.hoverPreview}
   <div class="hover-preview" aria-hidden="true">
-    <iframe title="Look sample spread preview" srcdoc={controller.hoverPreview} sandbox="allow-same-origin"></iframe>
+    <iframe title="Two-page sample of the look" srcdoc={extensions.hoverPreview} sandbox="allow-same-origin" tabindex="-1"></iframe>
   </div>
 {/if}
 
-<!-- The non-blank fallback every thumbnail slot renders until (or instead of)
-     a sample: a built-in look has no folder to read until it is used, and a
-     configured look's CSS may still be loading. -->
-{#snippet placeholder(label: string)}
-  <div class="thumb-placeholder" role="img" aria-label={`Sample preview for ${label}`}>
-    <span class="theme-fallback-title">Aa</span>
-    <span class="theme-fallback-line"></span>
-    <span class="theme-fallback-line short"></span>
-  </div>
-{/snippet}
+{#if looks.length > 0 || design.brandTokens.length > 0}
+  <section class="block" aria-labelledby="look-adjust">
+    <h3 id="look-adjust">Adjust the look</h3>
+    <p class="hint">Your changes stay if you change looks.</p>
+    {#if design.designSaveError}
+      <p class="error" role="alert">{design.designSaveError}</p>
+    {/if}
+    {#if design.designLoading}
+      <p class="muted">Loading…</p>
+    {:else if design.brandTokens.length === 0}
+      <div class="notice-box">
+        <p>This look has no quick settings. You'll find all of its settings in Advanced.</p>
+        <button class="ghost small" onclick={() => onOpenTab("advanced", "design")}>Open Advanced</button>
+      </div>
+    {:else}
+      <div class="adjust">
+        <div class="brand">
+          {#each design.brandTokens as t (t.name)}{@render brandRow(t)}{/each}
+          <div class="row brand-actions" bind:this={actionsEl} tabindex="-1">
+            {#if design.brandResetAsked}
+              <span class="confirm">Replace your settings with {lookName}?</span>
+              <button class="ghost small danger" onclick={() => answerReset(true)} onkeydown={keepOnEscape}>Replace</button>
+              <button class="ghost small keep" onclick={() => answerReset(false)} onkeydown={keepOnEscape}>Keep mine</button>
+            {:else}
+              <button class="ghost small reset" onclick={askReset} disabled={!design.brandOverridden}>Reset to the look's settings</button>
+              <button class="link" onclick={() => onOpenTab("advanced", "design")}>All settings in Advanced <Icon name="arrow-right" size={12} /></button>
+            {/if}
+          </div>
+        </div>
+        <figure class="sample">
+          <div class="sample-frame">
+            <iframe title="Sample page" srcdoc={sample} sandbox="allow-same-origin" tabindex="-1"></iframe>
+          </div>
+          <figcaption>Sample page</figcaption>
+        </figure>
+      </div>
+    {/if}
+  </section>
+{/if}
 
 <style>
   @import "../../styles/config-section-shared.css";
 
-  /* Configured looks: one row per entry, top-to-bottom = cascade order. */
-  .look-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-  .look-row {
-    display: flex; align-items: center; gap: 10px; padding: 6px 8px;
-    border: 1px solid var(--app-border); border-radius: 7px; background: var(--app-surface-sunken);
-  }
-  .look-row.disabled { opacity: 0.6; }
-  .look-row .thumb { flex: 0 0 96px; width: 96px; }
-  .look-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .look-name { font-size: 12px; font-weight: 600; color: var(--app-text); }
-  .look-author { font-size: 10px; color: var(--app-text-muted); }
-  .look-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; flex-wrap: wrap; }
-  .look-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .group { margin: 0; padding: 0; border: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  .group legend { padding: 0; margin-bottom: 8px; }
+  .notice-box { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 8px 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }
+  .notice-box p { margin: 0; font-size: 12.5px; color: var(--app-text-secondary); }
 
-  /* Built-in looks: a grid of cards to add from. */
-  .theme-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
-  .theme-card {
-    display: flex; flex-direction: column; gap: 4px; padding: 6px;
-    border: 1px solid var(--app-border); border-radius: 7px; background: var(--app-surface-sunken);
+  /* ── Choose a look: cards of 176 × 132 thumbnails ── */
+  .gallery { display: flex; flex-wrap: wrap; gap: 12px; }
+  .card {
+    width: 180px; display: flex; flex-direction: column; gap: 4px; padding: 0 0 8px;
+    border: 2px solid var(--app-border); border-radius: 8px; background: var(--app-surface-sunken);
+    overflow: hidden; cursor: pointer;
   }
-  .theme-info { display: flex; flex-direction: column; gap: 1px; }
-  .theme-name { font-size: 12px; font-weight: 600; color: var(--app-text); }
-  .theme-desc { font-size: 10.5px; color: var(--app-text-muted); line-height: 1.35; }
-  .theme-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .added { display: inline-flex; align-items: center; gap: 4px; }
+  .card:hover { border-color: var(--app-border-strong); }
+  .card.selected { border-color: var(--app-accent); }
+  .card:has(input:focus-visible) { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+  .card:has(input:disabled) { cursor: default; }
+  .thumb { display: block; width: 176px; height: 132px; overflow: hidden; background: var(--app-control-bg); border-bottom: 1px solid var(--app-border-subtle); }
+  /* The sample renders at full size and is scaled down; it never takes a click
+     (the card's radio does) or the focus. */
+  .thumb iframe { border: 0; width: 320px; height: 240px; transform: scale(0.55); transform-origin: top left; pointer-events: none; background: #fff; }
+  .thumb-placeholder { width: 100%; height: 100%; display: grid; place-content: center; gap: 5px; background: linear-gradient(135deg, var(--app-surface), var(--app-control-bg)); }
+  .fallback-title { font-size: 22px; font-weight: 700; color: var(--app-text); line-height: 1; }
+  .fallback-line { display: block; width: 68px; height: 4px; border-radius: 999px; background: var(--app-border-strong); }
+  .fallback-line.short { width: 46px; }
+  .card-foot { display: flex; align-items: center; gap: 6px; padding: 4px 8px 0; }
+  .card-foot input { margin: 0; flex-shrink: 0; }
+  .card-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--app-text); }
+  .card-check { display: inline-flex; color: var(--app-accent); }
+  .card-note { padding: 0 8px 0 28px; font-size: 11.5px; color: var(--app-text-muted); }
+  .card-note.warn { color: var(--app-warning-text); }
+  .card-note.author { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .look-desc { margin: 0; font-size: 12.5px; color: var(--app-text-secondary); }
+  .copy-row { flex-wrap: wrap; }
+  .copy-row code { font-family: var(--app-font-mono); font-size: 11px; }
 
-  /* Sample thumbnails (shared by rows and cards). */
-  .thumb { width: 100%; aspect-ratio: 4 / 3; border-radius: 4px; overflow: hidden; background: var(--app-control-bg); border: 1px solid var(--app-border-subtle); }
-  .thumb iframe { border: 0; transform: scale(0.6); transform-origin: top left; width: 167%; height: 167%; }
-  .thumb-placeholder {
-    width: 100%; height: 100%; display: grid; place-content: center;
-    gap: 5px; padding: 12px; background:
-      linear-gradient(135deg, var(--app-surface), var(--app-control-bg));
-  }
-  .theme-fallback-title { font-size: 22px; font-weight: 700; color: var(--app-text); line-height: 1; }
-  .theme-fallback-line { display: block; width: 68px; height: 4px; border-radius: 999px; background: var(--app-border-strong); }
-  .theme-fallback-line.short { width: 46px; }
-
-  /* #106: non-fatal import warnings (print-safety, missing metadata, extra files). */
-  .theme-warnings {
-    margin: 0 0 8px; padding: 8px 10px; border-radius: 6px;
-    background: var(--app-warning-bg);
-    border: 1px solid var(--app-warning-border);
-    color: var(--app-warning-text);
-  }
-  .theme-warnings .warn-title { margin: 0 0 4px; font-size: 11px; font-weight: 600; }
-  .theme-warnings ul { margin: 0; padding-left: 16px; }
-  .theme-warnings li { font-size: 11px; line-height: 1.4; }
-
-  /* #106: enlarged fixed 2-page sample spread shown while hovering a row. It is
-     a decorative overlay (pointer-events:none) pinned to the right edge of the
-     Book settings layer, in the space beside its centred column. */
+  /* The enlarged two-page sample, pinned beside Book setup's 860 px column. */
   .hover-preview {
     position: fixed; right: 24px; top: 50%; transform: translateY(-50%);
-    width: 360px; max-width: 42vw; aspect-ratio: 3 / 2;
-    z-index: 40; pointer-events: none;
+    width: 360px; aspect-ratio: 3 / 2; z-index: 40; pointer-events: none;
     border-radius: 8px; overflow: hidden;
     border: 1px solid var(--app-border-strong); background: var(--app-surface);
     box-shadow: 0 8px 30px var(--app-shadow-lg);
   }
-  .hover-preview iframe { width: 100%; height: 100%; border: 0; background: #fff; }
-
-  /* Wide windows only: the layer's column is centred at up to 860px, so the
-     flyout clears it only from ~1620px; narrower than that it would cover the
-     very rows being hovered. Below that, the row's own thumbnail is the
-     preview. */
+  /* Laid out at twice the size and scaled down, so the pages read like pages. */
+  .hover-preview iframe { width: 200%; height: 200%; border: 0; background: #fff; transform: scale(0.5); transform-origin: top left; }
+  /* The column is centred at up to 860 px, so the sample clears it only from
+     about 1620 px; narrower, it would cover the cards being pointed at. */
   @media (max-width: 1620px) {
     .hover-preview { display: none; }
   }
 
-  /* 480px: two-column grid on very narrow panels — component-local,
-     unrelated to the 820px app tier. */
-  @media (max-width: 480px) {
-    .theme-grid { grid-template-columns: 1fr 1fr; }
+  /* ── Adjust the look: six settings beside the sample ── */
+  .adjust { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
+  .brand { display: flex; flex-direction: column; gap: 8px; }
+  /* The label lines up with its field, whatever hint or message is under the field. */
+  .brand-row { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: start; gap: 4px 10px; }
+  .brand-row label { min-height: 34px; display: flex; align-items: center; font-size: 12.5px; color: var(--app-text-secondary); }
+  .brand-control { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .hex { width: 172px; }
+  .size { display: flex; align-items: center; gap: 6px; }
+  .size .input { width: 84px; }
+  .unit { font-size: 12px; color: var(--app-text-muted); }
+  .brand-actions { margin-top: 4px; flex-wrap: wrap; outline: none; }
+  .confirm { font-size: 12.5px; color: var(--app-text-secondary); }
+  /* Settings' Remove confirm: the replacing button in the error color. */
+  .brand-actions .danger { color: var(--app-error-text); border-color: var(--app-error-text); }
+  .sample { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+  .sample-frame { height: 300px; overflow: hidden; border: 1px solid var(--app-border); border-radius: 6px; background: #fff; }
+  .sample-frame iframe { border: 0; width: 400px; height: 375px; transform: scale(0.8); transform-origin: top left; }
+  .sample figcaption { font-size: 11.5px; color: var(--app-text-muted); }
+
+  @media (max-width: 760px) {
+    .adjust { grid-template-columns: minmax(0, 1fr); }
   }
 </style>

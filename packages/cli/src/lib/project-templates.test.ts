@@ -43,6 +43,10 @@ test("each built-in template scaffolds into a valid project", async () => {
       const manifest = await readFile(result.manifestPath, "utf8");
       expect(manifest).toContain(`title: "Demo ${id}"`);
       expect(manifest).not.toContain("{{TITLE}}");
+      // Starter text says the action ("in Book setup"), never a desktop tab.
+      const starterCss = await readFile(path.join(result.projectDir, "styles", "book.css"), "utf8");
+      for (const text of [manifest, starterCss])
+        expect(text).not.toMatch(/Setup >|Book setup >|> Look|> Advanced|> Details|Look tab|Design tab/);
       // The first chapter the wizard opens exists and has no leftover tokens.
       const open = await readFile(result.openFile, "utf8");
       expect(open).not.toContain("{{TITLE}}");
@@ -106,9 +110,8 @@ test("custom templates preserve and scaffold the recognized manifest.yaml name",
         "title: Original",
         "authors:",
         "  - Writer",
-        "source:",
-        "  files:",
-        "    - chapter.md",
+        "chapters:",
+        "  - chapter.md",
         "output:",
         "  filename: original.pdf",
         "",
@@ -143,9 +146,9 @@ test("custom templates preserve and scaffold the recognized manifest.yaml name",
   }
 });
 
-test("saveProjectAsTemplate re-tokenises the authors block, NOT a leading source list item", async () => {
-  // Regression: a manifest that lists `source.files` BEFORE `authors` must not
-  // get its first source filename rewritten to {{AUTHOR}} (the re-tokeniser is
+test("saveProjectAsTemplate re-tokenises the authors block, NOT a leading chapters list item", async () => {
+  // Regression: a manifest that lists `chapters` BEFORE `authors` must not
+  // get its first chapter filename rewritten to {{AUTHOR}} (the re-tokeniser is
   // anchored to the `authors:` key, not the first `- item` in the file).
   const project = await tmp("gutterpress-retok-src-");
   const templatesRoot = await tmp("gutterpress-retok-dest-");
@@ -154,10 +157,9 @@ test("saveProjectAsTemplate re-tokenises the authors block, NOT a leading source
       path.join(project, "manifest.yaml"),
       [
         'title: My Book',
-        'source:',
-        '  files:',
-        '    - chapter-01.md',
-        '    - chapter-02.md',
+        'chapters:',
+        '  - chapter-01.md',
+        '  - chapter-02.md',
         'authors:',
         '  - Jane Author',
         '',
@@ -174,7 +176,7 @@ test("saveProjectAsTemplate re-tokenises the authors block, NOT a leading source
     const manifest = await readFile(path.join(saved.dir!, "manifest.yaml"), "utf8");
 
     expect(manifest).toContain('title: "{{TITLE}}"');
-    // The source filename survives; the author is tokenised.
+    // The chapter filename survives; the author is tokenised.
     expect(manifest).toContain("- chapter-01.md");
     expect(manifest).toContain('"{{AUTHOR}}"');
     expect(manifest).not.toContain("Jane Author");
@@ -454,6 +456,15 @@ test("each built-in template exposes the preset its manifest declares", async ()
     const declared = /^preset:\s*(\S+)\s*$/m.exec(raw)?.[1];
     expect(t.preset).toBe(declared);
   }
+});
+
+test("a template designed for one size exposes it; a preset-sized template does not", async () => {
+  const templates = await listBuiltInTemplates();
+  const byId = Object.fromEntries(templates.map((t) => [t.id, t]));
+  expect(byId.zine?.page).toEqual({ width: 396, height: 612 });
+  expect(byId.technical?.page).toEqual({ width: 612, height: 792 });
+  expect(byId.paper?.page).toEqual({ width: 612, height: 792 });
+  expect(byId.book?.page).toBeUndefined();
 });
 
 test("a saved custom template carries its project's preset and targets", async () => {

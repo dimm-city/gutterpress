@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * AppView — the one full-window layer every "do this task" screen opens
-   * in: Book settings, Publish, Where your work is kept. It mirrors the start
+   * in: Settings, Book setup, Publish, Accounts. It mirrors the start
    * screen's frame — the same fade, the same centred top-biased column, the
    * same close control — so moving from the workspace into any task and back
    * feels like one app. The view covers the workspace completely: the writer
@@ -29,6 +29,8 @@
     onClose,
     triggerEl,
     initialFocus,
+    closeLabel = "Close this screen",
+    closeTitle = "Close and return to your book (Esc)",
     class: className = "",
     actions,
     children,
@@ -42,6 +44,9 @@
     triggerEl?: HTMLElement | null;
     /** Selector of the control to focus on open; the layer itself otherwise. */
     initialFocus?: string;
+    /** The close button's name and tooltip (Settings also opens from the start screen, with no book to return to). */
+    closeLabel?: string;
+    closeTitle?: string;
     class?: string;
     /** Extra header controls, rendered before the close button. */
     actions?: Snippet;
@@ -85,7 +90,7 @@
       </h1>
       <div class="view-head-right">
         {@render actions?.()}
-        <button type="button" class="view-close" onclick={onClose} title="Close and return to your book (Esc)" aria-label="Close this screen">
+        <button type="button" class="view-close" onclick={onClose} title={closeTitle} aria-label={closeLabel}>
           <Icon name="x" size={16} />
         </button>
       </div>
@@ -104,7 +109,7 @@
     background: var(--app-bg);
     overflow-y: auto;
     /* Keep the scrollbar's space reserved so switching between a short and a
-       long tab (e.g. Features → Search) doesn't shift the centred page. */
+       long tab (e.g. Connections → Extensions) doesn't shift the centred page. */
     scrollbar-gutter: stable;
     display: flex;
     justify-content: center;

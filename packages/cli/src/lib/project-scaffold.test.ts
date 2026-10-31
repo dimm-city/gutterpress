@@ -71,11 +71,11 @@ test("scaffoldProject (no git) creates a valid project tree", async () => {
     // assets/ dir exists.
     expect((await stat(path.join(result.projectDir, "assets"))).isDirectory()).toBe(true);
 
-    // No look is applied: the author adds one. styles/book.css is the
-    // project's own (empty) stylesheet and the only thing in the cascade.
-    expect(manifest).not.toContain("extensions:");
+    // The template lists its look by name: nothing is copied into the book
+    // folder, and styles/book.css is the project's own (empty) stylesheet.
+    expect(manifest).toContain("extensions:\n  - clean-book");
     expect(existsSync(path.join(result.projectDir, EXTENSIONS_DIR))).toBe(false);
-    expect(await listProjectExtensions(result.projectDir)).toEqual([]);
+    expect((await listProjectExtensions(result.projectDir)).map((e) => e.use)).toEqual(["clean-book"]);
     const bookCss = await readFile(path.join(result.projectDir, "styles", "book.css"), "utf8");
     expect(bookCss).not.toContain("--color-ink");
     expect(bookCss).not.toContain("--color-accent");
@@ -89,20 +89,74 @@ test("scaffoldProject (no git) creates a valid project tree", async () => {
   }
 });
 
-test("scaffoldProject applies no look for any template", async () => {
+const MARGINS = {
+  book: { top: 61.2, bottom: 61.2, inside: 54, outside: 54 },
+  zine: { top: 28.8, bottom: 28.8, inside: 28.8, outside: 28.8 },
+  technical: { top: 64.8, bottom: 64.8, inside: 72, outside: 72 },
+  paper: { top: 72, bottom: 72, inside: 72, outside: 72 },
+} as const;
+
+test("every built-in template lists its look by name, copies nothing, and keeps the 0.25 in safe area", async () => {
   const parent = await tmpParent();
   try {
-    for (const template of ["book", "zine", "technical"] as const) {
+    const looks = { book: "clean-book", zine: "zine", technical: "technical-doc", paper: "academic" } as const;
+    for (const template of ["book", "zine", "technical", "paper"] as const) {
       const result = await scaffoldProject({
-        name: `No Look ${template}`,
+        name: `Look ${template}`,
         parentDir: parent,
         template,
-        preset: "book",
         versionHistory: "none",
       });
       expect(existsSync(path.join(result.projectDir, EXTENSIONS_DIR))).toBe(false);
-      expect(await listProjectExtensions(result.projectDir)).toEqual([]);
+      const uses = (await listProjectExtensions(result.projectDir)).map((e) => e.use);
+      expect(uses).toContain(looks[template]);
+      // `preset: custom` takes the whole page from the manifest, so the
+      // Zine, Technical and Paper templates state the safe area themselves:
+      // it drives the safe-margins check and the preview's safe-area guide.
+      const page = resolveConfig({}, await loadManifest(result.projectDir)).page;
+      expect(page.safe).toBe(18);
+      // Every template records its margins in the manifest (the look's old
+      // values), where Book setup edits them; no look sets any.
+      expect(page.margin).toEqual(MARGINS[template]);
     }
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("a chosen preset replaces the template's own page size", async () => {
+  const parent = await tmpParent();
+  try {
+    // The zine template is designed for Digest (preset: custom + page:); a
+    // writer who picks Trade paperback on top of it gets 6 x 9 in, not Digest.
+    const result = await scaffoldProject({
+      name: "Zine As Book",
+      parentDir: parent,
+      template: "zine",
+      preset: "book",
+      versionHistory: "none",
+    });
+    const manifest = await readFile(result.manifestPath, "utf8");
+    expect(manifest).toContain("preset: book");
+    expect(manifest).not.toMatch(/^\s+width:/m);
+    expect(manifest).not.toMatch(/^\s+height:/m);
+    const resolved = resolveConfig({}, await loadManifest(result.projectDir));
+    expect(resolved.page.width).toBe(432);
+    expect(resolved.page.height).toBe(648);
+    // The template's margins and safe area are not the preset's to replace.
+    expect(resolved.page.margin).toEqual(MARGINS.zine);
+    expect(resolved.page.safe).toBe(18);
+
+    // Left alone, the template's own size stands.
+    const kept = await scaffoldProject({
+      name: "Zine As Zine",
+      parentDir: parent,
+      template: "zine",
+      versionHistory: "none",
+    });
+    const keptResolved = resolveConfig({}, await loadManifest(kept.projectDir));
+    expect(keptResolved.page.width).toBe(396);
+    expect(keptResolved.page.height).toBe(612);
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
@@ -183,22 +237,51 @@ test("scaffoldProject rejects an unusable name", async () => {
 });
 
 // ---------------------------------------------------------------------------
-// ADR 0008 — creating a book requires choosing a preset; `custom` requires a
-// trim size; the choice is written into the generated manifest explicitly.
+// ADR 0008 — a chosen preset is validated; left out, the template's own
+// stands; `custom` requires a trim size; the choice is written into the
+// generated manifest explicitly.
 // ---------------------------------------------------------------------------
 
-test("scaffoldProject without a preset refuses with code preset-required", async () => {
+test("scaffoldProject without a preset keeps the template's own", async () => {
+  const parent = await tmpParent();
+  try {
+    const result = await scaffoldProject({ name: "No Preset", parentDir: parent, versionHistory: "none" });
+    expect(await readFile(result.manifestPath, "utf8")).toContain("preset: book");
+    const config = resolveConfig({}, await loadManifest(result.projectDir));
+    expect(config.preset).toBe("book");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject without a preset still writes a trim the author gave", async () => {
+  const parent = await tmpParent();
+  try {
+    const result = await scaffoldProject({
+      name: "Trim Only",
+      parentDir: parent,
+      customPage: { width: 500, height: 700 },
+      versionHistory: "none",
+    });
+    const config = resolveConfig({}, await loadManifest(result.projectDir));
+    expect(config.preset).toBe("book");
+    expect([config.page.width, config.page.height]).toEqual([500, 700]);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject with an unknown preset refuses with code preset-required", async () => {
   const parent = await tmpParent();
   try {
     let err: CreateProjectError | undefined;
     try {
-      await scaffoldProject({ name: "No Preset", parentDir: parent, versionHistory: "none" });
+      await scaffoldProject({ name: "No Preset", parentDir: parent, preset: "nope" as never, versionHistory: "none" });
     } catch (e) {
       err = e as CreateProjectError;
     }
     expect(err?.code).toBe("preset-required");
     expect(err?.message).toContain("dtrpg, book, custom");
-    // Nothing was created.
     expect(existsSync(path.join(parent, "no-preset"))).toBe(false);
   } finally {
     await rm(parent, { recursive: true, force: true });
@@ -370,6 +453,8 @@ test("scaffoldProject customPage overrides a non-custom preset's trim", async ()
     // sovereignty rule) while the dtrpg policy stays.
     expect(config.page.width).toBe(396);
     expect(config.page.height).toBe(612);
+    // customPage.tolerance is the page-size check's option (#483).
+    expect(parsed.checks).toEqual({ "pdf.print.page-size": { tolerance: 1 } });
     expect(config.page.tolerance).toBe(1);
     expect(config.ink.maxTac).toBe(240);
   } finally {
@@ -565,7 +650,7 @@ test("adoptFolder: never overwrites an existing styles/book.css", async () => {
 // incompressible PDF on every build until GitHub's 100MB limit rejects it.
 // ---------------------------------------------------------------------------
 
-test("scaffoldProject writes a .gitignore excluding dist/ and plugins/npm/", async () => {
+test("scaffoldProject writes a .gitignore excluding dist/ and extensions/npm/", async () => {
   const parent = await tmpParent();
   try {
     const result = await scaffoldProject({
@@ -576,7 +661,7 @@ test("scaffoldProject writes a .gitignore excluding dist/ and plugins/npm/", asy
     });
     const gitignore = await readFile(path.join(result.projectDir, ".gitignore"), "utf8");
     expect(gitignore).toContain("dist/");
-    expect(gitignore).toContain("plugins/npm/");
+    expect(gitignore).toContain("extensions/npm/");
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
@@ -606,13 +691,13 @@ test("scaffoldProject appends dist/ to a custom template's .gitignore without cl
   }
 });
 
-test("scaffoldProject leaves a custom template's .gitignore untouched when it already ignores dist/ and plugins/npm/", async () => {
+test("scaffoldProject leaves a custom template's .gitignore untouched when it already ignores dist/ and extensions/npm/", async () => {
   const templateDir = await mkdtemp(path.join(tmpdir(), "gutterpress-tpl-gitignore-has-dist-"));
   const parent = await tmpParent();
   try {
     await writeFile(path.join(templateDir, "manifest.yaml"), "title: \"{{TITLE}}\"\n", "utf8");
     await writeFile(path.join(templateDir, "chapter-01.md"), "# {{TITLE}}\n", "utf8");
-    const original = "# my ignores\ndist/\nplugins/npm/\n";
+    const original = "# my ignores\ndist/\nextensions/npm/\n";
     await writeFile(path.join(templateDir, ".gitignore"), original, "utf8");
 
     const result = await scaffoldProject({
@@ -636,7 +721,7 @@ test("adoptFolder writes a .gitignore excluding dist/ when the folder has none",
   await adoptFolder({ dir, versionHistory: "none" });
   const gitignore = await readFile(path.join(dir, ".gitignore"), "utf8");
   expect(gitignore).toContain("dist/");
-  expect(gitignore).toContain("plugins/npm/");
+  expect(gitignore).toContain("extensions/npm/");
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -649,4 +734,29 @@ test("adoptFolder appends dist/ to an existing .gitignore without overwriting it
   expect(gitignore).toContain("*.log");
   expect(gitignore).toContain("dist/");
   await rm(dir, { recursive: true, force: true });
+});
+
+test("scaffoldProject lists the bundled look the paper template names, copying nothing", async () => {
+  const parent = await tmpParent();
+  try {
+    // No preset passed: the template's own (custom, US Letter) stands.
+    const result = await scaffoldProject({
+      name: "A Paper",
+      parentDir: parent,
+      template: "paper",
+      versionHistory: "none",
+    });
+    expect(existsSync(path.join(result.projectDir, EXTENSIONS_DIR))).toBe(false);
+    const entries = await listProjectExtensions(result.projectDir);
+    expect(entries.map((e) => e.use)).toEqual(["markdown-it-sup", "gutterpress-math", "academic"]);
+    expect(entries.every((e) => e.enabled)).toBe(true);
+    expect(entries[2]).toMatchObject({ kind: "bundled", label: "Academic", carries: { styles: true, markdown: false } });
+    // Added through the comment-preserving manifest writer.
+    expect(await readFile(result.manifestPath, "utf8")).toContain("# Page size and margins in points");
+    const config = resolveConfig({}, await loadManifest(result.projectDir));
+    expect(config.language).toBe("en");
+    expect([config.page.width, config.page.height]).toEqual([612, 792]);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
 });

@@ -3,10 +3,10 @@ import { defineRoute, loadLib } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 // Every published version of one npm package, newest first (pre-releases
-// included — the Features tab's version picker filters them by the author's
+// included — the Extensions tab's version picker filters them by the author's
 // "Include pre-release versions" preference). Read from the same abbreviated
-// registry metadata the update check uses, fetched ON DEMAND when the tab
-// opens or a picker is opened — never at project load. A fetch failure is
+// registry metadata the update check uses, fetched ON DEMAND when a row is
+// shown or its picker is focused — never at project load. A fetch failure is
 // DATA, not a 500, like `extension/search` and `extension/outdated`: the row
 // shows one quiet line and nothing else is blocked. Switching versions is the
 // ordinary `extension/add` with `name@version`, behind the same trust gate.

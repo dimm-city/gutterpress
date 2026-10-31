@@ -57,8 +57,9 @@ const snippets = {
 };
 for (const [name, body] of Object.entries(snippets)) writeFileSync(join(book, "snippets", name), body);
 
-// Version history, so "Where your work is kept" and Previous versions have
-// something to show. The fixture is test data, so plain git is fine here.
+// Version history and a second revision, so Book setup → Online copy and
+// Version history have something to show. The fixture is test data, so plain
+// git is fine here.
 const git = (...args) => {
   const r = spawnSync("git", args, {
     cwd: book,
@@ -75,6 +76,7 @@ git("commit", "-qam", "Edit Publishing");
 const ch1 = join(book, "01-getting-started.md");
 writeFileSync(ch1, readFileSync(ch1, "utf8").replace("## Installation", "![A map of the book](images/map.png)\n\n## Installation"));
 git("commit", "-qam", "Add a map");
+git("branch", "second-edition");
 
 // ── the app ─────────────────────────────────────────────────────────────
 
@@ -122,16 +124,19 @@ const wait = (ms) => page.waitForTimeout(ms);
 const CENTRE = [360, 60, 720, 560];        // a start-screen column
 const DIALOG = [450, 170, 540, 560];        // the new-book wizard
 const SETTINGS = [240, 0, 960, 900];        // a full-window settings page
-const TALL = [360, 40, 720, 720];           // Publish / Where your work is kept
+const TALL = [360, 40, 720, 720];           // Publish
 
 console.log("desktop-screenshots: start screen and new book");
 await screen("start-screen", async () => {}, { crop: CENTRE, width: 760 });
-await screen("settings-author", async () => {
-  await click("button:has-text('Settings')");
-  await click("label:has-text('Author')");
-}, { crop: [370, 60, 700, 820], width: 700 });
+// A fresh profile is a Reader, who has no Edit, Setup or Publish: choose Author here, so every
+// screen after this one shows them. The radio by value: both role descriptions mention "Author".
+await screen("settings", async () => {
+  await click(".landing button:has-text('Settings')");
+  await click("input[name='settings-role'][value='author']");
+}, { crop: [370, 50, 700, 590], width: 700 });
+await press("Escape");
+await wait(800);
 await screen("new-book-name", async () => {
-  await click("button:has-text('Books')");
   await click("button:has-text('Create a new book')");
   // The wizard needs a title before Next does anything.
   await page.fill("input[placeholder='My First Book']", "Harbor Lights");
@@ -178,20 +183,46 @@ await press("Escape");
 await press("Escape");
 await wait(600);
 
-console.log("desktop-screenshots: Book settings");
+console.log("desktop-screenshots: Book setup");
 await screen("book-settings-details", async () => {
   await click("[aria-label='Book setup']");
   await wait(1500);
 }, { crop: SETTINGS, width: 960 });
-await screen("book-settings-look", () => click("[role=tab]:has-text('Look')"), { crop: SETTINGS, width: 960 });
-await screen("features-installed", () => click("[role=tab]:has-text('Features')"), { crop: SETTINGS, width: 960 });
-await screen("features-search", async () => {
-  await click("button:has-text('Search')");
-  await page.fill("input[placeholder^='footnote']", "footnote");
-  await press("Enter");
-  await wait(6000); // npm answers over the network
+// Further down the Book tab: the page size and the margins.
+await screen("book-settings-page", async () => {
+  await page.locator("#details-margin-outside").scrollIntoViewIfNeeded();
+  await wait(600);
 }, { crop: SETTINGS, width: 960 });
-await press("Escape");
+// The demo book lists no extensions, so choose a look: Look then shows the
+// look's six settings beside the sample page. Extensions then adds an extra
+// to the list and searches npm, and Advanced shows the stylesheets above every
+// design setting.
+await screen("book-settings-design", async () => {
+  await click("[role=tab]:has-text('Look')");
+  await click("input[name='book-look'][value='clean-book']");
+  await wait(2500); // a choice is written once it stops changing
+  await page.locator(".app-view :text('Choose a look')").first().scrollIntoViewIfNeeded();
+}, { crop: SETTINGS, width: 960 });
+await screen("book-settings-extensions", async () => {
+  await click("[role=tab]:has-text('Extensions')");
+  await click("button[aria-label='Add Highlight']");
+  await wait(1500);
+}, { crop: SETTINGS, width: 960 });
+// npm answers over the network, so this screen needs the internet.
+await screen("extensions-search", async () => {
+  await page.fill("#search-npm", "emoji");
+  await press("Enter");
+  await wait(6000);
+  await page.locator("h4:has-text('Find one on npm')").evaluate((el) => el.scrollIntoView({ block: "start" }));
+}, { crop: SETTINGS, width: 960 });
+await screen("book-settings-advanced", () => click("[role=tab]:has-text('Advanced')"), { crop: SETTINGS, width: 960 });
+// Take both out again, so the preview in the shots below is unchanged. A
+// removed row takes the focus with it, so close with the X, not Esc.
+await click("[role=tab]:has-text('Extensions')");
+await click("[aria-label='Remove Highlight']");
+await click("[aria-label='Remove Clean book']");
+await wait(1500);
+await click("[aria-label='Close this screen']");
 await wait(800);
 
 console.log("desktop-screenshots: publishing and versions");
@@ -202,10 +233,15 @@ await screen("publish-format", async () => {
 await screen("publish-choose", () => click("button:text-is('Next')"), { crop: TALL, width: 760 });
 await press("Escape");
 await wait(800);
-await screen("where-your-work-is-kept", () => click("button:has-text('Edits saved')"), { crop: TALL, width: 760 });
-await screen("previous-versions", async () => {
-  await click("button:has-text('See previous versions')");
+// The status control opens Book setup → Online copy, with the revisions.
+await screen("online-copy", async () => {
+  await click(".status-control");
   await wait(2000);
+}, { crop: SETTINGS, width: 960 });
+// Version history: its own screen, over Book setup.
+await screen("version-history", async () => {
+  await click("button:has-text('Browse versions')");
+  await wait(1500); // the selected version's changed files
 }, { width: 1200 });
 
 await app.close();

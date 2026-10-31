@@ -361,6 +361,8 @@ const autoSnapshot = new AutoSnapshotScheduler({
   readSettings,
   getWatchedDir: () => folderWatch.getWatchedDir(),
   operationLogPath,
+  // With automatic backing up off, nothing else says a new version is waiting to go online.
+  onSnapshotSaved: (dir) => void autoSync.reportUnsent(dir),
   // M39: the safety net must not fail silently while the pill asserts
   // "Version history on". Once AUTO_SNAPSHOT_FAILURE_THRESHOLD consecutive
   // failures hit for the SAME dir, surface it through the SAME "sync:status"
@@ -824,7 +826,7 @@ function createWindow() {
     e.preventDefault();
     closeGateStarted = true;
     void (async () => {
-      // "Save edits automatically" off with unsaved edits: ask Save / Don't
+      // "Save changes automatically" off with unsaved edits: ask Save / Don't
       // Save / Cancel BEFORE the gate starts, so its flush watchdog never runs
       // while the author is reading the prompt. The dirty report is only a
       // hint; when it is wrong the gate simply saves, as it always has.
@@ -1099,10 +1101,6 @@ const desktopHooksImpl: DesktopHooks = {
   showItemInFolder: (filePath: string) => {
     shell.showItemInFolder(filePath);
   },
-  openLogsFolder: async () => {
-    await mkdir(logsDir(), { recursive: true });
-    await shell.openPath(logsDir());
-  },
   getNativeTheme: () => ({ shouldUseDarkColors: nativeTheme.shouldUseDarkColors }),
   getUserDataPath: () => app.getPath('userData'),
 };
@@ -1252,7 +1250,7 @@ const vcsHooksImpl: VcsHooks = {
   repairBackupDir: (slug) => repairBackupDirImpl(app.getPath("userData"), slug),
   openVersionPreview: (dir, id) => versionPreview.open(dir, id),
   closeVersionPreview: () => versionPreview.close(),
-  // #273: pause both host timers around a copy switch's checkout so neither
+  // #273: pause both host timers around a revision switch's checkout so neither
   // fires against the mid-switch working tree (an auto-snapshot would commit
   // a half-checked-out tree) or targets the wrong branch (auto-sync pushes
   // whatever branch is current when it runs). `folderWatch`'s own fs events
@@ -1267,6 +1265,7 @@ const vcsHooksImpl: VcsHooks = {
   resumeTimers: (dir) => {
     if (folderWatch.getWatchedDir() === dir) autoSync.schedule(dir);
   },
+  refreshOnlineStatus: (dir) => void autoSync.reportUnsent(dir),
 };
 
 // Error sanitization for vcs:* lives in the shared server-bridge/friendly-errors
@@ -1434,8 +1433,8 @@ function sanitizeBookSubPath(subPath: unknown): string {
 }
 
 // remote:diagnoseProject, remote:testRemoteAccess, remote:connectGenericHost,
-// remote:disconnectHost, remote:listConnections, remote:forgeTokenUrl,
-// remote:sync, remote:cloneRepository are SvelteKit server routes
+// remote:disconnectHost, remote:listConnections, remote:sync,
+// remote:cloneRepository are SvelteKit server routes
 // (src/routes/api/remote/*). cloneRepository is a
 // bound closure on remoteHooksImpl above (it needs mainWindow, which the
 // route's separate Vite bundle can't reach directly).
@@ -1511,9 +1510,11 @@ const syncSettingsHooksImpl: SyncSettingsHooks = {
     if (enabled && watchedDir) {
       autoSync.schedule(watchedDir);
     }
-    // When disabling, cancel all timers for the open project.
+    // When disabling, cancel all timers for the open project, and say whether
+    // versions are now waiting to go online (no pass will).
     if (!enabled && watchedDir) {
       autoSync.cancelTimer(watchedDir);
+      void autoSync.reportUnsent(watchedDir);
     }
     return { ok: true, autoSync: enabled };
   },

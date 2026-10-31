@@ -15,15 +15,16 @@
 </script>
 
 <div class="help-content">
-  <p class="intro">How to open, edit, save and publish your book.</p>
+  <p class="intro">How to open, edit, set up, save and publish your book.</p>
 
   <section class="getting-started">
     <h3>Getting Started</h3>
     <ol class="steps">
-      <li><strong>Open your book folder</strong> — on the welcome screen, click <em>Open a folder</em> (or pick a book from <em>Your books</em>) and choose the folder that contains your <code>manifest.yaml</code> file. Once a book is open, click the folder button at the left of the status bar (<em>Books — open the start screen</em>) to get back to your list of books.</li>
+      <li><strong>Open your book folder</strong> — on the welcome screen, click <em>Open a folder</em> (or pick a book from <em>Your books</em>) and choose your book's folder. Once a book is open, click the folder button at the left of the status bar (<em>Books — open the start screen</em>) to get back to your list of books.</li>
       <li><strong>Browse your document</strong> — use the arrow keys or Page Up/Down to flip through pages. Click <em>Read</em> in the toolbar to see two pages side by side like an open book, and use the magnifier menu to zoom.</li>
-      <li><strong>Edit your pages</strong> — click <em>Edit</em> (or press {modKey}+E) to open the markdown editor beside the preview. By default your changes save automatically, and {modKey}+S or the Save button saves immediately. To save only when you choose, turn off <em>Save edits automatically</em> under Settings &gt; Saving (open Settings with the gear icon in the bottom-right corner).</li>
-      <li><strong>Keep versions of your work</strong> — click the save status in the bottom-right corner to open <em>Where your work is kept</em>: save a version, see previous versions, and back up online.</li>
+      <li><strong>Edit your pages</strong> — click <em>Edit</em> (or press {modKey}+E) to open the markdown editor beside the preview. By default your changes save automatically, and {modKey}+S or the Save button saves immediately. To save only when you choose, turn off <em>Save changes automatically</em> under Settings &gt; Saving (open Settings with the gear icon in the bottom-right corner).</li>
+      <li><strong>Set up and style your book</strong> — click <em>Setup</em> in the toolbar: <em>Book</em> for the title, authors, page size, margins and chapters; <em>Look</em> to choose a look (the book's overall design) and adjust its fonts and colors; <em>Extensions</em> to turn on extras such as callouts or math.</li>
+      <li><strong>Keep versions of your work</strong> — click the save status at the bottom left of the window to open <em>Online copy</em> in Book setup: save a version, see your version history, switch between revisions, and back up to your online copy.</li>
       <li><strong>Publish</strong> — click <em>Publish</em> to save a PDF or website to a folder and send it on (or press {modKey}+Shift+E to save a PDF directly).</li>
     </ol>
     <p class="gs-note">Don't have a book yet? Visit the <button class="inline-link" onclick={onOpenGuide}>online setup guide</button> to create one.</p>
@@ -32,9 +33,9 @@
   <section class="online-copy">
     <h3>Work with an Online Copy</h3>
     <ul class="steps">
-      <li><strong>Open from GitHub</strong> — click <em>Open from GitHub</em> on the welcome screen (from an open book, the folder button at the left of the status bar takes you there) to connect your GitHub account, choose a repository, and download a copy of the book to your computer.</li>
-      <li><strong>Back up now</strong> — when your book is backed up online, click the save status in the bottom-right corner (it says <em>Edits saved</em>) to open <em>Where your work is kept</em>, then click <em>Back up now</em> under <em>Online backup</em>. If you're offline, your work stays saved on this computer and the backup catches up when you're back online. If your copy and the online copy both changed, Gutterpress lists each file that differs and lets you choose: keep your version, use the online version, or keep both copies.</li>
-      <li><strong>Other hosting services</strong> — if your book lives somewhere other than GitHub, open the gear icon in the bottom-right corner, then <em>Accounts</em>, to connect a Git server (such as Gitea or Forgejo).</li>
+      <li><strong>Open from GitHub</strong> — click <em>Open from GitHub</em> on the welcome screen (from an open book, the folder button at the left of the status bar takes you there) to sign in to your GitHub account, choose the book's online copy, and download the book to your computer.</li>
+      <li><strong>Back up</strong> — Gutterpress backs up your book while you work, and the save status at the bottom left says <em>Backed up</em> when it has. To back up straight away, click the save status to open <em>Online copy</em> in Book setup, then click <em>Back up now</em>; <em>Get latest</em> beside it brings in the changes from the online copy without sending yours. If you turn off <em>Back up online automatically</em> under Settings &gt; Saving, <em>Get latest</em> and <em>Sync</em> sit beside the save status: <em>Sync</em> gets the latest changes from the online copy, then backs up yours. If you're offline, your work stays saved on this computer and backing up catches up when you're back online. If this computer's files and the online copy both changed the same passage, Gutterpress combines both sides and marks the overlapping passage as two takes in the file; you choose in the editor: keep yours, keep online, or keep both.</li>
+      <li><strong>Other hosting services</strong> — if your book lives somewhere other than GitHub, open the book's <em>Setup</em>, then <em>Online copy</em>, to sign in to its Git server (such as Gitea or Forgejo).</li>
     </ul>
   </section>
 
@@ -68,7 +69,6 @@
   .getting-started h3, .online-copy h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; color: var(--app-text-muted); letter-spacing: 0.5px; }
   .steps { margin: 0 0 10px; padding-left: 20px; font-size: 13px; line-height: 1.6; color: var(--app-text-secondary); }
   .steps li { margin-bottom: 6px; }
-  .steps code { font-family: var(--app-font-mono); color: light-dark(#2b4a6f, #99aabb); background: light-dark(#e8edf5, #2a3040); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
   .gs-note { margin: 0; font-size: 12px; color: var(--app-text-muted); }
   .inline-link { background: none; border: none; color: var(--app-link); cursor: pointer; font-size: 12px; padding: 0; text-decoration: underline; text-underline-offset: 2px; }
   .inline-link:hover { color: var(--app-link-hover); }

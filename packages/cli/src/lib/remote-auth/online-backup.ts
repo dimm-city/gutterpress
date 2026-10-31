@@ -1,5 +1,5 @@
 /**
- * Set up online backup for a book that started on this computer (#358).
+ * Set up an online copy for a book that started on this computer (#358).
  *
  * A book made in the app with version history on is a local isomorphic-git
  * repo with no remote. This connects it to GitHub in one operation:
@@ -100,30 +100,30 @@ export type BackupSetupResult =
 
 const MSG = {
   notConnected:
-    "Connect your GitHub account first (Settings > Accounts), then set up online backup.",
-  auth: "GitHub didn't accept the saved connection. Reconnect GitHub in Settings > Accounts and try again.",
+    "Connect your GitHub account first, then set up the online copy.",
+  auth: "GitHub didn't accept the saved sign-in. Sign in to GitHub again and try again.",
   offline:
     "Gutterpress couldn't reach GitHub. Check your internet connection and try again. Nothing was changed.",
   noHistory:
-    "Turn on version history for this book first. Online backup copies the versions Gutterpress keeps on this computer.",
+    "Turn on version history for this book first. The online copy holds the versions Gutterpress keeps on this computer.",
   alreadyHasRemote: "This book already has an online copy.",
   noName: "Give the online copy a name.",
   badName:
-    "A repository name can only use letters, numbers, hyphens (-), underscores (_) and dots (.), and be at most 100 characters.",
+    "An online copy's name can only use letters, numbers, hyphens (-), underscores (_) and dots (.), and be at most 100 characters.",
   notFound:
-    "Gutterpress couldn't find that repository on GitHub, or your account can't see it. Choose another one.",
+    "Gutterpress couldn't find that online copy on GitHub, or your account can't see it. Choose another one.",
   noPermission:
-    "Your GitHub account isn't allowed to add to that repository (it may be archived or read-only). Choose another one.",
+    "Your GitHub account isn't allowed to add to that online copy (it may be archived or read-only). Choose another one.",
   noCreatePermission:
-    "GitHub wouldn't let Gutterpress create a repository with this connection. Create an empty repository on github.com yourself, then choose it from your existing repositories here.",
+    "GitHub wouldn't let Gutterpress create an online copy with this sign-in. Create an empty one on github.com yourself (GitHub calls it a repository), then choose it from your existing empty online copies here.",
   notEmpty:
-    "That repository already has files in it, and online backup needs an empty one. Choose an empty repository, or create a new one.",
+    "That online copy already has files in it, and a new online copy needs to be empty. Choose an empty one, or create a new one.",
   pushFailed:
-    "Your book couldn't be copied to GitHub. Your writing is safe on this computer. Please try again.",
+    "Your book couldn't be sent to GitHub. Your writing is safe on this computer. Please try again.",
 } as const;
 
 const nameTaken = (name: string) =>
-  `You already have a repository named "${name}" on GitHub. Pick a different name, or choose that repository from your existing empty repositories.`;
+  `You already have an online copy named "${name}" on GitHub. Pick a different name, or choose that one from your existing empty online copies.`;
 
 class BackupFailure extends Error {
   constructor(
@@ -205,7 +205,7 @@ async function createRepository(
     private: isPrivate,
     // Empty on purpose: a README would make the first push a non-empty merge.
     auto_init: false,
-    description: "Online backup made with Gutterpress",
+    description: "Online copy made with Gutterpress",
   });
   if (res.status === 201 || res.status === 200) return (await res.json()) as RepoJson;
   if (res.status === 401) throw new BackupFailure("auth", MSG.auth);
@@ -217,7 +217,7 @@ async function createRepository(
     const taken = (body.errors ?? []).some((e) => /already exists/i.test(e.message ?? ""));
     throw new BackupFailure("name-taken" as const, taken ? nameTaken(name) : MSG.badName);
   }
-  throw new BackupFailure("push-failed", `GitHub couldn't create the repository (error ${res.status}). Please try again.`);
+  throw new BackupFailure("push-failed", `GitHub couldn't create the online copy (error ${res.status}). Please try again.`);
 }
 
 /** Fetch a chosen repository and check it is writable and EMPTY. */
@@ -241,9 +241,9 @@ async function loadEmptyRepository(
   }
   // An empty repository has no branches; anything else is not ours to push into.
   const branches = await listGitHubBranches(credential, owner, name, { fetchImpl }).catch((e) => {
-    // listGitHubBranches words its own failures (offline / reconnect / unexpected).
+    // listGitHubBranches words its own failures (offline / sign in again / unexpected).
     const msg = e instanceof Error ? e.message : "";
-    throw new BackupFailure(/reconnect/i.test(msg) ? "auth" : /reach/i.test(msg) ? "offline" : "push-failed", msg || MSG.pushFailed);
+    throw new BackupFailure(/sign in/i.test(msg) ? "auth" : /reach/i.test(msg) ? "offline" : "push-failed", msg || MSG.pushFailed);
   });
   if (branches.length > 0) throw new BackupFailure("not-empty", MSG.notEmpty, toRemoteRepository(repo));
   return repo;

@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 
 /**
  * Native Save / Don't Save / Cancel prompt for leaving a file with unsaved
- * edits while "Save edits automatically" is off. Returns the author's choice.
+ * edits while "Save changes automatically" is off. Returns the author's choice.
  */
 export const POST: RequestHandler = defineRoute<{ fileName?: string }>({
   call: async ({ body }) =>

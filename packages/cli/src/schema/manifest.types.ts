@@ -3,6 +3,54 @@ import type { LastPageMode } from "../engine/shared/synthesis";
 type CheckSeverity = "error" | "warning" | "info";
 
 /**
+ * What a manifest's `checks:` entry may say about one check or lint rule:
+ * `off`, or the severity its findings are reported at (`info`, `warn`,
+ * `error`). `true` / `on` switch on a check its preset leaves off, at the
+ * check's own severity; `false` is `off`. `warning` is accepted for `warn`.
+ */
+export type CheckLevelInput = "off" | "on" | "info" | "warn" | "warning" | "error" | boolean;
+
+/**
+ * A `checks:` entry that also sets options: the numbers or the list a check
+ * measures against, which the preset and the publish target otherwise set
+ * (`lib/check-options.ts` lists which check takes which). `level` is optional;
+ * left out, the check keeps the level the preset and target give it.
+ *
+ *   checks:
+ *     pdf.print.ink-coverage: { maxTac: 300 }
+ *     pdf.print.image-resolution: { level: error, minImageResolution: 200 }
+ */
+export interface CheckEntry {
+  level?: CheckLevelInput;
+  /** `pdf.print.ink-coverage`: the total ink limit in percent (and what a PDF/X build holds the ink to). */
+  maxTac?: number;
+  /** `pdf.print.ink-coverage`: how far over `maxTac` a page may measure before it is reported. */
+  tacTolerance?: number;
+  /** `pdf.print.page-size`: how far (pt) the built PDF's page may differ from the manifest's size. */
+  tolerance?: number;
+  /** `pdf.print.image-resolution`: the lowest DPI a placed image may print at; 0 = no floor. */
+  minImageResolution?: number;
+  /** `pdf.print.bleed`: the bleed (pt) each side must have. */
+  bleedSize?: number;
+  /** `asset.image.file-size`: the largest image file in bytes; 0 = no limit. */
+  maxImageSize?: number;
+  /** `asset.font.approved-files`: the font files a book may ship (glob patterns, relative to the book); empty = any. */
+  approvedFontFiles?: string[];
+  /** `heuristic.decoration.layer-count`: the most decorative layers on one page. */
+  maxDecorativeLayers?: number;
+  /** `heuristic.whitespace.text-density`: the characters a page should carry. */
+  textDensityRange?: { min?: number; max?: number };
+  /** `heuristic.chunking.section-density`: the most paragraphs in one section. */
+  maxParagraphsPerSection?: number;
+}
+
+/**
+ * A check's resolved level: `off`, `on` (runs at its own severity) or the
+ * severity every finding is reported at.
+ */
+export type CheckLevel = "off" | "on" | CheckSeverity;
+
+/**
  * The object form of an `extensions:` entry (#265) — only for an entry that
  * has to say more than its specifier. The common case is the bare string;
  * `use` carries the same specifier in both forms.
@@ -37,11 +85,16 @@ export interface ExtensionConfig {
  * The name (label) of the SAVED credential this book uses for a provider, when
  * the user keeps more than one (e.g. two itch.io accounts). It is NOT a secret
  * — just a reference into the host credential store's named entries; empty/
- * absent uses the default (bare-host) credential. This book-level choice
- * overrides any project/global default.
+ * absent uses the default (bare-host) credential. The desktop app keeps this
+ * choice (and an output folder outside the book) in the person's own private
+ * settings, which win over the manifest's; a value written here still applies
+ * to a book that has none (older books, the CLI) and overrides any front-end
+ * default. Everything else in a section is the team's, shared.
  */
 interface PublishSettings {
   itch?: {
+    /** Whether the desktop's Publish view ticks this destination for the book (the team's choice, shared). */
+    enabled?: boolean;
     /** itch.io project as `user/game` (the butler push target). */
     target?: string;
     /** butler channel name (default: "pdf"). */
@@ -50,17 +103,23 @@ interface PublishSettings {
     credential?: string;
   };
   drivethrurpg?: {
+    /** Whether the desktop's Publish view ticks this destination for the book (the team's choice, shared). */
+    enabled?: boolean;
     /** Existing product page URL, when updating a published title. */
     productUrl?: string;
   };
-  kdp?: Record<string, never>;
+  kdp?: { enabled?: boolean };
   "azure-swa"?: {
+    /** Whether the desktop's Publish view ticks this destination for the book (the team's choice, shared). */
+    enabled?: boolean;
     /** Deploy environment (default: "production"). */
     env?: string;
     /** Saved-credential label to use (see PublishSettings doc). */
     credential?: string;
   };
   shopify?: {
+    /** Whether the desktop's Publish view ticks this destination for the book (the team's choice, shared). */
+    enabled?: boolean;
     /** The store domain, e.g. `my-store.myshopify.com`. */
     shop?: string;
     /** Existing product GID/id to update instead of creating a new one. */
@@ -71,6 +130,8 @@ interface PublishSettings {
     credential?: string;
   };
   gdrive?: {
+    /** Whether the desktop's Publish view ticks this destination for the book (the team's choice, shared). */
+    enabled?: boolean;
     /** Display name of the target Drive folder; created at My Drive root if
      * missing. Default when unset: "Gutterpress". */
     folder?: string;
@@ -92,9 +153,27 @@ interface PublishSettings {
   };
 }
 
+/**
+ * Page margins in points: the space between the trim and the text on each
+ * edge. `inside` is the binding edge (the left of a right-hand page, the
+ * right of a left-hand one), `outside` the other. All four together.
+ */
+export interface PageMargin {
+  top: number;
+  bottom: number;
+  inside: number;
+  outside: number;
+}
+
 export interface GutterpressManifest {
   title?: string;
   authors?: string[];
+  /**
+   * The book's language as a BCP 47 tag (`en`, `de-CH`, `pt-BR`); default
+   * `en`. It is the `lang` of the built HTML, which is what hyphenation
+   * follows, and the typographer sets quotation marks by it.
+   */
+  language?: string;
   publish?: PublishSettings;
   /** How the book is designed (ADR 0008). The registry in lib/presets.ts is authoritative. */
   preset?: "dtrpg" | "book" | "custom";
@@ -113,9 +192,18 @@ export interface GutterpressManifest {
    * project's own `styles` always load after every extension.
    */
   extensions?: (string | ExtensionConfig)[];
-  source?: {
-    files?: string[] | null;
-  };
+  /**
+   * The book's markdown files, in reading order, relative to the manifest.
+   * Absent or null: every top-level `.md` file in natural order.
+   */
+  chapters?: string[] | null;
+  /**
+   * Per-check and per-rule levels, keyed by a check id
+   * (`pdf.print.image-resolution`) or a lint rule id
+   * (`printsafe/no-risky-print-effects`), and the options a check takes
+   * ({@link CheckEntry}). A key that names nothing is ignored.
+   */
+  checks?: Record<string, CheckLevelInput | CheckEntry>;
   pdfx?: {
     flavor?: "x1a" | "x3";
     icc?: string;
@@ -170,7 +258,6 @@ export interface GutterpressManifest {
   page?: {
     width?: number;
     height?: number;
-    tolerance?: number;
     /**
      * A bleed (pt) the page `width` x `height` ALREADY CONTAINS, on the top,
      * bottom and OUTER edges only (the binding edge has none) — how
@@ -215,79 +302,16 @@ export interface GutterpressManifest {
      * and `custom` none.
      */
     gutter?: number;
-  };
-  ink?: {
-    maxTac?: number;
-    tacTolerance?: number;
-  };
-  lint?: {
-    enabled?: boolean;
-    configPath?: string | null;
     /**
-     * Per-rule level overrides, keyed by rule id (`printsafe/*`, or a check id
-     * such as `source.accessibility.heading-order`). `off` silences the rule;
-     * `warn` / `error` set its severity. Unknown ids are ignored.
+     * Page margins (pt), the space between the trim and the text on each
+     * edge — `inside` is the binding edge, `outside` the other. Setup >
+     * Details in the app writes it. When set, the book prints with these
+     * margins and any `@page` margin in a stylesheet is overridden, except
+     * where a named page sets its own (`@page full { margin: 0 }`); left
+     * out, the stylesheets' `@page` margins apply (a look's design), else
+     * 1in. All four edges are required together.
      */
-    rules?: Record<string, "off" | "warn" | "error">;
-  };
-  validate?: {
-    enabled?: boolean;
-    checks?: Record<string, boolean | {
-      enabled?: boolean;
-      severity?: CheckSeverity;
-      options?: Record<string, unknown>;
-    }>;
-    source?: {
-      markdownlint?: string | false;
-      htmlhint?: string | false;
-      stylelint?: string | false;
-      /**
-       * Path to a CSS ownership contract (#232), or `false` to disable
-       * `source.css-ownership`. Optional — absent means no contract, so the
-       * check reports nothing. Default discovery: `.gutterpress/css-contract.yaml`
-       * (or `.yml`) in the project root. See docs/css-ownership-contract.md.
-       */
-      cssOwnership?: string | false;
-      /**
-       * @deprecated `:::name` container syntax was removed 2026-05-17 and the
-       * callout-validation check it gated was removed at the same time. This
-       * field is now a no-op kept for backward-compatible manifest parsing.
-       * Will be removed in a future major version. See
-       * docs/migrations/2026-05-removing-container-syntax.md.
-       */
-      allowedCallouts?: string[];
-    };
-    assets?: {
-      maxImageSize?: number;
-      /**
-       * @deprecated No-op. The source-image resolution check it configured
-       * read DPI metadata, which says nothing about the printed size; the
-       * build measures each placed image's printed DPI instead.
-       */
-      minImageDpi?: number;
-      /**
-       * @deprecated No-op. The source-image colour-space check it configured
-       * was removed: a PDF/X build converts every image to the output intent,
-       * and `pdf.print.color-spaces` checks the result.
-       */
-      allowedColorSpaces?: string[];
-      allowAlpha?: boolean;
-      approvedFontFiles?: string[];
-      requireFontLicense?: boolean;
-    };
-    pdf?: {
-      requireBookmarks?: boolean;
-      requireTocLinks?: boolean;
-      minImageResolution?: number;
-      forbidTransparency?: boolean;
-      requireBleed?: boolean;
-      bleedSize?: number;
-    };
-    heuristics?: {
-      maxDecorativeLayers?: number;
-      textDensityRange?: { min?: number; max?: number };
-      maxParagraphsPerSection?: number;
-    };
+    margin?: PageMargin;
   };
 }
 
@@ -322,6 +346,8 @@ export interface PrintSpec {
 export interface ResolvedConfig {
   title: string;
   authors: string[];
+  /** BCP 47 language tag; `en` when the manifest sets none. */
+  language: string;
   /** The id of the preset this book resolved against (`dtrpg`, `book`, `custom`). */
   preset: string;
   /** The printer spec that preset follows, when it follows one: how a host credits the numbers it draws. */
@@ -331,9 +357,14 @@ export interface ResolvedConfig {
   styles?: string[];
   /** Enabled extensions, in manifest (= load = cascade) order. */
   extensions: ResolvedExtensionConfig[];
-  source: {
-    files: string[] | null;
-  };
+  /** The book's markdown files in reading order, or null for every top-level `.md` file. */
+  chapters: string[] | null;
+  /**
+   * Each check's or lint rule's level, merged key by key: preset, then the
+   * publish target's policy, then the manifest's `checks:`, then the CLI. An
+   * id that is absent runs at its own severity.
+   */
+  checks: Record<string, CheckLevel>;
   pdfx: {
     flavor: "x1a" | "x3";
     icc: string;
@@ -351,6 +382,7 @@ export interface ResolvedConfig {
   page: {
     width: number;
     height: number;
+    /** Allowed deviation (pt) of a built PDF's page size: the preset's, or `checks.pdf.print.page-size.tolerance`. */
     tolerance: number;
     /** In-sheet bleed in pt (top, bottom, outer edge; see the manifest field); absent = none. */
     bleed?: number;
@@ -360,41 +392,28 @@ export interface ResolvedConfig {
     artSafe?: number;
     /** The binding edge's inset from the trim in pt, text and art alike (see the manifest field); absent = same as `safe`. */
     gutter?: number;
+    /** The margins the book prints with, in pt (see the manifest field); absent = the stylesheets' `@page` margins, else 1in. */
+    margin?: PageMargin;
   };
   ink: {
     maxTac: number;
     tacTolerance: number;
   };
-  lint: {
-    enabled: boolean;
-    configPath: string | null;
-    rules: Record<string, "off" | "warn" | "error">;
-  };
+  /**
+   * The numbers the checks measure against: the preset's and the publish
+   * target's (a printer's specification), overridden by a book's
+   * `checks.<id>` options ({@link CheckEntry}). `ink` above too.
+   */
   validate: {
-    enabled: boolean;
-    checks: Record<string, boolean | {
-      enabled?: boolean;
-      severity?: CheckSeverity;
-      options?: Record<string, unknown>;
-    }>;
-    source: {
-      markdownlint: string | false | null;
-      htmlhint: string | false | null;
-      stylelint: string | false | null;
-      cssOwnership: string | false | null;
-    };
     assets: {
+      /** Largest image file in bytes; 0 = no limit. */
       maxImageSize: number;
-      allowAlpha: boolean;
+      /** Glob patterns of the font files a book may ship; empty = any (`asset.font.approved-files`). */
       approvedFontFiles: string[];
-      requireFontLicense: boolean;
     };
     pdf: {
-      requireBookmarks: boolean;
-      requireTocLinks: boolean;
+      /** Lowest effective image resolution in DPI; 0 = no floor. */
       minImageResolution: number;
-      forbidTransparency: boolean;
-      requireBleed: boolean;
       bleedSize: number;
     };
     heuristics: {

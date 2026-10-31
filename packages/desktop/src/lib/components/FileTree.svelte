@@ -33,8 +33,7 @@
    * ── CRUD (issue #38) ───────────────────────────────────────────────────────
    * Row/context actions: New folder (root toolbar + per-folder-row "New
    * folder here"), New chapter (root toolbar ONLY — see below), Rename,
-   * Delete. Delete uses the same two-step inline "armed" confirm as
-   * LookSection's theme Remove. Create/rename use a small
+   * Delete. Delete uses a two-step inline "armed" confirm. Create/rename use a small
    * inline text input in place of the row's name, not a separate modal.
    * A resting row shows only its name: the row buttons appear while the row is
    * hovered or has focus inside it (#313), while the delete confirm and the
@@ -42,7 +41,7 @@
    *
    * "New chapter" is deliberately ROOT-ONLY, not a per-folder action: the
    * default chapter build (`renderChapters` in the lib, when a manifest
-   * doesn't pin an explicit `source.files` list) discovers chapters with a
+   * doesn't pin an explicit `chapters` list) discovers chapters with a
    * plain non-recursive `readdir` of the project root — a `.md` file
    * authored inside a subfolder would silently never render. Offering "New
    * chapter" inside a folder would set non-technical authors up to write a
@@ -71,6 +70,7 @@
     invalidateSubtree,
     collapseDir,
     renameExpanded,
+    visibleEntries,
   } from "./file-tree-cache";
 
   let {
@@ -105,8 +105,7 @@
 
   type Entry = { name: string; path: string; isDir: boolean };
 
-  // Editable text file extensions surfaced in the tree. Folders are always
-  // shown (so the author can navigate into them) regardless of this filter.
+  // A name "New chapter" keeps as typed; any other gets `.md`.
   const EDITABLE_EXT = /\.(md|markdown|yaml|yml|css|txt)$/i;
 
   let rootEntries = $state<Entry[]>([]);
@@ -119,23 +118,6 @@
   let childrenByPath = $state<Record<string, Entry[]>>({});
   let loadingPaths = $state<Set<string>>(new Set());
   let errorByPath = $state<Record<string, string>>({});
-
-  /** Folders first, then files; each group alphabetical, case-insensitive. */
-  function sortEntries(entries: Entry[]): Entry[] {
-    return [...entries].sort((a, b) => {
-      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-  }
-
-  /** Keep folders + editable files; drop everything else. Dot-entries
-   *  (`.git`, `.git-damaged-…`, `.DS_Store`) are app/OS plumbing, never
-   *  part of the writer's book — same rule as api/media/list-images. */
-  function visibleEntries(raw: Array<{ name: string; path: string; isDir: boolean }>): Entry[] {
-    return sortEntries(
-      raw.filter((e) => !e.name.startsWith(".") && (e.isDir || EDITABLE_EXT.test(e.name))),
-    );
-  }
 
   // ── Root load + live-update subscription ──────────────────────────────────
   // A generation counter (same pattern as MediaPanel's `loadSeq`) guards
@@ -352,8 +334,7 @@
     }
   }
 
-  // ── Delete (two-step inline confirm — same pattern as LookSection's
-  // theme Remove) ────────────────────────────────────────────────────────────
+  // ── Delete (two-step inline confirm) ───────────────────────────────────────
   // A delete is undoable (#313): api/fs/delete sets the item aside, and the
   // toast's Undo moves it back. Only the latest delete is held, so the armed
   // confirm stays the first guard.
@@ -851,7 +832,7 @@
     outline-offset: 1px;
   }
 
-  /* ── Inline delete confirm (mirrors LookSection's theme Remove) ─── */
+  /* ── Inline delete confirm ─── */
   .row-confirm-msg {
     flex: 1 1 auto;
     min-width: 0;

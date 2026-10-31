@@ -45,12 +45,11 @@ export interface ManifestLike {
   targets?: string[];
   styles?: string[];
   extensions?: Array<string | { use: string }>;
-  source?: { files?: string[] | null };
+  chapters?: string[] | null;
+  checks?: Record<string, unknown>;
   page?: { width?: number; height?: number };
   pdfx?: { flavor?: string };
   print?: { signature?: number };
-  lint?: { enabled?: boolean };
-  validate?: { enabled?: boolean };
 }
 
 export function summarizeManifest(m: ManifestLike, markdownFileCount: number): string[] {
@@ -60,13 +59,15 @@ export function summarizeManifest(m: ManifestLike, markdownFileCount: number): s
     `targets: ${list(m.targets)}`,
     `styles: ${list(m.styles)}`,
     `extensions: ${list(m.extensions?.map((e) => (typeof e === 'string' ? e : e.use)))}`,
-    `source files: ${m.source?.files ? `${m.source.files.length} listed` : 'all chapter files'} (${markdownFileCount} .md in book folder)`,
+    `chapters: ${m.chapters ? `${m.chapters.length} listed` : 'all chapter files'} (${markdownFileCount} .md in book folder)`,
   ];
   if (m.page?.width || m.page?.height) lines.push(`page: ${m.page.width ?? '?'} × ${m.page.height ?? '?'}`);
   if (m.pdfx?.flavor) lines.push(`pdfx: ${m.pdfx.flavor}`);
   if (m.print?.signature) lines.push(`print signature: ${m.print.signature}`);
-  if (m.lint?.enabled === false) lines.push('lint: disabled');
-  if (m.validate?.enabled === false) lines.push('validate: disabled');
+  // An entry is a level, or an object with a level and the check's options.
+  const levels = Object.entries(m.checks ?? {});
+  const entry = (v: unknown) => (typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v));
+  if (levels.length > 0) lines.push(`checks: ${levels.map(([id, level]) => `${id} ${entry(level)}`).join(', ')}`);
   return lines;
 }
 

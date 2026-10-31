@@ -10,19 +10,23 @@
  * library carries both plus snippets and a catalog. Each is one entry in
  * `extensions:`, added one way:
  *
- *   - a BUNDLED name (the five markdown features compiled into Gutterpress,
+ *   - a BUNDLED name (a markdown feature or a look compiled into Gutterpress,
  *     `extension-specifier.ts`) is written as-is — nothing to install, works
  *     offline;
  *   - a PATH (`./x`, `../x`) is referenced IN PLACE. The author put that
  *     folder there; Gutterpress reads it. Nothing is copied;
  *   - an NPM specifier is downloaded, integrity-checked, vendored under
- *     `plugins/npm/` (`npm-plugin-installer.ts`) and written back pinned, as
+ *     `extensions/npm/` (`npm-plugin-installer.ts`) and written back pinned, as
  *     `name@version`.
  *
- * The three built-in looks are the one thing this module copies INTO a
- * project (`extensions/<id>/`, then referenced by path): a book's look must
- * be the author's own editable files, never a hidden dependency on the CSS
- * embedded in whichever Gutterpress version happens to be installed.
+ * A bundled look's stylesheet is carried as text on its row of the table in
+ * `extension-specifier.ts` and handed to the cascade the way a plugin's `css`
+ * export is; the book styles over it from its own `styles:` sheets, which
+ * load after every extension. One thing here copies INTO a project, and only
+ * when asked: `addBuiltInStyleSet` (`ext add <look> --look`, Book setup's
+ * "Make an editable copy") writes a built-in look into `extensions/<id>/` as
+ * the author's own files and lists it by path. Zip and URL imports land in
+ * `extensions/` too (extension-import.ts).
  *
  * Cascade order and markdown registration order are BOTH the list order —
  * a later entry loads later and its CSS wins ties — and the project's own
@@ -32,7 +36,7 @@
  * round-trip (the same dep `manifest.ts` parses with). Host-side (node:fs);
  * the desktop reaches it through thin SvelteKit server routes.
  */
-import { cp, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { isSeq, isMap, isScalar, YAMLMap, YAMLSeq, Scalar } from "yaml";
@@ -48,6 +52,8 @@ import {
   type NpmPluginInstallOptions,
 } from "./npm-plugin-installer.ts";
 import {
+  vendoredNpmPluginRoots,
+  EXTENSIONS_DIR,
   isExactNpmVersion,
   resolvePackageEntry,
   resolveVendoredPluginInstallRoot,
@@ -71,17 +77,15 @@ import {
   resolveExtension,
   type ExtensionCarries,
 } from "./extension-manifest.ts";
-import { getAssetsDir } from "./embedded-assets.ts";
+import { BUNDLED_EXTENSION_DETAILS, bundledExtension } from "./extension-specifier.ts";
 import { slugify, prettify } from "./slug.ts";
 import { ensureProjectGitignore } from "./project-gitignore.ts";
 import type { ResolvedExtensionConfig } from "../schema/manifest.types.ts";
 
-/** Folder (relative to the project root) extensions this module COPIES land in
- *  (built-in looks, zip/URL imports). Path entries elsewhere are never moved. */
-export const EXTENSIONS_DIR = "extensions";
-
-/** The vendored npm tree stays where 0.10.8 put it. */
-export { PLUGINS_DIR } from "./plugin-vendor.ts";
+/** The folder (relative to the project root) a book's extensions live under:
+ *  vendored npm copies in `extensions/npm/`, zip and URL imports beside them
+ *  (extension-import.ts). Path entries elsewhere are never moved. */
+export { EXTENSIONS_DIR, PLUGINS_DIR } from "./plugin-vendor.ts";
 
 /** How an `extensions:` entry resolves — the form of its specifier decides. */
 export type ExtensionSourceKind = "bundled" | "path" | "npm";
@@ -106,14 +110,11 @@ export interface ProjectExtensionEntry {
   author?: string;
   /** Preview image path relative to the extension folder, when declared. */
   preview?: string | null;
-  /** The sheet carrying the `:root` token surface, relative to the folder,
-   *  when declared (package.json's `gutterpress.tokensFile`). */
-  tokensFile?: string;
   /** Declared stylesheets relative to the folder, in cascade order
    *  (`gutterpress.styles`). Absent when the folder declares none. */
   styles?: string[];
-  /** What the extension declares — the desktop shows styles-carrying entries
-   *  in its Look view and markdown-carrying ones in Features; one list. */
+  /** What the extension declares — the badges on the desktop's Looks &
+   *  features list. */
   carries: ExtensionCarries;
   /** Absolute folder its metadata was read from. Absent for a bundled name,
    *  a bare JS file, an uninstalled npm entry, or a missing path. */
@@ -132,66 +133,6 @@ export interface ExtensionValidationResult {
   ok: boolean;
   /** The loader's fail-fast error message when `ok` is `false`. */
   error?: string;
-}
-
-/** A curated, bundled markdown feature an author can turn on. */
-export interface RecommendedExtension {
-  /** The bundled name — also the manifest entry "Add" writes. */
-  use: string;
-  /** Short, plain-language feature name shown as the row title. */
-  label: string;
-  /** One-line author-friendly description in plain words. Backtick spans mark
-   *  "what to type" (the desktop sets them in code type), so keep them paired
-   *  and keep HTML tag names out of the prose. */
-  description: string;
-}
-
-/**
- * The bundled markdown features (`BUNDLED_EXTENSIONS`): adding one writes the
- * manifest entry AND the feature works immediately — no terminal, no install,
- * offline. The always-on defaults (attrs/footnote/deflist, applied
- * unconditionally in renderer.ts) are deliberately NOT listed: recommending
- * the author "add" something already active is pure confusion.
- */
-export const RECOMMENDED_EXTENSIONS: RecommendedExtension[] = [
-  {
-    use: "markdown-it-mark",
-    label: "Highlight",
-    description: "Highlight text by wrapping it in `==double equals==`.",
-  },
-  {
-    use: "markdown-it-sub",
-    label: "Subscript",
-    description: "Lower text below the line, like the 2 in `H~2~O`.",
-  },
-  {
-    use: "markdown-it-sup",
-    label: "Superscript",
-    description: "Raise text above the line, like the th in `29^th^`.",
-  },
-  {
-    use: "markdown-it-abbr",
-    label: "Abbreviations",
-    description: "Explain an abbreviation when readers hover over it. Define it once, like `*[GPS]: Global Positioning System`.",
-  },
-  {
-    // Not a real npm package — Gutterpress's own code (#237), named to fit
-    // the "keyed by npm name" shape. See BUILTIN_OPTIONAL_PLUGINS (renderer.ts).
-    use: "gutterpress-gfm-alerts",
-    label: "Callouts",
-    description: "Turn a quote into a boxed note: start it with `> [!NOTE]` (or `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`).",
-  },
-];
-
-/** The built-in looks shipped as embedded assets (ids are folder names). */
-export const BUILT_IN_STYLE_SET_IDS = ["clean-book", "zine", "technical-doc"] as const;
-export type BuiltInStyleSetId = (typeof BUILT_IN_STYLE_SET_IDS)[number];
-
-/** A built-in look, as listed for the desktop's Look view. */
-export interface BuiltInStyleSet {
-  id: BuiltInStyleSetId;
-  name: string;
-  description: string;
 }
 
 // ── Serialization ────────────────────────────────────────────────────────────
@@ -322,7 +263,6 @@ async function describeFolder(
     ...(meta.description?.trim() ? { description: meta.description.trim() } : {}),
     ...(meta.author?.trim() ? { author: meta.author.trim() } : {}),
     ...(meta.preview !== undefined ? { preview: meta.preview } : {}),
-    ...(meta.tokensFile?.trim() ? { tokensFile: meta.tokensFile.trim() } : {}),
     ...(styles.length > 0 ? { styles } : {}),
     carries: extensionCarries(meta),
     dir,
@@ -350,15 +290,16 @@ async function describeEntry(projectDir: string, raw: RawEntry): Promise<Project
   }
 
   if (parsed.kind === "bundled") {
-    const bundledName = parsed.name;
-    const rec = RECOMMENDED_EXTENSIONS.find((r) => r.use === bundledName);
+    // The parser only says "bundled" for a name in the same table.
+    const bundled = bundledExtension(parsed.name)!;
     return withWarnings({
       ...common,
       kind: "bundled",
-      name: bundledName,
-      label: rec?.label ?? bundledName,
-      ...(rec ? { description: rec.description } : {}),
-      carries: { ...NO_CARRIES, markdown: true },
+      name: parsed.name,
+      label: bundled.label,
+      description: bundled.description,
+      // A bundled look carries its stylesheet as text; everything else bundled is markdown.
+      carries: { ...NO_CARRIES, ...(bundled.css !== undefined ? { styles: true } : { markdown: true }) },
     });
   }
 
@@ -562,9 +503,11 @@ export async function removeExtension(projectDir: string, use: string): Promise<
       return;
     }
     if (parsed.kind === "npm" && parsed.version) {
-      const root = vendoredNpmPluginRoot(projectDir, parsed.name, parsed.version);
-      await rm(root, { recursive: true, force: true });
-      await removeEmptyDirs([path.dirname(root)]); // the package folder, once its last version is gone
+      // Wherever the copy may live, the current folder or an older book's.
+      for (const root of vendoredNpmPluginRoots(projectDir, parsed.name, parsed.version)) {
+        await rm(root, { recursive: true, force: true });
+        await removeEmptyDirs([path.dirname(root)]); // the package folder, once its last version is gone
+      }
     }
   });
 }
@@ -709,7 +652,7 @@ export function restoreNpmExtension(
   });
 }
 
-/** True when `plugins/npm/<name>/<version>/` is absent or has no loadable entry — what the loader calls "not installed" or "incomplete". */
+/** True when `extensions/npm/<name>/<version>/` is absent or has no loadable entry — what the loader calls "not installed" or "incomplete". */
 export async function vendoredCopyNeedsInstall(projectDir: string, name: string, version: string): Promise<boolean> {
   try {
     const installRoot = await resolveVendoredPluginInstallRoot(projectDir, name, version);
@@ -770,15 +713,16 @@ async function vendorNpmExtension(
   const warnings = [...installed.warnings];
   await finalizeNpmPluginInstall(installed).catch((error) => {
     warnings.push(
-      `The extension was installed, but an old backup could not be removed: ` +
+      `The extension was installed, but an old download could not be removed: ` +
         `${error instanceof Error ? error.message : String(error)}`,
     );
   });
+  warnings.push(...(await retireLegacyCopies(projectDir, installed.name)));
   try {
     const { negated } = await ensureProjectGitignore(projectDir);
-    if (negated.includes("plugins/npm/")) {
+    if (negated.includes("extensions/npm/")) {
       warnings.push(
-        "Your .gitignore re-includes plugins/npm/, so downloaded extensions will be committed with " +
+        "Your .gitignore re-includes extensions/npm/, so downloaded extensions will be committed with " +
           "your book. They shouldn't be: the manifest pins each version and a build downloads a " +
           "missing copy again.",
       );
@@ -790,6 +734,30 @@ async function vendorNpmExtension(
     );
   }
   return { name: installed.name, version: installed.version, use, warnings };
+}
+
+/**
+ * Once a package is vendored under `extensions/npm/`, the copies a book
+ * vendored before 0.11.23 kept under `plugins/npm/<name>/` are dead weight —
+ * every version of them, since the current tree now holds what the manifest
+ * pins — so they go, and `plugins/npm/` and `plugins/` go too once nothing
+ * else is left in them (#436). Returns a warning, never throws: the install
+ * itself succeeded.
+ */
+async function retireLegacyCopies(projectDir: string, name: string): Promise<string[]> {
+  // The roots list the current tree first, then the older book's.
+  const legacyPackageDir = path.dirname(vendoredNpmPluginRoots(projectDir, name, "0.0.0")[1]!);
+  const legacyNpmDir = path.dirname(legacyPackageDir);
+  try {
+    await rm(legacyPackageDir, { recursive: true, force: true });
+    await removeEmptyDirs([path.dirname(legacyNpmDir), legacyNpmDir]);
+  } catch (error) {
+    return [
+      `The extension was installed, but the copy an older version of Gutterpress kept under plugins/npm/ ` +
+        `could not be removed: ${error instanceof Error ? error.message : String(error)}`,
+    ];
+  }
+  return [];
 }
 
 /** The exact versions of `name` that an enabled manifest entry pins. */
@@ -823,21 +791,30 @@ async function pinnedVersionsOf(projectDir: string, name: string): Promise<strin
  * Returns a warning, never throws: the install itself succeeded.
  */
 async function pruneStaleVersions(projectDir: string, name: string, keep: readonly string[]): Promise<string[]> {
-  const parent = path.dirname(vendoredNpmPluginRoot(projectDir, name, "0.0.0"));
+  // The package folder in the current vendor tree and in an older book's.
+  const parents = vendoredNpmPluginRoots(projectDir, name, "0.0.0").map((root) => path.dirname(root));
   try {
-    for (const entry of await readdir(parent, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      let version: string;
+    for (const parent of parents) {
+      let entries;
       try {
-        version = decodeURIComponent(entry.name);
-      } catch {
-        continue;
+        entries = await readdir(parent, { withFileTypes: true });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
       }
-      if (!isExactNpmVersion(version) || keep.includes(version)) continue;
-      await rm(path.join(parent, entry.name), { recursive: true, force: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        let version: string;
+        try {
+          version = decodeURIComponent(entry.name);
+        } catch {
+          continue;
+        }
+        if (!isExactNpmVersion(version) || keep.includes(version)) continue;
+        await rm(path.join(parent, entry.name), { recursive: true, force: true });
+      }
     }
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     return [
       `The extension was installed, but a previous version's downloaded copy could not be removed: ` +
         `${error instanceof Error ? error.message : String(error)}`,
@@ -850,7 +827,7 @@ async function pruneStaleVersions(projectDir: string, name: string, keep: readon
 //
 // A book pins exact versions and builds offline; nothing here runs from the
 // loader, build or preview. Checking is ON DEMAND — `gutterpress ext outdated`,
-// `ext update`, and the desktop's Features tab when it is opened — and an
+// `ext update`, and the desktop's Advanced tab when it is opened — and an
 // update is the same `addExtension` an author would run by hand, so the new
 // version is downloaded, verified, vendored, load-tested and re-pinned in
 // place (and the old version's folder removed) exactly as `ext add` does.
@@ -1019,21 +996,77 @@ export async function updateExtensions(
   return updated;
 }
 
-// ── Built-in looks ───────────────────────────────────────────────────────────
+// ── Bundled extensions ───────────────────────────────────────────────────────
 
-/** List the built-in looks (metadata read from the embedded assets). */
-export async function listBuiltInStyleSets(): Promise<BuiltInStyleSet[]> {
-  const assets = await getAssetsDir();
-  const out: BuiltInStyleSet[] = [];
-  for (const id of BUILT_IN_STYLE_SET_IDS) {
-    const meta = await readExtensionMeta(path.join(assets, "themes", id));
-    out.push({
-      id,
-      name: prettify(meta.name?.trim() || id),
-      description: meta.description?.trim() || "",
-    });
+/** A bundled extension as the desktop lists it: "Add" writes `use`. */
+export interface BundledExtensionInfo {
+  use: string;
+  /** Short, plain-language name shown as the row title. */
+  label: string;
+  description: string;
+  /** A look (styles only), as opposed to a markdown feature. */
+  look: boolean;
+}
+
+/** The bundled extensions, in table order. */
+export function listBundledExtensions(): BundledExtensionInfo[] {
+  return BUNDLED_EXTENSION_DETAILS.map((b) => ({
+    use: b.name,
+    label: b.label,
+    description: b.description,
+    look: b.css !== undefined,
+  }));
+}
+
+/** The built-in looks' names (the bundled extensions that carry a stylesheet), in table order. */
+export const BUILT_IN_LOOKS: readonly string[] = BUNDLED_EXTENSION_DETAILS.filter((b) => b.css !== undefined).map((b) => b.name);
+
+/**
+ * Make an editable copy of a built-in look (0.11.22's, restored in #482): its
+ * stylesheet and a package.json land in `extensions/<id>/`, the author's own
+ * files from then on, and the book lists the copy as `./extensions/<id>` — a
+ * plain path extension, loaded and built like any folder the author owns.
+ *
+ * A book that lists the built-in by name gets the copy in that entry's place
+ * (on or off as it was), so the look is not listed twice and the cascade
+ * order holds; otherwise the copy is added at the end. Idempotent: a folder
+ * already there is kept as it is — the author's edits survive — and only
+ * (re-)referenced.
+ */
+export async function addBuiltInStyleSet(projectDir: string, id: string): Promise<ProjectExtensionEntry> {
+  const look = bundledExtension(id);
+  if (look?.css === undefined) {
+    throw new Error(`Unknown built-in look "${id}" (one of: ${BUILT_IN_LOOKS.join(", ")}).`);
   }
-  return out;
+  const css = look.css;
+  return withMutationLock(projectDir, async () => {
+    const dest = path.join(projectDir, EXTENSIONS_DIR, id);
+    if (!existsSync(dest)) {
+      await mkdir(dest, { recursive: true });
+      const pkg = {
+        name: id,
+        description: look.description,
+        author: "gutterpress",
+        keywords: ["gutterpress", "gutterpress-look"],
+        gutterpress: { styles: ["theme.css"] },
+      };
+      await writeFile(path.join(dest, EXTENSION_MANIFEST_FILENAME), `${JSON.stringify(pkg, null, 2)}\n`, "utf8");
+      await writeFile(path.join(dest, "theme.css"), css, "utf8");
+    }
+    const use = `./${EXTENSIONS_DIR}/${id}`;
+    await loadPlugin(extensionConfigFor({ use, kind: "path", name: use }), projectDir);
+    const { doc, file } = await loadManifestDoc(projectDir);
+    const seq = ensureSeq(doc, "extensions");
+    if (indexOfUse(seq, use) < 0) {
+      const at = indexOfUse(seq, id);
+      const item = at < 0 ? undefined : (seq.items[at] as Node);
+      if (isMap(item)) item.set("use", use);
+      else if (at >= 0) seq.items[at] = new Scalar(use);
+      else seq.add(new Scalar(use));
+      await writeManifestDoc(file, doc);
+    }
+    return (await describeExtension(projectDir, use))!;
+  });
 }
 
 /** A folder name under `extensions/` not yet taken: `<slug>`, `<slug>-2`, … */
@@ -1044,30 +1077,6 @@ export async function uniqueExtensionId(projectDir: string, base: string): Promi
     candidate = `${slug}-${n}`;
   }
   return candidate;
-}
-
-/**
- * Copy a built-in look into `extensions/<id>/` and add it to the manifest as
- * `./extensions/<id>`. The copy is deliberate (see the module doc): the look
- * becomes the author's own editable files. Idempotent — a folder already
- * there is kept as it is and only (re-)referenced.
- */
-export async function addBuiltInStyleSet(
-  projectDir: string,
-  id: string,
-): Promise<ProjectExtensionEntry> {
-  if (!(BUILT_IN_STYLE_SET_IDS as readonly string[]).includes(id)) {
-    throw new Error(`Unknown built-in look "${id}" (one of: ${BUILT_IN_STYLE_SET_IDS.join(", ")}).`);
-  }
-  return withMutationLock(projectDir, async () => {
-    const dest = path.join(projectDir, EXTENSIONS_DIR, id);
-    if (!existsSync(dest)) {
-      const src = path.join(await getAssetsDir(), "themes", id);
-      await mkdir(path.dirname(dest), { recursive: true });
-      await cp(src, dest, { recursive: true });
-    }
-    return addExtensionUnlocked(projectDir, `./${EXTENSIONS_DIR}/${id}`, {});
-  });
 }
 
 // ── Validate / read ──────────────────────────────────────────────────────────
@@ -1105,17 +1114,26 @@ export async function validateProjectExtensions(
 
 /**
  * Read an extension's stylesheets, concatenated in cascade order, for a
- * preview thumbnail (the renderer never touches fs). Read-only, so
- * concatenation is fine even though it would not be for an editable surface.
+ * preview thumbnail (the renderer never touches fs). A bundled look answers
+ * whether or not the manifest lists it, so a book can show what a look is
+ * before adding it. Read-only, so concatenation is fine even though it would
+ * not be for an editable surface.
  */
 export async function readExtensionCss(projectDir: string, use: string): Promise<string> {
+  const direct = bundledExtension(use)?.css;
+  if (direct !== undefined) return direct;
   const entry = await describeExtension(projectDir, use);
   if (!entry) throw new Error(`Extension "${use}" is not in the manifest.`);
-  if (!entry.dir) throw new Error(`Extension "${use}" has no stylesheets to preview.`);
+  return readEntryCss(entry);
+}
+
+/** The same, for an entry already described (`listProjectExtensions`), so a caller with the list in hand reads each once. */
+export async function readEntryCss(entry: Pick<ProjectExtensionEntry, "use" | "dir">): Promise<string> {
+  const direct = bundledExtension(entry.use)?.css;
+  if (direct !== undefined) return direct;
+  if (!entry.dir) throw new Error(`Extension "${entry.use}" has no stylesheets to preview.`);
   const meta = await readExtensionMeta(entry.dir);
-  const sheets = resolveExtension(entry.dir, meta, `Extension "${use}"`).styles ?? [];
-  if (sheets.length === 0) throw new Error(`Extension "${use}" declares no stylesheets.`);
-  const parts: string[] = [];
-  for (const sheet of sheets) parts.push(await readFile(sheet, "utf8"));
-  return parts.join("\n\n");
+  const sheets = resolveExtension(entry.dir, meta, `Extension "${entry.use}"`).styles ?? [];
+  if (sheets.length === 0) throw new Error(`Extension "${entry.use}" declares no stylesheets.`);
+  return (await Promise.all(sheets.map((sheet) => readFile(sheet, "utf8")))).join("\n\n");
 }

@@ -16,8 +16,8 @@
  *   - `remote/sync` runs a CREDENTIALED push/pull against any repo
  *   - `publish/run` uploads a file to a configured provider
  *   - `extension/remove` `rm -rf`s an npm entry's vendored subtree
- *   - `extension/add-built-in` / `style/set-active` / `manifest/set-fields`
- *     / `extension/set-enabled` rewrite any `manifest.yaml`
+ *   - `extension/add` / `extension/add-built-in` / `style/set-active` /
+ *     `manifest/set-fields` / `extension/set-enabled` rewrite any `manifest.yaml`
  *   - `extension/validate` dynamic-`import()`s whatever JS the target
  *     directory's manifest names — an execute primitive
  *   - `tpl/save-as-template` recursively copies any folder into app storage
@@ -45,7 +45,7 @@ import { POST as vcsRestoreSnapshot } from "../../src/routes/api/vcs/restore-sna
 import { POST as vcsListSnapshotsPage } from "../../src/routes/api/vcs/list-snapshots-page/+server";
 import { POST as vcsUnversionedChanges } from "../../src/routes/api/vcs/unversioned-changes/+server";
 import { POST as vcsEnableVersionHistory } from "../../src/routes/api/vcs/enable-version-history/+server";
-import { POST as vcsListBranches } from "../../src/routes/api/vcs/list-branches/+server";
+import { POST as vcsListRevisions } from "../../src/routes/api/vcs/list-revisions/+server";
 import { POST as vcsSwitchBranch } from "../../src/routes/api/vcs/switch-branch/+server";
 import { POST as remoteSync } from "../../src/routes/api/remote/sync/+server";
 import { POST as remoteDiagnoseProject } from "../../src/routes/api/remote/diagnose-project/+server";
@@ -56,14 +56,15 @@ import { POST as publishList } from "../../src/routes/api/publish/list/+server";
 import { POST as publishPreflight } from "../../src/routes/api/publish/preflight/+server";
 import { POST as publishDestinationsList } from "../../src/routes/api/publish/destinations/list/+server";
 import { POST as publishDestinationsCreate } from "../../src/routes/api/publish/destinations/create/+server";
+import { POST as publishDestinationsStatus } from "../../src/routes/api/publish/destinations/status/+server";
 import { POST as extensionList } from "../../src/routes/api/extension/list/+server";
 import { POST as extensionAdd } from "../../src/routes/api/extension/add/+server";
 import { POST as extensionAddLocal } from "../../src/routes/api/extension/add-local/+server";
+import { POST as extensionAddBuiltIn } from "../../src/routes/api/extension/add-built-in/+server";
 import { POST as extensionRemove } from "../../src/routes/api/extension/remove/+server";
 import { POST as extensionSetEnabled } from "../../src/routes/api/extension/set-enabled/+server";
 import { POST as extensionReorder } from "../../src/routes/api/extension/reorder/+server";
 import { POST as extensionValidate } from "../../src/routes/api/extension/validate/+server";
-import { POST as extensionAddBuiltIn } from "../../src/routes/api/extension/add-built-in/+server";
 import { POST as extensionReadCss } from "../../src/routes/api/extension/read-css/+server";
 import { POST as extensionImportFromFile } from "../../src/routes/api/extension/import-from-file/+server";
 import { POST as extensionImportFromUrl } from "../../src/routes/api/extension/import-from-url/+server";
@@ -98,7 +99,7 @@ const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) =
   { name: "vcs/list-snapshots-page", handler: vcsListSnapshotsPage as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "vcs/unversioned-changes", handler: vcsUnversionedChanges as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "vcs/enable-version-history", handler: vcsEnableVersionHistory as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "vcs/list-branches", handler: vcsListBranches as RouteHandler, body: (d) => ({ projectDir: d }) },
+  { name: "vcs/list-revisions", handler: vcsListRevisions as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "vcs/switch-branch", handler: vcsSwitchBranch as RouteHandler, body: (d) => ({ projectDir: d, branch: "main" }) },
   { name: "remote/sync", handler: remoteSync as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "remote/diagnose-project", handler: remoteDiagnoseProject as RouteHandler, body: (d) => ({ projectDir: d }) },
@@ -109,14 +110,15 @@ const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) =
   { name: "publish/preflight", handler: publishPreflight as RouteHandler, body: (d) => ({ projectDir: d, providerIds: [] }) },
   { name: "publish/destinations/list", handler: publishDestinationsList as RouteHandler, body: (d) => ({ projectDir: d, providerId: "gdrive" }) },
   { name: "publish/destinations/create", handler: publishDestinationsCreate as RouteHandler, body: (d) => ({ projectDir: d, providerId: "gdrive", name: "New folder" }) },
+  { name: "publish/destinations/status", handler: publishDestinationsStatus as RouteHandler, body: (d) => ({ projectDir: d, providerId: "gdrive" }) },
   { name: "extension/list", handler: extensionList as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "extension/add", handler: extensionAdd as RouteHandler, body: (d) => ({ projectDir: d, specifier: "markdown-it-mark" }) },
   { name: "extension/add-local", handler: extensionAddLocal as RouteHandler, body: (d) => ({ projectDir: d }) },
+  { name: "extension/add-built-in", handler: extensionAddBuiltIn as RouteHandler, body: (d) => ({ projectDir: d, id: "zine" }) },
   { name: "extension/remove", handler: extensionRemove as RouteHandler, body: (d) => ({ projectDir: d, use: "some-extension" }) },
   { name: "extension/set-enabled", handler: extensionSetEnabled as RouteHandler, body: (d) => ({ projectDir: d, use: "some-extension", enabled: true }) },
   { name: "extension/reorder", handler: extensionReorder as RouteHandler, body: (d) => ({ projectDir: d, order: ["some-extension"] }) },
   { name: "extension/validate", handler: extensionValidate as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "extension/add-built-in", handler: extensionAddBuiltIn as RouteHandler, body: (d) => ({ projectDir: d, id: "clean-book" }) },
   { name: "extension/read-css", handler: extensionReadCss as RouteHandler, body: (d) => ({ projectDir: d, use: "some-extension" }) },
   { name: "extension/import-from-file", handler: extensionImportFromFile as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "extension/import-from-url", handler: extensionImportFromUrl as RouteHandler, body: (d) => ({ projectDir: d, url: "https://example.test/theme.css" }) },

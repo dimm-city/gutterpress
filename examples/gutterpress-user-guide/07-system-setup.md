@@ -2,7 +2,7 @@
 
 @section .lede
 
-Gutterpress does almost everything in-process. It needs only a Chromium-based browser to render PDFs, plus — for the optional PDF/X (CMYK) pre-print pipeline — Ghostscript and qpdf. This chapter explains what each tool is for, how to install it, and how the Docker image gives you the whole pipeline with nothing to install.
+Gutterpress does almost everything in-process. It needs only a Chromium-based browser to render PDFs, plus --- for the optional PDF/X (CMYK) pre-print pipeline --- Ghostscript and qpdf. This chapter explains what each tool is for, how to install it, and how the Docker image gives you the whole pipeline with nothing to install.
 
 @end-section
 
@@ -20,7 +20,7 @@ Gutterpress does almost everything in-process. It needs only a Chromium-based br
 
 > **Why so few tools?** Page size, fonts, images/DPI, bookmarks, links, page
 > labels, text density, structure, image color/alpha, and markdown/HTML/CSS
-> linting all run **in-process** — no Poppler, ImageMagick, `markdownlint-cli2`,
+> linting all run **in-process** --- no Poppler, ImageMagick, `markdownlint-cli2`,
 > `htmlhint`, or stylelint to install. A plain RGB `build` needs
 > only a browser; Ghostscript and qpdf exist solely to enable PDF/X checks and
 > conversion.
@@ -35,7 +35,7 @@ gutterpress doctor
 ```
 
 It prints the Gutterpress version, your OS/architecture, the CLI config
-directory, and a table of every optional tool — found or missing, its
+directory, and a table of every optional tool --- found or missing, its
 resolved path, which features use it, and (for anything missing) the exact
 install command for your platform. Run it again after installing a tool to
 confirm it was picked up.
@@ -43,7 +43,7 @@ confirm it was picked up.
 ## Easiest path: Docker (the whole PDF/X pipeline, nothing to install)
 
 If you want a complete, validated, print-ready **PDF/X** without installing
-Ghostscript/qpdf/Chromium yourself, use the container — it bundles all three:
+Ghostscript/qpdf/Chromium yourself, use the container --- it bundles all three:
 
 ```bash
 # One-off: build a print-ready PDF/X from a project in the current folder
@@ -62,7 +62,7 @@ tools directly on your machine instead.
 ### macOS
 
 ```bash
-# Required — any one of these works
+# Required -- any one of these works
 brew install --cask chromium
 brew install --cask google-chrome
 brew install chromium
@@ -89,7 +89,7 @@ winget install qpdf.qpdf  # PDF/X only
 ### Linux (Debian/Ubuntu)
 
 ```bash
-# Required — any one works
+# Required -- any one works
 sudo apt install chromium-browser
 sudo apt install google-chrome-stable
 
@@ -109,7 +109,7 @@ sudo dnf install chromium ghostscript qpdf
 
 ## Tool Details
 
-### Chrome / Chromium — required for PDF
+### Chrome / Chromium --- required for PDF
 
 Gutterpress launches a Chromium-based browser already on your machine and drives
 it over the DevTools protocol to render PDFs. **It never downloads or bundles a
@@ -120,7 +120,7 @@ No Chrome / Chromium / Edge binary found. Gutterpress needs a Chromium-based
 browser to render PDFs.
 ```
 
-**Resolution order** (Gutterpress checks these in sequence — first match wins):
+**Resolution order** (Gutterpress checks these in sequence --- first match wins):
 
 1. The `CHROMIUM_PATH` environment variable (`PUPPETEER_EXECUTABLE_PATH` is still accepted as a deprecated alias; `CHROMIUM_PATH` is checked first)
 2. Standard install locations for Chrome, Chromium, Edge, and Brave on your OS (the paths installed by the commands above)
@@ -131,7 +131,7 @@ set `CHROMIUM_PATH=/path/to/your/browser` if it's in a non-standard location.
 The Gutterpress desktop app includes its own browser and needs no separate browser
 installation.
 
-### Ghostscript — recommended for PDF/X
+### Ghostscript --- recommended for PDF/X
 
 Used for CMYK conversion, ICC profiles, TAC validation, and PDF/X-1a compliance. Required if building with `--format pdfx`.
 
@@ -144,20 +144,20 @@ without a hand-made `gs` alias.
 **Fix:** Install Ghostscript normally, or set `GHOSTSCRIPT_PATH` to its
 command-line executable when it lives in a non-standard location.
 
-### qpdf — PDF/X only
+### qpdf --- PDF/X only
 
 Required for the `stripAnnotations` step in the PDF/X pipeline, and for the
 PDF/X-specific validation checks (`pdf.print.pdfx-markers`,
 `pdf.print.pdfx-metadata`). Not needed for standard PDF output or for general
-PDF validation — those now use the bundled PDF.js engine.
+PDF validation --- those now use the bundled PDF.js engine.
 
 ```
-warn: Tool "qpdf" not found — skipping: pdf.print.pdfx-markers, pdf.print.pdfx-metadata
+warn: Tool "qpdf" not found; skipping: pdf.print.pdfx-markers, pdf.print.pdfx-metadata
 ```
 
-This is a warning, not an error — the build succeeds, but those PDF/X checks are skipped.
+This is a warning, not an error --- the build succeeds, but those PDF/X checks are skipped.
 
-### PDF validation — built in (no Poppler)
+### PDF validation --- built in (no Poppler)
 
 Page size, text safe margins, bleed boxes, embedded fonts, image
 resolution/DPI, bookmarks, TOC links, cross-references, page labels,
@@ -171,36 +171,34 @@ standalone binary, with zero system tools.
 > than a deep `qpdf --check`, and image DPI is derived from the rendered placed
 > size (best-effort).
 
-### Image asset checks — built in (no ImageMagick)
+### Image asset checks --- built in (no ImageMagick)
 
 The alpha-channel check reads PNG/TIFF
-headers **in-process** — **ImageMagick (`identify`) is no longer used or
+headers **in-process** --- **ImageMagick (`identify`) is no longer used or
 required.** These run everywhere, including from the standalone binary.
 
-### Source linting — built in {#source-linting-built-in}
+### Source linting --- built in {#source-linting-built-in}
 
 Markdown linting (`source.markdownlint`) and HTML linting (`source.htmlhint`)
 run **in-process** using the bundled `markdownlint` and `htmlhint` libraries.
-No `markdownlint-cli2` or `htmlhint` CLI install is required — these checks run
-everywhere, including from the standalone binary. Disable either in the manifest
-if not needed, or point them at a config file:
+No `markdownlint-cli2` or `htmlhint` CLI install is required --- these checks run
+everywhere, including from the standalone binary. Each runs only when it finds
+its config file in the book's folder or the nearest folder above it, up to the
+repository root: `.markdownlint.{yaml,yml,json,jsonc}` (or the
+`.markdownlint-cli2.{yaml,jsonc}` variants) for Markdown, `.htmlhintrc` for
+HTML. To switch one off while the file is there:
 
 ```yaml
-validate:
-  source:
-    markdownlint: false          # or ".markdownlint.yaml" to use a config
-    htmlhint: false              # or ".htmlhintrc"
+checks:
+  source.markdownlint: off
+  source.htmlhint: off
 ```
 
-Markdown linting auto-detects `.markdownlint.{yaml,yml,json,jsonc}` (and the
-`.markdownlint-cli2.{yaml,jsonc}` variants) in the source directory; HTML
-linting auto-detects `.htmlhintrc`.
-
-### CSS print-safety linting — built in (no stylelint)
+### CSS print-safety linting --- built in (no stylelint)
 
 The `source.stylelint` check (`gutterpress validate`, and `gutterpress build`'s
 pre-build validation) checks CSS for print-safety issues (remote URLs,
-rasterizing effects) using Gutterpress's own postcss-based checks. **stylelint is not used or required** — it can't be bundled into the
+rasterizing effects) using Gutterpress's own postcss-based checks. **stylelint is not used or required** --- it can't be bundled into the
 `bun build --compile` binary, so these checks run in-process everywhere,
 including from the standalone binary.
 
@@ -226,7 +224,7 @@ when reporting it.
 
 ### Manifest tool paths
 
-There is no manifest key for overriding tool binary paths — no `tools:`
+There is no manifest key for overriding tool binary paths --- no `tools:`
 block, no `chromePath`/`ghostscriptPath` options. Use the environment
 variables above (Chromium and Ghostscript) or `PATH` instead.
 
@@ -245,7 +243,7 @@ gs --version
 
 No browser was found. Install Chrome, Chromium, Edge, Brave, Vivaldi, or Opera, or set
 `CHROMIUM_PATH` to an existing binary. Gutterpress cannot download one for
-you — see "Chrome / Chromium — required for PDF" above. Alternatively, use the
+you --- see "Chrome / Chromium --- required for PDF" above. Alternatively, use the
 desktop app, which includes its own browser.
 
 ### `spawn qpdf ENOENT` during PDF/X build
@@ -255,7 +253,7 @@ desktop app, which includes its own browser.
 ### Some validation checks reported as "skipped"
 
 General PDF, source, and image-asset checks run in-process and never skip. Only
-the PDF/X checks (need `qpdf`) and ink-coverage (needs `gs`) can be skipped —
+the PDF/X checks (need `qpdf`) and ink-coverage (needs `gs`) can be skipped ---
 install the relevant tool to enable them.
 
 ### A specific check still fails after installing its tool

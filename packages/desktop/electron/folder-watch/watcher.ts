@@ -62,9 +62,10 @@ function defaultSetTimer(cb: () => void, ms: number): unknown {
  *    edit would re-arm the snapshot timer forever (RC1-3).
  *  - `dist` — build output. `gutterpress build` writes a whole book's worth of
  *    files there.
- *  - `plugins/npm` (matched by its `npm` segment under `plugins`) and
- *    `node_modules` — vendored dependency trees, written wholesale by an
- *    in-app plugin install, which arms its own effects through the fs routes.
+ *  - `extensions/npm` (matched by its `npm` segment under `extensions`; the
+ *    `plugins/npm` older books still carry too) and `node_modules` — vendored
+ *    dependency trees, written wholesale by an in-app extension install, which
+ *    arms its own effects through the fs routes.
  *
  * The watch is recursive, so an unfiltered build or plugin install would storm
  * the debounce.
@@ -81,9 +82,10 @@ export function isIgnoredWatchEntry(relativePath: string): boolean {
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i]!;
     if (IGNORED_WATCH_SEGMENTS.has(segment)) return true;
-    // The vendored npm tree lives at `plugins/npm/…`; a book's own authored
-    // `plugins/*.js` files ARE source and must keep firing.
-    if (segment === "plugins" && segments[i + 1] === "npm") return true;
+    // The vendored npm tree lives at `extensions/npm/…` (`plugins/npm/…` in
+    // older books); a book's own authored `extensions/*` and `plugins/*.js`
+    // files ARE source and must keep firing.
+    if ((segment === "extensions" || segment === "plugins") && segments[i + 1] === "npm") return true;
   }
   return false;
 }

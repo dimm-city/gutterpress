@@ -1,0 +1,8 @@
+/* The paper's own rule, to keep content inside the text column whatever
+   fonts the building machine has. Anything wider than the column makes
+   Chromium shrink the whole print to fit (the paper's Section 6.9).
+
+   A long URL is one unbreakable word. It fits the column in Liberation Serif
+   but not in Latin Modern, the look's first choice; let it break where it
+   must. */
+.references { overflow-wrap: anywhere; }

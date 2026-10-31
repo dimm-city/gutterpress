@@ -13,7 +13,7 @@ import MarkdownIt from "markdown-it";
 import gfmAlerts from "./gfm-alerts.ts";
 import { createMarkdownRenderer, BUILTIN_OPTIONAL_PLUGINS } from "./renderer.ts";
 import { GP_CLASSES } from "./gutterpress-css.ts";
-import { RECOMMENDED_EXTENSIONS } from "../extension-manager.ts";
+import { bundledExtension } from "../extension-specifier.ts";
 
 interface LayoutWarning {
   line: number;
@@ -165,10 +165,8 @@ describe("gfm-alerts: wired into the real pipeline (#237's actual ask)", () => {
     expect(typeof BUILTIN_OPTIONAL_PLUGINS["gutterpress-gfm-alerts"]).toBe("function");
   });
 
-  test("listed in RECOMMENDED_EXTENSIONS as \"Callouts\" (bundled)", () => {
-    const entry = RECOMMENDED_EXTENSIONS.find((p) => p.use === "gutterpress-gfm-alerts");
-    expect(entry).toBeDefined();
-    expect(entry!.label).toBe("Callouts");
+  test("listed among the bundled extensions as \"Callouts\"", () => {
+    expect(bundledExtension("gutterpress-gfm-alerts")?.label).toBe("Callouts");
   });
 
   test("createMarkdownRenderer renders alerts once the plugin is loaded, exactly like a manifest-enabled feature", () => {

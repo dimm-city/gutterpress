@@ -1,7 +1,7 @@
 /**
  * Restore a book's pinned npm extensions.
  *
- * Downloaded extensions (`plugins/npm/<name>/<version>/`) are not part of a
+ * Downloaded extensions (`extensions/npm/<name>/<version>/`) are not part of a
  * book's git history (see project-gitignore.ts), so a fresh clone has the
  * manifest's `extensions: [name@1.2.3]` pins and none of the files. This is the
  * one step that downloads them again. It is deliberately SEPARATE from the

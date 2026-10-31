@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { checkCss, ruleRiskyProps, rulePageContainment } from "./printsafe";
+import { checkCss, ruleRiskyProps, rulePageContainment, rulePageSizeInStylesheet } from "./printsafe";
 
 // filter: is measured to rasterize its subtree to a 300 DPI bitmap and
 // dominate build time (~90%; 57.0s -> 6.2s over 60pp when scoped,
@@ -412,11 +412,37 @@ test("checkCss stays silent on plain gradients and the tiled-stripe workaround",
   expect(checkCss(css)).toEqual([]);
 });
 
-test("the PDF/X gradient warning honours disable directives and lint.rules", () => {
+test("the PDF/X gradient warning honours disable directives and the checks levels", () => {
   const css = `/* gutterpress-disable-next-line printsafe/no-risky-print-effects -- web only */
 .a { background: conic-gradient(red, blue); }`;
   expect(checkCss(css)).toEqual([]);
   const plain = `.a { background: conic-gradient(red, blue); }`;
   expect(checkCss(plain, undefined, { rules: { [ruleRiskyProps]: "off" } })).toEqual([]);
   expect(checkCss(plain, undefined, { rules: { [ruleRiskyProps]: "error" } })[0]!.severity).toBe("error");
+});
+
+// The page size is the manifest's (preset: / page:); the assembly writes it
+// after every stylesheet, so a `size` in a stylesheet's own @page never prints.
+test("checkCss warns on size in a plain or pseudo-class @page rule, not in a named page or a margin box", () => {
+  const css = [
+    "@page { size: 6in 9in; margin: 1in }",
+    "@page :first { size: A4 }",
+    "@page :left { margin-left: 1in }",
+    "@page cover { size: 7in 10in }",
+    "@page { @top-center { size: 10pt } }",
+    "@layer ext.look { @page { size: letter } }",
+  ].join("\n");
+  const found = checkCss(css).filter((w) => w.rule === rulePageSizeInStylesheet);
+  expect(found.map((w) => w.line)).toEqual([1, 2, 6]);
+  expect(found[0]!.severity).toBe("warning");
+  expect(found[0]!.message).toContain("manifest");
+  expect(found[0]!.message).toContain("Book setup");
+});
+
+test("checkCss's page-size warning can be silenced like any other rule", () => {
+  const css = "/* gutterpress-disable-next-line printsafe/page-size-in-stylesheet */\n@page { size: 6in 9in }";
+  expect(checkCss(css).filter((w) => w.rule === rulePageSizeInStylesheet)).toHaveLength(0);
+  expect(
+    checkCss("@page { size: 6in 9in }", undefined, { rules: { "printsafe/page-size-in-stylesheet": "off" } }),
+  ).toHaveLength(0);
 });

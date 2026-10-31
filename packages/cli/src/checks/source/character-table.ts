@@ -9,12 +9,18 @@
  * mark at the top of a file turns the first heading into a paragraph).
  *
  * Every spelling here is plain ASCII that the renderer turns back into the
- * same character: markdown-it's typographer (`typographer: true` in
- * `lib/markdown/renderer.ts`) makes `---` an em dash and straight quotes
- * curly, and HTML entities cover the rest. So an intentional use stays
+ * same character: `gp_typography` (`lib/markdown/typography.ts`) makes
+ * `---`, `--` and `...` the dash and ellipsis characters, markdown-it's
+ * `smartquotes` curls straight quotes in the book's `language`, and HTML
+ * entities cover the rest. So an intentional use stays
  * possible and visible in the source; only the raw pasted character is
- * reported. « » „ ‚ ‹ › are deliberately absent: they are correct quotation
- * marks in other languages and the typographer cannot produce them.
+ * reported. « » „ ‚ ‹ › are deliberately absent: they are the marks the
+ * book's `language` prints for other languages, so an author who typed `"`
+ * in such a book has nothing to fix, and a pasted one cannot be told apart.
+ * The names of the curly quotes say which side they are, not what they do:
+ * “ opens an English quotation and closes a German one. One curly character
+ * is let through on purpose: a ’ that starts a word (’90s, ’tis), because a
+ * typed ' there prints straight — there is nothing else to type.
  *
  * PURE data, no imports: the desktop editor mirrors this module
  * (`packages/desktop/src/lib/editor/special-characters.ts`) to mark the same
@@ -24,7 +30,7 @@
 
 /** Stable id for the kind of character, carried on each finding's `code`. */
 export type CharacterCode =
-  /** The typographer makes it from plain typing (`---`, `"`, `...`). */
+  /** The renderer makes it from plain typing (`---`, `"`, `...`). */
   | "typographer"
   /** Looks like a quote mark or hyphen but is not one. */
   | "lookalike"
@@ -58,11 +64,14 @@ export interface CharacterInfo {
  */
 export const CHARACTER_PATTERN = new RegExp(
   "[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F-\\u00A0\\u00AD\\u00B4\\u02BC" +
-    "\\u061C\\u2000-\\u2015\\u2018\\u2019\\u201B-\\u201D\\u201F\\u2022\\u2026" +
+    "\\u061C\\u2000-\\u2015\\u2018\\u201B-\\u201D\\u201F\\u2022\\u2026" +
     "\\u2028-\\u202F\\u2032\\u2033\\u205F\\u2060\\u2066-\\u2069\\u2190\\u2192" +
-    "\\u2194\\u21D2\\u2212\\u25AA\\u25E6\\u2605\\u2713\\u2714\\u2717\\u3000" +
+    "\\u2194\\u21D2\\u25AA\\u25E6\\u2605\\u2713\\u2714\\u2717\\u3000" +
     "\\uE000-\\uF8FF\\uFEFF\\uFF02\\uFF07\\uFFFD]" +
-    "|\\p{Emoji_Presentation}|\\p{Extended_Pictographic}(?=\\uFE0F)",
+    "|\\p{Emoji_Presentation}|\\p{Extended_Pictographic}(?=\\uFE0F)" +
+    // A right single quote, except one that starts a word (’90s, ’tis): a
+    // typed ' there stays straight, so there is nothing else to type.
+    "|(?<=[\\p{L}\\p{N}])\\u2019|\\u2019(?![\\p{L}\\p{N}])",
   "gu",
 );
 
@@ -72,10 +81,10 @@ type Entry = [name: string, code: CharacterCode, spelling?: string];
 const NAMED: Record<number, Entry> = {
   0x2014: ["Em dash", "typographer", "---"],
   0x2013: ["En dash", "typographer", "--"],
-  0x201c: ["Opening curly quote", "typographer", '"'],
-  0x201d: ["Closing curly quote", "typographer", '"'],
-  0x2018: ["Opening curly single quote", "typographer", "'"],
-  0x2019: ["Curly apostrophe", "typographer", "'"],
+  0x201c: ["Left curly quote", "typographer", '"'],
+  0x201d: ["Right curly quote", "typographer", '"'],
+  0x2018: ["Left curly single quote", "typographer", "'"],
+  0x2019: ["Right curly single quote (apostrophe)", "typographer", "'"],
   0x2026: ["Ellipsis character", "typographer", "..."],
 
   0x02bc: ["Modifier-letter apostrophe", "lookalike", "'"],
@@ -90,7 +99,6 @@ const NAMED: Record<number, Entry> = {
   0x2011: ["Non-breaking hyphen", "lookalike", "-"],
   0x2012: ["Figure dash", "lookalike", "-"],
   0x2015: ["Horizontal bar", "lookalike", "---"],
-  0x2212: ["Minus sign", "lookalike", "-"],
 
   0x2022: ["Bullet", "symbol", "&bull;"],
   0x25e6: ["White bullet", "symbol", "&#x25E6;"],

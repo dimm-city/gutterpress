@@ -37,7 +37,9 @@ const STYLES_SUBDIR = "styles";
 /**
  * Conventional single-stylesheet locations, in priority order, used when a
  * project has no manifest `styles:`. `styles/book.css` is what `gutterpress new`
- * and "set up as a book" scaffold; the `css/*` names are the legacy convention.
+ * and "set up as a book" scaffold; the `css/*` names are the older convention,
+ * which a project from before `styles/book.css` still relies on: its
+ * `css/print.css` wins over an `css/extra.css` that sorts first (#483).
  */
 const FALLBACK_PRIORITY = [
   "styles/book.css",

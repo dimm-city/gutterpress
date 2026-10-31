@@ -24,8 +24,6 @@ const check: Check = {
   phase: "post-build",
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
-    if (!ctx.config.validate.pdf.requireBleed) return [];
-
     // pdfjs exposes no TrimBox/BleedBox accessor, so read the page boxes from
     // the raw (uncompressed) page dictionaries. Chromium writes these
     // uncompressed; markers inside object streams would be missed (rare).

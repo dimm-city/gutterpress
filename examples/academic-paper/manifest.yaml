@@ -1,0 +1,37 @@
+title: "Gutterpress: Print Publishing from Markdown on an Unmodified Browser Engine"
+authors:
+  - "The Gutterpress Contributors"
+language: en
+
+# US Letter, 8.5 × 11 in, with no print-service rules (the same shape the
+# Paper template writes). For A4, set width 595 and height 842. The margins
+# are in points (72 = 1 in): top, bottom, inside (the binding edge), outside.
+# Change the size and the margins under Setup > Book.
+preset: custom
+page:
+  width: 612
+  height: 792
+  safe: 18
+  margin:
+    top: 72
+    bottom: 72
+    inside: 72
+    outside: 72
+
+chapters:
+  - paper.md
+  - references.md
+
+# One rule that keeps content inside the text column whatever fonts the
+# building machine has (see the file).
+styles:
+  - paper.css
+
+extensions:
+  # Superscripts for author and affiliation marks: Contributors^1^.
+  - markdown-it-sup
+  # LaTeX math, $…$ and $$…$$, typeset by MathJax. Bundled: nothing to install.
+  - gutterpress-math
+  # The built-in academic look. Bundled: nothing to install. Style over it
+  # from a stylesheet of your own listed under `styles:`.
+  - academic

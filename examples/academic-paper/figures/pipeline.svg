@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="468pt" height="262pt" viewBox="0 0 468 262" font-family="Liberation Sans, Arial, Helvetica, sans-serif" font-size="7.4">
+  <defs>
+    <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 8 4 L 0 8 z" fill="#333333"/>
+    </marker>
+  </defs>
+  <style>
+    .box { fill: #ffffff; stroke: #333333; stroke-width: 0.8; }
+    .shared { fill: #f2f2f2; stroke: #333333; stroke-width: 0.8; stroke-dasharray: 2.5 1.5; }
+    .ext { fill: #ffffff; stroke: #777777; stroke-width: 0.8; stroke-dasharray: 1.5 1.5; }
+    .t { fill: #111111; }
+    .h { fill: #111111; font-weight: bold; }
+    .m { fill: #444444; font-size: 6.6; }
+    .a { fill: none; stroke: #333333; stroke-width: 0.8; marker-end: url(#arrow); }
+    .a2 { fill: none; stroke: #333333; stroke-width: 0.8; stroke-dasharray: 2.5 1.5; marker-end: url(#arrow); }
+  </style>
+
+  <!-- Row 1: inputs -->
+  <rect class="box" x="8" y="8" width="136" height="38"/>
+  <text class="h" x="76" y="20" text-anchor="middle">Markdown chapters</text>
+  <text class="m" x="76" y="30" text-anchor="middle">GFM + @-markers + extensions</text>
+  <text class="m" x="76" y="39" text-anchor="middle">(sup, math, callouts, …)</text>
+
+  <rect class="box" x="166" y="8" width="136" height="38"/>
+  <text class="h" x="234" y="20" text-anchor="middle">Stylesheets and looks</text>
+  <text class="m" x="234" y="30" text-anchor="middle">CSS custom properties, @page,</text>
+  <text class="m" x="234" y="39" text-anchor="middle">GCPM; precedence by @layer</text>
+
+  <rect class="box" x="324" y="8" width="136" height="38"/>
+  <text class="h" x="392" y="20" text-anchor="middle">manifest.yaml</text>
+  <text class="m" x="392" y="30" text-anchor="middle">preset (trim) · targets (policy)</text>
+  <text class="m" x="392" y="39" text-anchor="middle">page geometry · chapters · checks</text>
+
+  <!-- Row 2: assembly -->
+  <path class="a" d="M 76 46 L 76 60 L 234 60 L 234 66"/>
+  <path class="a" d="M 234 46 L 234 66"/>
+  <path class="a" d="M 392 46 L 392 60 L 234 60 L 234 66"/>
+
+  <rect class="box" x="96" y="66" width="276" height="34"/>
+  <text class="h" x="234" y="78" text-anchor="middle">Assembly: one self-contained book.html</text>
+  <text class="m" x="234" y="88" text-anchor="middle">markdown-it → semantic HTML; all CSS inlined in a fixed cascade order:</text>
+  <text class="m" x="234" y="96" text-anchor="middle">@layer gp.marker, gp.vocab, ext.* · author sheets unlayered · manifest @page geometry last</text>
+
+  <!-- Row 3: two renderers + shared policy -->
+  <path class="a" d="M 150 100 L 150 108 L 86 108 L 86 116"/>
+  <path class="a" d="M 318 100 L 318 108 L 382 108 L 382 116"/>
+
+  <rect class="box" x="8" y="116" width="156" height="60"/>
+  <text class="h" x="86" y="128" text-anchor="middle">Preview (viewer, in the browser)</text>
+  <text class="m" x="86" y="139" text-anchor="middle">Chromium multicol fragmentation:</text>
+  <text class="m" x="86" y="148" text-anchor="middle">columns sized to the page content box,</text>
+  <text class="m" x="86" y="157" text-anchor="middle">decoration drawn as DOM; measures</text>
+  <text class="m" x="86" y="166" text-anchor="middle">with getBoundingClientRect()</text>
+
+  <rect class="shared" x="180" y="120" width="108" height="52"/>
+  <text class="h" x="234" y="132" text-anchor="middle">Shared policy</text>
+  <text class="m" x="234" y="142" text-anchor="middle">synthesis.ts · content-value.ts</text>
+  <text class="m" x="234" y="151" text-anchor="middle">gcpm-extract.ts · print-area.ts</text>
+  <text class="m" x="234" y="160" text-anchor="middle">pin-edges.ts (pure functions;</text>
+  <text class="m" x="234" y="169" text-anchor="middle">renderers differ only in measuring)</text>
+
+  <path class="a2" d="M 180 146 L 164 146"/>
+  <path class="a2" d="M 288 146 L 304 146"/>
+
+  <rect class="box" x="304" y="116" width="156" height="60"/>
+  <text class="h" x="382" y="128" text-anchor="middle">Build (compiler, over CDP)</text>
+  <text class="m" x="382" y="139" text-anchor="middle">Tier 1 native print ·</text>
+  <text class="m" x="382" y="148" text-anchor="middle">Tier 2 compile-time geometry ·</text>
+  <text class="m" x="382" y="157" text-anchor="middle">Tier 3 predict → print → read /Dests</text>
+  <text class="m" x="382" y="166" text-anchor="middle">→ synthesize → fixpoint</text>
+
+  <!-- Row 4: postprocess, PDF/X, validation -->
+  <path class="a" d="M 382 176 L 382 190"/>
+  <rect class="box" x="304" y="190" width="156" height="30"/>
+  <text class="h" x="382" y="202" text-anchor="middle">Postprocess (pdf-lib)</text>
+  <text class="m" x="382" y="212" text-anchor="middle">page boxes · crop marks · signature padding</text>
+
+  <path class="a" d="M 304 205 L 288 205"/>
+  <rect class="ext" x="166" y="190" width="122" height="30"/>
+  <text class="h" x="227" y="202" text-anchor="middle">PDF/X hand-off (optional)</text>
+  <text class="m" x="227" y="212" text-anchor="middle">Ghostscript PDF/X-1a + ICC · qpdf</text>
+
+  <path class="a" d="M 166 205 L 150 205"/>
+  <rect class="box" x="8" y="190" width="142" height="30"/>
+  <text class="h" x="79" y="202" text-anchor="middle">Validation (35 checks)</text>
+  <text class="m" x="79" y="212" text-anchor="middle">source · asset · PDF · heuristic</text>
+
+  <!-- Row 5: outputs -->
+  <path class="a" d="M 86 176 L 86 190"/>
+  <text class="t" x="8" y="238">Outputs: a paginated live preview; a tagged PDF (Chromium's own print) at the manifest's sheet size;</text>
+  <text class="t" x="8" y="248">optionally a PDF/X-1a or PDF/X-3 file for a print vendor; and a validation report (text or JSON).</text>
+</svg>

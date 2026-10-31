@@ -98,7 +98,7 @@ export function reportMissingTools(result: ToolCheckResult): void {
     if (affected.length === 0) continue;
 
     log.warn(
-      `Tool "${tool}" not found — skipping: ${affected.join(", ")}`
+      `Tool "${tool}" not found; skipping: ${affected.join(", ")}`
     );
   }
 }

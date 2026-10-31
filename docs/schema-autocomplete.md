@@ -2,7 +2,7 @@
 
 Gutterpress includes a JSON schema for `manifest.yaml` that provides autocomplete, validation, and documentation directly in your editor.
 
-The schema is **editor-facing only**. Gutterpress itself does not validate `manifest.yaml` against it at build or preview time — an unknown key is simply ignored by `resolveConfig`. (The removed keys are the exception: `plugins`, `engine`, `engineStyles`, `output` and `source.assets` each fail with a message naming their replacement — see `extensions` below.) Wiring the schema into your editor (below) is what turns a typo into visible feedback.
+The schema is **editor-facing only**. Gutterpress itself does not validate `manifest.yaml` against it at build or preview time — an unknown key is simply ignored by `resolveConfig`. (The removed keys are the exception: `plugins`, `engine`, `engineStyles`, `output` and `source.assets` each fail with a message naming their replacement — see `extensions` below. The keys 0.11.23 replaced — `source.files`, `validate`, `lint`, `ink` and `page.tolerance` — still work in 0.11.23, with one notice naming each new spelling; a threshold among them becomes an option of its check under `checks:`.) Wiring the schema into your editor (below) is what turns a typo into visible feedback.
 
 ## Quick Setup
 
@@ -172,9 +172,9 @@ When typing property names, you'll see:
 ```yaml
 title: "My Book"
 # Type 'p' and you'll see:
-#   - page (object) - Expected page geometry, in points (validation bounds)
+#   - page (object) - Page geometry, in points (the trim, unless a stylesheet's @page sets one)
 #   - pdfx (object) - PDF/X conversion settings
-#   - preset (string) - Vendor preset supplying every other default
+#   - preset (string) - Preset supplying every other default
 #   - publish (object) - Publish provider settings
 ```
 
@@ -183,7 +183,7 @@ title: "My Book"
 The schema validates:
 - **Types** - Strings must be strings, arrays must be arrays, `page.width` must be a number
 - **Allowed values** - e.g. `preset` must be `dtrpg` or `book`, `pdfx.flavor` must be `x1a` or `x3`
-- **Structure** - Nested sections (`source`, `validate`, `pdfx`, …) and their property names
+- **Structure** - Nested sections (`page`, `pdfx`, `checks`, …) and their property names
 
 Every property is optional: an omitted field falls back to the resolved preset default.
 
@@ -224,8 +224,15 @@ authors:
   - "John Doe"
 ```
 
+#### `language` (string)
+The book's language as a BCP 47 tag (`en`, `de`, `de-CH`, `pt-BR`). It is the `lang` of the built HTML, which hyphenation follows, and sets the quotation marks straight quotes print as. Defaults to `"en"`. See the user guide's [Getting Started](../examples/gutterpress-user-guide/01-getting-started.md#reference-manifest-configuration) chapter.
+
+```yaml
+language: de
+```
+
 #### `preset` (string)
-Vendor preset supplying the defaults for every other section — page geometry, ink limits, PDF/X settings, validation checks. One of `dtrpg`, `book`, or `custom` (you supply `page.width` and `page.height` yourself). Omitting it defaults to `dtrpg` and logs a warning, so set it explicitly.
+Preset supplying the defaults for every other section — page geometry, ink limits, PDF/X settings, validation checks. One of `dtrpg`, `book`, or `custom` (you supply `page.width` and `page.height` yourself). Omitting it defaults to `dtrpg` and logs a warning, so set it explicitly.
 
 ```yaml
 preset: book
@@ -241,7 +248,7 @@ targets:
 ```
 
 #### `styles` (array of strings)
-CSS files to link into the rendered book, applied in order, relative to the manifest directory. If omitted, Gutterpress discovers one: `styles/book.css` (what `gutterpress new` scaffolds), then four **legacy** names kept only so pre-existing projects keep working — `css/print.css`, `css/index.css`, `css/style.css`, `css/main.css` — then the first `.css` it finds, then none. New projects should set `styles:` explicitly or use `styles/book.css`; the `css/*.css` fallback names are not a recommended convention.
+CSS files to link into the rendered book, applied in order, relative to the manifest directory. If omitted, Gutterpress discovers one: `styles/book.css` (what `gutterpress new` scaffolds), then four **legacy** names kept so pre-existing projects keep working — `css/print.css`, `css/index.css`, `css/style.css`, `css/main.css`, in that order — then the first `.css` it finds in the project root, `styles/` or `css/`, then none. New projects should set `styles:` explicitly or use `styles/book.css`; the `css/*.css` fallback names are not a recommended convention.
 
 ```yaml
 styles:
@@ -251,9 +258,9 @@ styles:
 #### `extensions` (array)
 Extensions, in load order: markdown-it plugins, looks (stylesheets), component libraries — anything from npm or a folder. Each entry is a specifier string, and its form says what it is:
 
-- a **bundled feature name** — `markdown-it-mark`, `markdown-it-sub`, `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts` — resolves to the copy compiled into Gutterpress (nothing to install, works offline; a bundled name shadows npm and cannot be pinned);
+- a **bundled name** — a markdown feature (`markdown-it-mark`, `markdown-it-sub`, `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts`, `gutterpress-math`) or a built-in look (`clean-book`, `zine`, `technical-doc`, `academic`) — resolves to the copy compiled into Gutterpress (nothing to install, works offline; a bundled name shadows npm and cannot be pinned);
 - a **path** starting with `./` or `../` (or `/`, or a Windows drive letter), relative to this file — a folder holding a `package.json`, or a bare `.js` markdown-it plugin file — referenced in place, never copied;
-- anything else is an **npm package name**, optionally pinned as `name@version`. `gutterpress ext add <name>` installs it: it vendors the runtime dependency tree under `plugins/npm/` and writes the exact pin back; builds resolve pinned entries there without network access. The downloaded copy is gitignored, so a fresh clone has only the pin: `build`, `validate`, `preview` and the desktop's book-open download a missing pinned version first.
+- anything else is an **npm package name**, optionally pinned as `name@version`. `gutterpress ext add <name>` installs it: it vendors the runtime dependency tree under `extensions/npm/` and writes the exact pin back; builds resolve pinned entries there without network access. The downloaded copy is gitignored, so a fresh clone has only the pin: `build`, `validate`, `preview` and the desktop's book-open download a missing pinned version first.
 
 A later entry loads later: its markdown runs after earlier entries' and its CSS wins ties. The project's own `styles` always load after every extension. There is no `priority` (reorder the list instead) and no `path`/`name` wrapper keys — a manifest that still carries `plugins:` fails with a message that prints its entries rewritten as `extensions:`.
 
@@ -269,22 +276,20 @@ extensions:
       leftDelimiter: "["
 ```
 
-#### `source` (object)
-Where the content comes from.
+#### `chapters` (array of strings, or `null`)
+The chapters, in order, as markdown files relative to the manifest directory.
+Omit it or set `null` to include every top-level `.md` file alphabetically.
 
-- `files` (array of strings, or `null`) - Explicit, ordered markdown files relative to the manifest directory. Omit or set `null` to include every `.md` file alphabetically.
-
-There is no `assets` field: Gutterpress discovers every file the book actually
+There is no assets list: Gutterpress discovers every file the book actually
 references — image `src` attributes, CSS `url()`/`@font-face` — and copies
 exactly those. An author-maintained directory list could drift from what the
 book uses; this can't.
 
 ```yaml
-source:
-  files:
-    - "frontmatter/title-page.md"
-    - "chapters/01-introduction.md"
-    - "appendix/glossary.md"
+chapters:
+  - "frontmatter/title-page.md"
+  - "chapters/01-introduction.md"
+  - "appendix/glossary.md"
 ```
 
 #### Output location (not a manifest field)
@@ -300,21 +305,25 @@ per-invocation override (CI staging, one-offs).
 #### `page` (object)
 Expected page geometry, in **points** (1in = 72pt).
 
-> **This is the size the book prints at — unless a stylesheet sets its own.** When no stylesheet sets a plain `@page { size }` (one with no page name and no `:first`/`:left`), the build writes `@page { size: <width>pt <height>pt }` from these values ahead of every stylesheet, so the PDF, the preview and the checks share one size. A stylesheet's own plain `size` wins over it. Either way, `page.width`/`page.height` are what the `pdf.print.page-size` check compares the produced PDF against, so a stylesheet whose size differs from them gets caught.
+> **This is the size the book prints at, and `margin` the margins.** The build writes `@page { size: <width> <height> }` from these values after every stylesheet, so a `size` in a stylesheet's own `@page` (plain or `:first`/`:left`/`:right`; a named page's size is its own) is overridden and reported by the `printsafe/page-size-in-stylesheet` check, and the PDF, the preview and the checks share one size. `page.width`/`page.height` are also what the `pdf.print.page-size` check compares the produced PDF against. In the app, Book setup > Book edits the size and the margins.
 
 - `width` / `height` (number) - Expected size in points. Preset defaults: `dtrpg` 621x810, `book` 432x648 (6x9in).
-- `tolerance` (number) - Allowed deviation in points. Default `0.5`.
 - `bleed` (number) - A bleed in points that `width` x `height` **already contain**, on the top, bottom and outer edges only (the binding edge has none). This is how DriveThruRPG's interior file is cut (8.625x11.25in for an 8.5x11in book), so the `dtrpg` preset sets `9` (0.125in); `book` and `custom` set none. It tells the preview's print overlays, `pdf.print.safe-margins` and pinned art where the trim is; it changes nothing else in the PDF.
 - `safe` (number) - The text rule: how far inside the trim, in points, text must stay on every edge. The preview's **Safe area: text** layer draws it as the dashed line and flags text outside it, and `pdf.print.safe-margins` fails a built PDF whose text is closer. `dtrpg` sets `36` (0.5in, DriveThruRPG's rule), `book` `18` (0.25in); `custom` sets none, and the check is skipped. It is also where every pin sits where `artSafe` is not set; no CSS moves it. At the binding edge `gutter` takes over where it is set.
 - `artSafe` (number) - The art rule: how far inside the trim, in points, art that does not bleed (images, backgrounds, borders, rules) must stay on the top, bottom and outer edges; the binding edge uses `gutter`. Art that runs out to the page's edge is a bleed and is not judged on that edge. The preview's **Safe area: art** layer draws it as the dotted line and flags art outside it, and `pdf.print.safe-margins` fails a built PDF with an image closer, or one that stops in the bleed band (backgrounds and borders are judged in the overlay only). Where none is set, art follows `safe`. `dtrpg` sets `18` (0.25in, DriveThruRPG's rule for non-bleeding art); `book` and `custom` set none. An image pinned to the top, bottom or outside edge (`.gp-pin`) sits on this line, unless it carries `.gp-flush`; no CSS moves it.
+- `margin` (object: `top`, `bottom`, `inside`, `outside`, numbers) - The page margins in points, the space between the trim and the text on each edge; `inside` is the binding edge (the left of a right-hand page, the right of a left-hand one). When set, the build writes them as the `@page` margins for both page sides after every stylesheet, so they win over a look's `@page` margins; when left out, the stylesheets' `@page` margins apply, else 1in. All four edges are required together. The templates record each bundled look's margins here (the Book template's 61.2 / 61.2 / 54 / 54, for example), and Book setup > Book edits them in inches.
 - `gutter` (number) - The binding allowance: how far from the spine, in points, content stays, measured from the trim at the binding edge (the left edge of a right-hand page, the right edge of a left-hand page). It stands in for `safe` at that edge, for text and for art alike: the preview's text and art lines, the tinted strip and the legend, `pdf.print.safe-margins`, and an image pinned to the binding edge (`.gp-pin`) all use it. The other edges keep `safe` and `artSafe`. Use it when your book keeps its text further from the spine than the printer's minimum, for example `gutter: 54` for 0.75in where DriveThruRPG asks for 0.5in. Where none is set it is `safe`; `dtrpg` sets `36` (0.5in, DriveThruRPG's rule at the binding for text and non-bleeding art, the same as its `safe`), `book` and `custom` none.
 
 ```yaml
-# US Letter trim: 8.5 x 11in
+# US Letter trim: 8.5 x 11in, 1in margins
 page:
   width: 612
   height: 792
-  tolerance: 0.5
+  margin:
+    top: 72
+    bottom: 72
+    inside: 72
+    outside: 72
 ```
 
 #### `pdfx` (object)
@@ -347,38 +356,41 @@ print:
   lastPage: short-by-one
 ```
 
-#### `ink` (object)
-- `maxTac` (number) - Maximum total area coverage, summed across C+M+Y+K. Preset defaults: `dtrpg` 240, `book` 400 (the physical ceiling, i.e. effectively no cap).
-- `tacTolerance` (number) - Percentage of sampled pixels allowed to exceed `maxTac`. Default `0.5`.
+#### `checks` (object)
+Each check's level, keyed by check id. Any registered check id may appear,
+including ids contributed by plugins (built-in ids are namespaced `source.*`,
+`asset.*`, `pdf.*`, `heuristic.*`), and so may a CSS print-safety rule id
+(`printsafe/...`). A value is one of:
 
-#### `lint` (object)
-- `enabled` (boolean) - Default `true`. Despite the name, this gates the `source.stylelint` CSS print-safety check, not Markdown linting — `build-preflight.ts` sets `skipStylelint` when this is `false` (or `--skip-lint` is passed).
-- `configPath` (string or `null`) - Read by no production code. Markdownlint's own config path is `validate.source.markdownlint`, below (not this object's `source`); with no config found, `source.markdownlint` reports nothing.
+- `off` - the check does not run (a rule is not reported).
+- `on` - the check runs at its own severity, for a check the preset or target leaves off.
+- `info`, `warn`, `error` - the check runs and reports at that severity. `error` fails `gutterpress validate` and stops a build.
 
-#### `validate` (object)
-Preflight configuration.
-
-- `enabled` (boolean) - Default `true`.
-- `checks` (object) - Per-check overrides keyed by check id. This is an **open dictionary**: any registered check id may appear, including ids contributed by plugins. Built-in ids are namespaced `source.*`, `asset.*`, `pdf.*`, `heuristic.*`. A value is either a boolean (shorthand for enabled/disabled) or `{ enabled, severity, options }`, where `severity` is `error`, `warning`, or `info`.
-- `source` (object) - `markdownlint`, `htmlhint`: a config file path, or `false` to disable that check. `stylelint`: `false` disables the `source.stylelint` check; any other value leaves it enabled — the key is kept only for manifest back-compat, the check itself runs the same postcss-based print-safety rules as `checkCss` and does not read a stylelint config. `cssOwnership`: a path to a CSS ownership contract, or `false` to disable `source.css-ownership`; absent means no contract, so the check reports nothing by default (see [CSS ownership contract](./css-ownership-contract.md)). `allowedCallouts` is **deprecated and ignored** — the `:::` container syntax it gated was removed.
-- `assets` (object) - `maxImageSize`, `allowAlpha`, `approvedFontFiles`, `requireFontLicense`.
-- `pdf` (object) - `requireBookmarks`, `requireTocLinks`, `minImageResolution`, `forbidTransparency`, `requireBleed`, `bleedSize` (points).
-- `heuristics` (object) - `maxDecorativeLayers`, `textDensityRange` (`min`/`max`), `maxParagraphsPerSection`.
+The limits a check measures against (ink coverage, the page-size tolerance,
+image size and resolution, bleed size, the approved font files, the
+heuristics' ranges) come from the preset and the publish target. A book
+overrides one as an option of its check: the entry becomes a map, with an
+optional `level` beside the options (see the user guide's validation chapter
+for every option and its default). The Markdown, HTML and CSS-ownership
+checks are configured by their own files (`.markdownlint.yaml`, `.htmlhintrc`,
+`.gutterpress/css-contract.yaml`), found in the book's folder or the nearest
+folder above it, up to the repository root.
 
 ```yaml
-validate:
-  enabled: true
-  checks:
-    pdf.nav.bookmarks:
-      enabled: true
-      severity: warning
-    pdf.print.pdfx-markers: false
-  pdf:
-    requireBookmarks: true
+checks:
+  pdf.nav.bookmarks: warn
+  pdf.print.pdfx-markers: off
+  asset.image.alpha-channel: off
+  printsafe/page-containment: warn
+  pdf.print.ink-coverage:
+    maxTac: 300
+  pdf.print.image-resolution:
+    level: error
+    minImageResolution: 200
 ```
 
 #### `publish` (object)
-Non-secret publish settings per provider (`itch`, `drivethrurpg`, `kdp`, `azure-swa`, `shopify`, `gdrive`), keyed by the same id `gutterpress publish --provider <id>` takes. API keys and tokens are **never** stored here — they live in the host credential store. See [publishing.md](./publishing.md).
+Non-secret publish settings per provider (`itch`, `drivethrurpg`, `kdp`, `azure-swa`, `shopify`, `gdrive`), keyed by the same id `gutterpress publish --provider <id>` takes. API keys and tokens are **never** stored here — they live in the host credential store. Everything here is the team's: `enabled: true` marks a destination the book publishes to, and `local.dir` is a folder inside the book, relative to it. Which saved account you publish with, and an output folder outside the book, stay in your own settings on your computer. See [publishing.md](./publishing.md).
 
 ---
 
@@ -393,32 +405,26 @@ authors:
 preset: book
 
 extensions:
-  - "./extensions/clean-book"
+  - clean-book
   - "./plugins/callouts.js"
 
 styles:
   - "styles/book.css"
 
-source:
-  files:
-    - "frontmatter/title-page.md"
-    - "frontmatter/copyright.md"
-    - "chapters/01-introduction.md"
-    - "chapters/02-installation.md"
-    - "appendix/glossary.md"
+chapters:
+  - "frontmatter/title-page.md"
+  - "frontmatter/copyright.md"
+  - "chapters/01-introduction.md"
+  - "chapters/02-installation.md"
+  - "appendix/glossary.md"
 
-# Validation bounds only — the CSS @page rule sets the real trim size.
+# The trim the book prints at, unless a stylesheet's plain @page rule sets its own size.
 page:
   width: 432
   height: 648
-  tolerance: 0.5
 
-validate:
-  enabled: true
-  checks:
-    pdf.nav.bookmarks:
-      enabled: true
-      severity: warning
+checks:
+  pdf.nav.bookmarks: warn
 ```
 
 ---

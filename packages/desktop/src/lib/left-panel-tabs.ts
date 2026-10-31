@@ -17,7 +17,7 @@ export const LEFT_PANEL_TAB_IDS: readonly LeftPanelTabId[] = ["projects", "toc",
  */
 export const HIDE_BOOKS_TAB = true;
 
-/** Reader mode (Settings → App) keeps only Books and TOC: Files and Media are for editing. */
+/** Reader mode (Settings → How you use Gutterpress) keeps only Books and TOC: Files and Media are for editing. */
 export function visibleTabIds(readerMode: boolean, hideBooks: boolean = HIDE_BOOKS_TAB): LeftPanelTabId[] {
   return LEFT_PANEL_TAB_IDS.filter((id) => (readerMode ? id === "projects" || id === "toc" : true)).filter(
     (id) => !(hideBooks && id === "projects"),

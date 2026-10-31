@@ -1,7 +1,7 @@
 # Chapter One
 
 Welcome to {{TITLE}}. This is your first chapter, and it is ready for you to
-make it your own. Everything you see on this page is just an example — replace it
+make it your own. Everything you see on this page is just an example --- replace it
 with your own writing whenever you are ready.
 
 You write in plain text. Start a new paragraph by leaving a blank line, like

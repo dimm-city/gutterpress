@@ -27,7 +27,6 @@
   import { tick } from "svelte";
   import Icon from "#lib/components/Icon.svelte";
   import ProjectsListBody from "#lib/components/ProjectsListBody.svelte";
-  import SettingsView from "#lib/components/SettingsView.svelte";
   import Spinner from "#lib/components/Spinner.svelte";
   import BrandMark from "#lib/components/BrandMark.svelte";
   import Tabs from "#lib/components/Tabs.svelte";
@@ -37,7 +36,6 @@
   import { isEditableTarget } from "#lib/a11y.ts";
   import type { ContinueStatus } from "#lib/routes/startup-landing.ts";
   import type { UpdaterAvailableAction } from "#lib/platform/index.ts";
-  import type { SettingsTab } from "#lib/settings-tabs.ts";
 
   let {
     visible = false,
@@ -58,15 +56,11 @@
     errorBody = null,
     version = null,
     showAtStartup = true,
-    /** The open project dir (Settings > Accounts: publishing keys verify
-     *  against the platform, and some checks read the project's settings). */
+    /** The open project dir (Troubleshooting's problem report acts on it). */
     projectDir = null,
     /** A workspace is open behind the layer, so the landing can be closed to
      *  return to it (shows the X, and Esc dismisses). */
     dismissible = false,
-    /** Sub-tab the embedded Settings opens on (the launch-time identity
-     *  nudge lands on Accounts). */
-    settingsTab = "app",
     /** Auto-updater state — the workspace banner is inert under this layer,
      *  so the landing carries its own compact update affordance. */
     updateReadyVersion = null,
@@ -88,8 +82,8 @@
     onUpdateDownload,
     onCheckForUpdates,
     onDismiss,
-    onProjectFilesChanged,
-    onCloseBook,
+    onOpenSettings,
+    onOpenAccounts,
   }: {
     visible?: boolean;
     inactive?: boolean;
@@ -104,7 +98,6 @@
     showAtStartup?: boolean;
     projectDir?: string | null;
     dismissible?: boolean;
-    settingsTab?: SettingsTab;
     updateReadyVersion?: string | null;
     updateAvailableVersion?: string | null;
     updateAvailableAction?: UpdaterAvailableAction | null;
@@ -124,27 +117,22 @@
     onUpdateDownload?: () => void;
     onCheckForUpdates?: () => void;
     onDismiss?: () => void;
-    /** Close the open book (Troubleshooting → Sync's Scorched earth ends with it). */
-    onCloseBook?: () => Promise<boolean>;
-    /** Forwarded to the embedded Settings view's Saving tab (#273): fires
-     *  after its copy switcher checks out another local copy of the open
-     *  project, so the workspace behind this layer can reconcile the open
-     *  editor buffer against the now-changed files on disk. */
-    onProjectFilesChanged?: () => void;
+    /** Open Settings, its own sheet over this screen. */
+    onOpenSettings?: () => void;
+    /** Open Accounts, its own sheet over this screen. */
+    onOpenAccounts?: () => void;
   } = $props();
 
-  // ── Tabs (Books / Settings / Help / Troubleshooting) ───────────────────
+  // ── Tabs (Books / Help / Troubleshooting) ──────────────────────────────
   // The landing is the app's front door: Books carries the continue card +
-  // quick actions + book list; Settings embeds the WHOLE settings surface,
-  // sub-tabs and all; Help carries the how-to guidance; Troubleshooting
-  // holds Diagnostics (versions, updates, desktop integration) and Logs as sub-tabs. Because
-  // settings and help are tabs here, the brand row needs no buttons of its
-  // own. The host can land on a specific tab (help button → "help";
-  // missing identity at launch → "settings" on its Accounts sub-tab).
-  type LandingTab = "projects" | "settings" | "help" | "troubleshooting";
+  // quick actions + book list; Help carries the how-to guidance;
+  // Troubleshooting holds Diagnostics (versions, updates, desktop
+  // integration), Logs and Report a problem as sub-tabs. Settings and
+  // Accounts are not tabs: each is its own sheet, opened from the brand row. The host can
+  // land on a specific tab (help button → "help").
+  type LandingTab = "projects" | "help" | "troubleshooting";
   const LANDING_TABS: Array<{ id: LandingTab; label: string }> = [
     { id: "projects", label: "Books" },
-    { id: "settings", label: "Settings" },
     { id: "help", label: "Help" },
     { id: "troubleshooting", label: "Troubleshooting" },
   ];
@@ -289,6 +277,16 @@
                 : `Update available (v${updateAvailableVersion}) — ${updateAvailableAction === "open-release" ? "Download from GitHub" : "Download"}`}
             </button>
           {/if}
+          {#if onOpenAccounts}
+            <button type="button" class="settings-btn" onclick={() => onOpenAccounts?.()}>
+              <Icon name="circle-user" size={14} /> Accounts
+            </button>
+          {/if}
+          {#if onOpenSettings}
+            <button type="button" class="settings-btn" onclick={() => onOpenSettings?.()}>
+              <Icon name="settings" size={14} /> Settings
+            </button>
+          {/if}
           {#if onWhatsNew}
             <button type="button" class="landing-link" onclick={onWhatsNew}>
               What's new <Icon name="external-link" size={12} />
@@ -381,7 +379,6 @@
 
       <section class="quick-actions" aria-label="Quick actions">
         {#if onNewProject}
-          <!-- Absent for a reader (Settings → App): reading needs no new book. -->
           <button type="button" class="action-card" class:featured={!continueTitle && !errorTitle} onclick={onNewProject}>
             <span class="ac-icon"><Icon name="plus" size={18} /></span>
             <span class="ac-title">Create a new book</span>
@@ -414,21 +411,6 @@
           />
         </div>
       </section>
-      {:else if activeTab === "settings"}
-      <section class="settings-sec" aria-label="Settings">
-        <!-- The WHOLE settings surface, sub-tabs and all — not a copy of a
-             slice of it. `embedded` drops its sheet chrome so the landing
-             column stays the one scroller; `idPrefix` keeps its tab/panel ids
-             distinct from the full-window sheet, which can be open over this
-             layer at the same time. -->
-        <SettingsView
-          embedded
-          idPrefix="landing-settings"
-          initialTab={settingsTab}
-          {projectDir}
-          {onProjectFilesChanged}
-        />
-      </section>
       {:else if activeTab === "help"}
       <section class="help-sec" aria-label="Help">
         <HelpContent {onOpenGuide} />
@@ -439,7 +421,6 @@
           idPrefix="landing-troubleshooting"
           initialTab={troubleshootingTab}
           {projectDir}
-          {onCloseBook}
           {onCheckForUpdates}
           {checkingUpdates}
           {updateReadyVersion}
@@ -511,7 +492,10 @@
     gap: 12px;
   }
   .brand-left { display: flex; align-items: center; gap: 12px; }
-  .brand-right { display: flex; align-items: center; gap: 10px; }
+  /* Wraps onto a second row when the update chip joins Accounts, Settings and
+     What's new, rather than squeezing each one onto two lines. */
+  .brand-right { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; }
+  .brand-right > *, .brand-version { white-space: nowrap; }
   .brand-icon-btn {
     background: none;
     border: 0;
@@ -551,6 +535,21 @@
     gap: 4px;
   }
   .landing-link:hover { color: var(--app-link-hover); text-decoration: underline; }
+  .settings-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: 1px solid var(--app-border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    color: var(--app-text-secondary);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .settings-btn:hover { color: var(--app-text); background: var(--app-control-hover-bg); }
+  .settings-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
 
   .landing-h1 { margin: 0; font-size: 20px; font-weight: 700; color: var(--app-text); letter-spacing: -0.3px; }
   .landing-h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--app-text-secondary); text-transform: uppercase; letter-spacing: 0.6px; }
@@ -561,7 +560,7 @@
     gap: 22px;
     min-height: 0;
   }
-  .settings-sec, .help-sec, .troubleshooting-sec { display: flex; flex-direction: column; gap: 14px; }
+  .help-sec, .troubleshooting-sec { display: flex; flex-direction: column; gap: 14px; }
 
   /* ── Continue card ─────────────────────────────────────────────────── */
   .continue-sec { display: flex; flex-direction: column; gap: 10px; }

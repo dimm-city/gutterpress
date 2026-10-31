@@ -1,78 +1,72 @@
 /**
- * Pure, presentation-only helpers for the Extensions surface (the Look and
- * Features views) and its controller.
+ * Pure, presentation-only helpers for Book setup's Look, Extensions and
+ * Advanced tabs and their controllers.
  *
  * Browser-safe strings/derivations with no host coupling — only `import type`
  * from `#lib/platform/dtos.ts`, so this module stays PWA-clean (§8). Kept out of
- * the controller so bun can unit-test them without the `$state` shim, and out
- * of the components so both views share one implementation.
+ * the controller and the component so bun can unit-test them without the
+ * `$state` shim.
  */
 
 import type {
   ProjectExtensionEntry,
   ExtensionValidationResult,
+  NpmExtensionMatch,
 } from "#lib/platform/dtos.ts";
 
 /**
- * Build the srcdoc for a look thumbnail iframe.
+ * Build the srcdoc for a look's sample page: a gallery thumbnail, or the Look
+ * tab's live sample. It never scrolls; the frame shows its top.
  */
 export function sampleSrcdoc(css: string): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
-html,body{margin:0;padding:0;} body{padding:14px 16px;} *{box-sizing:border-box;}
+html,body{margin:0;padding:0;overflow:hidden;} body{padding:14px 16px;} *{box-sizing:border-box;}
 ${css}
 </style></head><body>
-<h1>Chapter Title</h1>
-<h2>A Section Heading</h2>
-<p>The quick brown fox jumps over the lazy dog. Typography, color, and
-spacing preview rendered with this theme&rsquo;s stylesheet.</p>
-<blockquote>A short pull quote shows callout and accent styling.</blockquote>
-<h3>Subheading</h3>
-<ul><li>First list item</li><li>Second list item</li></ul>
-<p><a href="#">A themed link</a> with <code>inline code</code>.</p>
+<h1>Chapter One</h1>
+<h2>The Harbor at Dusk</h2>
+<p>The lamps along the quay came on one by one as the last boats rounded the
+breakwater. Mara counted them from the window, the way her father had taught her.</p>
+<blockquote>&ldquo;Every light is someone waiting to come home.&rdquo;</blockquote>
+<h3>The Keeper&rsquo;s Log</h3>
+<ul><li>Wind from the west, rising</li><li>Two boats still out</li></ul>
+<p>She wrote the hour in the log, <code>18:42</code>, and turned to <a href="#">the next page</a>.</p>
 </body></html>`;
 }
 
-/**
- * #106 hover preview: a FIXED, built-in two-page sample spread. This is NEVER
- * the author's document — it's a constant sample so the hover preview
- * structurally cannot re-paginate or leak the real manuscript. Full-document
- * re-pagination only happens through the preview pipeline.
- *
- * Rendered exactly like the per-row thumbnail (`readCss` → inline `<style>` →
- * sandboxed `<iframe srcdoc>`), just larger and with two facing "pages" of
- * representative content so the author can judge a look at a glance.
- */
+/** A fixed two-page sample: what the Look tab's enlarged hover preview shows a look over. Never the author's document. */
 const SAMPLE_SPREAD_BODY = `
 <article class="pm-sample-page">
   <h1>Chapter One</h1>
-  <h2>The Opening Section</h2>
-  <p>The quick brown fox jumps over the lazy dog. This sample shows how body
-  text, headings, and spacing render with the selected theme &mdash; a fixed
-  preview, not your document.</p>
-  <blockquote>A pull quote demonstrates callout, accent, and emphasis styling
-  as the theme defines it.</blockquote>
-  <h3>A Subheading</h3>
-  <ul><li>First list item</li><li>Second list item</li><li>Third item</li></ul>
-  <p>A closing paragraph with <a href="#">a themed link</a> and some
-  <code>inline code</code> to preview monospace treatment.</p>
+  <h2>The Harbor at Dusk</h2>
+  <p>The lamps along the quay came on one by one as the last boats rounded the
+  breakwater. Mara counted them from the window, the way her father had taught her.</p>
+  <blockquote>&ldquo;Every light is someone waiting to come home.&rdquo;</blockquote>
+  <h3>The Keeper&rsquo;s Log</h3>
+  <ul><li>Wind from the west, rising</li><li>Two boats still out</li><li>Fog by midnight</li></ul>
+  <p>She wrote the hour in the log, <code>18:42</code>, and turned to <a href="#">the next page</a>.</p>
 </article>
 <article class="pm-sample-page">
-  <h2>Continuing On</h2>
-  <p>Facing pages let you judge running heads, margins, and how the theme
-  balances a two-page spread before you commit to applying it.</p>
-  <ol><li>Ordered item one</li><li>Ordered item two</li></ol>
-  <h3>Table &amp; Emphasis</h3>
-  <p>Body copy with <strong>bold</strong> and <em>italic</em> emphasis, plus a
-  second <blockquote>short blockquote near the foot of the page.</blockquote></p>
-  <p>The end of the sample spread.</p>
+  <h2>Before the Fog</h2>
+  <p>The second boat came in an hour later, low in the water, its crew too tired to
+  sing. Mara set the kettle on and opened the door before they knocked.</p>
+  <ol><li>Lamps trimmed</li><li>Ropes coiled</li></ol>
+  <h3>A Quiet Night</h3>
+  <p>Nothing else moved on the water but the <strong>tide</strong> and the
+  <em>slow turn</em> of the light.</p>
+  <blockquote>The sea keeps its own hours.</blockquote>
 </article>`;
 
-/** Build the srcdoc for the enlarged hover preview (a fixed 2-page spread). */
+/**
+ * Build the srcdoc for the Look tab's enlarged hover preview: the look's CSS
+ * over a fixed two-page sample spread (0.11.22's, restored in #482). Like the
+ * thumbnail, it never renders the author's document.
+ */
 export function hoverPreviewSrcdoc(css: string): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
-html,body{margin:0;padding:0;} *{box-sizing:border-box;}
+html,body{margin:0;padding:0;overflow:hidden;} *{box-sizing:border-box;}
 body{display:flex;gap:12px;padding:12px;background:#8883;align-items:flex-start;justify-content:center;}
 .pm-sample-page{flex:1 1 0;min-width:0;background:#fff;color:#111;padding:18px 20px;box-shadow:0 1px 6px rgba(0,0,0,0.25);overflow:hidden;}
 ${css}
@@ -82,15 +76,67 @@ ${SAMPLE_SPREAD_BODY}
 }
 
 /**
- * Where an entry comes from, as a short row caption: "built in" for a bundled
- * feature, "npm 1.2.3" (or "npm" while unpinned) for a package, and the path
- * as written — minus a leading `./` — for a folder or file the author owns
- * (`extensions/clean-book`, `../shared/house-style`).
+ * Where an entry comes from, in words for its Extensions row caption: "built in"
+ * for a bundled name, "npm 1.2.3" (or "npm" while unpinned) for a package, and
+ * "folder" or "file" and the path as written — minus a leading `./` — for one
+ * the author owns (`folder extensions/clean-book`, `file plugins/x.js`).
  */
 export function extensionSourceLabel(entry: ProjectExtensionEntry): string {
   if (entry.kind === "bundled") return "built in";
   if (entry.kind === "npm") return entry.version ? `npm ${entry.version}` : "npm";
-  return entry.name.replace(/^\.\//, "");
+  const where = entry.name.replace(/^\.\//, "");
+  return `${/\.[cm]?js$/i.test(where) ? "file" : "folder"} ${where}`;
+}
+
+/**
+ * A look is an extension that carries styles and no markdown. A component
+ * library ships styles too, but for its own markdown, not as the book's design.
+ */
+export function isLook(entry: ProjectExtensionEntry): boolean {
+  return entry.carries.styles && !entry.carries.markdown;
+}
+
+/**
+ * Each kind of thing an extension carries, in words and a fixed order, for its
+ * Extensions row caption — the list shows a look, an extra and a component
+ * library side by side, and these say which is which. A component library's
+ * styles read "Styles", not "Look" (`isLook`).
+ */
+export function carriedKinds(entry: ProjectExtensionEntry): string[] {
+  const c = entry.carries;
+  return [
+    ...(c.markdown ? ["Extra"] : []),
+    ...(c.styles ? [isLook(entry) ? "Look" : "Styles"] : []),
+    ...(c.snippets ? ["Snippets"] : []),
+    ...(c.components ? ["Components"] : []),
+    ...(c.publish ? ["Publish destination"] : []),
+  ];
+}
+
+/**
+ * What a search result is, in a word, when npm's keywords say so: a package
+ * tagged `gutterpress-look` is a look, and a plain markdown-it plugin (found
+ * by the ecosystem's own keyword) is an extra. A Gutterpress extension tagged
+ * neither — a component library, or a look with extras — says nothing rather
+ * than guess.
+ */
+export function searchKindLabel(match: NpmExtensionMatch): "Look" | "Extra" | null {
+  if (match.keywords.includes("gutterpress-look")) return "Look";
+  return match.kind === "markdown-it" ? "Extra" : null;
+}
+
+/**
+ * Does a search result mention every word the author typed, in its name,
+ * description or keywords? npm's `keywords:` is a filter but its text is only
+ * a ranking hint, so a nonsense word still comes back with the 900 most
+ * relevant tagged packages; without this, "No extensions found" could never
+ * be true. Words match inside other words (`list` finds `task-lists`); an
+ * empty query keeps everything (the most relevant).
+ */
+export function searchMatchesQuery(match: NpmExtensionMatch, query: string): boolean {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const text = [match.name, match.description ?? "", ...match.keywords].join(" ").toLowerCase();
+  return words.every((w) => text.includes(w));
 }
 
 /**
@@ -106,38 +152,39 @@ export function describeSegments(description: string): Array<{ text: string; cod
 }
 
 /**
- * The full `use` order after moving `entry` one slot up (`delta` -1) or down
- * (+1) WITHIN `view` — a filtered projection of `entries`, such as the looks.
- * The Look and Features views each show a subset of the one list, so "move
- * up" means "past my neighbour in this view", expressed as the complete
- * order (every entry of `entries` exactly once) the lib's `reorderExtensions`
- * insists on. Entries outside the view keep their relative places. Returns
- * null when the move is impossible: `entry` is not in the view, or is already
- * at the edge it would move past.
+ * The ids of the built-in looks a book still carries as COPIES: a path entry
+ * at `./extensions/<id>`, the folder older Gutterpress versions copied a
+ * built-in look into. A bundled look is listed by its bare name today, but a
+ * book with such a copy must not be offered the same look a second time.
  */
-export function orderAfterMove(
-  entries: ProjectExtensionEntry[],
-  view: ProjectExtensionEntry[],
-  entry: ProjectExtensionEntry,
-  delta: -1 | 1,
-): string[] | null {
-  const at = view.findIndex((e) => e.use === entry.use);
-  const neighbour = at < 0 ? undefined : view[at + delta];
-  if (!neighbour) return null;
-  const order = entries.map((e) => e.use).filter((u) => u !== entry.use);
-  const slot = order.indexOf(neighbour.use);
-  if (slot < 0) return null;
-  order.splice(delta < 0 ? slot : slot + 1, 0, entry.use);
-  return order;
+export function addedBuiltInIds(entries: ProjectExtensionEntry[]): Set<string> {
+  const ids = new Set<string>();
+  for (const e of entries) {
+    if (e.kind !== "path") continue;
+    const m = e.use
+      .trim()
+      .replace(/\\/g, "/")
+      .replace(/\/+$/, "")
+      .match(/^\.\/extensions\/([^/]+)$/);
+    if (m) ids.add(m[1]!);
+  }
+  return ids;
 }
 
-export interface ExtensionStatus {
-  label: string;
-  kind: "ok" | "error" | "disabled" | "checking" | "stale";
-  detail?: string;
-  raw?: string;
-  /** The in-app fix, when there is one: install a missing npm copy, or reinstall one that will not load. */
-  fix?: "install" | "reinstall";
+/**
+ * `order` after moving `item` one slot up (`delta` -1) or down (+1): the whole
+ * list, every item exactly once, which is what the lib's `reorderExtensions`
+ * and a rewrite of the manifest's `styles:` both take. Returns null when the
+ * move is impossible: `item` is not in the list, or is already at the edge it
+ * would move past.
+ */
+export function orderAfterMove(order: string[], item: string, delta: -1 | 1): string[] | null {
+  const at = order.indexOf(item);
+  const to = at + delta;
+  if (at < 0 || to < 0 || to >= order.length) return null;
+  const next = [...order];
+  [next[at], next[to]] = [next[to]!, next[at]!];
+  return next;
 }
 
 /** The lib's "Not installed — …" / "Not pinned — …" notices on an npm entry
@@ -147,55 +194,51 @@ export interface ExtensionStatus {
 const NEEDS_INSTALL_RE = /^not (installed|pinned)\b/i;
 
 /**
- * Status text/icon for one configured feature row. Pure over its inputs —
- * the entry's own warnings, the current validation map (keyed by `use`), and
- * the in-flight flag.
- *
- * Precedence: a disabled entry reads Disabled whatever else is true; an npm
- * entry the lib reported as not installed / not pinned reads "Needs install"
- * with the in-app fix (ahead of any load-test result, which for such an entry
- * is only ever a less specific failure); then the load-test result.
- *
- * Tri-state: `validating` is true only while a validate round-trip is
- * in flight. If it is `false` and there is still no result for this `use`,
- * the validate call threw (or never ran) — that must NOT read the same as "in
- * progress", since it will never resolve on its own. It gets its own "stale"
- * kind with a distinct label pointing at the fix (Re-check).
+ * The notices the lib attached to an entry, for its Extensions row (a look
+ * row showed them in 0.11.22; restored in #482): everything but the "not
+ * installed / not pinned" ones, which the row already turns into "Not
+ * downloaded yet." with Install (their text is the CLI's instruction).
  */
-export function extensionStatus(
+export function entryWarnings(entry: ProjectExtensionEntry): string[] {
+  return (entry.warnings ?? []).filter((w) => !NEEDS_INSTALL_RE.test(w));
+}
+
+/** What is wrong with one configured extension, and the in-app fix. */
+export interface ExtensionProblem {
+  label: string;
+  /** The loader's own message, behind Show details. */
+  raw?: string;
+  /** Install a missing npm copy, reinstall one that will not load, or check again. */
+  fix: "install" | "reinstall" | "check";
+}
+
+/**
+ * What is wrong with one configured extension, or null when nothing is: a
+ * working, switched-off or still-checking entry shows no status at all
+ * (silence is success). Pure over the entry's own warnings, the load-test
+ * results (keyed by `use`) and the in-flight flag.
+ *
+ * An npm entry the lib reported as not installed / not pinned is "Not
+ * downloaded yet." with Install, ahead of any load-test result (for such an
+ * entry that is only a less specific failure). A failed load is "Couldn't
+ * load." with the loader's message, and Reinstall for npm or Check again for
+ * anything else. A check that never finished (not `validating`, and still no
+ * result) is not success either: it offers Check again.
+ */
+export function extensionProblem(
   entry: ProjectExtensionEntry,
   validation: Record<string, ExtensionValidationResult>,
   validating: boolean,
-): ExtensionStatus {
-  if (!entry.enabled) return { label: "Disabled", kind: "disabled" };
-  const needsInstall = entry.warnings?.find((w) => NEEDS_INSTALL_RE.test(w));
-  if (needsInstall) {
-    return {
-      label: "Needs install",
-      kind: "error",
-      detail: "This book's downloaded copy is missing. Install it to download this version again.",
-      fix: "install",
-    };
-  }
+): ExtensionProblem | null {
+  if (!entry.enabled) return null;
+  if (entry.warnings?.some((w) => NEEDS_INSTALL_RE.test(w))) return { label: "Not downloaded yet.", fix: "install" };
   const v = validation[entry.use];
-  if (!v) {
-    if (validating) return { label: "Checking…", kind: "checking" };
-    return {
-      label: "Check failed — click Re-check",
-      kind: "stale",
-      detail: "The last check didn't finish, so this extension's status is unknown. Click Re-check to try again.",
-    };
-  }
-  if (v.ok) return { label: "Loads OK", kind: "ok" };
+  if (!v) return validating ? null : { label: "Couldn't check it.", fix: "check" };
+  if (v.ok) return null;
   return {
-    label: "Error",
-    kind: "error",
-    detail:
-      entry.kind === "npm"
-        ? "This installed npm package couldn't load. See details below, then reinstall it or click Re-check."
-        : "This extension couldn't load. See details below, then click Re-check.",
+    label: "Couldn't load.",
     raw: v.error ?? "Unknown load error",
-    ...(entry.kind === "npm" ? { fix: "reinstall" as const } : {}),
+    fix: entry.kind === "npm" ? "reinstall" : "check",
   };
 }
 
@@ -203,9 +246,9 @@ export function extensionStatus(
 const isPrereleaseVersion = (version: string): boolean => version.split("+")[0]!.includes("-");
 
 /**
- * The versions a row's picker offers: the registry's published versions as
- * given (already newest first), stable only unless `includePrerelease`, and
- * ALWAYS the version the book pins — even a pre-release the toggle would hide —
+ * The versions an npm row's picker offers: the registry's published versions
+ * as given (already newest first), stable only unless `includePrerelease`, and
+ * ALWAYS the version the book pins — even a pre-release the switch would hide —
  * so the select can show what is actually in use. A pin the registry no longer
  * lists (or a list that has not loaded) still appears, in its place by
  * position: first, as the newest thing we know of.

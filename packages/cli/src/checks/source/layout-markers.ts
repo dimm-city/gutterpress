@@ -17,7 +17,7 @@
  * Two kinds keep their own severity: a plugin component's opt-in `validate`
  * (its designer may mark a problem `error` or `info`), and `flush_art`, an
  * `info` because `.gp-flush` is a choice the author made. An author can still
- * downgrade the whole check via `validate.checks` in the manifest.
+ * downgrade the whole check via `checks:` in the manifest.
  */
 import { readFile } from "node:fs/promises";
 import { registerCheck } from "../registry";
@@ -61,7 +61,7 @@ const check: Check = {
   id: "source.markdown.layout-markers",
   name: "Layout Markers",
   description:
-    "Reports @page/@section/@chapter marker arguments Gutterpress could not understand, plus any unknown gp-* class and any other class no stylesheet mentions",
+    "Reports @page/@section/@chapter marker arguments Gutterpress could not understand, any unknown gp-* class and any other class no stylesheet mentions, a table row with more cells than its table has columns, and a formula that could not be typeset",
   category: "source",
   phase: "pre-build",
   async run(ctx: CheckContext): Promise<CheckResult[]> {

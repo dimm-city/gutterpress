@@ -47,8 +47,8 @@ Then Read the PNGs (`/tmp/shots/editor.png`, ...). Look at them; a blank frame i
 Commands: `shot name`, `click sel`, `fill sel | value`, `press Key`, `move x y` (hover), `wheel dx dy` (a real wheel at the pointer — `move` there first), `size w h`, `wait ms`,
 `text` (dump body text), `btns` (visible controls with x,y,w,h), `eval js`.
 Failed commands print `FAIL ...` and the script continues. Pass `""` as the book dir to stay on the welcome screen.
-Useful selectors: `[aria-label='Book setup']` (toolbar button; the panel it opens is `[aria-label='Book settings']`), `[aria-label='Close book settings']`,
-`[aria-label='App preferences']` (app settings, status bar), `[aria-label='Help and about']`, `button:has-text('Publish')`,
+Useful selectors: `[aria-label='Book setup']` (toolbar button; the panel it opens is the `.app-view` whose `h1.view-title` reads "Book setup", with tabs `#project-settings-tab-{book,look,extensions,backup,advanced}`; its close button is `[aria-label='Close this screen']`),
+`[aria-label='Settings']` (app settings, status bar), `[aria-label='Help']`, `button:has-text('Publish')`,
 `.toggle-strip` (the status-bar Problems badge: icon + count, aria-label "Problems: 2 errors, 1 warning"), `.editor-toolbar .save-btn` (editor Save), `button:has-text('New book')`.
 
 ## Human path
@@ -58,7 +58,7 @@ Useful selectors: `[aria-label='Book setup']` (toolbar button; the panel it open
 - Opening a book = typing its path into the welcome screen's "Search your books" box + Enter (the native folder dialog can't be driven).
 - A fresh profile opens a book in **Read** (no editor: the app defaults to the Reader role) with the left panel open (closed if the window is narrow). To drive the editor, seed `$GP_HOME/.config/Electron/app-settings.json` with `{"workspace":{"role":"author"}}` before the run, as the integration drives do. A saved Read/Edit or panel choice wins on later launches, so delete `GP_HOME` for a first-run view.
 - `HOME` is set to `/tmp/gphome` (override with `GP_HOME`) so recents/settings don't leak between runs.
-- Settings, Help and Book settings are full-screen pages that cover the workspace (the workspace is inert underneath); Esc or the X (`Close book settings`) closes them.
+- Settings, Help and Book setup are full-screen pages that cover the workspace (the workspace is inert underneath); Esc or the X (`Close this screen`, on Settings `Close settings`) closes them. The start screen opens Settings from its header's `button:has-text('Settings')`.
 - The `New book` button is only visible while the left panel is open (already open on a fresh profile; the toggle closes it).
 - Selectors like `button:has-text('Edit')` can match several nodes; the first is used. Keep `p.setDefaultTimeout` short (5s) or a bad selector stalls the run.
 - Don't `pkill -f "vite dev"` in your own shell command; the pattern matches the shell and kills the session.

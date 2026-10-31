@@ -4,9 +4,10 @@ import { defineRoute, getHostServices, requireProjectDir } from '../../_lib/rout
 import type { RequestHandler } from './$types';
 
 /**
- * "Look at this version" (#408): the host writes the version's files to a
+ * Version history's Pages (#408, #448): the host writes the version's files to a
  * scratch copy and renders it read-only through a second preview server;
- * the renderer shows the returned URL beside the live preview.
+ * the Version history screen shows the returned URL as the selected version's pages.
+ * `null` when a later open or close replaced this one before it started.
  */
 export const POST: RequestHandler = defineRoute<{ projectDir: string; id: string }>({
   validate: async (raw) => {
@@ -19,5 +20,5 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; id: string
     return { projectDir, id };
   },
   call: ({ body }) => getHostServices().vcs.openVersionPreview(body.projectDir, body.id),
-  onError: (e) => friendlyVcsError(e, 'openVersionPreview', 'vcs/open-version-preview'),
+  onError: (e) => friendlyVcsError(e, 'vcs/open-version-preview'),
 });

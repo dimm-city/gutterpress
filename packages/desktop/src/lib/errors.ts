@@ -28,8 +28,8 @@ function isMissingManifestError(msg: string): boolean {
  * screen. Pure string classification — no host coupling.
  */
 export function friendlyFolderError(msg: string): string {
-  if (/has two versions of a setting/i.test(msg)) {
-    return "A sync left two versions of a setting in this book's manifest.yaml. Open the file, keep the one you want and delete the marker lines, then try again.";
+  if (/has two takes of a setting/i.test(msg)) {
+    return "Getting the latest changes left two takes of a setting in this book's manifest.yaml. Open the file, keep the one you want and delete the marker lines, then try again.";
   }
   const yamlPosition = msg.match(
     /Invalid YAML in [^\n]+ at line (\d+), column (\d+)/i,
@@ -60,11 +60,11 @@ export function friendlyPreviewError(raw: string): FriendlyPreviewError {
   const details = friendlyHostError(raw)
     .replace(/^Preview server failed to start:\s*/i, "")
     .trim();
-  if (/has two versions of a setting/i.test(details)) {
+  if (/has two takes of a setting/i.test(details)) {
     return {
-      title: "This book's settings have two versions.",
+      title: "This book's settings have two takes.",
       message:
-        "A sync found a setting changed both here and online, and kept both in manifest.yaml. Open the Files panel, open manifest.yaml, and choose which version to keep.",
+        "Getting the latest changes found a setting changed both here and in the online copy, and kept both in manifest.yaml. Open the Files panel, open manifest.yaml, and choose which take to keep.",
       details,
     };
   }
@@ -94,7 +94,7 @@ export function friendlyPreviewError(raw: string): FriendlyPreviewError {
   if (/No markdown files found/i.test(details)) {
     return {
       title: "No Markdown chapters were found.",
-      message: "Add a chapter or correct the source.files entries in manifest.yaml, then try again.",
+      message: "Add a chapter or correct the chapters list in manifest.yaml, then try again.",
       details,
     };
   }
@@ -224,7 +224,7 @@ export interface FriendlyPublishError {
  * `r.text()` and throw `new Error(text)` verbatim — they never JSON.parse
  * it — so a `catch (e)` on any `api.*` call sees this raw `{"message": "…"}`
  * envelope as `e.message` instead of the message itself. Peel it back before
- * showing it (publish errors below; Troubleshooting → Sync) so an author is
+ * showing it (publish errors below; Book setup → Online copy) so an author is
  * never shown a bare JSON blob.
  */
 export function unwrapRouteError(text: string): string {
@@ -316,13 +316,6 @@ export function friendlyPublishError(e: unknown): FriendlyPublishError {
       summary: "Your Google Drive is full — free up space (or choose a different folder) and try again.",
       details: msg,
     };
-  }
-
-  // Google Drive (#221): the configured folder was moved to trash or
-  // deleted. providers/gdrive.ts's folderId resolution already writes a
-  // specific, friendly "pick the folder again" sentence — passed through.
-  if (/drive folder.*can.?t be found/i.test(msg)) {
-    return { summary: msg };
   }
 
   // A request that never reached (or never returned from) the publish route

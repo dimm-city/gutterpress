@@ -1,0 +1,215 @@
+<script lang="ts">
+  /**
+   * PublishKeyForm — adds or replaces one publishing account, the same way
+   * wherever it is shown (the Accounts page, and the Publish wizard's setup
+   * step for a destination): a key pasted for itch.io, Azure Static Web Apps
+   * or Shopify, checked with the provider before it is saved
+   * (api.publish.connect with no project), or Google Drive's browser sign-in
+   * (connectGoogleStart/Wait/Cancel). It saves the account and says which one
+   * (onConnected); picking the account a book uses is the caller's.
+   *
+   * Shopify's check needs the store's address, which a book keeps in its own
+   * settings and which is not read here: the form asks for it (the wizard
+   * fills in the one it knows), uses it for the check only and does not save
+   * it.
+   *
+   * A new account may be given a name, so several can be kept for one
+   * provider; saving under a name that already exists replaces that key, which
+   * is how a key is edited (a saved key is never read back, so it is pasted
+   * again). The key lives here only until it is saved: it is cleared at once,
+   * and a failed check keeps it so it can be fixed.
+   *
+   * PWA-clean (§8): api.* routes and getPlatform() only.
+   */
+  import { onMount, tick, untrack } from "svelte";
+  import { api } from "#lib/api.ts";
+  import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
+  import { getPlatform } from "#lib/platform/index.ts";
+  import { savedAccount, type KeyFormProvider } from "#lib/accounts.ts";
+  import Icon from "#lib/components/Icon.svelte";
+
+  let {
+    provider,
+    account = "",
+    askAccount = false,
+    saved = [],
+    store: knownStore = "",
+    hint,
+    submitLabel = "Add",
+    takeFocus = false,
+    onConnected,
+    onCancel,
+  }: {
+    provider: KeyFormProvider;
+    /** The account being replaced (Edit): "" is the default account. */
+    account?: string;
+    /** Ask for an optional name for the account (Add). */
+    askAccount?: boolean;
+    /** The accounts already saved, so a name that would replace one says so. */
+    saved?: Array<{ provider: { id: string }; account: string; label: string }>;
+    /** Shopify's store address, when the caller already knows it (the book's own setting). */
+    store?: string;
+    /** What to tell the author before the fields; the provider's own hint when left out. */
+    hint?: string;
+    submitLabel?: string;
+    /** Put the cursor in the field to fill first when the form appears. */
+    takeFocus?: boolean;
+    /** The account is saved: its name ("" is the default account). */
+    onConnected: (account: string) => void | Promise<void>;
+    onCancel?: () => void;
+  } = $props();
+
+  let typedAccount = $state("");
+  let store = $state(untrack(() => knownStore));
+  let token = $state("");
+  let busy = $state(false);
+  let error = $state<string | null>(null);
+  /** Google's sign-in page, while the browser is being waited on. */
+  let signInUrl = $state<string | null>(null);
+  let storeEl = $state<HTMLInputElement>();
+  let nameEl = $state<HTMLInputElement>();
+  let tokenEl = $state<HTMLInputElement>();
+  // The button that starts the sign-in is replaced by the waiting line's, and a removed
+  // control drops focus to <body>, where Escape no longer reaches the page.
+  let submitEl = $state<HTMLButtonElement>();
+  let cancelEl = $state<HTMLButtonElement>();
+  // A sign-in that was cancelled settles late; only the latest attempt may touch the form.
+  let attempt = 0;
+
+  const oauth = $derived(provider.connectKind === "oauth");
+  const needsStore = $derived(provider.id === "shopify");
+  const ready = $derived(!!token.trim() && (!needsStore || !!store.trim()));
+  const name = $derived((askAccount ? typedAccount : account).trim());
+  const replaces = $derived(askAccount ? savedAccount(saved, provider.id, name) : undefined);
+
+  onMount(() => {
+    if (takeFocus) (storeEl ?? tokenEl ?? nameEl)?.focus();
+    // A sign-in left waiting must not outlive the page.
+    return () => {
+      if (signInUrl) getPlatform().connectGoogleCancel().catch(() => {});
+    };
+  });
+
+  const failed = (e: unknown) => friendlyHostError(unwrapRouteError(e instanceof Error ? e.message : String(e)));
+
+  async function submit() {
+    if (busy || !ready) return;
+    busy = true;
+    error = null;
+    try {
+      await api.publish.connect(null, provider.id, token, name || undefined, needsStore ? store.trim() : undefined);
+      token = ""; // the key has done its job: never keep it in state
+      await onConnected(name);
+    } catch (e) {
+      error = failed(e);
+      tokenEl?.focus();
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function signIn() {
+    if (busy) return;
+    const mine = ++attempt;
+    busy = true;
+    error = null;
+    try {
+      const { authUrl } = await getPlatform().connectGoogleStart(name || undefined);
+      if (mine !== attempt) return;
+      signInUrl = authUrl;
+      void tick().then(() => cancelEl?.focus());
+      await getPlatform().connectGoogleWait();
+      if (mine === attempt) await onConnected(name);
+    } catch (e) {
+      if (mine === attempt) error = failed(e);
+    } finally {
+      if (mine === attempt) {
+        busy = false;
+        signInUrl = null;
+        void tick().then(() => submitEl?.focus());
+      }
+    }
+  }
+
+  function cancelSignIn() {
+    attempt++;
+    busy = false;
+    signInUrl = null;
+    void tick().then(() => submitEl?.focus());
+    getPlatform().connectGoogleCancel().catch(() => {});
+  }
+</script>
+
+<form class="key-form" onsubmit={(e) => { e.preventDefault(); void (oauth ? signIn() : submit()); }}>
+  {#if hint ?? provider.hint}<p class="hint">{hint ?? provider.hint}</p>{/if}
+  {#if needsStore}
+    <label class="field">
+      <span class="lbl">Store address</span>
+      <input bind:this={storeEl} bind:value={store} placeholder="your-store.myshopify.com" autocomplete="off" spellcheck="false" />
+    </label>
+    <p class="hint">Used to check the key, not saved. Each book keeps its own store in its Publish settings.</p>
+  {/if}
+  {#if !oauth}
+    <label class="field">
+      <span class="lbl">API key</span>
+      <!-- "new-password" actually suppresses autofill/save prompts; browsers ignore "off" on password fields. -->
+      <input bind:this={tokenEl} bind:value={token} type="password" autocomplete="new-password" />
+    </label>
+    {#if provider.tokenUrl}
+      <button type="button" class="link" onclick={() => void api.shell.openExternal(provider.tokenUrl!).catch(() => {})}>
+        Create a key on {provider.label} <Icon name="external-link" size={11} />
+      </button>
+    {/if}
+  {/if}
+  {#if askAccount}
+    <label class="field">
+      <span class="lbl">Account name (optional)</span>
+      <input bind:this={nameEl} bind:value={typedAccount} placeholder="Leave blank for your default" autocomplete="off" spellcheck="false" />
+    </label>
+    {#if replaces}
+      <p class="hint">{replaces.account ? `A key named ${replaces.label} is already saved. Adding this replaces it.` : `Your default ${provider.label} account is already saved. Adding this replaces it.`}</p>
+    {/if}
+  {/if}
+  {#if signInUrl}
+    <p class="waiting"><Icon name="refresh-cw" size={13} /> Waiting for your browser. Choose your Google account and click Allow.</p>
+    <div class="actions">
+      <button type="button" class="link" onclick={() => void api.shell.openExternal(signInUrl!).catch(() => {})}>
+        Open the sign-in page again <Icon name="external-link" size={11} />
+      </button>
+      <button bind:this={cancelEl} type="button" class="app-btn app-btn-ghost" onclick={cancelSignIn}>Cancel</button>
+    </div>
+  {:else}
+    <div class="actions">
+      <button bind:this={submitEl} type="submit" class="app-btn app-btn-primary" disabled={busy || (!oauth && !ready)}>
+        {oauth ? `Connect ${provider.label}` : busy ? "Checking…" : submitLabel}
+      </button>
+      {#if onCancel}<button type="button" class="app-btn app-btn-ghost" onclick={onCancel}>Cancel</button>{/if}
+    </div>
+  {/if}
+  {#if error}<p class="error" role="alert">{error}</p>{/if}
+</form>
+
+<style>
+  .key-form { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+  .field { display: flex; flex-direction: column; gap: 3px; align-self: stretch; max-width: 420px; }
+  .lbl { font-size: 13px; font-weight: 600; color: var(--app-text); }
+  input { box-sizing: border-box; width: 100%; padding: 7px 9px; font: inherit; font-size: 13px; }
+  .actions { display: flex; align-items: center; gap: 8px; }
+  .hint { margin: 0; font-size: 12px; line-height: 1.4; color: var(--app-text-muted); }
+  .waiting { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--app-text-secondary); }
+  .error { margin: 0; font-size: 12px; color: var(--app-error-text); }
+  .link {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--app-link);
+    font-size: 12px;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .link:hover { color: var(--app-link-hover); }
+</style>

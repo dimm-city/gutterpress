@@ -22,8 +22,8 @@ describe("two_versions block rule", () => {
     );
     const html = render(combined);
     expect(html).toContain('<div class="gp-two-versions"');
-    expect(html).toContain('<div class="gp-version gp-version-yours" data-label="Your version"');
-    expect(html).toContain('<div class="gp-version gp-version-online" data-label="Online version"');
+    expect(html).toContain('<div class="gp-version gp-version-yours" data-label="Your take"');
+    expect(html).toContain('<div class="gp-version gp-version-online" data-label="Online take"');
     // Each side is block markdown: the bold survives as <strong>.
     expect(html).toMatch(/<p[^>]*>The vault door <strong>groaned<\/strong> open\.<\/p>/);
     expect(html).toMatch(/<p[^>]*>The vault door swung open\.<\/p>/);
@@ -62,7 +62,7 @@ describe("two_versions block rule", () => {
 
   test("an empty side renders an empty labelled box; CRLF input works", () => {
     const html = render("<<<<<<< your version\r\n=======\r\ntheirs\r\n>>>>>>> online version\r\n");
-    expect(html).toMatch(/data-label="Your version"[^>]*><\/div>/);
+    expect(html).toMatch(/data-label="Your take"[^>]*><\/div>/);
     expect(html).toMatch(/<p[^>]*>theirs<\/p>/);
   });
 

@@ -6,7 +6,7 @@
  * (CSS extraction, tier routing, synthesis) stays in Node/shared modules so
  * there is exactly one implementation of each.
  */
-import { leaderFillCount, LEADER_RE } from "../shared/synthesis.ts";
+import { leaderFillCount, LEADER_RE, RECTO_VERSO_VALUES } from "../shared/synthesis.ts";
 import { evaluate } from "../shared/content-value.ts";
 import { paddingOf, pinEdgesIn, pinKey, type PinEdge } from "../shared/pin-edges.ts";
 import { printAreaFromMeta, type PrintArea } from "../shared/print-area.ts";
@@ -158,11 +158,21 @@ export function stringSources(
  * Elements with a recto/verso forced break (`break-before: right|recto|…`),
  * which Chromium treats as a plain page break (S10). They need ids so the
  * compiler can learn which page they landed on.
+ *
+ * The declarations come from the extracted model, which holds losing ones
+ * too, and print breaks on the cascade's winner: an element counts only while
+ * its computed `break-before` still asks for a side, and `value` is that
+ * computed value (a book that resets a look's `break-before: left` to `auto`
+ * gets no blank page — #454). Each element once, in document order, which
+ * `planRectoBlanks` needs; the viewer's `compensateRectoBreaks` reads the
+ * same way. Every match still gets its id, in declaration order, because the
+ * build's predict page calls this too and must hand out the same `gp-m-N` ids.
  */
 export function forcedBreakSites(
   decls: Array<{ selector: string; prop: string; value: string }>,
 ): Array<{ id: string; prop: string; value: string; selector: string }> {
-  const out: Array<{ id: string; prop: string; value: string; selector: string }> = [];
+  const found: Array<{ el: Element; id: string; prop: string; value: string; selector: string }> = [];
+  const seen = new Set<Element>();
   for (const d of decls) {
     let els: Element[] = [];
     try {
@@ -170,10 +180,16 @@ export function forcedBreakSites(
     } catch {
       continue;
     }
-    for (const el of els)
-      out.push({ id: ensureAnchor(el), prop: d.prop, value: d.value, selector: d.selector });
+    for (const el of els) {
+      const id = ensureAnchor(el);
+      const value = getComputedStyle(el).breakBefore;
+      if (seen.has(el) || !RECTO_VERSO_VALUES.test(value)) continue;
+      seen.add(el);
+      found.push({ el, id, prop: d.prop, value, selector: d.selector });
+    }
   }
-  return out;
+  found.sort((a, b) => (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+  return found.map(({ el: _el, ...site }) => site);
 }
 
 /**

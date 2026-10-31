@@ -68,7 +68,7 @@
   let discovered = $state<DiscoveredProject[]>([]);
   let loading = $state(false);
   // The recents/favorites load must not catch-and-ignore: a failed load would
-  // render the exact same "No recent books yet" copy as a genuinely empty
+  // render the exact same "No books yet" copy as a genuinely empty
   // list — a lie that hides a real problem from the writer. Tracked
   // per-surface (this component owns one load surface: recents +
   // favorites, loaded together below) so the empty-state branch can tell
@@ -465,7 +465,7 @@
             <button type="button" class="retry-btn" onclick={() => loadLists()}>Retry</button>
           </div>
         {:else if !loading}
-          <p class="empty-section-hint">No recent books yet. Open a folder to get started.</p>
+          <p class="empty-section-hint">No books yet. Create a new book or open a folder to get started.</p>
         {/if}
       </section>
     {/if}
@@ -532,7 +532,6 @@
           <Icon name="folder-open" size={14} /> Open book…
         </button>
       {/if}
-      <!-- A reader (Settings → App) gets no New book; Open book stays. -->
       {#if onNewProject}
         <button class="footer-action primary" onclick={onNewProject} title="Create a new book">
           <Icon name="plus" size={14} /> New book
@@ -566,18 +565,9 @@
   .location-input {
     flex: 1;
     min-width: 0;
-    background: var(--app-surface-sunken);
-    border: 1px solid var(--app-border);
-    color: var(--app-text-secondary);
     padding: 6px 8px;
-    border-radius: 5px;
     font-size: 12px;
     font-family: inherit;
-  }
-  .location-input:focus {
-    outline: 2px solid var(--app-focus-ring);
-    outline-offset: -1px;
-    border-color: var(--app-focus-ring);
   }
   .browse-btn {
     flex-shrink: 0;

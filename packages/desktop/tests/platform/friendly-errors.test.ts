@@ -29,36 +29,37 @@ test("redactUrlCredentials leaves credential-free text untouched", () => {
 });
 
 test("friendlyVcsError passes a lib author-friendly message through as 422", () => {
-  const err = new Error("There are no changes since the last snapshot.");
-  const result = friendlyVcsError(err, "saveSnapshot", "vcs/save-snapshot");
+  const err = new Error("Nothing new to save — your last version already has everything.");
+  const result = friendlyVcsError(err, "vcs/save-snapshot");
   expect(result.status).toBe(422);
-  expect(result.message).toBe("There are no changes since the last snapshot.");
+  expect(result.message).toBe("Nothing new to save — your last version already has everything.");
 });
 
 test("friendlyVcsError maps every known friendly phrase to 422", () => {
   const phrases = [
-    "no changes since the last snapshot",
-    "no version history yet",
+    "Nothing new to save",
+    "This book isn't keeping version history yet. Turn on version history first.",
     "your work is safe",
     "book files were not changed",
     "requires an absolute project path",
     "valid snapshot id",
-    "already inside a versioned book",
-    "couldn't switch copies",
+    "This folder is already inside a book that keeps version history",
+    "Couldn't switch revisions",
+    "Couldn't find a revision named \"x\"",
+    "Give the revision a name.",
+    "Couldn't reach the online copy, so \"x\" wasn't renamed.",
     "requires a branch name",
   ];
   for (const p of phrases) {
-    expect(friendlyVcsError(new Error(p), "op", "vcs/x").status).toBe(422);
+    expect(friendlyVcsError(new Error(p), "vcs/x").status).toBe(422);
   }
 });
 
-test("friendlyVcsError replaces an internal error with a terse 500 naming the op", () => {
+test("friendlyVcsError replaces an internal error with a terse 500", () => {
   const err = new Error("ENOENT: .git/refs/heads/main isomorphic-git internals");
-  const result = friendlyVcsError(err, "restoreSnapshot", "vcs/restore-snapshot");
+  const result = friendlyVcsError(err, "vcs/restore-snapshot");
   expect(result.status).toBe(500);
-  expect(result.message).toBe(
-    "Version history could not complete the restoreSnapshot operation. See the app log for details.",
-  );
+  expect(result.message).toBe("Couldn't finish that. Your work is safe — see the app log for details.");
   // The raw internal message must NOT leak into the returned message.
   expect(result.message).not.toContain("isomorphic-git");
 });
@@ -66,7 +67,7 @@ test("friendlyVcsError replaces an internal error with a terse 500 naming the op
 test("friendlyVcsError logs the failure under the supplied label", () => {
   const spy = spyOn(console, "error").mockImplementation(() => {});
   try {
-    friendlyVcsError(new Error("boom internal"), "listSnapshotsPage", "vcs/list-snapshots-page");
+    friendlyVcsError(new Error("boom internal"), "vcs/list-snapshots-page");
     expect(spy.mock.calls[0]?.[0]).toBe("[vcs/list-snapshots-page] failed: boom internal");
   } finally {
     spy.mockRestore();
@@ -91,6 +92,28 @@ test("handleRemoteErrors passes a lib author-friendly remote message through ver
   }
 });
 
+test("handleRemoteErrors passes the lib's sign-in and online-copy messages through verbatim", async () => {
+  const spy = spyOn(console, "error").mockImplementation(() => {});
+  const messages = [
+    "GitHub didn't accept the saved sign-in for this book. Sign in to GitHub again and try again.",
+    "Your GitHub sign-in has expired. Sign in to GitHub again and try again.",
+    "That online copy couldn't be found. It may have been renamed or you may no longer have access.",
+    "That address is not a valid web address.",
+    "Only secure web (https) addresses are supported. SSH addresses (git@…) can't be used here.",
+  ];
+  try {
+    for (const msg of messages) {
+      await expect(
+        handleRemoteErrors("remote:test", async () => {
+          throw new Error(msg);
+        }),
+      ).rejects.toThrow(msg);
+    }
+  } finally {
+    spy.mockRestore();
+  }
+});
+
 test("handleRemoteErrors replaces an unexpected internal failure with a terse safe message", async () => {
   const spy = spyOn(console, "error").mockImplementation(() => {});
   try {
@@ -98,9 +121,7 @@ test("handleRemoteErrors replaces an unexpected internal failure with a terse sa
       handleRemoteErrors("remote:test", async () => {
         throw new Error("TypeError: cannot read property foo of undefined");
       }),
-    ).rejects.toThrow(
-      "The online repository operation could not be completed. See the app log for details.",
-    );
+    ).rejects.toThrow("Couldn't finish that with the online copy. See the app log for details.");
   } finally {
     spy.mockRestore();
   }
@@ -297,7 +318,7 @@ test("the other three filters reach the same sink", async () => {
   const base = makeHostServices();
   registerHostServices({ ...base, app: { ...base.app, logFailure: (line) => lines.push(line) } });
   try {
-    friendlyVcsError(new Error("isomorphic-git internals"), "restoreSnapshot", "vcs/restore-snapshot");
+    friendlyVcsError(new Error("isomorphic-git internals"), "vcs/restore-snapshot");
     expect(lines[0]).toBe("[vcs/restore-snapshot] failed: isomorphic-git internals");
     await handleRemoteErrors("remote:test", async () => {
       throw new Error("ECONNRESET");

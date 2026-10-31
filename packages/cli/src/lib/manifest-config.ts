@@ -2,7 +2,7 @@
  * Manifest configuration writers — the unified "Project Configuration" view
  * (#PCV) owns editing the simple, author-facing manifest fields that the four
  * retired modal managers never touched: `title`, `authors`,
- * `source.files`, plus a generic `setActiveStyles` to reorder/enable the
+ * `chapters`, plus a generic `setActiveStyles` to reorder/enable the
  * stylesheets list (the active set) without going through theme-apply.
  *
  * Storage model mirrors {@link extension-manager.ts}:
@@ -22,12 +22,13 @@ import {
 } from "./manifest-doc";
 import { TARGETS, TARGET_IDS } from "./targets";
 import { UsageError } from "./cli-args";
+import { rewriteOldThresholds } from "./manifest-old-spellings";
 
 /** The author-facing manifest subset the Config view can read + write. */
 export interface ProjectConfigFields {
   title?: string;
   authors?: string[];
-  /** `source.files` — the markdown inputs (null means "all chapter files"). */
+  /** `chapters` — the markdown inputs (null means "all chapter files"). */
   sourceFiles?: string[] | null;
   /**
    * `targets:` — the publish destinations this book is validated against
@@ -47,13 +48,17 @@ function hasKey(obj: object, key: PropertyKey): boolean {
  * Apply the author-facing manifest field updates in a single yaml round-trip.
  * Only the keys present in `updates` are written; everything else is left
  * untouched (so unrelated comments + sections survive). `sourceFiles: null`
- * deletes the `source.files` entry (back to "all chapter files").
+ * deletes the `chapters` entry (back to "all chapter files"). Either way an
+ * older book's `source.files` is taken out, so the list has one spelling, and
+ * the thresholds it spells the 0.11.22 way are written as their checks'
+ * options (`rewriteOldThresholds`).
  */
 export async function setManifestFields(
   projectDir: string,
   updates: ProjectConfigFields,
 ): Promise<ProjectConfigFields> {
   const { doc, file } = await loadManifestDoc(projectDir);
+  rewriteOldThresholds(doc);
 
   if (hasKey(updates, "title")) {
     if (updates.title === undefined || updates.title === "") {
@@ -93,15 +98,14 @@ export async function setManifestFields(
 
   if (hasKey(updates, "sourceFiles")) {
     const f = updates.sourceFiles;
-    if (f === null || (Array.isArray(f) && f.length === 0)) {
-      doc.deleteIn(["source", "files"]);
-      const source = doc.get("source", true);
-      if (isMap(source) && source.items.length === 0) {
-        doc.delete("source");
-      }
-    } else {
-      doc.setIn(["source", "files"], f);
+    // The spelling before 0.11.23 (`source.files`) goes, so the book has one list.
+    const source = doc.get("source", true);
+    if (isMap(source)) {
+      source.delete("files");
+      if (source.items.length === 0) doc.delete("source");
     }
+    if (f === null || (Array.isArray(f) && f.length === 0)) doc.delete("chapters");
+    else doc.set("chapters", f);
   }
 
   await writeDoc(file, doc);
@@ -132,14 +136,16 @@ export async function readManifestFields(projectDir: string): Promise<ProjectCon
         .map((i) => scalarString(i))
         .filter((s): s is string => s !== null);
     }
-    const filesNode = doc.getIn(["source", "files"], true);
+    // `chapters`, or an older book's `source.files` (read until it is rewritten).
+    const sourceNode = doc.get("source", true);
+    const oldSpelling = isMap(sourceNode) && sourceNode.has("files");
+    const filesNode = doc.has("chapters") ? doc.get("chapters", true) : doc.getIn(["source", "files"], true);
     if (isSeq(filesNode)) {
       out.sourceFiles = (filesNode.items as unknown[]).map((i) => scalarString(i) ?? "");
-    } else {
-      // `files: null` is a deliberate "all chapter files" sentinel; an absent
+    } else if (doc.has("chapters") || oldSpelling) {
+      // `chapters: null` is a deliberate "all chapter files" sentinel; an absent
       // key stays undefined so the form can distinguish "not set" from "null".
-      const sourceNode = doc.get("source", true);
-      if (isMap(sourceNode) && sourceNode.has("files")) out.sourceFiles = null;
+      out.sourceFiles = null;
     }
     return out;
   } catch {

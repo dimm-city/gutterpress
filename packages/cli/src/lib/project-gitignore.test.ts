@@ -25,33 +25,44 @@ describe("ensureProjectGitignore", () => {
   test("creates the file with both entries", async () => {
     const dir = await tmp();
     expect(await ensureProjectGitignore(dir)).toEqual({ negated: [] });
-    expect(await read(dir)).toBe("dist/\nplugins/npm/\n");
+    expect(await read(dir)).toBe("dist/\nextensions/npm/\n");
   });
 
   test("appends to an existing file without touching what is there, even with no trailing newline", async () => {
     const dir = await tmp();
     await writeFile(path.join(dir, ".gitignore"), "*.log\n# mine\nnotes/", "utf8");
     await ensureProjectGitignore(dir);
-    expect(await read(dir)).toBe("*.log\n# mine\nnotes/\ndist/\nplugins/npm/\n");
+    expect(await read(dir)).toBe("*.log\n# mine\nnotes/\ndist/\nextensions/npm/\n");
   });
 
   test("appends only the entry that is missing", async () => {
     const dir = await tmp();
     await writeFile(path.join(dir, ".gitignore"), "/dist\n", "utf8");
     await ensureProjectGitignore(dir);
-    expect(await read(dir)).toBe("/dist\nplugins/npm/\n");
+    expect(await read(dir)).toBe("/dist\nextensions/npm/\n");
+  });
+
+  test("an older book's plugins/npm/ line goes when extensions/npm/ takes its place, and only then (#436)", async () => {
+    const dir = await tmp();
+    await writeFile(path.join(dir, ".gitignore"), "*.log\r\ndist/\r\n/plugins/npm\r\nnotes/", "utf8");
+    await ensureProjectGitignore(dir);
+    expect(await read(dir)).toBe("*.log\r\ndist/\r\nnotes/\nextensions/npm/\n");
+    // Already covered: the file, old line included, is left alone.
+    await writeFile(path.join(dir, ".gitignore"), "dist/\nplugins/npm/\nextensions/npm/\n", "utf8");
+    await ensureProjectGitignore(dir);
+    expect(await read(dir)).toBe("dist/\nplugins/npm/\nextensions/npm/\n");
   });
 
   test.each([
-    "dist/\nplugins/npm/\n",
-    "dist\r\nplugins/npm\r\n",
-    "/dist/\n/plugins/npm/\n",
-    "dist/\nplugins/\n",
-    "dist/\nplugins/*\n",
-    "dist/\n**/plugins/npm/\n",
-    "dist/\nplugins/npm/**\n",
-    "dist/\nplugins/[np]pm/\n",
-    "dist/\nplugins/n?m/\n",
+    "dist/\nextensions/npm/\n",
+    "dist\r\nextensions/npm\r\n",
+    "/dist/\n/extensions/npm/\n",
+    "dist/\nextensions/\n",
+    "dist/\nextensions/*\n",
+    "dist/\n**/extensions/npm/\n",
+    "dist/\nextensions/npm/**\n",
+    "dist/\nextensions/[np]pm/\n",
+    "dist/\nextensions/n?m/\n",
   ])("leaves a file that already covers both entries alone: %j", async (content) => {
     const dir = await tmp();
     await writeFile(path.join(dir, ".gitignore"), content, "utf8");
@@ -59,20 +70,20 @@ describe("ensureProjectGitignore", () => {
     expect(await read(dir)).toBe(content);
   });
 
-  test.each(["!**/plugins/npm/**", "!plugins/npm/", "plugins/npm/\n!plugins/npm/", "plugins/*\n!plugins/npm/"])(
+  test.each(["!**/extensions/npm/**", "!extensions/npm/", "extensions/npm/\n!extensions/npm/", "extensions/*\n!extensions/npm/"])(
     "respects an author's re-include and reports it, without appending: %j",
     async (rule) => {
       const dir = await tmp();
       const content = `dist/\n${rule}\n`;
       await writeFile(path.join(dir, ".gitignore"), content, "utf8");
-      expect(await ensureProjectGitignore(dir)).toEqual({ negated: ["plugins/npm/"] });
+      expect(await ensureProjectGitignore(dir)).toEqual({ negated: ["extensions/npm/"] });
       expect(await read(dir)).toBe(content);
     },
   );
 
   test("a re-include that the author ignores again afterwards is not reported", async () => {
     const dir = await tmp();
-    const content = "dist/\n!**/plugins/npm/**\nplugins/npm/\n";
+    const content = "dist/\n!**/extensions/npm/**\nextensions/npm/\n";
     await writeFile(path.join(dir, ".gitignore"), content, "utf8");
     expect(await ensureProjectGitignore(dir)).toEqual({ negated: [] });
     expect(await read(dir)).toBe(content);
@@ -80,21 +91,21 @@ describe("ensureProjectGitignore", () => {
 
   test("a character class that does not cover the entry does not count", async () => {
     const dir = await tmp();
-    await writeFile(path.join(dir, ".gitignore"), "dist/\nplugins/[xy]pm/\n", "utf8");
+    await writeFile(path.join(dir, ".gitignore"), "dist/\nextensions/[xy]pm/\n", "utf8");
     await ensureProjectGitignore(dir);
-    expect(await read(dir)).toBe("dist/\nplugins/[xy]pm/\nplugins/npm/\n");
+    expect(await read(dir)).toBe("dist/\nextensions/[xy]pm/\nextensions/npm/\n");
   });
 
   test("an unrelated negation does not count", async () => {
     const dir = await tmp();
     await writeFile(path.join(dir, ".gitignore"), "*.pdf\n!keep.pdf\n", "utf8");
     expect(await ensureProjectGitignore(dir)).toEqual({ negated: [] });
-    expect(await read(dir)).toBe("*.pdf\n!keep.pdf\ndist/\nplugins/npm/\n");
+    expect(await read(dir)).toBe("*.pdf\n!keep.pdf\ndist/\nextensions/npm/\n");
   });
 
   describe("what the desktop's auto-snapshot honours", () => {
     async function vendoredFile(book: string): Promise<void> {
-      const pkg = path.join(book, "plugins", "npm", "gp-x", "1.0.0", "node_modules", "gp-x");
+      const pkg = path.join(book, "extensions", "npm", "gp-x", "1.0.0", "node_modules", "gp-x");
       await mkdir(pkg, { recursive: true });
       await writeFile(path.join(pkg, "index.js"), "export default () => {};\n", "utf8");
       await writeFile(path.join(book, "chapter.md"), "# Hi\n", "utf8");
@@ -107,7 +118,7 @@ describe("ensureProjectGitignore", () => {
       await ensureProjectGitignore(book);
       const { adds } = await listWorkdirChanges(book);
       expect(adds).toContain("chapter.md");
-      expect(adds.filter((p) => p.startsWith("plugins/"))).toEqual([]);
+      expect(adds.filter((p) => p.startsWith("extensions/"))).toEqual([]);
     });
 
     test("a book in a subfolder of a repository: the book's own .gitignore is enough", async () => {
@@ -119,13 +130,13 @@ describe("ensureProjectGitignore", () => {
       expect(fs.existsSync(path.join(repo, ".gitignore"))).toBe(false);
       const { adds } = await listWorkdirChanges(repo);
       expect(adds).toContain("field-guide/chapter.md");
-      expect(adds.filter((p) => p.includes("plugins/npm"))).toEqual([]);
+      expect(adds.filter((p) => p.includes("extensions/npm"))).toEqual([]);
       // The sibling folders of the book are untouched by its ignore rules.
       await vendoredFile(path.join(repo, "other-book"));
-      expect((await listWorkdirChanges(repo)).adds).toContain("other-book/plugins/npm/gp-x/1.0.0/node_modules/gp-x/index.js");
+      expect((await listWorkdirChanges(repo)).adds).toContain("other-book/extensions/npm/gp-x/1.0.0/node_modules/gp-x/index.js");
     });
 
-    test("a real snapshot commit of a book in a repository leaves plugins/npm/ out", async () => {
+    test("a real snapshot commit of a book in a repository leaves extensions/npm/ out", async () => {
       const repo = await tmp();
       await git.init({ fs, dir: repo, defaultBranch: "main" });
       const book = path.join(repo, "field-guide");
@@ -138,14 +149,14 @@ describe("ensureProjectGitignore", () => {
 
       const tracked = await git.listFiles({ fs, dir: repo });
       expect(tracked).toContain("field-guide/chapter.md");
-      expect(tracked.filter((p) => p.includes("plugins/npm"))).toEqual([]);
+      expect(tracked.filter((p) => p.includes("extensions/npm"))).toEqual([]);
     });
 
     test("files already tracked stay tracked: ignoring does not untrack them", async () => {
       const book = await tmp();
       await git.init({ fs, dir: book, defaultBranch: "main" });
       await vendoredFile(book);
-      const rel = "plugins/npm/gp-x/1.0.0/node_modules/gp-x/index.js";
+      const rel = "extensions/npm/gp-x/1.0.0/node_modules/gp-x/index.js";
       await git.add({ fs, dir: book, filepath: rel });
       await ensureProjectGitignore(book);
       const { adds, removes } = await listWorkdirChanges(book);

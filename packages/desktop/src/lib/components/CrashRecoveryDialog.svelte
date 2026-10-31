@@ -2,21 +2,18 @@
   /**
    * CrashRecoveryDialog (#44) — shown on launch when crash-recovery snapshots
    * are found for the opened project (an unclean exit left unsaved edits). The
-   * author chooses Restore (load the recovered text into the editor; it saves on
+   * author chooses Recover (load the recovered text into the editor; it saves on
    * the next debounce) or Discard (delete the sidecar only — never the real
    * file). One dialog covers all pending entries; the author resolves each.
    *
    * This dialog is the writer-facing surface for the CRASH-DRAFT subsystem —
-   * a different concept from the sync-repair flows. The word "recovery" is
-   * used internally (this file's name, `electron/recovery.ts`, the
-   * `RecoveryItem`/`recoveryPath` identifiers below) but writer-facing copy
-   * in THIS dialog must stay inside the "unsaved changes" vocabulary and
-   * never say "recovery".
+   * a different concept from the repair flows. Its verb is "Recover": "Restore"
+   * means going back to a version (docs/ux-design-contract.md, Vocabulary).
    *
    * Uses the shared `dialogBehavior` action (Escape → "Decide later", ARIA
    * contract owned by the action on the dialog element itself, focus trap +
-   * initial focus + focus restore), shows a recovered-vs-on-disk "Compare
-   * versions" disclosure per item so the writer can see what they're about
+   * initial focus + focus restore), shows a recovered-vs-saved "Compare with
+   * the saved file" disclosure per item so the writer can see what they're about
    * to restore or discard, and makes Discard two-step (an inline confirm swap
    * on the button).
    */
@@ -132,9 +129,9 @@
       <h2 id="cr-title">Unsaved changes found</h2>
     </header>
     <p class="cr-lede">
-      The app kept a temporary emergency copy of edits that weren't saved when it
-      closed unexpectedly. Restore them into the editor, or discard them. This is
-      separate from your previous versions.
+      The app kept a temporary emergency save of edits that weren't saved when it
+      closed unexpectedly. Recover them into the editor, or discard them. This is
+      separate from your version history.
     </p>
     <ul class="cr-list">
       {#each items as item (item.filePath)}
@@ -149,7 +146,7 @@
             </div>
             <div class="cr-item-actions">
               <button class="cr-btn app-btn-primary" onclick={() => onRestore(item)}>
-                Restore
+                Recover
               </button>
               <!-- Single persistent Discard button (not a pair of separate
                    buttons swapped conditionally) so arming the confirm state
@@ -167,8 +164,8 @@
             </div>
           </div>
 
-          <!-- "Compare versions" disclosure — recovered vs on-disk text,
-               so the writer can see what they're restoring/discarding. -->
+          <!-- "Compare with the saved file" disclosure — recovered vs saved text,
+               so the writer can see what they're recovering/discarding. -->
           <div class="cr-preview-disclosure">
             <button
               class="cr-disclosure-btn"
@@ -176,7 +173,7 @@
               onclick={() => togglePreview(item)}
             >
               <span class="cr-disclosure-arrow" aria-hidden="true"><Icon name={expanded ? "chevron-down" : "chevron-right"} size={12} /></span>
-              Compare versions
+              Compare with the saved file
             </button>
             {#if expanded}
               <div class="cr-preview-panes">
@@ -186,14 +183,14 @@
                   <p class="cr-preview-unavailable">No preview available for this file.</p>
                 {:else}
                   <div class="cr-pane-row">
-                    <div class="cr-preview-pane" aria-label="Your unsaved version">
+                    <div class="cr-preview-pane" aria-label="Your unsaved changes">
                       <div class="cr-pane-label">Your unsaved changes</div>
                       <pre class="cr-pane-content">{preview.recovered}</pre>
                     </div>
-                    <div class="cr-preview-pane" aria-label="Version on disk">
-                      <div class="cr-pane-label">Currently on disk</div>
+                    <div class="cr-preview-pane" aria-label="Saved file">
+                      <div class="cr-pane-label">Saved file</div>
                       {#if preview.onDisk === null}
-                        <p class="cr-pane-empty">No saved version on disk yet.</p>
+                        <p class="cr-pane-empty">No saved file on disk yet.</p>
                       {:else}
                         <pre class="cr-pane-content">{preview.onDisk}</pre>
                       {/if}

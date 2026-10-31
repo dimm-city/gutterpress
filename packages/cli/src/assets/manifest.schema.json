@@ -11,6 +11,13 @@
       "default": "Document",
       "examples": ["My Book Title", "Technical Documentation", "Game Module"]
     },
+    "language": {
+      "type": "string",
+      "description": "The book's language as a BCP 47 tag. It is the lang of the built HTML, which hyphenation follows, and sets the quotation marks straight quotes print as.",
+      "default": "en",
+      "pattern": "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$",
+      "examples": ["en", "de", "de-CH", "fr", "pt-BR"]
+    },
     "authors": {
       "type": "array",
       "description": "List of document authors.",
@@ -37,7 +44,7 @@
     },
     "styles": {
       "type": "array",
-      "description": "Project-relative CSS files to <link> into the rendered book, applied in order. If omitted, Gutterpress discovers one: styles/book.css (what `gutterpress new` scaffolds), else four legacy names kept only for pre-existing projects — css/print.css, css/index.css, css/style.css, css/main.css — else the first discovered .css, else none. New projects should set this explicitly or use styles/book.css.",
+      "description": "Project-relative CSS files to <link> into the rendered book, applied in order. If omitted, Gutterpress discovers one: styles/book.css (what `gutterpress new` scaffolds), else the older conventional names css/print.css, css/index.css, css/style.css, css/main.css (in that order), else the first .css file found in the project root, styles/ or css/, else none. New projects should set this explicitly or use styles/book.css.",
       "items": {
         "type": "string",
         "minLength": 1,
@@ -51,7 +58,7 @@
     },
     "extensions": {
       "type": "array",
-      "description": "Extensions, in load order: markdown-it plugins, looks (stylesheets), component libraries — anything from npm or a folder. Each entry is a specifier: a bundled feature name (markdown-it-mark, markdown-it-sub, markdown-it-sup, markdown-it-abbr, gutterpress-gfm-alerts), a path starting with ./ or ../ (relative to this file), or an npm package name, optionally pinned as name@version. A later entry loads later: its markdown runs after earlier entries' and its CSS wins ties. The project's own `styles` always load after every extension.",
+      "description": "Extensions, in load order: markdown-it plugins, looks (stylesheets), component libraries — anything from npm or a folder. Each entry is a specifier: a bundled name (a markdown feature: markdown-it-mark, markdown-it-sub, markdown-it-sup, markdown-it-abbr, gutterpress-gfm-alerts, gutterpress-math; or a built-in look: clean-book, zine, technical-doc, academic), a path starting with ./ or ../ (relative to this file), or an npm package name, optionally pinned as name@version. A later entry loads later: its markdown runs after earlier entries' and its CSS wins ties. The project's own `styles` always load after every extension.",
       "items": {
         "oneOf": [
           {
@@ -109,24 +116,223 @@
         ]
       ]
     },
-    "source": {
+    "chapters": {
+      "type": ["array", "null"],
+      "description": "The book's markdown files, in reading order, relative to the manifest directory. Omit it (or set it to null) to use every top-level .md file in natural order. Book setup > Details in the app edits it. Assets are not listed anywhere: the build copies exactly what the book references.",
+      "items": { "type": "string" },
+      "examples": [["chapter-01.md", "chapter-02.md"]]
+    },
+    "checks": {
       "type": "object",
-      "description": "Where the book's content comes from. There is no `assets` list: the build discovers every file the book actually references (image src, CSS url()/@font-face, …) and copies exactly those — see lib/asset-inline.ts. An author-maintained asset directory list could drift from what the book uses; this can't.",
+      "description": "Per-check and per-rule levels, keyed by a check id (pdf.print.image-resolution, source.markdownlint, …) or a lint rule id (printsafe/no-risky-print-effects). `off` switches it off; `on` switches on a check the preset leaves off, at its own severity; `info`, `warn` and `error` set the severity its findings are reported at. A check that measures against a number or a list takes it as an option in the same entry, written as an object: `pdf.print.ink-coverage: { maxTac: 300 }`, or `{ level: error, maxTac: 300 }` to set its level too. The preset and the publish targets set every option a book leaves out. Linter config files (.markdownlint.yaml, .htmlhintrc, .gutterpress/css-contract.yaml) are found by name in the book's folder or a folder above it, up to the repository.",
       "properties": {
-        "files": {
-          "type": ["array", "null"],
-          "description": "Explicit, ordered list of markdown files to concatenate, relative to the manifest directory. Omit or set to null to include every .md file in the directory in alphabetical order.",
-          "default": null,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "examples": [
-            ["chapter-01.md", "chapter-02.md"],
-            ["frontmatter/title.md", "chapters/intro.md", "appendix.md"]
+        "pdf.print.ink-coverage": {
+          "description": "Total ink coverage of each page of a PDF/X build.",
+          "oneOf": [
+            {"$ref": "#/definitions/checkLevel"},
+            {
+              "type": "object",
+              "description": "Its `level` (optional) and its options.",
+              "additionalProperties": false,
+              "properties": {
+                "level": {"$ref": "#/definitions/checkLevel"},
+                "maxTac": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "The total ink limit in percent: what the check measures against and what the PDF/X conversion holds the ink to. Preset defaults: dtrpg 240, book 400.",
+                  "examples": [240, 300]
+                },
+                "tacTolerance": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "How far over `maxTac` a page may measure before it is reported (percent). Default 0.5.",
+                  "examples": [0.5]
+                }
+              }
+            }
+          ]
+        },
+        "pdf.print.page-size": {
+          "description": "The built PDF's page size against the manifest's (page.width x page.height).",
+          "oneOf": [
+            {"$ref": "#/definitions/checkLevel"},
+            {
+              "type": "object",
+              "description": "Its `level` (optional) and its options.",
+              "additionalProperties": false,
+              "properties": {
+                "level": {"$ref": "#/definitions/checkLevel"},
+                "tolerance": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "How far (points) the built page may differ from the size. Default 0.5.",
+                  "examples": [0.5, 1]
+                }
+              }
+            }
+          ]
+        },
+        "pdf.print.image-resolution": {
+          "description": "The resolution each placed image prints at.",
+          "oneOf": [
+            {"$ref": "#/definitions/checkLevel"},
+            {
+              "type": "object",
+              "description": "Its `level` (optional) and its options.",
+              "additionalProperties": false,
+              "properties": {
+                "level": {"$ref": "#/definitions/checkLevel"},
+                "minImageResolution": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "The lowest DPI an image may print at; 0 = no floor. Default 300 (itch.io: 0).",
+                  "examples": [300, 150]
+                }
+              }
+            }
+          ]
+        },
+        "pdf.print.bleed": {
+          "description": "The bleed around the trim of a built PDF (off in every preset).",
+          "oneOf": [
+            {"$ref": "#/definitions/checkLevel"},
+            {
+              "type": "object",
+              "description": "Its `level` (optional) and its options.",
+              "additionalProperties": false,
+              "properties": {
+                "level": {"$ref": "#/definitions/checkLevel"},
+                "bleedSize": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "The bleed (points) each side must have. Default 9 (0.125in).",
+                  "examples": [9]
+                }
+              }
+            }
+          ]
+        },
+        "asset.image.file-size": {
+          "description": "The size of each image file the book ships.",
+          "oneOf": [
+            {"$ref": "#/definitions/checkLevel"},
+            {
+              "type": "object",
+              "description": "Its `level` (optional) and its options.",
+              "additionalProperties": false,
+              "properties": {
+                "level": {"$ref": "#/definitions/checkLevel"},
+                "maxImageSize": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "The largest image file in bytes; 0 = no limit. Default 10000000 (itch.io: 0).",
+                  "examples": [10000000]
+                }
+              }
+            }
+          ]
+        },
+        "asset.font.approved-files": {
+          "description": "The font files the book ships, against an approved list.",
+          "oneOf": [
+            {"$ref": "#/definitions/checkLevel"},
+            {
+              "type": "object",
+              "description": "Its `level` (optional) and its options.",
+              "additionalProperties": false,
+              "properties": {
+                "level": {"$ref": "#/definitions/checkLevel"},
+                "approvedFontFiles": {
+                  "type": "array",
+                  "description": "Glob patterns, relative to the book, of the font files it may ship. A font file no pattern matches is reported. Empty (the default) approves every font.",
+                  "items": {"type": "string"},
+                  "examples": [["fonts/*.woff2"]]
+                }
+              }
+            }
+          ]
+        },
+        "heuristic.decoration.layer-count": {
+          "description": "Decorative layers on each page.",
+          "oneOf": [
+            {"$ref": "#/definitions/checkLevel"},
+            {
+              "type": "object",
+              "description": "Its `level` (optional) and its options.",
+              "additionalProperties": false,
+              "properties": {
+                "level": {"$ref": "#/definitions/checkLevel"},
+                "maxDecorativeLayers": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "The most decorative layers on one page. Default 5.",
+                  "examples": [5]
+                }
+              }
+            }
+          ]
+        },
+        "heuristic.whitespace.text-density": {
+          "description": "The characters each page carries.",
+          "oneOf": [
+            {"$ref": "#/definitions/checkLevel"},
+            {
+              "type": "object",
+              "description": "Its `level` (optional) and its options.",
+              "additionalProperties": false,
+              "properties": {
+                "level": {"$ref": "#/definitions/checkLevel"},
+                "textDensityRange": {
+                  "type": "object",
+                  "description": "The characters a page should carry: `min` and `max`, either or both. Default { min: 200, max: 5000 }.",
+                  "additionalProperties": false,
+                  "properties": {"min": {"type": "number", "minimum": 0}, "max": {"type": "number", "minimum": 0}}
+                }
+              }
+            }
+          ]
+        },
+        "heuristic.chunking.section-density": {
+          "description": "Paragraphs in each section.",
+          "oneOf": [
+            {"$ref": "#/definitions/checkLevel"},
+            {
+              "type": "object",
+              "description": "Its `level` (optional) and its options.",
+              "additionalProperties": false,
+              "properties": {
+                "level": {"$ref": "#/definitions/checkLevel"},
+                "maxParagraphsPerSection": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "The most paragraphs in one section. Default 10.",
+                  "examples": [10]
+                }
+              }
+            }
           ]
         }
-      }
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {"$ref": "#/definitions/checkLevel"},
+          {
+            "type": "object",
+            "description": "A check's level as an object; a check with no options takes only `level`.",
+            "additionalProperties": false,
+            "properties": {"level": {"$ref": "#/definitions/checkLevel"}}
+          }
+        ]
+      },
+      "examples": [
+        {
+          "pdf.structure.qpdf": "off",
+          "heuristic.whitespace.text-density": "info",
+          "pdf.nav.bookmarks": "warn",
+          "pdf.print.ink-coverage": {"maxTac": 300},
+          "pdf.print.image-resolution": {"level": "error", "minImageResolution": 200}
+        }
+      ]
     },
     "pdfx": {
       "type": "object",
@@ -157,7 +363,7 @@
         },
         "transparency": {
           "type": "string",
-          "description": "What a PDF/X build does with a page that uses transparency (an alpha-channel image, a soft `rgba()` shadow, CSS `opacity` or `mix-blend-mode`), which PDF/X (PDF 1.3) cannot represent. `flatten-page` leaves the page to Ghostscript, which rasterizes the WHOLE page: it looks right but loses the page's text and fonts. `preserve-text` flattens only the artwork to a picture (300 DPI, or `rasterDpi`) and draws the text live on top, so the page stays searchable. Text is then always the top layer (text another element covers shows through). A page whose text is translucent or blended, set in a Type 3 font (e.g. a synthetic bold or a text stroke), filled with a pattern or used as a clip, or that has a repeating or conic gradient, falls back to `flatten-page`, and so does any page listed in `flattenPages`. Set `validate.assets.allowAlpha: true` to use alpha-channel images. Same for every preset: `flatten-page`.",
+          "description": "What a PDF/X build does with a page that uses transparency (an alpha-channel image, a soft `rgba()` shadow, CSS `opacity` or `mix-blend-mode`), which PDF/X (PDF 1.3) cannot represent. `flatten-page` leaves the page to Ghostscript, which rasterizes the WHOLE page: it looks right but loses the page's text and fonts. `preserve-text` flattens only the artwork to a picture (300 DPI, or `rasterDpi`) and draws the text live on top, so the page stays searchable. Text is then always the top layer (text another element covers shows through). A page whose text is translucent or blended, set in a Type 3 font (e.g. a synthetic bold or a text stroke), filled with a pattern or used as a clip, or that has a repeating or conic gradient, falls back to `flatten-page`, and so does any page listed in `flattenPages`. Set `checks: { asset.image.alpha-channel: off }` to use alpha-channel images. Same for every preset: `flatten-page`.",
           "enum": ["flatten-page", "preserve-text"],
           "default": "flatten-page"
         },
@@ -200,25 +406,19 @@
     },
     "page": {
       "type": "object",
-      "description": "Expected page geometry, in POINTS. VALIDATION BOUNDS ONLY — these values do NOT set the trim size. The real PDF page size comes from the CSS `@page` rule in your stylesheet; these numbers are only what the `pdf.print.page-size` check compares the produced PDF against. Set them to the trim size you expect so a CSS mistake gets caught — and note that a bleed-inclusive @page size will legitimately differ from the trim size recorded here.",
+      "description": "Page geometry, in POINTS (1in = 72pt): the trim size the book prints at and, with `margin`, the margins. The build writes them as the `@page` rule after every stylesheet, so a `size` in a stylesheet's own `@page` is overridden (the print-safety check reports it); the `pdf.print.page-size` check compares the produced PDF against these numbers, allowing the `tolerance` set in its `checks:` entry (0.5pt by default). A bleed-inclusive page size legitimately differs from the trim recorded here.",
       "properties": {
         "width": {
           "type": "number",
-          "description": "Expected page width in points (1in = 72pt). Validation bound only — the CSS @page rule sets the real width. Preset defaults: dtrpg 621, book 432 (6in).",
+          "description": "Page width in points (1in = 72pt): the trim the book prints at and what validation compares against. Preset defaults: dtrpg 621, book 432 (6in).",
           "exclusiveMinimum": 0,
           "examples": [612, 621, 432]
         },
         "height": {
           "type": "number",
-          "description": "Expected page height in points (1in = 72pt). Validation bound only — the CSS @page rule sets the real height. Preset defaults: dtrpg 810, book 648 (9in).",
+          "description": "Page height in points (1in = 72pt): the trim the book prints at and what validation compares against. Preset defaults: dtrpg 810, book 648 (9in).",
           "exclusiveMinimum": 0,
           "examples": [792, 810, 648]
-        },
-        "tolerance": {
-          "type": "number",
-          "description": "Allowed deviation, in points, between the expected and the actual page size.",
-          "default": 0.5,
-          "minimum": 0
         },
         "bleed": {
           "type": "number",
@@ -243,254 +443,18 @@
           "description": "The binding allowance, in points: how far content stays from the spine, measured from the trim at the binding edge (the left edge of a right-hand page, the right edge of a left-hand one). It stands in for `safe` there, for text and for art alike: the preview's overlay draws and judges that edge against it, the `pdf.print.safe-margins` check fails text or an image closer to the spine than it, and an image pinned to the binding edge (`.gp-pin`) sits on it. The other edges keep `safe` and `artSafe`. Use it when your book keeps its text further from the spine than the printer's minimum, for example 54 (0.75in) where DriveThruRPG asks for 0.5in. Absent = the same as `safe`. Preset default: dtrpg 36 (0.5in, DriveThruRPG's rule for text and non-bleeding art at the binding — the same as its `safe`, declared so a book inherits it visibly); book and custom none.",
           "minimum": 0,
           "examples": [54]
-        }
-      }
-    },
-    "ink": {
-      "type": "object",
-      "description": "Ink coverage limits used by the `pdf.print.ink-coverage` check.",
-      "properties": {
-        "maxTac": {
-          "type": "number",
-          "description": "Maximum total area coverage (TAC), as a percentage summed across C+M+Y+K. 400 is the physical ceiling (100% of each plate), so it effectively disables the cap. Preset defaults: dtrpg 240 (DriveThruRPG's limit), book 400.",
-          "minimum": 0,
-          "examples": [240, 300, 400]
         },
-        "tacTolerance": {
-          "type": "number",
-          "description": "Allowed percentage of sampled pixels that may exceed `maxTac` before the check fails.",
-          "default": 0.5,
-          "minimum": 0
-        }
-      }
-    },
-    "lint": {
-      "type": "object",
-      "description": "Lint settings: whether the pre-build lint runs, the markdownlint config, and per-rule level overrides.",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Whether linting runs.",
-          "default": true
-        },
-        "configPath": {
-          "type": ["string", "null"],
-          "description": "Path to a markdownlint config file, relative to the manifest directory. null uses the built-in defaults.",
-          "default": null
-        },
-        "rules": {
+        "margin": {
           "type": "object",
-          "description": "Per-rule level overrides, keyed by rule id: a printsafe rule (printsafe/no-risky-print-effects, printsafe/page-containment, printsafe/preview-cannot-follow, printsafe/no-remote-urls) or a check id such as source.accessibility.heading-order. \"off\" silences the rule; \"warn\" / \"error\" set its severity. An id that matches no rule is ignored. To silence one site instead, put a `gutterpress-disable-next-line <rule-id> -- reason` comment (CSS `/* */` or markdown `<!-- -->`) on the line above it.",
-          "additionalProperties": { "enum": ["off", "warn", "error"] },
-          "examples": [{ "printsafe/no-risky-print-effects": "off" }]
-        }
-      }
-    },
-    "validate": {
-      "type": "object",
-      "description": "Preflight/validation configuration. Individual checks are addressed by id (see `checks`); the sections below supply the thresholds those checks read.",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Whether validation runs.",
-          "default": true
-        },
-        "checks": {
-          "type": "object",
-          "description": "Per-check overrides, keyed by check id. This is an OPEN dictionary — any registered check id may appear, including ids contributed by plugins. Built-in ids are namespaced source.*, asset.*, pdf.* and heuristic.* (e.g. pdf.structure.qpdf, pdf.print.embedded-fonts, pdf.print.pdfx-markers, pdf.print.page-size, asset.image.file-size, source.markdownlint, heuristic.whitespace.text-density). A boolean value is shorthand for enabled/disabled.",
-          "propertyNames": {
-            "description": "A registered check id, e.g. \"pdf.print.embedded-fonts\"."
+          "description": "Page margins, in points (1in = 72pt): the space between the trim and the text on each edge. `inside` is the binding edge (the left of a right-hand page, the right of a left-hand one), `outside` the other. When set, the book prints with these margins and any `@page` margin in a stylesheet is overridden, except where a named page sets its own (`@page full { margin: 0 }`); when left out, the stylesheets' `@page` margins apply (a look's design), else 1in. Setup > Book in the app edits it. All four edges are required together.",
+          "properties": {
+            "top": { "type": "number", "description": "Top margin in points.", "minimum": 0, "examples": [61.2, 72] },
+            "bottom": { "type": "number", "description": "Bottom margin in points.", "minimum": 0, "examples": [61.2, 72] },
+            "inside": { "type": "number", "description": "Binding-edge margin in points: the left of a right-hand page, the right of a left-hand one.", "minimum": 0, "examples": [54, 72] },
+            "outside": { "type": "number", "description": "Outer-edge margin in points.", "minimum": 0, "examples": [54, 72] }
           },
-          "additionalProperties": {
-            "oneOf": [
-              {
-                "type": "boolean",
-                "description": "Shorthand for { enabled: <value> }."
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "enabled": {
-                    "type": "boolean",
-                    "description": "Whether this check runs.",
-                    "default": true
-                  },
-                  "severity": {
-                    "type": "string",
-                    "description": "How a failure of this check is reported.",
-                    "enum": ["error", "warning", "info"]
-                  },
-                  "options": {
-                    "type": "object",
-                    "description": "Check-specific options.",
-                    "additionalProperties": true
-                  }
-                }
-              }
-            ]
-          },
-          "examples": [
-            {
-              "pdf.structure.qpdf": { "enabled": true, "severity": "error" },
-              "pdf.print.pdfx-markers": false
-            }
-          ]
-        },
-        "source": {
-          "type": "object",
-          "description": "Source-linting checks (markdown, generated HTML, CSS). Each entry is a path to that linter's config file, or false to disable the check.",
-          "properties": {
-            "markdownlint": {
-              "description": "Path to a markdownlint config, or false to disable the source.markdownlint check.",
-              "default": null,
-              "oneOf": [
-                { "type": "string", "minLength": 1 },
-                { "type": "boolean", "const": false }
-              ]
-            },
-            "htmlhint": {
-              "description": "Path to an htmlhint config, or false to disable the source.htmlhint check.",
-              "default": null,
-              "oneOf": [
-                { "type": "string", "minLength": 1 },
-                { "type": "boolean", "const": false }
-              ]
-            },
-            "stylelint": {
-              "description": "Path to a stylelint config, or false to disable the source.stylelint check.",
-              "default": null,
-              "oneOf": [
-                { "type": "string", "minLength": 1 },
-                { "type": "boolean", "const": false }
-              ]
-            },
-            "cssOwnership": {
-              "description": "Path to a CSS ownership contract (default discovery: .gutterpress/css-contract.yaml), or false to disable the source.css-ownership check. Optional — absent means no contract, so the check reports nothing.",
-              "default": null,
-              "oneOf": [
-                { "type": "string", "minLength": 1 },
-                { "type": "boolean", "const": false }
-              ]
-            },
-            "allowedCallouts": {
-              "type": "array",
-              "deprecated": true,
-              "description": "DEPRECATED and IGNORED (no-op). The `:::name` container syntax this gated was removed 2026-05-17, along with the callout-validation check it configured. Kept only so older manifests still parse; setting it logs a deprecation warning. See docs/migrations/2026-05-removing-container-syntax.md.",
-              "items": { "type": "string" }
-            }
-          }
-        },
-        "assets": {
-          "type": "object",
-          "description": "Thresholds for the asset.* checks (images and fonts on disk).",
-          "properties": {
-            "maxImageSize": {
-              "type": "integer",
-              "description": "Maximum image file size in bytes (asset.image.file-size).",
-              "default": 10000000,
-              "minimum": 0
-            },
-            "minImageDpi": {
-              "type": "integer",
-              "deprecated": true,
-              "description": "DEPRECATED and IGNORED (no-op). The source-image check it configured read DPI metadata, which says nothing about the printed size. The build warns about each image placed below 300 DPI, and `validate.pdf.minImageResolution` checks the built PDF. Kept only so older manifests still parse.",
-              "minimum": 0
-            },
-            "allowedColorSpaces": {
-              "type": "array",
-              "deprecated": true,
-              "description": "DEPRECATED and IGNORED (no-op). The source-image colour-space check it configured was removed: a PDF/X build converts every image to the output intent, and `pdf.print.color-spaces` checks the result. Kept only so older manifests still parse.",
-              "items": { "type": "string" }
-            },
-            "allowAlpha": {
-              "type": "boolean",
-              "description": "Whether images may carry an alpha channel (asset.image.alpha-channel). Preset defaults: dtrpg false (PDF/X forbids transparency), book true."
-            },
-            "approvedFontFiles": {
-              "type": "array",
-              "description": "Allow-list of font files (asset.font.approved-files). Empty means no restriction.",
-              "default": [],
-              "items": { "type": "string" }
-            },
-            "requireFontLicense": {
-              "type": "boolean",
-              "description": "Require a license record for each embedded font (asset.font.license).",
-              "default": false
-            }
-          }
-        },
-        "pdf": {
-          "type": "object",
-          "description": "Thresholds for the pdf.* checks (run against the produced PDF).",
-          "properties": {
-            "requireBookmarks": {
-              "type": "boolean",
-              "description": "Require a PDF outline/bookmark tree (pdf.nav.bookmarks).",
-              "default": false
-            },
-            "requireTocLinks": {
-              "type": "boolean",
-              "description": "Require the table of contents to use real internal links (pdf.nav.toc-links).",
-              "default": false
-            },
-            "minImageResolution": {
-              "type": "integer",
-              "description": "Minimum placed-image resolution in DPI (pdf.print.image-resolution).",
-              "default": 300,
-              "minimum": 0
-            },
-            "forbidTransparency": {
-              "type": "boolean",
-              "description": "Fail on transparency in the PDF (pdf.print.transparency). Preset defaults: dtrpg true (required by PDF/X), book false."
-            },
-            "requireBleed": {
-              "type": "boolean",
-              "description": "Require a bleed box on every page (pdf.print.bleed).",
-              "default": false
-            },
-            "bleedSize": {
-              "type": "number",
-              "description": "Expected bleed, in points (9pt = 0.125in).",
-              "default": 9,
-              "minimum": 0
-            }
-          }
-        },
-        "heuristics": {
-          "type": "object",
-          "description": "Thresholds for the heuristic.* layout-quality checks. These are advisory design heuristics, not hard print requirements.",
-          "properties": {
-            "maxDecorativeLayers": {
-              "type": "integer",
-              "description": "Maximum stacked decorative layers per page (heuristic.decoration.layer-count).",
-              "default": 5,
-              "minimum": 0
-            },
-            "textDensityRange": {
-              "type": "object",
-              "description": "Acceptable characters-per-page range (heuristic.whitespace.text-density).",
-              "properties": {
-                "min": {
-                  "type": "number",
-                  "description": "Minimum characters per page.",
-                  "default": 200,
-                  "minimum": 0
-                },
-                "max": {
-                  "type": "number",
-                  "description": "Maximum characters per page.",
-                  "default": 5000,
-                  "minimum": 0
-                }
-              }
-            },
-            "maxParagraphsPerSection": {
-              "type": "integer",
-              "description": "Maximum paragraphs in one section before it is flagged as under-chunked (heuristic.chunking.section-density).",
-              "default": 10,
-              "minimum": 0
-            }
-          }
+          "required": ["top", "bottom", "inside", "outside"],
+          "additionalProperties": false
         }
       }
     },
@@ -502,7 +466,7 @@
           "type": "object",
           "description": "A folder on this computer — where the desktop's Publish builds the book before sending it anywhere else (default: `dist` inside the book)",
           "properties": {
-            "dir": { "type": "string", "description": "Output folder, relative to the book or absolute. Default: dist" },
+            "dir": { "type": "string", "description": "Output folder inside the book, relative to it (default: dist). The desktop app keeps a folder outside the book in the person's own settings, not here; an absolute path written here still works." },
             "format": { "type": "string", "enum": ["pdf", "html"], "description": "Which build to save (default: pdf)" }
           },
           "additionalProperties": true
@@ -511,6 +475,7 @@
           "type": "object",
           "description": "itch.io publishing (uploaded with butler)",
           "properties": {
+            "enabled": { "type": "boolean", "description": "Whether the desktop app's Publish view ticks this destination for the book. The team decides where the book is published, so this is shared; each person connects their own account." },
             "target": {
               "type": "string",
               "description": "itch.io project as user/game (the butler push target)",
@@ -524,7 +489,7 @@
             },
             "credential": {
               "type": "string",
-              "description": "Label of the saved credential to use when more than one is stored for this provider. Not a secret — just a reference into the host credential store. Empty or absent uses the default credential."
+              "description": "Label of the saved credential to use when more than one is stored for this provider. Not a secret — just a reference into the host credential store. Empty or absent uses the default credential. The desktop app keeps this choice in the person's own settings, not here; a value written here still applies to a book that has none (older books, the CLI)."
             }
           }
         },
@@ -532,6 +497,7 @@
           "type": "object",
           "description": "DriveThruRPG guided publishing (export package + open the publisher hub)",
           "properties": {
+            "enabled": { "type": "boolean", "description": "Whether the desktop app's Publish view ticks this destination for the book. The team decides where the book is published, so this is shared; each person connects their own account." },
             "productUrl": {
               "type": "string",
               "description": "Existing product page URL, when updating a published title"
@@ -541,12 +507,15 @@
         "kdp": {
           "type": "object",
           "description": "Amazon KDP guided publishing (export package + open kdp.amazon.com)",
-          "properties": {}
+          "properties": {
+            "enabled": { "type": "boolean", "description": "Whether the desktop app's Publish view ticks this destination for the book. The team decides where the book is published, so this is shared; each person connects their own account." }
+          }
         },
         "azure-swa": {
           "type": "object",
           "description": "Azure Static Web Apps deployment of the HTML export",
           "properties": {
+            "enabled": { "type": "boolean", "description": "Whether the desktop app's Publish view ticks this destination for the book. The team decides where the book is published, so this is shared; each person connects their own account." },
             "env": {
               "type": "string",
               "description": "Deploy environment",
@@ -554,7 +523,7 @@
             },
             "credential": {
               "type": "string",
-              "description": "Label of the saved credential to use when more than one is stored for this provider."
+              "description": "Label of the saved credential to use when more than one is stored for this provider. The desktop app keeps this choice in the person's own settings, not here; a value written here still applies to a book that has none (older books, the CLI)."
             }
           }
         },
@@ -562,6 +531,7 @@
           "type": "object",
           "description": "Shopify product publishing (Admin GraphQL API)",
           "properties": {
+            "enabled": { "type": "boolean", "description": "Whether the desktop app's Publish view ticks this destination for the book. The team decides where the book is published, so this is shared; each person connects their own account." },
             "shop": {
               "type": "string",
               "description": "Store domain, e.g. my-store.myshopify.com"
@@ -577,7 +547,7 @@
             },
             "credential": {
               "type": "string",
-              "description": "Label of the saved credential to use when more than one is stored for this provider."
+              "description": "Label of the saved credential to use when more than one is stored for this provider. The desktop app keeps this choice in the person's own settings, not here; a value written here still applies to a book that has none (older books, the CLI)."
             }
           }
         },
@@ -585,6 +555,7 @@
           "type": "object",
           "description": "Google Drive publishing (uploads the finished PDF or zipped HTML export to a Drive folder)",
           "properties": {
+            "enabled": { "type": "boolean", "description": "Whether the desktop app's Publish view ticks this destination for the book. The team decides where the book is published, so this is shared; each person connects their own account." },
             "folder": {
               "type": "string",
               "description": "Drive folder name to find-or-create at My Drive root. Ignored once folderId is recorded.",
@@ -596,7 +567,7 @@
             },
             "credential": {
               "type": "string",
-              "description": "Label of the saved credential to use when more than one Google account is connected. Not a secret — just a reference into the host credential store. Empty or absent uses the default credential."
+              "description": "Label of the saved credential to use when more than one Google account is connected. Not a secret — just a reference into the host credential store. Empty or absent uses the default credential. The desktop app keeps this choice in the person's own settings, not here; a value written here still applies to a book that has none (older books, the CLI)."
             },
             "format": {
               "type": "string",
@@ -609,59 +580,34 @@
       }
     }
   },
+  "definitions": {
+    "checkLevel": {
+      "description": "off, on (at the check's own severity), info, warn or error; `warning` is read as `warn`, true as on and false as off.",
+      "enum": ["off", "on", "info", "warn", "warning", "error", true, false]
+    }
+  },
   "examples": [
     {
       "title": "My Book",
       "authors": ["Author Name"],
       "preset": "book",
       "styles": ["styles/book.css"],
-      "source": {
-        "files": ["chapter-01.md", "chapter-02.md"]
-      }
+      "chapters": ["chapter-01.md", "chapter-02.md"]
     },
     {
       "title": "Print-Ready Supplement",
       "authors": ["Author Name"],
       "preset": "dtrpg",
-      "plugins": [
-        {
-          "path": "plugins/my-plugin.js",
-          "priority": 100
-        }
-      ],
-      "styles": ["css/index.css"],
-      "source": {
-        "files": ["chapter-00.md", "chapter-01.md"]
-      },
-      "page": {
-        "width": 621,
-        "height": 810,
-        "tolerance": 0.5
-      },
-      "pdfx": {
-        "flavor": "x1a",
-         "icc": ".gutterpress/profiles/CGATS21_CRPC1.icc"
-      },
-      "ink": {
-        "maxTac": 240
-      }
+      "extensions": ["clean-book"],
+      "chapters": ["chapter-00.md", "chapter-01.md"],
+      "pdfx": { "flavor": "x1a" }
     },
     {
       "title": "Technical Documentation",
       "authors": ["Tech Team"],
       "preset": "book",
       "styles": ["styles/book.css"],
-      "validate": {
-        "enabled": true,
-        "checks": {
-          "pdf.nav.bookmarks": { "enabled": true, "severity": "warning" },
-          "pdf.print.pdfx-markers": false
-        },
-        "pdf": {
-          "requireBookmarks": true,
-          "requireTocLinks": true
-        }
-      }
+      "checks": { "pdf.nav.bookmarks": "warn", "pdf.nav.toc-links": "warn" }
     }
   ]
 }

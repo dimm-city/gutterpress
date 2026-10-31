@@ -61,7 +61,7 @@ test("custom preset requires page.width and page.height, naming what's missing",
   );
 });
 
-test("custom preset resolves the author's geometry; tolerance defaults to 0.5", () => {
+test("custom preset resolves the author's geometry with the presets' 0.5pt tolerance", () => {
   const config = resolveConfig({}, { preset: "custom", page: { width: 500, height: 700 } });
   expect(config.page).toEqual({ width: 500, height: 700, tolerance: 0.5 });
   // Policy defaults are the neutral book ones.
@@ -181,25 +181,31 @@ test("book preset has no vendor TAC cap (400% — the physical ceiling)", () => 
 });
 
 test("book preset does not force PDF/X-specific checks", () => {
-  expect(BOOK_PRESET.validate.checks["pdf.print.pdfx-markers"]).toBe(false);
-  expect(BOOK_PRESET.validate.checks["pdf.print.pdfx-metadata"]).toBe(false);
-  expect(BOOK_PRESET.validate.pdf.forbidTransparency).toBe(false);
+  expect(BOOK_PRESET.checks["pdf.print.pdfx-markers"]).toBe("off");
+  expect(BOOK_PRESET.checks["pdf.print.pdfx-metadata"]).toBe("off");
+  expect(BOOK_PRESET.checks["pdf.print.transparency"]).toBe("off");
+  expect(BOOK_PRESET.checks["asset.image.alpha-channel"]).toBe("off");
 });
 
 test("book preset still enables generic, vendor-agnostic PDF health checks", () => {
-  expect(BOOK_PRESET.validate.checks["pdf.structure.qpdf"]).toEqual({
-    enabled: true,
-    severity: "error",
-  });
-  expect(BOOK_PRESET.validate.checks["pdf.print.embedded-fonts"]).toEqual({
-    enabled: true,
-    severity: "error",
-  });
+  expect(BOOK_PRESET.checks["pdf.structure.qpdf"]).toBe("error");
+  expect(BOOK_PRESET.checks["pdf.print.embedded-fonts"]).toBe("error");
 });
 
 test("the safe-margins check is an error under dtrpg, whose spec it enforces, and a warning under book", () => {
-  expect(DTRPG_PRESET.validate.checks["pdf.print.safe-margins"]).toEqual({ enabled: true, severity: "error" });
-  expect(BOOK_PRESET.validate.checks["pdf.print.safe-margins"]).toEqual({ enabled: true, severity: "warning" });
+  expect(DTRPG_PRESET.checks["pdf.print.safe-margins"]).toBe("error");
+  expect(BOOK_PRESET.checks["pdf.print.safe-margins"]).toBe("warning");
+});
+
+test("the checks that were on/off flags are levels: on (no entry) for dtrpg's print rules, off where nothing requires them", () => {
+  // PDF/X-1a forbids transparency and alpha: dtrpg leaves both checks on.
+  expect(DTRPG_PRESET.checks["pdf.print.transparency"]).toBeUndefined();
+  expect(DTRPG_PRESET.checks["asset.image.alpha-channel"]).toBeUndefined();
+  for (const preset of [DTRPG_PRESET, BOOK_PRESET]) {
+    for (const id of ["pdf.print.bleed", "pdf.nav.bookmarks", "pdf.nav.toc-links", "asset.font.license"]) {
+      expect(preset.checks[id]).toBe("off");
+    }
+  }
 });
 
 test("resolveConfig with preset: book resolves the book preset's geometry", () => {
@@ -279,12 +285,15 @@ test("resolvePreset's 'no preset set' notice respects resetWarnOnce (no leftover
 // must declare an explicit `preset` so a fresh `gutterpress new` project never
 // silently falls through resolvePreset's undefined-preset path (which
 // defaults to dtrpg's vendor geometry/TAC/PDF/X forcing).
-// `book`/`technical`/`zine` all get the neutral `book` preset.
+// `book` gets the neutral `book` preset (6 x 9 in); `zine`, `technical` and
+// `paper` are designed for a size of their own (Digest, US Letter, US Letter),
+// so they carry `preset: custom` plus a `page:` block.
 describe("built-in template manifests declare an explicit preset (maintainer review, presets.ts:236)", () => {
   const EXPECTED_TEMPLATE_PRESET: Record<(typeof BUILT_IN_TEMPLATE_IDS)[number], string> = {
     book: "book",
-    technical: "book",
-    zine: "book",
+    technical: "custom",
+    zine: "custom",
+    paper: "custom",
   };
 
   test("every shipped template id has an expected preset pinned in this test (no silent additions)", () => {
@@ -346,7 +355,7 @@ describe("built-in template manifests declare an explicit preset (maintainer rev
 describe("a scaffolded project's stylesheet reaches the build output (maintainer P1, presets.ts:115)", () => {
   test("neither preset carries an asset list or an output block any more", () => {
     for (const preset of [DTRPG_PRESET, BOOK_PRESET]) {
-      expect(preset.source).toEqual({ files: null });
+      expect(preset.chapters).toBeNull();
       expect((preset as unknown as Record<string, unknown>).output).toBeUndefined();
     }
   });
@@ -367,7 +376,7 @@ describe("a scaffolded project's stylesheet reaches the build output (maintainer
       const htmlFile = await renderChaptersToFile(dir, outDir, {
         title: config.title,
         styles: config.styles,
-        files: config.source.files,
+        files: config.chapters,
       });
 
       const html = await readFile(htmlFile, "utf8");

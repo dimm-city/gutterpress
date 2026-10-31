@@ -31,11 +31,18 @@ bun scripts/native-parity-gate.ts <dir>…   # explicit project dirs
 
 Staged books land under `/tmp/gutterpress-parity/<fixture>/` (override with
 `GUTTERPRESS_PARITY_DIR`; a `docs/fixtures/<name>/book` fixture is named
-`<name>`). The registered fixtures are the two example books, the three
+`<name>`). The registered fixtures are the three example books, the three
 `with-design-guide` manifests, and the minimal repro books under
 `docs/fixtures/`, each of which pins a divergence the gate once caught — or,
-for `exact-fit-boundary`, the outcome below. CI runs the whole list when the
-rendering gate is selected; see [CI policy](./ci.md).
+for `exact-fit-boundary`, `exact-fit-image` and `exact-fit-formula`, the
+outcome below, for `book-page-margin` and
+`two-looks`, the `@page` margins the `named-page-margins` fix (#454) must
+leave as they were, and for `justified-text`, a print Chromium shrank to fit
+justified lines a fraction of a pixel past the column (#470). A fixture whose
+PDF printed shrunk at all is noted above its results, with the scale: the
+print was laid out wider than the preview, so its page counts are not
+comparable. CI runs the whole list when the rendering gate is
+selected; see [CI policy](./ci.md).
 
 ## The three outcomes
 
@@ -118,10 +125,27 @@ walked the heading onto the next page in the preview only.
   the projection reads where the viewer's geometry puts the line rather than
   where its break rules moved it. When the viewer kept the line, print's
   position for it is projected from print's last kept line.
+- **A replaced element** — a display formula, an image — has no text run
+  (#465). When both sides end a page on the same text line, the element after
+  it counts as that page's last element, measured as a box: margin-top plus
+  border-box height of the outermost block holding only it (a markdown
+  image's `<p>`, an `mjx-container`). Print's side is what the PDF draws below
+  that line (paths and images), carried to the box's end by the viewer's own
+  drawing-to-box offset; the report names the element in place of the line.
+  MathJax's hidden MathML copy is not read as line text. `exact-fit-image` and
+  `exact-fit-formula` pin this on A4 pages, where print's column is a fraction
+  of a pixel taller than the viewer's.
 
-The committed fixture pins this outcome on the CI font stack and Chromium. On
+`exact-fit-boundary` pins this outcome on the CI font stack and Chromium. On
 a different font stack the same slice may agree on both sides and read CLEAN
 — also a pass. It can never fail the gate on its own.
+
+The worked example's print was shrunk. Under the CI fonts the slice's
+justified lines ended 1/64 px past its 648px column, so Chromium printed it at
+0.99998, laid out a pixel wider than the preview (#470). Since the engine holds
+that overflow to the page content box, the slice prints unscaled and reads
+CLEAN on Chrome 153 under both font sets; `exact-fit-image` and
+`exact-fit-formula` still exercise the outcome there.
 
 ### Why the fixture isn't made CLEAN with a CSS fudge factor (#268)
 

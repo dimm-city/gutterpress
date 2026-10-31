@@ -59,6 +59,7 @@ test("friendlySource maps known check ids to plain language, passes unknown thro
   expect(friendlySource("source.accessibility.alt-text")).toBe("Image description");
   expect(friendlySource("desktop.preview")).toBe("Preview");
   expect(friendlySource("asset.image.file-size")).toBe("Image file size");
+  expect(friendlySource("asset.font.approved-files")).toBe("Font files");
   expect(friendlySource("asset.font.license")).toBe("Font license");
   expect(friendlySource("pdf.print.safe-margins")).toBe("Safe margins");
   expect(friendlySource("pdf.print.pdfx-markers")).toBe("PDF/X markers");

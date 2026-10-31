@@ -2,7 +2,7 @@
   /**
    * LeftPanel — global left panel with 4 tabs.
    *
-   * Tabs: Books, TOC, Files, Media. (Book settings live in the full-window
+   * Tabs: Books, TOC, Files, Media. (Book setup lives in the full-window
    * ProjectSettingsView, not a tab here.)
    *
    * Architecture notes:
@@ -70,13 +70,13 @@
     onOpenUrl,
     onOpenBook,
     onNewProject,
-    onSyncReconnect,
     onPanelStateChange,
   }: {
     open?: boolean;
     activeTab?: PanelTab;
-    /** Reader (Settings → App): only Books and TOC — Files and Media are for
-     *  editing. A remembered hidden tab shows the first visible one instead. */
+    /** Reader (Settings → How you use Gutterpress): only Books and TOC — Files
+     *  and Media are for editing. A remembered hidden tab shows the first
+     *  visible one instead. */
     readerMode?: boolean;
     /** Panel width in px, user-resizable (clamped 300–480, narrowed only when
      *  the window can't spare that — see widthBounds()), persisted. */
@@ -106,7 +106,6 @@
     onOpenUrl?: (url: string) => void;
     onOpenBook?: () => void;
     onNewProject?: () => void;
-    onSyncReconnect?: () => void;
     /** Called whenever tab or width changes, or the panel closes itself (Esc,
      *  scrim), so the parent can persist the state. */
     onPanelStateChange?: () => void;

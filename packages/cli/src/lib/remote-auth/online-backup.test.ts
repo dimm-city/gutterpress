@@ -189,7 +189,7 @@ describe("setUpOnlineBackup — create a new repository", () => {
     expect((result as { message: string }).message).toContain("github.com");
   });
 
-  test("expired connection (401) asks to reconnect", async () => {
+  test("expired sign-in (401) asks to sign in again", async () => {
     const stub = githubStub({ create: json({ message: "Bad credentials" }, 401) });
     const result = await setUpOnlineBackup({
       projectDir,
@@ -198,7 +198,7 @@ describe("setUpOnlineBackup — create a new repository", () => {
       fetchImpl: stub.fetchImpl,
     });
     expect(result).toMatchObject({ status: "failed", reason: "auth" });
-    expect((result as { message: string }).message).toMatch(/reconnect github/i);
+    expect((result as { message: string }).message).toMatch(/sign in to github again/i);
   });
 
   test("offline: plain message, book untouched", async () => {

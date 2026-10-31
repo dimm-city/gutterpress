@@ -1,73 +1,84 @@
 <script lang="ts">
   /**
-   * Stylesheet-list sub-section of the merged "Look & style" section (see
-   * LookSection's header comment for the merge rationale). This is the THIRD
-   * pane ProjectSettingsView composes under one "Look & style" heading — the
-   * raw monospace-path checkbox list a writer almost never needs, which the
-   * parent places last, under a small "Stylesheets" heading. No section
-   * wrapper or `<h3>` of its own. All state and `api.style.*` /
-   * `api.project.listStyles` calls live in `StylesSectionController` (passed
-   * as the single `controller` prop); this child renders the
-   * controller's rune fields and calls its intent methods.
-   *
-   * Last-active guard: unchecking every stylesheet would yield an unstyled
-   * preview with no explanation (an empty array straight to
-   * `api.style.setActive`). Computed entirely from `controller.styles`, so the
-   * guard needs no changes anywhere else: once only one stylesheet is active,
-   * that one's checkbox is disabled with an explanatory hint instead of
-   * allowing the last uncheck.
+   * Advanced › Stylesheets: the manifest's `styles:` list, in the order the
+   * stylesheets load, with the extension list's rows and verbs — move up/down,
+   * Remove — and an Open that edits the file. Below it, the book's other
+   * `.css` files to add. All state and host calls live in
+   * `StylesSectionController`; this renders its fields and calls its verbs.
+   * The last stylesheet has no Remove (the controller says why); a book with
+   * none is offered `styles/book.css`.
    */
   import Icon from "#lib/components/Icon.svelte";
   import type { StylesSectionController } from "#lib/routes/styles-section-controller.svelte.ts";
 
-  let { controller }: { controller: StylesSectionController } = $props();
-
-  const LAST_ACTIVE_HINT = "Keep at least one stylesheet active — the preview needs one to render styled.";
-  let activeCount = $derived(controller.styles.filter((s) => s.active).length);
+  let {
+    controller,
+    onOpen,
+  }: {
+    controller: StylesSectionController;
+    /** Open the stylesheet (absolute path) in the editor. */
+    onOpen: (path: string) => void;
+  } = $props();
 </script>
 
-<div class="look-subsection styles-subsection">
-  <p class="hint">Turn individual stylesheets on or off. Most writers never need this — a look manages its own stylesheets automatically.</p>
-  {#if controller.stylesError}
-    <p class="error" role="alert">{controller.stylesError}</p>
+<section class="block" aria-labelledby="advanced-stylesheets">
+  <h3 id="advanced-stylesheets">Stylesheets</h3>
+  <p class="hint">Your book's own .css files, in the order they load: a later one wins where two disagree. They load after every extension. Remove only takes a stylesheet off this list; the file stays in your book.</p>
+  {#if controller.error}
+    <p class="error" role="alert">{controller.error}</p>
   {/if}
-  {#if controller.styles.length === 0}
-    <p class="muted">No stylesheets found. Use a look above to add one.</p>
+
+  {#if controller.used.length === 0}
+    <p class="muted">This book has no stylesheet yet.</p>
+    <div class="row">
+      <button class="ghost small" onclick={controller.create} disabled={controller.busy}>Create styles/book.css</button>
+    </div>
   {:else}
-    <ul class="style-list">
-      {#each controller.styles as s (s.path)}
-        {@const isLastActive = s.active && activeCount <= 1}
-        <li class:active={s.active}>
-          <label class="style-row" title={isLastActive ? LAST_ACTIVE_HINT : s.path}>
-            <input
-              type="checkbox"
-              checked={s.active}
-              onchange={(e) => controller.toggleStyleActive(s, e.currentTarget.checked)}
-              disabled={controller.stylesBusy || isLastActive}
-              aria-label={isLastActive ? `${s.displayName} — ${LAST_ACTIVE_HINT}` : `Enable ${s.displayName}`}
-            />
-            <span class="style-name">{s.displayName}</span>
-            {#if s.active}<span class="badge">active</span>{/if}
-            {#if isLastActive}<span class="muted dim" title={LAST_ACTIVE_HINT}>last active</span>{/if}
-          </label>
-          <button class="ghost small" onclick={() => controller.editStyle(s)} title="Open in editor">
-            <Icon name="file-text" size={13} /> Edit
-          </button>
+    <ul class="item-list">
+      {#each controller.used as s, i (s.path)}
+        <li>
+          <div class="item-row">
+            <span class="item-label" title={s.path}>{s.displayName}</span>
+            <span class="item-actions">
+              <button class="move" onclick={() => controller.move(s, -1)} disabled={i === 0 || controller.busy} title="Move up" aria-label={`Move ${s.displayName} up`}>
+                <Icon name="chevron-up" size={14} />
+              </button>
+              <button class="move" onclick={() => controller.move(s, 1)} disabled={i === controller.used.length - 1 || controller.busy} title="Move down" aria-label={`Move ${s.displayName} down`}>
+                <Icon name="chevron-down" size={14} />
+              </button>
+              <button class="ghost small" onclick={() => onOpen(s.path)} aria-label={`Open ${s.displayName}`} title="Open in the editor">Open</button>
+              <button
+                class="ghost small"
+                onclick={() => controller.remove(s)}
+                disabled={controller.busy || controller.used.length === 1}
+                aria-label={`Remove ${s.displayName}`}
+                title={controller.used.length === 1 ? "A book keeps at least one stylesheet. Add another first." : "Take it off this list. The file stays in your book."}
+              >Remove</button>
+            </span>
+          </div>
         </li>
       {/each}
     </ul>
   {/if}
-</div>
+
+  <h4 class="subhead">Add a stylesheet</h4>
+  {#if controller.unused.length === 0}
+    <p class="hint">No other .css files found. Put one in your book's folder or its styles folder and it shows here.</p>
+  {:else}
+    <ul class="add-list">
+      {#each controller.unused as s (s.path)}
+        <li>
+          <span class="add-name" title={s.path}>{s.displayName}</span>
+          <button class="ghost small" onclick={() => controller.add(s)} disabled={controller.busy} aria-label={`Add ${s.displayName}`}>Add</button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+</section>
 
 <style>
   @import "../../styles/config-section-shared.css";
 
-  .style-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-  .style-list li {
-    display: flex; align-items: center; gap: 8px; padding: 7px 9px;
-    border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken);
-  }
-  .style-list li.active { border-color: var(--app-focus-ring); }
-  .style-row { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; cursor: pointer; }
-  .style-name { font-size: 12px; color: var(--app-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--app-font-mono); }
+  /* A stylesheet's path takes the row; its verbs sit at the right. */
+  .item-row > .item-label { flex: 1; min-width: 0; }
 </style>

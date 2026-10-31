@@ -2,6 +2,11 @@ import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
 import { ASSET_SCAN_IGNORE_GLOBS, FONT_EXTS } from "./extensions";
 
+/**
+ * The font files a book ships, against the list its manifest approves:
+ * `checks: { asset.font.approved-files: { approvedFontFiles: [<glob>, …] } }`
+ * (0.11.22's `validate.assets.approvedFontFiles`). No list, no findings.
+ */
 const check: Check = {
   id: "asset.font.approved-files",
   name: "Approved Font Files",

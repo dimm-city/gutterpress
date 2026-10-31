@@ -9,7 +9,7 @@ import {
   loadManifestWithPath,
 } from "./manifest";
 import { UsageError } from "./cli-args";
-import { DTRPG_PRESET, BOOK_PRESET, resetWarnOnce } from "./presets";
+import { DTRPG_PRESET, BOOK_PRESET } from "./presets";
 
 // #265 — `extensions:` takes bare specifiers whose FORM says what they are
 // (extension-specifier.ts): `./`, `../`, `/` and a drive letter are paths;
@@ -125,7 +125,7 @@ describe("removed manifest shapes fail with the rewrite spelled out (#265)", () 
 // ── Characterization tests for resolveConfig's three-way merge (cli >
 // manifest > preset). These pin the MERGE PRECEDENCE at every nesting depth
 // resolveConfig supports (top-level scalar, one level deep, two levels deep,
-// and the `validate.checks` dictionary).
+// and the `checks` dictionary).
 describe("resolveConfig — the removed `engine` and `engineStyles` fields fail, naming the replacement (#266)", () => {
   // Stale manifests are the input here, so the fixtures deliberately carry
   // fields the type no longer declares.
@@ -157,26 +157,20 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     expect(config.page).toEqual(DTRPG_PRESET.page!);
     expect(config.pdfx).toEqual(DTRPG_PRESET.pdfx);
     expect(config.ink).toEqual(DTRPG_PRESET.ink);
-    expect(config.lint).toEqual(DTRPG_PRESET.lint);
-    expect(config.validate.enabled).toBe(DTRPG_PRESET.validate.enabled);
-    expect(config.validate.checks).toEqual(DTRPG_PRESET.validate.checks);
-    expect(config.validate.assets).toEqual(DTRPG_PRESET.validate.assets);
-    expect(config.validate.pdf).toEqual(DTRPG_PRESET.validate.pdf);
-    expect(config.validate.heuristics).toEqual(DTRPG_PRESET.validate.heuristics);
-    expect(config.validate.source.markdownlint).toBe(DTRPG_PRESET.validate.source.markdownlint);
-    expect(config.validate.source.htmlhint).toBe(DTRPG_PRESET.validate.source.htmlhint);
-    expect(config.validate.source.stylelint).toBe(DTRPG_PRESET.validate.source.stylelint);
+    expect(config.checks).toEqual(DTRPG_PRESET.checks);
+    expect(config.validate).toEqual(DTRPG_PRESET.validate);
+    expect(config.chapters).toBeNull();
     expect(config.title).toBe("Document");
     expect(config.authors).toEqual([]);
     expect(config.extensions).toEqual([]);
   });
 
-  test("preset: book selects BOOK_PRESET's geometry/ink/validate wholesale", () => {
+  test("preset: book selects BOOK_PRESET's geometry/ink/checks wholesale", () => {
     const config = resolveConfig({}, { preset: "book" });
     expect(config.page).toEqual(BOOK_PRESET.page!);
     expect(config.ink).toEqual(BOOK_PRESET.ink);
-    expect(config.validate.checks).toEqual(BOOK_PRESET.validate.checks);
-    expect(config.validate.pdf.forbidTransparency).toBe(false);
+    expect(config.checks).toEqual(BOOK_PRESET.checks);
+    expect(config.checks["pdf.print.transparency"]).toBe("off");
   });
 
   test("manifest overrides a top-level scalar leaf (title) over the preset", () => {
@@ -204,6 +198,42 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     expect(config.page.width).toBe(999);
     expect(config.page.height).toBe(700);
     expect(config.page.tolerance).toBe(DTRPG_PRESET.page!.tolerance);
+  });
+
+  test("page.margin: no preset sets one; a manifest's merges through whole, for every preset, and must be all four edges that fit the page", () => {
+    const margin = { top: 61.2, bottom: 61.2, inside: 54, outside: 50 };
+    expect(resolveConfig({}, {}).page.margin).toBeUndefined();
+    expect(resolveConfig({}, { preset: "book" }).page.margin).toBeUndefined();
+    expect(resolveConfig({}, { page: { margin } }).page.margin).toEqual(margin);
+    expect(resolveConfig({}, { preset: "book", page: { margin } }).page.margin).toEqual(margin);
+    expect(
+      resolveConfig({}, { preset: "custom", page: { width: 612, height: 792, margin } }).page.margin,
+    ).toEqual(margin);
+    expect(resolveConfig({ page: { margin } }, { page: { margin: { ...margin, top: 1 } } }).page.margin).toEqual(margin);
+    // Partial, non-numeric, negative or unknown-edged blocks are errors, not half-applied.
+    for (const bad of [
+      { top: 72 },
+      { top: 72, bottom: 72, inside: 72, outside: "1in" },
+      { top: -1, bottom: 72, inside: 72, outside: 72 },
+      { top: 72, bottom: 72, inside: 72, outside: 72, left: 72 },
+      54,
+    ]) {
+      expect(() => resolveConfig({}, { page: { margin: bad as never } })).toThrow(/page\.margin.*all four edges/s);
+    }
+    // Margins that meet in the middle leave no text block.
+    expect(() =>
+      resolveConfig({}, { preset: "book", page: { margin: { top: 72, bottom: 72, inside: 216, outside: 216 } } }),
+    ).toThrow(/no room for text/);
+    expect(() =>
+      resolveConfig({}, { preset: "book", page: { margin: { top: 324, bottom: 324, inside: 54, outside: 54 } } }),
+    ).toThrow(/no room for text/);
+    // Zero is a margin (a full-bleed edge).
+    expect(resolveConfig({}, { page: { margin: { top: 0, bottom: 0, inside: 0, outside: 0 } } }).page.margin).toEqual({
+      top: 0,
+      bottom: 0,
+      inside: 0,
+      outside: 0,
+    });
   });
 
   test("page.bleed: dtrpg declares DriveThruRPG's 0.125in in-sheet bleed; book/custom declare none; a manifest overrides it", () => {
@@ -299,7 +329,7 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
       resolveConfig({}, { pdfx: { transparency: "preserve" as never } })
     ).toThrow(/pdfx\.transparency/);
     // the dtrpg preset keeps rejecting alpha-channel images unless a book opts in
-    expect(resolveConfig({}, {}).validate.assets.allowAlpha).toBe(false);
+    expect(resolveConfig({}, {}).checks["asset.image.alpha-channel"]).not.toBe("off");
   });
 
   test("pdfx.flattenPages and pdfx.rasterDpi: unset by default, validated when set", () => {
@@ -322,99 +352,54 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     expect(config.pdfx.stripAnnotations).toBe(DTRPG_PRESET.pdfx.stripAnnotations);
   });
 
-  test("one-level-deep object (lint): manifest configPath explicit null is honoured, not treated as unset", () => {
-    const config = resolveConfig({}, { lint: { configPath: null, enabled: false } });
-    expect(config.lint.configPath).toBeNull();
-    expect(config.lint.enabled).toBe(false);
-  });
-
-  test("lint.rules (#339): defaults to {}, manifest sets rule levels, cli wins per key", () => {
-    expect(resolveConfig({}, {}).lint.rules).toEqual({});
+  test("checks (#443): the manifest sets levels over the preset's, the cli wins per id", () => {
     const config = resolveConfig(
-      { lint: { rules: { "printsafe/page-containment": "error" } } },
-      { lint: { rules: { "printsafe/no-risky-print-effects": "off", "printsafe/page-containment": "off" } } },
-    );
-    expect(config.lint.rules).toEqual({
-      "printsafe/no-risky-print-effects": "off",
-      "printsafe/page-containment": "error",
-    });
-    expect(config.lint.enabled).toBe(true);
-  });
-
-  test("validate.source string|false leaves: manifest false wins over preset null, cli false wins over manifest string", () => {
-    const withManifestFalse = resolveConfig({}, { validate: { source: { markdownlint: false } } });
-    expect(withManifestFalse.validate.source.markdownlint).toBe(false);
-
-    const withCliOverride = resolveConfig(
-      { validate: { source: { markdownlint: false } } },
-      { validate: { source: { markdownlint: ".markdownlint.yaml" } } },
-    );
-    expect(withCliOverride.validate.source.markdownlint).toBe(false);
-  });
-
-  test("two-levels-deep object (validate.heuristics.textDensityRange): manifest sets min only, max keeps the preset default", () => {
-    const config = resolveConfig({}, { validate: { heuristics: { textDensityRange: { min: 500 } } } });
-    expect(config.validate.heuristics.textDensityRange.min).toBe(500);
-    expect(config.validate.heuristics.textDensityRange.max).toBe(DTRPG_PRESET.validate.heuristics.textDensityRange.max);
-    expect(config.validate.heuristics.maxDecorativeLayers).toBe(DTRPG_PRESET.validate.heuristics.maxDecorativeLayers);
-  });
-
-  test("validate.checks dictionary: manifest sets one id to a boolean, another to a NEW partial object; unset preset ids survive untouched", () => {
-    const config = resolveConfig(
-      {},
+      { checks: { "printsafe/page-containment": "error" } },
       {
-        validate: {
-          checks: {
-            "pdf.structure.qpdf": false,
-            "heuristic.custom.new-check": { severity: "info" },
-          },
+        checks: {
+          "printsafe/no-risky-print-effects": "off",
+          "printsafe/page-containment": "off",
+          "pdf.structure.qpdf": "warn",
         },
       },
     );
-    expect(config.validate.checks["pdf.structure.qpdf"]).toBe(false);
-    expect(config.validate.checks["heuristic.custom.new-check"]).toEqual({ severity: "info" });
+    expect(config.checks["printsafe/no-risky-print-effects"]).toBe("off");
+    expect(config.checks["printsafe/page-containment"]).toBe("error");
+    expect(config.checks["pdf.structure.qpdf"]).toBe("warning");
     // Untouched preset entries survive verbatim.
-    expect(config.validate.checks["pdf.print.pdfx-markers"]).toEqual(
-      DTRPG_PRESET.validate.checks["pdf.print.pdfx-markers"],
-    );
+    expect(config.checks["pdf.print.pdfx-markers"]).toBe(DTRPG_PRESET.checks["pdf.print.pdfx-markers"]!);
   });
 
-  test("validate.checks dictionary: cli checks win over manifest checks per-id", () => {
-    const config = resolveConfig(
-      { validate: { checks: { "pdf.structure.qpdf": { enabled: true, severity: "warning" } } } },
-      { validate: { checks: { "pdf.structure.qpdf": false } } },
+  test("checks: every spelling of a level resolves to off, on, info, warning or error", () => {
+    const { checks } = resolveConfig(
+      {},
+      { checks: { a: false, b: "off", c: true, d: "on", e: "info", f: "warn", g: "warning", h: "error" } },
     );
-    expect(config.validate.checks["pdf.structure.qpdf"]).toEqual({
-      enabled: true,
-      severity: "warning",
+    expect(checks).toMatchObject({
+      a: "off",
+      b: "off",
+      c: "on",
+      d: "on",
+      e: "info",
+      f: "warning",
+      g: "warning",
+      h: "error",
     });
   });
 
-  test("array leaf (validate.assets.approvedFontFiles): manifest array replaces the preset array wholesale (no element merge)", () => {
-    const config = resolveConfig(
-      {},
-      { preset: "book", validate: { assets: { approvedFontFiles: ["fonts/a.woff2"] } } },
-    );
-    expect(config.validate.assets.approvedFontFiles).toEqual(["fonts/a.woff2"]);
+  test("checks: an unknown level is a usage error naming the entry", () => {
+    const bad = () => resolveConfig({}, { checks: { "pdf.structure.qpdf": "loud" as never } });
+    expect(bad).toThrow(UsageError);
+    expect(bad).toThrow(/`checks\.pdf\.structure\.qpdf` must be off, on, info, warn or error, got "loud"/);
+    // The 0.11.22 object form is not a level: only manifest-old-spellings.ts reads it.
+    expect(() => resolveConfig({}, { checks: { x: { severity: "info" } as never } })).toThrow(/`checks\.x`/);
+    expect(() => resolveConfig({}, { checks: ["pdf.structure.qpdf"] as never })).toThrow(/`checks` must map/);
   });
 
-  test("the retired `validate.assets.minImageDpi` / `allowedColorSpaces` still parse but are dropped", () => {
-    const config = resolveConfig(
-      {},
-      { preset: "book", validate: { assets: { minImageDpi: 150, allowedColorSpaces: ["RGB"] } } },
-    );
-    const assets = config.validate.assets as Record<string, unknown>;
-    expect(assets.minImageDpi).toBeUndefined();
-    expect(assets.allowedColorSpaces).toBeUndefined();
-  });
-
-  test("a manifest carrying the removed `source.assets` fails loudly instead of building wrong", () => {
-    // Assets are derived from what the book references now (lib/asset-inline.ts).
-    // A stale list must not be silently ignored: doing so would build an artifact
-    // the author did not ask for, which is the exact silent class this replaced.
-    expect(() =>
-      resolveConfig({}, { source: { assets: ["css", "images"] } } as never),
-    ).toThrow(/source\.assets/);
+  test("chapters: the cli list wins over the manifest's, which wins over the preset's null", () => {
+    expect(resolveConfig({}, {}).chapters).toBeNull();
+    expect(resolveConfig({}, { chapters: ["a.md", "b.md"] }).chapters).toEqual(["a.md", "b.md"]);
+    expect(resolveConfig({ chapters: ["c.md"] }, { chapters: ["a.md"] }).chapters).toEqual(["c.md"]);
   });
 
   test("a manifest carrying the removed `output` block fails loudly", () => {
@@ -438,42 +423,10 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     const a = resolveConfig({}, {});
     const b = resolveConfig({}, {});
     expect(a.page).not.toBe(b.page);
-    expect(a.validate.checks).not.toBe(b.validate.checks);
-    expect(a.validate.checks).not.toBe(DTRPG_PRESET.validate.checks);
-  });
-
-  test("allowedCallouts is deprecated, ignored, and absent from the resolved validate.source object", () => {
-    const config = resolveConfig({}, { validate: { source: { allowedCallouts: ["note"] } } });
-    expect(Object.keys(config.validate.source).sort()).toEqual([
-      "cssOwnership",
-      "htmlhint",
-      "markdownlint",
-      "stylelint",
-    ]);
-  });
-});
-
-// ── Deprecated-field warnings fire once per process and
-// don't affect the resolved config's shape ──────────────────────────────────
-describe("resolveConfig deprecation warnings (finding #24)", () => {
-  test("a manifest `output.html` triggers exactly one warning across repeated resolveConfig calls", () => {
-    // The warn-once registry (presets.ts) is process-wide (module state
-    // shared across every test file bun runs in one process), so start from
-    // a known-clean slate via the reset hook instead of assuming no earlier
-    // test already tripped this specific warning id.
-    resetWarnOnce();
-    const lines: string[] = [];
-    const orig = console.warn;
-    console.warn = ((m: unknown) => { lines.push(String(m)); }) as typeof console.warn;
-    try {
-      resolveConfig({}, { validate: { source: { allowedCallouts: ["a"] } } });
-      resolveConfig({}, { validate: { source: { allowedCallouts: ["b"] } } });
-      const hits = lines.filter((l) => l.includes("allowedCallouts"));
-      expect(hits.length).toBe(1);
-    } finally {
-      console.warn = orig;
-      resetWarnOnce();
-    }
+    expect(a.checks).not.toBe(b.checks);
+    expect(a.checks).not.toBe(DTRPG_PRESET.checks);
+    expect(a.validate).not.toBe(DTRPG_PRESET.validate);
+    expect(a.ink).not.toBe(DTRPG_PRESET.ink);
   });
 });
 
@@ -537,7 +490,7 @@ describe("loadManifestWithPath explicit-path behavior (finding #12)", () => {
     const dir = await mkdtemp(join(tmpdir(), "gutterpress-manifest-invalid-yaml-"));
     dirsToClean.push(dir);
     const manifestPath = join(dir, "manifest.yaml");
-    await Bun.write(manifestPath, "title: Broken\nsource:\n\tfiles:\n");
+    await Bun.write(manifestPath, "title: Broken\nchapters:\n\t- a.md\n");
 
     await expect(loadManifestWithPath(dir)).rejects.toThrow(UsageError);
     await expect(loadManifestWithPath(dir)).rejects.toThrow(
@@ -545,22 +498,34 @@ describe("loadManifestWithPath explicit-path behavior (finding #12)", () => {
     );
   });
 
-  test("a manifest a sync left with two versions of a setting says so instead of reporting a YAML position", async () => {
+  test("a manifest left with two takes of a setting says so instead of reporting a YAML position", async () => {
     const dir = await mkdtemp(join(tmpdir(), "gutterpress-manifest-two-versions-"));
     dirsToClean.push(dir);
     const manifestPath = join(dir, "manifest.yaml");
     await Bun.write(
       manifestPath,
-      '<<<<<<< your version\ntitle: "Mine"\n=======\ntitle: "Online"\n>>>>>>> online version\nsource:\n  files: []\n'
+      '<<<<<<< your version\ntitle: "Mine"\n=======\ntitle: "Online"\n>>>>>>> online version\nchapters: []\n'
     );
 
     await expect(loadManifestWithPath(dir)).rejects.toThrow(UsageError);
     await expect(loadManifestWithPath(dir)).rejects.toThrow(
-      `"${manifestPath}" has two versions of a setting — yours and the online version — left by a sync.`
+      `"${manifestPath}" has two takes of a setting — yours and the online copy's — left by getting the latest changes.`
     );
   });
 
   test("automatic discovery uses only the canonical manifest filename", async () => {
     expect([...MANIFEST_FILENAMES]).toEqual(["manifest.yaml"]);
+  });
+});
+
+describe("language", () => {
+  test("defaults to en and accepts a BCP 47 tag", () => {
+    expect(resolveConfig({}, { preset: "book" }).language).toBe("en");
+    expect(resolveConfig({}, { preset: "book", language: "de-CH" }).language).toBe("de-CH");
+  });
+
+  test("rejects anything that is not a language tag", () => {
+    expect(() => resolveConfig({}, { preset: "book", language: "German" })).toThrow(/must be a language tag/);
+    expect(() => resolveConfig({}, { preset: "book", language: 12 as unknown as string })).toThrow(/must be a language tag/);
   });
 });

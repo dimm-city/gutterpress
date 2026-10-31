@@ -1,0 +1,20 @@
+title: "Core Full Bleed"
+authors:
+  - "Gutterpress Fixture"
+
+preset: book
+
+styles:
+  - styles/style.css
+
+chapters:
+  - 01-full-bleed.md
+
+page:
+  width: 432   # 6in
+  height: 648  # 9in
+  margin:
+    top: 54
+    bottom: 54
+    inside: 72
+    outside: 54

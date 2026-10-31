@@ -107,10 +107,13 @@ export {
   scaffoldExtension,
   resolveExtensionPrefix,
   EXTENSION_KINDS,
+  EXTENSION_KIND_ALIASES,
+  extensionKindFor,
   RESERVED_PREFIX,
 } from "../lib/extension-scaffold.ts";
 export type {
   ExtensionKind,
+  ExtensionKindAlias,
   ScaffoldExtensionOptions,
   ScaffoldExtensionResult,
 } from "../lib/extension-scaffold.ts";
@@ -164,21 +167,18 @@ export {
   reorderExtensions,
   validateProjectExtensions,
   readExtensionCss,
-  listBuiltInStyleSets,
+  listBundledExtensions,
   addBuiltInStyleSet,
+  BUILT_IN_LOOKS,
   sameExtension,
-  RECOMMENDED_EXTENSIONS,
-  BUILT_IN_STYLE_SET_IDS,
   EXTENSIONS_DIR,
   PLUGINS_DIR,
 } from "../lib/extension-manager.ts";
 export type {
   ProjectExtensionEntry,
   ExtensionValidationResult,
-  RecommendedExtension,
+  BundledExtensionInfo,
   ExtensionSourceKind,
-  BuiltInStyleSet,
-  BuiltInStyleSetId,
   AddExtensionOptions,
   ExtensionUpdateCheck,
   ExtensionUpdateResult,
@@ -187,11 +187,13 @@ export type {
 } from "../lib/extension-manager.ts";
 export {
   BUNDLED_EXTENSIONS,
+  BUNDLED_EXTENSION_DETAILS,
+  bundledExtension,
   isBundledExtension,
   isPathSpecifier,
   parseExtensionSpecifier,
 } from "../lib/extension-specifier.ts";
-export type { ParsedExtensionSpecifier } from "../lib/extension-specifier.ts";
+export type { BundledExtension, ParsedExtensionSpecifier } from "../lib/extension-specifier.ts";
 
 // ── Restoring pinned extensions ──────────────────────────────────────────────
 // Downloaded copies are not in a book's git history; this downloads a missing
@@ -229,7 +231,7 @@ export { DEFAULT_NPM_REGISTRY, npmRegistryUrl } from "../lib/npm-registry.ts";
 // only") and `markdown/plugins.ts` (a plugin is "markdown only") both build
 // on. One file describes every extension: npm's own `name`/`description`/
 // `author`/`keywords`/`main`, plus a `"gutterpress"` block for
-// `styles`/`markdown`/`snippets`/`components`/`tokensFile`/`preview`.
+// `styles`/`markdown`/`snippets`/`components`/`preview`.
 // Exported here — not just used internally — because a "list installed
 // extensions" surface resolves a folder's full declared shape through
 // exactly this, not a re-implementation. `snippets.ts`'s `listMergedSnippets`
@@ -265,9 +267,9 @@ export {
 } from "../lib/manifest-config.ts";
 export type { ProjectConfigFields } from "../lib/manifest-config.ts";
 
-// ── Page size (#357) — read/write the manifest bounds + stylesheet `@page` together ──
+// ── Page geometry (#357) — the manifest's size and margins, read and written there ──
 export { readPageSetup, setPageSetup } from "../lib/page-size.ts";
-export type { PageSetup, PageSizeChoice, PageSizePoints } from "../lib/page-size.ts";
+export type { PageMargin, PageSetup, PageSetupChange, PageSizeChoice, PageSizePoints } from "../lib/page-size.ts";
 
 export {
   providerFor,
@@ -278,7 +280,9 @@ export {
   AUTO_SNAPSHOT_MESSAGE,
   RESTORE_BACKUP_MESSAGE,
   HISTORY_PAGE_LIMIT,
-  listLocalBranches,
+  listRevisions,
+  createRevision,
+  revisionNameFrom,
   switchBranch,
   SWITCH_BRANCH_SNAPSHOT_MESSAGE,
 } from "../lib/source-provider.ts";
@@ -287,7 +291,9 @@ export type {
   ListHistoryOptions,
   HistoryPage,
   UnversionedChanges,
-  LocalBranches,
+  Revision,
+  RevisionList,
+  CreateRevisionOptions,
   SwitchBranchOptions,
   SwitchBranchResult,
 } from "../lib/source-provider.ts";
@@ -295,12 +301,13 @@ export type {
 // ── Versions view (#408): what a version changed, what is online, a version's files ──
 export {
   describeVersions,
+  listVersionChanges,
   listOnlineVersions,
   compareVersionFile,
   exportVersionTree,
   VERSION_CHANGES_SHOWN,
 } from "../lib/version-changes.ts";
-export type { VersionEntry, VersionFileChange, CompareRow } from "../lib/version-changes.ts";
+export type { VersionEntry, OnlineVersionEntry, VersionChanges, VersionFileChange, CompareRow } from "../lib/version-changes.ts";
 
 // ── Host-timer cadence policy (auto-snapshot / auto-sync delays) ──────────────
 export {
@@ -445,6 +452,8 @@ export {
   checkRemoteUpdates,
   SYNC_SNAPSHOT_MESSAGE,
 } from "../lib/remote-auth/sync.ts";
+export { renameRevision, deleteRevision } from "../lib/remote-auth/revisions.ts";
+export type { RenameRevisionOptions, DeleteRevisionOptions } from "../lib/remote-auth/revisions.ts";
 export {
   repairOnlineBackup,
   REPAIR_SNAPSHOT_MESSAGE,
@@ -515,6 +524,7 @@ export type { PublishAccountSelection } from "../lib/publish/selections.ts";
 
 export {
   readPublishSettings,
+  savePublishSettings,
   setPublishProviderConfig,
 } from "../lib/publish/manifest-publish.ts";
 
@@ -528,6 +538,7 @@ export type {
   PublishArtifactFormat,
   PublishAuthStatus,
   PublishDeps,
+  PublishDestinationStatus,
   PublishListingMetadata,
   PublishOutcome,
   PublishProduct,

@@ -35,12 +35,12 @@
     },
     {
       "id": "implicit-manuscript-safety",
-      "prompt": "Record the accepted typography decision and adjust the type scale. This book has no source.files list.",
+      "prompt": "Record the accepted typography decision and adjust the type scale. This book has no chapters list.",
       "expected_output": "The CSS change is made and any durable note is nested under design/, never added as root Markdown.",
       "assertions": [
         "The agent identifies top-level Markdown as implicit manuscript content",
         "No root DESIGN.md, README.md, or NOTES.md is created",
-        "Generated output and plugins/npm remain unchanged"
+        "Generated output and extensions/npm remain unchanged"
       ]
     }
   ]

@@ -2,10 +2,13 @@ import { error } from '@sveltejs/kit';
 import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-// #265: copy a built-in look into `extensions/<id>/` (the one thing the rail
-// COPIES — the look becomes the author's own editable files) and add it as
-// `./extensions/<id>`. Idempotent: an existing folder is kept and only
-// (re-)referenced. `id` is checked against the built-in list by the lib.
+// Book setup › Look's "Make an editable copy" (0.11.22's route, restored in
+// #482): copy a built-in look into `extensions/<id>/` as the author's own
+// files and list the copy as `./extensions/<id>`, in the built-in's place when
+// the book lists it by name (`addBuiltInStyleSet`). Idempotent: a folder
+// already there is kept and only (re-)referenced. `id` is checked against the
+// built-in looks by the lib; it never names a path, so nothing outside the
+// book's `extensions/` folder can be written.
 export const POST: RequestHandler = defineRoute<{ projectDir: string; id: string }>({
   validate: async (raw) => {
     const body = raw as { projectDir?: string; id?: string };

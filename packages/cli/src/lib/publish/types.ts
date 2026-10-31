@@ -19,6 +19,7 @@
  * host responses.
  */
 import type { HostCredential, TokenStore } from "../remote-auth/token-store.ts";
+import type { PublishSelectionsStore } from "./selections.ts";
 
 /**
  * One author-editable, NON-SECRET settings field (stored in the manifest's
@@ -138,8 +139,9 @@ export interface PublishPluginContext {
   /** The one build output validated for this run: a PDF file, or the
    *  website export directory. */
   artifact: PublishArtifact;
-  /** The manifest's `publish.<package-name>` section, minus the two keys core
-   *  reads from it: `format` (which build to publish) and `credential`. */
+  /** The manifest's `publish.<package-name>` section, minus the keys core
+   *  reads from it: `format` (which build to publish), `credential` and
+   *  `enabled` (whether the desktop's Publish view ticks it). */
   settings: Record<string, unknown>;
   /** Progress line sink. Use this, never `console.log`: stdout carries
    *  `--json` output. */
@@ -226,11 +228,20 @@ export interface PublishDeps {
    * keyed by a compound `<host>#<account>` for named accounts (see
    * {@link publishCredentialKey}); empty/undefined resolves the legacy
    * bare-host entry, so existing single-credential setups keep working. The
-   * orchestrator sets this from the effective selection (book manifest →
-   * project/global default); providers read it transparently via
-   * {@link resolvePublishCredential}.
+   * orchestrator sets this from the effective selection (the person's private
+   * choice for the book → the book manifest → this front-end default);
+   * providers read it transparently via {@link resolvePublishCredential}.
    */
   credentialAccount?: string;
+  /**
+   * The person's PRIVATE publishing values for a book (see
+   * {@link PublishSelectionsStore}): which saved account to use, an output
+   * folder outside the book, and their own Drive folder when the book's is out
+   * of their reach (#452). When given, they win over the manifest's
+   * `publish.<id>` values in every request, and a provider may drop one that
+   * no longer applies. Absent (the CLI today): the manifest alone.
+   */
+  selections?: Pick<PublishSelectionsStore, "settings" | "setSettings">;
 }
 
 /**
@@ -279,6 +290,27 @@ export interface PublishProduct {
   title: string;
   url?: string;
 }
+
+/**
+ * Where one person publishes among a provider's destinations, and whether they
+ * must choose one (#452, gdrive's folders). The book's destination is the
+ * team's, in the manifest; a person whose account can't reach it chooses their
+ * own, kept in their private settings for the book.
+ */
+export type PublishDestinationStatus =
+  /** The book has no destination yet: the first choice is the book's. */
+  | { state: "unset" }
+  /** The book's destination, reachable with this person's account. */
+  | { state: "book"; destination: PublishProduct }
+  /** The book names its destination by name only: each person's own of that
+   *  name. `destination` is this account's most recently changed one (absent:
+   *  it is created on the first publish); `several` when more share the name. */
+  | { state: "by-name"; name: string; destination?: PublishProduct; several: boolean }
+  /** This person's own destination stands in for the book's. */
+  | { state: "mine"; destination: PublishProduct; book: { title: string; reachable: boolean } }
+  /** Out of reach with this person's account: the book's destination, or their
+   *  own (`mine`, its title) when they have one. They must choose another. */
+  | { state: "unreachable"; book: { title: string; reachable: boolean }; mine?: string };
 
 /** Listing metadata for {@link PublishProvider.updateListing}. */
 export interface PublishListingMetadata {
@@ -340,6 +372,8 @@ export interface PublishProvider {
   listDestinations?(req: PublishRequest): Promise<PublishProduct[]>;
   /** Create a new destination (gdrive: a Drive folder at My Drive root). */
   createDestination?(req: PublishRequest, name: string): Promise<PublishProduct>;
+  /** Where this person publishes now, and whether they must choose (#452). */
+  destinationStatus?(req: PublishRequest): Promise<PublishDestinationStatus>;
 }
 
 /**

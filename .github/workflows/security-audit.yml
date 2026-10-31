@@ -21,6 +21,8 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/bun
       - name: Audit the lockfile
-        # No install is needed. This unpatched advisory only reaches build
-        # tooling; remove the exception once sprintf-js has a patched release.
-        run: bun audit --ignore=GHSA-hp3w-g68c-fv3c
+        # No install is needed. These unpatched advisories only reach build
+        # tooling; remove each exception once its package has a patched release:
+        # sprintf-js (GHSA-hp3w-g68c-fv3c) and deepmerge, via
+        # @sveltejs/vite-plugin-svelte (GHSA-gcqx-w48m-w2h4).
+        run: bun audit --ignore=GHSA-hp3w-g68c-fv3c --ignore=GHSA-gcqx-w48m-w2h4

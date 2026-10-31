@@ -1,0 +1,27 @@
+/* style.css — an inline formula that ends a line 1px short of the column's
+   right edge (#469). MathJax writes each formula as an SVG plus a hidden
+   MathML copy for screen readers, which the browser lays out in whatever
+   math font it has. For $g_b$ in 16px Liberation Serif the SVG is 14.33px
+   and the copy 18.17px on the dev container's fonts, 20.53px on the GitHub
+   runner's. Unless the math feature holds the copy to the formula's box, it
+   ends 626.83px or 629.19px into the 624px column and Chromium shrinks the
+   whole print to fit (scale 0.99549 or 0.99176).
+
+   A spacer before the formula is 100% less the SVG's width (1.953ex,
+   MathJax's own figure, in the same font's ex) less 1px, so the drawing ends
+   at 623px whatever the font. `text-align: left`: justified lines bring their
+   own shrink (#470), which this fixture keeps out.
+
+   The page is one-line paragraphs on a fixed line-height, so it does not
+   depend on the font either: the "After the Formula" heading's box would end
+   at 866px of 864px. The preview and an unshrunk print move it to page 2; a
+   print shrunk by the copy keeps it on page 1, and the gate fails. Headings
+   are allowed to end a page here (core keeps them with what follows) so the
+   heading itself is what moves. */
+
+@page { margin: 1in; }
+body { margin: 0; font-family: "Liberation Serif", serif; font-size: 16px; line-height: 24px; text-align: left; orphans: 1; widows: 1; }
+h1 { font-size: 24px; line-height: 32px; margin: 0 0 18px; }
+h2 { font-size: 16px; line-height: 24px; margin: 0; break-after: auto; }
+p { margin: 0; }
+p:has(> mjx-container)::before { content: ""; display: inline-block; width: calc(100% - 1.953ex - 1px); }

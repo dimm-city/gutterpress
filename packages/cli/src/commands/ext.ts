@@ -5,7 +5,7 @@ import path from "node:path";
 import {
   addBuiltInStyleSet,
   addExtension,
-  BUILT_IN_STYLE_SET_IDS,
+  BUILT_IN_LOOKS,
   checkExtensionUpdates,
   importExtensionFromFile,
   importExtensionFromUrl,
@@ -32,7 +32,7 @@ import {
  * carry (markdown, styles, snippets, a component catalog):
  *
  *   gutterpress ext list [dir]
- *   gutterpress ext add <source> [dir] [--export name]
+ *   gutterpress ext add <source> [dir] [--export name] [--look]
  *   gutterpress ext remove <specifier> [dir]
  *   gutterpress ext enable <specifier> [dir]
  *   gutterpress ext disable <specifier> [dir]
@@ -54,8 +54,11 @@ import {
  *
  * `add` takes an npm package (`name`, `name@version`), a bundled feature
  * name, a folder or plugin-file path, a `.zip`/`.css` file, or an http(s)
- * URL. A thin front-end over `extension-manager.ts`/`extension-import.ts` —
- * the same shared-lib functions the desktop's Extensions panel calls.
+ * URL. With `--look`, SOURCE is a built-in look copied into
+ * `extensions/<id>/` as the author's own editable files (`addBuiltInStyleSet`,
+ * what Book setup's "Make an editable copy" calls). A thin front-end over
+ * `extension-manager.ts`/`extension-import.ts` — the same shared-lib functions
+ * the desktop's Extensions panel calls.
  */
 
 const dirArg = {
@@ -76,7 +79,7 @@ export const extAddArgs = {
   source: {
     type: "positional",
     description:
-      "What to add: an npm package (name or name@version), a bundled feature (markdown-it-mark, …), a folder or plugin file path, a .zip or .css file, or an http(s) URL",
+      "What to add: an npm package (name or name@version), a bundled name (a feature like markdown-it-mark or a look like academic), a folder or plugin file path, a .zip or .css file, or an http(s) URL",
     required: true,
   },
   dir: dirArg,
@@ -88,7 +91,7 @@ export const extAddArgs = {
   look: {
     type: "boolean",
     description:
-      "Treat SOURCE as a built-in look id (clean-book, zine, technical-doc): copy it into extensions/ and add it",
+      "Treat SOURCE as a built-in look (clean-book, zine, technical-doc, academic): copy it into extensions/ as your own files and list the copy",
     required: false,
   },
 } as const;
@@ -171,10 +174,10 @@ function printAdded(entry: ProjectExtensionEntry, projectDir: string, warnings: 
   if (entry.kind === "npm") {
     console.log(`Installed ${entry.use}`);
     console.log(`  project: ${projectDir}`);
-    console.log("  vendored under: plugins/npm");
+    console.log("  vendored under: extensions/npm");
     console.log("  manifest: exact version pinned");
   } else if (entry.kind === "bundled") {
-    console.log(`Enabled bundled feature ${entry.use}`);
+    console.log(`Enabled bundled ${entry.carries.styles && !entry.carries.markdown ? "look" : "feature"} ${entry.use}`);
     console.log(`  project: ${projectDir}`);
   } else {
     console.log(`Added ${entry.use}  (${carriesLabel(entry)})`);
@@ -222,7 +225,7 @@ const add = defineCommand({
   meta: {
     name: "add",
     description:
-      "Add an extension: an npm package, a bundled feature, a folder or plugin file, a .zip/.css file, or a URL",
+      "Add an extension: an npm package, a bundled name (a feature or a look), a folder or plugin file, a .zip/.css file, or a URL",
   },
   args: extAddArgs,
   async run({ args, rawArgs }) {
@@ -243,10 +246,13 @@ const add = defineCommand({
       if (typeof args.export === "string" && !exportName) {
         throw new UsageError("gutterpress ext add: --export requires a non-empty name");
       }
-      if (args.look && !(BUILT_IN_STYLE_SET_IDS as readonly string[]).includes(source)) {
+      if (args.look && !BUILT_IN_LOOKS.includes(source)) {
         throw new UsageError(
-          `gutterpress ext add --look: unknown built-in look "${source}" (one of: ${BUILT_IN_STYLE_SET_IDS.join(", ")})`,
+          `gutterpress ext add --look: unknown built-in look "${source}" (one of: ${BUILT_IN_LOOKS.join(", ")})`,
         );
+      }
+      if (args.look && exportName) {
+        throw new UsageError("gutterpress ext add --look: a look takes no --export");
       }
       if (!args.look && !isUrl && !existing) {
         // A bundled/npm specifier — or a path that is not there: either way
@@ -268,8 +274,7 @@ const add = defineCommand({
 
     try {
       if (args.look) {
-        const entry = await addBuiltInStyleSet(projectDir, source);
-        printAdded(entry, projectDir);
+        printAdded(await addBuiltInStyleSet(projectDir, source), projectDir);
         return;
       }
       if (isUrl) {
@@ -461,7 +466,7 @@ const update = defineCommand({
       }
       for (const u of updated) console.log(`Updated ${u.name}  ${u.from} -> ${u.to}`);
       console.log(`  project: ${projectDir}`);
-      console.log("  vendored under: plugins/npm (previous version removed)");
+      console.log("  vendored under: extensions/npm (previous version removed)");
       console.log("  manifest: exact version re-pinned");
     } catch (error) {
       failPipeline("Could not update extensions", error);

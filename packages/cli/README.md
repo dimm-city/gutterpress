@@ -90,7 +90,7 @@ A Gutterpress project is a directory. The CLI doesn't impose much structure; the
 my-book/
 ├─ manifest.yaml      ← optional but recommended; metadata + config
 ├─ chapter-01.md      ← markdown files, processed in alphabetical order
-├─ chapter-02.md         (or in the order listed in manifest.yaml#source.files)
+├─ chapter-02.md         (or in the order listed in manifest.yaml#chapters)
 ├─ css/               ← your stylesheets
 │  └─ print.css
 └─ images/            ← images referenced from markdown or CSS
@@ -123,10 +123,9 @@ preset: dtrpg
 styles:
   - css/print.css
 
-source:
-  files:
-    - chapter-01.md
-    - chapter-02.md
+chapters:
+  - chapter-01.md
+  - chapter-02.md
 ```
 
 The full configuration cascade is `CLI flags > manifest.yaml > preset defaults`. See the [configuration reference](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/01-getting-started.md#manifest-configuration) for details.
@@ -143,28 +142,28 @@ source.
 
 ### `gutterpress new`
 
-Scaffold a new book, plugin or theme from an embedded starter template — the fastest way to start (see [Quick start](#quick-start)).
+Scaffold a new book, plugin or look from an embedded starter template — the fastest way to start (see [Quick start](#quick-start)).
 
-`--kind book` is the default. Every new book picks the vendor preset it's designed for: `dtrpg` (DriveThruRPG print-on-demand), `book` (neutral 6x9in trade book), or `custom` (you supply the trim size in points).
+`--kind book` is the default. Every new book has the preset it's designed for, the template's unless you choose: `dtrpg` (DriveThruRPG print-on-demand), `book` (neutral 6x9in trade book), or `custom` (you supply the trim size in points).
 
-`--kind plugin` and `--kind theme` scaffold an **extension package** instead — a folder with a `package.json` a book can load. The plugin starter carries a declarative marker table, a hand-written markdown-it rule, component CSS and a `bun test` fixture suite; the theme starter carries the six-file layered CSS architecture (tokens / base / components / page-templates / page-rules / book), each sheet opening with its own OWNS / MUST NOT CONTAIN contract header. Both include a README explaining which conventions are load-bearing. An extension needs no preset, trim size or publish target, so the book-only flags below are rejected rather than ignored when `--kind` names one — and `--prefix`/`--description` are likewise rejected for a book.
+`--kind plugin` and `--kind look` scaffold an **extension package** instead — a folder with a `package.json` a book can load. The plugin starter carries a declarative marker table, a hand-written markdown-it rule, component CSS and a `bun test` fixture suite; the look starter carries the six-file layered CSS architecture (tokens / base / components / page-templates / page-rules / book), each sheet opening with its own OWNS / MUST NOT CONTAIN contract header. Both include a README explaining which conventions are load-bearing. An extension needs no preset, trim size or publish target, so the book-only flags below are rejected rather than ignored when `--kind` names one — and `--prefix`/`--description` are likewise rejected for a book.
 
 ```sh
 gutterpress new <name> [--kind <id>] [options]
 
-  --kind <id>              What to create: book (default), plugin, theme
-  --prefix <str>           Class/custom-property prefix an extension claims (default: its slug, e.g. "field-notes-"); --kind plugin|theme only
-  --description <text>     One-line description recorded in the extension's metadata; --kind plugin|theme only
-  --preset <id>            Vendor preset the book is designed for: dtrpg, book, custom (required for a book)
+  --kind <id>              What to create: book (default), plugin, look (theme is look's older name)
+  --prefix <str>           Class/custom-property prefix an extension claims (default: its slug, e.g. "field-notes-"); --kind plugin|look only
+  --description <text>     One-line description recorded in the extension's metadata; --kind plugin|look only
+  --preset <id>            Preset the book is designed for: dtrpg, book, custom (default: the template's)
   --author <name>          Author name to record in the project
   --dir <path>             Parent directory to create the project in (default: current directory)
   --folder <name>          Folder name to create (default: a slug of the project name)
-  --template <id>          Starter template: book, zine, technical (default: book)
+  --template <id>          Starter template: book, zine, technical, paper (default: book)
   --targets <ids>          Publish targets recorded in the manifest (comma-separated: dtrpg, itch; or "none") — default: the preset's
   --page-width <pt>        Trim width in points, 72pt = 1in (required with --preset custom; optional override otherwise)
   --page-height <pt>       Trim height in points, 72pt = 1in (required with --preset custom; optional override otherwise)
-  --page-tolerance <pt>    Allowed trim deviation when validating a built PDF (default: 0.5)
-  --git                    Initialise local version history (default: true; use --no-git to skip)
+  --page-tolerance <pt>    Allowed trim deviation when validating a built PDF (default: 0.5); written as checks: { pdf.print.page-size: { tolerance } }
+  --git                    Keep version history on this computer (default: true; use --no-git to skip)
   --no-git
 ```
 
@@ -223,7 +222,7 @@ gutterpress build [input-dir] [options]
   --skip-lint             Skip the CSS print-safety check (default: it runs for pdf/pdfx)
   --skip-pre-validate     Skip pre-build validation
   --skip-post-validate    Skip post-build PDF/X validation
-  --allow-shrink          Build anyway when content is wider than the page content box. Chromium then scales the WHOLE book down to fit it — the build reports that whole-document scale (e.g. "about 0.72x its declared size") plus every offender, as warnings.
+  --allow-shrink          Build anyway when content is wider than the page content box. Chromium then scales the WHOLE book down to fit it — the build reports the scale the PDF printed at (e.g. "printed at 72.0000% of its declared size") plus every offender, as warnings.
 ```
 
 A `--out <dir>` is shared between formats safely: each build delivers only
@@ -255,6 +254,8 @@ gutterpress publish [project] [options]
   --account <label>    Named-credential label for --connect/--disconnect (keep several accounts per provider); omit for the default
   --token <key>        API key for --connect (prefer stdin/env var to keep it out of shell history)
   --file <path>        Artifact to publish (PDF path, or HTML export dir). Default: the manifest's output location
+  --folder-id <id>     Google Drive: publish to this folder for this run only (the manifest is not changed)
+  --folder <name>      Google Drive: publish to the folder with this name in your own Drive, for this run only
   --manifest <path>    Path to manifest.yaml
   --dry-run            Preflight only; don't contact the platform
   --json               Machine-readable JSON output (CI)
@@ -363,7 +364,7 @@ List, add, remove, enable, or disable the project's extensions. Markdown-it
 plugins, looks (stylesheets) and component libraries are all extensions — one
 `extensions:` list in `manifest.yaml`, in load order (see
 [Extensions](#extensions) below). These are the same shared-lib functions the
-desktop app's Look and Features views call, so an extension added from the
+desktop app's Extensions tab calls, so an extension added from the
 terminal is the same entry the GUI shows.
 
 ```sh
@@ -392,32 +393,39 @@ Add an extension. What `SOURCE` is decides what happens:
 
 - an **npm package** (`name` or `name@version`) is downloaded straight from
   the registry along with its runtime dependencies, hash-verified, vendored
-  into the project under `plugins/npm/`, load-tested, and written back pinned
+  into the project under `extensions/npm/`, load-tested, and written back pinned
   as `name@<exact version>`. This does not invoke npm, Bun, Node.js tooling,
   or package install scripts;
-- a **bundled feature** (`markdown-it-mark`, `markdown-it-sub`,
-  `markdown-it-sup`, `markdown-it-abbr`, `gutterpress-gfm-alerts`) is simply
-  listed — nothing to install, works offline;
+- a **bundled name** — a markdown feature (`markdown-it-mark`,
+  `markdown-it-sub`, `markdown-it-sup`, `markdown-it-abbr`,
+  `gutterpress-gfm-alerts`, `gutterpress-math`) or a built-in look
+  (`clean-book`, `zine`, `technical-doc`, `academic`) — is simply listed:
+  nothing to install, works offline;
 - a **folder or plugin-file path** is load-tested and listed as a
   manifest-relative path, referenced in place — never copied;
 - a **`.zip` or `.css` file**, or an **http(s) URL**, is validated (every
   declared sheet must exist and parse; print-safety findings are warnings)
   and landed in `extensions/<id>/`, then listed as `./extensions/<id>`;
-- with `--look`, `SOURCE` is a built-in look id, copied into
-  `extensions/<id>/` as the author's own editable files and listed.
+- with `--look`, `SOURCE` is a built-in look (`clean-book`, `zine`,
+  `technical-doc`, `academic`), **copied** into `extensions/<id>/` (its
+  `theme.css` and a `package.json`) as the book's own editable files and
+  listed as `./extensions/<id>` — in the built-in's place when the book
+  already lists it by name, so the look is listed once. A folder already
+  there is kept as it is (your edits survive) and only referenced again. This
+  is what Book setup's **Make an editable copy** does.
 
 Adding something already listed re-pins or updates that entry instead of
 adding a second one.
 
-An npm install also makes sure the book's `.gitignore` ignores `plugins/npm/`
-(append-only; an author's own `!plugins/npm/` re-include is respected and the
+An npm install also makes sure the book's `.gitignore` ignores `extensions/npm/`
+(append-only; an author's own `!extensions/npm/` re-include is respected and the
 install warns that downloaded extensions shouldn't be committed). The manifest
 pin is what travels with the book; the downloaded copy does not.
 
 ##### Restoring pinned extensions
 
 A fresh clone has `manifest.yaml`'s `name@version` pins but not the downloaded
-copies under `plugins/npm/`. `build`, `validate`, `preflight` and `preview`
+copies under `extensions/npm/`. `build`, `validate`, `preflight` and `preview`
 download any missing (or incomplete) pinned version before they load plugins —
 exactly the pinned version, through the same registry-resolved, hash-verified,
 load-tested install as `ext add`, without touching the manifest. Builds and
@@ -429,7 +437,7 @@ paths and bundled features are never touched. The plugin loader itself stays
 offline. The desktop app does the same when it opens a book.
 
 Once a package's pinned version is installed (by `ext add` or a restore), its
-other downloaded versions under `plugins/npm/<name>/` are deleted — a cache
+other downloaded versions under `extensions/npm/<name>/` are deleted — a cache
 that a pulled pin or branch switch would otherwise leave to pile up — except a
 version another enabled manifest entry still pins. A failed install removes the
 folders it created and nothing else.
@@ -438,7 +446,7 @@ folders it created and nothing else.
 gutterpress ext add <source> [dir] [options]
 
   --export <name>    Named module export to use as the plugin function (npm and path extensions only)
-  --look             Treat SOURCE as a built-in look id (clean-book, zine, technical-doc): copy it into extensions/ and add it
+  --look             Treat SOURCE as a built-in look (clean-book, zine, technical-doc, academic): copy it into extensions/ as your own files and list the copy
 ```
 
 ```sh
@@ -447,6 +455,7 @@ gutterpress ext add markdown-it-highlightjs@4.3.0 ./my-book
 gutterpress ext add markdown-it-emoji@3.0.0 ./my-book --export full
 gutterpress ext add markdown-it-mark ./my-book
 gutterpress ext add ./plugins/field-notes ./my-book
+gutterpress ext add zine ./my-book
 gutterpress ext add zine ./my-book --look
 gutterpress ext add ./parchment.zip ./my-book
 gutterpress ext add https://example.com/looks/cool/ ./my-book
@@ -456,12 +465,12 @@ gutterpress ext add https://example.com/looks/cool/ ./my-book
 
 Remove an extension from the manifest, by the specifier as written there (for
 an npm package the bare name is enough). An npm extension's vendored copy
-under `plugins/npm/` is deleted too; a path extension's folder is yours and is
+under `extensions/npm/` is deleted too; a path extension's folder is yours and is
 never touched.
 
 ```sh
 gutterpress ext remove markdown-it-highlightjs ./my-book
-gutterpress ext remove ./extensions/zine ./my-book
+gutterpress ext remove zine ./my-book
 ```
 
 #### `gutterpress ext enable` / `gutterpress ext disable`
@@ -476,8 +485,8 @@ gutterpress ext enable markdown-it-mark ./my-book
 
 #### `gutterpress ext search`
 
-Search **npm** for extensions — the same list the desktop app's Features view
-shows under "Find more on npm." Not project-scoped (no `dir` argument): it
+Search **npm** for extensions — the same list the desktop app's Extensions tab
+shows under *Search*. Not project-scoped (no `dir` argument): it
 queries the registry for packages tagged `gutterpress` (Gutterpress
 extensions: plugins, looks, component libraries) or `markdown-it-plugin` (the
 markdown-it ecosystem's own tag — those work in Gutterpress unchanged), and
@@ -522,7 +531,7 @@ extensions:
   # a feature bundled with Gutterpress — nothing to install, works offline
   - markdown-it-mark
   # a folder or plugin file, relative to manifest.yaml — referenced in place
-  - ./extensions/clean-book
+  - ./extensions/house-look
   - ./plugins/my-custom-plugin.js
   # an npm package, pinned to the exact version `gutterpress ext add` installed
   - markdown-it-highlightjs@4.3.0
@@ -548,8 +557,7 @@ An extension folder (or npm package) describes itself in its **`package.json`** 
   "gutterpress": {
     "styles": ["styles/plugin.css"],
     "snippets": "snippets",
-    "components": "components.yaml",
-    "tokensFile": "styles/tokens.css"
+    "components": "components.yaml"
   }
 }
 ```
@@ -558,7 +566,7 @@ An extension folder (or npm package) describes itself in its **`package.json`** 
 
 Order is load order: a later entry's markdown runs after earlier entries' (and sees their output) and its CSS wins ties — each extension's stylesheets are wrapped in their own cascade layer (`@layer ext.<name>`), declared in list order, so this holds however an extension writes its CSS; the project's own `styles:` stay unlayered and load after every extension, beating all of them at any specificity. There is no `priority` and no `path:`/`name:` wrapper — a manifest still carrying `plugins:` fails with a message that prints the same entries rewritten as `extensions:`. The `engine:` and `engineStyles:` keys are gone too (there is one engine; move any `engineStyles` entries to the end of `styles:`).
 
-Pinned npm packages and their runtime dependencies live under `plugins/npm/`
+Pinned npm packages and their runtime dependencies live under `extensions/npm/`
 as a plain nested `node_modules` tree, which Node's own module resolution loads.
 The pin travels with the project; the downloaded copy is gitignored, and
 `build`, `validate`, `preflight` and `preview` download a missing pinned version first
@@ -599,7 +607,7 @@ The binary is self-contained except for the system tools described in [User Guid
 
 - **`Ghostscript executable not found`** — Ghostscript is required only for PDF/X and ink-coverage checks. Standard Windows installs are auto-detected; for a non-standard install, set `GHOSTSCRIPT_PATH` to the full path of `gs`, `gswin64c.exe`, or `gswin32c.exe`. See [User Guide: Chapter 7 — System Setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/07-system-setup.md).
 - **`No Chrome or Chromium binary found`** — install a Chromium-based browser or set `CHROMIUM_PATH=/path/to/chrome`. The desktop app includes its own browser and needs no separate browser install.
-- **`Tool "X" not found — skipping`** during validate — that's the graceful path; the check requires `X` and isn't available. Install the tool or accept the skip.
+- **`Tool "X" not found; skipping`** during validate — that's the graceful path; the check requires `X` and isn't available. Install the tool or accept the skip.
 - **All validate checks skipped on Windows** — was a bug pre-0.1.7 (used `which`, which isn't on stock Windows); fixed to use `where.exe`.
 
 ## Links

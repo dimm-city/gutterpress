@@ -10,10 +10,10 @@
  *     even when its first stays put. The preview↔print parity gate compares
  *     one fixed setup, so it cannot see a pagination that drifts with zoom;
  *     this drive is that guard.
- *  2. A wheel flick over the preview turns one step, and one gesture never
- *     turns two (#301). Wheel events over the cross-origin book never reach
- *     the host page, so only a REAL wheel over the frame proves the flip is
- *     wired where the events arrive.
+ *  2. The wheel scrolls the preview as far as it is turned, like any page:
+ *     nothing in the book cancels it or turns it into a page flip. Wheel
+ *     events over the cross-origin book never reach the host page, so only a
+ *     REAL wheel over the frame proves what happens where they arrive.
  *  3. At fit to width nothing scrolls sideways (#353): page turns and a
  *     sideways swipe leave the current page wholly in view.
  *
@@ -169,27 +169,26 @@ try {
     }
   });
 
-  await check("a wheel flick over the preview turns one spread; one gesture never turns two (#301)", async () => {
+  await check("the wheel scrolls the preview as far as it is turned (no page flip)", async () => {
     await setWorkspaceMode(page, "Read");
-    await zoomTo("50%"); // the whole spread fits, so a flick turns rather than reads down a tall page
-    const current = () => book.locator("body").evaluate(() => window.previewAPI.getCurrentPage());
+    // The whole spread fits: the layout where a page flip used to take the wheel over.
+    await zoomTo("50%");
     await book.locator("body").evaluate(() => window.previewAPI.goToPage(1));
     await page.waitForTimeout(400);
+    const scrollY = () => book.locator("body").evaluate(() => window.scrollY);
     const frame = await page.locator('iframe[title="Gutterpress preview"]').boundingBox();
     await page.mouse.move(frame.x + frame.width / 2, frame.y + frame.height / 2);
+    const before = await scrollY();
     await page.mouse.wheel(0, 120);
     await page.waitForTimeout(60);
-    await page.mouse.wheel(0, 120); // same gesture: must not turn again
-    await page.waitForTimeout(1000);
-    // One spread forward: 2 or 3 whether page 1 shares a spread or stands
-    // alone (the viewer reports a settled spread by its left page, as the
-    // arrow keys do). 4 or 5 would mean one gesture turned twice.
-    const after = await current();
-    if (after !== 2 && after !== 3) throw new Error(`one flick should show the next spread, got page ${after}`);
+    await page.mouse.wheel(0, 120);
+    await page.waitForTimeout(800);
+    const down = (await scrollY()) - before;
+    if (Math.abs(down - 240) > 2) throw new Error(`two 120px wheel steps should scroll 240px, scrolled ${down}`);
     await page.mouse.wheel(0, -120);
-    await page.waitForTimeout(1000);
-    const back = await current();
-    if (back !== 1) throw new Error(`scrolling back should return to page 1, got ${back}`);
+    await page.waitForTimeout(800);
+    const back = (await scrollY()) - before;
+    if (Math.abs(back - 120) > 2) throw new Error(`a 120px step back should leave 120px scrolled, left ${back}`);
   });
 } catch (e) {
   failures.push(`uncaught: ${e?.message ?? e}`);
@@ -202,4 +201,4 @@ if (failures.length) {
   log(`${failures.length} check(s) failed`);
   process.exit(1);
 }
-log("PASS: zoom never re-paginates; fit never scrolls sideways; the wheel turns one step per gesture");
+log("PASS: zoom never re-paginates; fit never scrolls sideways; the wheel scrolls as far as it is turned");

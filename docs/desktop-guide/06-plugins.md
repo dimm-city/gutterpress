@@ -1,18 +1,21 @@
 ---
 title: Add plugins and formatting extras
-description: Turn on the built-in formatting extras, find and install plugins from npm, pick their versions, and keep them up to date.
+description: Turn on the built-in formatting extras, combine two looks, find plugins on npm or add them from a folder, pick their versions and keep them up to date, and set the order they load in.
 ---
 
 # Add plugins and formatting extras
 
 Plugins add new markdown to your book: highlights, callouts, footnote styles, a game's components
-and more. Open **Setup → Features**. Its tabs are **Installed & built-in**, **Search** and
-**Advanced**.
+and more. Six of them are built in; the rest come from npm or a folder. All of them are on the
+**Extensions** tab of **Setup**.
 
 ## Turn on a formatting extra
 
-Five extras are built in, with nothing to download. Under **Formatting extras** on the
-**Installed & built-in** tab, click **Turn on** next to one, and it works straight away:
+Six extras are built in, with nothing to download. Open **Setup → Extensions**. Under **Add an
+extension → Built-in extras**, each extra the book does not use yet has an **Add** button and says
+what to type; click it and the extra works straight away, and appears in **Your extensions** above,
+where its row still says what to type. To take one out again, click its **Remove** there, and it is
+offered under **Built-in extras** again (footnotes, tables and definition lists are always on):
 
 | Extra | Type |
 | --- | --- |
@@ -21,40 +24,81 @@ Five extras are built in, with nothing to download. Under **Formatting extras** 
 | Superscript | `29^th^` |
 | Abbreviations | `*[GPS]: Global Positioning System` |
 | Callouts | `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]` |
+| Math | `$E = mc^2$` in a line, or `$$` ... `$$` on lines of their own |
 
-![Features, Installed & built-in: the formatting extras, each with Turn on](images/features-installed.jpg)
+## Combine two looks
 
-## Find and install a plugin
+The **Look** tab chooses one look. To use a second built-in look together with it, open **Setup →
+Extensions** and, under **Add an extension → Built-in looks**, click the look's **Add**. It goes last
+in **Your extensions**, so where the two looks disagree, the one you added wins; move it with **↑**
+and **↓**, or untick or **Remove** it, there. The Look tab then says the book combines two looks.
 
-1. Open the **Search** tab ("Find more on npm"). It searches npm for Gutterpress extensions and
-   markdown-it plugins.
-2. Type what you are looking for (for example `footnote` or `callout`) and click **Search**.
-3. Click **Add** on the one you want.
+## Find a plugin on npm
 
-![Features, Search: results from npm for "footnote", each with Add](images/features-search.jpg)
+Looks and plugins other authors have published are on npm. On **Setup → Extensions**, under **Add an
+extension → Find one on npm**, type a word (such as `footnote` or `emoji`) and press Enter or click
+**Search**; with nothing typed, **Search** lists the most relevant ones. Above the results, **Showing
+N of M** says how many are listed out of the number npm reported. Each result shows the package's name and
+latest version (`name@1.2.0`), what it does, whether it is a **Look** or an **Extra** when that is
+known, and **npm page**, which opens the package's page on npmjs.com in your browser.
+**Add** downloads it, checks it, keeps a copy inside your book, and adds it to **Your extensions**;
+your book then builds from that copy, even offline. A package your book already uses says **Added**.
+If nothing matches, it says **No extensions found for** what you typed; if npm cannot be reached, it
+says so under the box and you can search again.
 
-Gutterpress downloads it, checks it, keeps a copy inside your book, and lists it under
-**Installed & built-in**. Your book then builds from that copy, even offline. You can also browse
-the same search on the [Find plugins](https://gutterpress.dimm.city/plugins/) page.
+![Book setup, Extensions tab: searching npm for plugins](images/extensions-search.jpg)
 
-If you know the package's name, open **Advanced**, type it under **Install from npm** (with a
-version if you want one, such as `markdown-it-highlightjs@4.3.0`) and click **Install**.
-**Add a plugin file or folder...** adds a plugin you have on your computer.
+## Add a plugin from elsewhere
 
-## Choose a version and stay up to date
+Under **Add an extension → Other ways to add**:
 
-Each installed plugin on **Installed & built-in** has a **Version** menu; pick a version to
-switch to it. If the new version fails to download or load, your book keeps the old one.
+- type a package's **Exact name** (with a version if you want one, such as
+  `markdown-it-highlightjs@4.3.0`) and click **Add**, for a package that search does not find, such
+  as a private one. A package with no default plugin, such as `markdown-it-emoji`, needs the name of
+  the plugin to use in **export (optional)** beside it (for `markdown-it-emoji`, `full`);
+- **Add a folder or file…** adds a plugin you have on your computer, used where it is;
+- **Import a .zip or .css file…**, or a **Web address** and **Import**, copies a look or plugin into
+  your book's `extensions` folder.
 
-- **Check for updates** asks npm for newer versions. A plugin with one shows the new version and
-  an **Update** button.
-- **Include pre-release versions** adds alpha, beta and release-candidate versions to the menus
-  and the update check. It is off by default and applies to every book.
-- **Install** (or **Reinstall**) appears when a plugin's copy is missing or won't load.
-- Each plugin can be turned off, or removed with the trash icon, which deletes its downloaded
-  copy.
+Plugins from npm, folders and the web run with full access to your computer: only add ones you
+trust.
 
-The [plugins chapter](https://gutterpress.dimm.city/docs/plugins/) covers ordering plugins and
-writing your own.
+![Book setup, Extensions tab: your extensions, and the ways to add one](images/book-settings-extensions.jpg)
+
+## Keep plugins working and up to date
+
+**Your extensions**, at the top of the Extensions tab, is everything your book uses, looks and
+extras included, in the order they load: one lower in the list wins where two disagree, and your own
+stylesheet always comes last. Each row says what it is and where it comes from, and has:
+
+- a checkbox to use it or not, **↑** and **↓** to move it, and **Remove** (which deletes an npm
+  plugin's downloaded copy);
+- for a plugin from npm, a **Version** menu: its published versions, newest first, with the one
+  your book uses marked **(current)**. Pick a version to switch to it, newer or older. Gutterpress
+  downloads and checks it first, and your book keeps the version it had until that works; if it
+  fails, it says so and nothing changes. The menu fills when the tab opens; if npm cannot be
+  reached it says **Couldn't load the version list.**, and clicking the menu tries again;
+- **x.y.z available** and **Update**, when npm has a newer version;
+- **Couldn't load.** with **Show details**, when it fails, and **Install** or **Reinstall** for an
+  npm plugin whose copy is missing or broken (or **Check again** for anything else). A plugin
+  that works says nothing;
+- anything Gutterpress noticed about it, such as **Not found:** and where it looked for a folder
+  that is not there.
+
+**Re-check**, at the top of the list, reads the list again and checks that every extension loads,
+at any time: after you fix a plugin's folder, for example. When nothing is wrong it says **Every
+extension loads.**
+
+When your book has a plugin from npm, Gutterpress asks npm for newer versions each time you open the
+Extensions tab, and **Check for updates**, at the top of the list, asks again (it reads **Checking
+npm…** meanwhile). Under the list it says **Every installed package is at its latest version.**,
+or why npm could not be asked. **Include pre-release versions**, above the list, adds alpha, beta
+and release-candidate versions to the Version menus and counts them as updates. It is off by
+default and applies to every book.
+
+Every download from npm, an update or another version, first asks you to confirm that you trust
+the package. The command line's `gutterpress ext` does the same things. The
+[plugins chapter](https://gutterpress.dimm.city/docs/plugins/) covers ordering plugins and writing
+your own.
 
 Next: [save a PDF](07-export-pdf.md).

@@ -12,7 +12,14 @@ import {
   type GcpmModel,
   type PageGeometry,
 } from "../shared/gcpm-extract.ts";
-import { isRectoVersoBreak, planRectoBlanks, signaturePadding, wantsRecto, type LastPageMode } from "../shared/synthesis.ts";
+import {
+  isRectoVersoBreak,
+  planRectoBlanks,
+  RECTO_VERSO_VALUES,
+  signaturePadding,
+  wantsRecto,
+  type LastPageMode,
+} from "../shared/synthesis.ts";
 import {
   EDGE_PIN_SELECTOR,
   flushMargins,
@@ -21,6 +28,7 @@ import {
   pinRootStyle,
   type PinEdge,
 } from "../shared/pin-edges.ts";
+import { pageGeometryVarsCss } from "../shared/page-vars.ts";
 import { printAreaFromMeta } from "../shared/print-area.ts";
 
 export const PX_PER_PT = 96 / 72;
@@ -69,13 +77,27 @@ export function injectViewerCss(doc: Document = document) {
   doc.head.appendChild(style);
 }
 
+/**
+ * Publish the page's numbers as `--gp-page-*` (shared/page-vars.ts), the
+ * preview's twin of the compiler's `gp-page-vars` stylesheet: the same
+ * function over the same model and print area, so a rule that reads them
+ * resolves the same on screen and in the PDF. Replaces a previous mount's.
+ */
+export function injectPageVars(model: GcpmModel, doc: Document = document) {
+  let style = doc.getElementById("gp-page-vars");
+  if (!style) {
+    style = doc.createElement("style");
+    style.id = "gp-page-vars";
+    doc.head.appendChild(style);
+  }
+  style.textContent = pageGeometryVarsCss(model, printAreaFromMeta(doc));
+}
+
 export interface LayoutOptions {
   /** gap between page sheets, in CSS px */
   sheetGap?: number;
   /** flow root; defaults to <main> or <body> */
   root?: HTMLElement;
-  /** reserve (and draw) repeated table headers on continuation pages; default true */
-  compensateHeaders?: boolean;
 }
 
 const pt = (v: number) => v * PX_PER_PT;
@@ -587,9 +609,15 @@ const FORCED_BREAK = /^(column|page|left|right|recto|verso|always)$/;
 function clearLeadingForcedBreaks(strip: HTMLElement) {
   for (let el = strip.firstElementChild; el; el = el.firstElementChild) {
     const cs = getComputedStyle(el);
-    if (FORCED_BREAK.test(cs.breakBefore)) (el as HTMLElement).style.breakBefore = "auto";
+    if (!FORCED_BREAK.test(cs.breakBefore)) continue;
+    clearedLeadingBreaks.set(el, cs.breakBefore);
+    (el as HTMLElement).style.breakBefore = "auto";
   }
 }
+
+/** The `break-before` the cascade gave each element `clearLeadingForcedBreaks`
+ * cleared: print still breaks there, so `compensateRectoBreaks` reads this. */
+const clearedLeadingBreaks = new WeakMap<Element, string>();
 
 /**
  * Keep a full-content-height named-page containing block on the page whose
@@ -961,262 +989,6 @@ export function buildStrips(
 }
 
 /**
- * Where a forced break "before `el`" must land so it cannot split a
- * keep-with-next chain: the earliest immediately preceding sibling reachable
- * through links that are `avoid` — the previous sibling's `break-after` or
- * the next one's `break-before` (CSS Fragmentation §3.1: a break between
- * siblings is avoided when either side says so). Print's fragmenter, asked to
- * start `el` on a new page, moves the whole chain (a heading or lead-in
- * paragraph travels with the table under it); a bare forced break on `el`
- * alone would strand the chain's head at the foot of the previous page.
- */
-const AVOID_BREAK = /^avoid(-page|-column)?$/;
-function keepChainHead(el: HTMLElement): HTMLElement {
-  let head = el;
-  for (let prev = head.previousElementSibling; prev instanceof HTMLElement; prev = head.previousElementSibling) {
-    const linked =
-      AVOID_BREAK.test(getComputedStyle(prev).breakAfter) ||
-      AVOID_BREAK.test(getComputedStyle(head).breakBefore);
-    if (!linked) break;
-    head = prev;
-  }
-  return head;
-}
-
-/** The element a pushed table's forced break was put on (the table, or the head of its keep chain). */
-const pushTargets = new WeakMap<HTMLTableElement, HTMLElement>();
-
-/**
- * The `thead` / `tfoot` print repeats on every page, or null. Chromium repeats
- * a section only while it IS a header/footer group: one the author set to
- * `display: table-row-group` (or anything else) prints once, where it sits,
- * and so must the screen.
- */
-function repeatingHead(table: HTMLTableElement): HTMLTableSectionElement | null {
-  const head = table.tHead;
-  return head && getComputedStyle(head).display === "table-header-group" ? head : null;
-}
-function repeatingFoot(table: HTMLTableElement): HTMLTableSectionElement | null {
-  const foot = table.tFoot;
-  return foot && getComputedStyle(foot).display === "table-footer-group" ? foot : null;
-}
-
-/**
- * Screen-mode compensation for repeated table headers (S5).
- *
- * Chromium repeats `<thead>`/`<tfoot>` on every PAGE a table spans in print,
- * but NOT on every COLUMN in multicol. The repeated header consumes height, so
- * without this the screen fits more rows per page than print and everything
- * after a spanning table drifts.
- *
- * Fix: reserve the header's height at the top of each continuation fragment
- * with a zero-content shim row, then re-check — inserting a shim can move the
- * break, so iterate to a fixed point (bounded; converges in ≤2 passes on real
- * content, same model as the compiler's Tier 3).
- *
- * Only a section print repeats is compensated (see `repeatingHead`).
- */
-export function compensateRepeatedHeaders(
-  strips: StripInfo[],
-  maxPasses = 24,
-): { tables: number; passes: number; warnings: string[] } {
-  const warnings: string[] = [];
-  let passes = 0;
-  let touched = 0;
-
-  for (const strip of strips) {
-    const tables = Array.from(strip.el.querySelectorAll("table")).filter(
-      (t) => repeatingHead(t) || repeatingFoot(t),
-    );
-    if (!tables.length) continue;
-    for (const table of tables) {
-      for (const shim of Array.from(
-        table.querySelectorAll("tr.gp-thead-shim, tr.gp-tfoot-shim"),
-      ))
-        shim.remove();
-      table.style.breakBefore = "";
-      const target = pushTargets.get(table);
-      if (target) target.style.breakBefore = "";
-      pushTargets.delete(table);
-    }
-
-    // Push and foot claims are STICKY for the rest of this run: a fix removes
-    // the symptom it was derived from, so re-deriving from the fixed state
-    // would undo it and oscillate. Claims only grow; the loop ends when a pass
-    // adds nothing new.
-    const pushed = new Set<HTMLTableElement>();
-    // row -> shim height: the shim FILLS the space from the last kept row to
-    // the column bottom (>= footHeight by the intruder rule), so the reserve
-    // genuinely sits at the bottom and rows fill exactly to print's line.
-    const footClaims = new Map<HTMLTableElement, Map<HTMLTableRowElement, number>>();
-    let previous = "";
-    for (let pass = 0; pass < maxPasses; pass++) {
-      passes = Math.max(passes, pass + 1);
-
-      // READ phase — one layout for the whole strip, then pure reads. Reading
-      // and writing per table instead costs a forced relayout of the entire
-      // book per table (measured: ~5ms × table count).
-      const { stride, height: colBottom } = stripMetrics(strip.el);
-      const stripLeft = strip.el.getBoundingClientRect().left - strip.el.scrollLeft;
-      // Rects are zoom-scaled, stride/colBottom are not — see cssZoomOf.
-      const zoom = cssZoomOf(strip.el);
-      const colOf = (r: DOMRect) => Math.floor(((r.left - stripLeft) / zoom + 1) / stride);
-      const stripTop = strip.el.getBoundingClientRect().top;
-      const plans: Array<{
-        table: HTMLTableElement;
-        push: boolean;
-        headHeight: number;
-        footHeight: number;
-        breakRows: HTMLTableRowElement[];
-        footRows: Array<[HTMLTableRowElement, number]>;
-        grew: boolean;
-        cells: number;
-      }> = [];
-
-      for (const table of tables) {
-        const head = repeatingHead(table);
-        const headRect = head?.getClientRects()[0];
-        // Rect-derived heights are zoom-scaled; colBottom is not.
-        const footHeight = (repeatingFoot(table)?.getBoundingClientRect().height ?? 0) / zoom;
-        const rows = Array.from(
-          table.querySelectorAll<HTMLTableRowElement>("tbody > tr"),
-        ).filter(
-          (r) =>
-            !r.classList.contains("gp-thead-shim") &&
-            !r.classList.contains("gp-tfoot-shim"),
-        );
-        if (!rows.length) continue;
-        const rects = rows.map((r) => r.getClientRects()[0] ?? r.getBoundingClientRect());
-        const cols = rects.map(colOf);
-
-        // Print reserves the repeated footer at the BOTTOM of every fragment:
-        // a row whose bottom edge intrudes into that reserve moves to the next
-        // page. Multicol reserves nothing, so the first intruding row of each
-        // column (except the table's last fragment) gets a foot-clone shim
-        // inserted before it — the shim occupies the reserve, the row moves.
-        // One NEW foot claim per table per pass: the first unclaimed row whose
-        // bottom edge intrudes into the reserve. Later columns shift once the
-        // shim lands, so only the first new claim is derived from settled
-        // geometry — the rest come from subsequent passes.
-        const claims = footClaims.get(table) ?? new Map<HTMLTableRowElement, number>();
-        footClaims.set(table, claims);
-        let newClaim: HTMLTableRowElement | undefined;
-        if (footHeight > 0) {
-          const lastCol = cols[cols.length - 1];
-          for (let i = 0; i < rows.length; i++) {
-            const row = rows[i]!;
-            if (cols[i] === lastCol || claims.has(row)) continue;
-            const bottom = (rects[i]!.bottom - stripTop) / zoom;
-            if (bottom > colBottom - footHeight + 0.5) {
-              newClaim = row;
-              claims.set(row, colBottom - (rects[i]!.top - stripTop) / zoom);
-              break;
-            }
-          }
-        }
-
-        plans.push({
-          table,
-          // Print never strands a repeated header: a header fragment must be
-          // followed by at least one row, else the whole table moves on.
-          push: headRect ? colOf(headRect) < cols[0]! : false,
-          headHeight: (headRect?.height ?? 0) / zoom,
-          footHeight,
-          breakRows: headRect
-            ? rows.filter((_, i) => i > 0 && cols[i]! > cols[i - 1]!)
-            : [],
-          footRows: [...claims.entries()],
-          grew: newClaim !== undefined,
-          cells: Math.max(1, ...rows.map((r) => r.cells.length)),
-        });
-      }
-
-      const signature = plans
-        .map(
-          (p) =>
-            `${p.push || pushed.has(p.table) ? "P" : ""}${p.breakRows
-              .map((r) => r.rowIndex)
-              .join(".")}~${p.footRows.map(([r]) => r.rowIndex).join(".")}`,
-        )
-        .join("|");
-      const anyGrowth = plans.some((p) => p.grew);
-      if (!anyGrowth && signature === previous) break;
-      previous = signature;
-
-      // WRITE phase
-      for (const plan of plans) {
-        for (const shim of Array.from(
-          plan.table.querySelectorAll("tr.gp-thead-shim, tr.gp-tfoot-shim"),
-        ))
-          shim.remove();
-        if (plan.push && !pushed.has(plan.table)) {
-          pushed.add(plan.table);
-          // A forced break overrides an `avoid` on the sibling above, so put
-          // it on the head of the keep-with-next chain: print moves the whole
-          // chain, and a lone break on the table would strand the heading or
-          // lead-in at the column foot.
-          const target = keepChainHead(plan.table);
-          target.style.breakBefore = "column";
-          pushTargets.set(plan.table, target);
-          touched++;
-          continue; // its fragments are re-derived next pass, from the new position
-        }
-        for (const row of plan.breakRows) {
-          row.before(headerShim(plan.table.tHead!, plan.headHeight, plan.cells));
-          touched++;
-        }
-        for (const [row, height] of plan.footRows) {
-          row.before(sectionShim(plan.table.tFoot!, height, plan.cells, "gp-tfoot-shim"));
-          touched++;
-        }
-      }
-    }
-  }
-  return { tables: touched, passes, warnings };
-}
-
-/**
- * A clone of the header, not a blank spacer: the screen then SHOWS the repeated
- * header print would draw, and consumes exactly the same height.
- */
-function headerShim(head: HTMLTableSectionElement, height: number, cells: number): HTMLTableRowElement {
-  return sectionShim(head, height, cells, "gp-thead-shim");
-}
-
-/** Clone of a thead/tfoot row reserving `height`, drawn where print draws it. */
-function sectionShim(
-  section: HTMLTableSectionElement,
-  height: number,
-  cells: number,
-  className: string,
-): HTMLTableRowElement {
-  const shim = document.createElement("tr");
-  shim.className = className;
-  shim.setAttribute("aria-hidden", "true");
-  shim.style.height = `${height}px`;
-  // a foot shim may be taller than the foot itself (it fills to the column
-  // bottom); pin the cloned content to the bottom edge, where print draws it
-  if (className === "gp-tfoot-shim") shim.style.verticalAlign = "bottom";
-  const source = section.rows[0];
-  if (source) {
-    for (const cell of Array.from(source.cells)) {
-      const td = document.createElement("td");
-      td.colSpan = cell.colSpan;
-      td.innerHTML = cell.innerHTML;
-      const cs = getComputedStyle(cell);
-      td.style.cssText = `font:${cs.font};color:${cs.color};letter-spacing:${cs.letterSpacing};text-transform:${cs.textTransform};vertical-align:${cs.verticalAlign};text-align:${cs.textAlign};padding:${cs.padding};border:${cs.border};background:${cs.backgroundColor};`;
-      shim.appendChild(td);
-    }
-  } else {
-    const td = document.createElement("td");
-    td.colSpan = cells;
-    td.style.cssText = `height:${height}px;padding:0;border:0;`;
-    shim.appendChild(td);
-  }
-  return shim;
-}
-
-/**
  * Screen-mode synthesis for recto/verso forced breaks.
  *
  * `break-before: right|recto|left|verso` is a plain break in Chromium (S10), so
@@ -1237,7 +1009,12 @@ export function compensateRectoBreaks(
     spacer.remove();
   if (!decls.length) return 0;
 
+  // The model holds losing declarations too, and print breaks on the
+  // cascade's winner: an element is a site once, while its computed
+  // `break-before` still asks for a side — as the compiler's
+  // `forcedBreakSites` reads it (#454).
   const sites: Array<{ el: Element; wantsRecto: boolean }> = [];
+  const seen = new Set<Element>();
   for (const d of decls) {
     let els: Element[] = [];
     try {
@@ -1245,7 +1022,12 @@ export function compensateRectoBreaks(
     } catch {
       continue;
     }
-    for (const el of els) sites.push({ el, wantsRecto: wantsRecto(d.value) });
+    for (const el of els) {
+      const value = clearedLeadingBreaks.get(el) ?? getComputedStyle(el).breakBefore;
+      if (seen.has(el) || !RECTO_VERSO_VALUES.test(value)) continue;
+      seen.add(el);
+      sites.push({ el, wantsRecto: wantsRecto(value) });
+    }
   }
   sites.sort((a, b) =>
     a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
@@ -1707,6 +1489,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
     document.head.appendChild(style);
   }
   const model = extract(css);
+  injectPageVars(model);
   injectBreakMapping(model);
   const authoring: string[] = [];
   const strips = buildStrips(model, opts, authoring);
@@ -1717,10 +1500,6 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
   measure(strips);
   const blanks = compensateRectoBreaks(model, strips);
   if (blanks) measure(strips);
-  const headers =
-    opts.compensateHeaders === false
-      ? { tables: 0, passes: 0, warnings: [] }
-      : compensateRepeatedHeaders(strips);
   const contentPages = measure(strips).totalPages;
   const totalPages = padToSignature(strips, contentPages);
   fitVersoPinRoots(model, strips);
@@ -1728,7 +1507,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
     model,
     strips,
     totalPages,
-    warnings: [...new Set([...authoring, ...headers.warnings])],
+    warnings: [...new Set(authoring)],
     blankPages: blanks,
     blankPageIndices: blankPageIndices(strips),
     paddedPageIndices: pagesAfter(contentPages, totalPages),
@@ -1758,10 +1537,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
       synthesizeColumnBreaks(model);
       measure(strips);
       api.blankPages = compensateRectoBreaks(model, strips);
-      if (opts.compensateHeaders !== false)
-        api.warnings = [
-          ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings]),
-        ];
+      api.warnings = [...new Set(authoring)];
       const content = measure(strips).totalPages;
       padToSignature(strips, content);
       const r = measure(strips);

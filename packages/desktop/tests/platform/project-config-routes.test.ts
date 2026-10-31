@@ -103,39 +103,58 @@ test("style/set-active route rewrites manifest styles", async () => {
 
 // ── page-size (#357) ─────────────────────────────────────────────────────────
 
-test("page-size routes read the size back, then change the manifest and the stylesheet together", async () => {
+test("page-size routes read the geometry back, then change the manifest and leave the stylesheet alone", async () => {
+  const css = "/* mine */\n@page { size: 6in 9in; margin: 1in }\n";
   await writeFile(path.join(projectDir, "manifest.yaml"), "title: T\npreset: book\nstyles:\n  - styles/book.css\n", "utf8");
-  await writeFile(path.join(projectDir, "styles", "book.css"), "/* mine */\n@page { size: 6in 9in; margin: 1in }\n", "utf8");
+  await writeFile(path.join(projectDir, "styles", "book.css"), css, "utf8");
 
+  // The stylesheet's size is not consulted (the manifest decides); its margins
+  // are what the book prints with until the manifest records its own.
   const read = await readPageSize({ request: request({ projectDir }) } as Parameters<typeof readPageSize>[0]);
   expect(await read.json()).toEqual({
     preset: "book",
     bounds: { width: 432, height: 648, tolerance: 0.5 },
-    css: { width: 432, height: 648, file: "styles/book.css" },
+    margins: { top: 72, bottom: 72, inside: 72, outside: 72 },
+    marginsFrom: "stylesheet",
+    fallbackMarginsFrom: "stylesheet",
+    presetSizeOverridden: false,
   });
 
+  const margins = { top: 54, bottom: 54, inside: 63, outside: 45 };
   const res = await setPageSize({
-    request: request({ projectDir, choice: { preset: "custom", page: { width: 612, height: 792 } } }),
+    request: request({ projectDir, change: { size: { preset: "custom", page: { width: 612, height: 792 } }, margins } }),
   } as Parameters<typeof setPageSize>[0]);
   expect(res.status).toBe(200);
   expect(await res.json()).toEqual({
     preset: "custom",
     bounds: { width: 612, height: 792, tolerance: 0.5 },
-    css: { width: 612, height: 792, file: "styles/book.css" },
+    margins,
+    marginsFrom: "manifest",
+    fallbackMarginsFrom: "stylesheet",
+    presetSizeOverridden: false,
   });
-  expect(await readFile(path.join(projectDir, "styles", "book.css"), "utf8")).toBe(
-    "/* mine */\n@page { size: 8.5in 11in; margin: 1in }\n",
-  );
-  expect(await readFile(path.join(projectDir, "manifest.yaml"), "utf8")).toContain("preset: custom");
+  expect(await readFile(path.join(projectDir, "styles", "book.css"), "utf8")).toBe(css);
+  const manifest = await readFile(path.join(projectDir, "manifest.yaml"), "utf8");
+  expect(manifest).toContain("preset: custom");
+  expect(manifest).toMatch(/margin:\s+top: 54\s+bottom: 54\s+inside: 63\s+outside: 45\s/);
+
+  // `margins: null` removes page.margin: the stylesheet's margins apply again (#439).
+  const dropped = await setPageSize({
+    request: request({ projectDir, change: { margins: null } }),
+  } as Parameters<typeof setPageSize>[0]);
+  expect(await dropped.json()).toMatchObject({ marginsFrom: "stylesheet", margins: { top: 72, inside: 72 } });
+  expect(await readFile(path.join(projectDir, "manifest.yaml"), "utf8")).not.toContain("margin:");
 });
 
-test("page-size/set rejects a missing choice and an incomplete custom size without writing", async () => {
-  await expect(
-    setPageSize({ request: request({ projectDir }) } as Parameters<typeof setPageSize>[0]),
-  ).rejects.toMatchObject({ status: 400 });
+test("page-size/set rejects an empty change and an incomplete custom size without writing", async () => {
+  for (const body of [{ projectDir }, { projectDir, change: {} }, { projectDir, change: { size: "book" } }]) {
+    await expect(
+      setPageSize({ request: request(body) } as Parameters<typeof setPageSize>[0]),
+    ).rejects.toMatchObject({ status: 400 });
+  }
   await expect(
     setPageSize({
-      request: request({ projectDir, choice: { preset: "custom" } }),
+      request: request({ projectDir, change: { size: { preset: "custom" } } }),
     } as Parameters<typeof setPageSize>[0]),
   ).rejects.toMatchObject({ status: 500 });
   expect(await readFile(path.join(projectDir, "styles", "book.css"), "utf8")).toBe("body {}");

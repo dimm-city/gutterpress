@@ -3,7 +3,7 @@
  * `addExtension`). Every required production dependency is resolved to an
  * exact registry version, its tarball is checked against the registry's SRI
  * integrity hash, and it is extracted into a plain nested `node_modules` tree
- * under the project's `plugins/npm/<name>/<version>/`. Downloads, archive
+ * under the project's `extensions/npm/<name>/<version>/`. Downloads, archive
  * paths, file sizes and total expansion are bounded; package scripts are never
  * run and bundled `node_modules` are refused. Once published, the tree is an
  * ordinary npm layout that Node's own module resolution loads — nothing is
@@ -38,7 +38,7 @@ import {
   assertWindowsSafeRelativePath,
   isExactNpmVersion,
   parseNpmPluginSpec,
-  PLUGINS_DIR,
+  EXTENSIONS_DIR,
   resolvePackageEntry,
   VENDORED_NPM_DIR,
   vendoredNpmPluginRoot,
@@ -87,7 +87,7 @@ export interface InstalledNpmPlugin {
   installRoot: string;
   /** Previous same-version directory held until the manifest commits. */
   backupRoot: string | null;
-  /** Folders THIS install created (`plugins/`, `plugins/npm/`, `plugins/npm/<name>/`), outermost first. */
+  /** Folders THIS install created (`extensions/`, `extensions/npm/`, `extensions/npm/<name>/`), outermost first. */
   createdDirs: string[];
   warnings: string[];
 }
@@ -799,13 +799,13 @@ async function prepareVendorParent(
   projectDir: string,
   name: string,
 ): Promise<{ npmRoot: string; createdDirs: string[] }> {
-  const plugins = path.join(projectDir, PLUGINS_DIR);
-  const npm = path.join(plugins, VENDORED_NPM_DIR);
+  const extensions = path.join(projectDir, EXTENSIONS_DIR);
+  const npm = path.join(extensions, VENDORED_NPM_DIR);
   const packageParent = path.dirname(vendoredNpmPluginRoot(projectDir, name, "0.0.0"));
   await mkdir(projectDir, { recursive: true });
   const createdDirs: string[] = [];
   try {
-    for (const dir of [plugins, npm, packageParent]) {
+    for (const dir of [extensions, npm, packageParent]) {
       if (await ensureDirectory(dir)) createdDirs.push(dir);
     }
     const [realNpm, realPackageParent] = await Promise.all([
@@ -914,7 +914,7 @@ export async function installNpmPlugin(
   } finally {
     await rm(container, { recursive: true, force: true }).catch(() => {});
     // A failed attempt leaves nothing behind: not its staging folder, and not
-    // the empty plugins/npm/<name>/ folders it made on the way.
+    // the empty extensions/npm/<name>/ folders it made on the way.
     if (!published) await removeEmptyDirs(createdDirs);
   }
 }

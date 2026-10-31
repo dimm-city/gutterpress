@@ -204,10 +204,7 @@ describe("executeValidation publish-target handling", () => {
       expect(contexts[1]!.config.ink.maxTac).toBe(DTRPG_PRESET.ink.maxTac);
       // The book preset disables PDF/X markers; the dtrpg target re-enables
       // them as errors — the clearest sign the overlay actually applied.
-      expect(contexts[1]!.config.validate.checks["pdf.print.pdfx-markers"]).toEqual({
-        enabled: true,
-        severity: "error",
-      });
+      expect(contexts[1]!.config.checks["pdf.print.pdfx-markers"]).toBe("error");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -392,7 +389,7 @@ describe("executeValidation markdown/css file-set resolvers", () => {
     const dir = await makeDir("gutterpress-vexec-md-nonrecursive-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
-      // A subdirectory's .md file must NOT be picked up when source.files is
+      // A subdirectory's .md file must NOT be picked up when chapters is
       // unset — renderChapters' own fallback (lib/markdown/index.ts) only
       // reads the project root, exactly like resolveActiveMarkdownFiles.
       await mkdir(path.join(dir, "drafts"), { recursive: true });
@@ -409,7 +406,7 @@ describe("executeValidation markdown/css file-set resolvers", () => {
     }
   });
 
-  test("manifest source.files (explicit order) is used verbatim, excluding unlisted root .md files", async () => {
+  test("manifest chapters (explicit order) is used verbatim, excluding unlisted root .md files", async () => {
     const dir = await makeDir("gutterpress-vexec-md-explicit-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# One\n", "utf-8");
@@ -417,7 +414,7 @@ describe("executeValidation markdown/css file-set resolvers", () => {
       await writeFile(path.join(dir, "unlisted.md"), "# Unlisted\n", "utf-8");
       await writeFile(
         path.join(dir, "manifest.yaml"),
-        "title: Ordered\nsource:\n  files:\n    - chapter-02.md\n    - chapter-01.md\n",
+        "title: Ordered\nchapters:\n  - chapter-02.md\n  - chapter-01.md\n",
         "utf-8"
       );
       stubCheckExecution();
@@ -439,7 +436,7 @@ describe("executeValidation markdown/css file-set resolvers", () => {
     const dir = await makeDir("gutterpress-vexec-css-active-only-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
-      // Conventional active stylesheet (style-resolver.ts FALLBACK_PRIORITY).
+      // The conventional stylesheet (style-resolver.ts: `styles/book.css` when nothing is listed).
       await mkdir(path.join(dir, "styles"), { recursive: true });
       await writeFile(path.join(dir, "styles", "book.css"), "body { color: red; }", "utf-8");
       // An unreferenced theme sitting alongside it must NOT be validated —

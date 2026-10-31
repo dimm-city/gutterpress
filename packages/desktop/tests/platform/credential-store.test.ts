@@ -131,6 +131,18 @@ test("listRedacted never includes the token value or ciphertext", async () => {
   });
 });
 
+test("listRedacted lists a named publishing account under its REAL host, its name in `username` (the Accounts page relies on it)", async () => {
+  await withTempDir(async () => {
+    // How connectPublishProvider stores them: the compound key is the store's, the credential keeps the real host.
+    await electronTokenStore.set("itch.io", { host: "itch.io", kind: "token", token: "t1", createdAt: 1 });
+    await electronTokenStore.set("itch.io#Studio", { host: "itch.io", kind: "token", token: "t2", username: "Studio", createdAt: 2 });
+    expect((await electronTokenStore.listRedacted()).map((e) => [e.host, e.username])).toEqual([
+      ["itch.io", undefined],
+      ["itch.io", "Studio"],
+    ]);
+  });
+});
+
 // ── Atomic write (#34) ──────────────────────────────────────────────────────
 
 test("writeStore is atomic: no <file>.tmp is left behind after a successful set()", async () => {

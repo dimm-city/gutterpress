@@ -2,7 +2,6 @@ import { test, expect, describe } from "bun:test";
 import {
   normalizeForSearch,
   findUniqueRange,
-  hasAmbiguousTypography,
   hasBacktickOrLinkSyntax,
   touchesStructuralSyntax,
   hasSameDelimiter,
@@ -14,11 +13,11 @@ import {
  * selection-search.ts (inline-editing plan §4.6, PR 4) — rendered-text →
  * markdown-source matching for the selection-formatting menu row.
  *
- * The typographer reverse-map fixtures below are derived directly from
- * reading `markdown-it@14.3.0`'s `lib/rules_core/replacements.mjs` and
- * `lib/rules_core/smartquotes.mjs` against this project's renderer options
- * (`html:true, linkify:true, typographer:true`, default `quotes:"“”‘’"` —
- * see `packages/cli/src/lib/markdown/renderer.ts`).
+ * The typography fixtures below mirror the two rules the renderer runs:
+ * Gutterpress's own `gp_typography`
+ * (`packages/cli/src/lib/markdown/typography.ts`) and markdown-it's
+ * `smartquotes` with the default `quotes:"“”‘’"` — see
+ * `packages/cli/src/lib/markdown/renderer.ts`.
  */
 
 // ── indexMap round-trip helper ──────────────────────────────────────────────
@@ -74,18 +73,11 @@ describe("normalizeForSearch — whitespace collapse", () => {
 
 // ── normalizeForSearch — typographer reverse map ───────────────────────────
 
-describe("normalizeForSearch — typographer reverse map (every rule)", () => {
+describe("normalizeForSearch — typography reverse map (every rule)", () => {
   const cases: Array<[string, string, string]> = [
-    ["copyright: (c) -> ©", "©", "(c)"],
-    ["trademark: (tm) -> ™", "™", "(tm)"],
-    ["registered: (r) -> ®", "®", "(r)"],
-    ["plus-minus: +- -> ±", "±", "+-"],
     ["em dash: --- -> —", "—", "---"],
     ["en dash: -- -> –", "–", "--"],
-    ["left double quote: “", "“", '"'],
-    ["right double quote: ”", "”", '"'],
-    ["left single quote: ‘", "‘", "'"],
-    ["right single quote / apostrophe: ’", "’", "'"],
+    ["ellipsis: ... -> …", "…", "..."],
   ];
 
   for (const [label, glyph, ascii] of cases) {
@@ -97,18 +89,76 @@ describe("normalizeForSearch — typographer reverse map (every rule)", () => {
   }
 
   test("reverses inside a full sentence, preserving surrounding text", () => {
-    const raw = "She said “wait—really” then it’s fine © 2026 (r) not (c) literal.";
+    const raw = "She said “wait—really… fine” then it’s © 2026, (c) too.";
     const r = normalizeForSearch(raw, { stripDelimiters: false });
-    expect(r.normalized).toBe(
-      'She said "wait---really" then it\'s fine (c) 2026 (r) not (c) literal.',
-    );
+    expect(r.normalized).toBe('She said "wait---really... fine" then it"s © 2026, © too.');
     assertValidIndexMap(raw, r);
   });
 
+  // #483: the renderer prints (c) (r) (tm) +- as © ® ™ ± again and collapses
+  // runs of dots, commas and ?/!. Folded FORWARD on both sides, so what the
+  // author typed and what the page shows meet, many-to-one as they are.
+  const folds: Array<[string, string, string]> = [
+    ["(c) / (C) -> ©", "(c) (C) ©", "© © ©"],
+    ["(r) / (R) -> ®, (tm) any case -> ™", "(r) (R) (tm) (TM) ®™", "® ® ™ ™ ®™"],
+    ["+- -> ±", "10 +- 2 ±", "10 ± 2 ±"],
+    ["any run of dots, and …, -> ...", "a..b c....d e…f", "a...b c...d e...f"],
+    ["four or more ?/! -> three of the last", "huh????? wow!!!!! ok?!?! fine!!!", "huh??? wow!!! ok!!! fine!!!"],
+    ["a run of commas -> one", "one,, two,,, three, four", "one, two, three, four"],
+  ];
+  for (const [label, raw, folded] of folds) {
+    test(`folds ${label}`, () => {
+      const r = normalizeForSearch(raw, { stripDelimiters: false });
+      expect(r.normalized).toBe(folded);
+      assertValidIndexMap(raw, r);
+    });
+  }
+
+  test("every quotation mark, straight or printed in any language, folds to one character on both sides", () => {
+    // What the author typed, and what the renderer prints for it in
+    // English, German, French (with its no-break spaces) and Polish inner
+    // quotes (« from a typed ' there, from a typed " in French).
+    const typed = 'She said "it\'s fine", then \'no\'.';
+    const rendered = [
+      "She said “it’s fine”, then ‘no’.",
+      "She said „it’s fine“, then ‚no‘.",
+      "She said «\u00a0it’s fine\u00a0», then ‹\u00a0no\u00a0›.",
+      "She said „it’s fine”, then «no».",
+    ];
+    const want = normalizeForSearch(typed, { stripDelimiters: false }).normalized;
+    expect(want).toBe('She said "it"s fine", then "no".');
+    for (const raw of rendered) {
+      const r = normalizeForSearch(raw, { stripDelimiters: false });
+      expect(r.normalized).toBe(want);
+      assertValidIndexMap(raw, r);
+    }
+  });
+
+  test("folds every mark of every language core prints, French no-break spaces included", async () => {
+    const { QUOTES } = await import("../../../cli/src/lib/markdown/typography.ts");
+    for (const [language, quotes] of Object.entries(QUOTES)) {
+      for (const mark of typeof quotes === "string" ? [...quotes] : quotes) {
+        const { normalized } = normalizeForSearch(`a${mark}b`, { stripDelimiters: false });
+        expect({ language, mark, normalized }).toEqual({ language, mark, normalized: 'a"b' });
+      }
+    }
+  });
+
+  test("German and French selections are located in the source", () => {
+    expect(locateSelectionInSource('sagte "Hallo" zu mir', "sagte „Hallo“ zu mir")).toEqual({
+      start: 0,
+      end: 20,
+      matchedText: 'sagte "Hallo" zu mir',
+    });
+    expect(locateSelectionInSource('dit "Bonjour" à moi', "dit «\u00a0Bonjour\u00a0» à moi")).toEqual({
+      start: 0,
+      end: 19,
+      matchedText: 'dit "Bonjour" à moi',
+    });
+  });
+
   test("does NOT introduce an NBSP rule — a literal U+00A0 passes through unchanged, not collapsed", () => {
-    // The plan explicitly calls out that no NBSP substitution exists in this
-    // markdown-it configuration (verified by reading replacements.mjs and
-    // smartquotes.mjs directly — neither file mentions NBSP at all). U+00A0
+    // Only a quotation mark's own no-break space (French) is dropped. U+00A0
     // is also not part of THIS module's `[ \t\r\n]` whitespace-collapse
     // definition, so a literal NBSP is copied through verbatim, distinct
     // from an ordinary space.
@@ -228,46 +278,6 @@ describe("findUniqueRange", () => {
     const range = findUniqueRange("a bold word", haystack);
     expect(range).toEqual([0, raw.length]);
     expect(raw.slice(range![0], range![1])).toBe("a **bold** word");
-  });
-});
-
-// ── hasAmbiguousTypography ──────────────────────────────────────────────────
-
-describe("hasAmbiguousTypography — collapsed punctuation runs (one-to-many, unreversible)", () => {
-  test("ellipsis character is ambiguous", () => {
-    expect(hasAmbiguousTypography("wait… really")).toBe(true);
-  });
-
-  test("downgraded ellipsis after ? is ambiguous", () => {
-    expect(hasAmbiguousTypography("really?..")).toBe(true);
-  });
-
-  test("downgraded ellipsis after ! is ambiguous", () => {
-    expect(hasAmbiguousTypography("really!..")).toBe(true);
-  });
-
-  test("collapsed !!! is ambiguous", () => {
-    expect(hasAmbiguousTypography("stop!!! now")).toBe(true);
-  });
-
-  test("collapsed ??? is ambiguous", () => {
-    expect(hasAmbiguousTypography("what??? now")).toBe(true);
-  });
-
-  test("a comma is ambiguous (collapsed ,, -> , is one-to-many)", () => {
-    expect(hasAmbiguousTypography("apples, oranges")).toBe(true);
-  });
-
-  test("ordinary text with none of these is not ambiguous", () => {
-    expect(hasAmbiguousTypography("a plain phrase with one. period")).toBe(false);
-  });
-
-  test("a single '?' or '!' alone is not ambiguous", () => {
-    expect(hasAmbiguousTypography("really? yes! sure")).toBe(false);
-  });
-
-  test("a single '.' (not part of a 2+ run) is not ambiguous", () => {
-    expect(hasAmbiguousTypography("end of sentence.")).toBe(false);
   });
 });
 
@@ -409,8 +419,33 @@ describe("locateSelectionInSource", () => {
     expect(locateSelectionInSource("anything", "")).toBeNull();
   });
 
-  test("returns null when the needle contains ambiguous collapsed punctuation", () => {
-    expect(locateSelectionInSource("wait... really", "wait… really")).toBeNull();
+  test("finds what the typographer printed in the source the author typed (#483)", () => {
+    expect(locateSelectionInSource("Copyright (c) 2026 Studio", "© 2026 Studio")).toEqual({
+      start: 10,
+      end: 25,
+      matchedText: "(c) 2026 Studio",
+    });
+    expect(locateSelectionInSource("wait.. really", "wait… really")?.matchedText).toBe("wait.. really");
+    expect(locateSelectionInSource("one,, two and three", "one, two")?.matchedText).toBe("one,, two");
+    expect(locateSelectionInSource("so what?... no", "what?.. no")?.matchedText).toBe("what?... no");
+    expect(locateSelectionInSource("10 +- 2 units", "10 ± 2")?.matchedText).toBe("10 +- 2");
+    // A list label the renderer keeps as typed is found too.
+    expect(locateSelectionInSource("(a) run, (b) hide, or (c) fight", "(c) fight")?.matchedText).toBe("(c) fight");
+    // A comma or an ellipsis is never refused for being one.
+    expect(locateSelectionInSource("Yes, and... more", "Yes, and… more")?.matchedText).toBe("Yes, and... more");
+  });
+
+  test("two spellings that print alike are ambiguous, never guessed (#483)", () => {
+    expect(locateSelectionInSource("a,, b then a, b", "a, b")).toBeNull();
+    expect(locateSelectionInSource("go.. and go...", "go…")).toBeNull();
+  });
+
+  test("finds a rendered ellipsis as the three dots the author typed", () => {
+    expect(locateSelectionInSource("wait... really", "wait… really")).toEqual({
+      start: 0,
+      end: 14,
+      matchedText: "wait... really",
+    });
   });
 
   test("returns null for zero matches", () => {

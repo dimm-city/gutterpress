@@ -20,6 +20,7 @@ export const ruleRiskyProps = "printsafe/no-risky-print-effects";
 export const ruleSyntax = "printsafe/syntax-error";
 export const rulePageContainment = "printsafe/page-containment";
 export const rulePreviewCannotFollow = "printsafe/preview-cannot-follow";
+export const rulePageSizeInStylesheet = "printsafe/page-size-in-stylesheet";
 
 export interface PrintSafeWarning {
   rule: string;
@@ -90,6 +91,19 @@ function isInPageBox(decl: postcss.Declaration): boolean {
   return (
     !!page && page.type === "atrule" && (page as postcss.AtRule).name.toLowerCase() === "page"
   );
+}
+
+/**
+ * Directly inside one of the BOOK's page rules: a plain `@page` or a
+ * pseudo-class one (`@page :left`, `:first`…), not a named page (`@page
+ * cover`), whose size is its own. The manifest decides the book's page size
+ * (`preset:` / `page:`; Setup > Book) and the assembly writes it after
+ * every stylesheet, so a `size` here never reaches the printed page.
+ */
+function isInBookPageRule(decl: postcss.Declaration): boolean {
+  if (!isInPageBox(decl)) return false;
+  const params = (decl.parent as postcss.AtRule).params.trim();
+  return params === "" || /^(:[a-z-]+\s*)+$/i.test(params);
 }
 
 /**
@@ -373,7 +387,7 @@ function nodeLoc(node: postcss.Node): { line: number; column: number } {
 }
 
 export interface CheckCssOptions {
-  /** The manifest's `lint.rules`: `off` drops a rule, `warn`/`error` set its severity. */
+  /** The book's `checks` levels: `off` drops a rule, `warn`/`error` set its severity. */
   rules?: Readonly<Record<string, unknown>>;
 }
 
@@ -450,6 +464,15 @@ function checkCssRaw(css: string, from?: string): PrintSafeWarning[] {
 
   root.walkDecls((decl) => {
     const prop = decl.prop.toLowerCase();
+    if (prop === "size" && isInBookPageRule(decl)) {
+      warnings.push({
+        rule: rulePageSizeInStylesheet,
+        severity: "warning",
+        message: `"size" in a stylesheet's @page rule is ignored: the page size comes from the manifest (preset:, or page: width and height — set them in Book setup), which is written after every stylesheet. Remove this declaration; to print at another size, change the manifest.`,
+        ...nodeLoc(decl),
+      });
+      return;
+    }
     if (isInertValue(prop, decl.value)) return; // see inertValues
     // The margin-box drop comes first: `filter`, `mix-blend-mode`,
     // `clip-path` and `backdrop-filter` are all in `riskyProperties` too, and

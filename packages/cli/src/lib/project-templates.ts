@@ -4,8 +4,8 @@
  * Two kinds of template share one shape ({@link TemplateInfo}):
  *
  *   - BUILT-IN: shipped as embedded assets (`assets/templates/<id>/`), baked into
- *     the CLI binary via `embedded-assets.ts`. There are three: book, zine,
- *     technical. Listing them is metadata-only (no fs scan needed).
+ *     the CLI binary via `embedded-assets.ts`: book, zine, technical and
+ *     paper. Listing them is metadata-only (no fs scan needed).
  *
  *   - CUSTOM: saved by the author from an existing project ("Save as template")
  *     or imported from a folder. They live under a host-chosen `templatesRoot`
@@ -32,12 +32,14 @@ import { loadManifestDoc, writeManifestDoc, scalarString } from "./manifest-doc.
 import { collectStyleDependencies, escapesProjectRoot } from "./asset-inline.ts";
 import { toPosixPath } from "./plugin-vendor.ts";
 import { slugify, prettify } from "./slug.ts";
+import { numberAt } from "./page-size.ts";
 
 /** The built-in templates shipped as embedded assets. */
 export const BUILT_IN_TEMPLATE_IDS = [
   "book",
   "zine",
   "technical",
+  "paper",
 ] as const satisfies readonly ProjectTemplateId[];
 
 /** Author-friendly metadata for one template (built-in or custom). */
@@ -61,20 +63,27 @@ export interface TemplateInfo {
   preset?: string;
   /** The `targets:` this template's manifest declares, when it has one. */
   targets?: string[];
+  /**
+   * The `page:` size (points) this template's manifest declares, when it has
+   * one. A `custom`-preset template says what size it is designed for here,
+   * and the creation flows show that size pre-filled.
+   */
+  page?: { width: number; height: number };
 }
 
 /**
- * Read the `preset:`/`targets:` a template's manifest declares. Best-effort
- * and never throws: a template with no (or an unreadable) manifest simply
- * carries no starting point, and the caller falls back to its own defaults.
+ * Read the `preset:`/`targets:`/`page:` a template's manifest declares.
+ * Best-effort and never throws: a template with no (or an unreadable)
+ * manifest simply carries no starting point, and the caller falls back to
+ * its own defaults.
  */
 async function readTemplateChoices(
   manifestPath: string,
-): Promise<{ preset?: string; targets?: string[] }> {
+): Promise<Pick<TemplateInfo, "preset" | "targets" | "page">> {
   try {
     const text = await readFile(manifestPath, "utf8");
     const doc = parseDocument(text);
-    const out: { preset?: string; targets?: string[] } = {};
+    const out: Pick<TemplateInfo, "preset" | "targets" | "page"> = {};
     const preset = doc.get("preset");
     if (typeof preset === "string" && preset) out.preset = preset;
     const targets = doc.get("targets", true);
@@ -83,27 +92,32 @@ async function readTemplateChoices(
         .map((i) => scalarString(i))
         .filter((s): s is string => s !== null);
     }
+    const width = numberAt(doc, ["page", "width"]);
+    const height = numberAt(doc, ["page", "height"]);
+    if (width !== undefined && height !== undefined) out.page = { width, height };
     return out;
   } catch {
     return {};
   }
 }
 
-const BUILT_IN_META: Record<
-  ProjectTemplateId,
-  { label: string; description: string }
-> = {
+export const BUILT_IN_META: Record<ProjectTemplateId, { label: string; description: string }> = {
   book: {
     label: "Book",
-    description: "A clean starting point for a novel, memoir, or any long-form book.",
+    description: "A clean starting point for a novel, memoir, or any long-form book. Uses the Clean book look.",
   },
   zine: {
     label: "Zine",
-    description: "A short, personal zine made to be printed, folded, and shared.",
+    description: "A short, personal zine made to be printed, folded, and shared. Uses the Zine look.",
   },
   technical: {
     label: "Technical document",
-    description: "A manual or guide with steps, reference tables, and code examples.",
+    description: "A manual or guide with steps, reference tables, and code examples. Uses the Technical doc look.",
+  },
+  paper: {
+    label: "Academic paper",
+    description:
+      "A journal-style article with LaTeX math, numbered equations, figures, tables, notes and references. Uses the Academic look.",
   },
 };
 
@@ -423,7 +437,7 @@ async function retokeniseManifest(manifestPath: string): Promise<void> {
     .replace(/^title:\s*.*$/m, 'title: "{{TITLE}}"')
     // Re-tokenise ONLY the first list item that belongs to the `authors:` block
     // (anchored to the `authors:` key) — not just any first `- item`, which
-    // would clobber a `source.files:` entry in manifests that list source
+    // would clobber a `chapters:` entry in manifests that list chapters
     // before authors. Inline `authors:` (no block list) is left as-is.
     .replace(/^(authors:[^\n]*\n[ \t]*-[ \t]*).*$/m, '$1"{{AUTHOR}}"');
   await writeFile(manifestPath, text, "utf8");

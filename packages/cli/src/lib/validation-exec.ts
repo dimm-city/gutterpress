@@ -69,10 +69,10 @@ export interface ValidationExecutionArgs {
   pluginStylePaths?: string[];
   /**
    * Disable the `source.stylelint` check (CSS print-safety) for this run
-   * only, without touching the manifest's `validate.source.stylelint`
-   * setting on disk (#272 — one CSS gate, not two). Set by the build
-   * pipeline's `runQualityGates` (build-runner.ts) from `--skip-lint` /
-   * `config.lint.enabled: false`, so that flag disables just this one check.
+   * only, without touching the manifest's `checks:` on disk (#272 — one CSS
+   * gate, not two). Set by the build pipeline's `runQualityGates`
+   * (build-runner.ts) from `--skip-lint`, so that flag disables just this
+   * one check.
    * Every other caller (`gutterpress validate`/`preflight`, the desktop
    * Problems panel) leaves this unset and gets the manifest's own setting.
    */
@@ -431,12 +431,11 @@ export async function executeValidation(
     { explicit: manifestPath !== undefined }
   );
 
-  // `skipStylelint` (#272) overrides the manifest's `validate.source.stylelint`
-  // for this run only — the SAME cli-overrides-beat-manifest precedence
-  // `resolveConfig` already implements, applied to the one field the build
-  // pipeline's `--skip-lint` / `config.lint.enabled: false` needs to reach.
+  // `skipStylelint` (#272) switches `source.stylelint` off for this run only —
+  // the SAME cli-overrides-beat-manifest precedence `resolveConfig` already
+  // implements, applied to the one check the build's `--skip-lint` reaches.
   const config = resolveConfig(
-    args.skipStylelint ? { validate: { source: { stylelint: false } } } : {},
+    args.skipStylelint ? { checks: { "source.stylelint": "off" } } : {},
     manifest
   );
   // Explicit --target overrides the manifest's targets for this run; both go
@@ -518,8 +517,8 @@ export async function executeValidation(
     // Anchored on `manifestDir` — the SAME single anchor the build resolves
     // every manifest-relative path against (`BuildContext.renderDir`), not
     // `inputDir`: the two differ under an explicit `--manifest` outside
-    // `--input`, and `source.files` and `styles:` are BOTH manifest-relative.
-    const relMarkdown = await resolveActiveMarkdownFiles(manifestDir, config.source.files);
+    // `--input`, and `chapters` and `styles:` are BOTH manifest-relative.
+    const relMarkdown = await resolveActiveMarkdownFiles(manifestDir, config.chapters);
     markdownFiles = relMarkdown.map((f) => join(manifestDir, canonicalChapterId(f)));
 
     // The print-safety check (source.stylelint) skips minified CSS, since

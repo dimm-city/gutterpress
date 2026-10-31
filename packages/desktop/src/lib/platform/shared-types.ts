@@ -121,14 +121,19 @@ export type WorkspaceMode = "editor" | "viewer";
 export type ReadLayout = "single" | "spread";
 
 // ── User settings (#45) ───────────────────────────────────────────────────
+//
+// Each Settings group shows one section below, and its Reset puts that whole
+// section back to DEFAULT_SETTINGS (`useSettings().resetSection`). The keys and
+// their meaning are the ones 0.11.22 stored, so a saved file keeps working (#481).
 
 export type WorkspaceRole = "reader" | "author";
 
 export interface AppSettings {
   /**
-   * Reader or author (Settings → App). A reader only reads: the workspace
-   * stays in Read and the toolbar hides Edit/Read, Setup and Publish. Default
-   * reader — everyone starts with the simplest screen and opts into writing.
+   * Reader or author (Settings → How you use Gutterpress). A reader only
+   * reads: the workspace stays in Read and the toolbar hides Edit/Read, Setup
+   * and Publish. Default reader — everyone starts with the simplest screen and
+   * opts into writing.
    */
   workspace: {
     role: WorkspaceRole;
@@ -136,16 +141,22 @@ export interface AppSettings {
   editor: {
     /**
      * Mark every line with a Problems entry in the editor, plus the CSS lint
-     * gutter and the unusual-character boxes (Settings → Editor, "Highlight
+     * gutter and the unusual-character boxes (Settings → Editor, "Mark
      * problems in the editor", #383). Default ON.
      */
     highlightProblems: boolean;
   };
   appearance: {
     theme: "light" | "dark" | "system";
+    /** The colour around the pages in the preview (Settings → Appearance, "Preview background"). */
     previewBg: string;
   };
   preview: {
+    /**
+     * The preview's zoom: "fit-width" or a scale such as "1.25" (Settings →
+     * Preview, "Default zoom"). The preview's zoom menu writes it too, so a book
+     * opens at the zoom last chosen.
+     */
     defaultZoom: string;
     /**
      * Which panes the wide workspace shows — the ONE workspace-layout switch
@@ -178,7 +189,7 @@ export interface AppSettings {
      * colour (`electron/settings-store.ts`); after that it is ignored.
      */
     marginOverlayColor: string;
-    /** How prominent the overlay is: line width, tint and bleed band. Default "normal". */
+    /** How prominent the overlay is: line width, tint and bleed band (Settings → Preview). Default "normal". */
     marginOverlayStrength: "subtle" | "normal" | "strong";
     /**
      * Which layers the overlay draws while the master switch is on: the bleed
@@ -188,7 +199,7 @@ export interface AppSettings {
      * it was a layer of its own) reads it as on.
      */
     overlayLayers: { bleed: boolean; safe: boolean; art: boolean; margins: boolean };
-    /** Each layer's colour, `#rrggbb`. A stored object without `art` reads its default. */
+    /** Each layer's colour, `#rrggbb` (Settings → Preview). A stored object without `art` reads its default. */
     overlayColors: { bleed: string; safe: string; art: string; margins: string };
     /**
      * Durable editor/preview split fraction (0.25..0.75, editor share) for the
@@ -198,9 +209,10 @@ export interface AppSettings {
     splitRatio: number;
     /**
      * Right-click (or Shift+F10) context menu over the paginated preview
-     * (inline-editing plan §4.5). Default true — an explicit-invocation
-     * affordance, not seamless WYSIWYG, so the UX contract's opt-in rule for
-     * the latter does not apply here.
+     * (inline-editing plan §4.5; Settings → Preview, "Right-click menu in the
+     * preview"). Default true — an explicit-invocation affordance, not seamless
+     * WYSIWYG, so the UX contract's opt-in rule for the latter does not apply
+     * here. Off: the menu never opens, from the mouse or the keyboard.
      */
     contextMenu: boolean;
   };
@@ -208,21 +220,19 @@ export interface AppSettings {
     /** Release stream for desktop update checks (see UpdateChannel above). */
     channel: UpdateChannel;
     /**
-     * Features tab: offer pre-release versions (`-alpha`, `-beta`, `-rc`) of
-     * npm extensions in the version picker, and count them as "newer" in the
-     * update check. An app preference, not per book — it is about which
-     * builds this author wants to see. Default off.
+     * Book setup › Extensions: offer pre-release versions (`-alpha`, `-beta`,
+     * `-rc`) of npm extensions in the version picker, and count them as
+     * "newer" in the update check. An app preference, not per book — it is
+     * about which builds this author wants to see. Default off.
      */
     includeExtensionPrereleases: boolean;
   };
   versionHistory: {
     /**
      * Write editor changes to disk on their own, 500ms after the last edit
-     * (Settings → Saving, "Save edits automatically"). Off: edits wait for
+     * (Settings → Saving, "Save changes automatically"). Off: edits wait for
      * Save / Ctrl+S (leaving the file asks Save / Don't Save / Cancel), so
-     * the Save button means something. Lives in this section because this
-     * section is the Saving group's storage — its one Reset restores every
-     * switch there. Default ON.
+     * the Save button means something. Default ON.
      */
     autoSave: boolean;
     /**
@@ -248,10 +258,6 @@ export interface AppSettings {
     authorName: string;
     /** Optional commit author email. Empty means use existing repo config, then Gutterpress default. */
     authorEmail: string;
-  };
-  advanced: {
-    fileWatcherInterval: number;
-    logLevel: "error" | "warn" | "info" | "debug";
   };
 }
 
@@ -302,10 +308,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   gitIdentity: {
     authorName: "",
     authorEmail: "",
-  },
-  advanced: {
-    fileWatcherInterval: 300,
-    logLevel: "warn",
   },
 };
 
@@ -593,6 +595,9 @@ export type SyncOutcome =
       // (both sides moved, the push was held). Mirrors the lib.
       combinedFiles?: string[];
       keptBothFiles?: KeptBothFile[];
+      // A pull-only pass that held the push: this computer has versions the
+      // online copy lacks. Mirrors the lib.
+      pushDeferred?: true;
     }
   | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
@@ -706,6 +711,17 @@ export interface PublishDestination {
   url?: string;
 }
 
+/** Where this person publishes among a provider's destinations, and whether
+ *  they must choose one (#452) — mirrors the lib's `PublishDestinationStatus`.
+ *  The book's folder is the team's (manifest); a person who can't reach it
+ *  chooses their own, kept in their private settings for the book. */
+export type PublishDestinationStatus =
+  | { state: "unset" }
+  | { state: "book"; destination: PublishDestination }
+  | { state: "by-name"; name: string; destination?: PublishDestination; several: boolean }
+  | { state: "mine"; destination: PublishDestination; book: { title: string; reachable: boolean } }
+  | { state: "unreachable"; book: { title: string; reachable: boolean }; mine?: string };
+
 /** A saved publishing credential, redacted (no token) — for the picker. */
 export interface PublishSavedAccountInfo {
   /** Account label; "" is the default (unnamed) credential. */
@@ -760,7 +776,7 @@ export interface PublishRunResult {
 
 /** One entry in a project's version history (a Git commit, abstracted). */
 export interface SnapshotEntry {
-  /** Opaque revision id (a commit SHA for the local provider). */
+  /** Opaque version id (a commit SHA for the local provider). */
   id: string;
   /** Author-supplied or auto-generated snapshot message. */
   message: string;
@@ -781,13 +797,40 @@ export interface VersionFileChange {
   text: boolean;
 }
 
-/** A history entry with what it changed and where it is kept (#408). */
+/** One revision of a book (mirrors the lib's `Revision`, #448). */
+export interface Revision {
+  name: string;
+  current: boolean;
+  where: "online" | "this-computer" | "online-only";
+  notBackedUp: boolean;
+}
+
+/** The book's revisions (mirrors the lib's `RevisionList`) plus whether the online copy was checked just now. */
+export interface RevisionList {
+  current: string | null;
+  revisions: Revision[];
+  /** The refresh from the online copy ran and succeeded; false = the list is what this computer last knew. */
+  checkedOnline: boolean;
+}
+
+/** A history entry and where it is kept (#408). */
 export interface VersionEntry extends SnapshotEntry {
+  /** True = online too; false = on this computer only; null = no online copy to compare with. */
+  backedUp: boolean | null;
+}
+
+/** The files one version changed (mirrors the lib's VersionChanges). */
+export interface VersionChanges {
+  files: VersionFileChange[];
+  /** Changed files beyond the ones listed. */
+  more: number;
+}
+
+/** A version in the online copy that this computer has not got, with the files it changed (#484). */
+export interface OnlineVersionEntry extends VersionEntry {
   changes: VersionFileChange[];
   /** Changed files beyond the ones listed. */
   moreChanges: number;
-  /** True = online too; false = on this computer only; null = no online copy to compare with. */
-  backedUp: boolean | null;
 }
 
 /** One row of the side-by-side file compare: a line on each side, or a gap. */

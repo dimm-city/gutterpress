@@ -2,6 +2,7 @@ import { describe, test, expect } from "bun:test";
 
 import {
   BUNDLED_EXTENSIONS,
+  BUNDLED_EXTENSION_DETAILS,
   isPathSpecifier,
   parseExtensionSpecifier,
   pinnedNpmSpecifier,
@@ -9,8 +10,21 @@ import {
 import { BUILTIN_OPTIONAL_PLUGINS } from "./markdown/renderer";
 
 describe("extension specifiers (#265)", () => {
-  test("the bundled list and the renderer's bundled registry are the same five names", () => {
-    expect(([...BUNDLED_EXTENSIONS] as string[]).sort()).toEqual(Object.keys(BUILTIN_OPTIONAL_PLUGINS).sort());
+  test("every bundled markdown feature has a plugin in the renderer's registry, and only those", () => {
+    const features = BUNDLED_EXTENSION_DETAILS.filter((b) => b.css === undefined).map((b) => b.name);
+    expect(features.sort()).toEqual(Object.keys(BUILTIN_OPTIONAL_PLUGINS).sort());
+    const looks = BUNDLED_EXTENSION_DETAILS.filter((b) => b.css !== undefined);
+    expect(looks.map((b) => b.name)).toEqual(["clean-book", "zine", "technical-doc", "academic"]);
+    for (const look of looks) expect(look.css).toContain(":root");
+  });
+
+  test("BUNDLED_EXTENSIONS is the list of names it was in 0.11.22, in table order (#483)", () => {
+    expect(BUNDLED_EXTENSIONS).toEqual(BUNDLED_EXTENSION_DETAILS.map((b) => b.name));
+    expect(BUNDLED_EXTENSIONS.every((name) => typeof name === "string")).toBe(true);
+    for (const name of ["markdown-it-mark", "markdown-it-sub", "markdown-it-sup", "markdown-it-abbr", "gutterpress-gfm-alerts"]) {
+      expect(BUNDLED_EXTENSIONS.includes(name)).toBe(true);
+    }
+    expect(BUNDLED_EXTENSIONS.includes("markdown-it-footnote")).toBe(false);
   });
 
   test("./, ../, / and a drive letter are paths; nothing else is", () => {

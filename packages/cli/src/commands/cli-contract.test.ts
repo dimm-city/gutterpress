@@ -208,6 +208,84 @@ describe("M47: exit-code contract (0 clean / 1 findings / 2 usage / 3 pipeline)"
   }, 30000);
 });
 
+// ── #483: the 0.11.22 surface 0.11.23 had dropped ───────────────────────────
+
+describe("#483: the CLI still takes what 0.11.22 did", () => {
+  test("`new --page-tolerance` writes the page-size check's tolerance; `--kind theme` makes a look", async () => {
+    const dir = await makeTempDir("gutterpress-cli-contract-483-");
+    try {
+      const book = runCli([
+        "new", "Tolerant", "--preset", "custom", "--page-width", "612", "--page-height", "792",
+        "--page-tolerance", "2", "--dir", dir, "--no-git",
+      ]);
+      expect(book.stderr).not.toContain("Unknown");
+      expect(book.exitCode).toBe(0);
+      const manifest = await readFile(path.join(dir, "tolerant", "manifest.yaml"), "utf8");
+      expect(manifest).toContain("checks:\n  pdf.print.page-size:\n    tolerance: 2\n");
+
+      const look = runCli(["new", "House Style", "--kind", "theme", "--dir", dir]);
+      expect(look.exitCode).toBe(0);
+      expect(look.stdout).toContain("Created look:");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 60000);
+
+  test("a 0.11.22 book with a key no check takes and a string for a number builds and validates; the new spelling is refused (#488)", async () => {
+    const dir = await makeTempDir("gutterpress-cli-contract-488-");
+    try {
+      const old = path.join(dir, "old");
+      const now = path.join(dir, "new");
+      for (const [book, manifest] of [
+        [old, "title: Old\npreset: book\nvalidate:\n  heuristics:\n    mysteryLimit: 3\n    maxDecorativeLayers: many\n"],
+        [now, "title: New\npreset: book\nchecks:\n  heuristic.decoration.layer-count:\n    maxDecorativeLayers: many\n"],
+      ] as const) {
+        await mkdir(book, { recursive: true });
+        await writeFile(path.join(book, "a.md"), "# A\n\nText.\n");
+        await writeFile(path.join(book, "manifest.yaml"), manifest);
+      }
+
+      const build = runCli(["build", old, "--format", "html", "--out", path.join(dir, "out")]);
+      expect(build.exitCode).toBe(0);
+      expect(build.stderr + build.stdout).toContain("validate.heuristics.mysteryLimit — no longer a setting, ignored");
+      expect(build.stderr + build.stdout).toContain(
+        'validate.heuristics.maxDecorativeLayers: "many" is not a number, 0 or more — ignored',
+      );
+      expect(runCli(["validate", old]).exitCode).toBe(0);
+
+      const refused = runCli(["validate", now]);
+      expect(refused.exitCode).toBe(2);
+      expect(refused.stderr + refused.stdout).toContain(
+        "`checks.heuristic.decoration.layer-count.maxDecorativeLayers` must be a number, 0 or more",
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 60000);
+
+  test("`validate --only asset.font.approved-files` runs the check with a 0.11.22 manifest's list", async () => {
+    const dir = await makeTempDir("gutterpress-cli-contract-483-fonts-");
+    try {
+      await mkdir(path.join(dir, "fonts"), { recursive: true });
+      await writeFile(path.join(dir, "fonts", "a.otf"), "");
+      await writeFile(path.join(dir, "fonts", "b.ttf"), "");
+      await writeFile(path.join(dir, "a.md"), "# A\n");
+      await writeFile(
+        path.join(dir, "manifest.yaml"),
+        "title: Fonts\npreset: book\nvalidate:\n  assets:\n    approvedFontFiles: [\"fonts/*.otf\"]\n",
+      );
+      const { exitCode, stdout, stderr } = runCli(["validate", dir, "--only", "asset.font.approved-files"]);
+      const out = stdout + stderr;
+      expect(out).not.toContain("Unknown check selector");
+      expect(out).toContain("b.ttf: Font file not in approved list");
+      expect(out).not.toContain("a.otf: Font file");
+      expect(exitCode).toBe(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+});
+
 // ── C6/C7: command and option typo handling ──────────────────────────────────
 
 describe("C6: implicit preview only applies to directories or no command", () => {
@@ -411,26 +489,50 @@ describe("ext usage errors", () => {
       const { exitCode, stderr } = runCli(["ext", "add", "no-such-look", dir, "--look"]);
       expect(exitCode).toBe(2);
       expect(stderr).toContain('unknown built-in look "no-such-look"');
-      expect(stderr).toContain("clean-book");
+      expect(stderr).toContain("clean-book, zine, technical-doc, academic");
+      expect(fs.existsSync(path.join(dir, "extensions"))).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   }, 30000);
 
-  test("add --look, list, disable: the look is one enabled extension, end to end", async () => {
-    const dir = await makeTempDir("gutterpress-cli-ext-e2e-");
+  test("add --look copies the built-in look into extensions/ as the book's own files and lists the copy, end to end", async () => {
+    const dir = await makeTempDir("gutterpress-cli-ext-look-copy-");
     try {
+      expect(runCli(["ext", "add", "zine", dir]).exitCode).toBe(0);
       const added = runCli(["ext", "add", "zine", dir, "--look"]);
       expect(added.exitCode).toBe(0);
       expect(added.stdout).toContain("Added ./extensions/zine");
       expect(fs.existsSync(path.join(dir, "extensions", "zine", "theme.css"))).toBe(true);
+      expect(fs.existsSync(path.join(dir, "extensions", "zine", "package.json"))).toBe(true);
+
+      // The copy takes the bundled entry's place: the look is listed once.
+      const listed = runCli(["ext", "list", dir]);
+      expect(listed.exitCode).toBe(0);
+      expect(listed.stdout).toContain("./extensions/zine  [path; styles]");
+      expect(listed.stdout).not.toContain("zine  [bundled");
+
+      expect(runCli(["ext", "disable", "./extensions/zine", dir]).exitCode).toBe(0);
+      expect(runCli(["ext", "list", dir]).stdout).toContain("(disabled)");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  test("add a bundled look, list, disable: the look is one enabled extension and nothing is copied, end to end", async () => {
+    const dir = await makeTempDir("gutterpress-cli-ext-e2e-");
+    try {
+      const added = runCli(["ext", "add", "zine", dir]);
+      expect(added.exitCode).toBe(0);
+      expect(added.stdout).toContain("Enabled bundled look zine");
+      expect(fs.existsSync(path.join(dir, "extensions"))).toBe(false);
 
       const listed = runCli(["ext", "list", dir]);
       expect(listed.exitCode).toBe(0);
-      expect(listed.stdout).toContain("./extensions/zine");
+      expect(listed.stdout).toContain("zine  [bundled; styles]");
       expect(listed.stdout).toContain("Zine");
 
-      expect(runCli(["ext", "disable", "./extensions/zine", dir]).exitCode).toBe(0);
+      expect(runCli(["ext", "disable", "zine", dir]).exitCode).toBe(0);
       expect(runCli(["ext", "list", dir]).stdout).toContain("(disabled)");
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -575,7 +677,7 @@ describe("explicit manifest public seams", () => {
   test.each(["normal", "connect"] as const)(
     "publish %s reports malformed explicit YAML as clean usage error",
     async (mode) => {
-      const dir = await makeProjectDir("title: Broken\nsource:\n\tfiles:\n");
+      const dir = await makeProjectDir("title: Broken\nchapters:\n\t- a.md\n");
       try {
         const manifest = path.join(dir, "manifest.yaml");
         const args = [

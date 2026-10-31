@@ -1,7 +1,7 @@
 /**
  * #265 — the one extension rail: `extensions:` read/write/toggle/reorder,
- * adding by path (referenced in place), by bundled name, and as a copied
- * built-in look; validation through the one loader; CSS read for previews.
+ * adding by path (referenced in place) and by bundled name (a markdown feature
+ * or a look); validation through the one loader; CSS read for previews.
  * npm installs are covered end to end in `npm-plugin-installer.test.ts`
  * (through the same `addExtension`).
  */
@@ -12,19 +12,20 @@ import { join } from "node:path";
 import {
   addBuiltInStyleSet,
   addExtension,
+  BUILT_IN_LOOKS,
   describeExtension,
-  listBuiltInStyleSets,
+  extensionConfigFor,
+  listBundledExtensions,
   listProjectExtensions,
   readExtensionCss,
   removeExtension,
   reorderExtensions,
   setExtensionEnabled,
   validateProjectExtensions,
-  BUILT_IN_STYLE_SET_IDS,
   EXTENSIONS_DIR,
-  RECOMMENDED_EXTENSIONS,
 } from "./extension-manager";
-import { BUNDLED_EXTENSIONS } from "./extension-specifier";
+import { BUNDLED_EXTENSION_DETAILS, bundledExtension } from "./extension-specifier";
+import { loadPluginsWithCss } from "./markdown/plugins";
 
 const TMP_ROOT = join(process.cwd(), ".tmp", `extension-manager-tests-${Date.now()}`);
 let counter = 0;
@@ -270,25 +271,56 @@ describe("extension-manager", () => {
     });
   });
 
-  describe("built-in looks", () => {
-    test("listBuiltInStyleSets names the three looks", async () => {
-      const sets = await listBuiltInStyleSets();
-      expect(sets.map((s) => s.id)).toEqual([...BUILT_IN_STYLE_SET_IDS]);
-      for (const s of sets) expect(s.name.length).toBeGreaterThan(0);
+  test("the library still exports 0.11.22's PLUGINS_DIR, as EXTENSIONS_DIR's other name, and BUNDLED_EXTENSIONS as names (#483)", async () => {
+    const lib = await import("../api/index.ts");
+    expect(lib.PLUGINS_DIR).toBe(lib.EXTENSIONS_DIR);
+    expect(lib.PLUGINS_DIR).toBe("extensions");
+    expect(lib.BUNDLED_EXTENSIONS.includes("markdown-it-mark")).toBe(true);
+    expect(lib.BUNDLED_EXTENSION_DETAILS.find((b) => b.name === "zine")?.label).toBe("Zine");
+  });
+
+  describe("bundled looks", () => {
+    test("listBundledExtensions lists every bundled name in table order and flags the looks", async () => {
+      const listed = await listBundledExtensions();
+      expect(listed.map((b) => b.use)).toEqual(BUNDLED_EXTENSION_DETAILS.map((b) => b.name));
+      expect(listed.filter((b) => b.look).map((b) => b.use)).toEqual(["clean-book", "zine", "technical-doc", "academic"]);
+      for (const b of listed) {
+        expect(b.label.length).toBeGreaterThan(0);
+        expect(b.description.length).toBeGreaterThan(0);
+      }
+      expect(listed.find((b) => b.use === "zine")!.label).toBe("Zine");
     });
 
-    test("addBuiltInStyleSet copies the look into extensions/<id>/, lists it, and is idempotent", async () => {
+    test("a bundled look is added by name, described from the bundled table, and copies nothing", async () => {
+      const dir = projectDir();
+      const entry = await addExtension(dir, "zine");
+      expect(entry).toMatchObject({
+        use: "zine",
+        kind: "bundled",
+        label: "Zine",
+        carries: { styles: true, markdown: false },
+      });
+      expect(entry.dir).toBeUndefined();
+      expect(readManifest(dir)).toContain("- zine");
+      expect(existsSync(join(dir, EXTENSIONS_DIR))).toBe(false);
+      expect(await readExtensionCss(dir, "zine")).toContain(":root");
+    });
+
+    test("addBuiltInStyleSet copies the look into extensions/<id>/ as the author's files, lists it by path, and is idempotent", async () => {
+      expect(BUILT_IN_LOOKS).toEqual(["clean-book", "zine", "technical-doc", "academic"]);
       const dir = projectDir();
       const entry = await addBuiltInStyleSet(dir, "zine");
       expect(entry).toMatchObject({
         use: `./${EXTENSIONS_DIR}/zine`,
         kind: "path",
         label: "Zine",
+        author: "gutterpress",
         styles: ["theme.css"],
         carries: { styles: true, markdown: false },
       });
-      expect(existsSync(join(dir, EXTENSIONS_DIR, "zine", "theme.css"))).toBe(true);
+      expect(readFileSync(join(dir, EXTENSIONS_DIR, "zine", "theme.css"), "utf8")).toBe(bundledExtension("zine")!.css!);
       expect(await readExtensionCss(dir, "./extensions/zine")).toContain(":root");
+      expect(readManifest(dir)).toContain("- ./extensions/zine");
 
       // Edit the copy: it is the author's now, and a second add keeps it.
       writeFileSync(join(dir, EXTENSIONS_DIR, "zine", "theme.css"), ":root { --mine: 1; }\n", "utf8");
@@ -296,23 +328,76 @@ describe("extension-manager", () => {
       expect((await listProjectExtensions(dir)).map((e) => e.use)).toEqual(["./extensions/zine"]);
       expect(await readExtensionCss(dir, "./extensions/zine")).toBe(":root { --mine: 1; }\n");
 
-      await expect(addBuiltInStyleSet(dir, "no-such-look")).rejects.toThrow(/Unknown built-in look/);
+      await expect(addBuiltInStyleSet(dir, "no-such-look")).rejects.toThrow(/Unknown built-in look "no-such-look" \(one of: clean-book, zine, technical-doc, academic\)/);
+      await expect(addBuiltInStyleSet(dir, "markdown-it-mark")).rejects.toThrow(/Unknown built-in look/);
+    });
+
+    test("addBuiltInStyleSet puts the copy where the book lists the built-in by name, on or off as it was", async () => {
+      const dir = projectDir(
+        ["title: T", "extensions:", "  - markdown-it-mark", "  - use: academic", "    enabled: false", "  - markdown-it-sub", ""].join("\n"),
+      );
+      await addBuiltInStyleSet(dir, "academic");
+      const list = await listProjectExtensions(dir);
+      expect(list.map((e) => [e.use, e.kind, e.enabled])).toEqual([
+        ["markdown-it-mark", "bundled", true],
+        ["./extensions/academic", "path", false],
+        ["markdown-it-sub", "bundled", true],
+      ]);
+      expect(readManifest(dir)).not.toMatch(/use: academic$/m);
+    });
+
+    test("a copy an older version made (0.11.22's package.json) loads and builds as the path extension it is", async () => {
+      const dir = projectDir(["title: T", "extensions:", "  - ./extensions/clean-book", ""].join("\n"));
+      writeExtension(
+        dir,
+        "extensions/clean-book",
+        {
+          name: "clean-book",
+          description: "A calm, classic book look: serif body, generous margins, restrained accents.",
+          author: "gutterpress",
+          keywords: ["gutterpress", "gutterpress-look"],
+          gutterpress: { styles: ["theme.css"], preview: null },
+        },
+        { "theme.css": ":root { --color-accent: #8a3b12; }\n" },
+      );
+      const [entry] = await listProjectExtensions(dir);
+      expect(entry).toMatchObject({ use: "./extensions/clean-book", kind: "path", label: "Clean book", author: "gutterpress", carries: { styles: true } });
+      expect(entry!.warnings).toBeUndefined();
+      expect((await validateProjectExtensions(dir)).map((r) => r.ok)).toEqual([true]);
+      // What a build loads: the copy's own stylesheet, from the book's folder.
+      const loaded = await loadPluginsWithCss([extensionConfigFor(entry!)], dir);
+      expect(loaded.pluginStylePaths).toEqual([join(dir, "extensions", "clean-book", "theme.css")]);
     });
 
     test("two looks can be on at once — no exclusivity", async () => {
       const dir = projectDir();
-      await addBuiltInStyleSet(dir, "clean-book");
-      await addBuiltInStyleSet(dir, "zine");
+      await addExtension(dir, "clean-book");
+      await addExtension(dir, "zine");
       const list = await listProjectExtensions(dir);
-      expect(list.map((e) => e.use)).toEqual(["./extensions/clean-book", "./extensions/zine"]);
+      expect(list.map((e) => e.use)).toEqual(["clean-book", "zine"]);
       expect(list.every((e) => e.enabled && e.carries.styles)).toBe(true);
     });
+  });
+
+  test("an npm copy an older book vendored under plugins/npm/ is still found", async () => {
+    const dir = projectDir(["title: T", "extensions:", "  - markdown-it-legacy@1.0.0", ""].join("\n"));
+    const pkg = join(dir, "plugins", "npm", "markdown-it-legacy", "1.0.0", "node_modules", "markdown-it-legacy");
+    mkdirSync(pkg, { recursive: true });
+    writeFileSync(join(pkg, "package.json"), JSON.stringify({ name: "markdown-it-legacy", version: "1.0.0", main: "index.js" }), "utf8");
+    writeFileSync(join(pkg, "index.js"), "module.exports = function () {};\n", "utf8");
+    const [entry] = await listProjectExtensions(dir);
+    expect(entry!.warnings ?? []).toEqual([]);
+    expect(entry!.dir).toBe(pkg);
+
+    // Removing the entry deletes that copy too, wherever it lives.
+    await removeExtension(dir, "markdown-it-legacy@1.0.0");
+    expect(existsSync(join(dir, "plugins", "npm", "markdown-it-legacy"))).toBe(false);
   });
 
   describe("validateProjectExtensions / readExtensionCss", () => {
     test("load-tests enabled entries only and reports the loader's error per entry", async () => {
       const dir = projectDir(
-        ["title: T", "extensions:", "  - ./ext/house", "  - use: ./plugins/off.js", "    enabled: false", "  - ./plugins/nope.js", ""].join("\n"),
+        ["title: T", "extensions:", "  - ./ext/house", "  - use: ./plugins/off.js", "    enabled: false", "  - ./plugins/nope.js", "  - zine", ""].join("\n"),
       );
       writeHouse(dir);
 
@@ -321,11 +406,12 @@ describe("extension-manager", () => {
         ["./ext/house", true, true],
         ["./plugins/off.js", false, true],
         ["./plugins/nope.js", true, false],
+        ["zine", true, true],
       ]);
       expect(results[2]!.error).toMatch(/not found/i);
     });
 
-    test("readExtensionCss concatenates the declared sheets in order; a bundled name has none", async () => {
+    test("readExtensionCss concatenates the declared sheets in order; a bundled feature has none", async () => {
       const dir = projectDir(["title: T", "extensions:", "  - ./ext/house", "  - markdown-it-mark", ""].join("\n"));
       writeHouse(dir);
       expect(await readExtensionCss(dir, "./ext/house")).toBe(
@@ -333,14 +419,16 @@ describe("extension-manager", () => {
       );
       await expect(readExtensionCss(dir, "markdown-it-mark")).rejects.toThrow(/no stylesheets/);
     });
+
+    test("readExtensionCss answers for a bundled look the manifest does not list (a thumbnail before adding it)", async () => {
+      const dir = projectDir("title: T\n");
+      expect(await readExtensionCss(dir, "clean-book")).toContain(":root");
+      await expect(readExtensionCss(dir, "./ext/nowhere")).rejects.toThrow(/not in the manifest/);
+    });
   });
 
-  test("RECOMMENDED_EXTENSIONS are exactly the bundled names", () => {
-    expect(RECOMMENDED_EXTENSIONS.map((r) => r.use).sort()).toEqual([...BUNDLED_EXTENSIONS].sort());
-  });
-
-  test("RECOMMENDED_EXTENSIONS descriptions are plain words with paired backtick spans, no HTML tags", () => {
-    for (const rec of RECOMMENDED_EXTENSIONS) {
+  test("bundled descriptions are plain words with paired backtick spans, no HTML tags", async () => {
+    for (const rec of await listBundledExtensions()) {
       // The desktop splits on backticks and sets odd-numbered pieces in code
       // type, so an unpaired backtick would render as the wrong text.
       expect(rec.description.split("`").length % 2).toBe(1);

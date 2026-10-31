@@ -5,7 +5,7 @@ import type { RequestHandler } from './$types';
 /**
  * Static publish-provider metadata — id/label/credential host/token URL. No
  * project required (unlike publish:list, which merges manifest config): the
- * Settings → Connections tab uses this to classify stored credentials into
+ * Accounts page uses this to classify stored credentials into
  * "publishing accounts" vs "Git servers" and to label them, independent of
  * whatever project happens to be open.
  */

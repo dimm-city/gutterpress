@@ -47,10 +47,9 @@ describe("manifest-config", () => {
           "  - themes/zine/theme.css",
           "extensions:",
           "  - markdown-it-mark",
-          "source:",
-          "  files:",
-          "    - chapter-01.md",
-          "    - chapter-02.md",
+          "chapters:",
+          "  - chapter-01.md",
+          "  - chapter-02.md",
           "",
         ].join("\n"),
       );
@@ -60,17 +59,39 @@ describe("manifest-config", () => {
       expect(fields.sourceFiles).toEqual(["chapter-01.md", "chapter-02.md"]);
     });
 
+    test("reads an older book's source.files until it is rewritten (#443)", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["source:", "  files:", "    - old-01.md", ""].join("\n"));
+      expect((await readManifestFields(dir)).sourceFiles).toEqual(["old-01.md"]);
+    });
+
+    test("chapters wins when a manifest has both spellings", async () => {
+      const dir = projectDir();
+      writeManifest(
+        dir,
+        ["chapters:", "  - new.md", "source:", "  files:", "    - old.md", ""].join("\n"),
+      );
+      expect((await readManifestFields(dir)).sourceFiles).toEqual(["new.md"]);
+    });
+
     test("returns {} for a project with no manifest", async () => {
       const dir = projectDir();
       const fields = await readManifestFields(dir);
       expect(fields).toEqual({});
     });
 
-    test("source.files: null round-trips as null", async () => {
+    test("chapters: null (or an older source.files: null) round-trips as null", async () => {
       const dir = projectDir();
+      writeManifest(dir, "chapters: null\n");
+      expect((await readManifestFields(dir)).sourceFiles).toBeNull();
       writeManifest(dir, ["source:", "  files: null", ""].join("\n"));
-      const fields = await readManifestFields(dir);
-      expect(fields.sourceFiles).toBeNull();
+      expect((await readManifestFields(dir)).sourceFiles).toBeNull();
+    });
+
+    test("no chapters key leaves sourceFiles unset", async () => {
+      const dir = projectDir();
+      writeManifest(dir, "title: T\n");
+      expect((await readManifestFields(dir)).sourceFiles).toBeUndefined();
     });
 
     // readManifestFields routes through the shared loadManifestDoc
@@ -102,7 +123,28 @@ describe("manifest-config", () => {
     });
 
 
-    test("updates source.files and leaves sibling keys untouched", async () => {
+    test("writes an older book's thresholds as their checks' options, the way it moves source.files (#483)", async () => {
+      const dir = projectDir();
+      writeManifest(
+        dir,
+        ["title: Old", "ink:", "  maxTac: 300", "validate:", "  assets:", "    approvedFontFiles: [fonts/*.otf]", ""].join("\n"),
+      );
+
+      await setManifestFields(dir, { title: "New" });
+      expect(readManifest(dir)).toBe(
+        [
+          "title: New",
+          "checks:",
+          "  pdf.print.ink-coverage:",
+          "    maxTac: 300",
+          "  asset.font.approved-files:",
+          "    approvedFontFiles: [ fonts/*.otf ]",
+          "",
+        ].join("\n"),
+      );
+    });
+
+    test("writes chapters, takes out an older book's source.files, and leaves sibling keys untouched", async () => {
       const dir = projectDir();
       writeManifest(
         dir,
@@ -111,23 +153,33 @@ describe("manifest-config", () => {
 
       await setManifestFields(dir, { sourceFiles: ["a.md", "b.md"] });
       const onDisk = readManifest(dir);
-      expect(onDisk).toContain("- a.md");
-      expect(onDisk).toContain("- b.md");
+      expect(onDisk).toContain("chapters:\n  - a.md\n  - b.md");
       expect(onDisk).not.toContain("old.md");
+      // `source:` held only `files`, so it goes too.
+      expect(onDisk).not.toContain("source");
       expect(onDisk).toContain("preset: book");
+      expect((await readManifestFields(dir)).sourceFiles).toEqual(["a.md", "b.md"]);
     });
 
-    test("passing sourceFiles: null deletes the source.files entry", async () => {
+    test("writes chapters into a manifest that has no source block", async () => {
       const dir = projectDir();
-      writeManifest(
-        dir,
-        ["source:", "  files:", "    - chapter-01.md", ""].join("\n"),
-      );
+      writeManifest(dir, "title: T\n");
+      await setManifestFields(dir, { sourceFiles: ["a.md"] });
+      expect(readManifest(dir)).toBe("title: T\nchapters:\n  - a.md\n");
+    });
 
+    test("passing sourceFiles: null deletes the chapters entry, in either spelling", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: T", "chapters:", "  - chapter-01.md", ""].join("\n"));
+      await setManifestFields(dir, { sourceFiles: null });
+      expect(readManifest(dir)).toBe("title: T\n");
+
+      writeManifest(dir, ["source:", "  files:", "    - chapter-01.md", ""].join("\n"));
       await setManifestFields(dir, { sourceFiles: null });
       const onDisk = readManifest(dir);
       expect(onDisk).not.toContain("files:");
       expect(onDisk).not.toContain("chapter-01");
+      expect(onDisk).not.toContain("source");
     });
 
     test("passing an empty authors array deletes the authors key", async () => {

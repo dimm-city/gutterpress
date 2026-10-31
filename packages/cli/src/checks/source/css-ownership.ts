@@ -6,8 +6,8 @@
 // (CLAUDE.md §3: stylelint cannot be bundled into the `bun build --compile`
 // binary).
 //
-// Fully opt-in: with no `.gutterpress/css-contract.yaml` (or an explicit
-// `validate.source.cssOwnership` path) present, this check returns zero
+// Fully opt-in: with no `.gutterpress/css-contract.yaml` in the book's folder
+// or a folder above it (up to the repository), this check returns zero
 // results for every project — same discovery pattern as markdownlint.ts /
 // htmlhint.ts. All findings are `severity: "warning"` (never "error"): this
 // is a NEW rule with no track record, and CLAUDE.md's standard for a lint
@@ -223,20 +223,13 @@ const check: Check = {
     "Checks an optional per-project CSS ownership contract (.gutterpress/css-contract.yaml): which file may declare which properties/at-rules, and which selectors must never appear unscoped.",
   category: "source",
   phase: "pre-build",
-  enabledWhen: (config) => config.validate.source.cssOwnership !== false,
   async run(ctx: CheckContext): Promise<CheckResult[]> {
-    if (ctx.config.validate.source.cssOwnership === false) return [];
-
     const files = ctx.cssFiles;
     if (!files || files.length === 0) return [];
 
-    const explicit =
-      typeof ctx.config.validate.source.cssOwnership === "string"
-        ? ctx.config.validate.source.cssOwnership
-        : null;
-    const configPath = findConfigFile(ctx.inputDir, CONFIG_NAMES, explicit);
-    // No contract found, and none explicitly requested: opt-in feature, so
-    // silently report nothing — same convention as markdownlint.ts.
+    // No contract found: opt-in feature, so silently report nothing — same
+    // convention as markdownlint.ts.
+    const configPath = findConfigFile(ctx.inputDir, CONFIG_NAMES);
     if (!configPath) return [];
 
     let contract: CssContract;

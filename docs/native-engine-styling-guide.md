@@ -79,6 +79,15 @@ smaller, more pages, different pagination) appears far from the cause.
   ancestor does not contain an absolutely positioned descendant (only the
   descendant's containing block onward can), and `overflow-y: clip` leaves
   `overflow-x: visible` alone, so horizontal overflow still escapes.
+- **However small.** Justified lines with inline markup end a fraction of a
+  pixel past the column by themselves, and that alone printed whole books at
+  0.99995, laid out a pixel wider than the preview (#470). **[handled]** — the
+  build holds the body's overflow to the page content box, where print
+  already clips, so what the width check lets through (up to 1px) cannot
+  shrink the book; and it reads the scale the PDF actually printed at,
+  warning about any scale below 1 and naming what reaches past the column.
+  It cannot hold it in a book with a page wider than its first — a
+  full-bleed plate after margined pages — and the warning says so.
 - **Auto-width replaced elements (images) trigger it via their INTRINSIC
   width.** An `<img>` with `width: auto` feeds its natural pixel width into
   Chromium's preferred-width computation. `max-width: 100%` does **not** bound
@@ -276,7 +285,7 @@ fixture — but only when the thing being kept-with can actually be placed:
   default; the build names each one's cause. See
   [PDF/X and transparency](publishing.md#pdfx-transparency).
 - To accept a warning you have decided is fine, switch the rule off for the
-  book (`lint.rules` in `manifest.yaml`) or for one line
+  book (`checks` in `manifest.yaml`) or for one line
   (`/* gutterpress-disable-next-line <rule-id> -- reason */`).
 
 ## 9. Full-bleed art without shrinking the book
@@ -367,7 +376,7 @@ spell-check-style source findings; from the CLI they print as warnings.
 
 | Finding | Meaning |
 |---|---|
-| Too wide for the page | Something exceeds the page content box and would shrink the whole book (§2). Hard error unless you pass `allowShrink`. |
+| Too wide for the page | Something exceeds the page content box and would shrink the whole book (§2). Hard error unless you pass `allowShrink`. Also reported, with the scale, whenever the printed PDF came out shrunk at all. |
 | Image has no width set | An auto-width image whose natural size exceeds the page — the shrink risk of §2, as a warning. |
 | Broken link | A cross-reference points at an id that does not exist; its page number would print blank (§7). |
 | Placed off its page | An absolutely positioned element with nothing positioned around it (§3). |
@@ -408,6 +417,25 @@ So every extension beats core, a later extension beats an earlier one, and an
 extension that leaves its CSS unlayered cannot jump ahead of one listed after
 it — the list order is the precedence, by construction. An extension's own
 `@layer`s nest inside its layer and keep their relative order.
+
+`@page` rules are the exception (#454). Chromium ranks `@page` declarations by
+cascade layer before it looks at the page name, so a look's layered
+`@page full { margin: 0 }` lost, on its own pages, to the manifest's unlayered
+`page.margin`. Each extension's `@page` rules (from its sublayers and
+`@media` blocks too, keeping the `@media` condition) are written right after
+its layer, unlayered, in source order, and core's (`@page blank`,
+`@page full-bleed`, `.gp-bleed`'s page) right after core's two layers. The
+book's own `@page` rules follow its sheets the same way, so one you put in a
+layer of your own still beats a look's. Only core's 1in default margin stays
+in `gp.vocab`, so every other margin beats it. They then cascade by page
+selector first — a page name beats `:left`/`:right`, which beat a bare
+`@page` — and by order second: the book's own `@page` rules and the
+manifest's page geometry come later and win at the same selector, and a
+look's named page keeps its own margins. The same goes for a look's `:left`/`:right` margins
+against the book's bare `@page { margin }`: the look's win on those pages,
+in print as in the preview (before, print took the book's and the preview
+the look's). The manifest's `page.margin` is written for both sides and
+overrides them.
 
 Every stylesheet the manifest's `styles:` list names, and anything those
 sheets `@import`, stays UNLAYERED. Per the CSS Cascading and Layers spec,

@@ -66,7 +66,7 @@ interface Harness {
     toastError: Spy<[string]>;
     toastInfo: Spy<[string]>;
     toastShow: Spy<[string, string, { label: string; onClick: () => void } | undefined, number | undefined]>;
-    openFeatures: Spy<[]>;
+    openExtensions: Spy<[]>;
     landingVisible: boolean;
     pageNav: { totalPages: number; currentPage: number };
     zoomView: { restoreSplitRatio: Spy<[number]> };
@@ -109,7 +109,7 @@ function make(): Harness {
   const toastError = spy<[string]>();
   const toastInfo = spy<[string]>();
   const toastShow = spy<[string, string, { label: string; onClick: () => void } | undefined, number | undefined]>();
-  const openFeatures = spy<[]>();
+  const openExtensions = spy<[]>();
   const getDesktopProjectState = spy<[string]>();
 
   const state: Harness["deps"] = {
@@ -135,7 +135,7 @@ function make(): Harness {
     resetExtras,
     toastError,
     toastShow,
-    openFeatures,
+    openExtensions,
     toastInfo,
     landingVisible: false,
     pageNav: { totalPages: 0, currentPage: 1 },
@@ -211,7 +211,7 @@ function make(): Harness {
       show: (msg: string, type: string, duration?: number, action?: { label: string; onClick: () => void }) =>
         toastShow(msg, type, action, duration),
     }),
-    openFeatures: () => openFeatures(),
+    openExtensions: () => openExtensions(),
     clearStaleProjectState: () => clearStaleProjectState(),
     resetExtras: () => resetExtras(),
   };
@@ -956,7 +956,7 @@ test("opening a book that downloaded its pinned extensions says so in one toast"
   expect(deps.toastError.calls).toHaveLength(0);
 });
 
-test("a failed download is a warning toast with an Open Features button, and the book still opens", async () => {
+test("a failed download is a warning toast with an Open Book setup button, and the book still opens", async () => {
   const { ctrl, deps } = make();
   deps.startPreviewResult = {
     previewStarted: true,
@@ -975,9 +975,9 @@ test("a failed download is a warning toast with an Open Features button, and the
   expect(message).toBe("Couldn't download gp-x@1.0.0 (ECONNREFUSED). The book opened without it.");
   expect(type).toBe("warning");
   expect(duration).toBe(0); // stays until dismissed
-  expect(action?.label).toBe("Open Features");
+  expect(action?.label).toBe("Open Book setup");
   action!.onClick();
-  expect(deps.openFeatures.calls).toHaveLength(1);
+  expect(deps.openExtensions.calls).toHaveLength(1);
 });
 
 test("several failed downloads are ONE toast naming them, not a stack of identical advice", async () => {
@@ -1030,7 +1030,7 @@ test("offline with extensions missing is an error toast saying to install them w
   );
   expect(type).toBe("error");
   expect(duration).toBe(0);
-  expect(action?.label).toBe("Open Features");
+  expect(action?.label).toBe("Open Book setup");
 });
 
 test("an ordinary open shows no extension toast", async () => {

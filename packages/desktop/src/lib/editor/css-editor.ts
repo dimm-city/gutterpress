@@ -34,12 +34,13 @@ import type {
  * Which CodeMirror language extension to apply to a document, chosen from the
  * active file's extension.
  */
-export type EditorLanguage = "markdown" | "css" | "plain";
+export type EditorLanguage = "markdown" | "css" | "yaml" | "plain";
 
 /**
  * Pick the editor language from a file path (extension-driven).
  *  - `.css`                 → `"css"`
  *  - `.md` / `.markdown`    → `"markdown"`
+ *  - `.yaml` / `.yml`       → `"yaml"` (the manifest)
  *  - anything else / null   → `"plain"`
  */
 export function languageForPath(path: string | null): EditorLanguage {
@@ -47,6 +48,7 @@ export function languageForPath(path: string | null): EditorLanguage {
   const lower = path.toLowerCase();
   if (lower.endsWith(".css")) return "css";
   if (lower.endsWith(".md") || lower.endsWith(".markdown")) return "markdown";
+  if (lower.endsWith(".yaml") || lower.endsWith(".yml")) return "yaml";
   return "plain";
 }
 
@@ -168,11 +170,8 @@ export const pagedMediaCompletions: readonly PagedMediaCompletion[] = [
   { label: "@right-middle", apply: "@right-middle {\n\tcontent: \"\";\n}", type: "atrule", detail: "Margin box" },
   { label: "@right-bottom", apply: "@right-bottom {\n\tcontent: \"\";\n}", type: "atrule", detail: "Margin box" },
   // ── Page-context properties with value hints ─────────────────────────────
-  { label: "size", apply: "size: A4 portrait;", type: "property", detail: "A4 portrait" },
-  { label: "size", apply: "size: A4 landscape;", type: "property", detail: "A4 landscape" },
-  { label: "size", apply: "size: letter portrait;", type: "property", detail: "letter portrait" },
-  { label: "size", apply: "size: letter landscape;", type: "property", detail: "letter landscape" },
-  { label: "size", apply: "size: 6in 9in;", type: "property", detail: "custom (6in 9in)" },
+  // No `size`: the page size is the manifest's (Book setup > Book), and a
+  // `size` in a stylesheet is ignored and reported by the CSS check.
   { label: "margin", apply: "margin: 20mm;", type: "property", detail: "20mm" },
   { label: "marks", apply: "marks: crop cross;", type: "property", detail: "crop cross" },
   { label: "bleed", apply: "bleed: 3mm;", type: "property", detail: "3mm" },

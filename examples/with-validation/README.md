@@ -4,7 +4,7 @@ Demonstrates Gutterpress's validation system with all four check categories conf
 
 ## What's Included
 
-- `manifest.yaml` — full `validate` section with all options annotated
+- `manifest.yaml` — a `checks` map, annotated
 - `.markdownlint.yaml` — Markdownlint config for source checks
 - `.htmlhintrc` — HTMLHint config for source checks
 - `chapter-01.md` — clean Markdown that should pass all checks
@@ -60,8 +60,8 @@ checks (need `qpdf`) and ink-coverage (needs `gs`) probe for a tool, and warn if
 it's missing:
 
 ```text
-warn  Tool "gs" not found — skipping: pdf.print.ink-coverage
-warn  Tool "qpdf" not found — skipping: pdf.print.pdfx-markers, pdf.print.pdfx-metadata
+warn  Tool "gs" not found; skipping: pdf.print.ink-coverage
+warn  Tool "qpdf" not found; skipping: pdf.print.pdfx-markers, pdf.print.pdfx-metadata
 ```
 
 Checks that don't need the missing tool still run normally.

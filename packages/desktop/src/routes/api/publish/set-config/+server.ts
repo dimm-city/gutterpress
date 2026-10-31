@@ -1,10 +1,15 @@
-import { handlePublishErrors } from '../_hooks';
+import { handlePublishErrors, publishDeps } from '../_hooks';
 import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
- * Write a provider's NON-SECRET settings into the manifest's `publish.<key>`
- * section (empty string values delete the key). Secrets never travel here —
+ * Save a provider's NON-SECRET settings (empty string values clear the key),
+ * each where it belongs. The team decides where the book is published, so the
+ * destinations ticked (`enabled`) and each one's settings go in the manifest's
+ * `publish.<key>` section; only what is one person's own (which saved account
+ * the book publishes with, an output folder outside the book) goes in their
+ * private settings and is moved out of the manifest. The caller does not
+ * choose — see the lib's `savePublishSettings`. Secrets never travel here —
  * they go through publish:connect into the credential store.
  */
 export const POST: RequestHandler = defineRoute<{
@@ -39,11 +44,11 @@ export const POST: RequestHandler = defineRoute<{
           `Unknown publish provider "${body.providerId}". Available: ${known.map((p) => p.id).join(', ')}.`,
         );
       }
-      // Only plain string/number values may reach the manifest writer.
+      // Only plain string/number/boolean values may reach the manifest writer.
       const values: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(body.values)) {
-        if (v === null || typeof v === 'string' || typeof v === 'number') values[k] = v;
+        if (v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') values[k] = v;
       }
-      return lib.setPublishProviderConfig(body.projectDir, provider.id, values);
+      return lib.savePublishSettings(body.projectDir, provider.id, values, (await publishDeps()).selections);
     }),
 });

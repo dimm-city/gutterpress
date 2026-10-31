@@ -26,12 +26,18 @@
   --color-ink-muted:   #4a5568;   /* captions, secondary labels     */
   --color-ink-faint:   #a0aec0;   /* rules, placeholders            */
   --color-accent:      #2b6cb0;   /* headings, links, key accents   */
+  /* @label Highlight color */
   --color-accent-alt:  #c05621;   /* highlights, warnings, CTAs     */
+  /* @label Tip color */
   --color-accent-tip:  #276749;   /* tip accent                     */
   --color-paper:       #ffffff;   /* page background                */
+  /* @label Callout background */
   --color-tint:        #ebf4ff;   /* callout / sidebar fills        */
+  /* @label Warning callout background */
   --color-tint-warn:   #fffbeb;   /* warning callout fill           */
+  /* @label Tip callout background */
   --color-tint-tip:    #f0fff4;   /* tip callout fill               */
+  /* @label Danger callout background */
   --color-tint-danger: #fff5f5;   /* danger callout fill            */
   --color-rule:        #cbd5e0;   /* borders, horizontal rules      */
 
@@ -48,13 +54,19 @@
   --fs-h4:       10.5pt;
   --fs-body:     10.5pt;
   --fs-small:     9pt;
+  /* @label Fine print size */
   --fs-micro:     7.5pt;
 
   /* ── Border shortcuts ───────────────────────────────────────── */
+  /* @label Thin border */
   --border-thin:   1pt solid var(--color-rule);
+  /* @label Accent border */
   --border-accent: 3pt solid var(--color-accent);
+  /* @label Highlight border */
   --border-alt:    3pt solid var(--color-accent-alt);
+  /* @label Tip border */
   --border-tip:    3pt solid var(--color-accent-tip);
+  /* @label Danger border */
   --border-danger: 3pt solid #e53e3e;
   --radius-sm:     2pt;
   --radius-md:     4pt;
@@ -75,7 +87,6 @@
 h1 { string-set: chapter-title content(); }
 
 @page {
-  size: 8.5in 11in;
   margin: 0.875in 0.875in 1in;
   background: #ffffff; /* --color-paper */
 

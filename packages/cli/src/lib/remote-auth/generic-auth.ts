@@ -106,7 +106,7 @@ function connectError(result: Extract<RemoteAccessResult, { ok: false }>, host: 
       return new Error(result.message);
     case "not-found":
       return new Error(
-        "The server answered, but that repository wasn't found. Check the repository address and that the token has access to it.",
+        "The server answered, but that online copy wasn't found. Check its address and that the token has access to it.",
       );
     default:
       return new Error(
@@ -135,6 +135,11 @@ export async function connectGenericHost(
   const host = normalizeForgeHost(input.host);
   if (!host) {
     throw new Error("Enter your Git server's web address (like https://git.example.com).");
+  }
+  // GitHub signs in through its own flow; a pasted token saved under its
+  // address would replace that sign-in.
+  if (host === GITHUB_HOST) {
+    throw new Error("GitHub has its own sign-in. Use Connect GitHub instead of a Git server.");
   }
   const token = input.token?.trim();
   if (!token) {

@@ -1,8 +1,8 @@
 import type { SnapshotEntry } from "#lib/api.ts";
 
 /**
- * Writer-facing view helpers for the "Previous versions" timeline
- * (ProjectActivityView). `SnapshotEntry` has no `kind` field, so the stored
+ * Writer-facing view helpers for the "Version history" timeline
+ * (VersionHistoryView). `SnapshotEntry` has no `kind` field, so the stored
  * `message` string is the ONLY discriminator the renderer has. The machine
  * messages below are produced by the CLI lib and the vcs routes; they are
  * matched as LITERAL strings — never imported — both because the SPA never
@@ -13,40 +13,56 @@ import type { SnapshotEntry } from "#lib/api.ts";
  */
 export type VersionKind = "automatic" | "combined" | "created" | "manual";
 
-/** Backup-style machine messages (collapsible into one row per run). */
+/** Automatic machine messages (collapsible into one row per run). */
 const AUTOMATIC_MESSAGES = new Set<string>([
-  // source-provider AUTO_SNAPSHOT_MESSAGE (host-scheduled saves)
-  "Automatic snapshot",
-  // sync-messages SYNC_SNAPSHOT_MESSAGE (pre-sync backup, 0.10.1+)…
-  "Automatic backup of your work",
-  // …and its pre-0.10.1 spelling
-  "Snapshot before syncing",
-  // sync-messages SYNC_LATE_EDIT_MESSAGE (edit landed mid-sync)
-  "Saved the edit you made while syncing",
-  // source-provider RESTORE_BACKUP_MESSAGE (pre-restore safety copy)
-  "Automatic backup before restoring an earlier version",
+  // Current spellings (docs/ux-design-contract.md, Vocabulary).
+  "Automatic version",
+  "Automatic version before backing up",
+  "Automatic version before restoring",
+  "Saved before switching revision",
+  "Repaired the online copy",
+  "Saved the edit you made while backing up",
   // converge-merge CONVERGE_PREPARE_MESSAGE (pre-combine equalization)
+  "Getting your changes ready to combine with the online copy's changes",
+  // Superseded spellings: existing history keeps them forever.
+  "Automatic snapshot",
+  "Automatic backup of your work",
+  "Snapshot before syncing",
+  "Saved the edit you made while syncing",
+  "Automatic backup before restoring an earlier version",
+  "Saved before switching copy",
+  "Repaired online backup",
   "Getting your changes ready to combine with the online version",
 ]);
+
+/** The delete route saves a version first: "Before deleting chapter-02.md". */
+const BEFORE_DELETING = "Before deleting ";
 
 /** What a sync's merge recorded (converge-merge's commit messages). */
 const COMBINED_MESSAGES = new Set<string>([
   // CONVERGE_MERGE_MESSAGE
-  "Combined your changes with the online version",
+  "Combined your changes with the online copy's",
   // CONVERGE_RESTORE_MESSAGE (kept-both restore)
+  "Kept both takes of the files that can't be combined",
+  // Superseded spellings: existing history keeps them forever.
+  "Combined your changes with the online version",
   "Kept both versions of the files that can't be combined",
 ]);
 
 /** History-start commits (enable-version-history route, project-scaffold). */
 const CREATED_MESSAGES = new Set<string>([
+  "First version",
   "Initial snapshot",
   "Created project",
   "Set up as a gutterpress book",
 ]);
 
+/** The save-a-version route's default notes: a manual save, but never an author's own words. */
+const DEFAULT_NOTES = new Set<string>(["Saved a version", "Saved snapshot"]);
+
 export function versionKind(message: string): VersionKind {
   if (CREATED_MESSAGES.has(message)) return "created";
-  if (AUTOMATIC_MESSAGES.has(message)) return "automatic";
+  if (AUTOMATIC_MESSAGES.has(message) || message.startsWith(BEFORE_DELETING)) return "automatic";
   if (COMBINED_MESSAGES.has(message)) return "combined";
   return "manual";
 }
@@ -57,9 +73,9 @@ export function versionLabel(message: string): string {
     case "automatic":
       return "Automatic version";
     case "combined":
-      return "Combined with the online backup";
+      return "Combined with the online copy";
     case "created":
-      return "Book created";
+      return "First version";
     case "manual":
       return "Version saved by you";
   }
@@ -68,12 +84,12 @@ export function versionLabel(message: string): string {
 /**
  * The author's own note for a manual save (shown as a second line). Machine
  * entries carry only their recorded message, which the label already conveys,
- * so they get no description — and neither does the save-a-version route's
- * "Saved snapshot" placeholder (a manual save, but not an author note).
+ * so they get no description — and neither do the save-a-version route's
+ * default notes (a manual save, but not an author note).
  */
 export function versionDescription(message: string): string | null {
   if (versionKind(message) !== "manual") return null;
-  if (message === "Saved snapshot") return null;
+  if (DEFAULT_NOTES.has(message)) return null;
   return message;
 }
 
@@ -123,17 +139,17 @@ export function groupVersionsByDay<T extends SnapshotEntry>(entries: T[], now: n
 
 // ── Collapsed automatic runs ─────────────────────────────────────────────────
 
-/** One renderable timeline row: a single version, or a run of automatic backups. */
+/** One renderable timeline row: a single version, or a run of automatic versions. */
 export type TimelineRow<T extends SnapshotEntry = SnapshotEntry> =
   | { kind: "entry"; key: string; entry: T }
   | { kind: "auto-run"; key: string; entries: T[] };
 
 /**
- * Fold 2+ consecutive automatic backups into one expandable row, so a
- * sync-heavy writing day reads as one line instead of hundreds. A pure
+ * Fold 2+ consecutive automatic versions into one expandable row, so a
+ * busy writing day reads as one line instead of hundreds. A pure
  * display transform over one day's (newest-first) entries — restore still
  * targets the individual entries inside the run. A run is keyed by its
- * OLDEST entry so its identity survives newer backups prepending.
+ * OLDEST entry so its identity survives newer versions prepending.
  */
 export function collapseAutomaticRuns<T extends SnapshotEntry>(entries: T[]): TimelineRow<T>[] {
   const rows: TimelineRow<T>[] = [];

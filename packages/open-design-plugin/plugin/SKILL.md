@@ -73,13 +73,13 @@ After `</question-form>`, stop. Do not narrate next steps or begin inspection.
 - Do not edit generated `book.html`, `dist/`, preview temp files, or `.od-skills/`.
 - Do not create Open Design-specific CSS, token JSON, manifest fields, or state files.
 - Do not add `source.assets` or `output` to a manifest — both were removed from Gutterpress and now fail the build outright.
-- Do not edit Gutterpress-managed files beneath `plugins/npm/`.
+- Do not edit Gutterpress-managed files beneath `extensions/npm/`.
 - Preserve semantic Markdown and existing Gutterpress layout markers.
 - Prefer the smallest stable change in an existing theme, stylesheet, component, manifest, or authored local plugin.
-- A book's look is an extension listed under `extensions:` (a built-in look is
-  copied into `extensions/<id>/` when it is added). Extensions load in list
-  order and the book's own `styles` always load after every extension. Do not
-  reorder a valid list merely to force one entry first.
+- A book's look is an extension listed under `extensions:` (a bundled look is
+  listed by name; nothing is copied). Extensions load in list order and the
+  book's own `styles` always load after every extension. Do not reorder a
+  valid list merely to force one entry first.
 - Keep any image used in Markdown prose inside the book folder — a `../` or absolute reference is a build error.
 - Change page geometry through the owning CSS `@page` rule. The manifest `page:`
   block records expected trim dimensions for validation; it does not resize the
@@ -99,7 +99,7 @@ After `</question-form>`, stop. Do not narrate next steps or begin inspection.
     2. Find the first existing manifest: `manifest.yaml`.
 3. Stop without writing when no manifest exists at the exact target path.
 4. Read the manifest before scanning or editing project files.
-5. If `source.files` is absent or empty, remember that every **top-level** `.md` file in the book is manuscript content, and that discovery never recurses — a `chapters/` folder only renders when it is listed explicitly. Never add a root `DESIGN.md`, `README.md`, or notes file in that case; put control documents under `design/`.
+5. If `chapters` is absent or empty, remember that every **top-level** `.md` file in the book is manuscript content, and that discovery never recurses — a `chapters/` folder only renders when it is listed explicitly. Never add a root `DESIGN.md`, `README.md`, or notes file in that case; put control documents under `design/`.
 
 ### 2. Inspect the publication contract
 
@@ -119,10 +119,9 @@ inlines it; nothing is staged, flattened, or renamed, so there is no output path
 to reverse-map. An entry such as `../../shared/styles/components.css` is the
 shared foundation itself — editing it changes every book that lists it.
 
-When `styles` is omitted, inspect the first existing file in this order:
-`styles/book.css`, `css/print.css`, `css/index.css`, `css/style.css`,
-`css/main.css`; Gutterpress then falls back to the first discovered CSS file. Do
-not assume a conventional file is active when it does not exist.
+When `styles` is omitted, Gutterpress uses `styles/book.css` if it exists, then
+falls back to the first discovered CSS file. Do not assume a conventional file
+is active when it does not exist.
 
 Each stylesheet's `url()` references resolve relative to **that stylesheet**, so
 a shared theme's fonts and images already travel with it. Fonts are embedded;

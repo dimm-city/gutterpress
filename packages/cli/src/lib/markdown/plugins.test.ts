@@ -9,6 +9,7 @@ import {
   applyPlugins,
   collectPluginCss,
   collectPluginStylePaths,
+  collectPluginStyleGroups,
   __resetPathPluginCacheForTests,
 } from "./plugins";
 import type { ResolvedExtensionConfig } from "../../schema/manifest.types";
@@ -544,7 +545,7 @@ describe("plugin loader", () => {
     test("error message points to the built-in installer, not an external tool", async () => {
       await expect(
         loadPlugin(cfg({ name: "this-package-does-not-exist-xyz", version: "1.0.0" }), TMP_ROOT)
-      ).rejects.toThrow(/gutterpress ext add this-package-does-not-exist-xyz@1\.0\.0.*Book settings > Features > Advanced/);
+      ).rejects.toThrow(/gutterpress ext add this-package-does-not-exist-xyz@1\.0\.0.*add it in Book setup/);
     });
 
     test.each([undefined, "^1.0.0", "latest"])(
@@ -941,6 +942,14 @@ describe("plugin loader", () => {
       expect(loaded).toHaveLength(1);
       expect(loaded[0]!.name).toBe("markdown-it-mark");
       expect(typeof loaded[0]!.plugin).toBe("function");
+    });
+
+    test("resolves a bundled look by name: inlined css, no-op plugin, its own layer", async () => {
+      const loaded = await loadPlugins([cfg({ name: "zine" })], TMP_ROOT);
+      expect(loaded).toHaveLength(1);
+      expect(loaded[0]!.css).toContain(":root");
+      expect(typeof loaded[0]!.plugin).toBe("function");
+      expect(collectPluginStyleGroups(loaded)[0]!.layer).toBe("ext.zine");
     });
 
     test("loads multiple plugins in order", async () => {

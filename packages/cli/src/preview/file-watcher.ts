@@ -67,6 +67,7 @@ async function renderPreviewBook(
   inputPath: string,
   config: {
     title?: string;
+    language?: string;
     styles?: string[];
     extensions?: ResolvedExtensionConfig[];
     print?: PrintPadding;
@@ -97,6 +98,7 @@ async function renderPreviewBook(
   );
   return renderChapters(inputPath, {
     title: config.title ?? "Document",
+    language: config.language,
     print: config.print,
     printArea: config.printArea,
     styles: config.styles,
@@ -162,8 +164,9 @@ export async function generateAndWriteHtml(
   tempDir: string,
   config: {
     title?: string;
+    language?: string;
     styles?: string[];
-    source?: { files?: string[] | null };
+    chapters?: string[] | null;
     extensions?: ResolvedExtensionConfig[];
     print?: PrintPadding;
     page?: { width: number; height: number; bleed?: number; safe?: number; artSafe?: number; gutter?: number };
@@ -188,7 +191,7 @@ export async function generateAndWriteHtml(
     ...config,
     printArea: config.page && { ...config.page, preset: config.preset, spec: config.spec },
   }, {
-    files: config.source?.files ?? null,
+    files: config.chapters ?? null,
     onCssAssets: (copies) => {
       for (const copy of copies) nextAssets.set(copy.to, copy.from);
     },
@@ -249,7 +252,7 @@ export function isDotPathUnderRoot(candidatePath: string, root: string): boolean
  * Path segments inside the project whose subtrees are GENERATED or VENDORED, and
  * so are never publication source (R15): `dist/` is build output — one
  * `gutterpress build` writes a whole book's worth of files there — and
- * `plugins/npm/`, `node_modules/` are managed dependency trees a plugin install
+ * `extensions/npm/` (and `plugins/npm/` in older books), `node_modules/` are managed dependency trees an extension install
  * writes wholesale. Watching them meant a build or an install stormed the
  * debounce and triggered full preview re-renders for output nobody edited.
  *
@@ -261,7 +264,7 @@ function isGeneratedProjectPath(relative: string): boolean {
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
     if (segment === "dist" || segment === "node_modules") return true;
-    if (segment === "plugins" && segments[i + 1] === "npm") return true;
+    if ((segment === "extensions" || segment === "plugins") && segments[i + 1] === "npm") return true;
   }
   return false;
 }

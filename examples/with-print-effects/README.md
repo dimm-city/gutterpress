@@ -14,7 +14,7 @@ back on top as live text. Pages without transparency are not touched.
 ## What's Included
 
 - `manifest.yaml` — the `dtrpg` preset, one stylesheet, `pdfx.transparency: preserve-text`
-  and `validate.assets.allowAlpha: true` (the cutout PNG has an alpha channel)
+  and `checks: { asset.image.alpha-channel: off }` (the cutout PNG has an alpha channel)
 - `effects.md` — five pages:
   1. a soft, blurred `rgba()` box-shadow card over a brick wall
   2. a `clip-path` polygon card whose shape-following shadow is a clipped

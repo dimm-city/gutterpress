@@ -191,8 +191,8 @@ export class PreviewOpenController {
       // render; doing it here first only lets the open show download progress
       // and a toast (the render then finds them present). The exact pinned
       // version only, no prompt (the author chose it when they pinned it). A
-      // failure never blocks the open — the preview degrades, and the Features
-      // tab's "Needs install" row stays the way in.
+      // failure never blocks the open — the preview degrades, and the
+      // entry's row in Book setup › Extensions (Install) stays the way in.
       restored = await this.restoreExtensions(lib, openedDir);
 
       const activePreview = await lib.startPreviewServer({
@@ -274,7 +274,8 @@ export class PreviewOpenController {
     // remote merely lacks a Gutterpress credential (the renderer offers a Connect
     // action), or "local" when there is no usable remote (version history
     // only). Isolated from the initial-sync flow below; canSync projects get
-    // their status from AutoSyncOrchestrator.run and ignore this branch.
+    // their status from AutoSyncOrchestrator.run (which, with automatic
+    // backing up off, reports "unsent"/"synced" itself) and ignore this branch.
     if (lib && source) void this.emitLocalStatusIfUnsynced(lib, openedDir, source);
 
     // Arm the initial sync for a classified project — see

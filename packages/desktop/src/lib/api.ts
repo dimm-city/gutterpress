@@ -63,8 +63,12 @@ export type {
   FileStat,
   SnapshotEntry,
   VersionEntry,
+  OnlineVersionEntry,
+  VersionChanges,
   VersionFileChange,
   CompareRow,
+  Revision,
+  RevisionList,
   RemoteConnection,
   RemoteRepository,
   BackupTarget,
@@ -92,8 +96,11 @@ import type {
   FileStat,
   SnapshotEntry,
   VersionEntry,
-  VersionFileChange,
+  OnlineVersionEntry,
+  VersionChanges,
   CompareRow,
+  Revision,
+  RevisionList,
   RemoteConnection,
   RemoteRepository,
   BackupTarget,
@@ -110,6 +117,7 @@ import type {
   UpdaterStatus,
   PublishProviderCard,
   PublishDestination,
+  PublishDestinationStatus,
   PublishRunResult,
   DesktopPrefs,
   LastFlushFailure,
@@ -127,8 +135,7 @@ export type {
   ExtensionCarries,
   ProjectExtensionEntry,
   ExtensionValidationResult,
-  RecommendedExtension,
-  BuiltInStyleSet,
+  BundledExtensionInfo,
   ExtensionImportResult,
   ExtensionImportWarning,
   NpmExtensionMatch,
@@ -136,6 +143,8 @@ export type {
   ExtensionUpdatesResult,
   ExtensionVersionsResult,
   ProjectStyle,
+  BookCss,
+  TokenUpdate,
   RecoveryEntry,
   ProjectClassification,
   MediaImageEntry,
@@ -155,13 +164,14 @@ import type {
   DiscoveredProject,
   ProjectExtensionEntry,
   ExtensionValidationResult,
-  RecommendedExtension,
-  BuiltInStyleSet,
+  BundledExtensionInfo,
   ExtensionImportResult,
   ExtensionSearchResult,
   ExtensionUpdatesResult,
   ExtensionVersionsResult,
   ProjectStyle,
+  BookCss,
+  TokenUpdate,
   RecoveryEntry,
   ProjectClassification,
   MediaImageEntry,
@@ -191,6 +201,8 @@ export interface TemplateInfo {
   preset?: string;
   /** The `targets:` this template's manifest declares, if any. */
   targets?: string[];
+  /** The `page:` size (points) a `custom`-preset template is designed for, if any. */
+  page?: { width: number; height: number };
 }
 
 /** {@link TemplateInfo} plus what save-as-template did with out-of-book refs. */
@@ -275,7 +287,7 @@ export interface ClassCatalogEntry {
 }
 
 /** Static publish-provider metadata (no project needed) — used by the
- *  Settings → Connections tab to classify + label stored credentials. */
+ *  Accounts page to classify + label stored credentials. */
 export interface PublishProviderStaticInfo {
   id: string;
   label: string;
@@ -297,7 +309,7 @@ export interface PublishProviderStaticInfo {
 export interface ProjectConfigFields {
   title?: string;
   authors?: string[];
-  /** `source.files` — null is the deliberate "all chapter files" sentinel. */
+  /** The manifest's `chapters` — null is the deliberate "all chapter files" sentinel. */
   sourceFiles?: string[] | null;
   /** `targets:` — the publish destinations this book is validated against
    *  (ADR 0008). `[]` is the explicit "no destination policies" opt-out. */
@@ -305,23 +317,13 @@ export interface ProjectConfigFields {
 }
 
 /**
- * A book's page size as recorded (mirrors the lib's `PageSetup`): the manifest's
- * preset + validation bounds, and what the stylesheet's plain `@page` prints at.
- * Sizes are points (72pt = 1in).
+ * A book's page geometry as the lib records it — the manifest's preset +
+ * bounds (the size it prints at and is checked against) and the margins it
+ * prints with, in points — and what the author picks. Type-only imports erase
+ * at build time, so the SPA still never value-imports the lib (§8).
  */
-export interface PageSetup {
-  /** null when the manifest names a preset the app doesn't know. */
-  preset: 'dtrpg' | 'book' | 'custom' | null;
-  bounds: { width: number; height: number; tolerance: number } | null;
-  css: { width: number; height: number; file: string } | null;
-}
-
-/** What the author picks (mirrors the lib's `PageSizeChoice`). */
-export interface PageSizeChoice {
-  preset: 'dtrpg' | 'book' | 'custom';
-  /** Required for `custom`; the other presets own their size. */
-  page?: { width: number; height: number };
-}
+import type { PageMargin, PageSetup, PageSetupChange, PageSizeChoice } from 'gutterpress';
+export type { PageMargin, PageSetup, PageSetupChange, PageSizeChoice };
 
 export interface DirEntry {
   name: string;
@@ -395,8 +397,6 @@ export const api = {
     read: (logPath: string) => post<string | null>('/api/log/read', { logPath }),
     /** List the app's diagnostic log files (newest first). */
     list: () => post<LogFileEntry[]>('/api/log/list', {}),
-    /** Open the logs folder in the OS file manager. */
-    openFolder: () => post<{ ok: boolean }>('/api/log/open-folder', {}),
     /** Delete every log file the list shows. */
     prune: () => post<{ removed: number }>('/api/log/prune', {}),
   },
@@ -608,9 +608,9 @@ export const api = {
    * The ONE extension rail (#265). A look is an extension that carries
    * styles, a feature is one that carries markdown, a component library
    * carries both — every one is a `use` specifier in the manifest's
-   * `extensions:` list, and `list` returns them all in cascade order. The
-   * desktop's Look and Features views are two projections of that list over
-   * this one verb set; `use` is the stable ref every mutating call takes.
+   * `extensions:` list, and `list` returns them all in cascade order. Book
+   * setup's Look and Extensions tabs show that list with this one verb set; `use`
+   * is the stable ref every mutating call takes.
    */
   extension: {
     /** Every configured extension, in manifest (= cascade) order. */
@@ -644,21 +644,19 @@ export const api = {
     /** Load-test every configured extension; reports ok/error per entry. */
     validate: (projectDir: string) =>
       post<ExtensionValidationResult[]>('/api/extension/validate', { projectDir }),
-    /** The bundled markdown features an author can turn on with no install (static). */
-    recommended: () => get<RecommendedExtension[]>('/api/extension/recommended'),
-    /** Search npm for extensions (#246), on demand. A network/parse failure is data (`ok: false`), never a thrown error. */
+    /** The bundled extensions (markdown features and looks) an author can turn on with no install (static). */
+    bundled: () => get<BundledExtensionInfo[]>('/api/extension/bundled'),
+    /** Search npm for extensions (#246), on demand: the Extensions tab's search, never project load. A network/parse failure is data (`ok: false`), never a thrown error. */
     search: (query: string) => post<ExtensionSearchResult>('/api/extension/search', { query }),
-    /** Each pinned npm extension against npm's latest (the newest of any kind with `includePrerelease`), on demand (the Features tab, never project load). A network failure is data (`ok: false`). */
+    /** Each pinned npm extension against npm's latest (the newest of any kind with `includePrerelease`), on demand (the Extensions tab and its Check for updates, never project load). A network failure is data (`ok: false`), never a thrown error. */
     outdated: (projectDir: string, includePrerelease = false) =>
       post<ExtensionUpdatesResult>('/api/extension/outdated', { projectDir, includePrerelease }),
-    /** Every published version of one npm package, newest first, pre-releases included (the version picker's list). On demand; a network failure is data (`ok: false`). */
+    /** Every published version of one npm package, newest first, pre-releases included (the Extensions tab's version picker). On demand; a network failure is data (`ok: false`). */
     versions: (name: string) => post<ExtensionVersionsResult>('/api/extension/versions', { name }),
-    /** The built-in looks (static metadata). */
-    listBuiltIn: () => get<BuiltInStyleSet[]>('/api/extension/built-in'),
-    /** Copy a built-in look into `extensions/<id>/` and add it as `./extensions/<id>`. */
+    /** Make an editable copy of a built-in look: copied into `extensions/<id>/` and listed as `./extensions/<id>`, in the built-in's place when the book lists it. */
     addBuiltIn: (projectDir: string, id: string) =>
       post<ProjectExtensionEntry>('/api/extension/add-built-in', { projectDir, id }),
-    /** A configured extension's stylesheets, concatenated, for a sample thumbnail (entries with a folder only). */
+    /** A configured extension's stylesheets, concatenated (a bundled look's inlined css, or the entry's folder) — for a sample thumbnail. */
     readCss: (projectDir: string, use: string) =>
       post<string>('/api/extension/read-css', { projectDir, use }),
     /** Native picker for a `.zip` package or bare `.css`, imported into `extensions/<id>/` (#106). Null when cancelled. */
@@ -694,18 +692,32 @@ export const api = {
   },
 
   pageSize: {
-    /** Read the book's page size back from its manifest and stylesheet. */
+    /** Read the book's page geometry back from its manifest (margins it does not set: from its stylesheets). */
     read: (projectDir: string) =>
       post<PageSetup>('/api/page-size/read', { projectDir }),
-    /** Change it: manifest preset + bounds and the stylesheet's `@page` size, together. */
-    set: (projectDir: string, choice: PageSizeChoice) =>
-      post<PageSetup>('/api/page-size/set', { projectDir, choice }),
+    /** Change it in the manifest: the size, the margins, or both; a part left out stays as recorded. */
+    set: (projectDir: string, change: PageSetupChange) =>
+      post<PageSetup>('/api/page-size/set', { projectDir, change }),
   },
 
   style: {
     /** Replace the manifest's active `styles:` list (reorder + toggle). */
     setActive: (projectDir: string, paths: string[]) =>
       post<string[]>('/api/style/set-active', { projectDir, paths }),
+    /**
+     * The book's stylesheet as the build assembles it, as ordered chunks
+     * tagged with their origin (core, an extension's file or `css` export, a
+     * book sheet), each with its root-level `:root` custom properties, read
+     * host-side with postcss (#454).
+     */
+    bookCss: (projectDir: string) => post<BookCss>('/api/style/book-css', { projectDir }),
+    /**
+     * Write token edits with a postcss edit of the book's own stylesheets: in
+     * place where one declares the token, else into `file`'s `:root` (an
+     * absolute path, one of the book's sheets); null takes it out of every sheet.
+     */
+    editTokens: (projectDir: string, file: string, updates: TokenUpdate[]) =>
+      post<{ written: string[] }>('/api/style/edit-tokens', { projectDir, file, updates }),
   },
 
   // The /api/status route (a plain health-check GET) has no client wrapper.
@@ -752,15 +764,18 @@ export const api = {
       post<ProjectClassification>('/api/vcs/enable-version-history', { projectDir }),
     listSnapshotsPage: (projectDir: string, options?: { limit?: number; before?: string }) =>
       post<{ entries: VersionEntry[]; hasMore: boolean }>('/api/vcs/list-snapshots-page', { projectDir, ...options }),
-    /** Versions online that this computer has not got, each with its changed files (#408). */
+    /** Versions online that this computer has not got, each with the files it changed (#408, #484). */
     onlineVersions: (projectDir: string) =>
-      post<{ entries: VersionEntry[]; reason?: 'no-remote' | 'auth' | 'offline' }>('/api/vcs/online-versions', { projectDir }),
+      post<{ entries: OnlineVersionEntry[]; reason?: 'no-remote' | 'auth' | 'offline' }>('/api/vcs/online-versions', { projectDir }),
+    /** The files one version changed, each with a plain hint; `more` beyond the ones listed (#408). */
+    versionChanges: (projectDir: string, id: string) =>
+      post<VersionChanges>('/api/vcs/version-changes', { projectDir, id }),
     /** One text file at a version beside the file as it is now, as aligned rows (#408). */
     compareFile: (projectDir: string, id: string, path: string) =>
       post<{ binary: true } | { binary: false; rows: CompareRow[] }>('/api/vcs/compare-file', { projectDir, id, path }),
-    /** Render a version read-only beside the live preview; the URL for the second frame (#408). */
+    /** Render a version read-only; the URL for its frame, or null when a later open or close replaced it first (#408). */
     openVersionPreview: (projectDir: string, id: string) =>
-      post<{ url: string }>('/api/vcs/open-version-preview', { projectDir, id }),
+      post<{ url: string } | null>('/api/vcs/open-version-preview', { projectDir, id }),
     closeVersionPreview: () => post<{ closed: true }>('/api/vcs/close-version-preview', {}),
     restoreSnapshot: (projectDir: string, id: string) =>
       post<{ restoredId: string; backupId?: string }>('/api/vcs/restore-snapshot', { projectDir, id }),
@@ -771,13 +786,23 @@ export const api = {
       post<{ changedFiles: number | null; stale: boolean }>('/api/vcs/unversioned-changes', { projectDir }),
     saveSnapshot: (projectDir: string, message?: string) =>
       post<SnapshotEntry>('/api/vcs/save-snapshot', { projectDir, message }),
-    /** The project's local copies (git branches) and which one is open;
-     *  `null` when the source has nothing to switch between (#273). */
-    listBranches: (projectDir: string) =>
-      post<{ current: string | null; branches: string[]; remoteOnly: string[] } | null>('/api/vcs/list-branches', { projectDir }),
-    /** Switch the project's working tree to another local copy (#273). */
+    /** Switch the project's working tree to another revision (#273). */
     switchBranch: (projectDir: string, branch: string) =>
       post<{ current: string; changedFiles: string[] }>('/api/vcs/switch-branch', { projectDir, branch }),
+    /** The book's revisions and where each is kept (#448); `null` without version history.
+     *  `refresh` checks the online copy first (best-effort; see `checkedOnline`). */
+    listRevisions: (projectDir: string, options?: { refresh?: boolean }) =>
+      post<RevisionList | null>('/api/vcs/list-revisions', { projectDir, ...options }),
+    /** Start a new revision from what is open now and switch to it (#448). */
+    createRevision: (projectDir: string, name: string) =>
+      post<{ current: string }>('/api/vcs/create-revision', { projectDir, name }),
+    /** Rename a revision; an online one is renamed in the online copy too (#448). */
+    renameRevision: (projectDir: string, from: string, to: string) =>
+      post<{ current: string | null; name: string }>('/api/vcs/rename-revision', { projectDir, from, to }),
+    /** Delete a revision that is not open (#448). Without `discard`, a revision holding versions
+     *  found nowhere else is not deleted: the result says how many would be lost. */
+    deleteRevision: (projectDir: string, name: string, options?: { everywhere?: boolean; discard?: boolean }) =>
+      post<{ deleted: true } | { deleted: false; versionsOnlyHere: number }>('/api/vcs/delete-revision', { projectDir, name, ...options }),
   },
 
   remote: {
@@ -816,15 +841,6 @@ export const api = {
     diagnoseProjectRemote: (projectDir: string) =>
       post<ProjectRemoteDiagnosis>('/api/remote/diagnose-project', { projectDir }),
 
-    /** Fetch every remote branch so the copy picker sees copies made elsewhere
-     *  (#273). Best-effort: `refreshed: false` with the `reason` when the check
-     *  could not run, so the picker can say the list may be incomplete. */
-    refreshCopies: (projectDir: string) =>
-      post<{ refreshed: boolean; reason?: 'no-remote' | 'auth' | 'offline' }>(
-        '/api/remote/refresh-copies',
-        { projectDir },
-      ),
-
     /** Explicit, user-initiated remote probe (the git ls-remote equivalent). */
     testRemoteAccess: (url: string) =>
       post<RemoteAccessResult>('/api/remote/test-remote-access', { url }),
@@ -851,14 +867,14 @@ export const api = {
     forgeTokenUrl: (host: string) =>
       post<string | null>('/api/remote/forge-token-url', { host }),
 
-    /** Snapshot-first sync of the project to its online repository. */
+    /** Sync / Back up now: get the latest from the online copy, then back up. */
     syncChanges: (projectDir: string, message?: string) =>
       post<SyncOutcome>('/api/remote/sync', {
         projectDir,
         ...(message ? { message } : {}),
       }),
 
-    /** "Get latest": fetch and merge the online changes; never pushes. */
+    /** "Get latest": the same pass with `push: false`: fetch and merge the online changes; never sends. */
     getLatest: (projectDir: string) =>
       post<SyncOutcome>('/api/remote/sync', { projectDir, push: false }),
 
@@ -867,7 +883,7 @@ export const api = {
       post<{ available: boolean; reason?: 'no-remote' | 'auth' | 'offline' }>('/api/remote/check-updates', { projectDir }),
 
     /**
-     * "Repair online backup": replace the book's broken history with a fresh
+     * "Repair the online copy": replace the book's broken history with a fresh
      * download of the online copy, keep every file on this computer, restore
      * files that exist only online, then save a version and back up. The old
      * history is kept aside, never deleted.
@@ -917,14 +933,17 @@ export const api = {
      * Store + verify an API key for a provider. The token travels once, to the
      * host; the response is redacted and the key never comes back. An optional
      * `account` label stores a NAMED credential (a user can keep several per
-     * provider); empty stores the default.
+     * provider); empty stores the default. `projectDir` is null with no book
+     * (the Accounts page): the check then reads no manifest settings, so
+     * Shopify's check takes its store address as `shop` (not stored).
      */
-    connect: (projectDir: string, providerId: string, token: string, account?: string) =>
+    connect: (projectDir: string | null, providerId: string, token: string, account?: string, shop?: string) =>
       post<{ connected: boolean; providerId: string }>('/api/publish/connect', {
-        projectDir,
+        ...(projectDir ? { projectDir } : {}),
         providerId,
         token,
         ...(account ? { account } : {}),
+        ...(shop ? { shop } : {}),
       }),
 
     /** Forget a stored key for a provider (the default, or a named `account`). */
@@ -934,8 +953,13 @@ export const api = {
         ...(account ? { account } : {}),
       }),
 
-    /** Write NON-SECRET provider settings into the manifest's publish section. */
-    setConfig: (projectDir: string, providerId: string, values: Record<string, string>) =>
+    /**
+     * Save NON-SECRET provider settings. The host files each where it belongs:
+     * the team's (destinations ticked as `enabled: true`, targets, folders) in
+     * the manifest's publish section, only the person's own (their account, a
+     * folder outside the book) in their private settings. An empty string clears.
+     */
+    setConfig: (projectDir: string, providerId: string, values: Record<string, string | boolean>) =>
       post<Record<string, Record<string, unknown>>>('/api/publish/set-config', {
         projectDir,
         providerId,
@@ -974,5 +998,10 @@ export const api = {
     /** Create a new destination (gdrive: a Drive folder at My Drive root). */
     createDestination: (projectDir: string, providerId: string, name: string) =>
       post<PublishDestination>('/api/publish/destinations/create', { projectDir, providerId, name }),
+
+    /** Where this person publishes among the destinations, and whether they
+     *  must choose one (#452, gdrive: the book's folder or their own). */
+    destinationStatus: (projectDir: string, providerId: string) =>
+      post<PublishDestinationStatus>('/api/publish/destinations/status', { projectDir, providerId }),
   },
 };

@@ -19,6 +19,12 @@ import {
   type GitServer,
 } from "./test-support/git-http-server";
 
+test("connect refuses github.com: its sign-in must not be replaced by a pasted token", async () => {
+  for (const host of ["github.com", "https://www.GitHub.com/owner/repo"]) {
+    await expect(connectGenericHost({ host, token: "tok" })).rejects.toThrow(/GitHub has its own sign-in/);
+  }
+});
+
 test("connect validates against the repo URL and returns a token credential", async () => {
   const repoDir = await tempDir("gutterpress-generic-ok-");
   let server: GitServer | null = null;

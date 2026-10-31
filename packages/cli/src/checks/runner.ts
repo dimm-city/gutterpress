@@ -12,7 +12,6 @@ import { selectChecks } from "./policy";
 // (and its eager unpdf import) via the pdf check modules.
 import { retainPdfCache } from "../lib/pdf-inspect";
 import type { ResolvedConfig } from "../schema/manifest.types";
-import { ruleLevel } from "../lib/lint-rules";
 
 export interface RunnerOptions {
   category?: CheckCategory[];
@@ -38,25 +37,19 @@ export interface RunnerReport {
   };
 }
 
+/** The severity the config reports every finding of a check at, if it sets one. */
 function getCheckSeverityOverride(
   checkId: string,
   config: ResolvedConfig
 ): CheckSeverity | undefined {
-  const entry = config.validate.checks[checkId];
-  if (typeof entry === "object" && entry.severity) return entry.severity;
-  return undefined;
+  const level = config.checks[checkId];
+  return level === "off" || level === "on" ? undefined : level;
 }
 
 export async function runChecks(
   ctx: CheckContext,
   opts: RunnerOptions = {}
 ): Promise<RunnerReport> {
-  // Whole-suite disable wins first (unchanged): a disabled suite reports an
-  // empty green and never surfaces selector errors.
-  if (ctx.config.validate.enabled === false) {
-    return emptyReport();
-  }
-
   // Resolve only/skip selectors + drop manifest-disabled checks via the shared
   // selector (the same sequence tool probing uses, so the two can't drift).
   // Mistyped selectors surface as errors below rather than silently resolving
@@ -96,22 +89,16 @@ export async function runChecks(
   try {
     for (const check of checks) {
       try {
-        let results = await check.run(ctx);
+        const results = await check.run(ctx);
 
-        // Apply severity overrides from config
+        // The level `checks:` (or the preset or target) sets for this id
+        // (printsafe/* rule levels are applied inside checkCss, which owns
+        // those ids).
         const severityOverride = getCheckSeverityOverride(check.id, ctx.config);
         if (severityOverride) {
           for (const r of results) {
             r.severity = severityOverride;
           }
-        }
-
-        // `lint.rules` addressed to this check's id (printsafe/* rules are
-        // applied inside checkCss, which owns those ids).
-        const lintLevel = ruleLevel(ctx.config.lint.rules, check.id);
-        if (lintLevel === "off") results = [];
-        else if (lintLevel) {
-          for (const r of results) r.severity = lintLevel === "warn" ? "warning" : "error";
         }
 
         if (results.length === 0) {
@@ -148,16 +135,5 @@ export async function runChecks(
       infos: infos.length,
       passed: passed.length,
     },
-  };
-}
-
-function emptyReport(): RunnerReport {
-  return {
-    results: [],
-    errors: [],
-    warnings: [],
-    infos: [],
-    passed: [],
-    summary: { total: 0, errors: 0, warnings: 0, infos: 0, passed: 0 },
   };
 }

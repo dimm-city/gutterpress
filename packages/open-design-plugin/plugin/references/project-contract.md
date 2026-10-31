@@ -18,48 +18,41 @@ the manifest does not exist there, stop without writing anything.
 ## Manuscript selection
 
 ```yaml
-source:
-  files:
-    - chapters/01-introduction.md
-    - chapters/02-rules.md
+chapters:
+  - chapters/01-introduction.md
+  - chapters/02-rules.md
 ```
 
 - **Explicit** — the listed files render, in that order. Any location works,
   including subdirectories.
-- **Implicit** (`source.files` absent or empty) — every `.md` file **directly
+- **Implicit** (`chapters` absent or empty) — every `.md` file **directly
   inside** the book folder renders, alphabetically. Discovery never recurses, so
   a `chapters/` folder is invisible unless it is listed.
 
+A book written for Gutterpress 0.11.22 or earlier spells the list
+`source: { files: [...] }`; treat it exactly like `chapters`.
+
 The hazard to check before writing any Markdown at a book root: under implicit
 discovery a root `DESIGN.md`, `README.md`, or `NOTES.md` **is a chapter**. Put
-control documents under `design/`, above the book, or make `source.files`
+control documents under `design/`, above the book, or make `chapters`
 explicit first. Never create a root-level control document in a book that uses
 implicit discovery.
 
 ## Stylesheets
 
-`styles:` is the explicit contract. When it is omitted, Gutterpress picks the first
-of these that exists:
-
-```text
-styles/book.css
-css/print.css
-css/index.css
-css/style.css
-css/main.css
-```
-
-then the first `.css` it discovers (project root, `styles/`, `css/`,
-alphabetically), then nothing at all. The same resolver
+`styles:` is the explicit contract. When it is omitted, Gutterpress uses
+`styles/book.css` if it exists, then the first `.css` it discovers (project
+root, `styles/`, `css/`, alphabetically), then nothing at all. The same resolver
 serves the renderer, the linter, and the desktop CSS editor, so what is edited
 is always what is rendered.
 
 ## Page geometry
 
-CSS `@page` is the real page geometry — it is what the engine lays out and what
-Chromium prints. The manifest's `page:` block (`width`, `height`, `tolerance`)
-states the **expected** trim size for validation; changing it does not resize
-anything. To change the page, change `@page` in the stylesheet that owns it.
+The manifest owns the page geometry: `preset:` and the `page:` block (`width`,
+`height`, `margin`, in points). The build writes them as the `@page` size and
+margins after every stylesheet, so a stylesheet's own `@page` size never wins.
+Without `page.margin`, the stylesheets' `@page` margins apply. To change the
+page, change the manifest, not a stylesheet.
 
 ## Removed manifest fields
 

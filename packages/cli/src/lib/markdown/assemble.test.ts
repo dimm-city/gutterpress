@@ -3,6 +3,7 @@ import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type MarkdownIt from "markdown-it";
+import postcss from "postcss";
 
 import { assembleBookHtml } from "./assemble";
 import { inlineStyles } from "../asset-inline";
@@ -94,6 +95,65 @@ test("chapter metadata preserves plugins that wrap md.render", async () => {
   expect(html).toMatch(/<h1[^>]*data-chapter-src="chapter.md"/);
 });
 
+test("footnotes in two files get their own ids, and each reference links to its own file's note", async () => {
+  const files: Record<string, string> = {
+    "chapters/01.md": "# One\n\nFirst.[^a]\n\n[^a]: Note one.\n",
+    "chapters/02.md": "# Two\n\nSecond.[^b]\n\n[^b]: Note two.\n",
+  };
+  const html = await assembleBookHtml({
+    files: Object.keys(files),
+    readText: (rel) => Promise.resolve(files[rel]!),
+  });
+  // Each file renders on its own and numbers its notes from 1, so the ids
+  // carry the file: never `fn1` twice in one book.
+  expect(html.match(/<li id="fn[^"]*"/g)).toEqual([
+    '<li id="fn-chapters-01-md-1"',
+    '<li id="fn-chapters-02-md-1"',
+  ]);
+  expect(html).toContain('<a href="#fn-chapters-01-md-1" id="fnref-chapters-01-md-1">');
+  expect(html).toContain('<a href="#fn-chapters-02-md-1" id="fnref-chapters-02-md-1">');
+  expect(html).toContain('<a href="#fnref-chapters-01-md-1" class="footnote-backref">');
+  expect(html).toContain('<a href="#fnref-chapters-02-md-1" class="footnote-backref">');
+  // No id is used twice, and every in-book link lands on one.
+  const ids = [...html.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]);
+  expect(new Set(ids).size).toBe(ids.length);
+  for (const [, href] of html.matchAll(/ href="#([^"]+)"/g)) expect(ids).toContain(href);
+});
+
+test("a single file's footnote links still resolve", async () => {
+  const html = await assembleBookHtml({
+    files: ["paper.md"],
+    readText: () => Promise.resolve("Text.[^1]\n\n[^1]: The note.\n"),
+  });
+  expect(html).toContain('<li id="fn-paper-md-1"');
+  expect(html).toContain('<a href="#fn-paper-md-1" id="fnref-paper-md-1">');
+  expect(html).toContain('<a href="#fnref-paper-md-1" class="footnote-backref">');
+});
+
+test("a link written to a footnote in 0.11.22 (#fn1, #fnref1) still lands on that note (#483)", async () => {
+  const files: Record<string, string> = {
+    "a.md": "# One\n\nText[^1], [see the note](#fn1), <a href='#fnref1'>back</a>, [none](#fn9).\n\n[^1]: Note.\n",
+    "b.md": "# Two\n\nMore[^1] and [note 1](#fn1).\n\n[^1]: Other.\n",
+  };
+  const html = await assembleBookHtml({ files: Object.keys(files), readText: (rel) => Promise.resolve(files[rel]!) });
+  // `#fn1` named the first note numbered 1 in reading order in 0.11.22 (the
+  // first element with that id), so it goes there, from either file.
+  expect(html).toContain('<a href="#fn-a-md-1" data-gp-source-token="[see the note](#fn1)"');
+  expect(html).toContain("<a href='#fnref-a-md-1'>back</a>");
+  expect(html).toContain('<a href="#fn-a-md-1" data-gp-source-token="[note 1](#fn1)"');
+  // A number no note has dangles as it did; the notes' own links are untouched.
+  expect(html).toContain('href="#fn9"');
+  expect(html).toContain('<a href="#fn-b-md-1" id="fnref-b-md-1">');
+  expect(html).toContain('<a href="#fnref-b-md-1" class="footnote-backref">');
+  // A book with an element of that id of its own keeps its link.
+  const own = await assembleBookHtml({
+    files: ["c.md"],
+    readText: () => Promise.resolve('<p id="fn1">Mine</p>\n\nText[^1] [mine](#fn1)\n\n[^1]: Note.\n'),
+  });
+  expect(own).toContain('data-gp-source-token="[mine](#fn1)"');
+  expect(own).toMatch(/<a href="#fn1" data-gp-source-token="\[mine\]\(#fn1\)"/);
+});
+
 test("assembleBookHtml throws on empty file list", async () => {
   await expect(
     assembleBookHtml({ files: [], readText: () => Promise.resolve("") }),
@@ -108,6 +168,12 @@ test("assembleBookHtml writes the print padding on <html> for the viewer", async
   expect(short).toContain('<html lang="en" data-gp-signature="4" data-gp-last-page="short-by-one">');
   const plain = await assembleBookHtml({ files: ["a.md"], readText, print: { signature: 1, reserveLastPage: false } });
   expect(plain).toContain('<html lang="en">');
+});
+
+test("assembleBookHtml prints the book's language: <html lang> and its quotation marks", async () => {
+  const html = await assembleBookHtml({ files: ["a.md"], readText: () => Promise.resolve('Er sagt "ja".\n'), language: "de" });
+  expect(html).toContain('<html lang="de">');
+  expect(html).toContain("Er sagt „ja“.");
 });
 
 test("assembleBookHtml writes the project's print area into <head>, in every book it assembles", async () => {
@@ -126,15 +192,17 @@ test("assembleBookHtml writes the project's print area into <head>, in every boo
   expect(await assembleBookHtml({ files: ["a.md"], readText })).not.toContain("gp-print-area");
 });
 
-// ── #415: the manifest's page size is what prints unless a stylesheet sets its own ──
+// ── The manifest's page geometry is what prints: written after every stylesheet ──
 //
 // `page.width` x `page.height` is what every check and the preview's overlays
-// judge against; Chromium prints the stylesheet's plain `@page { size }`. The
-// assembly supplies the manifest's as plain CSS when no extension or book CSS
-// sets one — before them, so an author's own `size` still wins by the cascade.
+// judge against, and the assembly writes it as the plain `@page { size }` AFTER
+// the extension and book CSS, so it wins the cascade: a look's or an author's
+// `size` is overridden (#415 wrote it before them, as a default, and a
+// stylesheet's size won). `page.margin`, when the manifest sets it, is written
+// the same way, for both page sides.
 
 const DTRPG = { width: 621, height: 810, bleed: 9, safe: 36, artSafe: 18, preset: "dtrpg" };
-const DEFAULT_RULE = "@page { size: 8.625in 11.25in; }";
+const SIZE_RULE = "@page { size: 8.625in 11.25in; }";
 const readA = () => Promise.resolve("# A\n");
 
 /** The one `<style data-project-css>` block of an assembled book. */
@@ -142,69 +210,155 @@ function projectStyle(html: string): string {
   return html.slice(html.indexOf("<style data-project-css>"), html.indexOf("</style>"));
 }
 
-test("a stylesheet with @page margins and no size prints at the manifest's page size: the rule is written before the project CSS", async () => {
+test("the manifest's page size is written after the project CSS, unlayered, once", async () => {
   const html = await assembleBookHtml({
     files: ["a.md"],
     readText: readA,
-    projectCss: "@page { margin: 1in }",
+    projectCss: "@page { margin: 2in }",
     printArea: DTRPG,
   });
   const css = projectStyle(html);
-  expect(css).toContain(DEFAULT_RULE);
+  expect(css).toContain(`/* page geometry (manifest) */\n${SIZE_RULE}`);
   expect(css.match(/@page \{ size: /g)).toHaveLength(1);
-  // Ahead of the author's sheet, so a `size` added there later wins the cascade.
-  expect(css.indexOf(DEFAULT_RULE)).toBeLessThan(css.indexOf("/* project css */"));
-  expect(css.indexOf(DEFAULT_RULE)).toBeLessThan(css.indexOf("@page { margin: 1in }"));
-  // Unlayered: after the core layers' blocks, not inside one.
-  expect(css.indexOf(DEFAULT_RULE)).toBeGreaterThan(css.indexOf("@layer gp.vocab {"));
-  expect(css).toContain(`/* page size (manifest) */\n${DEFAULT_RULE}`);
-  // The viewer and the compiler read the base page with this same reader: it
-  // now sees the manifest's size, not Chromium's Letter fallback.
-  expect(resolvePage(extract(css)).geometry).toMatchObject({ width: 621, height: 810 });
+  expect(css.indexOf(SIZE_RULE)).toBeGreaterThan(css.indexOf("/* project css */"));
+  expect(css.indexOf(SIZE_RULE)).toBeGreaterThan(css.indexOf("@page { margin: 2in }"));
+  // The viewer and the compiler read the base page with this same reader; the
+  // book's own margin stands (the default margin rule sits ahead of it).
+  expect(resolvePage(extract(css)).geometry).toMatchObject({ width: 621, height: 810, margin: { top: 144, left: 144 } });
 
   // A book with no stylesheet at all prints at the manifest's size too.
-  expect(projectStyle(await assembleBookHtml({ files: ["a.md"], readText: readA, printArea: DTRPG }))).toContain(DEFAULT_RULE);
+  expect(projectStyle(await assembleBookHtml({ files: ["a.md"], readText: readA, printArea: DTRPG }))).toContain(SIZE_RULE);
 });
 
-test("a stylesheet that sets its own plain @page size keeps it: nothing is added", async () => {
+test("with no margin anywhere the 1in default is written in the core layer ahead of every stylesheet, and not once the manifest has margins", async () => {
+  const DEFAULT_RULE = "/* page margins (default) */\n@layer gp.vocab {\n@page { margin: 1in; }\n}";
+  const css = projectStyle(
+    await assembleBookHtml({ files: ["a.md"], readText: readA, pluginCss: "@layer ext.look;\n@layer ext.look {\nbody { color: red }\n}", projectCss: "p { margin: 0 }", printArea: DTRPG }),
+  );
+  expect(css).toContain(DEFAULT_RULE);
+  expect(css.indexOf(DEFAULT_RULE)).toBeGreaterThan(css.indexOf("@layer gp.vocab {"));
+  expect(css.indexOf(DEFAULT_RULE)).toBeLessThan(css.indexOf("/* extension css */"));
+  // What Chromium prints with and what the engine's reader assumes agree.
+  expect(resolvePage(extract(css)).geometry.margin).toEqual({ top: 72, right: 72, bottom: 72, left: 72 });
+  // A look's margin wins over the default: later in the reader's order, and
+  // for Chromium outside core's layer, which is declared first (renderChapters
+  // writes a look's `@page` rules unlayered; one in a later layer, as here,
+  // wins too).
+  const look = projectStyle(
+    await assembleBookHtml({ files: ["a.md"], readText: readA, pluginCss: "@layer ext.look;\n@layer ext.look {\n@page { margin: 0.5in }\n}", printArea: DTRPG }),
+  );
+  expect(look).toContain(DEFAULT_RULE);
+  expect(resolvePage(extract(look)).geometry.margin).toEqual({ top: 36, right: 36, bottom: 36, left: 36 });
+  // The manifest's margins replace the default: written last, not first.
+  const own = projectStyle(
+    await assembleBookHtml({ files: ["a.md"], readText: readA, printArea: { ...DTRPG, margin: { top: 54, bottom: 54, inside: 54, outside: 54 } } }),
+  );
+  expect(own).not.toContain("page margins (default)");
+  expect(own).toContain("@page { size: 8.625in 11.25in; margin: 0.75in 0.75in 0.75in 0.75in; }");
+});
+
+test("core's @page rules follow its layers, unlayered and ahead of every extension; its element rules and the 1in default stay layered (#454)", async () => {
+  const css = projectStyle(
+    await assembleBookHtml({ files: ["a.md"], readText: readA, pluginCss: "@layer ext.look;\n@layer ext.look {\nbody { color: red }\n}", printArea: DTRPG }),
+  );
+  const root = postcss.parse(css.slice(css.indexOf("\n")));
+  const layersAround = (node: postcss.Node): string[] => {
+    const names: string[] = [];
+    for (let p = node.parent; p instanceof postcss.AtRule; p = p.parent) if (p.name === "layer") names.unshift(p.params);
+    return names;
+  };
+  const pages: Array<[string, string[]]> = [];
+  root.walkAtRules("page", (rule) => {
+    pages.push([rule.params, layersAround(rule)]);
+  });
+  // In source order: `@page blank`, `@page full-bleed` and `.gp-bleed`'s page,
+  // unlayered; the 1in default, still in core's layer and so below every
+  // unlayered rule; the manifest's size, last.
+  expect(pages).toEqual([
+    ["gp-page-blank", []],
+    ["gp-page-full-bleed", []],
+    ["gp-full-bleed", []],
+    ["", ["gp.vocab"]],
+    ["", []],
+  ]);
+  // Each block's after its layer; all of them before the extensions.
+  expect(css.indexOf("@page gp-page-full-bleed")).toBeGreaterThan(css.indexOf("@layer gp.marker {"));
+  expect(css.indexOf("@page gp-full-bleed")).toBeGreaterThan(css.indexOf("@layer gp.vocab {"));
+  expect(css.indexOf("@page gp-full-bleed")).toBeLessThan(css.indexOf("/* extension css */"));
+  // Element rules stay in their layers.
+  const layersOf = (selector: string): string[][] => {
+    const found: string[][] = [];
+    root.walkRules((r) => {
+      if (r.selector === selector) found.push(layersAround(r));
+    });
+    return found;
+  };
+  expect(layersOf(".page.gp-page-full-bleed")).toEqual([["gp.marker"]]);
+  expect(layersOf(".page.gp-page-blank")).toEqual([["gp.marker"]]);
+  expect(layersOf(".gp-bleed")).toEqual([["gp.vocab"]]);
+});
+
+test("a size in the book's or a look's own plain @page is overridden by the manifest's", async () => {
   for (const projectCss of [
     "@page { size: 6in 9in; margin: 1in }",
     "@media print { @page { size: 6in 9in } }",
     "@page { margin: 1in }\n@page { size: 6in 9in }",
   ]) {
     const css = projectStyle(await assembleBookHtml({ files: ["a.md"], readText: readA, projectCss, printArea: DTRPG }));
-    expect(css, projectCss).not.toContain("page size (manifest)");
-    expect(css, projectCss).not.toContain("621pt");
-    expect(resolvePage(extract(css)).geometry).toMatchObject({ width: 432, height: 648 });
+    expect(css, projectCss).toContain(SIZE_RULE);
+    expect(resolvePage(extract(css)).geometry, projectCss).toMatchObject({ width: 621, height: 810 });
   }
-});
-
-test("a look's plain @page size, inside its extension layer, counts: nothing is added", async () => {
   const pluginCss = "@layer ext.look;\n\n/* look */\n@layer ext.look {\n@page { size: 6in 9in; margin: 1in }\n}";
   const css = projectStyle(
     await assembleBookHtml({ files: ["a.md"], readText: readA, pluginCss, projectCss: "@page { margin: 0.75in }", printArea: DTRPG }),
   );
-  expect(css).not.toContain("page size (manifest)");
-  expect(css).not.toContain("621pt");
+  expect(resolvePage(extract(css)).geometry).toMatchObject({ width: 621, height: 810, margin: { top: 54 } });
 });
 
-test("a named or pseudo page's size is not the book's geometry: the default is still written", async () => {
+test("a named page's size is its own; the book's geometry is still the manifest's", async () => {
   const css = projectStyle(
     await assembleBookHtml({
       files: ["a.md"],
       readText: readA,
-      projectCss: "@page cover { size: 7in 10in }\n@page :first { size: 7in 10in }\n@page { margin: 1in }",
+      projectCss: "@page cover { size: 7in 10in }\n@page { margin: 1in }",
       printArea: DTRPG,
     }),
   );
-  expect(css).toContain(DEFAULT_RULE);
-  expect(css.indexOf(DEFAULT_RULE)).toBeLessThan(css.indexOf("@page cover"));
   expect(resolvePage(extract(css)).geometry).toMatchObject({ width: 621, height: 810 });
   expect(resolvePage(extract(css), { name: "cover" }).geometry).toMatchObject({ width: 504, height: 720 });
 });
 
-test("without a print area there is no size to supply: nothing is added", async () => {
+test("the manifest's margins are written for both page sides and beat a look's mirrored @page margins", async () => {
+  const printArea = { width: 432, height: 648, margin: { top: 61.2, bottom: 61.2, inside: 64.8, outside: 50.4 } };
+  const pluginCss =
+    "@layer ext.look;\n@layer ext.look {\n@page :left { margin: 0.5in 1in 0.5in 1in }\n@page :right { margin: 0.5in 1in 0.5in 1in }\n}";
+  const css = projectStyle(
+    await assembleBookHtml({ files: ["a.md"], readText: readA, pluginCss, projectCss: "@page { margin: 2in }", printArea }),
+  );
+  expect(css).toContain(
+    "/* page geometry (manifest) */\n" +
+      "@page { size: 6in 9in; margin: 0.85in 0.7in 0.85in 0.9in; }\n" +
+      "@page :left { margin: 0.85in 0.9in 0.85in 0.7in; }\n" +
+      "@page :right { margin: 0.85in 0.7in 0.85in 0.9in; }",
+  );
+  const model = extract(css);
+  const marginOf = (pseudo: string) =>
+    Object.fromEntries(
+      Object.entries(resolvePage(model, { pseudos: [pseudo] }).geometry.margin).map(([k, v]) => [k, Math.round(v * 1000) / 1000]),
+    );
+  // A right-hand page: the inside (binding) margin is its left.
+  expect(marginOf("right")).toEqual({ top: 61.2, right: 50.4, bottom: 61.2, left: 64.8 });
+  expect(marginOf("left")).toEqual({ top: 61.2, right: 64.8, bottom: 61.2, left: 50.4 });
+  // Without `margin` in the manifest, the stylesheets' margins stand.
+  const own = projectStyle(
+    await assembleBookHtml({ files: ["a.md"], readText: readA, projectCss: "@page { margin: 2in }", printArea: { width: 432, height: 648 } }),
+  );
+  expect(own).not.toContain("@page :left");
+  expect(resolvePage(extract(own)).geometry.margin).toEqual({ top: 144, right: 144, bottom: 144, left: 144 });
+});
+
+test("without a print area there is no geometry to supply: nothing is added", async () => {
   const html = await assembleBookHtml({ files: ["a.md"], readText: readA, projectCss: "@page { margin: 1in }" });
-  expect(html).not.toContain("page size (manifest)");
+  expect(html).not.toContain("page geometry (manifest)");
   expect(html).not.toContain("@page { size:");
 });

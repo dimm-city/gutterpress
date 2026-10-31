@@ -1,0 +1,18 @@
+title: "Assistive MathML Width"
+authors:
+  - "Gutterpress Fixture"
+
+preset: book
+
+styles:
+  - styles/style.css
+
+chapters:
+  - 01-edge.md
+
+extensions:
+  - gutterpress-math
+
+page:
+  width: 612   # 8.5in
+  height: 792  # 11in

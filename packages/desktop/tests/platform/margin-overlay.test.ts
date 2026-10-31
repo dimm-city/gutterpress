@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createSettingsStore, DEFAULT_SETTINGS, mergeSettings, type DeepPartialSettings } from "../../electron/settings-store";
 import {
+  MARGIN_OVERLAY_STRENGTHS,
   OVERLAY_LAYERS,
   overlayLayersFrom,
   overlayStyleFrom,
@@ -313,14 +314,28 @@ describe("the toolbar tooltip", () => {
 });
 
 describe("wiring", () => {
-  test("Settings > Preview has the strength and one colour per layer", () => {
+  test("Settings > Preview has the strength and one colour per layer (#481)", () => {
     const settingsView = read("src/lib/components/SettingsView.svelte");
-    expect(settingsView).toContain("marginOverlayStrength");
-    expect(settingsView).toContain("overlayColors");
-    expect(settingsView).toContain("OVERLAY_LAYERS");
-    expect(settingsView).toContain('type="color"');
+    const preview = settingsView.slice(settingsView.indexOf('aria-labelledby="settings-preview"'), settingsView.indexOf('aria-labelledby="settings-editor"'));
+    expect(preview).toContain("{#each MARGIN_OVERLAY_STRENGTHS as o (o.value)}");
+    expect(preview).toContain("settings.set({ preview: { marginOverlayStrength: o.value } })");
+    expect(preview).toContain("checked={overlayStyle.strength === o.value}");
+    expect(preview).toContain("{#each OVERLAY_LAYERS as layer (layer.id)}");
+    expect(preview).toContain('type="color"');
+    expect(preview).toContain("value={overlayStyle.colors[layer.id]}");
+    expect(preview).toContain("settings.set({ preview: { overlayColors: { ...overlayStyle.colors, [layer.id]: e.currentTarget.value } } })");
+    expect(preview).toContain("{layer.label} overlay colour");
     // the one colour from before the layers is no longer a control
     expect(settingsView).not.toContain("marginOverlayColor");
+  });
+
+  test("the strengths Settings offers are the three the viewer draws, in order", () => {
+    expect(MARGIN_OVERLAY_STRENGTHS.map((o) => [o.value, o.label])).toEqual([
+      ["subtle", "Subtle"],
+      ["normal", "Normal"],
+      ["strong", "Strong"],
+    ]);
+    for (const o of MARGIN_OVERLAY_STRENGTHS) expect(overlayStyleFrom(undefined, o.value).strength).toBe(o.value);
   });
 
   const toolbar = read("src/lib/components/PreviewToolbar.svelte");

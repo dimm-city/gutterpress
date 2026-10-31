@@ -1,5 +1,6 @@
 /**
- * POST /api/extension/versions and /api/extension/outdated (pre-release aware).
+ * POST /api/extension/versions and /api/extension/outdated (pre-release aware):
+ * the Extensions tab's version picker and update check.
  *
  * `versions` feeds each npm row's version picker: every published version of
  * ONE package, newest first, pre-releases included (the SPA filters them by the

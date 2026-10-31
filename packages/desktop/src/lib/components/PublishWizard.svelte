@@ -13,13 +13,20 @@
    * publish with no online destination is exactly a plain export, and an
    * online publish never depends on a stale build.
    *
-   * Opens in the shared AppView layer like Book settings; form controls and
+   * Opens in the shared AppView layer like Book setup; form controls and
    * the `.app-btn-*` buttons follow the rest of the app.
    *
    * No backend of its own: it drives PublishSectionController
-   * (api.publish.*). Credentials stay in the host store (safeStorage) and are
-   * reused across projects; the wizard surfaces connection status and lets the
-   * author connect/change a key inline.
+   * (api.publish.*). Accounts are managed on the Accounts page; the wizard
+   * lists the provider's saved accounts, lets the author pick one for this
+   * book, and adds or replaces one in place with the Accounts page's own form
+   * (PublishKeyForm). The team decides where the book is published, so the
+   * destinations ticked and each one's settings are saved in the book's
+   * manifest, and a teammate who opens the book finds them ready: they only
+   * connect their own account. Which account they use, a folder outside the
+   * book, and a Drive folder of their own when the book's is out of their
+   * reach (#452) are theirs: the host keeps those in private settings on this
+   * computer.
    *
    * PWA-clean + $effect-free (CLAUDE.md §8): host work goes through the injected
    * controller; the parent mounts this fresh via {#if} so load runs in onMount;
@@ -27,6 +34,8 @@
    */
   import Icon from "#lib/components/Icon.svelte";
   import AppView from "#lib/components/AppView.svelte";
+  import PublishKeyForm from "#lib/components/PublishKeyForm.svelte";
+  import { replaceHint } from "#lib/accounts.ts";
   import { onMount } from "svelte";
   import { requestInlineConfirm, cancelInlineConfirm, type InlineConfirmState } from "#lib/dialog.ts";
   import { friendlyPublishError } from "#lib/errors.ts";
@@ -41,7 +50,7 @@
   import type { ProblemEntry } from "#lib/platform/dtos.ts";
   import type { PublishProviderCard } from "#lib/platform/contract.ts";
   import type { PublishSectionController } from "#lib/routes/publish-section-controller.svelte.ts";
-  import { joinPath } from "#lib/platform/paths.ts";
+  import { isPathAtOrUnder, joinPath } from "#lib/platform/paths.ts";
 
   /** The lib's "A folder on this computer" provider id. */
   const LOCAL = "local";
@@ -56,6 +65,7 @@
     triggerEl,
     onClose,
     onNavigate,
+    onManageAccounts,
   }: {
     controller: PublishSectionController;
     projectDir: string;
@@ -71,6 +81,8 @@
      *  parent closes this modal wizard and delegates to the shared
      *  Problems-panel navigation (`openProblem`). */
     onNavigate?: (entry: ProblemEntry) => void;
+    /** Open the Accounts page (over this one) to see, replace or remove an account. */
+    onManageAccounts?: () => void;
   } = $props();
 
   // 0 = format; 1 = choose; 2..N+1 = setup step for selectedCards[i-2];
@@ -87,28 +99,29 @@
   // only after an explicit inline confirmation.
   let publishAnyway = $state(false);
   let overrideConfirm = $state<InlineConfirmState>({});
-  // Per-provider: is the "add another account" connect form open?
-  let addingAccount = $state<Record<string, boolean>>({});
+  // Per-provider: which account form is open — adding another account, or
+  // replacing the key (or sign-in) of the selected one. PublishKeyForm is the
+  // Accounts page's own form.
+  let accountForm = $state<Record<string, "add" | "edit" | undefined>>({});
   // Per-provider: is the inline "New folder…" name form open (#221)?
   let addingFolder = $state<Record<string, boolean>>({});
   const ADD = "__add_account__";
+  const NONE = "__no_account__";
   const NEW_FOLDER = "__new_folder__";
   function showAddForm(card: PublishProviderCard): boolean {
-    return addingAccount[card.id] === true || card.savedAccounts.length === 0;
+    return accountForm[card.id] === "add" || card.savedAccounts.length === 0;
   }
   function onAccountSelect(card: PublishProviderCard, value: string) {
-    if (value === ADD) {
-      addingAccount = { ...addingAccount, [card.id]: true };
-    } else {
-      addingAccount = { ...addingAccount, [card.id]: false };
-      void controller.selectCredential(card.id, value);
-    }
+    accountForm = { ...accountForm, [card.id]: value === ADD ? "add" : undefined };
+    if (value !== ADD) void controller.selectCredential(card.id, value);
   }
-  async function doConnect(card: PublishProviderCard) {
-    await controller.connectPublish(card.id);
-    // Collapse the add form only on success (keep it open, with the error, so
-    // the author can fix the key).
-    if (!controller.publishError) addingAccount = { ...addingAccount, [card.id]: false };
+  /** The form saved an account: this book uses it. */
+  async function accountSaved(card: PublishProviderCard, account: string) {
+    accountForm = { ...accountForm, [card.id]: undefined };
+    await controller.selectCredential(card.id, account);
+  }
+  function closeAccountForm(card: PublishProviderCard) {
+    accountForm = { ...accountForm, [card.id]: undefined };
   }
 
   function onDestinationSelect(card: PublishProviderCard, value: string) {
@@ -121,6 +134,13 @@
     if (destination) void controller.selectDestination(card.id, destination);
   }
 
+  /** Folders that share a name are told apart by their place in the list
+   *  (most recently changed first), so a person can choose among them (#452). */
+  function folderLabel(dests: { id: string; title: string }[], i: number): string {
+    const same = dests.filter((d) => d.title === dests[i]!.title);
+    return same.length > 1 ? `${dests[i]!.title} (${same.indexOf(dests[i]!) + 1})` : dests[i]!.title;
+  }
+
   async function doCreateDestination(card: PublishProviderCard) {
     await controller.createNewDestination(card.id);
     // Collapse the inline form only on success (keep it open, with the
@@ -130,7 +150,7 @@
 
   const cards = $derived(controller.publishCards);
   const localCard = $derived(cards.find((c) => c.id === LOCAL) ?? null);
-  /** Destinations that can take the chosen format (the local folder takes both). */
+  /** Destinations that can take the chosen format (the local folder takes both). One that can't is hidden, not unticked: it stays the team's choice. */
   const visibleCards = $derived(
     cards.filter((c) => c.id === LOCAL || c.format === format || (c.formats ?? []).includes(format)),
   );
@@ -141,6 +161,8 @@
     const dir = (localCard?.config.dir ?? "").trim() || LOCAL_DEFAULT_DIR;
     return /^(\/|[A-Za-z]:[\\/]|\\\\)/.test(dir) ? dir : joinPath(projectDir, dir);
   });
+  /** A folder outside the book is the author's own: kept on this computer, not in the book. */
+  const localOutside = $derived(!isPathAtOrUnder(localDir, projectDir));
   const totalSteps = $derived(selectedCards.length + 4);
   // Publish is the strict last index; preflight sits one before it.
   const stepKind = $derived(
@@ -188,19 +210,11 @@
   onMount(() => {
     stepIndex = 0;
     selected = new Set([LOCAL]);
-    void controller.loadPublish();
+    // The destinations the team ticked for this book (saved in its manifest).
+    void controller.loadPublish().then(() => {
+      selected = new Set([LOCAL, ...controller.tickedDestinations]);
+    });
   });
-
-  /** Changing the format drops any selected destination that can't take it. */
-  function setFormat(next: "pdf" | "html") {
-    format = next;
-    selected = new Set(
-      [...selected].filter((id) => {
-        const card = cards.find((c) => c.id === id);
-        return id === LOCAL || !card || card.format === next || (card.formats ?? []).includes(next);
-      }),
-    );
-  }
 
   async function chooseLocalFolder() {
     const picked = await pickFolder(localDir);
@@ -232,7 +246,12 @@
       void controller.selectFormat(card.id, format);
     }
   }
-  function next() {
+  async function next() {
+    // Leaving Choose saves the ticks in the manifest; stay here if that fails.
+    if (stepKind === "choose") {
+      const shown = visibleCards.filter((c) => c.id !== LOCAL);
+      if (!(await controller.saveDestinations(Object.fromEntries(shown.map((c) => [c.id, selected.has(c.id)]))))) return;
+    }
     enterStep(Math.min(stepIndex + 1, totalSteps - 1), "forward");
   }
   function back() {
@@ -319,7 +338,7 @@
       <ul class="dest-list">
         <li>
           <label class="dest" class:selected={format === "pdf"}>
-            <input type="radio" name="pw-format" value="pdf" checked={format === "pdf"} onchange={() => setFormat("pdf")} />
+            <input type="radio" name="pw-format" value="pdf" checked={format === "pdf"} onchange={() => (format = "pdf")} />
             <span class="dest-main">
               <span class="dest-name">PDF</span>
               <span class="dest-desc">Print-ready PDF using your book's page settings. (Ctrl+Shift+E saves one directly.)</span>
@@ -328,7 +347,7 @@
         </li>
         <li>
           <label class="dest" class:selected={format === "html"}>
-            <input type="radio" name="pw-format" value="html" checked={format === "html"} onchange={() => setFormat("html")} />
+            <input type="radio" name="pw-format" value="html" checked={format === "html"} onchange={() => (format = "html")} />
             <span class="dest-main">
               <span class="dest-name">Website</span>
               <span class="dest-desc">A folder with a standalone book.html you can share or host anywhere.</span>
@@ -346,7 +365,7 @@
         </label>
       {/if}
     {:else if stepKind === "choose"}
-      <p class="lead">Your {format === "pdf" ? "PDF" : "website"} is saved to a folder on this computer first. Pick any other places to send it; each one gets its own quick setup step.</p>
+      <p class="lead">Your {format === "pdf" ? "PDF" : "website"} is saved to a folder on this computer first. Pick any other places to send it; each one gets its own quick setup step. Your choice is saved with the book, so everyone who has it sees the same places.</p>
       {#if cards.length === 0}
         <p class="muted">Loading destinations…</p>
       {:else}
@@ -389,7 +408,11 @@
         </div>
       </div>
       <p class="field-hint">
-        Inside your book by default (<code>{LOCAL_DEFAULT_DIR}</code>). A folder outside the book is confirmed in a dialog each time you publish.
+        {#if localOutside}
+          This folder is outside your book, so it is your own choice: it is saved on this computer only, not in the book. You confirm it in a dialog each time you publish. Choose a folder inside the book to go back to the book's own.
+        {:else}
+          Inside your book (<code>{LOCAL_DEFAULT_DIR}</code> by default), so everyone who has the book saves to the same folder. A folder outside the book is yours alone: saved on this computer only, and confirmed in a dialog each time you publish.
+        {/if}
       </p>
     {:else if stepKind === "setup" && currentCard}
       {@const card = currentCard}
@@ -397,7 +420,10 @@
       {#if card.kind === "plugin"}
         <p class="lead">Set up <strong>{card.label}</strong>: {card.description}</p>
       {:else}
-        <p class="lead">Set up <strong>{card.label}</strong>. Saved connections are reused automatically — you only enter a key once.</p>
+        <p class="lead">
+          Set up <strong>{card.label}</strong>. Your accounts are saved on this computer and used by every book, so you only connect once.
+          {#if card.credentialRequired && !card.connected}To publish here, connect your own account; the book's settings are shared with your team.{/if}
+        </p>
       {/if}
 
       {#if card.fields.length > 0}
@@ -422,127 +448,121 @@
             <span>Account</span>
             <select
               id={`pw-${card.id}-account`}
-              value={showAddForm(card) ? ADD : card.selectedAccount}
+              value={showAddForm(card) ? ADD : card.connected ? card.selectedAccount : NONE}
               onchange={(e) => onAccountSelect(card, e.currentTarget.value)}
               disabled={busy}
             >
+              {#if !card.connected}<option value={NONE} disabled>Choose an account…</option>{/if}
               {#each card.savedAccounts as acc (acc.account)}
                 <option value={acc.account}>{acc.account ? acc.label : "Default account"}</option>
               {/each}
               <option value={ADD}>Add another account…</option>
             </select>
           </label>
+          <span class="field-hint">
+            The account this book uses is saved on this computer only, so it never changes anyone else's copy of the book.
+            {#if onManageAccounts}<button class="link" onclick={onManageAccounts}>Manage accounts</button>{/if}
+          </span>
         {/if}
 
-        {#if showAddForm(card)}
-          <!-- Connect a new (named or default) account. -->
-          {#if card.hint}<span class="field-hint">{card.hint}</span>{/if}
-          {#if card.savedAccounts.length > 0}
-            <label class="field" for={`pw-${card.id}-accname`}>
-              <span>Name this account <em class="optional">(optional — e.g. "Studio")</em></span>
-              <input
-                id={`pw-${card.id}-accname`}
-                type="text"
-                placeholder="Leave blank for your default"
-                value={controller.publishAccountDrafts[card.id] ?? ""}
-                oninput={(e) => controller.setPublishAccountDraft(card.id, e.currentTarget.value)}
-              />
-            </label>
-          {/if}
-          {#if card.connectKind === "oauth"}
-            <!-- No key to paste — an interactive browser consent flow instead
-                 (#221 D10). controller.googleAuthUrls[card.id] is set for the
-                 whole attempt (busy === true throughout), so its presence is
-                 what distinguishes "waiting for the browser" from "not yet
-                 started". -->
-            {@const authUrl = controller.googleAuthUrls[card.id]}
-            {#if busy && authUrl}
-              <p class="oauth-waiting">
-                <Icon name="refresh-cw" size={13} />
-                Waiting for your browser — choose your Google account and click Allow.
-              </p>
-              <div class="key-row">
-                <button class="link" onclick={() => controller.reopenGoogleAuthUrl(card.id)}>
-                  Open the sign-in page again <Icon name="external-link" size={12} />
-                </button>
-                <button class="app-btn app-btn-ghost" onclick={() => controller.cancelGoogleOAuth(card.id)}>Cancel</button>
-              </div>
-            {:else}
-              <button
-                class="app-btn app-btn-primary self-start"
-                onclick={() => controller.connectGoogleOAuth(card.id)}
-                disabled={busy}
-              >
-                Connect Google Drive
-              </button>
-            {/if}
+        {#key card.id}
+          {#if showAddForm(card)}
+            <!-- Add an account with the Accounts page's own form; this book then uses it. -->
+            <PublishKeyForm
+              provider={card}
+              askAccount={card.savedAccounts.length > 0}
+              saved={card.savedAccounts.map((a) => ({ provider: card, account: a.account, label: a.label }))}
+              store={draftValue(card, "shop")}
+              takeFocus={accountForm[card.id] === "add"}
+              onConnected={(account) => accountSaved(card, account)}
+              onCancel={card.savedAccounts.length > 0 ? () => closeAccountForm(card) : undefined}
+            />
+          {:else if accountForm[card.id] === "edit"}
+            <PublishKeyForm
+              provider={card}
+              account={card.selectedAccount}
+              hint={replaceHint(card)}
+              store={draftValue(card, "shop")}
+              submitLabel="Save"
+              takeFocus
+              onConnected={(account) => accountSaved(card, account)}
+              onCancel={() => closeAccountForm(card)}
+            />
+          {:else if !card.connected}
+            <p class="warn"><Icon name="triangle-alert" size={13} /> Pick one of your accounts above, or add another, to publish here.</p>
           {:else}
-            <label class="field" for={`pw-${card.id}-key`}>
-              <span>API key</span>
-              <div class="key-row">
-                <input
-                  id={`pw-${card.id}-key`}
-                  type="password"
-                  placeholder="Paste API key"
-                  value={controller.publishTokenDrafts[card.id] ?? ""}
-                  oninput={(e) => controller.setPublishTokenDraft(card.id, e.currentTarget.value)}
-                  onkeydown={(e) => { if (e.key === "Enter") doConnect(card); }}
-                />
-                <button class="app-btn app-btn-primary" onclick={() => doConnect(card)} disabled={busy}>Connect</button>
-              </div>
-              {#if card.tokenUrl}
-                <button class="link" onclick={() => controller.openPublishUrl(card.tokenUrl!)}>Create an API key <Icon name="external-link" size={12} /></button>
+            {@const savedLabel = card.savedAccounts.find((a) => a.account === card.selectedAccount)?.label}
+            <div class="conn-ok">
+              <span>
+                <Icon name="circle-check" size={14} />
+                {#if card.connectKind === "oauth" && savedLabel}Connected — {savedLabel}.{:else}Connected — reusing your saved key.{/if}
+              </span>
+              <button class="app-btn app-btn-ghost" onclick={() => (accountForm = { ...accountForm, [card.id]: "edit" })} disabled={busy}>
+                {card.connectKind === "oauth" ? "Sign in again…" : "Replace key…"}
+              </button>
+            </div>
+            {#if card.destinations}
+              {@const destBusy = controller.destinationsBusyId[card.id] === true}
+              {@const dests = controller.publishDestinations[card.id] ?? []}
+              {@const prompt = controller.destinationPrompt(card.id)}
+              {@const pending = controller.pendingDestination[card.id]}
+              {@const destState = controller.publishDestinationStatus[card.id]?.state}
+              {#if prompt.message}
+                <p class={destState === "unreachable" ? "warn" : "field-hint"}>
+                  {#if destState === "unreachable"}<Icon name="triangle-alert" size={13} />{/if}
+                  {prompt.message}
+                </p>
               {/if}
-            </label>
-          {/if}
-        {:else if card.connected}
-          {@const savedLabel = card.savedAccounts.find((a) => a.account === card.selectedAccount)?.label}
-          <div class="conn-ok">
-            <span>
-              <Icon name="circle-check" size={14} />
-              {#if card.connectKind === "oauth" && savedLabel}Connected — {savedLabel}.{:else}Connected — reusing your saved key.{/if}
-            </span>
-            <button class="app-btn app-btn-ghost" onclick={() => controller.disconnectPublish(card.id, card.selectedAccount || undefined)} disabled={busy}>Remove this key</button>
-          </div>
-          {#if card.destinations}
-            {@const destBusy = controller.destinationsBusyId[card.id] === true}
-            {@const dests = controller.publishDestinations[card.id] ?? []}
-            {@const currentFolderId = card.config.folderId ?? ""}
-            <label class="field" for={`pw-${card.id}-folder`}>
-              <span>{card.destinations.label}</span>
-              <select
-                id={`pw-${card.id}-folder`}
-                value={addingFolder[card.id] ? NEW_FOLDER : currentFolderId}
-                onchange={(e) => onDestinationSelect(card, e.currentTarget.value)}
-                disabled={destBusy || busy}
-              >
-                <option value="">{destBusy ? "Loading folders…" : "Choose a folder…"}</option>
-                {#each dests as d (d.id)}
-                  <option value={d.id}>{d.title}</option>
-                {/each}
-                {#if card.destinations.canCreate}
-                  <option value={NEW_FOLDER}>New folder…</option>
-                {/if}
-              </select>
-            </label>
-            {#if addingFolder[card.id]}
-              <div class="key-row">
-                <input
-                  type="text"
-                  placeholder="Folder name"
-                  value={controller.newDestinationDrafts[card.id] ?? ""}
-                  oninput={(e) => controller.setNewDestinationDraft(card.id, e.currentTarget.value)}
-                  onkeydown={(e) => { if (e.key === "Enter") doCreateDestination(card); }}
-                />
-                <button class="app-btn app-btn-primary" onclick={() => doCreateDestination(card)} disabled={busy}>Create</button>
-              </div>
+              <label class="field" for={`pw-${card.id}-folder`}>
+                <span>{card.destinations.label}</span>
+                <select
+                  id={`pw-${card.id}-folder`}
+                  value={addingFolder[card.id] ? NEW_FOLDER : (pending?.id ?? prompt.selected)}
+                  onchange={(e) => onDestinationSelect(card, e.currentTarget.value)}
+                  disabled={destBusy || busy}
+                >
+                  <option value="">{destBusy ? "Loading folders…" : "Choose a folder…"}</option>
+                  {#each dests as d, i (d.id)}
+                    <option value={d.id}>{folderLabel(dests, i)}</option>
+                  {/each}
+                  {#if card.destinations.canCreate}
+                    <option value={NEW_FOLDER}>New folder…</option>
+                  {/if}
+                </select>
+              </label>
+              {#if addingFolder[card.id]}
+                <div class="key-row">
+                  <input
+                    type="text"
+                    placeholder="Folder name"
+                    value={controller.newDestinationDrafts[card.id] ?? ""}
+                    oninput={(e) => controller.setNewDestinationDraft(card.id, e.currentTarget.value)}
+                    onkeydown={(e) => { if (e.key === "Enter") doCreateDestination(card); }}
+                  />
+                  <button class="app-btn app-btn-primary" onclick={() => doCreateDestination(card)} disabled={busy}>Create</button>
+                </div>
+              {/if}
+              {#if pending}
+                <!-- Changing the book's folder is the team's destination (#452 case 7): say so before saving. -->
+                <p class="warn" role="alert"><Icon name="triangle-alert" size={13} /> This changes the folder for everyone who publishes this book.</p>
+                <div class="key-row">
+                  <button class="app-btn app-btn-primary" onclick={() => controller.confirmBookDestination(card.id)} disabled={busy}>Change it for everyone</button>
+                  <button class="app-btn app-btn-ghost" onclick={() => controller.cancelBookDestination(card.id)}>Cancel</button>
+                </div>
+              {/if}
+              {#if prompt.canUseBook || prompt.canChooseOwn}
+                <div class="key-row">
+                  {#if prompt.canUseBook}<button class="link" onclick={() => controller.useBookDestination(card.id)} disabled={busy}>Use the book's folder</button>{/if}
+                  {#if prompt.canChooseOwn}<button class="link" onclick={() => controller.chooseOwnDestination(card.id)} disabled={busy}>Use a different folder just for me</button>{/if}
+                </div>
+              {/if}
+              {#if controller.destinationsError[card.id]}<p class="error">{controller.destinationsError[card.id]}</p>{/if}
+              {#if destState === "unset" || destState === "by-name"}
+                <p class="field-hint">Or type a folder name directly in the {card.destinations.label.toLowerCase()} field above — it's created at your Drive's root the first time you publish.</p>
+              {/if}
             {/if}
-            {#if controller.destinationsError[card.id]}<p class="error">{controller.destinationsError[card.id]}</p>{/if}
-            <p class="field-hint">Or type a folder name directly in the {card.destinations.label.toLowerCase()} field above — it's created at your Drive's root the first time you publish.</p>
           {/if}
-        {:else}
-          <p class="warn"><Icon name="triangle-alert" size={13} /> This account {card.connectKind === "oauth" ? "isn't connected yet — connect it" : "'s key isn't saved yet — add it"}, or pick another account.</p>
-        {/if}
+        {/key}
       {:else if card.kind === "plugin"}
         <p class="muted">
           An experimental add-on from your book's extensions. It handles its own sign-in; its settings live in your
@@ -780,28 +800,17 @@
      higher-specificity label rule competes — no !important needed. */
   .field-hint { font-weight: 400; color: var(--app-text-muted); font-size: 11px; }
   .field input {
-    background: var(--app-surface-sunken);
-    border: 1px solid var(--app-border);
-    color: var(--app-text-secondary);
     padding: 8px 10px;
-    border-radius: 6px;
     font-size: 14px;
     width: 100%;
     box-sizing: border-box;
   }
-  .field input:focus { outline: none; border-color: var(--app-focus-ring); }
   .field select {
-    background: var(--app-surface-sunken);
-    border: 1px solid var(--app-border);
-    color: var(--app-text-secondary);
     padding: 8px 10px;
-    border-radius: 6px;
     font-size: 14px;
     width: 100%;
     box-sizing: border-box;
   }
-  .field select:focus { outline: none; border-color: var(--app-focus-ring); }
-  .optional { font-style: italic; color: var(--app-text-muted); font-weight: 400; }
   .key-row { display: flex; gap: 8px; }
   .key-row input { flex: 1; min-width: 0; }
   .self-start { align-self: flex-start; }
@@ -827,8 +836,6 @@
 
   .conn-ok { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--app-success-text); }
   .conn-ok span { display: inline-flex; align-items: center; gap: 6px; }
-
-  .oauth-waiting { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--app-text-secondary); }
 
   .pub-row { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }
   .pub-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

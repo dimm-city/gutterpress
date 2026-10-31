@@ -63,15 +63,15 @@ export function isSshRemoteUrl(url: string): boolean {
  * Exported for the wording guard in test-access.test.ts.
  */
 export const FAILURE_MESSAGES: Record<RemoteAccessFailureReason, string> = {
-  auth: "The Git server didn't accept the saved connection. Reconnect to this server with a current access token and try again.",
+  auth: "The Git server didn't accept the saved sign-in. Sign in to this server again with a current access token and try again.",
   "not-found":
-    "The server answered, but no repository was found at that address. It may have been moved, renamed, or you may no longer have access.",
+    "The server answered, but no online copy was found at that address. It may have been moved, renamed, or you may no longer have access.",
   unreachable:
     "Couldn't reach the Git server. Check your internet connection (and VPN, if this is a private server), then try again.",
   "ssh-unsupported":
-    "This book's online address uses SSH (git@…), which gutterpress can't check or sync with. Everything on this computer still works — sync with your usual Git tool.",
+    "This book's online copy uses an SSH address (git@…), which Gutterpress can't check or back up to. Everything on this computer still works — back up with your usual Git tool.",
   "insecure-transport":
-    "This address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Switch the address to a secure one (starting with https), or to a local loopback address for a server on this computer, to use a saved connection.",
+    "This address isn't secure, so the saved sign-in wasn't sent — sign-ins are never sent over an insecure address. Switch the address to a secure one (starting with https), or to a local loopback address for a server on this computer, to use a saved sign-in.",
   tls: "The server's security certificate couldn't be verified. If this is a private server with its own certificate, ask its administrator about trusting it (NODE_EXTRA_CA_CERTS).",
   unknown:
     "The connection test failed unexpectedly. The server may not be a Git server, or it may be temporarily unavailable.",

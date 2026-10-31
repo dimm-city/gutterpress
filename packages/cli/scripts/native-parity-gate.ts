@@ -68,6 +68,12 @@
  *       when print kept the line — the viewer's pushed chain has its
  *       `avoid`/`orphans`/`widows` rules neutralised and is relaid out so
  *       the projection reads the viewer's GEOMETRY, not its break choice.
+ *       A replaced element on the knife edge (a display formula, an image)
+ *       has no text run, so when both sides' last text line on a page is the
+ *       same, the element after it is measured as the "line" instead: its
+ *       box, margin-top plus border-box height. Print side: what the PDF
+ *       draws below that line (`paintedBoxes`), carried to the box by the
+ *       viewer's own ink-to-box offset. Viewer side: client rects.
  *       See `measureExactFitBoundary` / `EXACT_FIT_BROWSER_JS`.
  *
  * A Tier 1/2 book (no `predicted` map — nothing was instrumented for target-
@@ -108,7 +114,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { getDocumentProxy } from "unpdf";
-import type { PDFDocumentProxy } from "unpdf/pdfjs";
+import { OPS } from "unpdf/pdfjs";
+import type { PDFDocumentProxy, PDFPageProxy } from "unpdf/pdfjs";
 import { launchChromium, type Browser, type Session } from "../src/engine/shared/cdp.ts";
 import { build, type BuildResult } from "../src/engine/compiler/build.ts";
 import { restartedPageValues, toFolioPage } from "../src/engine/shared/synthesis.ts";
@@ -161,6 +168,14 @@ const DEFAULT_FIXTURES = [
   // every page (dc-op-manual field guide: 280 preview pages vs 288 printed —
   // see `runPageBox` in viewer/fragment.ts). Five pages reproduce it.
   join(REPO, "docs", "fixtures", "mirrored-margins", "book"),
+  // The justified-text fixture (committed, #470): justified prose with
+  // emphasis, links and inline code. Each splits a line into separate text
+  // items, and the line can end 1/64 px per item past the column; Chromium's
+  // print then shrank the whole book to fit (0.99992 here), its lines laid
+  // out a pixel longer than the preview's. The engine holds the body's
+  // overflow to the page content box, so both lay out at the same width;
+  // build.print-scale.test.ts asserts the scale off this book's PDF.
+  join(REPO, "docs", "fixtures", "justified-text", "book"),
   // The atomic-blocks fixture (committed): `break-inside: avoid` on a card
   // that is a direct child of the flow root. Print moves such a card whole and
   // leaves a short page; the viewer's own chrome carried a
@@ -184,6 +199,11 @@ const DEFAULT_FIXTURES = [
   // the user guide. Registered so an everyday book cannot drift again.
   join(REPO, "examples", "with-validation"),
   join(REPO, "examples", "gutterpress-user-guide"),
+  // The paper (#425): display and inline math as SVG, ruled tables, and a
+  // look loaded as an extension — every rule inside `@layer ext.academic`,
+  // and its `@page` after it — so the two renderers are held to the same
+  // pages for a book styled by a bundled look listed in `extensions:`.
+  join(REPO, "examples", "academic-paper"),
   // The exact-fit boundary fixture (committed): the #268 boundary as a slice
   // of the user guide's styling chapter on the rules of its stylesheet that
   // bear on it, so check (e)'s EXACT-FIT outcome stays exercised — see
@@ -191,6 +211,21 @@ const DEFAULT_FIXTURES = [
   // Chromium the same book may read CLEAN instead: also a pass, never a
   // failure.
   join(REPO, "docs", "fixtures", "exact-fit-boundary", "book"),
+  // The replaced-element exact-fit fixtures (#465, committed): a block image,
+  // and a display formula in its place, whose box ends a fraction of a pixel
+  // past an A4 page's 971.34px column — the preview pushes it, print keeps
+  // it. Neither has a text run, so check (e) measures the element's box; it
+  // used to fall through to a later line and call the boundary a divergence.
+  // On another Chromium they may read CLEAN instead.
+  join(REPO, "docs", "fixtures", "exact-fit-image", "book"),
+  join(REPO, "docs", "fixtures", "exact-fit-formula", "book"),
+  // The assistive-mml-width fixture (#469, committed): an inline formula
+  // ending a line 1px short of the column edge. MathJax's hidden MathML copy,
+  // laid out in the machine's math font, is wider than the SVG; until core
+  // held it to the formula's box it crossed the edge and Chromium shrank the
+  // print, which then fitted the "After the Formula" heading on page 1 and
+  // the preview did not (print=p1 viewer=p2, on the CI fonts and others).
+  join(REPO, "docs", "fixtures", "assistive-mml-width", "book"),
   // The percentage-height-root fixture (committed): `height: 100%` on every
   // page block, by the data-name the pipeline gives it (which its heading
   // shares). Print resolves the percentage against the flow root — auto, so
@@ -202,6 +237,42 @@ const DEFAULT_FIXTURES = [
   // pin root being a run of its own). `.gp-strip` now takes its height from
   // the flow root the way the block does in print (viewer.css).
   join(REPO, "docs", "fixtures", "percentage-height-root", "book"),
+  // The page-vars fixture (committed): a look's plates sized `var(--gp-page-height)`
+  // and a margin-box folio padded by `var(--gp-page-margin-outside)`. The
+  // compiler and the viewer each publish `--gp-page-*` (shared/page-vars.ts);
+  // a renderer that did not would leave the plates one line tall — two to a
+  // page, 3pp against 4. (The folio's position is asserted by
+  // render-parity.page-vars.test.ts; the gate only sees page indices.)
+  join(REPO, "docs", "fixtures", "page-vars", "book"),
+  // The page-margin fixtures (#454, committed): which `@page` margin a page
+  // prints with when a look, the book's own sheet and the manifest all set
+  // one. The engine's `@page` reader ignores cascade layers; Chromium ranks
+  // `@page` declarations by layer before page name, so while a look's `@page`
+  // rules sat in its layer, the manifest's unlayered `page.margin` beat the
+  // look's `@page full { margin: 0 }` in print only: the plate printed inset
+  // and ran onto a second page (print 4pp, viewer 3pp). Core's own
+  // `@page full-bleed` did the same from core's layer (print 6pp, viewer
+  // 5pp). No look's or core's `@page` rule is written in a layer now.
+  // render-parity.page-margins.test.ts reads the margins each fixture prints
+  // with off the PDF.
+  join(REPO, "docs", "fixtures", "named-page-margins", "book"),
+  join(REPO, "docs", "fixtures", "book-page-margin", "book"),
+  join(REPO, "docs", "fixtures", "two-looks", "book"),
+  join(REPO, "docs", "fixtures", "core-full-bleed", "book"),
+  // The gp-dimm-city design guide's two divergences (#454), each on its own.
+  // repeated-table-header: long tables whose header print repeats on every
+  // page. The viewer cloned it into each continuation column in script, and
+  // got the breaks wrong both ways: a second header under print emulation
+  // (this gate's mount; print p5, viewer p6) and, on screen, a chapter break
+  // lost after the clones moved the table's end (print 12pp, viewer 11pp).
+  // Chromium now repeats it itself (viewer.css).
+  join(REPO, "docs", "fixtures", "repeated-table-header", "book"),
+  // overridden-recto-break: a `break-before: left` that a later rule resets
+  // to `auto`. Both renderers inserted blank pages for it anyway, from the
+  // declaration rather than the cascade, and placed them differently inside a
+  // padded box (print 8pp, viewer 7pp). Only a break the cascade keeps is a
+  // site now; the fixture's winning `verso` still gets its blank.
+  join(REPO, "docs", "fixtures", "overridden-recto-break", "book"),
 ];
 
 type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";
@@ -226,6 +297,14 @@ interface ExactFitBoundary {
   headingId: string;
   headingPrintPage: number;
   headingViewerPage: number;
+  /**
+   * What sits on the boundary: a text line, or a replaced element measured
+   * as its box. For a box, `text` is the element's tag, `block` the tag of
+   * the box measured (its own, or a wrapper holding nothing else), and the
+   * `*BaselinePx` fields are the box's top — its bottom less margin-top and
+   * border-box height.
+   */
+  item: "line" | "formula" | "image" | "drawing";
   text: string;
   block: string;
   lineIndex: number;
@@ -309,18 +388,22 @@ async function stage(
   const { manifest, manifestPath } = await loadManifestWithPath(projectDir);
   const config = resolveConfig({}, manifest);
   const renderDir = manifestPath ? dirname(manifestPath) : projectDir;
-  const { plugins, pluginCss } = await loadPluginsWithCss(config.extensions, renderDir);
+  const { plugins, pluginStyles } = await loadPluginsWithCss(config.extensions, renderDir);
   mkdirSync(outDir, { recursive: true });
 
   const imageRefs: string[] = [];
   const cssAssets: AssetCopy[] = [];
   const htmlPath = await renderChaptersToFile(renderDir, outDir, {
     title: config.title,
+    language: config.language,
     printArea: { ...config.page, preset: config.preset, spec: config.spec },
     styles: config.styles,
-    files: config.source.files,
+    files: config.chapters,
     plugins,
-    pluginCss,
+    // The extensions' own stylesheets (a look's `theme.css`), as the build and
+    // the preview pass them. Without this a book styled by a look was measured
+    // bare, and its look never reached the gate.
+    pluginStyles,
     onImageRefs: (refs) => imageRefs.push(...refs),
     onCssAssets: (copies) => cssAssets.push(...copies),
   });
@@ -500,6 +583,76 @@ export function groupTextRuns(
     }));
 }
 
+const PATH_PAINTS = new Set([
+  OPS.fill,
+  OPS.eoFill,
+  OPS.stroke,
+  OPS.closeStroke,
+  OPS.fillStroke,
+  OPS.eoFillStroke,
+  OPS.closeFillStroke,
+  OPS.closeEOFillStroke,
+]);
+const IMAGE_PAINTS = new Set([
+  OPS.paintImageXObject,
+  OPS.paintImageXObjectRepeat,
+  OPS.paintInlineImageXObject,
+  OPS.paintImageMaskXObject,
+]);
+
+/**
+ * Where print drew something other than text on one page: every filled or
+ * stroked path and every image, as [top, bottom] in CSS px below the content
+ * top (`groupTextRuns`' frame), for those that start inside the content box.
+ * A replaced element — a MathJax SVG formula, an `<img>` — has no text run,
+ * so this is the only trace of where print put it. Walks pdf.js's operator
+ * list with the CTM tracked per save/restore and form XObject; a path comes
+ * with its painting operator and its bounding box, an image fills the unit
+ * square under the CTM.
+ */
+export async function paintedBoxes(
+  page: PDFPageProxy,
+  pageHeightPt: number,
+  contentTopPt: number,
+  contentHeightPx: number,
+): Promise<Array<[number, number]>> {
+  const ops = await page.getOperatorList();
+  const out: Array<[number, number]> = [];
+  const stack: number[][] = [];
+  let ctm = [1, 0, 0, 1, 0, 0];
+  const mul = (m: number[], n: number[]) => [
+    m[0]! * n[0]! + m[2]! * n[1]!,
+    m[1]! * n[0]! + m[3]! * n[1]!,
+    m[0]! * n[2]! + m[2]! * n[3]!,
+    m[1]! * n[2]! + m[3]! * n[3]!,
+    m[0]! * n[4]! + m[2]! * n[5]! + m[4]!,
+    m[1]! * n[4]! + m[3]! * n[5]! + m[5]!,
+  ];
+  // the box's corners under the CTM; only y matters, and PDF y runs up
+  const add = (x0: number, y0: number, x1: number, y1: number) => {
+    const y = (x: number, v: number) => x * ctm[1]! + v * ctm[3]! + ctm[5]!;
+    const ys = [y(x0, y0), y(x1, y0), y(x0, y1), y(x1, y1)];
+    const top = (pageHeightPt - Math.max(...ys) - contentTopPt) * PX_PER_PT;
+    const bottom = (pageHeightPt - Math.min(...ys) - contentTopPt) * PX_PER_PT;
+    if (top >= -1 && top <= contentHeightPx) out.push([+top.toFixed(3), +bottom.toFixed(3)]);
+  };
+  for (let j = 0; j < ops.fnArray.length; j++) {
+    const fn = ops.fnArray[j]!;
+    const args = ops.argsArray[j] as unknown[];
+    if (fn === OPS.save) stack.push(ctm);
+    else if (fn === OPS.restore || fn === OPS.paintFormXObjectEnd) ctm = stack.pop() ?? ctm;
+    else if (fn === OPS.transform) ctm = mul(ctm, args as number[]);
+    else if (fn === OPS.paintFormXObjectBegin) {
+      stack.push(ctm);
+      if (Array.isArray(args[0])) ctm = mul(ctm, args[0] as number[]);
+    } else if (fn === OPS.constructPath && PATH_PAINTS.has(args[0] as number) && args[2]) {
+      const b = args[2] as ArrayLike<number>;
+      add(b[0]!, b[1]!, b[2]!, b[3]!);
+    } else if (IMAGE_PAINTS.has(fn)) add(0, 0, 1, 1);
+  }
+  return out;
+}
+
 /**
  * The exact-fit rule (see the header): the keeping side's slack is at or
  * above the column bottom within the tolerance, the pushing side's is below
@@ -553,6 +706,16 @@ export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (a
   // per baseline across the row, and linesOf reads a row the same way.
   const BLOCK = "p,pre,li,h1,h2,h3,h4,h5,h6,tr,dt,dd,figcaption,blockquote,div";
   const AVOID = /^avoid/;
+  const TOLERANCE_PX = ${EXACT_FIT_TOLERANCE_PX};
+  // MathJax's assistive MathML is a hidden copy of each formula, clipped to
+  // nothing: print draws none of it, so lines are read without it.
+  const HIDDEN = "mjx-assistive-mml";
+  const textOf = (el) => {
+    let s = "";
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n; (n = walker.nextNode()); ) if (!n.parentElement.closest(HIDDEN)) s += n.data;
+    return s;
+  };
   // groupTextRuns' rule, in CSS px: runs within 0.5pt of a baseline share a line.
   const SAME_BASELINE_PX = 0.5 * 96 / 72;
   const norm = (t) => t.replace(/\s+/g, "").replace(/[-‐­]+$/, "");
@@ -623,6 +786,7 @@ export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (a
     let node;
     while ((node = walker.nextNode())) {
       const parent = node.parentElement;
+      if (parent.closest(HIDDEN)) continue;
       const m = metricsOf(parent, si.zoom);
       const onBaseline = parent === block || getComputedStyle(parent).verticalAlign === "baseline";
       for (let i = 0; i < node.data.length; i++) {
@@ -726,7 +890,7 @@ export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (a
       // A row's cells interleave in a print line, so no DOM text contains
       // it; every other block is skipped unless its text could.
       if (block.tagName !== "TR") {
-        const whole = norm(block.textContent);
+        const whole = norm(textOf(block));
         if (!(whole.includes(want) || want.includes(whole))) continue;
       }
       const lines = linesOf(block);
@@ -758,9 +922,96 @@ export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (a
     if (next && AVOID.test(getComputedStyle(next).breakBefore)) next.style.breakBefore = "auto";
   }
 
-  // input: { lo, agreeingPage, headingIds, printLines: { [page]: [{ text, baselinePx }] } }
+  // A replaced element (a formula, an image, a drawing) has no text, so no
+  // line: it is measured as a box. The box is the outermost element holding
+  // it and nothing else (a markdown image's <p>), when that is block-level —
+  // an inline formula in a sentence is part of the sentence's line. Each
+  // item: its page, its border box and its margin-top, monolithic only.
+  const REPLACED = "mjx-container,img,svg";
+  function itemsOf(si) {
+    const items = [];
+    for (const r of si.el.querySelectorAll(REPLACED)) {
+      if (r.parentElement.closest(REPLACED)) continue;
+      let el = r;
+      const holdsOnly = (p) => p !== si.el && p.children.length === 1 && !norm(textOf(p));
+      while (holdsOnly(el.parentElement)) el = el.parentElement;
+      const rects = el.getClientRects();
+      if (getComputedStyle(el).display.startsWith("inline") || rects.length !== 1) continue;
+      const [box] = rects;
+      const left = (box.left - si.rect.left) / si.zoom + si.el.scrollLeft;
+      const kind = r.localName === "img" ? "image" : r.localName === "svg" ? "drawing" : "formula";
+      items.push({
+        block: el, replaced: r, kind, page: si.offset + Math.floor((left + 1) / si.stride) + 1,
+        top: (box.top - si.rect.top) / si.zoom, bottom: (box.bottom - si.rect.top) / si.zoom,
+        marginTop: parseFloat(getComputedStyle(el).marginTop),
+      });
+    }
+    return items;
+  }
+  // The vertical extent of what print draws of an item, in strip px: an
+  // image's content box, a drawing's painted shapes. Null when nothing shows.
+  const SHAPES = "img,path,rect,circle,ellipse,line,polyline,polygon,use";
+  function inkOf(si, item) {
+    let top = Infinity, bottom = -Infinity;
+    for (const s of [item.block, ...item.block.querySelectorAll(SHAPES)]) {
+      if (!s.matches(SHAPES)) continue;
+      const cs = getComputedStyle(s), r = s.getBoundingClientRect();
+      if (!r.width && !r.height) continue;
+      const img = s.localName === "img";
+      if (!img && (cs.visibility !== "visible" || (cs.fill === "none" && cs.stroke === "none"))) continue;
+      // an image draws its content box: inside its border and padding
+      const inTop = img ? parseFloat(cs.borderTopWidth) + parseFloat(cs.paddingTop) : 0;
+      const inBottom = img ? parseFloat(cs.borderBottomWidth) + parseFloat(cs.paddingBottom) : 0;
+      top = Math.min(top, (r.top + inTop - si.rect.top) / si.zoom);
+      bottom = Math.max(bottom, (r.bottom - inBottom - si.rect.top) / si.zoom);
+    }
+    return top <= bottom ? { top, bottom } : null;
+  }
+  // The viewer's last line or item on page q: its block and where it ends.
+  function lastOnPage(si, q) {
+    const line = edgeLineOnPage(si, q, "bottom");
+    let best = line && { block: line.block, bottom: line.line.bottom };
+    for (const it of itemsOf(si)) if (it.page === q && (!best || it.bottom > best.bottom)) best = it;
+    return best;
+  }
+
+  // Both sides end page q on the same text line L, so the lines agree — but
+  // a replaced item after L can still be the boundary: one side kept it on
+  // q, the other pushed it to q+1. The viewer's side is its item; print's is
+  // what it drew below L, which must be the same height as the item's ink.
+  // Returns null when there is no such item, or both sides kept or pushed it.
+  function replacedDispute(si, q, lastPrint, L, printPaint) {
+    const items = itemsOf(si);
+    const next = edgeLineOnPage(si, q + 1, "top");
+    // the viewer's: an item ending page q below L, or one starting page q+1 above its first line
+    const kept = items.filter((it) => it.page === q && it.bottom > L.line.bottom)
+      .sort((a, b) => b.bottom - a.bottom)[0];
+    const pushed = items.filter((it) => it.page === q + 1 && (!next || it.top < next.line.top))
+      .sort((a, b) => a.top - b.top)[0];
+    const D = kept || pushed;
+    const ink = D && inkOf(si, D);
+    if (!ink) return null;
+    // print's: everything it drew from the bottom of its own L down (L's line box, by the viewer's metrics)
+    const below = lastPrint.baselinePx + (L.line.bottom - L.line.baseline) - TOLERANCE_PX;
+    let top = Infinity, bottom = -Infinity;
+    for (const [t, b] of printPaint[q] || []) {
+      if (t >= below) { top = Math.min(top, t); bottom = Math.max(bottom, b); }
+    }
+    const drawn = top <= bottom ? { top, bottom } : null;
+    const h = (e) => (e.bottom - e.top).toFixed(2) + "px";
+    if (drawn && Math.abs(drawn.bottom - drawn.top - (ink.bottom - ink.top)) > TOLERANCE_PX)
+      return { error: "print drew " + h(drawn) + " below p" + q + "'s last line, not the " + h(ink) + " of the " +
+        D.replaced.localName + " the viewer " + (kept ? "kept" : "pushed") };
+    D.ink = ink;
+    if (kept) return drawn ? null : { keptBy: "viewer", D, L };
+    return drawn ? { keptBy: "print", D, drawn } : null;
+  }
+
+  // input: { lo, agreeingPage, headingIds, printLines: { [page]: [{ text, baselinePx }] },
+  //          printPaint: { [page]: [[top, bottom]] } } (paintedBoxes)
   function measure(input) {
     const { lo, agreeingPage, headingIds, printLines } = input;
+    const printPaint = input.printPaint || {};
     const pagesBefore = {};
     for (const id of headingIds) {
       const el = document.getElementById(id);
@@ -772,7 +1023,9 @@ export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (a
     // user guide: an exact fit at p6, the first disagreeing heading at p9).
     // So walk BACK from the agreeing page over pages whose last lines already
     // disagree, and search forward from where that run begins. Any page that
-    // cannot be read stops the walk, leaving the start where it was.
+    // cannot be read stops the walk, leaving the start where it was. A page
+    // whose last lines agree still disagrees when a replaced item after that
+    // line is on it in one renderer only.
     let start = agreeingPage;
     for (let q = agreeingPage - 1; q >= 1; q--) {
       const printPage = printLines[q] || [];
@@ -783,7 +1036,11 @@ export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (a
       if (!loc || loc.line.page < q) break;
       if (loc.line.page === q) {
         const lastViewer = edgeLineOnPage(si, q, "bottom");
-        if (!lastViewer || score(norm(lastViewer.line.text), norm(lastPrint.text)) > 0) break;
+        if (!lastViewer) break;
+        if (score(norm(lastViewer.line.text), norm(lastPrint.text)) > 0) {
+          const r = replacedDispute(si, q, lastPrint, lastViewer, printPaint);
+          if (!r || r.error) break;
+        }
       }
       start = q;
     }
@@ -803,7 +1060,13 @@ export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (a
         const lastViewer = edgeLineOnPage(si, q, "bottom");
         if (!lastViewer) return { error: "no viewer line on p" + q };
         const nv = norm(lastViewer.line.text);
-        if (score(nv, norm(lastPrint.text)) > 0) continue; // both pages end on the same line
+        if (score(nv, norm(lastPrint.text)) > 0) {
+          // both pages end on the same line — unless a replaced item after it is the boundary
+          const r = replacedDispute(si, q, lastPrint, lastViewer, printPaint);
+          if (r && r.error) return r;
+          if (r) found = { q, si, ...r, printLine: lastPrint };
+          continue;
+        }
         if ((printLines[q + 1] || []).some((l) => score(nv, norm(l.text)) > 0))
           found = { q, si, keptBy: "viewer", D: lastViewer, L: loc, printLine: lastPrint };
         else return { error: "p" + q + " ends on different lines and the viewer's (" + JSON.stringify(lastViewer.line.text.slice(0, 40)) + ") is not on print's p" + (q + 1) };
@@ -811,7 +1074,48 @@ export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (a
     }
     if (!found) return { error: "no page between p" + start + " and p" + lo + " ends on different lines" };
     const { q: b, keptBy, D } = found;
-    const common = { page: b, keptBy, text: D.line.text.trim(), block: D.block.tagName.toLowerCase(),
+    // Print kept D: expose the viewer's geometry, so D can be projected back
+    // onto page b under the viewer's own last kept line.
+    const expose = () => {
+      neutraliseChain(found.si, D.block, b);
+      api.relayout();
+      for (const id of Object.keys(pagesBefore)) {
+        if (pagesBefore[id] <= b && api.pageOf(document.getElementById(id)) + 1 !== pagesBefore[id])
+          return { error: "neutralising the pushed chain moved heading " + id + " upstream of p" + b };
+      }
+      return null;
+    };
+    if (D.replaced) {
+      // A replaced item is measured as its box, margin-top plus border-box
+      // height; the baseline fields carry the box's top.
+      const tag = D.replaced.localName;
+      const extent = D.marginTop + (D.bottom - D.top);
+      const common = { page: b, keptBy, item: D.kind, text: tag, block: D.block.localName,
+                       lineIndex: 1, lineCount: 1, contentHPx: found.si.contentH };
+      const boxes = (printBottomPx, viewerBottomPx) => ({ ...common, printBottomPx, viewerBottomPx,
+        printBaselinePx: printBottomPx - extent, viewerBaselinePx: viewerBottomPx - extent });
+      // Print pushed it: project print's box from print's last kept line L,
+      // carrying the viewer's own L->box distance, as for a line.
+      if (keptBy === "viewer") return boxes(found.printLine.baselinePx + (D.bottom - found.L.line.baseline), D.bottom);
+      // Print kept it: print's box ends where its drawing ends, plus the
+      // viewer's distance from the drawing's bottom to the box's.
+      const printBottomPx = found.drawn.bottom + (D.bottom - D.ink.bottom);
+      const failed = expose();
+      if (failed) return failed;
+      const si = stripFor(b);
+      const Dl = itemsOf(si).find((it) => it.block === D.block);
+      if (!Dl) return { error: "the " + tag + " vanished on relayout" };
+      if (Dl.page <= b)
+        return { error: "the viewer fits the " + tag + " on p" + b +
+          " once its break rules are neutralised — a break-rule disagreement, not geometry" };
+      const kept = lastOnPage(si, b);
+      if (!kept) return { error: "no viewer line on p" + b + " after relayout" };
+      // the kept block's bottom padding/border, the collapsed margin, the box
+      const fragBottom = Math.max(fragmentBottom(si, kept.block, b), kept.bottom);
+      const margin = Math.max(parseFloat(getComputedStyle(kept.block).marginBottom), Dl.marginTop);
+      return boxes(printBottomPx, fragBottom + margin + (Dl.bottom - Dl.top));
+    }
+    const common = { page: b, keptBy, item: "line", text: D.line.text.trim(), block: D.block.tagName.toLowerCase(),
                      lineIndex: D.k + 1, lineCount: D.lines.length, contentHPx: found.si.contentH };
     if (keptBy === "viewer") {
       // Print pushed D: project print's baseline for it from print's last
@@ -821,14 +1125,8 @@ export const EXACT_FIT_BROWSER_JS = String.raw`window.__gpExactFit = function (a
       return { ...common, printBaselinePx, printBottomPx: printBaselinePx + (D.line.bottom - D.line.baseline),
                viewerBaselinePx: D.line.baseline, viewerBottomPx: D.line.bottom };
     }
-    // Print kept D: expose the viewer's geometry, then project D back onto
-    // page b under the viewer's own last kept line.
-    neutraliseChain(found.si, D.block, b);
-    api.relayout();
-    for (const id of Object.keys(pagesBefore)) {
-      if (pagesBefore[id] <= b && api.pageOf(document.getElementById(id)) + 1 !== pagesBefore[id])
-        return { error: "neutralising the pushed chain moved heading " + id + " upstream of p" + b };
-    }
+    const failed = expose();
+    if (failed) return failed;
     const si = stripFor(b);
     // The block's lines again, by text rather than index: a row whose break
     // rules are neutralised may now split across the page, and a cell line
@@ -912,16 +1210,19 @@ export async function measureExactFitBoundary(
     // Every page up to the dispute: the browser side may walk back past the
     // agreeing page to where the lines started to disagree.
     const printLines: Record<number, PrintLine[]> = {};
+    const printPaint: Record<number, Array<[number, number]>> = {};
     for (let q = 1; q <= lo + 1 && q <= doc.numPages; q++) {
       const strip = strips.find((s) => q > s.offset && q <= s.offset + s.pages);
       if (!strip) continue;
-      const { h } = getPageSize(await doc.getPage(q));
+      const pdfPage = await doc.getPage(q);
+      const { h } = getPageSize(pdfPage);
       printLines[q] = groupTextRuns(
         textPass.runsByPage[q - 1] ?? [],
         h,
         strip.marginTopPx / PX_PER_PT,
         strip.contentHPx / PX_PER_PT,
       );
+      printPaint[q] = await paintedBoxes(pdfPage, h, strip.marginTopPx / PX_PER_PT, strip.contentHPx);
     }
     const measured = await page.evaluate<ViewerMeasurement>(
       `window.__gpExactFit(window.__gpParity).measure(${JSON.stringify({
@@ -929,6 +1230,7 @@ export async function measureExactFitBoundary(
         agreeingPage: first.agreeingPage,
         headingIds,
         printLines,
+        printPaint,
       })})`,
     );
     if ("error" in measured) return measured;
@@ -960,14 +1262,24 @@ function printExactFit(report: FixtureReport) {
     console.log(`   NOTE exact-fit measurement: ${b.error} — the divergences below stand`);
     return;
   }
-  const side = (name: string, baseline: number, bottom: number, slack: number) =>
-    `     ${name.padEnd(6)} baseline ${baseline.toFixed(2)}px, line box ends ${bottom.toFixed(2)}px of ${b.contentHPx}px — slack ${px(slack)}`;
-  const kept = b.keptBy === "print" ? "print kept the line, the preview pushed it" : "the preview kept the line, print pushed it";
+  // a replaced element is measured as its box: its top (margin edge) and its end
+  const line = b.item === "line";
+  const column = +b.contentHPx.toFixed(2); // 876, or 971.34 on an A4/mm page
+  const side = (name: string, top: number, bottom: number, slack: number) =>
+    `     ${name.padEnd(6)} ${line ? "baseline" : "box top"} ${top.toFixed(2)}px, ${line ? "line box" : "box"} ends ${bottom.toFixed(2)}px of ${column}px — slack ${px(slack)}`;
+  const kept =
+    b.keptBy === "print"
+      ? `print kept the ${b.item}, the preview pushed it`
+      : `the preview kept the ${b.item}, print pushed it`;
   const head = report.outcome === "exact-fit" ? "EXACT-FIT BOUNDARY" : "NOTE exact-fit measurement";
   console.log(
     `   ${head} at p${b.page} — ${kept} (first differing heading ${b.headingId}: print=p${b.headingPrintPage} viewer=p${b.headingViewerPage})`,
   );
-  console.log(`     line   ${JSON.stringify(b.text.length > 60 ? b.text.slice(0, 57) + "…" : b.text)} (${b.block}, line ${b.lineIndex} of ${b.lineCount})`);
+  console.log(
+    line
+      ? `     line   ${JSON.stringify(b.text.length > 60 ? b.text.slice(0, 57) + "…" : b.text)} (${b.block}, line ${b.lineIndex} of ${b.lineCount})`
+      : `     ${b.item.padEnd(6)} ${JSON.stringify(b.text)} (block${b.block === b.text ? "" : `, in its ${b.block}`})`,
+  );
   console.log(side("print", b.printBaselinePx, b.printBottomPx, b.printSlackPx));
   console.log(side("viewer", b.viewerBaselinePx, b.viewerBottomPx, b.viewerSlackPx));
   console.log(
@@ -1021,7 +1333,11 @@ async function runFixture(
   // fragmenter bug and is not one.
   if (result.diagnostics.some((d) => d.code === "engine.width.overflow"))
     console.log(
-      `   NOTE width overflow — Chromium shrank this print to fit; page counts below are NOT comparable`,
+      `   NOTE width overflow — Chromium shrank this print to fit` +
+        (result.post.scale !== null && result.post.scale < 1
+          ? ` (scale ${result.post.scale.toFixed(6)})`
+          : "") +
+        `; page counts below are NOT comparable`,
     );
   const divergences: Divergence[] = [];
   const url = pathToFileURL(htmlPath).href;

@@ -503,7 +503,8 @@
   }
   .snippet-search-wrap {
     display: flex; align-items: center; gap: 8px; padding: 0 10px;
-    background: var(--app-surface-sunken); border: 1px solid var(--app-border); border-radius: 6px;
+    /* The field's box: the input inside it is borderless, so the shared field look (theme.css) is restated here. */
+    background: var(--app-surface-sunken); border: 1px solid var(--app-field-border); border-radius: 6px;
     color: var(--app-text-muted);
   }
   .snippet-search-wrap:focus-within { border-color: var(--app-focus-ring); }
@@ -607,13 +608,10 @@
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field > span { font-size: 12px; color: var(--app-text-muted); font-weight: 500; }
   .optional { font-style: italic; color: var(--app-text-muted); font-weight: 400; }
-  .field input[type="text"], .save-body {
-    background: var(--app-surface-sunken); border: 1px solid var(--app-border);
-    color: var(--app-text-secondary); padding: 8px 10px; border-radius: 6px;
+  .field input[type="text"], .save-body { padding: 8px 10px;
     font-size: 14px; font-family: inherit;
   }
   .save-body { font-family: var(--app-font-mono); resize: vertical; }
-  .field input:focus, .save-body:focus { outline: none; border-color: var(--app-focus-ring); }
   /* In-flow footer (last item inside the scrolling body, not a pinned
      sibling) — restore the original spacing; the shared default assumes a
      pinned bar. */

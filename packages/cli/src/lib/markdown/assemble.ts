@@ -2,8 +2,8 @@
  * Pure (node-free) book-HTML assembly.
  *
  * §1/§8: imports ONLY the pure render core (`renderer.ts`,
- * Gutterpress's marker parser (`markers.js`), and `chapter-id.ts`) — NO
- * `node:*`, NO `fs`/`path`. The
+ * Gutterpress's marker parser (`markers.js`), `chapter-id.ts` and the string
+ * helper `slug.ts`) — NO `node:*`, NO `fs`/`path`. The
  * caller injects an async `readText(relPath)` so the SAME assembly runs:
  *   - on the CLI / preview server with a `node:fs/promises`-backed reader
  *     (see `renderChapters` in `./index.ts`); and
@@ -14,35 +14,35 @@
  * so the pure markdown→HTML→book.html work lives here and the wrapper just
  * supplies inputs.
  *
- * The page-size default (#415) reads the assembled CSS with the engine's own
- * `@page` reader (`engine/shared/gcpm-extract.ts`: no imports, node-free) —
- * NOT `lib/page-size.ts`'s postcss one, which is host-side (`node:fs`) and
- * would drag Node into the `gutterpress/render` graph. The engine's reader is
- * also the right one on its merits: what `defaultPageSizeCss` decides from is
- * exactly what the viewer's and the compiler's `resolvePage` will read from
- * this same `<style>`, so the three cannot disagree about whether a size is set.
+ * The manifest's page geometry (`pageGeometryCss`) is written as plain CSS
+ * Paged Media after every stylesheet, so the viewer's and the compiler's
+ * `@page` reader (`engine/shared/gcpm-extract.ts`) and Chromium's print all
+ * read the same size and margins from this one `<style>`.
  */
 import { MARKER_CSS } from "./markers.js";
 import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { TWO_VERSIONS_CSS } from "./two-versions.ts";
 import { TABLE_ALIGN_CSS } from "./table-align";
 import { canonicalChapterId } from "./chapter-id";
+import { slugify } from "../slug";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
 import { collectHtmlImageRefs, type ImageRefEnv } from "./images";
 import { lastPageMode, type PrintPadding } from "../../engine/shared/synthesis.ts";
 import {
+  cssLength,
   formatPageSize,
   isPositivePoints,
   printAreaMeta,
   type PrintAreaSource,
 } from "../../engine/shared/print-area.ts";
-import { extract, resolvePage } from "../../engine/shared/gcpm-extract.ts";
+import { DEFAULT_PAGE_MARGIN_PT } from "../../engine/shared/gcpm-extract.ts";
+import postcss from "postcss";
 
 /** Reader injected by the host: resolve a project-root-relative file → its text. */
 export type ReadText = (relPath: string) => Promise<string>;
 
 /**
- * One author-mistake warning emitted by Gutterpress's marker parser.
+ * One author-mistake warning, most emitted by Gutterpress's marker parser.
  * Mirrors the shape `markers.js`'s `warn()` pushes onto
  * `env.layoutWarnings` — see that file's header comment for the warning
  * `type`s (`ambiguous_marker_token`, `unrecognized_marker_token`,
@@ -74,6 +74,10 @@ export type ReadText = (relPath: string) => Promise<string>;
  * for an `@page` / `@section` word that is a near-miss of a declared page /
  * section variant (any other word there is a free name and stays silent).
  *
+ * Two come from outside the marker parser: `table_extra_cells` (a table
+ * row with more cells than the header, `table.ts`) and `math_error` (a
+ * formula MathJax could not typeset, `math.ts`).
+ *
  * There is deliberately no `section_without_page`: a @section with no open
  * @page is valid authoring (17/17 false positives across two real books).
  */
@@ -100,6 +104,8 @@ export const PAGE_BACKGROUND_FIXED_MILESTONE = 152;
 export interface AssembleBookHtmlOptions {
   /** Ordered list of project-root-relative `.md` files to concatenate. */
   files: string[];
+  /** The book's BCP 47 language tag (manifest `language`); `en` when absent. */
+  language?: string;
   /** Async reader the assembler uses to fetch each file's contents. */
   readText: ReadText;
   /**
@@ -172,9 +178,10 @@ export interface AssembleBookHtmlOptions {
    * preset id and printer spec — written as `<meta name="gp-print-area">`
    * (engine/shared/print-area.ts) into EVERY assembled book, preview, build
    * and publish alike: the preview's print overlays judge the ink against it,
-   * and both engines place pinned art on its art-safe line. Metadata only,
-   * with one exception: its `width` x `height` is also the page size the book
-   * prints at when no stylesheet sets one — see {@link defaultPageSizeCss}.
+   * and both engines place pinned art on its art-safe line. Metadata, except
+   * that its `width` x `height` is also the page size the book prints at, and
+   * its `margin`, when the manifest sets one, the margins — see
+   * {@link pageGeometryCss}.
    */
   printArea?: PrintAreaSource;
   plugins?: LoadedPlugin[];
@@ -202,36 +209,174 @@ export interface AssembleBookHtmlOptions {
 }
 
 /**
- * The plain `@page { size }` a book prints at when none of its CSS sets one
- * (#415), or `null` when one is set or there is no page geometry to supply.
+ * The page geometry the manifest decides, as plain CSS Paged Media: the
+ * `@page { size }` the book prints at and, when the manifest sets
+ * `page.margin`, its margins; `null` when there is no page geometry to supply.
  *
  * `page.width` x `page.height` in the manifest (or the preset's) is what every
- * check and the preview's print overlays judge against, but what Chromium
- * prints is the stylesheet's plain `@page { size }` — and a book whose author
- * wrote `@page { margin }` alone, or replaced the scaffolded sheet, had none,
- * so it printed at Letter while everything else assumed the manifest's size.
- * Supplying that size as standard CSS, BEFORE the extensions' and the book's
- * own sheets, makes the print path, the preview and the checks agree on one
- * size; an author's own `size` still wins by the cascade, because this rule
- * is only written when there is none to lose to.
+ * check and the preview's print overlays judge against, and this rule is what
+ * makes Chromium print at it: written AFTER every extension's and the book's
+ * own sheet, it wins by the cascade, so a `size` in a look's or an author's
+ * `@page` cannot shadow the manifest (the print-safety check reports one), and
+ * neither can an `@page` margin once the manifest has margins — except on a
+ * named page (`@page full { margin: 0 }`), whose name outranks these rules.
+ * That holds for a look's and core's named pages too because their `@page`
+ * rules are written unlayered (`liftPageRules`, #454). Left out of the
+ * manifest, margins stay the stylesheets' business — a look's design — else
+ * the 1in default `defaultPageMarginCss` writes; Setup > Book records
+ * `page.margin` the first time an author changes one.
  *
- * "Set" means what the engine means: a plain `@page` rule — no name, no
- * `:first`/`:left`… — anywhere in `css` (inside `@media print` or an
- * extension's `@layer` included) sets `size`, i.e. `resolvePage`'s base page
- * has one; a named page's size is its own, not the book's geometry. `extract`
- * throws only for a geometry `var()` it cannot resolve; the engine reports
- * that, in its own words, when it reads this same CSS, so here it counts as
- * set and nothing is added.
+ * Margins are written for both page sides, so a look's own `@page :left` or
+ * `:right` margin cannot outrank them: `inside` is the binding edge, the left
+ * of a right-hand page and the right of a left-hand one.
  */
-function defaultPageSizeCss(css: string, page: PrintAreaSource | undefined): string | null {
+function pageGeometryCss(page: PrintAreaSource | undefined): string | null {
   if (!page || !isPositivePoints(page.width) || !isPositivePoints(page.height)) return null;
+  const size = `size: ${formatPageSize(page)};`;
+  const m = page.margin;
+  if (!m) return `@page { ${size} }`;
+  const [top, bottom, inside, outside] = [m.top, m.bottom, m.inside, m.outside].map(cssLength);
+  const recto = `margin: ${top} ${outside} ${bottom} ${inside};`;
+  const verso = `margin: ${top} ${inside} ${bottom} ${outside};`;
+  return [`@page { ${size} ${recto} }`, `@page :left { ${verso} }`, `@page :right { ${recto} }`].join("\n");
+}
+
+/**
+ * The margin a book prints with when the manifest sets none: a default, not a
+ * decision (`DEFAULT_PAGE_MARGIN_PT` says why one is needed at all). Written
+ * AHEAD of every stylesheet and INSIDE the core `gp.vocab` layer, so a look's
+ * `@page` margin and the book's own (both unlayered, both later) win by the
+ * cascade — in Chromium, which ranks `@page` declarations by layer, as well
+ * as in the engine's order-based reader. `null` once the manifest has
+ * margins — `pageGeometryCss` then writes them last — or when there is no
+ * page geometry to supply.
+ */
+function defaultPageMarginCss(page: PrintAreaSource | undefined): string | null {
+  if (!page || page.margin) return null;
+  return `@layer gp.vocab {\n@page { margin: ${cssLength(DEFAULT_PAGE_MARGIN_PT)}; }\n}`;
+}
+
+/**
+ * Split a stylesheet into everything but its `@page` rules, and its `@page`
+ * rules, which the caller writes after it, unlayered, in source order. A
+ * rule inside an `@layer` loses that layer; one inside `@media` or
+ * `@supports` keeps the condition. CSS postcss cannot read is left as it was.
+ *
+ * Chromium ranks `@page` declarations by cascade layer before page name, so a
+ * layered `@page full { margin: 0 }` lost to the manifest's unlayered
+ * `@page { margin }` on its own pages, while the engine's reader, which
+ * ignores layers, kept it (#454). So no `@page` rule is written inside a
+ * layer — core's, an extension's or one in a layer the book declares —
+ * except core's 1in default (`defaultPageMarginCss`), which must lose to all
+ * of them.
+ * Unlayered, page rules cascade by page selector, then order: a named page
+ * keeps its margins, and the book's own sheet and the manifest, written
+ * later, still win on the pages they share with it.
+ */
+export function liftPageRules(css: string): { layered: string; pages: string } {
+  if (!/@page\b/i.test(css)) return { layered: css, pages: "" };
+  let root: postcss.Root;
   try {
-    if (resolvePage(extract(css)).decls.size !== undefined) return null;
+    root = postcss.parse(css);
   } catch {
-    return null;
+    return { layered: css, pages: "" };
   }
-  // The same spelling Book settings writes into a stylesheet: one size, one form.
-  return `@page { size: ${formatPageSize(page)}; }`;
+  const found: postcss.AtRule[] = [];
+  root.walkAtRules(/^page$/i, (rule) => {
+    found.push(rule);
+  });
+  const pages = found.map((rule) => {
+    let lifted: postcss.ChildNode = rule.clone();
+    for (let p = rule.parent; p instanceof postcss.AtRule || p instanceof postcss.Rule; p = p.parent) {
+      if (p instanceof postcss.AtRule && p.name.toLowerCase() === "layer") continue;
+      lifted = p.clone({ nodes: [] }).append(lifted);
+    }
+    rule.remove();
+    return lifted.toString();
+  });
+  return { layered: root.toString(), pages: pages.join("\n") };
+}
+
+/** Core's two layered blocks, their `@page` rules lifted out (liftPageRules). */
+const CORE_MARKERS = liftPageRules(`${MARKER_CSS.trim()}\n${TWO_VERSIONS_CSS.trim()}`);
+const CORE_VOCAB = liftPageRules(GUTTERPRESS_CSS.trim());
+
+/** Where one chunk of a book's stylesheet comes from. */
+export type CssChunkOrigin =
+  | { kind: "core" }
+  /** One extension's CSS: `file` (project-relative) for one of its stylesheets, none for its `css` export. */
+  | { kind: "extension"; name?: string; layer?: string; file?: string }
+  /** One of the book's own `styles:` sheets (project-relative). */
+  | { kind: "book"; file?: string };
+
+/** One piece of a book's stylesheet, tagged with where it comes from. */
+export interface CssChunk {
+  origin: CssChunkOrigin;
+  css: string;
+}
+
+/**
+ * A book's stylesheet as ordered chunks, each tagged with its origin, in
+ * cascade order (see the note where {@link assembleBookHtml} calls this).
+ * Joined with blank lines, the chunks are the `<style data-project-css>`
+ * block that function writes; it passes the extensions' CSS and the book's
+ * whole, one chunk each. Book setup's design settings pass them one extension
+ * file and one book sheet at a time, so each setting can say where it comes
+ * from (`book-css.ts`).
+ */
+export function assembleCssChunks(opts: {
+  printArea?: PrintAreaSource;
+  /** The extensions' CSS, already in their cascade layers, in `extensions:` order. */
+  extensions?: CssChunk[];
+  /** The book's own stylesheets, in `styles:` order. */
+  book?: CssChunk[];
+}): CssChunk[] {
+  const core = (css: string | null): CssChunk[] => (css ? [{ origin: { kind: "core" }, css }] : []);
+  // A section's comment heads its first chunk.
+  const headed = (title: string, chunks: CssChunk[] = []): CssChunk[] =>
+    chunks.map((chunk, i) => (i === 0 ? { ...chunk, css: `/* ${title} */\n${chunk.css.trim()}` } : chunk));
+  const pageGeometry = pageGeometryCss(opts.printArea);
+  const defaultMargin = defaultPageMarginCss(opts.printArea);
+  return [
+    ...core("@layer gp.marker, gp.vocab;"),
+    // The two-versions box (two-versions.ts) rides in the marker layer: it
+    // styles DOM only core emits, exactly like the marker wrappers. Each
+    // block's `@page` rules (`@page blank`, `@page full-bleed`, `.gp-bleed`)
+    // follow it, unlayered (liftPageRules).
+    ...core(`/* gutterpress markers */\n@layer gp.marker {\n${CORE_MARKERS.layered.trim()}\n}`),
+    ...core(CORE_MARKERS.pages && `/* gutterpress markers: page rules */\n${CORE_MARKERS.pages}`),
+    ...core(`/* gutterpress */\n@layer gp.vocab {\n${CORE_VOCAB.layered.trim()}\n}`),
+    ...core(CORE_VOCAB.pages && `/* gutterpress: page rules */\n${CORE_VOCAB.pages}`),
+    // The default margin (defaultPageMarginCss): in the core layer and ahead
+    // of every sheet that could set one, so its place says what it is.
+    ...core(defaultMargin && `/* page margins (default) */\n${defaultMargin}`),
+    ...headed("extension css", opts.extensions),
+    // Unlayered, before the project CSS (equal specificity: the book's rule,
+    // coming later, wins).
+    ...core(`/* column alignment */\n${TABLE_ALIGN_CSS.trim()}`),
+    ...headed("project css", opts.book),
+    // The manifest's page geometry (pageGeometryCss). Unlayered and LAST,
+    // after every sheet that could have set a size or a margin, so its place
+    // says what it is: the decision.
+    ...core(pageGeometry && `/* page geometry (manifest) */\n${pageGeometry}`),
+  ];
+}
+
+/**
+ * A link an author wrote to a footnote in 0.11.22 (`[see note 1](#fn1)`,
+ * `#fnref1`) names the id markdown-it-footnote gave before each file's notes
+ * got their own (`fn-<file>-1`, the `docId` in {@link assembleBookHtml}). Such
+ * a link goes where it went in 0.11.22: to the first note (or reference) with
+ * that number in reading order, the element `#fn1` found then. It is left as
+ * written when the book has an element with that very id of its own, or no
+ * note with that number (it dangled in 0.11.22 too).
+ */
+function resolveOldFootnoteLinks(html: string, ids: ReadonlyMap<string, string>): string {
+  if (ids.size === 0) return html;
+  return html.replace(/ href=(["'])#(fn(?:ref)?\d+(?::\d+)?)\1/g, (link, quote: string, old: string) => {
+    const id = ids.get(old);
+    return id && !html.includes(` id="${old}"`) ? ` href=${quote}#${id}${quote}` : link;
+  });
 }
 
 /**
@@ -245,13 +390,14 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   const title = opts.title ?? "Document";
   const projectCss = opts.projectCss ?? "";
   const pluginCss = opts.pluginCss ?? "";
+  const language = opts.language ?? "en";
   const files = opts.files;
 
   if (files.length === 0) {
     throw new Error("No markdown files to render");
   }
 
-  const md = createMarkdownRenderer(opts.plugins);
+  const md = createMarkdownRenderer(opts.plugins, { language });
 
   // Build source files concatenate directly into the body. Incremental preview
   // adds one file-level wrapper so each source can be page-isolated. @chapter is
@@ -261,6 +407,8 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   // chapter wrappers and IDs; the preview wrapper is internal-only.
   let bodyContent = "";
   const imageRefs = new Set<string>();
+  /** 0.11.22's footnote ids (`fn1`, `fnref1`) -> the first file's own (`fn-<file>-1`); see resolveOldFootnoteLinks. */
+  const oldFootnoteIds = new Map<string, string>();
   for (const file of files) {
     // ONE canonical identity per chapter (see chapter-id.ts): the same
     // normalized string is used to resolve the file AND as the data-chapter-src
@@ -278,7 +426,18 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     // internal env and discard it the instant this call returned. Passing our
     // own env is what makes the marker parser's author-mistake diagnostics
     // observable to a caller.
-    const env: { layoutWarnings?: LayoutWarning[]; sourceChapter?: string } & ImageRefEnv = {};
+    const env: ImageRefEnv & {
+      layoutWarnings?: LayoutWarning[];
+      sourceChapter?: string;
+      /**
+       * markdown-it-footnote numbers each render from 1 and names its ids
+       * after the number (`fn1`, `fnref1`), so two files with notes would
+       * share every id and a backlink could land in the other file. With a
+       * `docId` it prefixes them (`fn-<docId>-1`); the chapter id, slugified
+       * so it is legal in an HTML id and a URL fragment, keeps them apart.
+       */
+      docId: string;
+    } = { docId: slugify(chapterId) };
     if (opts.annotateSourceChapters) env.sourceChapter = chapterId;
     // Always use the public render path: standard markdown-it plugins may
     // legitimately wrap md.render(), and preview/build must both observe it.
@@ -287,8 +446,12 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
       opts.onChapterWarnings?.(chapterId, env.layoutWarnings);
     }
     for (const ref of env.imageRefs ?? []) imageRefs.add(ref);
+    for (const [, kind, n] of rendered.matchAll(new RegExp(` id="(fn|fnref)-${env.docId}-(\\d+(?::\\d+)?)"`, "g"))) {
+      if (!oldFootnoteIds.has(`${kind}${n}`)) oldFootnoteIds.set(`${kind}${n}`, `${kind}-${env.docId}-${n}`);
+    }
     bodyContent += rendered + "\n";
   }
+  bodyContent = resolveOldFootnoteLinks(bodyContent, oldFootnoteIds);
 
   // Raw HTML <img> (author-written or plugin-emitted) never passes through the
   // markdown image rule, so scan the assembled body for it too.
@@ -319,24 +482,13 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   // it replaces an inline style, which beat plugin CSS (layered) and a book's
   // generic `th { text-align }`, so it must still beat both, while a book rule
   // that is at least as specific and later can override it.
-  const pageSize = defaultPageSizeCss(`${pluginCss}\n${projectCss}`, opts.printArea);
-  const inlineCss = [
-    "@layer gp.marker, gp.vocab;",
-    // The two-versions box (two-versions.ts) rides in the marker layer: it
-    // styles DOM only core emits, exactly like the marker wrappers.
-    `/* gutterpress markers */\n@layer gp.marker {\n${MARKER_CSS.trim()}\n${TWO_VERSIONS_CSS.trim()}\n}`,
-    `/* gutterpress */\n@layer gp.vocab {\n${GUTTERPRESS_CSS.trim()}\n}`,
-    // The manifest's page size, only when no extension or book CSS sets one
-    // (defaultPageSizeCss). Unlayered — `@page` stays out of cascade layers —
-    // and ahead of every sheet that could have set it, so its place says what
-    // it is: the default.
-    pageSize ? `/* page size (manifest) */\n${pageSize}` : null,
-    pluginCss ? `/* extension css */\n${pluginCss.trim()}` : null,
-    // Unlayered, before the project CSS (equal specificity: the book's rule,
-    // coming later, wins).
-    `/* column alignment */\n${TABLE_ALIGN_CSS.trim()}`,
-    projectCss ? `/* project css */\n${projectCss.trim()}` : null,
-  ].filter(Boolean).join("\n\n");
+  const inlineCss = assembleCssChunks({
+    printArea: opts.printArea,
+    extensions: pluginCss ? [{ origin: { kind: "extension" }, css: pluginCss }] : [],
+    book: projectCss ? [{ origin: { kind: "book" }, css: projectCss }] : [],
+  })
+    .map((chunk) => chunk.css)
+    .join("\n\n");
 
   // SHIM — spec gap #152; see `preloadImages` above for why and when to delete.
   const preloadTags = (opts.preloadImages ?? [])
@@ -349,7 +501,7 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     (lastPage ? ` data-gp-last-page="${lastPage}"` : "");
 
   return `<!DOCTYPE html>
-<html lang="en"${printAttrs}>
+<html lang="${language}"${printAttrs}>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">${opts.printArea ? `\n  ${printAreaMeta(opts.printArea)}` : ""}

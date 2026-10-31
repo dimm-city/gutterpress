@@ -87,16 +87,18 @@ describe("extension-manifest", () => {
             markdown: "lib/plugin.js",
             snippets: "snippets",
             components: "components.yaml",
-            tokensFile: "a.css",
             preview: "preview.png",
+            // Read by nothing since Book setup reads every enabled look's
+            // `:root`; a package that still declares it loads with it dropped.
+            tokensFile: "../tokens.css",
           },
         }),
       );
+      expect(meta).not.toHaveProperty("tokensFile");
       expect(meta.styles).toEqual(["a.css", "b.css"]);
       expect(meta.markdown).toBe("lib/plugin.js");
       expect(meta.snippets).toBe("snippets");
       expect(meta.components).toBe("components.yaml");
-      expect(meta.tokensFile).toBe("a.css");
       expect(meta.preview).toBe("preview.png");
     });
 
@@ -194,7 +196,6 @@ describe("extension-manifest", () => {
           markdown: "plugin.js",
           components: "components.yaml",
           snippets: "snippets",
-          tokensFile: "css/tokens.css",
         }),
       ).not.toThrow();
     });
@@ -232,9 +233,6 @@ describe("extension-manifest", () => {
         /outside its own folder/,
       );
       expect(() => assertExtensionContained({ snippets: "../shared-snippets" })).toThrow(
-        /outside its own folder/,
-      );
-      expect(() => assertExtensionContained({ tokensFile: "../tokens.css" })).toThrow(
         /outside its own folder/,
       );
     });
@@ -279,13 +277,6 @@ describe("extension-manifest", () => {
     test("an extension declaring nothing resolves to an empty object", () => {
       const dir = extDir();
       expect(resolveExtension(dir, {}, "Plugin \"demo\"")).toEqual({});
-    });
-
-    test("tokensFile passes through as declared — advisory, not existence-checked", () => {
-      const dir = extDir();
-      // Deliberately does NOT create css/missing-tokens.css.
-      const resolved = resolveExtension(dir, { tokensFile: "css/missing-tokens.css" }, "Plugin \"demo\"");
-      expect(resolved.tokensFile).toBe("css/missing-tokens.css");
     });
 
     test("throws naming the field's declared path when markdown is missing", () => {

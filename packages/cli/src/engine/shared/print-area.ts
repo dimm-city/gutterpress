@@ -55,6 +55,8 @@ export interface PrintAreaSource {
   safe?: number;
   artSafe?: number;
   gutter?: number;
+  /** The margins the manifest sets (pt), written as the book's `@page` margins; absent = the stylesheets'. */
+  margin?: { top: number; bottom: number; inside: number; outside: number };
   preset?: string;
   spec?: { label: string; url: string };
 }
@@ -64,20 +66,24 @@ export function isPositivePoints(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
+/** A margin value: finite and 0 or more (a full-bleed edge has no margin). */
+export function isNonNegativePoints(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
 /** Round to 3dp so 8.27in doesn't print as 8.270000000000001in. */
-const round3 = (n: number) => Math.round(n * 1000) / 1000;
+export const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /** CSS length for a point value: inches when exact to 3dp (612 -> 8.5in), else points. */
-function cssLength(pt: number): string {
+export function cssLength(pt: number): string {
   const inches = round3(pt / 72);
   return Math.abs(inches * 72 - pt) < 1e-6 ? `${inches}in` : `${round3(pt)}pt`;
 }
 
 /**
- * The `size` value written for a page — `8.5in 11in`, `595pt 842pt` — by
- * everything that writes one: Book settings (lib/page-size.ts) into the
- * book's stylesheet, and the assembly's manifest default
- * (lib/markdown/assemble.ts), so one size has one spelling.
+ * The `size` value written for a page — `8.5in 11in`, `595pt 842pt` — by the
+ * assembly's `@page` rule (lib/markdown/assemble.ts), the one place a size is
+ * written, so one size has one spelling.
  */
 export function formatPageSize(page: { width: number; height: number }): string {
   return `${cssLength(page.width)} ${cssLength(page.height)}`;

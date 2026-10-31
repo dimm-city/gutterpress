@@ -138,17 +138,13 @@ describe("new command — arg mapping onto scaffoldProject", () => {
   });
 });
 
-describe("new command — preset requirement (ADR 0008)", () => {
-  test("a missing --preset errors (exit 2) before scaffoldProject is called", async () => {
-    stubExit();
-    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+describe("new command — preset choice (ADR 0008)", () => {
+  test("a missing --preset is fine: the template's own preset stands", async () => {
     stubScaffold(async () => fakeResult());
 
-    await expect(
-      runCommand(newCommand, { rawArgs: ["My Book"] })
-    ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.USAGE}\\)`));
-    expect(scaffoldSpy).not.toHaveBeenCalled();
-    expect(String(consoleErrorSpy?.mock.calls[0]?.[0])).toContain("--preset");
+    await runCommand(newCommand, { rawArgs: ["My Book"] });
+    expect(scaffoldSpy).toHaveBeenCalledTimes(1);
+    expect(scaffoldSpy.mock.calls[0]?.[0]).toMatchObject({ name: "My Book", preset: undefined });
   });
 
   test("an unknown --preset errors (exit 2) naming the choices", async () => {
@@ -198,6 +194,7 @@ describe("new command — preset requirement (ADR 0008)", () => {
     });
 
     expect(captured?.preset).toBe("custom");
+    // --page-tolerance is back (#483): the page-size check's tolerance option.
     expect(captured?.customPage).toEqual({ width: 612, height: 792, tolerance: 1.5 });
   });
 
@@ -381,7 +378,7 @@ afterEach(() => {
 });
 
 describe("new command — --kind dispatch", () => {
-  test.each(["plugin", "theme"] as const)(
+  test.each(["plugin", "look"] as const)(
     "--kind %s calls scaffoldExtension, not scaffoldProject, and needs no --preset",
     async (kind) => {
       consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
@@ -416,6 +413,21 @@ describe("new command — --kind dispatch", () => {
     }
   );
 
+  test("--kind theme, 0.11.22's word, makes a look (#483)", async () => {
+    consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+    stubScaffold(async () => fakeResult());
+    let captured: ScaffoldExtensionOptions | undefined;
+    stubExtensionScaffold(async (opts) => {
+      captured = opts;
+      return fakeExtensionResult({ kind: "look" });
+    });
+
+    await runCommand(newCommand, { rawArgs: ["House Style", "--kind", "theme", "--dir", path.join("/tmp", "parent")] });
+
+    expect(captured).toMatchObject({ name: "House Style", kind: "look" });
+    expect(scaffoldSpy).not.toHaveBeenCalled();
+  });
+
   test("no --kind still scaffolds a book", async () => {
     consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
     stubExtensionScaffold(async () => fakeExtensionResult());
@@ -436,12 +448,12 @@ describe("new command — --kind dispatch", () => {
     await expect(
       runCommand(newCommand, { rawArgs: ["X", "--kind", "widget"] })
     ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.USAGE}\\)`));
-    expect(String(consoleErrorSpy?.mock.calls[0]?.[0])).toContain("book, plugin, theme");
+    expect(String(consoleErrorSpy?.mock.calls[0]?.[0])).toContain("book, plugin, look");
     expect(scaffoldSpy).not.toHaveBeenCalled();
     expect(extensionSpy).not.toHaveBeenCalled();
   });
 
-  test.each(["--preset", "--template", "--page-width", "--targets"] as const)(
+  test.each(["--preset", "--template", "--page-width", "--page-tolerance", "--targets"] as const)(
     "%s is REJECTED for an extension rather than silently ignored",
     async (flag) => {
       stubExit();
@@ -499,7 +511,7 @@ describe("new command — --kind dispatch", () => {
     });
 
     await expect(
-      runCommand(newCommand, { rawArgs: ["X", "--kind", "theme"] })
+      runCommand(newCommand, { rawArgs: ["X", "--kind", "look"] })
     ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.USAGE}\\)`));
   });
 
@@ -511,7 +523,7 @@ describe("new command — --kind dispatch", () => {
     });
 
     await expect(
-      runCommand(newCommand, { rawArgs: ["X", "--kind", "theme"] })
+      runCommand(newCommand, { rawArgs: ["X", "--kind", "look"] })
     ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.PIPELINE}\\)`));
   });
 });

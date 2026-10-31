@@ -108,7 +108,7 @@
     onPublish: () => void;
     /** The Publish button element — the wizard's focus-restore target. */
     publishBtnEl?: HTMLButtonElement | undefined;
-    /** The Setup button — Book settings restores focus to it on close. */
+    /** The Setup button — Book setup restores focus to it on close. */
     projectSettingsBtnEl?: HTMLButtonElement | undefined;
     /** Why Publish is unavailable right now (rendered as quiet notes). */
     publishHints?: string[];
@@ -116,8 +116,8 @@
     publishWarning?: string | null;
     showProjectSettings: boolean;
     onOpenProjectSettings: () => void;
-    /** Reader (Settings → App): only reading controls — Edit/Read, the pane
-     *  tabs, Setup and Publish are hidden; Focus stays. */
+    /** Reader (Settings → How you use Gutterpress): only reading controls —
+     *  Edit/Read, the pane tabs, Setup and Publish are hidden; Focus stays. */
     readerMode?: boolean;
   } = $props();
 

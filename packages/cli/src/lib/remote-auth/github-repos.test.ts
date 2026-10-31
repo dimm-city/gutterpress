@@ -66,10 +66,10 @@ test("lists user repos via /user/repos with pagination (2 pages), preserving API
   }
 });
 
-test("401 maps to a reconnect message", async () => {
+test("401 maps to a sign-in-again message", async () => {
   const fetchImpl = (async () => jsonResponse({ message: "Bad credentials" }, 401)) as unknown as typeof fetch;
   await expect(listGitHubRepositories(CRED, { fetchImpl })).rejects.toThrow(
-    /reconnect github/i,
+    /sign in to github again/i,
   );
 });
 
@@ -203,11 +203,11 @@ test("listRepoBooks truncated tree → falls back to root + top-level dir scans"
   expect(requested.length).toBe(4);
 });
 
-test("listRepoBooks maps 401 to the reconnect message", async () => {
+test("listRepoBooks maps 401 to the sign-in-again message", async () => {
   const fetchImpl = (async () => jsonResponse({ message: "Bad credentials" }, 401)) as unknown as typeof fetch;
   await expect(
     listRepoBooks(CRED, "octocat", "books", "main", { fetchImpl }),
-  ).rejects.toThrow(/reconnect github/i);
+  ).rejects.toThrow(/sign in to github again/i);
 });
 
 test("flags repositories that could be an empty backup target (size 0, writable, not archived)", async () => {

@@ -5,6 +5,12 @@ carries both) against a real book, and see each change in the live preview
 without publishing to npm first. The package format itself is described in
 [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-plugins.md).
 
+Provisional until 0.12: the `@group`, `@label` and `@internal` comment
+directives and the six Look-tab names (`--font-body`, `--font-display`,
+`--fs-body`, `--leading`, `--color-ink`, `--color-accent`) change in 0.12 (the
+design is [#457](https://github.com/dimm-city/gutterpress/issues/457)), so don't
+build on them yet.
+
 A book normally pins a published version of the extension:
 
 ```yaml
@@ -108,7 +114,7 @@ gutterpress ext add my-extension@1.3.0 field-guide
 ```
 
 `ext add` vendors the new version and re-pins the entry in place. It leaves
-the old version's folder under `plugins/npm/my-extension/`; delete it
+the old version's folder under `extensions/npm/my-extension/`; delete it
 yourself.
 
 ## How a working copy differs from the published package
@@ -131,7 +137,7 @@ The cascade layer is the same either way: `ext.<name>`, from the `name` in
 
 ## Don't edit the vendored copy
 
-Editing files under `plugins/npm/` is not a shortcut. That tree is
+Editing files under `extensions/npm/` is not a shortcut. That tree is
 Gutterpress's own downloaded copy of a published version: the next
 `gutterpress ext add` of the same version replaces it wholesale, and anyone
 else who installs the pin gets the published bytes, not your edits. Point the

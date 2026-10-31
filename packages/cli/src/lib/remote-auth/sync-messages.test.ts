@@ -1,20 +1,33 @@
 import { describe, expect, test } from "bun:test";
+
+import { bannedTermsIn } from "../../test-helpers/vocabulary.ts";
+import * as messages from "./sync-messages.ts";
 import { SYNC_LATE_EDIT_MESSAGE, SYNC_SNAPSHOT_MESSAGE } from "./sync-messages.ts";
 
 /**
- * The two sync HISTORY messages are recorded verbatim as commit messages, so
- * a writer sees them raw on github.com and (classified) in the desktop's
- * Previous versions timeline. Unlike the MSG_* status strings, they must read
- * as author copy with zero version-control vocabulary.
+ * Everything in sync-messages.ts is shown to the writer: the MSG_* strings
+ * verbatim in toasts, the two history messages raw on github.com and
+ * (classified) in the desktop's Version history timeline. None of it may use
+ * version-control vocabulary (the SSH hint's `git@…` address is the one thing
+ * a writer is told to look at).
  */
-describe("sync history messages are writer copy", () => {
-  test("no version-control jargon in what lands in the writer's history", () => {
-    for (const message of [SYNC_SNAPSHOT_MESSAGE, SYNC_LATE_EDIT_MESSAGE]) {
-      expect(message.toLowerCase()).not.toMatch(/snapshot|commit|\bgit\b|merge|repo/);
-    }
+const AUTHOR_COPY = Object.entries(messages as Record<string, unknown>).filter(
+  (entry): entry is [string, string] => typeof entry[1] === "string",
+);
+
+describe("sync messages are writer copy", () => {
+  test("there is copy to check", () => {
+    expect(AUTHOR_COPY.length).toBeGreaterThanOrEqual(13);
   });
 
-  test("the two messages stay distinct so the mid-sync-edit race stays legible", () => {
+  test("no version-control jargon in anything a writer reads", () => {
+    const offenders = AUTHOR_COPY.filter(([, text]) => bannedTermsIn(text.replace(/git@…/g, "")).length > 0).map(
+      ([name]) => name,
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  test("the two messages stay distinct so the mid-backup-edit race stays legible", () => {
     expect(SYNC_SNAPSHOT_MESSAGE).not.toBe(SYNC_LATE_EDIT_MESSAGE);
   });
 });

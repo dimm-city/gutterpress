@@ -976,10 +976,6 @@
   .popup-input {
     width: 56px;
     padding: 3px 6px;
-    border: 1px solid var(--app-border);
-    border-radius: 3px;
-    background: var(--app-bg);
-    color: var(--app-text);
     font-size: 12px;
     text-align: right;
   }
@@ -1164,15 +1160,7 @@
   .image-input {
     flex: 1;
     padding: 6px 8px;
-    border: 1px solid var(--app-border);
-    border-radius: 4px;
-    background: var(--app-bg);
-    color: var(--app-text);
     font-size: 12px;
-  }
-  .image-input:focus {
-    outline: none;
-    border-color: var(--app-focus-ring);
   }
   .image-input[readonly] {
     cursor: default;
@@ -1225,15 +1213,7 @@
 
   .image-select {
     padding: 6px 8px;
-    border: 1px solid var(--app-border);
-    border-radius: 4px;
-    background: var(--app-bg);
-    color: var(--app-text);
     font-size: 12px;
-  }
-  .image-select:focus {
-    outline: none;
-    border-color: var(--app-focus-ring);
   }
 
   .image-error {
