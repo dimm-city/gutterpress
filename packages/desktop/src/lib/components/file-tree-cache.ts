@@ -1,5 +1,6 @@
 /**
- * Pure helpers for FileTree's per-directory children cache.
+ * Pure helpers for FileTree's per-directory children cache, and the rule for
+ * which entries a listing keeps.
  *
  * `childrenByPath` is NOT a permanent cache: FileTree.svelte always refetches
  * on expand (no cache-hit short-circuit, which would hide folders
@@ -17,6 +18,23 @@
  */
 
 import { isPathAtOrUnder } from "#lib/platform/paths.ts";
+
+// The files the tree lists: the text files an author edits, and SVG figures
+// (text too; they open as plain text). Folders are always listed, so the
+// author can navigate into them.
+const LISTED_FILE = /\.(md|markdown|yaml|yml|css|txt|svg)$/i;
+
+/** Keep folders + listed files, folders first, each group alphabetical.
+ *  Dot-entries (`.git`, `.git-damaged-…`, `.DS_Store`) are app/OS plumbing,
+ *  never part of the writer's book — same rule as api/media/list-images. */
+export function visibleEntries<T extends { name: string; isDir: boolean }>(raw: readonly T[]): T[] {
+  return raw
+    .filter((e) => !e.name.startsWith(".") && (e.isDir || LISTED_FILE.test(e.name)))
+    .sort((a, b) => {
+      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+}
 
 /** Drop exactly one directory's cached listing so its next expand refetches. */
 export function invalidateDir<T>(cache: Record<string, T>, dir: string): Record<string, T> {

@@ -70,6 +70,7 @@
     invalidateSubtree,
     collapseDir,
     renameExpanded,
+    visibleEntries,
   } from "./file-tree-cache";
 
   let {
@@ -104,8 +105,7 @@
 
   type Entry = { name: string; path: string; isDir: boolean };
 
-  // Editable text file extensions surfaced in the tree. Folders are always
-  // shown (so the author can navigate into them) regardless of this filter.
+  // A name "New chapter" keeps as typed; any other gets `.md`.
   const EDITABLE_EXT = /\.(md|markdown|yaml|yml|css|txt)$/i;
 
   let rootEntries = $state<Entry[]>([]);
@@ -118,23 +118,6 @@
   let childrenByPath = $state<Record<string, Entry[]>>({});
   let loadingPaths = $state<Set<string>>(new Set());
   let errorByPath = $state<Record<string, string>>({});
-
-  /** Folders first, then files; each group alphabetical, case-insensitive. */
-  function sortEntries(entries: Entry[]): Entry[] {
-    return [...entries].sort((a, b) => {
-      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-  }
-
-  /** Keep folders + editable files; drop everything else. Dot-entries
-   *  (`.git`, `.git-damaged-…`, `.DS_Store`) are app/OS plumbing, never
-   *  part of the writer's book — same rule as api/media/list-images. */
-  function visibleEntries(raw: Array<{ name: string; path: string; isDir: boolean }>): Entry[] {
-    return sortEntries(
-      raw.filter((e) => !e.name.startsWith(".") && (e.isDir || EDITABLE_EXT.test(e.name))),
-    );
-  }
 
   // ── Root load + live-update subscription ──────────────────────────────────
   // A generation counter (same pattern as MediaPanel's `loadSeq`) guards

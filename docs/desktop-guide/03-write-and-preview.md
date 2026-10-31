@@ -90,8 +90,8 @@ nothing changed writes nothing. Edits made from the editor go into its undo hist
 The left panel has three tabs:
 
 - **TOC** — the table of contents; click a heading to go to it.
-- **Files** — your book's chapters. **New chapter** and **New folder** are at the top; hover a
-  file for **Rename** and **Delete**. Deleting asks you to confirm, and the "Deleted" message
+- **Files** — your book's chapters, stylesheets and SVG figures; an SVG opens as text. **New
+  chapter** and **New folder** are at the top; hover a file for **Rename** and **Delete**. Deleting asks you to confirm, and the "Deleted" message
   that follows has an **Undo** button for the most recent delete.
 - **Media** — your book's images. **Add images…** adds images to the book; select one and
   choose **Insert into document** to put it at the cursor.
