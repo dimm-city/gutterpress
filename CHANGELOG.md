@@ -8,8 +8,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 ### Added
 
 - **`pdfx.blackText: k-only-neutral`.** Grey text at 24pt and under (channels
-  within 0.04 of each other) also prints on the black plate alone, at its own
-  tone; a coloured ink keeps its colour. `pdf.print.black-text` names it.
+  within 0.04 of each other) also prints on the black plate alone, at about
+  its tone; a coloured ink keeps its colour. `pdf.print.black-text` names it.
 
 ### Changed
 

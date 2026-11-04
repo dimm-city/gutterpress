@@ -210,7 +210,7 @@ export interface GutterpressManifest {
     stripAnnotations?: boolean;
     /**
      * `k-only` prints near-black text on the black plate alone (#331);
-     * `k-only-neutral` also prints other grey text there, at its own tone.
+     * `k-only-neutral` also prints other grey text there, at about its tone.
      */
     blackText?: "icc" | "k-only" | "k-only-neutral";
     /**

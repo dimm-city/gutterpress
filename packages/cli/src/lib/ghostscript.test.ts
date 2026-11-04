@@ -10,6 +10,7 @@ import { log } from "../utils/logger";
 import { getAssetPath } from "./embedded-assets";
 import {
   convertToPdfxCmyk,
+  ghostscriptOlderThan,
   planTransparentPages,
   transparentPages,
   resolveGhostscript,
@@ -229,14 +230,24 @@ test("convertToPdfxCmyk logs Ghostscript's warnings block instead of discarding 
 });
 
 describe("convertToPdfxCmyk's PDF/X definition file", () => {
-  /** Run the conversion with Ghostscript mocked; returns the definition file and the warnings. */
-  async function definitionFor(iccPath: string | null, pdfx: "x1a" | "x3", version = "10.06.0") {
+  /**
+   * Run the conversion with Ghostscript mocked; returns the definition file and
+   * the warnings. With `iccPath` null, a file that is not a profile, at a path
+   * with parentheses in it, stands in for an unknown profile.
+   */
+  async function definitionFor(
+    iccPath: string | null,
+    pdfx: "x1a" | "x3",
+    version = "10.06.0",
+    title?: string
+  ) {
     const stagingDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-def-"));
+    const spies: Array<{ mockRestore(): void }> = [];
     try {
       const executable = join(stagingDir, "custom-gs");
       await writeFile(executable, "");
       process.env.GHOSTSCRIPT_PATH = executable;
-      const profile = iccPath ?? join(stagingDir, "MyPress.icc");
+      const profile = iccPath ?? join(stagingDir, "My (press).icc");
       if (!iccPath) await writeFile(profile, "not-a-real-icc");
       let definition = "";
       const spawn = spyOn(execMod, "spawnCapture").mockImplementation(async (_cmd, args) => {
@@ -245,15 +256,16 @@ describe("convertToPdfxCmyk's PDF/X definition file", () => {
       });
       const capture = spyOn(execMod, "execCapture").mockResolvedValue({ stdout: `${version}\n`, stderr: "" });
       const warn = spyOn(log, "warn").mockImplementation(() => {});
+      spies.push(spawn, capture, warn);
       await convertToPdfxCmyk(join(stagingDir, "raw.pdf"), join(stagingDir, "out.pdf"), {
         iccPath: profile,
         pdfx,
         stagingDir,
+        ...(title === undefined ? {} : { title }),
       });
-      const warnings = warn.mock.calls.map(([m]) => String(m));
-      for (const spy of [spawn, capture, warn]) spy.mockRestore();
-      return { definition, warnings };
+      return { definition, warnings: warn.mock.calls.map(([m]) => String(m)) };
     } finally {
+      for (const spy of spies) spy.mockRestore();
       await rm(stagingDir, { recursive: true, force: true });
     }
   }
@@ -263,7 +275,7 @@ describe("convertToPdfxCmyk's PDF/X definition file", () => {
     for (const flavor of ["x1a", "x3"] as const) {
       const { definition, warnings } = await definitionFor(shipped, flavor);
       expect(definition).toContain("/OutputConditionIdentifier (CGATS21-2-CRPC1)");
-      expect(definition).toContain("/OutputCondition (CGATS 21-2 CRPC1 \\(ISO 15339-2\\))");
+      expect(definition).toContain("/OutputCondition (CGATS 21-2 CRPC1 \\(ISO/PAS 15339-2\\))");
       expect(definition).toContain("/RegistryName (http://www.color.org)");
       // SWOP's condition (`CGATS TR001`), which the x1a build used to write.
       expect(definition).not.toContain("CGATS TR");
@@ -276,12 +288,36 @@ describe("convertToPdfxCmyk's PDF/X definition file", () => {
     for (const gone of ["UCR", "BGFunction", "MaxTAC", "setpagedevice"]) expect(definition).not.toContain(gone);
   });
 
-  test("an unknown profile is named by its description, not claimed as registered, and warned about", async () => {
+  test("a profile with no description is named by its file name, not claimed as registered, and warned about", async () => {
     const { definition, warnings } = await definitionFor(null, "x1a");
-    expect(definition).toContain("/OutputConditionIdentifier (MyPress.icc)");
+    // The file name's parentheses are escaped, in the path and in the names.
+    expect(definition).toContain("/My \\(press\\).icc) def");
+    expect(definition).toContain("/OutputConditionIdentifier (My \\(press\\).icc)");
     expect(definition).not.toContain("/RegistryName");
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("`maxTac` is what pdf.print.ink-coverage checks");
+  });
+
+  test("a profile file named like the shipped one is not claimed as registered without its description", async () => {
+    const stagingDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-impostor-"));
+    try {
+      const impostor = join(stagingDir, "CGATS21_CRPC1.icc");
+      await writeFile(impostor, "not-a-real-icc");
+      const { definition } = await definitionFor(impostor, "x1a");
+      expect(definition).toContain("/OutputConditionIdentifier (CGATS21_CRPC1.icc)");
+      expect(definition).not.toContain("/RegistryName");
+    } finally {
+      await rm(stagingDir, { recursive: true, force: true });
+    }
+  });
+
+  test("the title is a PostScript literal: delimiters escaped, non-ASCII as UTF-16BE hex", async () => {
+    const shipped = await getAssetPath("profiles/CGATS21_CRPC1.icc");
+    const ascii = await definitionFor(shipped, "x1a", "10.06.0", "A (lost) book)");
+    expect(ascii.definition).toContain("/Title (A \\(lost\\) book\\))");
+    const accented = await definitionFor(shipped, "x1a", "10.06.0", "Café");
+    expect(accented.definition).toContain("/Title <FEFF00430061006600e9>");
+    expect(accented.definition).not.toContain("Café");
   });
 
   test("warns when Ghostscript is older than 10.03.0, whose pdfwrite ignores the output profile", async () => {
@@ -292,6 +328,18 @@ describe("convertToPdfxCmyk's PDF/X definition file", () => {
     expect((await definitionFor(shipped, "x1a", "10.0.0")).warnings).toHaveLength(1);
     expect((await definitionFor(shipped, "x1a", "10.03.0")).warnings).toEqual([]);
     expect((await definitionFor(shipped, "x1a", "10.05.0")).warnings).toEqual([]);
+  });
+});
+
+describe("ghostscriptOlderThan", () => {
+  test("compares major.minor; a version it cannot read is not called old", () => {
+    expect(ghostscriptOlderThan("10.02.1", 10, 3)).toBe(true);
+    expect(ghostscriptOlderThan("9.56.1", 10, 3)).toBe(true);
+    expect(ghostscriptOlderThan("10.03.0", 10, 3)).toBe(false);
+    expect(ghostscriptOlderThan("10.3.0", 10, 3)).toBe(false);
+    expect(ghostscriptOlderThan("11.0.0", 10, 3)).toBe(false);
+    expect(ghostscriptOlderThan(" 10.05.0\n", 10, 3)).toBe(false);
+    for (const unreadable of ["", "10", "gs 10.02.1"]) expect(ghostscriptOlderThan(unreadable, 10, 3)).toBe(false);
   });
 });
 

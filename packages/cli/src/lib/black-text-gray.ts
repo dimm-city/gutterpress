@@ -66,8 +66,9 @@ function isNearBlack([r, g, b]: Rgb): boolean {
  * it as RGB. Near-black is `0` (100% K). With `neutral` (`pdfx.blackText:
  * k-only-neutral`), any other low-chroma colour (channels within
  * {@link MAX_SPREAD} of each other: a dark grey, a barely warm grey) becomes
- * DeviceGray at its luminance, so it too prints on the black plate alone, at
- * its own tone. A visibly coloured ink keeps its colour either way.
+ * DeviceGray at its sRGB luminance, so it too prints on the black plate alone,
+ * at about its tone (the press's black ramp is not sRGB's, so the match is not
+ * exact). A visibly coloured ink keeps its colour either way.
  */
 function grayFor(rgb: Rgb, neutral: boolean): string | null {
   if (isNearBlack(rgb)) return "0";
@@ -373,10 +374,12 @@ function applyEdits(s: string, edits: Edit[]): string {
 /**
  * A CMYK fill that is a dark four-colour mix: dark (K ≥ 0.7), all three of
  * C/M/Y carrying real ink, and those three within 0.25 of each other.
- * Measured through the shipped CGATS21 profile: `#000` lands at 72/68/67/88,
- * `#1a1512` at 67/68/69/80, the lightest qualifying `#1f1f1f` at 70/66/66/75.
- * A designed dark colour such as a dark-brown body ink (`#2b231d`) matches
- * too. After conversion it cannot be told from a missed near-black, and small
+ * Measured through the shipped CGATS21 profile with Ghostscript 10.05: `#000`
+ * lands at 47/42/40/100, `#1a1512` at 44/40/39/94, `#1f1f1f` at 44/38/37/91,
+ * `#333` at 41/34/33/83 and `#404040` at 39/32/31/75, the lightest grey still
+ * carrying 30% in each of C, M and Y; `#444` (38/31/30/72) does not. A
+ * designed dark colour such as a dark-brown body ink (`#2b231d`, 40/38/38/88)
+ * matches too. After conversion it cannot be told from a missed near-black, and small
  * four-colour text is the print risk either way, so the check that reads this
  * is a warning. K-only text (`0 0 0 1 k`, `0 g`) has no CMY and never matches.
  */

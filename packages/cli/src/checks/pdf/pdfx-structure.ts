@@ -55,11 +55,13 @@ export function parseQpdfObjectsJson(stdout: string): JsonObject | null {
 }
 
 /**
- * The OutputIntent's structural problems. With `profileDescription` (the
- * embedded `/DestOutputProfile`'s ICC description, which qpdf's object JSON
- * does not carry), also whether `/OutputConditionIdentifier` names that
- * profile's printing condition. Only a profile Gutterpress knows the registry
- * name of can be judged; another profile's identifier is left alone.
+ * The OutputIntent's structural problems, among them a missing
+ * `/OutputConditionIdentifier`, which PDF/X requires. With
+ * `profileDescription` (the embedded `/DestOutputProfile`'s ICC description,
+ * which qpdf's object JSON does not carry), also whether the identifier names
+ * that profile's printing condition. Only a profile Gutterpress knows the
+ * registry name of can be judged that way; another profile's identifier is
+ * left alone.
  */
 export function getPdfxOutputIntentIssues(
   objects: JsonObject,
@@ -103,12 +105,13 @@ export function getPdfxOutputIntentIssues(
     issues.push("/DestOutputProfile reference does not resolve to an object.");
   }
 
-  const expected = profileDescription ? outputConditionFor(profileDescription) : undefined;
   const identifier = intentDict["/OutputConditionIdentifier"];
-  if (expected?.registered && identifier !== expected.identifier) {
+  const expected = profileDescription ? outputConditionFor(profileDescription) : undefined;
+  if (typeof identifier !== "string" || identifier.length === 0) {
+    issues.push("OutputIntent dictionary must include a string /OutputConditionIdentifier.");
+  } else if (expected?.registered && identifier !== expected.identifier) {
     issues.push(
-      `/OutputConditionIdentifier (${typeof identifier === "string" ? identifier : "missing"}) ` +
-        `does not name the embedded profile's printing condition (${expected.identifier}).`
+      `/OutputConditionIdentifier (${identifier}) does not name the embedded profile's printing condition (${expected.identifier}).`
     );
   }
 

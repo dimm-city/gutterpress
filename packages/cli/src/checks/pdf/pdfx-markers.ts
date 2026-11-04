@@ -62,16 +62,21 @@ const check: Check = {
 };
 
 /**
- * The ICC description of the first OutputIntent's `/DestOutputProfile`, read
- * with pdf-lib: qpdf's object JSON leaves stream data out. `undefined` when
- * there is none to read.
+ * The ICC description of the `/DestOutputProfile` of the first OutputIntent
+ * that is a dictionary (the one `getPdfxOutputIntentIssues` judges), read with
+ * pdf-lib: qpdf's object JSON leaves stream data out. `undefined` when there
+ * is none to read.
  */
 async function outputProfileDescription(pdfPath: string): Promise<string | undefined> {
   const { PDFDocument, PDFArray, PDFDict, PDFName, PDFRawStream, decodePDFRawStream } =
     await import("pdf-lib");
   try {
     const doc = await PDFDocument.load(await readFile(pdfPath), { updateMetadata: false });
-    const intent = doc.catalog.lookupMaybe(PDFName.of("OutputIntents"), PDFArray)?.lookup(0);
+    const intents = doc.catalog.lookupMaybe(PDFName.of("OutputIntents"), PDFArray);
+    const intent = intents
+      ?.asArray()
+      .map((_, i) => intents.lookup(i))
+      .find((entry) => entry instanceof PDFDict);
     const profile =
       intent instanceof PDFDict ? intent.lookup(PDFName.of("DestOutputProfile")) : undefined;
     if (!(profile instanceof PDFRawStream)) return undefined;

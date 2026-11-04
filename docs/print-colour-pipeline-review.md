@@ -106,7 +106,7 @@ Fix: write `CGATS21-2-CRPC1` for both flavours when the shipped profile is in
 use; derive the identifier from the profile (a small table keyed by the ICC
 description, falling back to the profile description string plus a build
 warning when the profile is unknown), set `/OutputCondition` to a readable
-"CGATS 21-2 CRPC1 (ISO 15339-2)". Extend `getPdfxOutputIntentIssues` to
+"CGATS 21-2 CRPC1 (ISO/PAS 15339-2)". Extend `getPdfxOutputIntentIssues` to
 report an identifier that does not match the embedded profile's description,
 and assert the value in `pdfx-markers.integration.test.ts`.
 

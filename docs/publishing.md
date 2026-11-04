@@ -253,13 +253,17 @@ output ICC profile in `pdfx.icc` (both presets default to
   snapd gives it a private `/tmp`, so it cannot read the files Gutterpress
   stages there (every conversion fails with `Unrecoverable error`).
 - **The OutputIntent names the printing condition.** With the shipped profile
-  `/OutputConditionIdentifier` is `CGATS21-2-CRPC1`, its ICC registry name.
-  `pdf.print.pdfx-markers` reports an identifier that does not name the
-  embedded profile's condition.
+  `/OutputConditionIdentifier` is `CGATS21-2-CRPC1`, its ICC registry name;
+  another profile is named by its own description. `pdf.print.pdfx-markers`
+  reports a missing identifier and, for a profile Gutterpress knows, one that
+  does not name the embedded profile's condition. The shipped profile is ICC
+  v4 (4.2). PDF/X-1a:2001 and PDF/X-3:2002 predate ICC v4, so a strict
+  preflight can report the profile's version; DriveThruRPG names this profile
+  itself.
 - **Black text.** `pdfx.blackText: k-only` (the `dtrpg` default) prints
   near-black text at 24pt or below on the black plate alone, as DriveThruRPG's
   spec requires. `k-only-neutral` also moves other grey text (channels within
-  0.04 of each other) there, at its own tone; a coloured ink such as a dark
+  0.04 of each other) there, at about its tone; a coloured ink such as a dark
   brown stays four-colour.
 - **Trim and bleed.** The `dtrpg` sheet contains its bleed on the top, bottom
   and outside edge (`page.bleed`). Each page's TrimBox is the sheet pulled in

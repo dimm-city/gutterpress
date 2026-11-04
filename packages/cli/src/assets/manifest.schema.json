@@ -357,7 +357,7 @@
         },
         "blackText": {
           "type": "string",
-          "description": "How near-black text is separated. `icc` converts it through the ICC profile (rich, four-colour black). `k-only` prints it on the black plate alone (100% K), which DriveThruRPG's spec requires for text at 24pt or below. `k-only-neutral` does the same and also prints other grey text (channels within 0.04 of each other) on the black plate at its own tone; a coloured ink such as a dark brown keeps its colour. Non-text black (rules, panels) is unaffected. Preset defaults: dtrpg `k-only`, book `icc`.",
+          "description": "How near-black text is separated. `icc` converts it through the ICC profile (rich, four-colour black). `k-only` prints it on the black plate alone (100% K), which DriveThruRPG's spec requires for text at 24pt or below. `k-only-neutral` does the same and also prints other grey text (channels within 0.04 of each other) on the black plate at about its tone; a coloured ink such as a dark brown keeps its colour. Non-text black (rules, panels) is unaffected. Preset defaults: dtrpg `k-only`, book `icc`.",
           "enum": ["icc", "k-only", "k-only-neutral"],
           "default": "icc"
         },

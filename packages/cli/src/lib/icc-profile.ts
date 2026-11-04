@@ -29,7 +29,7 @@ export interface OutputCondition {
 const KNOWN: Record<string, Omit<OutputCondition, "registered">> = {
   "CGATS21_CRPC1.icc": {
     identifier: "CGATS21-2-CRPC1",
-    condition: "CGATS 21-2 CRPC1 (ISO 15339-2)",
+    condition: "CGATS 21-2 CRPC1 (ISO/PAS 15339-2)",
   },
 };
 
@@ -46,37 +46,48 @@ export function outputConditionFor(description: string): OutputCondition {
 
 /**
  * The description (`desc` tag) of an ICC profile: the v2 `desc`
- * (textDescriptionType, ASCII) or v4 `mluc` (UTF-16BE, first record) form.
- * `undefined` when the bytes are not a profile or carry no description.
+ * (textDescriptionType, ASCII) or v4 `mluc` (UTF-16BE; the English record,
+ * else the first) form. `undefined` when the bytes are not a profile or carry
+ * no readable description.
  */
 export function iccProfileDescription(bytes: Uint8Array): string | undefined {
+  try {
+    return readDescription(bytes);
+  } catch {
+    return undefined;
+  }
+}
+
+function readDescription(bytes: Uint8Array): string | undefined {
   if (bytes.length < 132) return undefined;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const ascii = (at: number, n: number) =>
-    String.fromCharCode(...bytes.subarray(at, at + n));
-  if (ascii(36, 4) !== "acsp") return undefined;
+  const text = (at: number, n: number) =>
+    Buffer.from(bytes.subarray(at, at + n)).toString("latin1").replace(/\0+$/, "");
+  if (text(36, 4) !== "acsp") return undefined;
   const count = view.getUint32(128);
   for (let i = 0; i < count; i++) {
     const entry = 132 + 12 * i;
     if (entry + 12 > bytes.length) return undefined;
-    if (ascii(entry, 4) !== "desc") continue;
+    if (text(entry, 4) !== "desc") continue;
     const at = view.getUint32(entry + 4);
     const size = view.getUint32(entry + 8);
     if (at + size > bytes.length || size < 12) return undefined;
-    const type = ascii(at, 4);
+    const type = text(at, 4);
     if (type === "desc") {
       const n = view.getUint32(at + 8);
       if (12 + n > size) return undefined;
-      return ascii(at + 12, n).replace(/\0+$/, "") || undefined;
+      return text(at + 12, n) || undefined;
     }
     if (type === "mluc") {
-      if (view.getUint32(at + 8) < 1 || size < 28) return undefined;
-      const len = view.getUint32(at + 20);
-      const from = at + view.getUint32(at + 24);
+      const records = view.getUint32(at + 8);
+      if (records < 1 || size < 16 + 12 * records) return undefined;
+      const starts = Array.from({ length: records }, (_, r) => at + 16 + 12 * r);
+      const record = starts.find((r) => text(r, 2) === "en") ?? starts[0]!;
+      const len = view.getUint32(record + 4);
+      const from = at + view.getUint32(record + 8);
       if (from + len > at + size) return undefined;
-      let text = "";
-      for (let j = 0; j + 1 < len; j += 2) text += String.fromCharCode(view.getUint16(from + j));
-      return text.replace(/\0+$/, "") || undefined;
+      // UTF-16BE; `Buffer.from` copies, so the swap does not touch the profile.
+      return Buffer.from(bytes.subarray(from, from + len)).swap16().toString("utf16le").replace(/\0+$/, "") || undefined;
     }
     return undefined;
   }

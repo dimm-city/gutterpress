@@ -20,6 +20,15 @@ const check: Check = {
       const { findRichBlackText, LARGE_TEXT_PT } = await import("../../lib/black-text-gray");
       const found = await findRichBlackText(await readFile(ctx.pdfPath));
       if (found.runs === 0) return [];
+      const advice =
+        ctx.config.pdfx.blackText === "k-only-neutral"
+          ? "`pdfx.blackText: k-only-neutral` already puts near-black and grey text there, so this text is a " +
+            "coloured ink (for example a dark brown, which keeps its colour) or is painted in a way the build " +
+            "cannot rewrite (an image or a pattern). "
+          : "`pdfx.blackText: k-only` already does that for near-black text; this text is either a dark " +
+            "colour (for example a dark brown, which keeps its colour) or painted in a way the build cannot " +
+            "rewrite (an image or a pattern). If it is a dark grey, `pdfx.blackText: k-only-neutral` prints " +
+            "it on the black plate at about its tone; a coloured ink stays four-colour. ";
       return [
         finding(check.id, {
           severity: "warning",
@@ -28,10 +37,7 @@ const check: Check = {
           detail:
             "Small text printed with all four inks can look fuzzy if the plates are slightly out of register, " +
             "which is why DriveThruRPG's spec puts black text at 24pt or below on the black plate alone. " +
-            "`pdfx.blackText: k-only` already does that for near-black text; this text is either a dark " +
-            "colour (for example a dark brown, which keeps its colour) or painted in a way the build cannot " +
-            "rewrite (an image or a pattern). If it is a dark grey, `pdfx.blackText: k-only-neutral` prints " +
-            "it on the black plate at its own tone; a coloured ink stays four-colour. " +
+            advice +
             "If the colour is intended, set `checks: { pdf.print.black-text: off }` in manifest.yaml.",
           code: "rich-black-text",
           data: { runs: found.runs, pages: found.pages },
