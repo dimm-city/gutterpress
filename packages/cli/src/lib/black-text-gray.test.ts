@@ -73,6 +73,43 @@ async function streamsOf(bytes: Uint8Array, subtype?: string): Promise<string[]>
   return out;
 }
 
+describe("k-only-neutral", () => {
+  test("a dark grey beyond near-black goes to DeviceGray at its luminance, restored after ET", () => {
+    // #303030: too light for k-only, neutral.
+    const src = ".1882 .1882 .1882 rg BT /F1 9 Tf <01> Tj ET";
+    expect(rewriteBlackText(src)).toBe(src);
+    expect(rewriteBlackText(src, {}, true)).toBe(
+      ".1882 .1882 .1882 rg BT 0.1882 g /F1 9 Tf <01> Tj .1882 .1882 .1882 rg ET"
+    );
+  });
+
+  test("near-black still goes to 0 g, as with k-only", () => {
+    expect(rewriteBlackText("BT 0.1 0.1 0.1 rg /F1 9 Tf <01> Tj ET", {}, true)).toBe(
+      "BT 0 g /F1 9 Tf <01> Tj 0.1 0.1 0.1 rg ET"
+    );
+  });
+
+  test("a coloured ink (spread > 0.04) keeps its colour", () => {
+    // #2f2622, a warm dark brown: spread 0.051.
+    const src = ".1843 .149 .1333 rg BT /F1 9 Tf <01> Tj ET";
+    expect(rewriteBlackText(src, {}, true)).toBe(src);
+  });
+
+  test("text above 24pt stays as authored", () => {
+    const src = ".1882 .1882 .1882 rg BT /F1 30 Tf <01> Tj ET";
+    expect(rewriteBlackText(src, {}, true)).toBe(src);
+  });
+
+  test("a grey underline in a small text's span takes the text's gray", () => {
+    const out = rewriteBlackText(
+      "/P <</MCID 0>> BDC .3 .3 .3 rg BT /F1 9 Tf <01> Tj ET 0 0 50 .5 re f EMC",
+      {},
+      true
+    );
+    expect(out).toContain("q 0.3 g 0 0 50 .5 re f Q");
+  });
+});
+
 describe("blackTextToGray", () => {
   test("rewrites a page content stream", async () => {
     const pdf = await pdfOf((ctx, page, { PDFName }) => {

@@ -208,8 +208,11 @@ export interface GutterpressManifest {
     flavor?: "x1a" | "x3";
     icc?: string;
     stripAnnotations?: boolean;
-    /** `k-only` prints near-black text on the black plate alone (#331). */
-    blackText?: "icc" | "k-only";
+    /**
+     * `k-only` prints near-black text on the black plate alone (#331);
+     * `k-only-neutral` also prints other grey text there, at its own tone.
+     */
+    blackText?: "icc" | "k-only" | "k-only-neutral";
     /**
      * A page that uses transparency, which PDF/X cannot hold (#385).
      * `flatten-page` (default): Ghostscript rasterizes the whole page, text
@@ -369,7 +372,7 @@ export interface ResolvedConfig {
     flavor: "x1a" | "x3";
     icc: string;
     stripAnnotations: boolean;
-    blackText: "icc" | "k-only";
+    blackText: "icc" | "k-only" | "k-only-neutral";
     transparency: "flatten-page" | "preserve-text";
     flattenPages: number[];
     rasterDpi?: number;

@@ -73,8 +73,9 @@ export const DTRPG_PRESET: VendorPreset = {
     icc: "profiles/CGATS21_CRPC1.icc",
     // CONVENTION: interactive annotations have no place in a PDF/X print file.
     stripAnnotations: true,
-    // CONVENTION (#331): near-black text on the black plate alone, so small
-    // type is not registered across four plates. Not a DriveThru rule.
+    // SPEC ("Black Text Density"): black text at 24pt or below prints 0/0/0/100,
+    // on the black plate alone (#331, #336). `k-only-neutral` also moves grey
+    // text there; a book opts in.
     blackText: "k-only",
     // CONVENTION (#385): the safe default. Books opt in to `preserve-text`.
     transparency: "flatten-page",

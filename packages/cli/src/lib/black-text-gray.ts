@@ -61,6 +61,21 @@ function isNearBlack([r, g, b]: Rgb): boolean {
   return max <= MAX_CHANNEL && max - Math.min(r, g, b) <= MAX_SPREAD;
 }
 
+/**
+ * The DeviceGray level text in this colour is rewritten to, or null to leave
+ * it as RGB. Near-black is `0` (100% K). With `neutral` (`pdfx.blackText:
+ * k-only-neutral`), any other low-chroma colour (channels within
+ * {@link MAX_SPREAD} of each other: a dark grey, a barely warm grey) becomes
+ * DeviceGray at its luminance, so it too prints on the black plate alone, at
+ * its own tone. A visibly coloured ink keeps its colour either way.
+ */
+function grayFor(rgb: Rgb, neutral: boolean): string | null {
+  if (isNearBlack(rgb)) return "0";
+  const [r, g, b] = rgb;
+  if (!neutral || Math.max(r, g, b) - Math.min(r, g, b) > MAX_SPREAD) return null;
+  return String(Number((0.2126 * r + 0.7152 * g + 0.0722 * b).toFixed(4)));
+}
+
 const WS = new Set([0, 9, 10, 12, 13, 32]);
 const DELIM = new Set("()<>[]{}/%".split("").map((c) => c.charCodeAt(0)));
 
@@ -174,17 +189,18 @@ type Edit = { start: number; end: number; text: string };
 interface Span {
   hasSmall: boolean;
   maxSmall: number;
-  /** thin near-black rects seen in this span: edit positions and thickness (pt) */
-  rects: { start: number; end: number; thickness: number }[];
+  /** thin near-black rects seen in this span: edit positions, thickness (pt) and gray level */
+  rects: { start: number; end: number; thickness: number; gray: string }[];
 }
 
 /**
  * Rewrite near-black RGB fill/stroke to DeviceGray black inside BT…ET of one
  * content stream, for text at or below {@link LARGE_TEXT_PT}, plus the thin
- * decoration rects in that text's marked-content span. Pure string → string;
- * returns the input when nothing changed.
+ * decoration rects in that text's marked-content span. With `neutral`, other
+ * low-chroma text goes to DeviceGray at its luminance too ({@link grayFor}).
+ * Pure string → string; returns the input when nothing changed.
  */
-export function rewriteBlackText(src: string, ctx: ContentContext = {}): string {
+export function rewriteBlackText(src: string, ctx: ContentContext = {}, neutral = false): string {
   // Logical (as authored) colour state; null = not a known DeviceRGB colour.
   let fill: Colour | null = null;
   let stroke: Colour | null = null;
@@ -196,7 +212,7 @@ export function rewriteBlackText(src: string, ctx: ContentContext = {}): string 
   let strokeDirty = false;
   const spans: Span[] = [];
   let lastOp = "";
-  let rect: { start: number; thickness: number } | null = null;
+  let rect: { start: number; thickness: number; gray: string } | null = null;
 
   const edits: Edit[] = [];
   let operands: Tok[] = [];
@@ -217,12 +233,13 @@ export function rewriteBlackText(src: string, ctx: ContentContext = {}): string 
   let fillIns: Edit | null = null;
   let strokeIns: Edit | null = null;
   const syncOne = (
-    colour: Colour | null, dirty: boolean, ins: Edit | null, at: number, gray: string, op: string
+    colour: Colour | null, dirty: boolean, ins: Edit | null, at: number, grayOp: string, op: string
   ): [boolean, Edit | null] => {
-    if (!colour || !isNearBlack(colour.rgb)) return [dirty, ins];
+    const gray = colour && grayFor(colour.rgb, neutral);
+    if (!colour || !gray) return [dirty, ins];
     const small = isSmall();
     if (small && !dirty) {
-      const e = { start: at, end: at, text: ` ${gray}` };
+      const e = { start: at, end: at, text: ` ${gray} ${grayOp}` };
       edits.push(e);
       return [true, e];
     }
@@ -234,14 +251,14 @@ export function rewriteBlackText(src: string, ctx: ContentContext = {}): string 
     return [dirty, ins];
   };
   const sync = (at: number) => {
-    [fillDirty, fillIns] = syncOne(fill, fillDirty, fillIns, at, "0 g", "rg");
-    [strokeDirty, strokeIns] = syncOne(stroke, strokeDirty, strokeIns, at, "0 G", "RG");
+    [fillDirty, fillIns] = syncOne(fill, fillDirty, fillIns, at, "g", "rg");
+    [strokeDirty, strokeIns] = syncOne(stroke, strokeDirty, strokeIns, at, "G", "RG");
   };
 
   const flush = (s: Span) => {
     for (const r of s.rects) {
       if (r.thickness > 0.2 * s.maxSmall) continue;
-      edits.push({ start: r.start, end: r.start, text: "q 0 g " }, { start: r.end, end: r.end, text: " Q" });
+      edits.push({ start: r.start, end: r.start, text: `q ${r.gray} g ` }, { start: r.end, end: r.end, text: " Q" });
     }
   };
 
@@ -277,8 +294,9 @@ export function rewriteBlackText(src: string, ctx: ContentContext = {}): string 
         const c = rgbOf();
         const isFill = op === "rg";
         if (isFill) fill = c; else stroke = c;
-        if (inText && c && isNearBlack(c.rgb) && isSmall()) {
-          edits.push({ start: operands[0]!.start, end: t.end, text: isFill ? "0 g" : "0 G" });
+        const gray = c && grayFor(c.rgb, neutral);
+        if (inText && gray && isSmall()) {
+          edits.push({ start: operands[0]!.start, end: t.end, text: `${gray} ${isFill ? "g" : "G"}` });
           if (isFill) fillDirty = true; else strokeDirty = true;
         } else if (inText) {
           if (isFill) fillDirty = false; else strokeDirty = false;
@@ -316,11 +334,13 @@ export function rewriteBlackText(src: string, ctx: ContentContext = {}): string 
         }
         break;
       }
-      case "re":
-        rect = !inText && fill && isNearBlack(fill.rgb) && operands.length === 4 && nums.every((x) => !Number.isNaN(x))
-          ? { start: operands[0]!.start, thickness: Math.min(Math.abs(nums[2]!), Math.abs(nums[3]!)) * scale.unit }
+      case "re": {
+        const gray = !inText && fill ? grayFor(fill.rgb, neutral) : null;
+        rect = gray && operands.length === 4 && nums.every((x) => !Number.isNaN(x))
+          ? { start: operands[0]!.start, thickness: Math.min(Math.abs(nums[2]!), Math.abs(nums[3]!)) * scale.unit, gray }
           : null;
         break;
+      }
       case "f": case "F": case "f*":
         // a decoration is exactly `x y w h re f` — anything between disqualifies
         if (rect && lastOp === "re") spans[spans.length - 1]?.rects.push({ ...rect, end: t.end });
@@ -510,12 +530,13 @@ async function visitContent(
 
 /**
  * Apply {@link rewriteBlackText} to every page content stream and Form XObject
- * of a PDF. Returns the input bytes untouched when nothing needed rewriting.
+ * of a PDF (`neutral`: `pdfx.blackText: k-only-neutral`). Returns the input
+ * bytes untouched when nothing needed rewriting.
  */
-export async function blackTextToGray(pdf: Uint8Array): Promise<Uint8Array> {
+export async function blackTextToGray(pdf: Uint8Array, neutral = false): Promise<Uint8Array> {
   const { PDFDocument } = await import("pdf-lib");
   const doc = await PDFDocument.load(pdf, { updateMetadata: false });
-  const changed = await visitContent(doc, (src, info) => rewriteBlackText(src, info));
+  const changed = await visitContent(doc, (src, info) => rewriteBlackText(src, info, neutral));
   return changed ? doc.save({ updateFieldAppearances: false }) : pdf;
 }
 
