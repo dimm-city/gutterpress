@@ -19,8 +19,8 @@ export interface PostprocessOptions {
    * sheet already contains on the top, bottom and OUTER edge, none at the
    * binding (shared/print-area.ts). The TrimBox is then the sheet pulled in on
    * those three edges, mirrored by page parity (page 1 is a recto, outer edge
-   * right). A CSS `@page { bleed }` or slug wins when there is one: that
-   * bleed grew the sheet around the trim on every side.
+   * right). A CSS `@page { bleed }` or slug, which grew the sheet on every
+   * side, adds to it: the trim is the sheet less both.
    */
   printBleed?: number;
   /** append blank pages until pageCount % signature === 0 */
@@ -61,7 +61,12 @@ export async function postprocess(
   const doc = await PDFDocument.load(input, { updateMetadata: false });
   const scale = printScale(doc);
   const g = opts.geometry;
+  // A CSS `@page { bleed }` or slug grew the sheet around the page on every
+  // side; the manifest's `page.bleed` is inside the page, on the top, bottom
+  // and outer edge. The trim is the sheet less both.
   const inset = g.bleed + g.slug;
+  const b = opts.printBleed && opts.printBleed > 0 ? opts.printBleed : 0;
+  const hasBleed = inset > 0 || b > 0;
 
   const media = [0, 0, g.media.width, g.media.height];
   const bleedBox = [
@@ -70,12 +75,12 @@ export async function postprocess(
     g.media.width - g.slug,
     g.media.height - g.slug,
   ];
-  const cssBleed = g.bleed > 0 || g.slug > 0;
-  const b = !cssBleed && opts.printBleed && opts.printBleed > 0 ? opts.printBleed : 0;
-  const trimFor = (recto: boolean) =>
-    cssBleed
-      ? [inset, inset, g.media.width - inset, g.media.height - inset]
-      : [recto ? 0 : b, b, g.media.width - (recto ? b : 0), g.media.height - b];
+  const trimFor = (recto: boolean) => [
+    inset + (recto ? 0 : b),
+    inset + b,
+    g.media.width - inset - (recto ? b : 0),
+    g.media.height - inset - b,
+  ];
   const trimBox = trimFor(true);
 
   // ---- signature padding -------------------------------------------------
@@ -97,13 +102,14 @@ export async function postprocess(
     // TrimBox follows the page's side.
     set("MediaBox", media);
     set("CropBox", media);
-    if (cssBleed || b > 0) {
+    const trim = trimFor(index % 2 === 0);
+    if (hasBleed) {
       set("BleedBox", bleedBox);
-      set("TrimBox", trimFor(index % 2 === 0));
+      set("TrimBox", trim);
     } else {
       set("TrimBox", media);
     }
-    if (wantMarks && g.slug > 0) drawCropMarks(page, g);
+    if (wantMarks && g.slug > 0) drawCropMarks(page, g, trim);
   }
 
   // Preserve-unless-provided: only fields the caller passed are written;
@@ -126,13 +132,12 @@ export async function postprocess(
   };
 }
 
-/** Crop marks sit in the slug, offset from the trim corners by the bleed. */
-function drawCropMarks(page: any, g: PageTrim) {
-  const inset = g.bleed + g.slug;
+/** Crop marks sit in the slug: on the trim's lines, from the bleed box's edge outward. */
+function drawCropMarks(page: any, g: PageTrim, trim: number[]) {
   const len = Math.min(g.slug, 18);
-  const gap = g.bleed;
-  const w = g.media.width;
-  const h = g.media.height;
+  const [tx0, ty0, tx1, ty1] = trim as [number, number, number, number];
+  // the bleed box: the sheet less the slug
+  const [bx0, by0, bx1, by1] = [g.slug, g.slug, g.media.width - g.slug, g.media.height - g.slug];
   const color = rgb(0, 0, 0);
   const thickness = 0.25;
   const line = (x: number, y: number, dx: number, dy: number) =>
@@ -143,16 +148,14 @@ function drawCropMarks(page: any, g: PageTrim) {
       color,
     });
 
-  const xs = [inset, w - inset];
-  const ys = [inset, h - inset];
-  for (const x of xs) {
-    for (const y of ys) {
-      const sx = x === inset ? -1 : 1;
-      const sy = y === inset ? -1 : 1;
-      // horizontal arm, offset outward past the bleed
-      line(x + sx * gap, y, sx * len, 0);
+  for (const x of [tx0, tx1]) {
+    for (const y of [ty0, ty1]) {
+      const sx = x === tx0 ? -1 : 1;
+      const sy = y === ty0 ? -1 : 1;
+      // horizontal arm, outward from the bleed on this side
+      line(x === tx0 ? bx0 : bx1, y, sx * len, 0);
       // vertical arm
-      line(x, y + sy * gap, 0, sy * len);
+      line(x, y === ty0 ? by0 : by1, 0, sy * len);
     }
   }
 }

@@ -205,7 +205,7 @@
                 "bleedSize": {
                   "type": "number",
                   "minimum": 0,
-                  "description": "The bleed (points) each side must have. Default 9 (0.125in).",
+                  "description": "The bleed (points) the top, bottom and outside edge must have, between the TrimBox and the BleedBox. Default 9 (0.125in).",
                   "examples": [9]
                 }
               }

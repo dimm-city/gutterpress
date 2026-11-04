@@ -14,7 +14,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - **`pdf.print.bleed` is on for `dtrpg`.** It reads every page's boxes and asks
-  for the bleed on the top, bottom and outside edge, not on both sides.
+  for the bleed on the top, bottom and outside edge, not on both sides: between
+  the TrimBox and the BleedBox, allowing the page-size tolerance, and a page
+  with no TrimBox counts as short. The `dtrpg` publish target turns it on over
+  a `book` preset.
 - **The PDF/X build warns on a Ghostscript older than 10.03.0.** Before that
   release pdfwrite ignored the output profile and separated every colour
   through Ghostscript's default CMYK profile (Artifex bug 707350, fixed
@@ -45,7 +48,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   identifier that does not match the embedded profile.
 - **A `dtrpg` PDF declared the whole sheet as its trim.** Each page's TrimBox
   is the sheet less the bleed on the top, bottom and outside edge, mirrored on
-  left and right pages; BleedBox is the sheet.
+  left and right pages; BleedBox is the sheet. A CSS `@page { bleed }` set as
+  well pulls the trim in further instead of replacing it, and the crop marks
+  follow the trim.
 - **`--icc` is not required for `--format pdfx`**: the help no longer says so.
 
 ## [0.11.23] - 2026-10-31

@@ -416,7 +416,7 @@ $$
 \qquad \text{BleedBox} = \text{MediaBox},
 $$
 
-with no inset at the binding edge. A CSS bleed, when there is one, wins: it grew the sheet on every side. The bleed check asks for at least $b_s$ on each page's top, bottom and outer edge, which both models meet.
+with no inset at the binding edge. A CSS bleed or slug, when there is one, grew the sheet on every side, and the trim is then pulled in by $b + \varsigma$ on every side and by $b_s$ on the three edges besides. The bleed check reads each page's TrimBox against its BleedBox and asks for at least $b_s - \tau$ on the top, bottom and outer edge, with $\tau$ the validator's 0.5 pt rounding allowance; both models meet it.
 
 ### 6.6 Signature padding
 

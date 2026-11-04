@@ -21,6 +21,7 @@ import {
   PDFRawStream,
   PDFRef,
   PDFString,
+  type PDFPage,
 } from "pdf-lib";
 
 export interface PageBoxes {
@@ -41,10 +42,19 @@ export interface PdfFacts {
   outline: Array<{ title: string; page: number }>;
 }
 
-function boxOf(page: any, name: string): number[] | undefined {
-  const arr = page.node.get(PDFName.of(name));
-  if (!(arr instanceof PDFArray)) return undefined;
-  return arr.asArray().map((n) => (n as PDFNumber).asNumber());
+/**
+ * A page box, through pdf-lib's accessors: MediaBox and CropBox may be
+ * inherited from the page tree and any box may be an indirect object, both of
+ * which a direct `get` on the page dictionary misses.
+ */
+function boxOf(page: PDFPage, name: "MediaBox" | "CropBox" | "BleedBox" | "TrimBox"): number[] | undefined {
+  try {
+    const arr = page.node[name]();
+    if (!(arr instanceof PDFArray)) return undefined;
+    return arr.asArray().map((_, i) => arr.lookup(i, PDFNumber).asNumber());
+  } catch {
+    return undefined;
+  }
 }
 
 export async function inspectPdf(bytes: Uint8Array): Promise<PdfFacts> {

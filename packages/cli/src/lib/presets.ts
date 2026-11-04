@@ -140,8 +140,10 @@ export const DTRPG_PRESET: VendorPreset = {
     // On (no entry): `pdf.print.transparency` and `asset.image.alpha-channel`
     // (DERIVED: PDF/X-1a forbids transparency, which an alpha channel needs),
     // and `pdf.print.bleed` (SPEC: 0.125in on the top, bottom and outside
-    // edge; the build writes each page's TrimBox from `page.bleed` above,
-    // with no inset at the binding edge).
+    // edge, measured between each page's TrimBox and BleedBox; the build
+    // writes the TrimBox from `page.bleed` above and any CSS bleed, with no
+    // inset at the binding edge. The `dtrpg` target turns the check on over a
+    // `book` preset).
   },
   validate: {
     assets: {

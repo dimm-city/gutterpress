@@ -30,7 +30,7 @@ export interface CheckEntry {
   tolerance?: number;
   /** `pdf.print.image-resolution`: the lowest DPI a placed image may print at; 0 = no floor. */
   minImageResolution?: number;
-  /** `pdf.print.bleed`: the bleed (pt) each side must have. */
+  /** `pdf.print.bleed`: the bleed (pt) the top, bottom and outside edge must have. */
   bleedSize?: number;
   /** `asset.image.file-size`: the largest image file in bytes; 0 = no limit. */
   maxImageSize?: number;

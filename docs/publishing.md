@@ -268,8 +268,11 @@ output ICC profile in `pdfx.icc` (both presets default to
 - **Trim and bleed.** The `dtrpg` sheet contains its bleed on the top, bottom
   and outside edge (`page.bleed`). Each page's TrimBox is the sheet pulled in
   on those three edges, mirrored by page parity, and its BleedBox is the sheet.
-  A CSS `@page { bleed }` grows the sheet on every side instead, and wins when
-  both are set. `pdf.print.bleed` checks the top, bottom and outside edge.
+  A CSS `@page { bleed }` grows the sheet on every side; when both are set the
+  TrimBox is pulled in by both, and the crop marks follow it. `pdf.print.bleed`
+  asks for the bleed on the top, bottom and outside edge, between the TrimBox
+  and the BleedBox, allowing the page-size tolerance (0.5pt); a page with no
+  TrimBox counts as short.
 - **Validate the PDF/X file.** `pdf.print.color-spaces` and
   `pdf.print.transparency` scan raw bytes, and the plain `--format pdf` file
   packs its dictionaries into compressed object streams they cannot see; the
