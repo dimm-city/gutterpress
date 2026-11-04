@@ -448,7 +448,7 @@ $$
 \tag{15}
 $$
 
-with $\mathrm{TAC}_{\max} = 240$ and $\tau_{\text{ink}} = 0.5$ for DriveThruRPG and $\mathrm{TAC}_{\max} = 400$, the physical ceiling of four inks, for the neutral book preset so that the check never fires without a real vendor limit. A Ghostscript failure is reported as "not measured", never as a pass: the record notes a release of Ghostscript that printed nothing without an output target, which an earlier version of the check had read as zero pages and therefore no problems. That version also summed the `inkcov` device's per-page mean coverage, under which a 400% patch on a tenth of a page measured 40% and passed. The conversion itself holds no ink limit: the output profile does, CGATS21_CRPC1 at about 240%, and $\mathrm{TAC}_{\max}$ is only the check's threshold.
+with $\mathrm{TAC}_{\max} = 240$ and $\tau_{\text{ink}} = 0.5$ for DriveThruRPG and $\mathrm{TAC}_{\max} = 400$, the physical ceiling of four inks, for the neutral book preset so that the check never fires without a real vendor limit. A Ghostscript failure is reported as "not measured", never as a pass: the record notes a release of Ghostscript that printed nothing without an output target, which an earlier version of the check had read as zero pages and therefore no problems. That version also summed the `inkcov` device's per-ink figures, which are the share of the page each ink touches rather than the ink it lays down: a 400% patch on a tenth of a page measured 40% and passed, and a page of 72% cyan read as 100%. The conversion itself holds no ink limit: the output profile does, CGATS21_CRPC1 at about 240%, and $\mathrm{TAC}_{\max}$ is only the check's threshold.
 
 ### 6.8 Effective image resolution
 

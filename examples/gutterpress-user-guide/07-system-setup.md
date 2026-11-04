@@ -13,7 +13,7 @@ Gutterpress does almost everything in-process. It needs only a Chromium-based br
 | Tool | Used for | When you need it |
 |------|----------|------------------|
 | Chrome / Chromium | Renders your HTML into a paginated PDF (native print engine) | **Always** (every PDF) |
-| Ghostscript (`gs`) | Converts the RGB PDF to **CMYK PDF/X** with an ICC output intent; per-page ink-coverage check | Only for `--format pdfx` |
+| Ghostscript (`gs`) | Converts the RGB PDF to **CMYK PDF/X** with an ICC output intent; rasterises the PDF/X file for the ink-coverage check | Only for `--format pdfx` |
 | `qpdf` | Strips disallowed annotations for PDF/X; validates the PDF/X OutputIntent + metadata | Only for `--format pdfx` |
 
 @end-section

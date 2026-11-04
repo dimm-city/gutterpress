@@ -1,17 +1,34 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { getPerPageInkCoverage } from "../../lib/pdf-parse";
+import { finding } from "../policy";
+import { getPerPageInkCoverage, hasOutputIntent } from "../../lib/pdf-parse";
 
 const check: Check = {
   id: "pdf.print.ink-coverage",
   name: "Ink Coverage (TAC)",
   description:
-    "Checks each page's total area coverage (TAC: C+M+Y+K at its heaviest spot) against the ink limit",
+    "Checks each page's total area coverage (TAC: C+M+Y+K at its heaviest spot, rasterised at 72 DPI) against the ink limit",
   category: "pdf",
   phase: "post-build",
   requiredTools: ["gs"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
+    // A file with no OutputIntent has not been separated for a press; its RGB
+    // would be measured through Ghostscript's default profiles, which is not
+    // what a printer receives. (Unreadable: let the measurement report that.)
+    if (!(await hasOutputIntent(ctx.pdfPath).catch(() => true))) {
+      return [
+        finding(check.id, {
+          severity: "info",
+          message: "Ink coverage is measured on PDF/X files only",
+          file: ctx.pdfPath,
+          detail:
+            "This PDF has no OutputIntent, so its colour has not been separated for a press and its ink " +
+            "cannot be measured. Build with `--format pdfx` and validate the `-pdfx.pdf` file.",
+          code: "ink-coverage-not-pdfx",
+        }),
+      ];
+    }
     const inkResult = await getPerPageInkCoverage(ctx.pdfPath);
     if (!inkResult.ok) {
       // Finding #51: a gs failure (crash, corrupt PDF, missing binary, a

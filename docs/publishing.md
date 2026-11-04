@@ -273,8 +273,13 @@ output ICC profile in `pdfx.icc` (both presets default to
 - **Validate the PDF/X file.** `pdf.print.color-spaces` and
   `pdf.print.transparency` scan raw bytes, and the plain `--format pdf` file
   packs its dictionaries into compressed object streams they cannot see; the
-  ink-coverage check measures an RGB file through Ghostscript's default
-  profiles. They are meaningful only on the `-pdfx.pdf` artifact.
+  ink-coverage check reports a file with no OutputIntent as not measured,
+  since an RGB file would be separated through Ghostscript's default profiles.
+  They are meaningful only on the `-pdfx.pdf` artifact. The ink-coverage
+  check rasterises each page to CMYK at 72 DPI (one pixel per point) and reads
+  its heaviest pixel, so a feature narrower than a point is averaged with its
+  surroundings; a page Ghostscript does not render makes the whole file "not
+  measured", never a shorter book.
 
 ## PDF/X and transparency {#pdfx-transparency}
 

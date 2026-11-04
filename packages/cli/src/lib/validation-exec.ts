@@ -716,7 +716,9 @@ export function buildPdfSummaryLines(results: CheckResult[]): string[] {
       lines.push(`Max TAC: ${maxTac.toFixed(1)}% (high!)`);
     }
   } else if (tacResults.length > 0) {
-    lines.push("Max TAC: within limits");
+    // A pass yields no result (and no line); any other result means the ink
+    // was not measured: Ghostscript failed, or the file is not PDF/X.
+    lines.push("Max TAC: not measured");
   }
 
   const fontResults = results.filter(

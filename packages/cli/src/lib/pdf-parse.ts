@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PDFDocument, PDFName } from "pdf-lib";
 import { execCapture } from "./exec";
 import { resolveGhostscript } from "./ghostscript";
 
@@ -43,12 +44,21 @@ export function maxInkOfPam(pam: Uint8Array): Omit<InkCoveragePage, "page"> {
   const head = Buffer.from(pam.subarray(0, Math.min(pam.length, 512))).toString("latin1");
   const end = head.indexOf("ENDHDR\n");
   const field = (name: string) => Number(new RegExp(`^${name} (\\d+)$`, "m").exec(head)?.[1]);
-  if (!head.startsWith("P7\n") || end < 0 || field("DEPTH") !== 4) {
+  const [width, height, max] = [field("WIDTH"), field("HEIGHT"), field("MAXVAL")];
+  if (
+    !head.startsWith("P7\n") ||
+    end < 0 ||
+    field("DEPTH") !== 4 ||
+    !/^TUPLTYPE CMYK$/m.test(head) ||
+    !(width > 0 && height > 0 && max > 0)
+  ) {
     throw new Error("Ghostscript did not write a 4-channel CMYK raster");
   }
-  const max = field("MAXVAL");
+  // One byte per sample is what the loop below reads.
+  if (max > 255) throw new Error("Ghostscript did not write an 8-bit raster");
   const from = end + "ENDHDR\n".length;
-  const to = Math.min(pam.length, from + field("WIDTH") * field("HEIGHT") * 4);
+  const to = from + width * height * 4;
+  if (pam.length < to) throw new Error("Ghostscript wrote a truncated raster");
   let best = from;
   let bestSum = -1;
   for (let i = from; i + 3 < to; i += 4) {
@@ -79,17 +89,34 @@ export type InkCoverageResult =
   | { ok: true; pages: InkCoveragePage[] }
   | { ok: false; error: string };
 
-/** Raster resolution for the measurement: enough to see any patch a press would notice. */
+/**
+ * Raster resolution for the measurement: one pixel per point. A feature
+ * narrower than a point is averaged with its surroundings.
+ */
 const TAC_DPI = 72;
+
+/** Pages per Ghostscript run, which bounds the rasters on disk (about 2 MB per letter page). */
+const TAC_PAGES_PER_RUN = 32;
+
+/**
+ * Whether the PDF carries a PDF/X OutputIntent. Without one its colour has
+ * not been separated for a press, so measuring it says nothing about what a
+ * press would print. Throws when the file cannot be read as a PDF.
+ */
+export async function hasOutputIntent(pdfPath: string): Promise<boolean> {
+  const doc = await PDFDocument.load(await readFile(pdfPath), { updateMetadata: false });
+  return doc.catalog.has(PDFName.of("OutputIntents"));
+}
 
 /**
  * Each page's total area coverage: Ghostscript rasterises the PDF to CMYK
- * (`pamcmyk32`, {@link TAC_DPI} DPI) and each page's heaviest pixel is read
- * ({@link maxInkOfPam}). A CMYK PDF's colours are rendered as they are; an
- * RGB PDF goes through Ghostscript's default profiles, which is not what a
- * PDF/X build prints, so measure the PDF/X file. Returns `{ ok: false, error }`
- * if gs could not be run or wrote no page — callers must surface the failure,
- * not treat it as "0 pages measured".
+ * (`pamcmyk32`, {@link TAC_DPI} DPI), {@link TAC_PAGES_PER_RUN} pages at a
+ * time, and each page's heaviest pixel is read ({@link maxInkOfPam}). A CMYK
+ * PDF's colours are rendered as they are; an RGB PDF goes through
+ * Ghostscript's default profiles, which is not what a PDF/X build prints, so
+ * measure the PDF/X file. Returns `{ ok: false, error }` if gs could not be
+ * run or rendered fewer pages than the PDF has — callers must surface the
+ * failure, not treat it as "0 pages measured" or as a shorter book.
  */
 export async function getPerPageInkCoverage(
   pdfPath: string
@@ -102,29 +129,41 @@ export async function getPerPageInkCoverage(
         "Ghostscript executable not found. Install Ghostscript or set GHOSTSCRIPT_PATH."
       );
     }
-    const { stderr } = await execCapture(ghostscript, [
-      "-q",
-      "-dSAFER",
-      "-dBATCH",
-      "-dNOPAUSE",
-      "-sDEVICE=pamcmyk32",
-      `-r${TAC_DPI}`,
-      `-sOutputFile=${join(dir, "page-%d.pam")}`,
-      pdfPath,
-    ]);
+    const pageCount = (
+      await PDFDocument.load(await readFile(pdfPath), { updateMetadata: false })
+    ).getPageCount();
     const pages: InkCoveragePage[] = [];
-    for (let page = 1; existsSync(join(dir, `page-${page}.pam`)); page++) {
-      pages.push({ page, ...maxInkOfPam(await readFile(join(dir, `page-${page}.pam`))) });
+    for (let first = 1; first <= pageCount; first += TAC_PAGES_PER_RUN) {
+      const last = Math.min(first + TAC_PAGES_PER_RUN - 1, pageCount);
+      const { stderr } = await execCapture(ghostscript, [
+        "-q",
+        "-dSAFER",
+        "-dBATCH",
+        "-dNOPAUSE",
+        "-sDEVICE=pamcmyk32",
+        `-r${TAC_DPI}`,
+        `-dFirstPage=${first}`,
+        `-dLastPage=${last}`,
+        `-sOutputFile=${join(dir, "page-%d.pam")}`,
+        pdfPath,
+      ]);
+      // Ghostscript numbers the files from 1 within each run.
+      for (let page = first; page <= last; page++) {
+        const file = join(dir, `page-${page - first + 1}.pam`);
+        if (!existsSync(file)) {
+          // A page gs did not render (a device or drawing error it reported
+          // on stderr, with exit 0) must not pass as a shorter book: never an
+          // empty or partial success.
+          const reason = stderr.trim().split(/\r?\n/)[0]?.trim();
+          throw new Error(
+            `Ghostscript rendered ${pages.length} of ${pageCount} pages${reason ? `: ${reason}` : ""}`
+          );
+        }
+        pages.push({ page, ...maxInkOfPam(await readFile(file)) });
+        await unlink(file);
+      }
     }
-    if (pages.length === 0) {
-      // A PDF has at least one page, so no raster means gs did not measure
-      // it: a device or drawing error it reported on stderr with exit 0. Same
-      // rule as a non-zero exit: never an empty success.
-      const reason = stderr.trim().split(/\r?\n/)[0];
-      throw new Error(
-        `Ghostscript rendered no pages to measure${reason ? `: ${reason}` : ""}`
-      );
-    }
+    if (pages.length === 0) throw new Error("The PDF has no pages to measure");
     return { ok: true, pages };
   } catch (err) {
     return {

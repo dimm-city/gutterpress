@@ -26,6 +26,7 @@ let inkResult: { ok: true; pages: InkPage[] } | { ok: false; error: string } = {
   ok: true,
   pages: [],
 };
+let pdfx = true;
 
 const inspectState: {
   imagesByPage: Map<number, Array<{ placedW: number; placedH: number }>>;
@@ -51,7 +52,8 @@ const inspectState: {
 // other file's named imports are already bound to, so `mockRestore()` below
 // hands the real implementation back to whoever runs next. Same discipline
 // `build-runner.browser-lifecycle.test.ts` and `chromium.test.ts` document.
-spyOn(pdfParse, "getPerPageInkCoverage").mockImplementation(async () => inkResult);
+const measure = spyOn(pdfParse, "getPerPageInkCoverage").mockImplementation(async () => inkResult);
+spyOn(pdfParse, "hasOutputIntent").mockImplementation(async () => pdfx);
 spyOn(pdfParse, "readPdfBytes").mockImplementation(async () => "");
 
 spyOn(pdfInspect, "loadPdf").mockImplementation(
@@ -72,6 +74,7 @@ spyOn(pdfInspect, "getPageSize").mockImplementation(() => ({ w: 100, h: 100 }) a
 afterAll(() => {
   for (const fn of [
     pdfParse.getPerPageInkCoverage,
+    pdfParse.hasOutputIntent,
     pdfParse.readPdfBytes,
     pdfInspect.loadPdf,
     pdfInspect.getOpPass,
@@ -128,6 +131,30 @@ describe("ink-coverage emits one CheckResult per finding", () => {
     inkResult = { ok: true, pages: [{ page: 1, c: 10, m: 10, y: 10, k: 10, tac: 40 }] };
     const results = await inkCheck.run(makeCtx());
     expect(results).toHaveLength(0);
+  });
+
+  test("the limit is maxTac plus tacTolerance: 240.4 passes and 240.6 is flagged", async () => {
+    const page = (tac: number) => ({ page: 1, c: tac - 180, m: 60, y: 60, k: 60, tac });
+    inkResult = { ok: true, pages: [page(240.4)] };
+    expect(await inkCheck.run(makeCtx())).toHaveLength(0);
+    inkResult = { ok: true, pages: [page(240.6)] };
+    const [r] = await inkCheck.run(makeCtx());
+    expect(r?.code).toBe("ink-coverage-exceeded");
+    expect(r?.data?.maxTac).toBe(240.6);
+  });
+
+  test("a file with no OutputIntent is reported as not PDF/X, not measured", async () => {
+    pdfx = false;
+    measure.mockClear();
+    try {
+      const results = await inkCheck.run(makeCtx());
+      expect(results).toHaveLength(1);
+      expect(results[0]!.severity).toBe("info");
+      expect(results[0]!.code).toBe("ink-coverage-not-pdfx");
+      expect(measure).not.toHaveBeenCalled();
+    } finally {
+      pdfx = true;
+    }
   });
 
   // Finding #51: a Ghostscript failure must surface as a visible

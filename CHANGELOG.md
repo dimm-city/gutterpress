@@ -30,8 +30,11 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **The ink-coverage check did not measure total ink coverage.** Ghostscript's
   `inkcov` device reports the share of the page each ink touches, not how much
   ink it lays down, so a page of 72% cyan read as 100% and a 400% patch on a
-  tenth of a page read as 40%. Each page is now rendered to CMYK and its
-  heaviest spot is measured.
+  tenth of a page read as 40%. Each page is now rendered to CMYK (72 DPI) and
+  its heaviest spot is measured. A page Ghostscript does not render makes the
+  file "not measured" instead of a shorter book, and a file with no
+  OutputIntent is reported as not PDF/X instead of measured through the wrong
+  profiles.
 - **`maxTac` never limited a PDF/X build's ink.** The undercolour-removal step
   that was meant to had no effect under ICC conversion and is removed. The
   output profile sets the ink limit (CGATS21_CRPC1: about 240%); `maxTac` is

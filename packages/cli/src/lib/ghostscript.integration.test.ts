@@ -160,8 +160,9 @@ testWithGhostscript(
     const stage = await mkdtemp(join(tmpdir(), "gutterpress-gs-inkcov-integration-"));
     try {
       // Page 1 blank; page 2 white with a 100/100/100/100 CMYK patch on a
-      // sixteenth of its area: 0% and 400% TAC. Page 2's MEAN coverage is 25%,
-      // which is what the inkcov device measured and the check used to report.
+      // sixteenth of its area: 0% and 400% TAC. The inkcov device the check
+      // used to run reports the share of the page each ink touches, so page 2
+      // read as 4 x 6.25% = 25%.
       const pdf = join(stage, "two-pages.pdf");
       const source = await PDFDocument.create();
       source.addPage([144, 144]);

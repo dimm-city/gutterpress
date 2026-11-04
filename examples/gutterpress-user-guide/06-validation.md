@@ -238,7 +238,7 @@ Examples: image resolution below 300 DPI, images with an alpha channel, missing 
 
 Quality proxies that catch common issues not detectable from structure alone.
 
-Examples: ink coverage estimates, page count anomalies, unexpected blank pages.
+Examples: the characters a page carries, decorative layers on one page, paragraphs in one section.
 
 ## Manifest Configuration
 
