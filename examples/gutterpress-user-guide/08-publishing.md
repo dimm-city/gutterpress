@@ -95,8 +95,9 @@ gutterpress publish --provider itch
 @section .callout-tip
 
 **Tip:** DriveThruRPG has strict print requirements. Run `gutterpress validate
---pdf dist/my-book/my-book-pdf.pdf --target dtrpg` before uploading --- it checks
-bleed, ink density and more. Without `--pdf`, there's no built PDF to inspect,
+--pdf dist/my-book/my-book-pdfx.pdf --target dtrpg` before uploading --- it checks
+bleed, ink density and more. Validate the `-pdfx.pdf` file from a `--format pdfx`
+build: the plain PDF is RGB, so it fails the colour and PDF/X checks by design. Without `--pdf`, there's no built PDF to inspect,
 so those checks silently pass without measuring anything.
 
 Books using the `dtrpg` preset are already set up for DriveThruRPG's print
@@ -107,8 +108,10 @@ rules:
   and makes sure the last one is empty. The page count the build reports is
   the number to enter in DriveThruRPG's cover Template Generator.
 - **Black text prints in black ink only.** In a `--format pdfx` build, black
-  and near-black text goes on the black plate alone, as DriveThruRPG requires
-  for small text. Coloured text is printed as designed.
+  and near-black text at 24pt and under goes on the black plate alone, as
+  DriveThruRPG's spec requires. Coloured text is printed as designed. For grey
+  text on the black plate too, at its own tone, set `pdfx: { blackText:
+  k-only-neutral }`.
 - **Soft shadows and translucent art.** PDF/X-1a has no transparency, so a page
   that uses a soft `rgba()` shadow, a PNG with an alpha channel or `opacity` is
   flattened to a picture in a `--format pdfx` build, and by default that page

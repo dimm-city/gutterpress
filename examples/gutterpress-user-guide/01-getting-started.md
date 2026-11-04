@@ -257,11 +257,11 @@ These are DriveThruRPG's print-on-demand rules for an 8.5×11in interior, from D
 | Rule | DriveThruRPG asks for | In Gutterpress |
 |------|-----------------------|----------------|
 | File size | 8.625×11.25in (621×810pt): the trim plus the bleed | `dtrpg` preset; the page-size check |
-| Bleed | 0.125in (9pt) on the top, bottom and outside edges; none at the binding edge | **Bleed** layer |
+| Bleed | 0.125in (9pt) on the top, bottom and outside edges; none at the binding edge | **Bleed** layer; the PDF's TrimBox; the bleed check |
 | Text | At least 0.5in (36pt) inside the trim, on every edge | **Safe area: text** layer; [the safe-margins check](#safe-margins-check) |
 | Art that does not bleed | At least 0.25in (18pt) from the top, bottom and outside edges; 0.5in (36pt) from the binding edge | **Safe area: art** layer; [the safe-margins check](#safe-margins-check), for images |
 | PDF | PDF/X-1a:2001 or PDF/X-3:2002, every font embedded, CMYK or greyscale images, ICC profile CGATS21_CRPC1 | `--format pdfx` build; the PDF/X, font and colour checks |
-| Ink | Total area coverage of 240% or less | The ink-coverage check |
+| Ink | Total area coverage of 240% or less | The CGATS21_CRPC1 profile keeps a `--format pdfx` build near it; the ink-coverage check measures each page's heaviest spot |
 | Page count | US Letter prints in 4-page signatures, and the file ends on a blank page | `dtrpg` preset pads the book; the signature check |
 
 @end-section

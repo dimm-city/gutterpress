@@ -330,9 +330,9 @@ page:
 PDF/X conversion settings, used by `gutterpress build --format pdfx`.
 
 - `flavor` (string) - `x1a` (default) or `x3`.
-- `icc` (string) - Path to the ICC output-intent profile. Default `profiles/CGATS21_CRPC1.icc`.
+- `icc` (string) - Path to the CMYK output profile: the conversion separates through it and embeds it as the output intent, so it sets the gamut and the ink limit (CGATS21_CRPC1, DriveThruRPG's small-gamut condition, keeps total ink to about 240%). A coated-stock vendor needs its own profile. Default `profiles/CGATS21_CRPC1.icc`.
 - `stripAnnotations` (boolean) - Strip links/comments, which PDF/X-1a forbids. Default `true`.
-- `blackText` (string) - `icc` converts near-black text through the ICC profile (rich four-colour black); `k-only` prints it on the black plate alone (100% K), as DriveThruRPG requires for small text: text at or below 24pt, and the underline or strike-through drawn with it. Text larger than 24pt stays rich black, as DriveThruRPG recommends; other black (rules, panels) is unaffected. With `k-only`, `pdf.print.black-text` warns when small text is still printed in a dark four-colour mix (black, or a dark colour such as a dark brown, which keeps its colour), and the choice is recorded in `build-fingerprint.json`. Preset defaults: `dtrpg` `k-only`, `book`/`custom` `icc`.
+- `blackText` (string) - `icc` converts near-black text through the ICC profile (rich four-colour black); `k-only` prints it on the black plate alone (100% K), as DriveThruRPG's spec requires for small text: text at or below 24pt, and the underline or strike-through drawn with it. `k-only-neutral` does the same and also prints other grey text (channels within 0.04 of each other) on the black plate at its own tone; a coloured ink such as a dark brown keeps its colour. Text larger than 24pt stays rich black, as DriveThruRPG recommends; other black (rules, panels) is unaffected. With either K-only mode, `pdf.print.black-text` warns when small text is still printed in a dark four-colour mix (black, or a dark colour such as a dark brown, which keeps its colour), and the choice is recorded in `build-fingerprint.json`. Preset defaults: `dtrpg` `k-only`, `book`/`custom` `icc`.
 - `transparency` (string) - `flatten-page` (default) leaves a page that uses transparency to Ghostscript, which flattens the whole page and loses its text; `preserve-text` flattens only the artwork to a picture (300 DPI, or `rasterDpi`) and keeps the text live on top, except on pages whose text is itself translucent or blended, uses a Type 3 font, or is pattern-filled or a clip, and pages with a repeating or conic gradient, which fall back to `flatten-page`. See `docs/publishing.md`.
 - `flattenPages` (integer[]) - with `preserve-text`, pages (as the build numbers them) flattened whole anyway, e.g. a page with a cover or tint over its text. Default: none.
 - `rasterDpi` (integer, 72-1200) - resolution of every picture made from a transparent page (whole-page flattening and `preserve-text` artwork). Unset: 720 for whole pages, 300 for `preserve-text` artwork.
@@ -368,7 +368,10 @@ including ids contributed by plugins (built-in ids are namespaced `source.*`,
 
 The limits a check measures against (ink coverage, the page-size tolerance,
 image size and resolution, bleed size, the approved font files, the
-heuristics' ranges) come from the preset and the publish target. A book
+heuristics' ranges) come from the preset and the publish target. They are
+check thresholds only: `pdf.print.ink-coverage`'s `maxTac` is measured at each
+page's heaviest spot, and the PDF/X conversion's ink limit is its output
+profile's, not `maxTac`. A book
 overrides one as an option of its check: the entry becomes a map, with an
 optional `level` beside the options (see the user guide's validation chapter
 for every option and its default). The Markdown, HTML and CSS-ownership

@@ -211,6 +211,55 @@ never passed on a child-process command line (butler and the SWA CLI receive
 them via environment variables; Google Drive's client makes its own `fetch`
 calls, no child process at all).
 
+## PDF/X colour {#pdfx-colour}
+
+`--format pdfx` converts the book's RGB to CMYK with Ghostscript, through the
+output ICC profile in `pdfx.icc` (both presets default to
+`profiles/CGATS21_CRPC1.icc`; `--icc` overrides it for one build).
+
+- **The profile sets the gamut and the ink limit.** Nothing else caps the ink:
+  CGATS21_CRPC1 holds total ink to about 240% (`#000` separates to about
+  C47 M42 Y40 K100 = 229%). `pdf.print.ink-coverage`'s `maxTac` is only the
+  threshold the check measures each page's heaviest spot against. A build with
+  a profile Gutterpress does not know warns that `maxTac` is not enforced.
+- **CRPC1 is a small gamut.** CGATS 21-2 CRPC1 is the coldset-newsprint
+  reference condition, the smallest of ISO/PAS 15339-2's seven. It is right for
+  `dtrpg` because DriveThruRPG names it; the `book` preset uses it too. A
+  coated-stock vendor needs its own profile in `pdfx.icc` (GRACoL2013 CRPC6 and
+  ECI ISO Coated v2 are redistributable). Saturated sRGB colours shift visibly
+  (a neon magenta or indigo by dE 10-16).
+- **Soft-proof before you print.** Open the PDF/X file in Acrobat, Output
+  Preview, with the simulation profile set to `profiles/CGATS21_CRPC1.icc`
+  (or your `pdfx.icc`).
+- **Images are converted as sRGB.** `-dOverrideICC` makes Ghostscript ignore a
+  profile embedded in an image, so an AdobeRGB or ProPhoto picture shifts.
+  Export images as sRGB.
+- **Rendering intent and black-point compensation are Ghostscript's defaults.**
+  The build does not set them. Changing them would change every book's colour,
+  so it is an open decision, not a fix.
+- **Ghostscript 10 or newer.** Older versions have been reported to ignore the
+  output profile for vector colour; the build warns on Ghostscript 9 and logs
+  the profile it separates through.
+- **The OutputIntent names the printing condition.** With the shipped profile
+  `/OutputConditionIdentifier` is `CGATS21-2-CRPC1`, its ICC registry name.
+  `pdf.print.pdfx-markers` reports an identifier that does not name the
+  embedded profile's condition.
+- **Black text.** `pdfx.blackText: k-only` (the `dtrpg` default) prints
+  near-black text at 24pt or below on the black plate alone, as DriveThruRPG's
+  spec requires. `k-only-neutral` also moves other grey text (channels within
+  0.04 of each other) there, at its own tone; a coloured ink such as a dark
+  brown stays four-colour.
+- **Trim and bleed.** The `dtrpg` sheet contains its bleed on the top, bottom
+  and outside edge (`page.bleed`). Each page's TrimBox is the sheet pulled in
+  on those three edges, mirrored by page parity, and its BleedBox is the sheet.
+  A CSS `@page { bleed }` grows the sheet on every side instead, and wins when
+  both are set. `pdf.print.bleed` checks the top, bottom and outside edge.
+- **Validate the PDF/X file.** `pdf.print.color-spaces` and
+  `pdf.print.transparency` scan raw bytes, and the plain `--format pdf` file
+  packs its dictionaries into compressed object streams they cannot see; the
+  ink-coverage check measures an RGB file through Ghostscript's default
+  profiles. They are meaningful only on the `-pdfx.pdf` artifact.
+
 ## PDF/X and transparency {#pdfx-transparency}
 
 `--format pdfx` (PDF/X-1a, PDF/X-3) is built on PDF 1.3, which cannot represent
@@ -305,8 +354,10 @@ made from a transparent page: the whole pages Ghostscript flattens and the
 `preserve-text` artwork. Unset, Ghostscript flattens whole pages at its default
 of 720 DPI and the `preserve-text` artwork is 300 DPI. It changes nothing else:
 vector text and shapes, and the book's own images, are not resampled. Lower is
-smaller and softer; fine rules and textures show it first. DriveThruRPG asks
-for 300 DPI colour images, which the `preserve-text` default already meets.
+smaller and softer; fine rules and textures show it first. 300 DPI, the
+`preserve-text` default, is the common print minimum
+(`pdf.print.image-resolution`'s default); DriveThruRPG's quick specification
+does not state one.
 
 Every picture in a PDF/X build is saved losslessly: the flattened pages, the
 `preserve-text` artwork, and the book's own images, which converting to CMYK

@@ -39,7 +39,8 @@ policy: what its platform demands of the finished PDF. Targets never change
 how the book renders --- only what the validator checks.
 
 - `dtrpg` --- DriveThruRPG print-on-demand: PDF/X markers and metadata,
-  CMYK/Grayscale art, the 240% ink limit, embedded fonts, a page count
+  CMYK/Grayscale art, the 240% ink limit at each page's heaviest spot,
+  the bleed on the top, bottom and outside edges, embedded fonts, a page count
   that fits the signature, text kept at least 0.5in inside the trim and
   pictures 0.25in, or run to the page's edge (the safe-margins check, from
   `page.safe` and `page.artSafe`; it reads text and images, so check
@@ -231,7 +232,7 @@ gutterpress validate --pdf dist/my-book/my-book-pdfx.pdf --target dtrpg
 
 Run on image and font files anywhere in your project folder --- there's no `assets` convention to follow (see Chapter 3) --- plus the directories any shared stylesheets pull assets from.
 
-Examples: image resolution below 300 DPI, unsupported color profiles, missing font files.
+Examples: image resolution below 300 DPI, images with an alpha channel, missing font files.
 
 ### Heuristic checks (post-build)
 
@@ -275,11 +276,11 @@ checks:
 
 | Check | Option | What it sets | Default |
 |---|---|---|---|
-| `pdf.print.ink-coverage` | `maxTac` | The total ink limit in percent; a PDF/X build holds the ink to it too | 240 for `dtrpg`, 400 for `book` |
+| `pdf.print.ink-coverage` | `maxTac` | The total ink limit in percent, measured at each page's heaviest spot. The PDF/X conversion does not apply it: the ICC profile sets the ink (CGATS21_CRPC1 keeps it to about 240%) | 240 for `dtrpg`, 400 for `book` |
 | `pdf.print.ink-coverage` | `tacTolerance` | How far over `maxTac` a page may measure | 0.5 |
 | `pdf.print.page-size` | `tolerance` | How far, in points, the PDF's page may differ from `page.width` and `page.height` | 0.5 |
 | `pdf.print.image-resolution` | `minImageResolution` | The lowest DPI an image may print at; 0 for no floor | 300 (itch.io: 0) |
-| `pdf.print.bleed` | `bleedSize` | The bleed, in points, each side must have | 9 |
+| `pdf.print.bleed` | `bleedSize` | The bleed, in points, the top, bottom and outside edge of each page must have | 9 |
 | `asset.image.file-size` | `maxImageSize` | The largest image file, in bytes; 0 for no limit | 10000000 (itch.io: 0) |
 | `asset.font.approved-files` | `approvedFontFiles` | The font files the book may ship, as patterns such as `fonts/*.woff2`; a font no pattern matches is reported | none: every font |
 | `heuristic.decoration.layer-count` | `maxDecorativeLayers` | The most decorative layers on one page | 5 |

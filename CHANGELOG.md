@@ -5,6 +5,37 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`pdfx.blackText: k-only-neutral`.** Grey text at 24pt and under (channels
+  within 0.04 of each other) also prints on the black plate alone, at its own
+  tone; a coloured ink keeps its colour. `pdf.print.black-text` names it.
+
+### Changed
+
+- **`pdf.print.bleed` is on for `dtrpg`.** It reads every page's boxes and asks
+  for the bleed on the top, bottom and outside edge, not on both sides.
+- **The PDF/X build logs the output profile it separates through, and warns
+  on Ghostscript older than 10 or an output profile it does not know.**
+
+### Fixed
+
+- **The ink-coverage check measured the page's average, not its total ink
+  coverage.** A 400% patch on a tenth of a page read as 40% and passed. Each
+  page is now rendered to CMYK and its heaviest spot is measured.
+- **`maxTac` never limited a PDF/X build's ink.** The undercolour-removal step
+  that was meant to had no effect under ICC conversion and is removed. The
+  output profile sets the ink limit (CGATS21_CRPC1: about 240%); `maxTac` is
+  the check's threshold.
+- **The PDF/X OutputIntent named the wrong printing condition.** It names
+  `CGATS21-2-CRPC1` for the shipped profile (x1a wrote SWOP's `CGATS TR 001`),
+  and `pdf.print.pdfx-markers` reports an identifier that does not match the
+  embedded profile.
+- **A `dtrpg` PDF declared the whole sheet as its trim.** Each page's TrimBox
+  is the sheet less the bleed on the top, bottom and outside edge, mirrored on
+  left and right pages; BleedBox is the sheet.
+- **`--icc` is not required for `--format pdfx`**: the help no longer says so.
+
 ## [0.11.23] - 2026-10-31
 
 ### Added
