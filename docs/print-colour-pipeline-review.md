@@ -330,10 +330,16 @@ added. Reproduced in a container with the same `ghostscript` package:
   assuming: `lib/pdfx-probe.ts` converts a one-page `#000` swatch with the
   book's arguments before the book and warns, with the figures, when the
   separation is Ghostscript's default profile. The version-number warning is
-  gone (10.02.1 is "10 or newer" and still wrong). CI installs Artifex's
-  10.06.0 snap (SHA-512 pinned) and the Docker image builds 10.06.0 from the
-  source tarball; the install docs say why the Debian/Ubuntu packages will not
-  do. The integration tests keep asserting CRPC1's signature, so a CI
+  gone (10.02.1 is "10 or newer" and still wrong). CI and the Docker image
+  build 10.06.0 from the source tarball (SHA-512 pinned; about two minutes on
+  a runner, cached in CI); the install docs say why the Debian/Ubuntu packages
+  will not do.
+- **Artifex's snap ruled out.** The first CI attempt installed the 10.06.0
+  snap in devmode: `gs --version` answered, and every conversion, in the
+  tests that had passed on apt's 10.02.1 as well, failed with
+  `GPL Ghostscript 10.06.0: Unrecoverable error`. snapd gives a snap a private
+  `/tmp`, and that is where Gutterpress and its tests stage files. The docs no
+  longer suggest it. The integration tests keep asserting CRPC1's signature, so a CI
   Ghostscript that stops honouring the profile fails loudly.
 - **`inkcov` was never a mean either.** Measuring a 72% cyan solid with
   `-sDEVICE=inkcov` reports 1.0: the device reports the share of the page each

@@ -22,8 +22,8 @@ This project follows [Semantic Versioning](https://semver.org/).
   package) does: `#000` at C72 M68 Y67 K88 = 295%, over DriveThruRPG's 240%,
   with CRPC1 still named as the OutputIntent. 10.06.0 honours the profile.
   The build also logs the profile and warns on an output profile it does not
-  know. CI and the Docker image now run Ghostscript 10.06.0 (the snap from
-  Artifex's release; built from source in the image).
+  know. CI and the Docker image now run Ghostscript 10.06.0, built from
+  Artifex's source release.
 
 ### Fixed
 

@@ -95,14 +95,16 @@ sudo apt install google-chrome-stable
 
 # Recommended for PDF/X, but NOT from apt: Ubuntu 24.04's ghostscript (10.02.1)
 # and Debian 12's (10.0.0) ignore the PDF/X output profile and separate every
-# colour through Ghostscript's default CMYK profile (black at 295% ink). Use
-# Artifex's release: download gs_<version>_amd64_snap.tgz from
-# https://github.com/ArtifexSoftware/ghostpdl-downloads/releases (10.06.0 or
-# newer), unpack it, then
-sudo snap install --devmode gs_10.06.0_amd64.snap
-# or build the ghostscript-<version>.tar.gz from the same page, or use the
-# Docker image (Chapter 8), which builds 10.06.0. The PDF/X build checks the
-# installed Ghostscript and warns when it ignored the profile.
+# colour through Ghostscript's default CMYK profile (black at 295% ink). Build
+# Artifex's release instead (10.06.0 or newer; about two minutes):
+sudo apt install build-essential
+curl -fsSL -o ghostscript-10.06.0.tar.gz https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10060/ghostscript-10.06.0.tar.gz
+tar -xzf ghostscript-10.06.0.tar.gz && cd ghostscript-10.06.0
+./configure --prefix=/usr/local && make -j"$(nproc)" && sudo make install
+# or use the Docker image (Chapter 8), which builds 10.06.0. Artifex's snap
+# does not work with Gutterpress: snapd gives it a private /tmp, where
+# Gutterpress stages its files. The PDF/X build checks the installed
+# Ghostscript and warns when it ignored the profile.
 
 # Only for PDF/X (annotation stripping + PDF/X validation)
 sudo apt install qpdf

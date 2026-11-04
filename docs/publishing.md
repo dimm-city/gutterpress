@@ -248,11 +248,14 @@ output ICC profile in `pdfx.icc` (both presets default to
   PDF/X build converts a one-page `#000` swatch with the book's own arguments
   and reads the separation back; it warns, naming the figures, when the
   profile was ignored, and `pdf.print.ink-coverage` then reports the ink the
-  pages carry. Install 10.06 or newer: Homebrew and winget carry it;
-  on Debian and Ubuntu use Artifex's snap (`gs_<version>_amd64_snap.tgz` on
-  the [release page](https://github.com/ArtifexSoftware/ghostpdl-downloads/releases),
-  `sudo snap install --devmode gs_<version>_amd64.snap`), build the source
-  tarball, or use the Docker image, which builds 10.06.0.
+  pages carry. Install 10.06 or newer: Homebrew and winget carry it; on
+  Debian and Ubuntu build Artifex's source tarball (`ghostscript-<version>.tar.gz`
+  on the [release page](https://github.com/ArtifexSoftware/ghostpdl-downloads/releases):
+  `./configure && make && sudo make install`, about two minutes, which is
+  what CI and the Docker image do), or use the Docker image. Artifex's snap
+  is not an option: snapd gives it a private `/tmp`, so it cannot read the
+  files Gutterpress stages there (every conversion fails with
+  `Unrecoverable error`).
 - **The OutputIntent names the printing condition.** With the shipped profile
   `/OutputConditionIdentifier` is `CGATS21-2-CRPC1`, its ICC registry name.
   `pdf.print.pdfx-markers` reports an identifier that does not name the
