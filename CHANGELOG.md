@@ -18,12 +18,13 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **The PDF/X build measures whether Ghostscript separated through the
   output profile.** It converts a `#000` swatch with the book's arguments and
   reads the separation back, warning with the figures when Ghostscript used
-  its own default CMYK profile instead. Ghostscript 10.02.1 (Ubuntu 24.04's
-  package) does: `#000` at C72 M68 Y67 K88 = 295%, over DriveThruRPG's 240%,
-  with CRPC1 still named as the OutputIntent. 10.06.0 honours the profile.
-  The build also logs the profile and warns on an output profile it does not
-  know. CI and the Docker image now run Ghostscript 10.06.0, built from
-  Artifex's source release.
+  its own default CMYK profile instead. Ghostscript before 10.03.0 does
+  (Artifex bug 707350, fixed 2023-11-30): Ubuntu 24.04's 10.02.1 and Debian
+  12's 10.0.0 give `#000` at C72 M68 Y67 K88 = 295%, over DriveThruRPG's 240%,
+  with CRPC1 still named as the OutputIntent; 10.05 and 10.06 honour it
+  (measured). The build also logs the profile and warns on an output profile
+  it does not know. CI runs on Ubuntu 26.04 and the Docker image on Debian 13,
+  whose Ghostscript packages (10.06.0, 10.05) are new enough.
 
 ### Fixed
 

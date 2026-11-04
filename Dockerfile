@@ -7,7 +7,7 @@
 # the full PDF/X (CMYK) pre-print path:
 #   - the Gutterpress CLI (Node bundle: src + gutterpress compiled in)
 #   - Chromium            (PDF rendering — REQUIRED for any PDF)
-#   - Ghostscript 10.06.0 (PDF/X CMYK conversion + ink-coverage validation; built from source, see stage 1b)
+#   - Ghostscript         (PDF/X CMYK conversion + ink-coverage validation; Debian 13's 10.05, see stage 2)
 #   - qpdf                (PDF/X annotation stripping + OutputIntent validation)
 #   - base fonts + fontconfig
 #
@@ -87,37 +87,19 @@ bun /tmp/pin-runtime-deps.mjs
 rm /tmp/pin-runtime-deps.mjs
 DOCKER_EOF
 
-# ── Stage 1b: Ghostscript 10.06.0 from Artifex's source release ──────────────
-# Debian 12's ghostscript package (10.0.0) and Ubuntu 24.04's (10.02.1) ignore
-# the PDF/X output profile for vector colour and separate through Ghostscript's
-# default CMYK profile (#000 at C72 M68 Y67 K88 = 295%, over DriveThruRPG's
-# 240%); 10.06.0 honours it. Built with the libraries the tarball bundles, so
-# the runtime stage needs no extra packages for it. Compiled per target arch.
-FROM debian:bookworm-slim AS gs-builder
-ARG GS_VERSION=10.06.0
-# From the release's SHA512SUMS.
-ARG GS_SHA512=21ba2110693cfb98126f06daff410b0a94ae9b1690b867a383aa82b56a817ffd237044e024c2cf26daa6efe4d5cf8903db8e637c4629f0c8a0eb325a30fdc0cb
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends build-essential curl ca-certificates; \
-    curl -fsSL -o /tmp/ghostscript.tar.gz \
-      "https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs$(echo "$GS_VERSION" | tr -d .)/ghostscript-${GS_VERSION}.tar.gz"; \
-    echo "${GS_SHA512}  /tmp/ghostscript.tar.gz" | sha512sum -c -; \
-    tar -xzf /tmp/ghostscript.tar.gz -C /tmp; \
-    cd "/tmp/ghostscript-${GS_VERSION}"; \
-    ./configure --prefix=/usr/local --disable-cups --disable-gtk --without-x --without-tesseract; \
-    make -j"$(nproc)"; \
-    make install DESTDIR=/out
-
 # ── Stage 2: runtime with all OS + validation dependencies ───────────────────
-# node:20-bookworm-slim gives us Node on Debian 12, whose apt has a real
-# `chromium` package (Ubuntu's is a snap, which doesn't work in containers).
-FROM node:22-bookworm-slim AS runtime
+# node:22-trixie-slim gives us Node on Debian 13, whose apt has a real
+# `chromium` package (Ubuntu's is a snap, which doesn't work in containers) and
+# a Ghostscript (10.05) whose pdfwrite honours the PDF/X output profile. Debian
+# 12's (10.0.0) does not: it separates through Ghostscript's default CMYK
+# profile (#000 at 295% ink); Artifex fixed that in 10.03.0 (bug 707350).
+FROM node:22-trixie-slim AS runtime
 
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         chromium \
+        ghostscript \
         qpdf \
         fonts-liberation \
         fonts-dejavu-core \
@@ -138,9 +120,8 @@ COPY --from=builder /src/runtime-package.json ./package.json
 RUN npm install --omit=optional --no-package-lock --no-audit --no-fund \
     && npm cache clean --force
 COPY --from=builder /src/packages/cli/dist ./dist
-# Ghostscript 10.06.0 (see stage 1b): /usr/local/bin/gs and its Resource tree.
-COPY --from=gs-builder /out/usr/local/ /usr/local/
-RUN test "$(gs --version)" = "10.06.0"
+# The PDF/X conversion needs Ghostscript 10.03 or newer (see the stage comment).
+RUN dpkg --compare-versions "$(gs --version)" ge 10.03
 
 # A `gutterpress` command on PATH so the image works both as `docker run`
 # (entrypoint) and as a CI `container:` (where the entrypoint is bypassed and

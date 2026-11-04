@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { crpc1SeparatesBlack, verifyPdfxSeparation } from "./pdfx-probe";
 
 describe("crpc1SeparatesBlack", () => {
-  test("CRPC1's separation of #000 (measured on Ghostscript 10.06.0, #331) is the profile's", () => {
+  test("CRPC1's separation of #000 (measured on Ghostscript 10.05.0 and 10.06.0) is the profile's", () => {
     expect(crpc1SeparatesBlack({ c: 47, k: 100, tac: 229 })).toBe("profile");
     expect(crpc1SeparatesBlack({ c: 50, k: 100, tac: 240 })).toBe("profile");
   });

@@ -135,7 +135,8 @@ testWithGhostscript(
       // CRPC1 separates #000 to about C47 M42 Y40 K100 = 229%; Ghostscript's
       // default_cmyk.icc gives about C72 M68 Y67 K88 = 295%. A profile that is
       // silently ignored fails here: Ghostscript 10.02.1 (Ubuntu 24.04's
-      // package) does, measured; 10.06.0 honours it (#331). CI installs 10.06.0.
+      // package) does, measured; 10.03.0 and newer honour it (10.05.0 and
+      // 10.06.0 measured). CI runs on Ubuntu 26.04, whose package is 10.06.0.
       const coverage = await getPerPageInkCoverage(outputPdf);
       if (!coverage.ok) throw new Error(coverage.error);
       const [black] = coverage.pages;

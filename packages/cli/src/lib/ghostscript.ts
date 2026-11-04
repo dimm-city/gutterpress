@@ -594,10 +594,11 @@ export async function convertToPdfxCmyk(
     // profile instead. -sOutputICCProfile below is unrelated: it is the CMYK
     // profile pdfwrite separates into, always the caller-supplied iccPath,
     // which the definition file also embeds as the OutputIntent. Measured:
-    // Ghostscript 10.06.0 honours it for vector colour; 10.02.1 ignores it
-    // (and -sDefaultCMYKProfile, and -dRenderIntent) and separates through
-    // its default CMYK profile. pdfx-probe.ts measures which happened on
-    // every build; the integration test pins CRPC1's signature.
+    // Ghostscript 10.03.0 and newer honour it for vector colour (Artifex bug
+    // 707350); 10.02.1 and older ignore it (and -sDefaultCMYKProfile, and
+    // -dRenderIntent) and separate through the default CMYK profile.
+    // pdfx-probe.ts measures which happened on every build; the integration
+    // test pins CRPC1's signature.
     `-sOutputICCProfile=${iccPath}`,
     `-sOutputFile=${outPdf}`,
     tmpDef,

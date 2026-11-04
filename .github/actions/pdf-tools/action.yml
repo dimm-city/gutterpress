@@ -1,11 +1,11 @@
 name: Install PDF tooling (offline on cache hits)
 description: >-
-  qpdf and poppler from a cached apt package set, installed without network
-  access on warm runs; Ghostscript 10.06.0 built from Artifex's source release
-  and cached. Ubuntu 24.04's ghostscript package (10.02.1) ignores the PDF/X
-  output profile for vector colour and separates through its default CMYK
-  profile (#000 at 295% ink), so it cannot stand in for the Ghostscript
-  authors are told to use.
+  Cache the complete apt package set for this runner image and install it
+  without network access on warm runs. Ghostscript must be 10.03 or newer:
+  pdfwrite in older versions ignores the PDF/X output profile and separates
+  through its default CMYK profile (Artifex bug 707350, fixed in 10.03.0).
+  Ubuntu 24.04's package is 10.02.1, so the jobs that use this action run on
+  Ubuntu 26.04 (10.06.0); the verify step fails on an older gs.
 runs:
   using: composite
   steps:
@@ -30,50 +30,18 @@ runs:
       run: |
         mkdir -p "$HOME/apt-archives/partial"
         sudo timeout 180 apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o Acquire::Languages=none update
-        sudo timeout 180 apt-get install -y -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o "Dir::Cache::archives=$HOME/apt-archives" qpdf poppler-utils
+        sudo timeout 180 apt-get install -y -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o "Dir::Cache::archives=$HOME/apt-archives" ghostscript qpdf poppler-utils
         sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives"
+    - name: Verify PDF tools
+      shell: bash
+      run: |
+        gs --version
+        dpkg --compare-versions "$(gs --version)" ge 10.03 || { echo "Ghostscript $(gs --version) is older than 10.03: pdfwrite ignores the PDF/X output profile (Artifex bug 707350)"; exit 1; }
+        qpdf --version
+        pdftoppm -v
     # Save after setup, so a later test failure does not discard the download.
     - uses: actions/cache/save@v5
       if: steps.cache.outputs.cache-hit != 'true'
       with:
         path: ~/apt-archives/*.deb
         key: ${{ steps.cache.outputs.cache-primary-key }}
-
-    - name: Restore Ghostscript 10.06.0
-      id: gs
-      uses: actions/cache/restore@v5
-      with:
-        path: ~/ghostscript-10.06.0
-        key: ghostscript-source-10.06.0-${{ runner.os }}-${{ runner.arch }}
-    - name: Build Ghostscript 10.06.0 from Artifex's source release
-      if: steps.gs.outputs.cache-hit != 'true'
-      shell: bash
-      run: |
-        # The checksum Artifex publishes in the release's SHA512SUMS. Built
-        # with the libraries the tarball bundles, as the Dockerfile does
-        # (about two minutes on this runner). The snap Artifex also ships is
-        # no use here: snapd gives it a private /tmp, so it cannot read the
-        # files Gutterpress and the tests stage there.
-        curl -fsSL --retry 3 -o /tmp/ghostscript.tar.gz \
-          https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10060/ghostscript-10.06.0.tar.gz
-        echo "21ba2110693cfb98126f06daff410b0a94ae9b1690b867a383aa82b56a817ffd237044e024c2cf26daa6efe4d5cf8903db8e637c4629f0c8a0eb325a30fdc0cb  /tmp/ghostscript.tar.gz" | sha512sum -c -
-        tar -xzf /tmp/ghostscript.tar.gz -C /tmp
-        cd /tmp/ghostscript-10.06.0
-        ./configure --prefix=/usr/local --disable-cups --disable-gtk --without-x --without-tesseract
-        make -j"$(nproc)"
-        make install DESTDIR="$HOME/ghostscript-10.06.0"
-    - uses: actions/cache/save@v5
-      if: steps.gs.outputs.cache-hit != 'true'
-      with:
-        path: ~/ghostscript-10.06.0
-        key: ${{ steps.gs.outputs.cache-primary-key }}
-    - name: Install Ghostscript 10.06.0
-      shell: bash
-      run: sudo cp -a "$HOME/ghostscript-10.06.0/usr/local/." /usr/local/
-    - name: Verify PDF tools
-      shell: bash
-      run: |
-        test "$(command -v gs)" = /usr/local/bin/gs || { echo "gs on PATH is $(command -v gs)"; exit 1; }
-        test "$(gs --version)" = "10.06.0" || { echo "gs is $(gs --version), not 10.06.0"; exit 1; }
-        qpdf --version
-        pdftoppm -v

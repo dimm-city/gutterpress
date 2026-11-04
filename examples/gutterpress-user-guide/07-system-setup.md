@@ -67,7 +67,7 @@ brew install --cask chromium
 brew install --cask google-chrome
 brew install chromium
 
-# Recommended (needed for PDF/X; 10.06 or newer, which Homebrew carries)
+# Recommended (needed for PDF/X; 10.03 or newer, which Homebrew carries)
 brew install ghostscript
 
 # Only for PDF/X (annotation stripping + PDF/X validation)
@@ -93,18 +93,17 @@ winget install qpdf.qpdf  # PDF/X only
 sudo apt install chromium-browser
 sudo apt install google-chrome-stable
 
-# Recommended for PDF/X, but NOT from apt: Ubuntu 24.04's ghostscript (10.02.1)
-# and Debian 12's (10.0.0) ignore the PDF/X output profile and separate every
-# colour through Ghostscript's default CMYK profile (black at 295% ink). Build
-# Artifex's release instead (10.06.0 or newer; about two minutes):
-sudo apt install build-essential
-curl -fsSL -o ghostscript-10.06.0.tar.gz https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10060/ghostscript-10.06.0.tar.gz
-tar -xzf ghostscript-10.06.0.tar.gz && cd ghostscript-10.06.0
-./configure --prefix=/usr/local && make -j"$(nproc)" && sudo make install
-# or use the Docker image (Chapter 8), which builds 10.06.0. Artifex's snap
-# does not work with Gutterpress: snapd gives it a private /tmp, where
-# Gutterpress stages its files. The PDF/X build checks the installed
-# Ghostscript and warns when it ignored the profile.
+# Recommended for PDF/X: Ghostscript 10.03 or newer. Debian 13 and Ubuntu
+# 25.10 or newer package one (10.05, 10.06):
+sudo apt install ghostscript
+gs --version   # 10.03 or newer
+# Ubuntu 24.04's package (10.02.1) and Debian 12's (10.0.0) are too old: they
+# ignore the PDF/X output profile and separate every colour through
+# Ghostscript's default CMYK profile (black at 295% ink). On those releases use
+# the Docker image (Chapter 8), which runs Debian 13's Ghostscript. The PDF/X
+# build checks the installed Ghostscript and warns when it ignored the profile.
+# Artifex's snap does not work with Gutterpress (snapd gives it a private /tmp,
+# where Gutterpress stages its files).
 
 # Only for PDF/X (annotation stripping + PDF/X validation)
 sudo apt install qpdf
@@ -115,7 +114,7 @@ sudo apt install qpdf
 
 ```bash
 sudo dnf install chromium ghostscript qpdf
-gs --version   # 10.06 or newer for PDF/X; see the Debian/Ubuntu note above
+gs --version   # 10.03 or newer for PDF/X; see the Debian/Ubuntu note above
 ```
 
 ## Tool Details

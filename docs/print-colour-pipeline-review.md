@@ -321,19 +321,26 @@ added. Reproduced in a container with the same `ghostscript` package:
   and exactly the figures gp-dimm-city's token comments record. Adding
   `-sDefaultCMYKProfile`, `-dRenderIntent=1`, or dropping `-dOverrideICC`
   changes nothing. DeviceGray (`0 g`, `0.5 g`) and DeviceCMYK fills pass
-  through untouched, so the K-only text path is unaffected. Ghostscript 10.06.0
-  honours the profile (#331: `#000` → C47 M42 Y40 K100). Versions between were
-  not measured. So the plugin's "wrong" TAC figures (Finding 1 of its audit)
+  through untouched, so the K-only text path is unaffected. Ghostscript 10.03.0
+  and newer honour the profile: Artifex bug 707350, fixed by commit 7ddd455a2
+  ("pdfwrite - fix OutputICCProfile", 2023-11-30; pdfwrite reset the device
+  profile to the default whenever ColorConversionStrategy was set). Measured:
+  10.05.0 (Ubuntu 25.10's package) and 10.06.0 (#331) both separate `#000` to
+  C47 M42 Y40 K100 = 228%. So the plugin's "wrong" TAC figures (Finding 1 of its audit)
   were right for the Ghostscript its author had; the pipeline's output depends
   on the Ghostscript version, and nothing said so.
 - **Fix.** No flag fixes 10.02.1, so the build now measures instead of
   assuming: `lib/pdfx-probe.ts` converts a one-page `#000` swatch with the
   book's arguments before the book and warns, with the figures, when the
   separation is Ghostscript's default profile. The version-number warning is
-  gone (10.02.1 is "10 or newer" and still wrong). CI and the Docker image
-  build 10.06.0 from the source tarball (SHA-512 pinned; about two minutes on
-  a runner, cached in CI); the install docs say why the Debian/Ubuntu packages
-  will not do.
+  gone (10.02.1 is "10 or newer" and still wrong). CI runs the Checks job on
+  Ubuntu 26.04 (ghostscript 10.06.0 from apt) and the Docker image moves to
+  Debian 13 (`node:22-trixie-slim`, ghostscript 10.05); nothing is compiled or
+  fetched outside the distributions' packages, and the verify step and the
+  image both assert `gs --version` is 10.03 or newer. An earlier revision of
+  this PR built 10.06.0 from Artifex's source tarball in CI and in the image;
+  that worked but was a dependency to maintain, and the packaged versions make
+  it unnecessary. The install docs name the versions.
 - **Artifex's snap ruled out.** The first CI attempt installed the 10.06.0
   snap in devmode: `gs --version` answered, and every conversion, in the
   tests that had passed on apt's 10.02.1 as well, failed with

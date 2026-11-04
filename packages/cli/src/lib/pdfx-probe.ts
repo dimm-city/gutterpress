@@ -6,9 +6,12 @@
  * `-dRenderIntent` for pdfwrite's vector colour and separates RGB through its
  * built-in default_cmyk.icc: `#000` comes out C72 M68 Y67 K88 = 295%, over
  * DriveThruRPG's 240%, while the file still embeds CRPC1 as its OutputIntent.
- * Ghostscript 10.06.0 honours the profile: `#000` comes out about
- * C47 M42 Y40 K100 = 229% (gutterpress #331). DeviceGray and DeviceCMYK pass
- * through unchanged on both, so K-only text is safe either way.
+ * Ghostscript 10.03.0 and newer honour the profile (Artifex bug 707350, fixed
+ * by commit 7ddd455a2 "pdfwrite - fix OutputICCProfile", 2023-11-30: pdfwrite
+ * reset the device profile to the default whenever ColorConversionStrategy
+ * was set): `#000` comes out C47 M42 Y40 K100 = 228% on 10.05.0 and 10.06.0
+ * (measured; gutterpress #331). DeviceGray and DeviceCMYK pass through
+ * unchanged on every version, so K-only text is safe either way.
  *
  * No version number is a reliable test across distributions, so a PDF/X build
  * converts a one-page `#000` swatch with the book's own arguments and reads the
@@ -93,8 +96,9 @@ export async function verifyPdfxSeparation(config: {
       `Ghostscript ${version || "(unknown version)"} ignored the PDF/X output profile: #000 separated to ${fmt(black)}, ` +
         `Ghostscript's own default CMYK profile, where ${description} gives about C47 M42 Y40 K100 = 229%. ` +
         "Every colour in this file is separated the same way, so its ink runs up to 295%, over DriveThruRPG's 240%, " +
-        "and the embedded OutputIntent does not describe it. Ghostscript 10.02.1 (Debian's and Ubuntu's package) " +
-        'does this; 10.06.0 does not. Install Ghostscript 10.06 or newer (docs/publishing.md, "PDF/X colour") and build again.'
+        "and the embedded OutputIntent does not describe it. Ghostscript before 10.03.0 does this (Debian 12's 10.0.0, " +
+        "Ubuntu 24.04's 10.02.1). Install 10.03 or newer: Debian 13's or Ubuntu 25.10's package, Homebrew, winget, or " +
+        'the Docker image (docs/publishing.md, "PDF/X colour"), and build again.'
     );
   } else {
     log.info(`Ghostscript ${version} separates through ${description}: #000 -> ${fmt(black)}`);

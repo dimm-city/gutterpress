@@ -50,7 +50,9 @@ jobs:
     if: >-
       needs.scope.outputs.cli == 'true' || needs.scope.outputs.desktop == 'true' ||
       needs.scope.outputs.plugin == 'true' || needs.scope.outputs.tooling == 'true'
-    runs-on: ubuntu-24.04
+    # Ubuntu 26.04: its ghostscript package (10.06.0) honours the PDF/X output
+    # profile; 24.04's (10.02.1) does not. See .github/actions/pdf-tools.
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
