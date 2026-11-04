@@ -211,6 +211,80 @@ never passed on a child-process command line (butler and the SWA CLI receive
 them via environment variables; Google Drive's client makes its own `fetch`
 calls, no child process at all).
 
+## PDF/X colour {#pdfx-colour}
+
+`--format pdfx` converts the book's RGB to CMYK with Ghostscript, through the
+output ICC profile in `pdfx.icc` (every preset defaults to
+`profiles/CGATS21_CRPC1.icc`; `--icc` overrides it for one build).
+
+- **The profile sets the gamut and the ink limit.** Nothing else caps the ink:
+  CGATS21_CRPC1 holds total ink to about 240% (`#000` separates to about
+  C47 M42 Y40 K100 = 228%). `pdf.print.ink-coverage`'s `maxTac` is only the
+  threshold the check measures each page's heaviest spot against. A build with
+  a profile Gutterpress does not know warns that `maxTac` is not enforced.
+- **CRPC1 is a small gamut.** CGATS 21-2 CRPC1 is the coldset-newsprint
+  reference condition, the smallest of ISO/PAS 15339-2's seven. It is right for
+  `dtrpg` because DriveThruRPG names it; the `book` preset uses it too. A
+  coated-stock vendor needs its own profile in `pdfx.icc` (GRACoL2013 CRPC6 and
+  ECI ISO Coated v2 are redistributable). Saturated sRGB colours shift visibly
+  (a neon magenta or indigo by dE 10-16).
+- **Soft-proof before you print.** Open the PDF/X file in Acrobat, Output
+  Preview, with the simulation profile set to `profiles/CGATS21_CRPC1.icc`
+  (or your `pdfx.icc`).
+- **Images are converted as sRGB.** `-dOverrideICC` makes Ghostscript ignore a
+  profile embedded in an image, so an AdobeRGB or ProPhoto picture shifts.
+  Export images as sRGB.
+- **Rendering intent and black-point compensation are Ghostscript's defaults.**
+  The build does not set them. Changing them would change every book's colour,
+  so it is an open decision, not a fix.
+- **Ghostscript 10.03 or newer, and the build checks.** Before 10.03.0,
+  pdfwrite ignored the output profile for vector colour and separated through
+  Ghostscript's own default CMYK profile (Artifex bug 707350, fixed 2023-11-30):
+  `#000` came out C72 M68 Y67 K88 = 295%, over DriveThruRPG's 240%, and a neon
+  magenta C40 M85 instead of CRPC1's C34 M74, while the file still embedded
+  CRPC1 as its OutputIntent. `-sDefaultCMYKProfile` and `-dRenderIntent` make
+  no difference there. Ubuntu 24.04's package (10.02.1) has the bug
+  (measured) and Debian 12's (10.0.0) predates the fix; Debian 13's (10.05),
+  Ubuntu 25.10's and newer, Homebrew's and winget's carry it (`#000` → C47 M42
+  Y40 K100 = 228%, measured on 10.05.0 and 10.06.0). The build warns when its
+  Ghostscript is older than
+  10.03, and `pdf.print.ink-coverage` reports the ink the pages carry either
+  way. On a release whose package is too old, use the Docker image, which
+  runs Debian 13's Ghostscript. Artifex's snap is not an option:
+  snapd gives it a private `/tmp`, so it cannot read the files Gutterpress
+  stages there (every conversion fails with `Unrecoverable error`).
+- **The OutputIntent names the printing condition.** With the shipped profile
+  `/OutputConditionIdentifier` is `CGATS21-2-CRPC1`, its ICC registry name;
+  another profile is named by its own description. `pdf.print.pdfx-markers`
+  reports a missing identifier and, for a profile Gutterpress knows, one that
+  does not name the embedded profile's condition. The shipped profile is ICC
+  v4 (4.2). PDF/X-1a:2001 and PDF/X-3:2002 predate ICC v4, so a strict
+  preflight can report the profile's version; DriveThruRPG names this profile
+  itself.
+- **Black text.** `pdfx.blackText: k-only` (the `dtrpg` default) prints
+  near-black text at 24pt or below on the black plate alone, as DriveThruRPG's
+  spec requires. `k-only-neutral` also moves other grey text (channels within
+  0.04 of each other) there, at about its tone; a coloured ink such as a dark
+  brown stays four-colour.
+- **Trim and bleed.** The `dtrpg` sheet contains its bleed on the top, bottom
+  and outside edge (`page.bleed`). Each page's TrimBox is the sheet pulled in
+  on those three edges, mirrored by page parity, and its BleedBox is the sheet.
+  A CSS `@page { bleed }` grows the sheet on every side; when both are set the
+  TrimBox is pulled in by both, and the crop marks follow it. `pdf.print.bleed`
+  asks for the bleed on the top, bottom and outside edge, between the TrimBox
+  and the BleedBox, allowing the page-size tolerance (0.5pt); a page with no
+  TrimBox counts as short.
+- **Validate the PDF/X file.** `pdf.print.color-spaces` and
+  `pdf.print.transparency` scan raw bytes, and the plain `--format pdf` file
+  packs its dictionaries into compressed object streams they cannot see; the
+  ink-coverage check reports a file with no OutputIntent as not measured,
+  since an RGB file would be separated through Ghostscript's default profiles.
+  They are meaningful only on the `-pdfx.pdf` artifact. The ink-coverage
+  check rasterises each page to CMYK at 72 DPI (one pixel per point) and reads
+  its heaviest pixel, so a feature narrower than a point is averaged with its
+  surroundings; a page Ghostscript does not render makes the whole file "not
+  measured", never a shorter book.
+
 ## PDF/X and transparency {#pdfx-transparency}
 
 `--format pdfx` (PDF/X-1a, PDF/X-3) is built on PDF 1.3, which cannot represent
@@ -305,8 +379,10 @@ made from a transparent page: the whole pages Ghostscript flattens and the
 `preserve-text` artwork. Unset, Ghostscript flattens whole pages at its default
 of 720 DPI and the `preserve-text` artwork is 300 DPI. It changes nothing else:
 vector text and shapes, and the book's own images, are not resampled. Lower is
-smaller and softer; fine rules and textures show it first. DriveThruRPG asks
-for 300 DPI colour images, which the `preserve-text` default already meets.
+smaller and softer; fine rules and textures show it first. 300 DPI, the
+`preserve-text` default, is the common print minimum
+(`pdf.print.image-resolution`'s default); DriveThruRPG's quick specification
+does not state one.
 
 Every picture in a PDF/X build is saved losslessly: the flattened pages, the
 `preserve-text` artwork, and the book's own images, which converting to CMYK

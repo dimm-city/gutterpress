@@ -7,7 +7,7 @@
 # the full PDF/X (CMYK) pre-print path:
 #   - the Gutterpress CLI (Node bundle: src + gutterpress compiled in)
 #   - Chromium            (PDF rendering — REQUIRED for any PDF)
-#   - Ghostscript         (PDF/X CMYK conversion + ink-coverage validation)
+#   - Ghostscript         (PDF/X CMYK conversion + ink-coverage validation; Debian 13's 10.05, see stage 2)
 #   - qpdf                (PDF/X annotation stripping + OutputIntent validation)
 #   - base fonts + fontconfig
 #
@@ -88,9 +88,13 @@ rm /tmp/pin-runtime-deps.mjs
 DOCKER_EOF
 
 # ── Stage 2: runtime with all OS + validation dependencies ───────────────────
-# node:20-bookworm-slim gives us Node on Debian 12, whose apt has a real
-# `chromium` package (Ubuntu's is a snap, which doesn't work in containers).
-FROM node:22-bookworm-slim AS runtime
+# node:22-trixie-slim gives us Node on Debian 13, whose apt has a real
+# `chromium` package (Ubuntu's is a snap, which doesn't work in containers) and
+# a Ghostscript (10.05) whose pdfwrite honours the PDF/X output profile. Debian
+# 12's (10.0.0) predates Artifex's fix for pdfwrite separating through
+# Ghostscript's default CMYK profile instead (#000 at 295% ink; bug 707350,
+# fixed in 10.03.0, measured on 10.02.1).
+FROM node:22-trixie-slim AS runtime
 
 RUN set -eux; \
     apt-get update; \
@@ -117,6 +121,8 @@ COPY --from=builder /src/runtime-package.json ./package.json
 RUN npm install --omit=optional --no-package-lock --no-audit --no-fund \
     && npm cache clean --force
 COPY --from=builder /src/packages/cli/dist ./dist
+# The PDF/X conversion needs Ghostscript 10.03 or newer (see the stage comment).
+RUN dpkg --compare-versions "$(gs --version)" ge 10.03
 
 # A `gutterpress` command on PATH so the image works both as `docker run`
 # (entrypoint) and as a CI `container:` (where the entrypoint is bypassed and

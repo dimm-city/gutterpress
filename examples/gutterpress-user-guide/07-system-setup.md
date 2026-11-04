@@ -13,7 +13,7 @@ Gutterpress does almost everything in-process. It needs only a Chromium-based br
 | Tool | Used for | When you need it |
 |------|----------|------------------|
 | Chrome / Chromium | Renders your HTML into a paginated PDF (native print engine) | **Always** (every PDF) |
-| Ghostscript (`gs`) | Converts the RGB PDF to **CMYK PDF/X** with an ICC output intent; per-page ink-coverage check | Only for `--format pdfx` |
+| Ghostscript (`gs`) | Converts the RGB PDF to **CMYK PDF/X** with an ICC output intent; rasterises the PDF/X file for the ink-coverage check | Only for `--format pdfx` |
 | `qpdf` | Strips disallowed annotations for PDF/X; validates the PDF/X OutputIntent + metadata | Only for `--format pdfx` |
 
 @end-section
@@ -67,7 +67,7 @@ brew install --cask chromium
 brew install --cask google-chrome
 brew install chromium
 
-# Recommended (needed for PDF/X)
+# Recommended (needed for PDF/X; 10.03 or newer, which Homebrew carries)
 brew install ghostscript
 
 # Only for PDF/X (annotation stripping + PDF/X validation)
@@ -80,7 +80,7 @@ brew install qpdf
 Install Chrome or Chromium from the official websites. For Ghostscript and other tools, use [winget](https://learn.microsoft.com/en-us/windows/package-manager/winget/) or [Chocolatey](https://chocolatey.org/):
 
 ```bash
-winget install Ghostscript.Ghostscript
+winget install ArtifexSoftware.GhostScript
 winget install qpdf.qpdf  # PDF/X only
 ```
 
@@ -93,8 +93,18 @@ winget install qpdf.qpdf  # PDF/X only
 sudo apt install chromium-browser
 sudo apt install google-chrome-stable
 
-# Recommended
+# Recommended for PDF/X: Ghostscript 10.03 or newer. Debian 13 and Ubuntu
+# 25.10 or newer package one (10.05, 10.06):
 sudo apt install ghostscript
+gs --version   # 10.03 or newer
+# Ubuntu 24.04's package (10.02.1) ignores the PDF/X output profile and
+# separates every colour through Ghostscript's default CMYK profile (black at
+# 295% ink); Debian 12's (10.0.0) predates the fix, which came in 10.03.0. On
+# those releases use the Docker image (see "Easiest path: Docker" above),
+# which runs Debian 13's Ghostscript. The PDF/X build warns when its
+# Ghostscript is older than 10.03.
+# Artifex's snap does not work with Gutterpress (snapd gives it a private /tmp,
+# where Gutterpress stages its files).
 
 # Only for PDF/X (annotation stripping + PDF/X validation)
 sudo apt install qpdf
@@ -105,6 +115,7 @@ sudo apt install qpdf
 
 ```bash
 sudo dnf install chromium ghostscript qpdf
+gs --version   # 10.03 or newer for PDF/X; see the Debian/Ubuntu note above
 ```
 
 ## Tool Details
@@ -133,7 +144,7 @@ installation.
 
 ### Ghostscript --- recommended for PDF/X
 
-Used for CMYK conversion, ICC profiles, TAC validation, and PDF/X-1a compliance. Required if building with `--format pdfx`.
+Used for CMYK conversion, ICC profiles, TAC validation, and PDF/X-1a compliance. Required if building with `--format pdfx`, and 10.03 or newer: older releases ignore the output profile (see the Debian/Ubuntu note above).
 
 Gutterpress checks `GHOSTSCRIPT_PATH` first, then the command names available on
 `PATH` (`gs` on macOS/Linux; `gswin64c`, `gswin32c`, or `gs` on Windows).

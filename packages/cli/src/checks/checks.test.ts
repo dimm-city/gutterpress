@@ -668,7 +668,6 @@ describe("Manifest checks and thresholds", () => {
       },
     };
     const config = resolveConfig({}, manifest);
-    // `ink.maxTac` is also what a PDF/X build holds the ink to (build-runner).
     expect(config.ink).toEqual({ maxTac: 300, tacTolerance: 2 });
     expect(config.page.tolerance).toBe(3);
     expect(config.validate).toEqual({

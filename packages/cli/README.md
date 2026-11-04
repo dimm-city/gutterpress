@@ -194,7 +194,7 @@ gutterpress preview [input-dir] [options]
   --debug                 Debug mode (preserve temporary files)
   --out <dir>             Output directory                              (pdf|pdfx only)
   --pdfx-flavor <flavor>  PDF/X flavor: x1a | x3                        (pdfx only)
-  --icc <path>            Path to ICC profile (required for --format pdfx)
+  --icc <path>            CMYK output ICC profile for --format pdfx (default: the preset's pdfx.icc)
   --manifest <path>       Path to manifest.yaml                          (pdf|pdfx only)
   --strip-annotations     Strip PDF annotations for PDF/X compliance    (pdfx only)
   --skip-lint             Skip the CSS print-safety check               (pdf|pdfx only)
@@ -216,7 +216,7 @@ gutterpress build [input-dir] [options]
   --out <path>            Output file or directory. For pdf|pdfx, --out may also be a .pdf file path.
   --title <title>         Override manifest title
   --pdfx-flavor <flavor>  PDF/X flavor: x1a | x3   (--format pdfx only)
-  --icc <path>            Path to ICC profile (required for --format pdfx)
+  --icc <path>            CMYK output ICC profile for --format pdfx (default: the preset's pdfx.icc)
   --manifest <path>       Path to manifest.yaml
   --strip-annotations     Strip PDF annotations for PDF/X compliance
   --skip-lint             Skip the CSS print-safety check (default: it runs for pdf/pdfx)

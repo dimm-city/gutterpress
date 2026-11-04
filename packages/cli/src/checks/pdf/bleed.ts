@@ -1,34 +1,24 @@
+import { readFile } from "node:fs/promises";
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
 import { finding, inspectionFailed } from "../policy";
-import { readPdfBytes } from "../../lib/pdf-parse";
-
-/** Extract the first `/Box [x0 y0 x1 y1]` array from raw PDF bytes. */
-function findBox(
-  bytes: string,
-  box: "MediaBox" | "TrimBox" | "BleedBox"
-): [number, number, number, number] | null {
-  const re = new RegExp(
-    `/${box}\\s*\\[\\s*(-?[0-9.]+)\\s+(-?[0-9.]+)\\s+(-?[0-9.]+)\\s+(-?[0-9.]+)\\s*\\]`
-  );
-  const m = bytes.match(re);
-  if (!m) return null;
-  return [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
-}
+import { inspectPdf } from "../../engine/shared/pdf-inspect";
 
 const check: Check = {
   id: "pdf.print.bleed",
   name: "Bleed Box",
-  description: "Compares MediaBox vs TrimBox/BleedBox to verify bleed area",
+  description:
+    "Compares each page's TrimBox with its BleedBox (else the sheet): the bleed is needed on the top, bottom and outside edge",
   category: "pdf",
   phase: "post-build",
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
-    // pdfjs exposes no TrimBox/BleedBox accessor, so read the page boxes from
-    // the raw (uncompressed) page dictionaries. Chromium writes these
-    // uncompressed; markers inside object streams would be missed (rare).
-    const bytes = await readPdfBytes(ctx.pdfPath).catch(() => "");
-    if (!bytes) {
+    // pdf-lib reads every page's boxes, also from page dictionaries packed
+    // into object streams, which a raw-byte scan cannot see.
+    const facts = await readFile(ctx.pdfPath)
+      .then((bytes) => inspectPdf(bytes))
+      .catch(() => null);
+    if (!facts) {
       return [
         inspectionFailed(check.id, "Could not inspect PDF for bleed boxes.", {
           file: ctx.pdfPath,
@@ -36,19 +26,7 @@ const check: Check = {
       ];
     }
 
-    const media = findBox(bytes, "MediaBox");
-    const trim = findBox(bytes, "TrimBox");
-    const bleed = findBox(bytes, "BleedBox");
-
-    if (!media) {
-      return [
-        inspectionFailed(check.id, "Could not parse MediaBox from PDF.", {
-          file: ctx.pdfPath,
-        }),
-      ];
-    }
-
-    if (!trim && !bleed) {
+    if (facts.boxes.every((b) => !b.trim && !b.bleed)) {
       return [
         finding(check.id, {
           severity: "warning",
@@ -59,19 +37,42 @@ const check: Check = {
       ];
     }
 
-    if (trim) {
-      const mediaW = media[2] - media[0];
-      const trimW = trim[2] - trim[0];
-      const bleedSize = ctx.config.validate.pdf.bleedSize;
-      if (mediaW - trimW < bleedSize * 2 * 0.9) {
-        return [
-          finding(check.id, {
-            severity: "warning",
-            message: `Bleed area appears insufficient. Expected at least ${bleedSize}pt on each side.`,
-            file: ctx.pdfPath,
-          }),
-        ];
+    // The three-edge model (shared/print-area.ts): the top, bottom and OUTER
+    // edge need the bleed — the right of a recto (odd page), the left of a
+    // verso — and the binding edge none. A CSS `@page { bleed }` sheet has it
+    // on every side, which passes too. The bleed is what lies between the
+    // TrimBox and the BleedBox (the sheet less any slug for the marks); a page
+    // with no BleedBox is measured to its sheet, and one with no TrimBox has
+    // declared no trim at all. The page-size tolerance absorbs rounding.
+    const bleedSize = ctx.config.validate.pdf.bleedSize;
+    const need = bleedSize - ctx.config.page.tolerance;
+    const short: number[] = [];
+    let undeclared = 0;
+    facts.boxes.forEach(({ media, bleed, trim }, i) => {
+      const outer = bleed && bleed.length === 4 ? bleed : media;
+      if (!trim || trim.length < 4 || outer.length < 4) {
+        undeclared++;
+        short.push(i + 1);
+        return;
       }
+      const [ox0, oy0, ox1, oy1] = outer as [number, number, number, number];
+      const [tx0, ty0, tx1, ty1] = trim as [number, number, number, number];
+      const outside = i % 2 === 0 ? ox1 - tx1 : tx0 - ox0;
+      if (outside < need || ty0 - oy0 < need || oy1 - ty1 < need) short.push(i + 1);
+    });
+
+    if (short.length > 0) {
+      const pages = short.length > 10 ? `${short.slice(0, 10).join(", ")}, …` : short.join(", ");
+      const missing = undeclared > 0 ? ` ${undeclared} of them declare no TrimBox.` : "";
+      return [
+        finding(check.id, {
+          severity: "warning",
+          message:
+            `Bleed area appears insufficient on ${short.length} page(s) (${pages}). ` +
+            `Expected at least ${bleedSize}pt on the top, bottom and outside edge.${missing}`,
+          file: ctx.pdfPath,
+        }),
+      ];
     }
 
     return [];

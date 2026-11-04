@@ -63,8 +63,9 @@ describe("pdf.print.black-text", () => {
     expect(await check.run(ctxFor(pdf))).toEqual([]);
   });
 
-  test("is enabled for k-only builds (the dtrpg default) and not for icc", () => {
+  test("is enabled for k-only builds (the dtrpg default) and k-only-neutral, not for icc", () => {
     expect(isCheckEnabled(check, resolveConfig({}, { preset: "dtrpg" }))).toBe(true);
+    expect(isCheckEnabled(check, resolveConfig({}, { preset: "book", pdfx: { blackText: "k-only-neutral" } }))).toBe(true);
     expect(isCheckEnabled(check, resolveConfig({}, { preset: "book" }))).toBe(false);
     expect(isCheckEnabled(check, resolveConfig({}, { preset: "dtrpg", pdfx: { blackText: "icc" } }))).toBe(false);
   });

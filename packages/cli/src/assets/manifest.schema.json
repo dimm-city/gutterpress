@@ -139,7 +139,7 @@
                 "maxTac": {
                   "type": "number",
                   "minimum": 0,
-                  "description": "The total ink limit in percent: what the check measures against and what the PDF/X conversion holds the ink to. Preset defaults: dtrpg 240, book 400.",
+                  "description": "The total ink limit in percent that the check measures each page's heaviest spot against. The PDF/X conversion does not enforce it: the output profile sets the ink limit (CGATS21_CRPC1 holds it to about 240%). Preset defaults: dtrpg 240, book 400.",
                   "examples": [240, 300]
                 },
                 "tacTolerance": {
@@ -205,7 +205,7 @@
                 "bleedSize": {
                   "type": "number",
                   "minimum": 0,
-                  "description": "The bleed (points) each side must have. Default 9 (0.125in).",
+                  "description": "The bleed (points) the top, bottom and outside edge must have, between the TrimBox and the BleedBox. Default 9 (0.125in).",
                   "examples": [9]
                 }
               }
@@ -357,8 +357,8 @@
         },
         "blackText": {
           "type": "string",
-          "description": "How near-black text is separated. `icc` converts it through the ICC profile (rich, four-colour black). `k-only` prints it on the black plate alone (100% K), which print vendors such as DriveThruRPG require for small text. Non-text black (rules, panels) is unaffected. Preset defaults: dtrpg `k-only`, book `icc`.",
-          "enum": ["icc", "k-only"],
+          "description": "How near-black text is separated. `icc` converts it through the ICC profile (rich, four-colour black). `k-only` prints it on the black plate alone (100% K), which DriveThruRPG's spec requires for text at 24pt or below. `k-only-neutral` does the same and also prints other grey text (channels within 0.04 of each other) on the black plate at about its tone; a coloured ink such as a dark brown keeps its colour. Non-text black (rules, panels) is unaffected. Preset defaults: dtrpg `k-only`, book `icc`.",
+          "enum": ["icc", "k-only", "k-only-neutral"],
           "default": "icc"
         },
         "transparency": {

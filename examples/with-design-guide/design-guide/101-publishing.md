@@ -52,7 +52,7 @@ Produces output from a manifest directory. Use `--format html` for a deployable 
 | `--out` | --- | Output directory (or `.pdf` path for pdf format) |
 | `--title` | manifest | Overrides the document title |
 | `--pdfx-flavor` | --- | PDF/X flavor: `x1a` or `x3` (`--format pdfx` only) |
-| `--icc` | --- | ICC profile path (required with `--format pdfx`) |
+| `--icc` | preset | CMYK output ICC profile for `--format pdfx` (default: the preset's `pdfx.icc`) |
 | `--manifest` | --- | Override manifest.yaml path |
 | `--strip-annotations` | auto | Strip PDF annotations (default when `--format pdfx` is set) |
 

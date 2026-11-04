@@ -82,6 +82,9 @@ const DTRPG_TARGET: PublishTarget = {
       "pdf.print.safe-margins": "error",
       // DERIVED: PDF/X-1a forbids transparency; on even for a `book` preset.
       "pdf.print.transparency": "on",
+      // SPEC: 0.125in of bleed on the top, bottom and outside edge; the `book`
+      // preset turns the check off.
+      "pdf.print.bleed": "on",
     },
     validate: {
       pdf: {

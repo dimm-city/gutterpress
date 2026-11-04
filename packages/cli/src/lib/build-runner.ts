@@ -938,9 +938,10 @@ class PdfOutput implements OutputStrategy {
           await stripAnnotations(rawPdf, stage);
         }
 
-        if (config.pdfx.blackText === "k-only") {
-          log.info("Rewriting near-black text to K-only gray");
-          await fsp.writeFile(rawPdf, await blackTextToGray(await fsp.readFile(rawPdf)));
+        if (config.pdfx.blackText === "k-only" || config.pdfx.blackText === "k-only-neutral") {
+          const neutral = config.pdfx.blackText === "k-only-neutral";
+          log.info(`Rewriting ${neutral ? "grey" : "near-black"} text to K-only gray`);
+          await fsp.writeFile(rawPdf, await blackTextToGray(await fsp.readFile(rawPdf), neutral));
         }
 
         log.info(`Converting to CMYK PDF/X (${pdfxMode})`);
@@ -948,7 +949,6 @@ class PdfOutput implements OutputStrategy {
           iccPath: effectiveIccPath,
           pdfx: pdfxMode,
           title: config.title,
-          maxTac: config.ink.maxTac,
           stagingDir: stage,
           rasterDpi: config.pdfx.rasterDpi,
         });

@@ -5,6 +5,63 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.24] - 2026-11-04
+
+### Added
+
+- **`pdfx.blackText: k-only-neutral`.** Grey text at 24pt and under (channels
+  within 0.04 of each other) also prints on the black plate alone, at about
+  its tone; a coloured ink keeps its colour. `pdf.print.black-text` names it.
+
+### Changed
+
+- **`pdf.print.bleed` is on for `dtrpg`.** It reads every page's boxes and asks
+  for the bleed on the top, bottom and outside edge, not on both sides: between
+  the TrimBox and the BleedBox, allowing the page-size tolerance, and a page
+  with no TrimBox counts as short. The `dtrpg` publish target turns it on over
+  a `book` preset.
+- **The PDF/X build warns on a Ghostscript older than 10.03.0.** Before that
+  release pdfwrite ignored the output profile and separated every colour
+  through Ghostscript's default CMYK profile (Artifex bug 707350, fixed
+  2023-11-30): Ubuntu 24.04's 10.02.1 gives `#000` at C72 M68 Y67 K88 = 295%
+  (measured; Debian 12's 10.0.0 predates the fix), over DriveThruRPG's 240%,
+  with CRPC1 still named as the OutputIntent; 10.05 and 10.06 honour it
+  (measured). The build also logs
+  the profile and warns on an output profile it does not know. CI runs on
+  Ubuntu 26.04 and the Docker image on Debian 13, whose Ghostscript packages
+  (10.06.0, 10.05) are new enough.
+
+### Fixed
+
+- **The ink-coverage check did not measure total ink coverage.** Ghostscript's
+  `inkcov` device reports the share of the page each ink touches, not how much
+  ink it lays down, so a page of 72% cyan read as 100% and a 400% patch on a
+  tenth of a page read as 40%. Each page is now rendered to CMYK (72 DPI) and
+  its heaviest spot is measured. A page Ghostscript does not render makes the
+  file "not measured" instead of a shorter book, and a file with no
+  OutputIntent is reported as not PDF/X instead of measured through the wrong
+  profiles.
+- **`maxTac` never limited a PDF/X build's ink.** The undercolour-removal step
+  that was meant to had no effect under ICC conversion and is removed. The
+  output profile sets the ink limit (CGATS21_CRPC1: about 240%); `maxTac` is
+  the check's threshold.
+- **The PDF/X OutputIntent named the wrong printing condition.** It names
+  `CGATS21-2-CRPC1` for the shipped profile (x1a wrote `CGATS TR001`, SWOP's
+  condition; x3 the file name), and `pdf.print.pdfx-markers` reports a missing
+  identifier and, for a profile Gutterpress knows, one that does not match the
+  embedded profile.
+- **A title with an unbalanced parenthesis broke the PDF/X build**, and an
+  accented title was read as the wrong characters: the PDF/X definition file
+  wrote them into PostScript literals as they were. Its strings are now
+  escaped, or written as UTF-16 when they are not ASCII, and the profile path
+  likewise.
+- **A `dtrpg` PDF declared the whole sheet as its trim.** Each page's TrimBox
+  is the sheet less the bleed on the top, bottom and outside edge, mirrored on
+  left and right pages; BleedBox is the sheet. A CSS `@page { bleed }` set as
+  well pulls the trim in further instead of replacing it, and the crop marks
+  follow the trim.
+- **`--icc` is not required for `--format pdfx`**: the help no longer says so.
+
 ## [0.11.23] - 2026-10-31
 
 ### Added
