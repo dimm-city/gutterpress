@@ -15,14 +15,23 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 - **`pdf.print.bleed` is on for `dtrpg`.** It reads every page's boxes and asks
   for the bleed on the top, bottom and outside edge, not on both sides.
-- **The PDF/X build logs the output profile it separates through, and warns
-  on Ghostscript older than 10 or an output profile it does not know.**
+- **The PDF/X build measures whether Ghostscript separated through the
+  output profile.** It converts a `#000` swatch with the book's arguments and
+  reads the separation back, warning with the figures when Ghostscript used
+  its own default CMYK profile instead. Ghostscript 10.02.1 (Ubuntu 24.04's
+  package) does: `#000` at C72 M68 Y67 K88 = 295%, over DriveThruRPG's 240%,
+  with CRPC1 still named as the OutputIntent. 10.06.0 honours the profile.
+  The build also logs the profile and warns on an output profile it does not
+  know. CI and the Docker image now run Ghostscript 10.06.0 (the snap from
+  Artifex's release; built from source in the image).
 
 ### Fixed
 
-- **The ink-coverage check measured the page's average, not its total ink
-  coverage.** A 400% patch on a tenth of a page read as 40% and passed. Each
-  page is now rendered to CMYK and its heaviest spot is measured.
+- **The ink-coverage check did not measure total ink coverage.** Ghostscript's
+  `inkcov` device reports the share of the page each ink touches, not how much
+  ink it lays down, so a page of 72% cyan read as 100% and a 400% patch on a
+  tenth of a page read as 40%. Each page is now rendered to CMYK and its
+  heaviest spot is measured.
 - **`maxTac` never limited a PDF/X build's ink.** The undercolour-removal step
   that was meant to had no effect under ICC conversion and is removed. The
   output profile sets the ink limit (CGATS21_CRPC1: about 240%); `maxTac` is

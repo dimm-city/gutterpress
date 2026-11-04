@@ -70,7 +70,9 @@ removed:
 
   - Windows: https://www.ghostscript.com/ → AGPL release
   - macOS: `brew install ghostscript`
-  - Linux: `apt install ghostscript` / `dnf install ghostscript`
+  - Linux: 10.06 or newer. Debian's and Ubuntu's packages (10.0.0, 10.02.1)
+    ignore the PDF/X output profile; install Artifex's release instead (User
+    Guide, Chapter 7).
 
 See [User Guide: Chapter 7 — System Setup](../../examples/gutterpress-user-guide/07-system-setup.md) for the full per-feature matrix of what
 tools each user-visible action requires.

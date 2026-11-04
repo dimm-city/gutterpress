@@ -307,3 +307,45 @@ differences and omissions:
   validation chapter lists "ink coverage estimates" among the heuristic
   checks, but no heuristic check measures ink; the website copy also claims
   PDF/A output.
+
+
+## Addendum (2026-11-04, after the first CI run of the fix PR)
+
+CI (Ubuntu 24.04, Ghostscript 10.02.1) failed the two integration tests the fix
+added. Reproduced in a container with the same `ghostscript` package:
+
+- **Ghostscript 10.02.1 ignores the output profile for pdfwrite's vector
+  colour.** With the build's exact arguments, `#000` separates to
+  `0.722 0.675 0.671 0.882 k` (C72 M68 Y67 K88 = 295%), red to `0 0.996 1 0 k`,
+  `#c026d3` to `0.404 0.851 0 0 k` (C41 M85): Ghostscript's `default_cmyk.icc`,
+  and exactly the figures gp-dimm-city's token comments record. Adding
+  `-sDefaultCMYKProfile`, `-dRenderIntent=1`, or dropping `-dOverrideICC`
+  changes nothing. DeviceGray (`0 g`, `0.5 g`) and DeviceCMYK fills pass
+  through untouched, so the K-only text path is unaffected. Ghostscript 10.06.0
+  honours the profile (#331: `#000` → C47 M42 Y40 K100). Versions between were
+  not measured. So the plugin's "wrong" TAC figures (Finding 1 of its audit)
+  were right for the Ghostscript its author had; the pipeline's output depends
+  on the Ghostscript version, and nothing said so.
+- **Fix.** No flag fixes 10.02.1, so the build now measures instead of
+  assuming: `lib/pdfx-probe.ts` converts a one-page `#000` swatch with the
+  book's arguments before the book and warns, with the figures, when the
+  separation is Ghostscript's default profile. The version-number warning is
+  gone (10.02.1 is "10 or newer" and still wrong). CI installs Artifex's
+  10.06.0 snap (SHA-512 pinned) and the Docker image builds 10.06.0 from the
+  source tarball; the install docs say why the Debian/Ubuntu packages will not
+  do. The integration tests keep asserting CRPC1's signature, so a CI
+  Ghostscript that stops honouring the profile fails loudly.
+- **`inkcov` was never a mean either.** Measuring a 72% cyan solid with
+  `-sDEVICE=inkcov` reports 1.0: the device reports the share of the page each
+  ink touches, not the amount. Item 1 and the paper's "mean coverage" were both
+  wrong about what the old check measured; the per-pixel raster replaces it.
+- **The TrimBox test literal was wrong, not Ghostscript.** pdf-lib's
+  `setTrimBox(x, y, width, height)` with `(0, 9, 135, 126)` writes
+  `[0 9 135 135]`, which is the intended three-edge box; 10.02.1 preserved it
+  exactly. The expectation now reads `[0, 9, 135, 135]`.
+- **UCR/BG confirmed inert (item 2).** With the block deleted, 10.02.1 writes
+  the same `0.722 0.675 0.671 0.882 k` the plugin measured when the block was
+  present.
+- **Not verified here.** The container could not execute the downloaded 10.06.0
+  binary (its policy forbids running fetched code), so 10.06.0's behaviour
+  rests on #331 and on CI, which now runs it.

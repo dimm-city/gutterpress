@@ -67,7 +67,7 @@ brew install --cask chromium
 brew install --cask google-chrome
 brew install chromium
 
-# Recommended (needed for PDF/X)
+# Recommended (needed for PDF/X; 10.06 or newer, which Homebrew carries)
 brew install ghostscript
 
 # Only for PDF/X (annotation stripping + PDF/X validation)
@@ -93,8 +93,16 @@ winget install qpdf.qpdf  # PDF/X only
 sudo apt install chromium-browser
 sudo apt install google-chrome-stable
 
-# Recommended
-sudo apt install ghostscript
+# Recommended for PDF/X, but NOT from apt: Ubuntu 24.04's ghostscript (10.02.1)
+# and Debian 12's (10.0.0) ignore the PDF/X output profile and separate every
+# colour through Ghostscript's default CMYK profile (black at 295% ink). Use
+# Artifex's release: download gs_<version>_amd64_snap.tgz from
+# https://github.com/ArtifexSoftware/ghostpdl-downloads/releases (10.06.0 or
+# newer), unpack it, then
+sudo snap install --devmode gs_10.06.0_amd64.snap
+# or build the ghostscript-<version>.tar.gz from the same page, or use the
+# Docker image (Chapter 8), which builds 10.06.0. The PDF/X build checks the
+# installed Ghostscript and warns when it ignored the profile.
 
 # Only for PDF/X (annotation stripping + PDF/X validation)
 sudo apt install qpdf
@@ -105,6 +113,7 @@ sudo apt install qpdf
 
 ```bash
 sudo dnf install chromium ghostscript qpdf
+gs --version   # 10.06 or newer for PDF/X; see the Debian/Ubuntu note above
 ```
 
 ## Tool Details

@@ -47,7 +47,8 @@ testWithGhostscript(
         borderWidth: 0,
       });
       // The build's three-edge trim (no inset at a recto's binding edge) must
-      // survive the conversion.
+      // survive the conversion. pdf-lib's setTrimBox takes x, y, width and
+      // height, so this writes the array [0 9 135 135].
       page.setTrimBox(0, 9, 135, 126);
       await writeFile(inputPdf, await source.save());
 
@@ -87,7 +88,7 @@ testWithGhostscript(
           : String(identifier)
       ).toBe("CGATS21-2-CRPC1");
       const trim = converted.getPage(0).node.lookup(PDFName.of("TrimBox"), PDFArray);
-      expect(trim.asArray().map((n) => (n as PDFNumber).asNumber())).toEqual([0, 9, 135, 126]);
+      expect(trim.asArray().map((n) => (n as PDFNumber).asNumber())).toEqual([0, 9, 135, 135]);
 
       const versionResult = await execCapture(ghostscript!, ["--version"]);
       const version = (versionResult.stdout || versionResult.stderr)
@@ -133,7 +134,8 @@ testWithGhostscript(
 
       // CRPC1 separates #000 to about C47 M42 Y40 K100 = 229%; Ghostscript's
       // default_cmyk.icc gives about C72 M68 Y67 K88 = 295%. A profile that is
-      // silently ignored fails here.
+      // silently ignored fails here: Ghostscript 10.02.1 (Ubuntu 24.04's
+      // package) does, measured; 10.06.0 honours it (#331). CI installs 10.06.0.
       const coverage = await getPerPageInkCoverage(outputPdf);
       if (!coverage.ok) throw new Error(coverage.error);
       const [black] = coverage.pages;
@@ -173,6 +175,28 @@ testWithGhostscript(
       expect(result.pages).toHaveLength(2);
       expect(result.pages[0]!.tac).toBeLessThan(1);
       expect(result.pages[1]!.tac).toBeGreaterThan(390);
+    } finally {
+      await rm(stage, { recursive: true, force: true });
+    }
+  },
+  60_000
+);
+
+testWithGhostscript(
+  "the build's separation probe sees the output profile honoured",
+  async () => {
+    const { verifyPdfxSeparation } = await import("./pdfx-probe");
+    const stage = await mkdtemp(join(tmpdir(), "gutterpress-gs-probe-integration-"));
+    try {
+      const probe = await verifyPdfxSeparation({
+        iccPath: await getAssetPath("profiles/CGATS21_CRPC1.icc"),
+        pdfx: "x1a",
+        stagingDir: stage,
+      });
+      expect(probe.checked).toBe(true);
+      // Fails on a Ghostscript that separates through its default CMYK
+      // profile (10.02.1): that is the defect the probe exists to report.
+      expect(probe.separation).toBe("profile");
     } finally {
       await rm(stage, { recursive: true, force: true });
     }

@@ -555,6 +555,8 @@ export async function convertToPdfxCmyk(
      * flattening: vector content is unaffected.
      */
     rasterDpi?: number;
+    /** Skip the "PDF/X output profile" log line (the separation probe converts a swatch with the same call). */
+    quiet?: boolean;
   }
 ): Promise<void> {
   const iccPath = resolve(config.iccPath);
@@ -590,9 +592,12 @@ export async function convertToPdfxCmyk(
     // /usr/share/color/icc/ghostscript/srgb.icc) breaks otherwise valid
     // macOS/Windows installs, so Ghostscript resolves its own built-in sRGB
     // profile instead. -sOutputICCProfile below is unrelated: it is the CMYK
-    // profile pdfwrite separates into (honoured for vector colour by gs 10;
-    // the integration test pins its signature), always the caller-supplied
-    // iccPath, which the definition file also embeds as the OutputIntent.
+    // profile pdfwrite separates into, always the caller-supplied iccPath,
+    // which the definition file also embeds as the OutputIntent. Measured:
+    // Ghostscript 10.06.0 honours it for vector colour; 10.02.1 ignores it
+    // (and -sDefaultCMYKProfile, and -dRenderIntent) and separates through
+    // its default CMYK profile. pdfx-probe.ts measures which happened on
+    // every build; the integration test pins CRPC1's signature.
     `-sOutputICCProfile=${iccPath}`,
     `-sOutputFile=${outPdf}`,
     tmpDef,
@@ -604,7 +609,9 @@ export async function convertToPdfxCmyk(
       iccProfileDescription(await readFile(iccPath).catch(() => new Uint8Array())) ??
       basename(iccPath);
     const output = outputConditionFor(description);
-    log.info(`PDF/X output profile: ${description} (OutputConditionIdentifier ${output.identifier})`);
+    if (!config.quiet) {
+      log.info(`PDF/X output profile: ${description} (OutputConditionIdentifier ${output.identifier})`);
+    }
     if (!output.registered) {
       log.warn(
         `The PDF/X output profile "${description}" is not one Gutterpress knows (the shipped ` +
@@ -632,13 +639,6 @@ export async function convertToPdfxCmyk(
     const version = await execCapture(ghostscript, ["--version"])
       .then((r) => r.stdout.trim())
       .catch(() => "");
-    if (Number.parseInt(version, 10) < 10) {
-      log.warn(
-        `Ghostscript ${version} is older than 10. Older versions have been reported to ignore ` +
-          "the output profile for vector colour, separating through Ghostscript's default CMYK " +
-          "profile instead (black text and fills at about 295% ink). Use Ghostscript 10 or newer."
-      );
-    }
     // `run` inherits stdio, which would leave the warnings block on a terminal
     // the desktop app never shows; capture it and log it through the logger.
     const { code, signal, stdout, stderr } = await spawnCapture(ghostscript, args, {

@@ -21,6 +21,7 @@ import {
 } from "./ghostscript";
 import { writeBuildFingerprint, type BuildFingerprintInput } from "./build-fingerprint";
 import { blackTextToGray } from "./black-text-gray";
+import { verifyPdfxSeparation } from "./pdfx-probe";
 import { lastPageMode } from "../engine/shared/synthesis.ts";
 import { getAssetPath } from "./embedded-assets";
 import { executeAndReport } from "./validation-exec";
@@ -944,6 +945,11 @@ class PdfOutput implements OutputStrategy {
           await fsp.writeFile(rawPdf, await blackTextToGray(await fsp.readFile(rawPdf), neutral));
         }
 
+        // Measured, not assumed: does this Ghostscript separate through the
+        // output profile? (10.02.1 does not; see pdfx-probe.ts.) A warning,
+        // not an error: the file is still a valid PDF/X, and the ink-coverage
+        // check reports what it carries.
+        await verifyPdfxSeparation({ iccPath: effectiveIccPath, pdfx: pdfxMode, stagingDir: stage });
         log.info(`Converting to CMYK PDF/X (${pdfxMode})`);
         await convertToPdfxCmyk(rawPdf, path.resolve(pdfFile), {
           iccPath: effectiveIccPath,

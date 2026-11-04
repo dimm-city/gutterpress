@@ -105,7 +105,7 @@ build-pdf:
 |---|---|
 | gutterpress CLI (Node bundle) | the CLI (validate/build/publish); all in-process checks (page/font/image validation, markdown/HTML/CSS lint) are bundled in |
 | Chromium | PDF rendering (**required for any PDF**) |
-| Ghostscript | PDF/X CMYK conversion + total-ink (TAC) validation at each page's heaviest spot |
+| Ghostscript 10.06.0, built from Artifex's source release | PDF/X CMYK conversion + total-ink (TAC) validation at each page's heaviest spot. Debian's package (10.0.0) is not used: it ignores the PDF/X output profile and separates through Ghostscript's default CMYK profile |
 | qpdf | PDF/X annotation stripping + OutputIntent/metadata validation |
 | `fonts-liberation`, `fonts-dejavu-core`, fontconfig | base fonts (your project fonts come from the mount) |
 

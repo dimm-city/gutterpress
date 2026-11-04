@@ -1,5 +1,10 @@
 name: Install PDF tooling (offline on cache hits)
-description: Cache the complete apt package set for this runner image and install it without network access on warm runs.
+description: >-
+  qpdf and poppler from a cached apt package set, installed without network
+  access on warm runs; Ghostscript 10.06.0 from Artifex's own release. Ubuntu
+  24.04's ghostscript package (10.02.1) ignores the PDF/X output profile for
+  vector colour and separates through its default CMYK profile (#000 at 295%
+  ink), so it cannot stand in for the Ghostscript authors use.
 runs:
   using: composite
   steps:
@@ -24,17 +29,47 @@ runs:
       run: |
         mkdir -p "$HOME/apt-archives/partial"
         sudo timeout 180 apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o Acquire::Languages=none update
-        sudo timeout 180 apt-get install -y -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o "Dir::Cache::archives=$HOME/apt-archives" ghostscript qpdf poppler-utils
+        sudo timeout 180 apt-get install -y -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o "Dir::Cache::archives=$HOME/apt-archives" qpdf poppler-utils
         sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives"
-    - name: Verify PDF tools
-      shell: bash
-      run: |
-        gs --version
-        qpdf --version
-        pdftoppm -v
     # Save after setup, so a later test failure does not discard the download.
     - uses: actions/cache/save@v5
       if: steps.cache.outputs.cache-hit != 'true'
       with:
         path: ~/apt-archives/*.deb
         key: ${{ steps.cache.outputs.cache-primary-key }}
+
+    - name: Restore Ghostscript 10.06.0
+      id: gs
+      uses: actions/cache/restore@v5
+      with:
+        path: ~/ghostscript/gs_10.06.0_amd64_snap.tgz
+        key: ghostscript-snap-10.06.0
+    - name: Download Ghostscript 10.06.0
+      if: steps.gs.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        mkdir -p "$HOME/ghostscript"
+        curl -fsSL --retry 3 -o "$HOME/ghostscript/gs_10.06.0_amd64_snap.tgz" \
+          https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10060/gs_10.06.0_amd64_snap.tgz
+    - uses: actions/cache/save@v5
+      if: steps.gs.outputs.cache-hit != 'true'
+      with:
+        path: ~/ghostscript/gs_10.06.0_amd64_snap.tgz
+        key: ${{ steps.gs.outputs.cache-primary-key }}
+    - name: Install Ghostscript 10.06.0
+      shell: bash
+      run: |
+        # The checksum Artifex publishes in the release's SHA512SUMS.
+        echo "a69a383ca7c9543f1ae2e85a661dc451d4c242ed2c97e5b3c29702d99f3f1c9796f9ea3c76abe675b3cabad698fe8a3cad9f936d3d5e5937f0181f76647b32f7  $HOME/ghostscript/gs_10.06.0_amd64_snap.tgz" | sha512sum -c -
+        tar -xzf "$HOME/ghostscript/gs_10.06.0_amd64_snap.tgz" -C "$HOME/ghostscript"
+        # The snap is not from a store, so it installs in devmode (unconfined),
+        # as its README says; `gs` is then /snap/bin/gs.
+        sudo snap install --devmode "$HOME/ghostscript/gs_10.06.0_amd64_snap/gs_10.06.0_amd64.snap"
+        echo "/snap/bin" >> "$GITHUB_PATH"
+    - name: Verify PDF tools
+      shell: bash
+      run: |
+        export PATH="/snap/bin:$PATH"
+        test "$(gs --version)" = "10.06.0" || { echo "gs on PATH is $(gs --version), not 10.06.0"; exit 1; }
+        qpdf --version
+        pdftoppm -v

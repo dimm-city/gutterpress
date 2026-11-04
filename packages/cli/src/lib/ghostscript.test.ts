@@ -283,14 +283,6 @@ describe("convertToPdfxCmyk's PDF/X definition file", () => {
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("`maxTac` is what pdf.print.ink-coverage checks");
   });
-
-  test("warns when Ghostscript is older than 10", async () => {
-    const shipped = await getAssetPath("profiles/CGATS21_CRPC1.icc");
-    expect((await definitionFor(shipped, "x1a", "9.56.1")).warnings).toEqual([
-      expect.stringContaining("Ghostscript 9.56.1 is older than 10"),
-    ]);
-    expect((await definitionFor(shipped, "x1a", "10.02.1")).warnings).toEqual([]);
-  });
 });
 
 test("convertToPdfxCmyk reports a Ghostscript crash with its version", async () => {
