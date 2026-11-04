@@ -131,7 +131,7 @@ testWithQpdf(
       await writeFile(right, await makePdf(true, { identifier: "CGATS21-2-CRPC1" }));
       expect(await pdfxMarkersCheck.run(makeCtx({ pdfPath: right }))).toEqual([]);
 
-      // SWOP's registry name, which x1a builds used to write over a CRPC1 profile.
+      // SWOP's registry name over a CRPC1 profile: the mismatch x1a builds shipped.
       const wrong = join(dir, "swop-name.pdf");
       await writeFile(wrong, await makePdf(true, { identifier: "CGATS TR 001" }));
       expect(await pdfxMarkersCheck.run(makeCtx({ pdfPath: wrong }))).toEqual([

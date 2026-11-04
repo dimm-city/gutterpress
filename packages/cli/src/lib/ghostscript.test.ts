@@ -265,7 +265,7 @@ describe("convertToPdfxCmyk's PDF/X definition file", () => {
       expect(definition).toContain("/OutputConditionIdentifier (CGATS21-2-CRPC1)");
       expect(definition).toContain("/OutputCondition (CGATS 21-2 CRPC1 \\(ISO 15339-2\\))");
       expect(definition).toContain("/RegistryName (http://www.color.org)");
-      // SWOP's registry name, which the x1a build used to write.
+      // SWOP's condition (`CGATS TR001`), which the x1a build used to write.
       expect(definition).not.toContain("CGATS TR");
       expect(warnings).toEqual([]);
     }

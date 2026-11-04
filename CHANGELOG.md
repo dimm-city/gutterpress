@@ -28,9 +28,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   output profile sets the ink limit (CGATS21_CRPC1: about 240%); `maxTac` is
   the check's threshold.
 - **The PDF/X OutputIntent named the wrong printing condition.** It names
-  `CGATS21-2-CRPC1` for the shipped profile (x1a wrote SWOP's `CGATS TR 001`),
-  and `pdf.print.pdfx-markers` reports an identifier that does not match the
-  embedded profile.
+  `CGATS21-2-CRPC1` for the shipped profile (x1a wrote `CGATS TR001`, SWOP's
+  condition; x3 the file name), and `pdf.print.pdfx-markers` reports an
+  identifier that does not match the embedded profile.
 - **A `dtrpg` PDF declared the whole sheet as its trim.** Each page's TrimBox
   is the sheet less the bleed on the top, bottom and outside edge, mirrored on
   left and right pages; BleedBox is the sheet.

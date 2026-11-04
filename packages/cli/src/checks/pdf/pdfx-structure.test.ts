@@ -79,7 +79,7 @@ describe("PDF/X structural inspection", () => {
     });
 
     expect(getPdfxOutputIntentIssues(withIdentifier("CGATS21-2-CRPC1"), "CGATS21_CRPC1.icc")).toEqual([]);
-    // SWOP's registry name on a CRPC1 profile: what x1a builds used to write.
+    // SWOP's registry name over a CRPC1 profile: the mismatch x1a builds shipped.
     expect(getPdfxOutputIntentIssues(withIdentifier("CGATS TR 001"), "CGATS21_CRPC1.icc")).toEqual([
       "/OutputConditionIdentifier (CGATS TR 001) does not name the embedded profile's printing condition (CGATS21-2-CRPC1).",
     ]);
