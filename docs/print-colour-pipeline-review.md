@@ -329,11 +329,13 @@ added. Reproduced in a container with the same `ghostscript` package:
   C47 M42 Y40 K100 = 228%. So the plugin's "wrong" TAC figures (Finding 1 of its audit)
   were right for the Ghostscript its author had; the pipeline's output depends
   on the Ghostscript version, and nothing said so.
-- **Fix.** No flag fixes 10.02.1, so the build now measures instead of
-  assuming: `lib/pdfx-probe.ts` converts a one-page `#000` swatch with the
-  book's arguments before the book and warns, with the figures, when the
-  separation is Ghostscript's default profile. The version-number warning is
-  gone (10.02.1 is "10 or newer" and still wrong). CI runs the Checks job on
+- **Fix.** No flag fixes 10.02.1, so the build requires the release that has
+  the fix: it warns when `gs --version` is below 10.03.0, naming the
+  consequence and the packages that are new enough. (An intermediate revision
+  measured instead of assuming, converting a `#000` swatch before every build
+  and reading the separation back; once the fix was traced to one release
+  that was more machinery than the fact needed, and it was removed.) CI runs
+  the Checks job on
   Ubuntu 26.04 (ghostscript 10.06.0 from apt) and the Docker image moves to
   Debian 13 (`node:22-trixie-slim`, ghostscript 10.05); nothing is compiled or
   fetched outside the distributions' packages, and the verify step and the

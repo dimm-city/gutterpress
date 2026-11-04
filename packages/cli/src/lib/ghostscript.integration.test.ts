@@ -182,25 +182,3 @@ testWithGhostscript(
   },
   60_000
 );
-
-testWithGhostscript(
-  "the build's separation probe sees the output profile honoured",
-  async () => {
-    const { verifyPdfxSeparation } = await import("./pdfx-probe");
-    const stage = await mkdtemp(join(tmpdir(), "gutterpress-gs-probe-integration-"));
-    try {
-      const probe = await verifyPdfxSeparation({
-        iccPath: await getAssetPath("profiles/CGATS21_CRPC1.icc"),
-        pdfx: "x1a",
-        stagingDir: stage,
-      });
-      expect(probe.checked).toBe(true);
-      // Fails on a Ghostscript that separates through its default CMYK
-      // profile (10.02.1): that is the defect the probe exists to report.
-      expect(probe.separation).toBe("profile");
-    } finally {
-      await rm(stage, { recursive: true, force: true });
-    }
-  },
-  60_000
-);

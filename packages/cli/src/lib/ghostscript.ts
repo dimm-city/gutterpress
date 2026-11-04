@@ -531,6 +531,14 @@ export async function stampCreator(pdfPath: string): Promise<void> {
   await writeFile(pdfPath, out);
 }
 
+/** true when `version` (as `gs --version` prints it, e.g. "10.02.1") is below major.minor; unparseable → false. */
+export function ghostscriptOlderThan(version: string, major: number, minor: number): boolean {
+  const m = /^(\d+)\.(\d+)/.exec(version.trim());
+  if (!m) return false;
+  const [maj, min] = [Number(m[1]), Number(m[2])];
+  return maj < major || (maj === major && min < minor);
+}
+
 /**
  * Convert an RGB PDF to CMYK PDF/X using Ghostscript.
  *
@@ -555,8 +563,6 @@ export async function convertToPdfxCmyk(
      * flattening: vector content is unaffected.
      */
     rasterDpi?: number;
-    /** Skip the "PDF/X output profile" log line (the separation probe converts a swatch with the same call). */
-    quiet?: boolean;
   }
 ): Promise<void> {
   const iccPath = resolve(config.iccPath);
@@ -596,9 +602,9 @@ export async function convertToPdfxCmyk(
     // which the definition file also embeds as the OutputIntent. Measured:
     // Ghostscript 10.03.0 and newer honour it for vector colour (Artifex bug
     // 707350); 10.02.1 and older ignore it (and -sDefaultCMYKProfile, and
-    // -dRenderIntent) and separate through the default CMYK profile.
-    // pdfx-probe.ts measures which happened on every build; the integration
-    // test pins CRPC1's signature.
+    // -dRenderIntent) and separate through the default CMYK profile. The
+    // version check below warns on those; the integration test pins CRPC1's
+    // signature on CI's Ghostscript.
     `-sOutputICCProfile=${iccPath}`,
     `-sOutputFile=${outPdf}`,
     tmpDef,
@@ -610,9 +616,7 @@ export async function convertToPdfxCmyk(
       iccProfileDescription(await readFile(iccPath).catch(() => new Uint8Array())) ??
       basename(iccPath);
     const output = outputConditionFor(description);
-    if (!config.quiet) {
-      log.info(`PDF/X output profile: ${description} (OutputConditionIdentifier ${output.identifier})`);
-    }
+    log.info(`PDF/X output profile: ${description} (OutputConditionIdentifier ${output.identifier})`);
     if (!output.registered) {
       log.warn(
         `The PDF/X output profile "${description}" is not one Gutterpress knows (the shipped ` +
@@ -640,6 +644,15 @@ export async function convertToPdfxCmyk(
     const version = await execCapture(ghostscript, ["--version"])
       .then((r) => r.stdout.trim())
       .catch(() => "");
+    if (ghostscriptOlderThan(version, 10, 3)) {
+      log.warn(
+        `Ghostscript ${version} is older than 10.03.0, so its pdfwrite ignores the output profile and separates ` +
+          "every colour through Ghostscript's default CMYK profile (Artifex bug 707350): #000 prints at " +
+          "C72 M68 Y67 K88 = 295%, over DriveThruRPG's 240%, while the file still names the profile as its " +
+          "OutputIntent. Debian 12's 10.0.0 and Ubuntu 24.04's 10.02.1 are affected. Install 10.03 or newer: " +
+          'Debian 13\'s or Ubuntu 25.10\'s package, Homebrew, winget, or the Docker image (docs/publishing.md, "PDF/X colour").'
+      );
+    }
     // `run` inherits stdio, which would leave the warnings block on a terminal
     // the desktop app never shows; capture it and log it through the logger.
     const { code, signal, stdout, stderr } = await spawnCapture(ghostscript, args, {

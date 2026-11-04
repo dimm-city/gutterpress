@@ -15,16 +15,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 - **`pdf.print.bleed` is on for `dtrpg`.** It reads every page's boxes and asks
   for the bleed on the top, bottom and outside edge, not on both sides.
-- **The PDF/X build measures whether Ghostscript separated through the
-  output profile.** It converts a `#000` swatch with the book's arguments and
-  reads the separation back, warning with the figures when Ghostscript used
-  its own default CMYK profile instead. Ghostscript before 10.03.0 does
-  (Artifex bug 707350, fixed 2023-11-30): Ubuntu 24.04's 10.02.1 and Debian
-  12's 10.0.0 give `#000` at C72 M68 Y67 K88 = 295%, over DriveThruRPG's 240%,
-  with CRPC1 still named as the OutputIntent; 10.05 and 10.06 honour it
-  (measured). The build also logs the profile and warns on an output profile
-  it does not know. CI runs on Ubuntu 26.04 and the Docker image on Debian 13,
-  whose Ghostscript packages (10.06.0, 10.05) are new enough.
+- **The PDF/X build warns on a Ghostscript older than 10.03.0.** Before that
+  release pdfwrite ignored the output profile and separated every colour
+  through Ghostscript's default CMYK profile (Artifex bug 707350, fixed
+  2023-11-30): Ubuntu 24.04's 10.02.1 and Debian 12's 10.0.0 give `#000` at
+  C72 M68 Y67 K88 = 295%, over DriveThruRPG's 240%, with CRPC1 still named as
+  the OutputIntent; 10.05 and 10.06 honour it (measured). The build also logs
+  the profile and warns on an output profile it does not know. CI runs on
+  Ubuntu 26.04 and the Docker image on Debian 13, whose Ghostscript packages
+  (10.06.0, 10.05) are new enough.
 
 ### Fixed
 

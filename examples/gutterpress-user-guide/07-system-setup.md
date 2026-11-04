@@ -101,7 +101,7 @@ gs --version   # 10.03 or newer
 # ignore the PDF/X output profile and separate every colour through
 # Ghostscript's default CMYK profile (black at 295% ink). On those releases use
 # the Docker image (Chapter 8), which runs Debian 13's Ghostscript. The PDF/X
-# build checks the installed Ghostscript and warns when it ignored the profile.
+# build warns when its Ghostscript is older than 10.03.
 # Artifex's snap does not work with Gutterpress (snapd gives it a private /tmp,
 # where Gutterpress stages its files).
 

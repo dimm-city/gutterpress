@@ -246,12 +246,10 @@ output ICC profile in `pdfx.icc` (both presets default to
   no difference there. Ubuntu 24.04's package (10.02.1) and Debian 12's
   (10.0.0) have the bug; Debian 13's (10.05), Ubuntu 25.10's and newer,
   Homebrew's and winget's do not (`#000` → C47 M42 Y40 K100 = 228%, measured
-  on 10.05.0 and 10.06.0). Because a version number is easy to get wrong,
-  every PDF/X build converts a one-page `#000` swatch with the book's own
-  arguments and reads the separation back; it warns, naming the figures, when
-  the profile was ignored, and `pdf.print.ink-coverage` then reports the ink
-  the pages carry. On a release whose package is too old, use the Docker
-  image, which runs Debian 13's Ghostscript. Artifex's snap is not an option:
+  on 10.05.0 and 10.06.0). The build warns when its Ghostscript is older than
+  10.03, and `pdf.print.ink-coverage` reports the ink the pages carry either
+  way. On a release whose package is too old, use the Docker image, which
+  runs Debian 13's Ghostscript. Artifex's snap is not an option:
   snapd gives it a private `/tmp`, so it cannot read the files Gutterpress
   stages there (every conversion fails with `Unrecoverable error`).
 - **The OutputIntent names the printing condition.** With the shipped profile
