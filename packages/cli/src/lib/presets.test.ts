@@ -201,8 +201,11 @@ test("the checks that were on/off flags are levels: on (no entry) for dtrpg's pr
   // PDF/X-1a forbids transparency and alpha: dtrpg leaves both checks on.
   expect(DTRPG_PRESET.checks["pdf.print.transparency"]).toBeUndefined();
   expect(DTRPG_PRESET.checks["asset.image.alpha-channel"]).toBeUndefined();
+  // The build writes a three-edge TrimBox from page.bleed: dtrpg checks it.
+  expect(DTRPG_PRESET.checks["pdf.print.bleed"]).toBeUndefined();
+  expect(BOOK_PRESET.checks["pdf.print.bleed"]).toBe("off");
   for (const preset of [DTRPG_PRESET, BOOK_PRESET]) {
-    for (const id of ["pdf.print.bleed", "pdf.nav.bookmarks", "pdf.nav.toc-links", "asset.font.license"]) {
+    for (const id of ["pdf.nav.bookmarks", "pdf.nav.toc-links", "asset.font.license"]) {
       expect(preset.checks[id]).toBe("off");
     }
   }

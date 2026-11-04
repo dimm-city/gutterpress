@@ -14,6 +14,15 @@ import type { PageTrim } from "./tier2.ts";
 
 export interface PostprocessOptions {
   geometry: PageTrim;
+  /**
+   * The manifest's `page.bleed` (pt, from the book's print area): a bleed the
+   * sheet already contains on the top, bottom and OUTER edge, none at the
+   * binding (shared/print-area.ts). The TrimBox is then the sheet pulled in on
+   * those three edges, mirrored by page parity (page 1 is a recto, outer edge
+   * right). A CSS `@page { bleed }` or slug wins when there is one: that
+   * bleed grew the sheet around the trim on every side.
+   */
+  printBleed?: number;
   /** append blank pages until pageCount % signature === 0 */
   signature?: number;
   /**
@@ -35,6 +44,7 @@ export interface PostprocessResult {
   bytes: Uint8Array;
   pageCount: number;
   padded: number;
+  /** page 1's boxes (a verso's three-edge TrimBox is mirrored) */
   boxes: { media: number[]; bleed: number[]; trim: number[] };
   /** The scale Chromium printed at, read before anything here draws:
    * `printScale` in shared/pdf-inspect.ts (1 = not shrunk). */
@@ -60,12 +70,13 @@ export async function postprocess(
     g.media.width - g.slug,
     g.media.height - g.slug,
   ];
-  const trimBox = [
-    inset,
-    inset,
-    g.media.width - inset,
-    g.media.height - inset,
-  ];
+  const cssBleed = g.bleed > 0 || g.slug > 0;
+  const b = !cssBleed && opts.printBleed && opts.printBleed > 0 ? opts.printBleed : 0;
+  const trimFor = (recto: boolean) =>
+    cssBleed
+      ? [inset, inset, g.media.width - inset, g.media.height - inset]
+      : [recto ? 0 : b, b, g.media.width - (recto ? b : 0), g.media.height - b];
+  const trimBox = trimFor(true);
 
   // ---- signature padding -------------------------------------------------
   const padded = signaturePadding(doc.getPageCount(), opts.signature, opts.lastPage);
@@ -73,7 +84,7 @@ export async function postprocess(
 
   const wantMarks = opts.marks || g.marks.includes("crop") || g.marks.includes("cross");
 
-  for (const page of doc.getPages()) {
+  for (const [index, page] of doc.getPages().entries()) {
     const node = page.node;
     const set = (name: string, box: number[]) =>
       node.set(
@@ -82,12 +93,13 @@ export async function postprocess(
       );
     // A padded blank page is created at media size already; a printed page may
     // be at media size too (Tier 2 grew `size`). Either way the boxes are
-    // authoritative and identical for every page.
+    // authoritative: identical for every page, except that a `printBleed`
+    // TrimBox follows the page's side.
     set("MediaBox", media);
     set("CropBox", media);
-    if (g.bleed > 0 || g.slug > 0) {
+    if (cssBleed || b > 0) {
       set("BleedBox", bleedBox);
-      set("TrimBox", trimBox);
+      set("TrimBox", trimFor(index % 2 === 0));
     } else {
       set("TrimBox", media);
     }

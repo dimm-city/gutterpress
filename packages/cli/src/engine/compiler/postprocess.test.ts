@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { PDFDocument } from "pdf-lib";
+import { PDFArray, PDFDocument, PDFName, PDFNumber } from "pdf-lib";
 import { postprocess } from "./postprocess.ts";
 import type { PageTrim } from "./tier2.ts";
 import type { LastPageMode } from "../shared/synthesis.ts";
@@ -75,4 +75,34 @@ test("lastPage short-by-one: a book already k × signature − 1 long is unchang
   expect(r.pageCount).toBe(231);
   expect(r.padded).toBe(0);
   expect(await hasContent(r.bytes, 230)).toBe(true);
+});
+
+/** Page `index`'s box, as [x0, y0, x1, y1]. */
+async function boxOf(bytes: Uint8Array, index: number, name: string): Promise<number[]> {
+  const doc = await PDFDocument.load(bytes);
+  const box = doc.getPage(index).node.lookup(PDFName.of(name), PDFArray);
+  return box.asArray().map((n) => (n as PDFNumber).asNumber());
+}
+
+test("printBleed: the TrimBox leaves the binding edge alone and mirrors by page parity; BleedBox is the sheet", async () => {
+  // dtrpg: an 8.625 x 11.25in sheet with 9pt of bleed on the top, bottom and outer edge.
+  const sheet: PageTrim = { ...geometry, trim: { width: 621, height: 810 }, media: { width: 621, height: 810 } };
+  const r = await postprocess(await contentPdf(3), { geometry: sheet, printBleed: 9 });
+  // Page 1 is a recto: the binding is its left edge.
+  expect(await boxOf(r.bytes, 0, "TrimBox")).toEqual([0, 9, 612, 801]);
+  expect(await boxOf(r.bytes, 1, "TrimBox")).toEqual([9, 9, 621, 801]);
+  expect(await boxOf(r.bytes, 2, "TrimBox")).toEqual([0, 9, 612, 801]);
+  for (const i of [0, 1, 2]) expect(await boxOf(r.bytes, i, "BleedBox")).toEqual([0, 0, 621, 810]);
+  expect(r.boxes.trim).toEqual([0, 9, 612, 801]);
+});
+
+test("no bleed anywhere: the TrimBox is the sheet", async () => {
+  const r = await postprocess(await contentPdf(1), { geometry, printBleed: 0 });
+  expect(await boxOf(r.bytes, 0, "TrimBox")).toEqual([0, 0, 612, 792]);
+});
+
+test("a CSS @page bleed wins over printBleed: symmetric trim inside the grown sheet", async () => {
+  const grown: PageTrim = { trim: { width: 612, height: 792 }, media: { width: 630, height: 810 }, bleed: 9, slug: 0, marks: [] };
+  const r = await postprocess(await contentPdf(2), { geometry: grown, printBleed: 9 });
+  for (const i of [0, 1]) expect(await boxOf(r.bytes, i, "TrimBox")).toEqual([9, 9, 621, 801]);
 });

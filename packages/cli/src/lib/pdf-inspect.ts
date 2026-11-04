@@ -17,8 +17,9 @@
  *   - Structural integrity (`isLoadable`) is a "does it parse" gate, not a deep
  *     `qpdf --check` of xref/stream-length integrity.
  *   - Image DPI requires decoding the image to read its pixel dimensions and is
- *     therefore best-effort; bleed-box reads fall back to a raw-byte scan because
- *     pdfjs exposes no TrimBox/BleedBox accessor.
+ *     therefore best-effort; bleed boxes are read with pdf-lib
+ *     (engine/shared/pdf-inspect.ts) because pdfjs exposes no TrimBox/BleedBox
+ *     accessor.
  *
  * Loaded documents are cached per path (invalidated on size/mtime change) so a
  * single validation run parses a large PDF once across all checks.

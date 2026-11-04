@@ -15,7 +15,7 @@ import { resolveGhostscript } from "./ghostscript";
  * live inside FlateDecode-compressed streams are not visible to a raw byte
  * scan. grep had the identical blind spot, so callers see no behavior change.
  *
- * Used by the transparency, color-spaces, and bleed checks. All other PDF
+ * Used by the transparency and color-spaces checks. All other PDF
  * inspection now goes through the structured PDF.js reader in pdf-inspect.ts.
  */
 export async function readPdfBytes(pdfPath: string): Promise<string> {

@@ -1635,6 +1635,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // ---- postprocess -----------------------------------------------------
     const post = await postprocess(bytes, {
       geometry: tier2.geometry,
+      printBleed: printArea?.bleed,
       signature: opts.signature,
       lastPage: opts.lastPage,
       marks: opts.marks,

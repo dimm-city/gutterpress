@@ -95,8 +95,8 @@ export const DTRPG_PRESET: VendorPreset = {
     tolerance: 0.5, // CONVENTION: slack for rounding in the PDF boxes
     // SPEC: 0.125in = 9pt, ALREADY INSIDE width/height above on the top,
     // bottom and outer edges only. Declared so the preview's margin & bleed
-    // overlay, `pdf.print.safe-margins` and pinned art can find the trim; the
-    // page itself is unchanged (CSS `bleed` is symmetric and would grow the
+    // overlay, `pdf.print.safe-margins`, pinned art and the PDF's per-page
+    // TrimBox can find the trim; the page itself is unchanged (CSS `bleed` is symmetric and would grow the
     // page and add binding-edge bleed, which the SPEC rules out).
     bleed: 9,
     // SPEC: 0.5in = 36pt, DriveThru's TEXT rule: text stays at least 0.5in
@@ -132,17 +132,15 @@ export const DTRPG_PRESET: VendorPreset = {
     "pdf.print.embedded-fonts": "error",
     // SPEC: text at least 0.5in inside the trim on every edge (`page.safe`).
     "pdf.print.safe-margins": "error",
-    // Stays off on purpose: `pdf.print.bleed` compares MediaBox with TrimBox
-    // and expects the bleed OUTSIDE the trim on every side. Here the bleed is
-    // inside the sheet on three edges and TrimBox == MediaBox, so the check
-    // would warn on every correct DriveThruRPG file.
-    "pdf.print.bleed": "off",
     // Not printer rules: a book switches them on in `checks:`.
     "pdf.nav.bookmarks": "off",
     "pdf.nav.toc-links": "off",
     "asset.font.license": "off",
     // On (no entry): `pdf.print.transparency` and `asset.image.alpha-channel`
-    // (DERIVED: PDF/X-1a forbids transparency, which an alpha channel needs).
+    // (DERIVED: PDF/X-1a forbids transparency, which an alpha channel needs),
+    // and `pdf.print.bleed` (SPEC: 0.125in on the top, bottom and outside
+    // edge; the build writes each page's TrimBox from `page.bleed` above,
+    // with no inset at the binding edge).
   },
   validate: {
     assets: {
