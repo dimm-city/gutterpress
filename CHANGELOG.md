@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.24] - 2026-11-04
+
 ### Added
 
 - **`pdfx.blackText: k-only-neutral`.** Grey text at 24pt and under (channels
