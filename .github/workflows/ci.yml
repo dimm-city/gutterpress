@@ -51,7 +51,7 @@ jobs:
       needs.scope.outputs.cli == 'true' || needs.scope.outputs.desktop == 'true' ||
       needs.scope.outputs.plugin == 'true' || needs.scope.outputs.tooling == 'true'
     # Ubuntu 26.04: its ghostscript package (10.06.0) honours the PDF/X output
-    # profile; 24.04's (10.02.1) does not. See .github/actions/pdf-tools.
+    # profile; 24.04's (10.02.1) does not (the "Require Ghostscript" step).
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
@@ -90,6 +90,12 @@ jobs:
       - name: Install PDF tools from cache
         if: needs.scope.outputs.cli == 'true'
         uses: ./.github/actions/pdf-tools
+      - name: Require Ghostscript 10.03 or newer
+        if: needs.scope.outputs.cli == 'true'
+        # pdfwrite in older Ghostscript ignores the PDF/X output profile and
+        # separates through its default CMYK profile (Artifex bug 707350, fixed
+        # in 10.03.0); the PDF/X integration tests below pin the real separation.
+        run: dpkg --compare-versions "$(gs --version)" ge 10.03 || { echo "Ghostscript $(gs --version) is older than 10.03"; exit 1; }
       - name: Use the runner's Chrome
         if: needs.scope.outputs.cli == 'true' || needs.scope.outputs.preview == 'true'
         run: echo "CHROMIUM_PATH=$(command -v google-chrome-stable)" >> "$GITHUB_ENV"

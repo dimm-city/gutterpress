@@ -1,11 +1,5 @@
 name: Install PDF tooling (offline on cache hits)
-description: >-
-  Cache the complete apt package set for this runner image and install it
-  without network access on warm runs. Ghostscript must be 10.03 or newer:
-  pdfwrite in older versions ignores the PDF/X output profile and separates
-  through its default CMYK profile (Artifex bug 707350, fixed in 10.03.0).
-  Ubuntu 24.04's package is 10.02.1, so the jobs that use this action run on
-  Ubuntu 26.04 (10.06.0); the verify step fails on an older gs.
+description: Cache the complete apt package set for this runner image and install it without network access on warm runs.
 runs:
   using: composite
   steps:
@@ -36,7 +30,6 @@ runs:
       shell: bash
       run: |
         gs --version
-        dpkg --compare-versions "$(gs --version)" ge 10.03 || { echo "Ghostscript $(gs --version) is older than 10.03: pdfwrite ignores the PDF/X output profile (Artifex bug 707350)"; exit 1; }
         qpdf --version
         pdftoppm -v
     # Save after setup, so a later test failure does not discard the download.

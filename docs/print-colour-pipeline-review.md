@@ -338,7 +338,7 @@ added. Reproduced in a container with the same `ghostscript` package:
   the Checks job on
   Ubuntu 26.04 (ghostscript 10.06.0 from apt) and the Docker image moves to
   Debian 13 (`node:22-trixie-slim`, ghostscript 10.05); nothing is compiled or
-  fetched outside the distributions' packages, and the verify step and the
+  fetched outside the distributions' packages, and the Checks job and the
   image both assert `gs --version` is 10.03 or newer. An earlier revision of
   this PR built 10.06.0 from Artifex's source tarball in CI and in the image;
   that worked but was a dependency to maintain, and the packaged versions make
