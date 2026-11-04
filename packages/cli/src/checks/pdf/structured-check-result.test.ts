@@ -5,7 +5,7 @@
  * machine-readable `code` / `data` fields so the report layer never has to
  * re-parse human-readable message text.
  *
- * The underlying PDF inspectors (Ghostscript inkcov, PDF.js reader) are mocked
+ * The underlying PDF inspectors (Ghostscript's CMYK raster, PDF.js reader) are mocked
  * so these run with no external tools and no fixtures.
  */
 import { describe, test, expect, spyOn, afterAll } from "bun:test";
@@ -42,7 +42,7 @@ const inspectState: {
 // run — every file that runs afterwards, not just this one — and is never
 // auto-restored. That caused real cross-file pollution: any later file that
 // freshly imported the real `pdf-parse`/`pdf-inspect` silently got these fakes
-// (e.g. `parseInkCov()` always returning `[]`), and any later file importing
+// (e.g. `readPdfBytes()` always returning `""`), and any later file importing
 // the check registry hit a module-link `SyntaxError` because the fake's export
 // list omitted `isLoadable`, which `checks/pdf/qpdf-structure.ts` imports
 // statically. Reproducible with `bun test --randomize --seed=12345`.
@@ -53,7 +53,6 @@ const inspectState: {
 // `build-runner.browser-lifecycle.test.ts` and `chromium.test.ts` document.
 spyOn(pdfParse, "getPerPageInkCoverage").mockImplementation(async () => inkResult);
 spyOn(pdfParse, "readPdfBytes").mockImplementation(async () => "");
-spyOn(pdfParse, "parseInkCov").mockImplementation(() => []);
 
 spyOn(pdfInspect, "loadPdf").mockImplementation(
   async () => ({ getPage: async () => ({}) }) as never
@@ -74,7 +73,6 @@ afterAll(() => {
   for (const fn of [
     pdfParse.getPerPageInkCoverage,
     pdfParse.readPdfBytes,
-    pdfParse.parseInkCov,
     pdfInspect.loadPdf,
     pdfInspect.getOpPass,
     pdfInspect.getTextPass,

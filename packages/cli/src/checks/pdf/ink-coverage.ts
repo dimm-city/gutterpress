@@ -6,7 +6,7 @@ const check: Check = {
   id: "pdf.print.ink-coverage",
   name: "Ink Coverage (TAC)",
   description:
-    "Checks total area coverage (TAC) against maximum ink limits",
+    "Checks each page's total area coverage (TAC: C+M+Y+K at its heaviest spot) against the ink limit",
   category: "pdf",
   phase: "post-build",
   requiredTools: ["gs"],
@@ -24,7 +24,7 @@ const check: Check = {
           severity: "warning",
           message: "Ink coverage could not be measured",
           file: ctx.pdfPath,
-          detail: `Ghostscript inkcov failed, so total ink coverage (TAC) was not checked: ${inkResult.error}`,
+          detail: `Ghostscript could not render the PDF to CMYK, so total ink coverage (TAC) was not checked: ${inkResult.error}`,
           code: "ink-coverage-unmeasured",
           data: { error: inkResult.error },
         },
@@ -49,7 +49,7 @@ const check: Check = {
         .slice(0, 5)
         .map(
           (page) =>
-            `  Page ${page.page}: C:${page.c.toFixed(1)}% M:${page.m.toFixed(1)}% Y:${page.y.toFixed(1)}% K:${page.k.toFixed(1)}% = ${page.tac.toFixed(1)}% TAC`
+            `  Page ${page.page}, heaviest spot: C:${page.c.toFixed(1)}% M:${page.m.toFixed(1)}% Y:${page.y.toFixed(1)}% K:${page.k.toFixed(1)}% = ${page.tac.toFixed(1)}% TAC`
         ),
     ];
     if (offending.length > 5) {

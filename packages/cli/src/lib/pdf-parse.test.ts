@@ -1,19 +1,22 @@
 /**
- * Unit tests for pdf-parse.ts's Ghostscript-backed ink coverage reader
+ * Unit tests for pdf-parse.ts's Ghostscript-backed ink coverage reader.
  * `getPerPageInkCoverage` must return a discriminated result
  * (`{ ok: true, pages }` | `{ ok: false, error }`) instead of swallowing every
  * gs failure (crash, corrupt PDF, missing binary) into an indistinguishable
  * empty array — which previously made the ink-coverage check silently PASS a
- * book that was never actually measured.
+ * book that was never actually measured. It reports each page's HEAVIEST
+ * pixel, which is what total area coverage means, not the page's mean.
  *
  * `./exec`'s `execCapture` is spied on (not `mock.module`-replaced) so this
- * never spawns a real `gs` process, and the spy is restored in `afterEach` so
- * it never leaks into other test files sharing this bun test run.
+ * never spawns a real `gs` process; the spy writes the raster files a real
+ * `gs -sDEVICE=pamcmyk32` would. It is restored in `afterEach` so it never
+ * leaks into other test files sharing this bun test run.
  */
 import { test, expect, spyOn, afterEach } from "bun:test";
+import { writeFile } from "node:fs/promises";
 import * as execMod from "./exec.ts";
 import * as ghostscriptMod from "./ghostscript.ts";
-import { getPerPageInkCoverage, parseInkCov } from "./pdf-parse.ts";
+import { getPerPageInkCoverage, maxInkOfPam } from "./pdf-parse.ts";
 
 afterEach(() => {
   (execMod.execCapture as unknown as { mockRestore?: () => void }).mockRestore?.();
@@ -26,41 +29,59 @@ function resolveWindowsGhostscript(): void {
   );
 }
 
-const SAMPLE_INKCOV_OUTPUT =
-  "   0.10000   0.20000   0.30000   0.05000 CMYK OK\n" +
-  "   0.50000   0.60000   0.70000   0.80000 CMYK OK\n";
+/**
+ * A `pamcmyk32` page: 10x10 pixels, white, with `patch` CMYK (0–255) painted
+ * on its first `count` pixels.
+ */
+function pam(patch: [number, number, number, number] = [0, 0, 0, 0], count = 0): Uint8Array {
+  const header = Buffer.from(
+    "P7\nWIDTH 10\nHEIGHT 10\nDEPTH 4\nMAXVAL 255\nTUPLTYPE CMYK\nENDHDR\n",
+    "latin1"
+  );
+  const pixels = new Uint8Array(10 * 10 * 4);
+  for (let i = 0; i < count; i++) pixels.set(patch, i * 4);
+  return new Uint8Array([...header, ...pixels]);
+}
 
-test("parseInkCov extracts CMYK + sum per page from raw gs inkcov output", () => {
-  const pages = parseInkCov(SAMPLE_INKCOV_OUTPUT);
-  expect(pages).toHaveLength(2);
-  expect(pages[0]!.c).toBeCloseTo(0.1);
-  expect(pages[0]!.m).toBeCloseTo(0.2);
-  expect(pages[0]!.y).toBeCloseTo(0.3);
-  expect(pages[0]!.k).toBeCloseTo(0.05);
-  expect(pages[0]!.sum).toBeCloseTo(0.65);
-  expect(pages[1]!.c).toBeCloseTo(0.5);
-  expect(pages[1]!.sum).toBeCloseTo(2.6);
+/** Make the spied `gs` write these pages where the call asked for them. */
+function ghostscriptWrites(pages: Uint8Array[], stderr = "") {
+  return spyOn(execMod, "execCapture").mockImplementation(async (_cmd, args) => {
+    const target = args.find((a) => a.startsWith("-sOutputFile="))!.slice("-sOutputFile=".length);
+    for (const [i, page] of pages.entries()) await writeFile(target.replace("%d", String(i + 1)), page);
+    return { stdout: "", stderr };
+  });
+}
+
+test("maxInkOfPam reports the heaviest pixel, not the page mean", () => {
+  // A 400% patch on 10% of a white page: mean 40%, TAC 400%.
+  const page = maxInkOfPam(pam([255, 255, 255, 255], 10));
+  expect(page).toEqual({ c: 100, m: 100, y: 100, k: 100, tac: 400 });
+
+  const rich = maxInkOfPam(pam([120, 107, 102, 255], 1));
+  expect(rich.k).toBe(100);
+  expect(rich.tac).toBeCloseTo(((120 + 107 + 102 + 255) / 255) * 100);
 });
 
-test("getPerPageInkCoverage returns ok:true with percentage-scaled pages on success", async () => {
+test("maxInkOfPam refuses a raster that is not 4-channel CMYK", () => {
+  expect(() => maxInkOfPam(Buffer.from("P6\n10 10\n255\n"))).toThrow("CMYK");
+});
+
+test("getPerPageInkCoverage returns ok:true with each page's heaviest spot", async () => {
   resolveWindowsGhostscript();
-  const exec = spyOn(execMod, "execCapture").mockImplementation(async () => ({
-    stdout: SAMPLE_INKCOV_OUTPUT,
-    stderr: "",
-  }));
+  const exec = ghostscriptWrites([pam(), pam([255, 255, 255, 255], 10)]);
 
   const result = await getPerPageInkCoverage("/fake/book.pdf");
 
   expect(result.ok).toBe(true);
   if (!result.ok) throw new Error("expected ok:true");
-  expect(result.pages).toHaveLength(2);
-  expect(result.pages[0]).toMatchObject({ page: 1, c: 10, m: 20, y: 30, k: 5 });
-  expect(result.pages[0]!.tac).toBeCloseTo(65);
-  expect(result.pages[1]).toMatchObject({ page: 2, c: 50, m: 60, y: 70, k: 80 });
-  expect(result.pages[1]!.tac).toBeCloseTo(260);
+  expect(result.pages).toEqual([
+    { page: 1, c: 0, m: 0, y: 0, k: 0, tac: 0 },
+    { page: 2, c: 100, m: 100, y: 100, k: 100, tac: 400 },
+  ]);
   expect(exec.mock.calls[0]?.[0]).toBe(
     "C:\\Program Files\\gs\\gs10.06.0\\bin\\gswin64c.exe"
   );
+  expect(exec.mock.calls[0]?.[1]).toEqual(expect.arrayContaining(["-sDEVICE=pamcmyk32", "-r72"]));
 });
 
 test("getPerPageInkCoverage returns ok:false with the error message when gs fails", async () => {
@@ -79,7 +100,7 @@ test("getPerPageInkCoverage returns ok:false with the error message when gs fail
 test("getPerPageInkCoverage returns ok:false (not an empty ok:true) when gs exits non-zero", async () => {
   resolveWindowsGhostscript();
   spyOn(execMod, "execCapture").mockImplementation(async () => {
-    throw new Error("gs -sDEVICE=inkcov ... exited 1");
+    throw new Error("gs -sDEVICE=pamcmyk32 ... exited 1");
   });
 
   const result = await getPerPageInkCoverage("/fake/corrupt.pdf");
@@ -91,34 +112,15 @@ test("getPerPageInkCoverage returns ok:false (not an empty ok:true) when gs exit
   expect(result.ok).toBe(false);
 });
 
-test("getPerPageInkCoverage asks gs to write the inkcov report to stdout", async () => {
+test("getPerPageInkCoverage returns ok:false when gs exits 0 but writes no page", async () => {
   resolveWindowsGhostscript();
-  const exec = spyOn(execMod, "execCapture").mockImplementation(async () => ({
-    stdout: SAMPLE_INKCOV_OUTPUT,
-    stderr: "",
-  }));
-
-  await getPerPageInkCoverage("/fake/book.pdf");
-
-  // Ghostscript 10 refuses the inkcov device without an output target and
-  // exits 0 with nothing on stdout; the flag is what makes the check real.
-  expect(exec.mock.calls[0]?.[1]).toContain("-sOutputFile=-");
-});
-
-test("getPerPageInkCoverage returns ok:false when gs exits 0 but reports no pages", async () => {
-  resolveWindowsGhostscript();
-  spyOn(execMod, "execCapture").mockImplementation(async () => ({
-    stdout: "",
-    stderr:
-      "GPL Ghostscript 10.02.1: Device 'inkcov' requires an output file but no file was specified.\n",
-  }));
+  ghostscriptWrites([], "GPL Ghostscript 10.02.1: Unrecoverable error, exit code 1\n");
 
   const result = await getPerPageInkCoverage("/fake/book.pdf");
 
-  // The shape Ghostscript 10 produced for every book before #419: exit 0,
-  // no data. It must read as "unmeasured", never as "0 pages, all fine".
-  expect(result).not.toEqual({ ok: true, pages: [] });
+  // Exit 0 with nothing measured must read as "unmeasured", never as
+  // "0 pages, all fine" (#419).
   expect(result.ok).toBe(false);
   if (result.ok) throw new Error("expected ok:false");
-  expect(result.error).toContain("requires an output file");
+  expect(result.error).toContain("Unrecoverable error");
 });
