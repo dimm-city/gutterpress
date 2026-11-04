@@ -139,7 +139,7 @@
                 "maxTac": {
                   "type": "number",
                   "minimum": 0,
-                  "description": "The total ink limit in percent: what the check measures against and what the PDF/X conversion holds the ink to. Preset defaults: dtrpg 240, book 400.",
+                  "description": "The total ink limit in percent that the check measures each page's heaviest spot against. The PDF/X conversion does not enforce it: the output profile sets the ink limit (CGATS21_CRPC1 holds it to about 240%). Preset defaults: dtrpg 240, book 400.",
                   "examples": [240, 300]
                 },
                 "tacTolerance": {

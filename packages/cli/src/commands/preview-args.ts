@@ -14,7 +14,7 @@ export const previewArgs = {
   debug: { type: "boolean", description: "Debug mode (preserve temporary files)" },
   out: { type: "string", description: "Output directory (pdf|pdfx only)" },
   "pdfx-flavor": { type: "string", description: "PDF/X flavor (x1a or x3); only with --format pdfx" },
-  icc: { type: "string", description: "Path to ICC profile (required for --format pdfx)" },
+  icc: { type: "string", description: "CMYK output ICC profile for --format pdfx (default: the preset's pdfx.icc)" },
   manifest: { type: "string", description: "Path to manifest.yaml (pdf|pdfx only)" },
   "strip-annotations": { type: "boolean", description: "Strip PDF annotations for PDF/X compliance (pdfx only)" },
   "skip-lint": { type: "boolean", description: "Skip the CSS print-safety check (pdf|pdfx only)" },

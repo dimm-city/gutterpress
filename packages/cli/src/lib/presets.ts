@@ -181,6 +181,12 @@ export const DTRPG_PRESET: VendorPreset = {
  *   structure, which only applies to a PDF/X build (`--format pdfx`) — and
  *   the transparency and alpha-channel checks: PDF/X forbids both; a plain
  *   PDF/HTML book has no such restriction.
+ * - `pdfx.icc`: a `--format pdfx` build still separates through CGATS21_CRPC1.
+ *   The output profile sets the gamut AND the ink limit (`ink.maxTac` is only
+ *   a check threshold), and CRPC1 is DriveThruRPG's small-gamut newsprint
+ *   condition (CGATS 21-2 CRPC1), so saturated colours shift. A coated-stock
+ *   vendor needs its own profile in `pdfx.icc` (GRACoL2013 CRPC6 and ECI ISO
+ *   Coated v2 are redistributable).
  */
 export const BOOK_PRESET: VendorPreset = {
   id: "book",

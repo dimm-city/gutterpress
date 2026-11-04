@@ -22,7 +22,7 @@ export type CheckLevelInput = "off" | "on" | "info" | "warn" | "warning" | "erro
  */
 export interface CheckEntry {
   level?: CheckLevelInput;
-  /** `pdf.print.ink-coverage`: the total ink limit in percent (and what a PDF/X build holds the ink to). */
+  /** `pdf.print.ink-coverage`: the total ink limit in percent the check measures against. The PDF/X conversion does not enforce it: the output profile sets the ink limit. */
   maxTac?: number;
   /** `pdf.print.ink-coverage`: how far over `maxTac` a page may measure before it is reported. */
   tacTolerance?: number;

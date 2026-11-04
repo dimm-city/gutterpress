@@ -8,8 +8,8 @@
  *     pdf.print.image-resolution: { level: error, minImageResolution: 200 }
  *
  * Each option lands at ONE place in the resolved config, `at`, which is what
- * the check reads (and, for `maxTac`, what the PDF/X conversion holds the ink
- * to). `at` is also how a 0.11.22 manifest spelled the option
+ * the check reads (`maxTac` is only that: the PDF/X conversion's ink limit is
+ * its output profile's). `at` is also how a 0.11.22 manifest spelled the option
  * (`ink.maxTac`, `validate.pdf.minImageResolution`, `page.tolerance`), so
  * manifest-old-spellings.ts translates the old keys from this same table.
  *

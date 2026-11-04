@@ -20,7 +20,7 @@ const commandArgs = {
   out: { type: "string", description: "Output directory. For --format pdf|pdfx, --out may also be a .pdf file path." },
   title: { type: "string", description: "Document title (overrides manifest)" },
   "pdfx-flavor": { type: "string", description: "PDF/X flavor (x1a or x3). --format pdfx only." },
-  icc: { type: "string", description: "Path to ICC profile (required for --format pdfx)" },
+  icc: { type: "string", description: "CMYK output ICC profile for --format pdfx (default: the preset's pdfx.icc)" },
   manifest: { type: "string", description: "Path to manifest.yaml" },
   "strip-annotations": { type: "boolean", description: "Strip PDF annotations for PDF/X compliance" },
   "skip-lint": { type: "boolean", description: "Skip the CSS print-safety check (default: it runs for pdf/pdfx)" },
