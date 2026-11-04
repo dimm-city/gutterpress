@@ -21,9 +21,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **The PDF/X build warns on a Ghostscript older than 10.03.0.** Before that
   release pdfwrite ignored the output profile and separated every colour
   through Ghostscript's default CMYK profile (Artifex bug 707350, fixed
-  2023-11-30): Ubuntu 24.04's 10.02.1 and Debian 12's 10.0.0 give `#000` at
-  C72 M68 Y67 K88 = 295%, over DriveThruRPG's 240%, with CRPC1 still named as
-  the OutputIntent; 10.05 and 10.06 honour it (measured). The build also logs
+  2023-11-30): Ubuntu 24.04's 10.02.1 gives `#000` at C72 M68 Y67 K88 = 295%
+  (measured; Debian 12's 10.0.0 predates the fix), over DriveThruRPG's 240%,
+  with CRPC1 still named as the OutputIntent; 10.05 and 10.06 honour it
+  (measured). The build also logs
   the profile and warns on an output profile it does not know. CI runs on
   Ubuntu 26.04 and the Docker image on Debian 13, whose Ghostscript packages
   (10.06.0, 10.05) are new enough.
@@ -44,8 +45,14 @@ This project follows [Semantic Versioning](https://semver.org/).
   the check's threshold.
 - **The PDF/X OutputIntent named the wrong printing condition.** It names
   `CGATS21-2-CRPC1` for the shipped profile (x1a wrote `CGATS TR001`, SWOP's
-  condition; x3 the file name), and `pdf.print.pdfx-markers` reports an
-  identifier that does not match the embedded profile.
+  condition; x3 the file name), and `pdf.print.pdfx-markers` reports a missing
+  identifier and, for a profile Gutterpress knows, one that does not match the
+  embedded profile.
+- **A title with an unbalanced parenthesis broke the PDF/X build**, and an
+  accented title was read as the wrong characters: the PDF/X definition file
+  wrote them into PostScript literals as they were. Its strings are now
+  escaped, or written as UTF-16 when they are not ASCII, and the profile path
+  likewise.
 - **A `dtrpg` PDF declared the whole sheet as its trim.** Each page's TrimBox
   is the sheet less the bleed on the top, bottom and outside edge, mirrored on
   left and right pages; BleedBox is the sheet. A CSS `@page { bleed }` set as

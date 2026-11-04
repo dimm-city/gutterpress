@@ -22,7 +22,7 @@ Reference numbers used below:
 
 | Colour | gs 10.06 via `convertToPdfxCmyk` (#331) | LittleCMS, CRPC1, perceptual |
 |---|---|---|
-| `#000000` | C47 M42 Y40 K100 = 229% | C50 M46 Y44 K100 = 240% |
+| `#000000` | C47 M42 Y40 K100 = 228% (components rounded) | C50 M46 Y44 K100 = 240% |
 | `#1a1512` | C44 M40 Y39 K94 = 217% | — |
 | `#1e1d1c` | — | C42 M36 Y33 K85 = 196% |
 | `#901a12` | C2 M92 Y65 K48 = 207% | C0 M88 Y65 K37 = 190% |
@@ -154,7 +154,8 @@ Keep the CSS `@page { bleed }` path working; when both exist, say which wins.
 
 Fix: log the resolved profile's description at conversion time; make the
 integration test assert the CRPC1 signature (`#000` -> K 100, C 45..52,
-TAC <= 245) so a profile that is silently ignored fails CI; warn when gs < 10.
+TAC <= 245) so a profile that is silently ignored fails CI; warn when gs < 10
+(the floor became 10.03.0: see the Addendum).
 Do NOT change `-dRenderIntent`, `-dBlackPtComp` or `-dOverrideICC` in a fix PR
 (that changes every book's colour); document the current behaviour in
 `docs/publishing.md` ("images are converted as sRGB; Ghostscript's default
@@ -228,7 +229,7 @@ Code
 - [x] `ghostscript.ts`: correct OutputConditionIdentifier / OutputCondition, derived from the profile (item 3).
 - [x] `pdfx-structure.ts`: identifier <-> profile consistency finding (item 3); assert in the integration test.
 - [x] `engine.ts` + `postprocess.ts` + `bleed.ts` + `presets.ts`: three-edge TrimBox/BleedBox from `page.bleed`/`page.gutter`, mirrored per page; bleed check updated and re-enabled for dtrpg (item 4).
-- [x] `ghostscript.integration.test.ts`: assert the CRPC1 signature for `#000`; log the profile description at build time; warn on gs < 10 (item 5).
+- [x] `ghostscript.integration.test.ts`: assert the CRPC1 signature for `#000`; log the profile description at build time; warn on gs < 10, which became 10.03.0 (item 5; see the Addendum).
 - [x] `black-text-gray.ts` + `black-text.ts` + `manifest.types.ts` + schema: `k-only-neutral` (item 6).
 - [x] `presets.ts`: `blackText` provenance SPEC (item 6); `book` preset comment (item 7).
 - [x] `commands/build.ts`: `--icc` help text.
@@ -251,16 +252,20 @@ differences and omissions:
   reads the manifest's print area from the book's `gp-print-area` meta
   (`engine/compiler/build.ts`), so `postprocess` takes `printArea.bleed` from
   there. `page.gutter` is not threaded: it is a safe-area inset at the binding
-  edge, and the TrimBox does not depend on it. When a CSS `@page { bleed }` or
-  slug exists it wins (that sheet was grown around the trim on every side);
-  `postprocess.ts` and `docs/publishing.md` say so.
+  edge, and the TrimBox does not depend on it. A CSS `@page { bleed }` or slug
+  grew the sheet on every side; the trim is the sheet less both it and the
+  in-sheet bleed (the first revision let the CSS bleed win, which declared the
+  in-sheet bleed as trim; the review of the PR caught it). `postprocess.ts`
+  and `docs/publishing.md` say so.
 - **Item 4, the bleed check.** Re-enabling `pdf.print.bleed` needed more than
   the three-edge rule: its raw-byte scan cannot see page dictionaries in the
   plain PDF's object streams, so it would have reported "could not parse
   MediaBox" there. It now reads every page's boxes with pdf-lib
-  (`inspectPdf`). The `dtrpg` publish target's overlay was not changed, so a
-  `book`-preset book validated for `dtrpg` keeps the check off (that preset
-  has no in-sheet bleed).
+  (`inspectPdf`), through pdf-lib's box accessors (an inherited MediaBox and an
+  indirect TrimBox are read). It measures the bleed between the TrimBox and
+  the BleedBox, allows the page-size tolerance, and counts a page with no
+  TrimBox as short. The `dtrpg` publish target's overlay turns it on, since the
+  `book` preset turns it off.
 - **Item 1.** `inkcov` is removed rather than kept: the CMYK raster
   (`pamcmyk32`, 72 DPI) already gives the C/M/Y/K of each page's heaviest spot,
   which the finding now prints, so a mean figure added nothing.
@@ -268,9 +273,11 @@ differences and omissions:
   the profile table. I did not add GRACoL or FOGRA entries whose exact ICC
   description strings I could not check against the files. The
   identifier-vs-profile finding judges only a profile in that table; for any
-  other profile it stays silent, because a third-party file's legitimate
-  registry name (for example `FOGRA39` over "Coated FOGRA39 ...") would
-  otherwise be an error.
+  other profile it checks only that an identifier is present (PDF/X requires
+  one), because a third-party file's legitimate registry name (for example
+  `FOGRA39` over "Coated FOGRA39 ...") would otherwise be an error. A profile
+  whose description cannot be read is named by its file name and never
+  claimed as registered, whatever the file is called.
 - **Item 3, a small factual correction.** The x1a identifier the code wrote
   was `CGATS TR001` (no space), not `CGATS TR 001` as quoted above. Both name
   SWOP, so the finding stands.
@@ -295,18 +302,20 @@ differences and omissions:
   threshold-only sentence and `k-only-neutral`.
 - **Released CHANGELOG entries** (0.11.22, 0.11.23) are left as history; the
   Unreleased entries correct them.
-- **Not verified locally.** Ghostscript and qpdf are not installed in the
-  session that made the fix, so the integration tests skip here and run in CI:
-  that `pamcmyk32` writes ink amounts (0 = no ink), that the converted file
-  keeps the per-page TrimBox, CRPC1's separation of `#000`, the written
-  identifier, and the qpdf success path with the real profile. A local
+- **Verification.** The session that made the first revision had neither
+  Ghostscript nor qpdf, so its integration tests ran only in CI. The later
+  revisions were verified with Ubuntu 25.10's Ghostscript 10.05.0 and qpdf
+  installed from apt: `pamcmyk32` writes ink amounts (0 = no ink), the
+  converted file keeps the per-page TrimBox, CRPC1's separation of `#000`, the
+  written identifier, and the qpdf success path with the real profile all
+  pass locally, and CI runs them on Ubuntu 26.04's 10.06.0. A local
   `--format pdf` build of `examples/with-print-effects` writes TrimBoxes
   `[0 9 612 801]` on odd pages and `[9 9 621 801]` on even pages, and
   `pdf.print.bleed` passes on it.
-- **Seen but not changed** (outside this review): the user guide's
-  validation chapter lists "ink coverage estimates" among the heuristic
-  checks, but no heuristic check measures ink; the website copy also claims
-  PDF/A output.
+- **Seen and changed later:** the user guide's validation chapter listed "ink
+  coverage estimates" among the heuristic checks, but no heuristic check
+  measures ink; it now names the heuristic checks that exist. **Seen but not
+  changed** (outside this review): the website copy claims PDF/A output.
 
 
 ## Addendum (2026-11-04, after the first CI run of the fix PR)
@@ -317,7 +326,7 @@ added. Reproduced in a container with the same `ghostscript` package:
 - **Ghostscript 10.02.1 ignores the output profile for pdfwrite's vector
   colour.** With the build's exact arguments, `#000` separates to
   `0.722 0.675 0.671 0.882 k` (C72 M68 Y67 K88 = 295%), red to `0 0.996 1 0 k`,
-  `#c026d3` to `0.404 0.851 0 0 k` (C41 M85): Ghostscript's `default_cmyk.icc`,
+  `#c026d3` to `0.404 0.851 0 0 k` (C40 M85): Ghostscript's `default_cmyk.icc`,
   and exactly the figures gp-dimm-city's token comments record. Adding
   `-sDefaultCMYKProfile`, `-dRenderIntent=1`, or dropping `-dOverrideICC`
   changes nothing. DeviceGray (`0 g`, `0.5 g`) and DeviceCMYK fills pass
@@ -363,4 +372,37 @@ added. Reproduced in a container with the same `ghostscript` package:
   present.
 - **Not verified here.** The container could not execute the downloaded 10.06.0
   binary (its policy forbids running fetched code), so 10.06.0's behaviour
-  rests on #331 and on CI, which now runs it.
+  rests on #331 and on CI, whose integration test asserts CRPC1's signature on
+  Ubuntu 26.04's 10.06.0 package and passes. 10.05.0 was measured directly.
+
+## Review of the fix PR (2026-11-04)
+
+Five independent reviews of the PR (colour pipeline, TAC measurement, page
+geometry, tests, docs and CI) found these, all fixed in the PR:
+
+- The PDF/X definition file wrote `/Title`, the profile path and the
+  OutputIntent names into PostScript `(…)` literals unescaped: an unbalanced
+  parenthesis broke the file and an accented title was read as PDFDocEncoding.
+  A profile with no readable description was named by its file name and then
+  matched against the known-profile table, so a file called
+  `CGATS21_CRPC1.icc` was claimed as the registered condition.
+  `pdf.print.pdfx-markers` did not require the identifier at all for an
+  unknown profile, and read a different OutputIntent than the structural
+  check when the first entry was not a dictionary.
+- The TAC measurement rasterised the whole book into one directory (about
+  2 MB a page) and took whatever pages Ghostscript wrote, so a page it did not
+  render passed as a shorter book; the PAM reader trusted its header. An RGB
+  file with no OutputIntent was measured through Ghostscript's default
+  profiles and reported as TAC. The CLI summary printed "Max TAC: within
+  limits" exactly when nothing had been measured.
+- A CSS `@page { bleed }` set alongside `page.bleed` made the TrimBox the
+  in-sheet page, bleed included, and the crop marks sat on the page's edge.
+  The box reader missed an inherited MediaBox and an indirect TrimBox.
+  `pdf.print.bleed` counted a slug as bleed (MediaBox, not BleedBox), skipped a
+  page with no TrimBox, allowed an arbitrary 10%, and was off for a `book`
+  preset published to `dtrpg`.
+- Wording: `k-only-neutral` prints a grey at about its tone (a DeviceGray
+  level is sRGB luminance, not the press's black ramp); the rich-black comment
+  carried 10.02.1's separations; Debian 12's 10.0.0 was called measured when
+  it was inferred from the fix's release; the engine doc said "< 10"; `#c026d3`
+  is C40, not C41; the sprintf-js audit exception no longer matched anything.

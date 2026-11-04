@@ -214,12 +214,12 @@ calls, no child process at all).
 ## PDF/X colour {#pdfx-colour}
 
 `--format pdfx` converts the book's RGB to CMYK with Ghostscript, through the
-output ICC profile in `pdfx.icc` (both presets default to
+output ICC profile in `pdfx.icc` (every preset defaults to
 `profiles/CGATS21_CRPC1.icc`; `--icc` overrides it for one build).
 
 - **The profile sets the gamut and the ink limit.** Nothing else caps the ink:
   CGATS21_CRPC1 holds total ink to about 240% (`#000` separates to about
-  C47 M42 Y40 K100 = 229%). `pdf.print.ink-coverage`'s `maxTac` is only the
+  C47 M42 Y40 K100 = 228%). `pdf.print.ink-coverage`'s `maxTac` is only the
   threshold the check measures each page's heaviest spot against. A build with
   a profile Gutterpress does not know warns that `maxTac` is not enforced.
 - **CRPC1 is a small gamut.** CGATS 21-2 CRPC1 is the coldset-newsprint
@@ -241,12 +241,13 @@ output ICC profile in `pdfx.icc` (both presets default to
   pdfwrite ignored the output profile for vector colour and separated through
   Ghostscript's own default CMYK profile (Artifex bug 707350, fixed 2023-11-30):
   `#000` came out C72 M68 Y67 K88 = 295%, over DriveThruRPG's 240%, and a neon
-  magenta C41 M85 instead of CRPC1's C34 M74, while the file still embedded
+  magenta C40 M85 instead of CRPC1's C34 M74, while the file still embedded
   CRPC1 as its OutputIntent. `-sDefaultCMYKProfile` and `-dRenderIntent` make
-  no difference there. Ubuntu 24.04's package (10.02.1) and Debian 12's
-  (10.0.0) have the bug; Debian 13's (10.05), Ubuntu 25.10's and newer,
-  Homebrew's and winget's do not (`#000` → C47 M42 Y40 K100 = 228%, measured
-  on 10.05.0 and 10.06.0). The build warns when its Ghostscript is older than
+  no difference there. Ubuntu 24.04's package (10.02.1) has the bug
+  (measured) and Debian 12's (10.0.0) predates the fix; Debian 13's (10.05),
+  Ubuntu 25.10's and newer, Homebrew's and winget's carry it (`#000` → C47 M42
+  Y40 K100 = 228%, measured on 10.05.0 and 10.06.0). The build warns when its
+  Ghostscript is older than
   10.03, and `pdf.print.ink-coverage` reports the ink the pages carry either
   way. On a release whose package is too old, use the Docker image, which
   runs Debian 13's Ghostscript. Artifex's snap is not an option:

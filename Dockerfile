@@ -91,8 +91,9 @@ DOCKER_EOF
 # node:22-trixie-slim gives us Node on Debian 13, whose apt has a real
 # `chromium` package (Ubuntu's is a snap, which doesn't work in containers) and
 # a Ghostscript (10.05) whose pdfwrite honours the PDF/X output profile. Debian
-# 12's (10.0.0) does not: it separates through Ghostscript's default CMYK
-# profile (#000 at 295% ink); Artifex fixed that in 10.03.0 (bug 707350).
+# 12's (10.0.0) predates Artifex's fix for pdfwrite separating through
+# Ghostscript's default CMYK profile instead (#000 at 295% ink; bug 707350,
+# fixed in 10.03.0, measured on 10.02.1).
 FROM node:22-trixie-slim AS runtime
 
 RUN set -eux; \

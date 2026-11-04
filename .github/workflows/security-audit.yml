@@ -21,12 +21,13 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/bun
       - name: Audit the lockfile
-        # No install is needed. These advisories only reach build tooling;
-        # remove each exception once the package can move to a patched release:
-        # sprintf-js (GHSA-hp3w-g68c-fv3c) and deepmerge, via
-        # @sveltejs/vite-plugin-svelte (GHSA-gcqx-w48m-w2h4); glob 9-14.0.1
-        # (GHSA-3g3m-2fjr-6pw4: the patch is 14.0.2+, the CLI pins ^13 and
-        # htmlhint, rimraf and electron-builder pin older lines); minimatch below
-        # 11.0.1 (GHSA-g3hv-75wg-m249: eslint, @typescript-eslint/parser, glob and
-        # electron-builder pin the 3.x-10.x lines).
-        run: bun audit --ignore=GHSA-hp3w-g68c-fv3c --ignore=GHSA-gcqx-w48m-w2h4 --ignore=GHSA-3g3m-2fjr-6pw4 --ignore=GHSA-g3hv-75wg-m249
+        # No install is needed. Remove each exception once the package can move
+        # to a patched release (`bun audit` with no --ignore lists what is left):
+        # deepmerge 4.3.1 (GHSA-gcqx-w48m-w2h4, low), via the desktop app's
+        # @sveltejs/vite-plugin-svelte, has no patched release yet; glob 13.0.6
+        # (GHSA-3g3m-2fjr-6pw4, moderate: affects 9.0.0-14.0.1, patched in 14.0.2),
+        # the CLI's own runtime dependency (`^13`) and htmlhint's and rimraf's, so
+        # the fix is a major bump; minimatch 9.0.9 and 10.2.6 (GHSA-g3hv-75wg-m249,
+        # moderate: affects 7.0.0-11.0.0), via glob, @typescript-eslint and
+        # electron-builder, whose ranges stop below 11.
+        run: bun audit --ignore=GHSA-gcqx-w48m-w2h4 --ignore=GHSA-3g3m-2fjr-6pw4 --ignore=GHSA-g3hv-75wg-m249
