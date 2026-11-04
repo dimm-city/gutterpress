@@ -948,7 +948,6 @@ class PdfOutput implements OutputStrategy {
           iccPath: effectiveIccPath,
           pdfx: pdfxMode,
           title: config.title,
-          maxTac: config.ink.maxTac,
           stagingDir: stage,
           rasterDpi: config.pdfx.rasterDpi,
         });

@@ -64,4 +64,30 @@ describe("PDF/X structural inspection", () => {
       "DOCINFO is missing /GTS_PDFXConformance for PDF/X-1a."
     );
   });
+
+  test("flags an OutputConditionIdentifier that does not name the embedded profile's condition", () => {
+    const withIdentifier = (identifier?: string) => ({
+      "1 0 R": { "/Type": "/Catalog", "/OutputIntents": ["2 0 R"] },
+      "2 0 R": {
+        "/Type": "/OutputIntent",
+        "/S": "/GTS_PDFX",
+        ...(identifier ? { "/OutputConditionIdentifier": identifier } : {}),
+        "/DestOutputProfile": "3 0 R",
+      },
+      "3 0 R": { "/N": 4 },
+      trailer: { "/Root": "1 0 R" },
+    });
+
+    expect(getPdfxOutputIntentIssues(withIdentifier("CGATS21-2-CRPC1"), "CGATS21_CRPC1.icc")).toEqual([]);
+    // SWOP's registry name on a CRPC1 profile: what x1a builds used to write.
+    expect(getPdfxOutputIntentIssues(withIdentifier("CGATS TR 001"), "CGATS21_CRPC1.icc")).toEqual([
+      "/OutputConditionIdentifier (CGATS TR 001) does not name the embedded profile's printing condition (CGATS21-2-CRPC1).",
+    ]);
+    expect(getPdfxOutputIntentIssues(withIdentifier(), "CGATS21_CRPC1.icc")).toEqual([
+      "/OutputConditionIdentifier (missing) does not name the embedded profile's printing condition (CGATS21-2-CRPC1).",
+    ]);
+    // A profile without a known registry name cannot be judged.
+    expect(getPdfxOutputIntentIssues(withIdentifier("FOGRA39"), "Coated FOGRA39 (ISO 12647-2:2004)")).toEqual([]);
+    expect(getPdfxOutputIntentIssues(withIdentifier("CGATS TR 001"))).toEqual([]);
+  });
 });

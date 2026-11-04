@@ -7,6 +7,7 @@ import { PDFName as PdfName } from "pdf-lib";
 import * as execMod from "./exec";
 import * as toolProbe from "./tool-probe";
 import { log } from "../utils/logger";
+import { getAssetPath } from "./embedded-assets";
 import {
   convertToPdfxCmyk,
   planTransparentPages,
@@ -182,10 +183,12 @@ test("convertToPdfxCmyk passes pdfx.rasterDpi only when set, and keeps pictures 
       });
     await convert();
     await convert(300);
-    const resolutions = spawnSpy.mock.calls.map((c) => (c[1] as string[]).filter((a) => a.startsWith("-r")));
+    // The other calls are `gs --version`.
+    const conversions = spawnSpy.mock.calls.filter((c) => (c[1] as string[]).includes("-sDEVICE=pdfwrite"));
+    const resolutions = conversions.map((c) => (c[1] as string[]).filter((a) => a.startsWith("-r")));
     expect(resolutions).toEqual([[], ["-r300"]]);
     // Pictures are re-encoded losslessly, never as pdfwrite's default JPEG.
-    for (const call of spawnSpy.mock.calls) {
+    for (const call of conversions) {
       expect(call[1]).toEqual(
         expect.arrayContaining(["-dColorImageFilter=/FlateEncode", "-dGrayImageFilter=/FlateEncode"])
       );
@@ -217,11 +220,77 @@ test("convertToPdfxCmyk logs Ghostscript's warnings block instead of discarding 
       stagingDir,
     });
 
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0]![0])).toContain("This file had errors that were repaired");
+    const gsWarnings = warn.mock.calls.filter(([m]) => String(m).includes("Ghostscript reported problems"));
+    expect(gsWarnings).toHaveLength(1);
+    expect(String(gsWarnings[0]![0])).toContain("This file had errors that were repaired");
   } finally {
     await rm(stagingDir, { recursive: true, force: true });
   }
+});
+
+describe("convertToPdfxCmyk's PDF/X definition file", () => {
+  /** Run the conversion with Ghostscript mocked; returns the definition file and the warnings. */
+  async function definitionFor(iccPath: string | null, pdfx: "x1a" | "x3", version = "10.06.0") {
+    const stagingDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-def-"));
+    try {
+      const executable = join(stagingDir, "custom-gs");
+      await writeFile(executable, "");
+      process.env.GHOSTSCRIPT_PATH = executable;
+      const profile = iccPath ?? join(stagingDir, "MyPress.icc");
+      if (!iccPath) await writeFile(profile, "not-a-real-icc");
+      let definition = "";
+      const spawn = spyOn(execMod, "spawnCapture").mockImplementation(async (_cmd, args) => {
+        definition = await readFile(args.at(-2)!, "utf8");
+        return { code: 0, signal: null, stdout: "", stderr: "" };
+      });
+      const capture = spyOn(execMod, "execCapture").mockResolvedValue({ stdout: `${version}\n`, stderr: "" });
+      const warn = spyOn(log, "warn").mockImplementation(() => {});
+      await convertToPdfxCmyk(join(stagingDir, "raw.pdf"), join(stagingDir, "out.pdf"), {
+        iccPath: profile,
+        pdfx,
+        stagingDir,
+      });
+      const warnings = warn.mock.calls.map(([m]) => String(m));
+      for (const spy of [spawn, capture, warn]) spy.mockRestore();
+      return { definition, warnings };
+    } finally {
+      await rm(stagingDir, { recursive: true, force: true });
+    }
+  }
+
+  test("names CGATS 21-2 CRPC1 by its registry name for both flavours, with the shipped profile", async () => {
+    const shipped = await getAssetPath("profiles/CGATS21_CRPC1.icc");
+    for (const flavor of ["x1a", "x3"] as const) {
+      const { definition, warnings } = await definitionFor(shipped, flavor);
+      expect(definition).toContain("/OutputConditionIdentifier (CGATS21-2-CRPC1)");
+      expect(definition).toContain("/OutputCondition (CGATS 21-2 CRPC1 \\(ISO 15339-2\\))");
+      expect(definition).toContain("/RegistryName (http://www.color.org)");
+      // SWOP's registry name, which the x1a build used to write.
+      expect(definition).not.toContain("CGATS TR");
+      expect(warnings).toEqual([]);
+    }
+  });
+
+  test("carries no ink limit: the UCR/BG procedures had no effect under ICC conversion", async () => {
+    const { definition } = await definitionFor(await getAssetPath("profiles/CGATS21_CRPC1.icc"), "x1a");
+    for (const gone of ["UCR", "BGFunction", "MaxTAC", "setpagedevice"]) expect(definition).not.toContain(gone);
+  });
+
+  test("an unknown profile is named by its description, not claimed as registered, and warned about", async () => {
+    const { definition, warnings } = await definitionFor(null, "x1a");
+    expect(definition).toContain("/OutputConditionIdentifier (MyPress.icc)");
+    expect(definition).not.toContain("/RegistryName");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("`maxTac` is what pdf.print.ink-coverage checks");
+  });
+
+  test("warns when Ghostscript is older than 10", async () => {
+    const shipped = await getAssetPath("profiles/CGATS21_CRPC1.icc");
+    expect((await definitionFor(shipped, "x1a", "9.56.1")).warnings).toEqual([
+      expect.stringContaining("Ghostscript 9.56.1 is older than 10"),
+    ]);
+    expect((await definitionFor(shipped, "x1a", "10.02.1")).warnings).toEqual([]);
+  });
 });
 
 test("convertToPdfxCmyk reports a Ghostscript crash with its version", async () => {

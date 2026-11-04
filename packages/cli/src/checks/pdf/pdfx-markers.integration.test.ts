@@ -30,7 +30,9 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PDFDocument, PDFName } from "pdf-lib";
+import { readFile } from "node:fs/promises";
+import { PDFDocument, PDFName, PDFString } from "pdf-lib";
+import { getAssetPath } from "../../lib/embedded-assets";
 import pdfxMarkersCheck from "./pdfx-markers";
 import { makeCtx } from "../../test-helpers/testkit";
 import { findTool } from "../../lib/tool-probe";
@@ -50,18 +52,25 @@ if (!qpdf) {
  * reference to a real registered object, exactly what
  * `getPdfxOutputIntentIssues` requires.
  */
-async function makePdf(withIntent: boolean): Promise<Uint8Array> {
+async function makePdf(
+  withIntent: boolean,
+  crpc1?: { identifier: string }
+): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.addPage([612, 792]);
 
   if (withIntent) {
+    const profile = crpc1
+      ? await readFile(await getAssetPath("profiles/CGATS21_CRPC1.icc"))
+      : new Uint8Array([0, 1, 2, 3]);
     const destOutputProfileRef = doc.context.register(
-      doc.context.flateStream(new Uint8Array([0, 1, 2, 3]), { N: 3 })
+      doc.context.flateStream(profile, { N: crpc1 ? 4 : 3 })
     );
     const outputIntentRef = doc.context.register(
       doc.context.obj({
         Type: "OutputIntent",
         S: "GTS_PDFX",
+        ...(crpc1 ? { OutputConditionIdentifier: PDFString.of(crpc1.identifier) } : {}),
         DestOutputProfile: destOutputProfileRef,
       })
     );
@@ -111,4 +120,32 @@ testWithQpdf(
       await rm(dir, { recursive: true, force: true });
     }
   }
+);
+
+testWithQpdf(
+  "the OutputConditionIdentifier must name the embedded CRPC1 profile's condition",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-pdfx-markers-"));
+    try {
+      const right = join(dir, "crpc1.pdf");
+      await writeFile(right, await makePdf(true, { identifier: "CGATS21-2-CRPC1" }));
+      expect(await pdfxMarkersCheck.run(makeCtx({ pdfPath: right }))).toEqual([]);
+
+      // SWOP's registry name, which x1a builds used to write over a CRPC1 profile.
+      const wrong = join(dir, "swop-name.pdf");
+      await writeFile(wrong, await makePdf(true, { identifier: "CGATS TR 001" }));
+      expect(await pdfxMarkersCheck.run(makeCtx({ pdfPath: wrong }))).toEqual([
+        {
+          checkId: "pdf.print.pdfx-markers",
+          severity: "error",
+          message:
+            "/OutputConditionIdentifier (CGATS TR 001) does not name the embedded profile's printing condition (CGATS21-2-CRPC1).",
+          file: wrong,
+        },
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+  30_000
 );

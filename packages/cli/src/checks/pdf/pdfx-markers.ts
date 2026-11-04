@@ -1,7 +1,9 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
 import { finding, inspectionFailed } from "../policy";
+import { readFile } from "node:fs/promises";
 import { execCapture } from "../../lib/exec";
+import { iccProfileDescription } from "../../lib/icc-profile";
 import {
   getPdfxOutputIntentIssues,
   parseQpdfObjectsJson,
@@ -37,7 +39,8 @@ const check: Check = {
         ];
       }
 
-      return getPdfxOutputIntentIssues(objects).map((message) =>
+      const description = await outputProfileDescription(ctx.pdfPath);
+      return getPdfxOutputIntentIssues(objects, description).map((message) =>
         finding(check.id, {
           severity: "error",
           message,
@@ -57,6 +60,26 @@ const check: Check = {
     }
   },
 };
+
+/**
+ * The ICC description of the first OutputIntent's `/DestOutputProfile`, read
+ * with pdf-lib: qpdf's object JSON leaves stream data out. `undefined` when
+ * there is none to read.
+ */
+async function outputProfileDescription(pdfPath: string): Promise<string | undefined> {
+  const { PDFDocument, PDFArray, PDFDict, PDFName, PDFRawStream, decodePDFRawStream } =
+    await import("pdf-lib");
+  try {
+    const doc = await PDFDocument.load(await readFile(pdfPath), { updateMetadata: false });
+    const intent = doc.catalog.lookupMaybe(PDFName.of("OutputIntents"), PDFArray)?.lookup(0);
+    const profile =
+      intent instanceof PDFDict ? intent.lookup(PDFName.of("DestOutputProfile")) : undefined;
+    if (!(profile instanceof PDFRawStream)) return undefined;
+    return iccProfileDescription(decodePDFRawStream(profile).decode());
+  } catch {
+    return undefined;
+  }
+}
 
 registerCheck(check);
 export default check;
