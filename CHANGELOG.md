@@ -41,6 +41,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   the loading task, which PDF.js 5 and 6 both have, and the lockfile tracks
   the `unpdf` the range resolves to (1.9.1), so the test suite runs what
   consumers install. (#499)
+- **A PDF/X build's post-build validation said the manifest had no `preset`**
+  when the CLI ran from outside the book folder without `--manifest`: the
+  checks looked for a manifest in the working directory, found none, and
+  validated an empty manifest's defaults. They validate the manifest the
+  build loaded. (#496)
 - **The ink-coverage check did not measure total ink coverage.** Ghostscript's
   `inkcov` device reports the share of the page each ink touches, not how much
   ink it lays down, so a page of 72% cyan read as 100% and a 400% patch on a

@@ -196,6 +196,14 @@ export interface BuildContext {
   renderDir: string;
   outDir: string;
   manifestDir: string;
+  /**
+   * The manifest file the build loaded. Both validation gates validate this
+   * file, so they resolve the config the build did — not, as the post-build
+   * gate did with no `--manifest`, whatever a scan of the working directory
+   * finds, which is no manifest at all when the CLI runs from outside the
+   * book (#496).
+   */
+  manifestPath: string;
   config: ReturnType<typeof resolveConfig>;
   gates: Gates;
   /**
@@ -318,6 +326,7 @@ export async function resolveBuildContext(
     workDir,
     target,
     manifestDir,
+    manifestPath,
     config,
     gates,
     prevalidatedLayoutWarningKeys: new Set(),
@@ -389,7 +398,7 @@ export async function loadBuildPlugins(ctx: BuildContext): Promise<LoadedPlugins
  * loader — this function changes NOTHING about that case.
  */
 async function runQualityGates(ctx: BuildContext): Promise<void> {
-  const { gates, opts, renderDir } = ctx;
+  const { gates, renderDir, manifestPath } = ctx;
 
   const pluginStylePaths = gates.preValidate
     ? (await loadBuildPlugins(ctx)).pluginStylePaths
@@ -401,7 +410,7 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
       {
         input: renderDir,
         phase: "pre-build",
-        manifest: opts.manifestPath,
+        manifest: manifestPath,
         pluginStylePaths,
         skipStylelint: gates.skipStylelint,
       },
@@ -772,7 +781,7 @@ class PdfOutput implements OutputStrategy {
     browser: EngineBrowser | undefined
   ): Promise<BuildRunnerResult> {
     if (!browser) throw new BuildError("PDF build reached the render stage without a browser");
-    const { workDir, outDir, inputDir, config, opts, format, manifestDir, gates } = ctx;
+    const { workDir, outDir, inputDir, config, opts, format, manifestDir, manifestPath, gates } = ctx;
 
     const pdfxMode: PdfxFlavor | undefined =
       format === "pdfx" ? (opts.pdfxFlavor ?? config.pdfx.flavor) : undefined;
@@ -955,14 +964,15 @@ class PdfOutput implements OutputStrategy {
       }
 
 
-      // Post-build validation (pdfx only)
+      // Post-build validation (pdfx only), against the manifest this build
+      // loaded (#496).
       if (gates.postValidate) {
         log.info("Post-build validation");
         const result = await executeAndReport(
           {
             pdf: pdfFile,
             phase: "post-build",
-            manifest: opts.manifestPath,
+            manifest: manifestPath,
           },
           "text"
         );
