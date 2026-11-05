@@ -3281,7 +3281,432 @@
       start();
   }
 
+  // src/engine/viewer/split.ts
+  var exports_split = {};
+  __export(exports_split, {
+    unsplitAll: () => unsplitAll,
+    measuredSplit: () => measuredSplit,
+    hasSplitCards: () => hasSplitCards,
+    ensureSplitCss: () => ensureSplitCss
+  });
+
+  // src/engine/shared/split.ts
+  var SPLIT_PASS_CAP = 24;
+  var SPLIT_CSS = "[data-gp-split-cont] { break-before: page; }";
+  function firstCrossingUnit(startPage, lastPages) {
+    return lastPages.findIndex((p) => p > startPage);
+  }
+  function pullBack(unit) {
+    return unit - 1 >= 1 ? unit - 1 : null;
+  }
+  function pickPerScope(cards) {
+    const seen = new Set;
+    const picked = [];
+    cards.forEach((c, i) => {
+      if (!c.spans || seen.has(c.scope))
+        return;
+      seen.add(c.scope);
+      picked.push(i);
+    });
+    return picked;
+  }
+  function wordsOf(text) {
+    return text.split(/\s+/).filter(Boolean);
+  }
+  function sameWords(before, after) {
+    return before.length === after.length && before.every((w, i) => w === after[i]);
+  }
+  function spanPages(ranges) {
+    if (!ranges.length)
+      return 0;
+    return Math.max(...ranges.map((r) => r[1])) - Math.min(...ranges.map((r) => r[0])) + 1;
+  }
+
+  // src/engine/viewer/split-dom.ts
+  var CARD_SELECTOR = "[data-gp-split]";
+  var CONT = "data-gp-split-cont";
+  var JOIN = "data-gp-split-join";
+  var COPY = "data-gp-split-copy";
+  function ensureSplitCss(doc = document) {
+    if (doc.getElementById("gp-split-css"))
+      return;
+    const style = doc.createElement("style");
+    style.id = "gp-split-css";
+    style.textContent = SPLIT_CSS;
+    doc.head.appendChild(style);
+  }
+  function cardsOf(root2 = document) {
+    return Array.from(root2.querySelectorAll(CARD_SELECTOR));
+  }
+  function scopeOf(card) {
+    return card.getAttribute("data-gp-split-scope") ?? "";
+  }
+  function isContinuation(card) {
+    return card.hasAttribute(CONT);
+  }
+  function flowOf(card) {
+    const sel = card.getAttribute("data-gp-split");
+    if (!sel)
+      return null;
+    try {
+      return card.querySelector(sel);
+    } catch {
+      return null;
+    }
+  }
+  function templateOf(card) {
+    return card.querySelector("template[data-gp-split-head]");
+  }
+  function childrenMatching(parent, sel) {
+    return Array.from(parent.children).filter((c) => {
+      try {
+        return c.matches(sel);
+      } catch {
+        return false;
+      }
+    });
+  }
+  function unitsOf(flow) {
+    const out = [];
+    for (const block of Array.from(flow.children)) {
+      if (block.tagName === "GP-ANCHOR" || block.tagName === "TEMPLATE")
+        continue;
+      const whole = () => void out.push({ el: block, block, kind: "block" });
+      if (block.hasAttribute("data-gp-nosplit")) {
+        whole();
+        continue;
+      }
+      const declared = block.getAttribute("data-gp-split-units");
+      let units = [];
+      let kind = "unit";
+      if (declared)
+        units = childrenMatching(block, declared);
+      else if ((block.tagName === "UL" || block.tagName === "OL") && !block.hasAttribute("reversed")) {
+        units = childrenMatching(block, "li");
+        kind = "list-item";
+      } else if (block.tagName === "TABLE") {
+        const bodies = childrenMatching(block, "tbody");
+        if (bodies.length === 1 && !block.querySelector(":scope > tfoot")) {
+          units = Array.from(bodies[0].children).filter((r) => r.tagName === "TR");
+          kind = "table-row";
+        }
+      }
+      if (!units.length)
+        whole();
+      else
+        for (const el of units)
+          out.push({ el, block, kind });
+    }
+    return out;
+  }
+  function stripIds(el) {
+    el.removeAttribute("id");
+    for (const d of Array.from(el.querySelectorAll("[id]")))
+      d.removeAttribute("id");
+  }
+  function copyOf(el) {
+    const c = el.cloneNode(true);
+    stripIds(c);
+    c.setAttribute(COPY, "");
+    return c;
+  }
+  function tailOf(block, first) {
+    const shell = block.cloneNode(false);
+    stripIds(shell);
+    shell.setAttribute(JOIN, "");
+    let target = shell;
+    let from = first;
+    if (block.tagName === "TABLE") {
+      for (const c of childrenMatching(block, "colgroup, thead"))
+        shell.appendChild(copyOf(c));
+      const body = first.parentElement;
+      target = body.cloneNode(false);
+      stripIds(target);
+      target.setAttribute(JOIN, "");
+      shell.appendChild(target);
+    } else if (block.tagName === "OL") {
+      const start = parseInt(block.getAttribute("start") ?? "1", 10) || 1;
+      const index = Array.from(block.children).filter((c) => c.tagName === "LI").indexOf(first);
+      shell.setAttribute("start", String(start + index));
+    } else {
+      const repeat = block.getAttribute("data-gp-split-repeat");
+      if (repeat)
+        for (const c of childrenMatching(block, repeat))
+          shell.appendChild(copyOf(c));
+    }
+    while (from) {
+      const next = from.nextElementSibling;
+      target.appendChild(from);
+      if (!next)
+        break;
+      from = next;
+    }
+    return shell;
+  }
+  function continuationOf(head) {
+    for (let n = head.nextElementSibling;n; n = n.nextElementSibling) {
+      if (n.hasAttribute(CONT))
+        return n;
+      if (!/(^|\s)gp-/.test(n.className))
+        return null;
+    }
+    return null;
+  }
+  function headOf(cont) {
+    for (let n = cont.previousElementSibling;n; n = n.previousElementSibling) {
+      if (/(^|\s)gp-/.test(n.className))
+        continue;
+      return n.hasAttribute("data-gp-split") ? n : null;
+    }
+    return null;
+  }
+  function makeContinuation(head) {
+    const tpl = templateOf(head);
+    const root2 = tpl?.content.firstElementChild;
+    if (!tpl || !root2)
+      return null;
+    const cont = root2.cloneNode(true);
+    if (!cont.querySelector("[data-gp-flow]"))
+      return null;
+    stripIds(cont);
+    for (const a of Array.from(head.attributes))
+      if (a.name.startsWith("data-gp-split"))
+        cont.setAttribute(a.name, a.value);
+    cont.setAttribute("data-gp-split", "[data-gp-flow]");
+    cont.setAttribute(CONT, "");
+    cont.appendChild(tpl.cloneNode(true));
+    return cont;
+  }
+  function flowWords(card) {
+    const flow = flowOf(card);
+    if (!flow)
+      return [];
+    const text = [];
+    const walk2 = (node) => {
+      for (const n of Array.from(node.childNodes)) {
+        if (n.nodeType === 3)
+          text.push(n.textContent ?? "");
+        else if (n instanceof Element && !n.hasAttribute(COPY))
+          walk2(n);
+      }
+    };
+    walk2(flow);
+    return wordsOf(text.join(" "));
+  }
+  function splitCardAt(card, index) {
+    const flow = flowOf(card);
+    const units = flow ? unitsOf(flow) : [];
+    const unit = units[index];
+    if (!flow || !unit || index < 1)
+      return { ok: false };
+    const cont = makeContinuation(card);
+    if (!cont) {
+      return {
+        ok: false,
+        diagnostic: {
+          code: "engine.split.template",
+          message: `A card marked data-gp-split has no usable <template data-gp-split-head> ` + `(one root element holding an empty [data-gp-flow]), so it stays as the browser breaks it.`
+        }
+      };
+    }
+    const before = flowWords(card);
+    const contFlow = flowOf(cont);
+    const following = [];
+    for (let n = unit.block.nextElementSibling;n; n = n.nextElementSibling)
+      following.push(n);
+    const blockStart = units.findIndex((u) => u.block === unit.block);
+    const head = blockStart === index ? unit.block : tailOf(unit.block, unit.el);
+    const moved = [head, ...following];
+    for (const el of moved)
+      contFlow.appendChild(el);
+    card.after(cont);
+    const cut = card.getAttribute("data-gp-split-cut");
+    if (cut)
+      card.classList.add(cut);
+    if (!sameWords(before, [...flowWords(card), ...flowWords(cont)])) {
+      mergeBack(card);
+      return {
+        ok: false,
+        diagnostic: {
+          code: "engine.split.text-changed",
+          message: `Splitting a card would have changed its words, so it was left as the browser breaks it.`
+        }
+      };
+    }
+    return { ok: true, cont, kind: unit.kind };
+  }
+  function mergeInto(target, shell) {
+    while (shell.firstChild) {
+      const n = shell.firstChild;
+      if (n instanceof Element && n.hasAttribute(COPY))
+        n.remove();
+      else if (n instanceof Element && n.hasAttribute(JOIN)) {
+        mergeInto(target.lastElementChild, n);
+        n.remove();
+      } else
+        target.appendChild(n);
+    }
+  }
+  function mergeBack(head) {
+    const cont = continuationOf(head);
+    const hf = flowOf(head);
+    const cf = cont ? flowOf(cont) : null;
+    if (!cont || !hf || !cf)
+      return;
+    const first = cf.firstElementChild;
+    if (first?.hasAttribute(JOIN)) {
+      const last = Array.from(hf.children).filter((c) => c.tagName !== "GP-ANCHOR").at(-1);
+      if (last)
+        mergeInto(last, first);
+      first.remove();
+    }
+    while (cf.firstChild)
+      hf.appendChild(cf.firstChild);
+    cont.remove();
+    const cut = head.getAttribute("data-gp-split-cut");
+    if (cut)
+      head.classList.remove(cut);
+  }
+  function unsplitAll(root2 = document) {
+    const conts = Array.from(root2.querySelectorAll(`[${CONT}]`)).reverse();
+    for (const cont of conts) {
+      const head = headOf(cont);
+      if (head)
+        mergeBack(head);
+    }
+    return conts.length;
+  }
+  function labelContinuations(root2 = document) {
+    return Array.from(root2.querySelectorAll(`[${CONT}]`)).map((c, i) => {
+      c.id = `gp-split-${i + 1}`;
+      return c.id;
+    });
+  }
+
+  // src/engine/viewer/split.ts
+  function scopeSpans(api) {
+    const ranges = new Map;
+    for (const card of cardsOf()) {
+      const list = ranges.get(scopeOf(card)) ?? [];
+      list.push(api.pageRangeOf(card));
+      ranges.set(scopeOf(card), list);
+    }
+    return new Map([...ranges].map(([scope, r]) => [scope, spanPages(r)]));
+  }
+  function hasSplitCards() {
+    return document.querySelector("[data-gp-split]") !== null;
+  }
+  function measuredSplit(api) {
+    const t0 = performance.now();
+    const ops = [];
+    const diagnostics = [];
+    const diagnosed = new Set;
+    const note = (d) => {
+      if (diagnosed.has(d.code + d.message))
+        return;
+      diagnosed.add(d.code + d.message);
+      diagnostics.push(d);
+    };
+    const pagesBefore = api.totalPages;
+    const before = scopeSpans(api);
+    const settled = new WeakSet;
+    const pending = new Map;
+    let passes = 0;
+    let unconverged = false;
+    for (;; ) {
+      const cards = cardsOf().filter((c) => !settled.has(c));
+      const info = cards.map((card) => {
+        const [s, e] = api.pageRangeOf(card);
+        if (e <= s)
+          pending.delete(card);
+        return { scope: scopeOf(card), spans: e > s, start: s };
+      });
+      const picked = pickPerScope(info);
+      if (!picked.length)
+        break;
+      if (passes >= SPLIT_PASS_CAP) {
+        unconverged = true;
+        break;
+      }
+      passes++;
+      for (const i of picked) {
+        const card = cards[i];
+        const flow = flowOf(card);
+        if (!flow) {
+          settled.add(card);
+          continue;
+        }
+        const prior = pending.get(card);
+        if (prior) {
+          pending.delete(card);
+          mergeBack(card);
+          const unit = pullBack(prior.unit);
+          if (unit !== null && splitCardAt(card, unit).ok) {
+            prior.unit = unit;
+            pending.set(card, prior);
+          } else {
+            ops.splice(ops.indexOf(prior), 1);
+            settled.add(card);
+            note(unsplittable());
+          }
+          continue;
+        }
+        const units = unitsOf(flow);
+        const k = firstCrossingUnit(info[i].start, units.map((u) => api.pageRangeOf(u.el)[1]));
+        if (k < 0) {
+          settled.add(card);
+          continue;
+        }
+        if (k === 0) {
+          if (isContinuation(card))
+            note(unsplittable());
+          settled.add(card);
+          continue;
+        }
+        const n = cardsOf().indexOf(card);
+        const res = splitCardAt(card, k);
+        if (!res.ok) {
+          if (res.diagnostic)
+            note(res.diagnostic);
+          settled.add(card);
+          continue;
+        }
+        const op = { n, unit: k, kind: res.kind };
+        ops.push(op);
+        pending.set(card, op);
+      }
+      api.relayout();
+    }
+    if (unconverged)
+      note({
+        code: "engine.split.unconverged",
+        message: `Splitting cards did not settle in ${SPLIT_PASS_CAP} passes; the cards still spanning ` + `pages stay as the browser breaks them.`
+      });
+    const continuations = labelContinuations();
+    const after = scopeSpans(api);
+    const kinds = {};
+    for (const op of ops)
+      kinds[op.kind] = (kinds[op.kind] ?? 0) + 1;
+    return {
+      ops,
+      diagnostics,
+      continuations,
+      ms: performance.now() - t0,
+      pagesBefore,
+      pagesAfter: api.totalPages,
+      passes,
+      kinds,
+      scopes: [...after].map(([scope, n]) => ({ scope, before: before.get(scope) ?? n, after: n }))
+    };
+  }
+  function unsplittable() {
+    return {
+      code: "engine.split.unsplittable",
+      message: `A unit inside a split card is taller than a page (or leaves no room for the card's own ` + `foot), so that card stays as the browser breaks it.`
+    };
+  }
+
   // src/engine/viewer/global.ts
-  var api = { mount, decorate, ...exports_fragment, gcpm: exports_gcpm_extract, content: exports_content_value };
+  var api = { mount, decorate, ...exports_fragment, ...exports_split, gcpm: exports_gcpm_extract, content: exports_content_value };
   window.Gutterpress = api;
 })();

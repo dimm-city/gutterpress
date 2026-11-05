@@ -59,6 +59,11 @@ const SOURCE_LABELS: Record<string, string> = {
   "engine.pin.margin-box": "Running head on a pinned edge",
   "engine.page-background.unreferenced": "Page background image not printed",
   "engine.hyphenation.unsupported": "Hyphenation not available",
+  "engine.split.unsplittable": "Card too tall to split",
+  "engine.split.unconverged": "Card splitting did not settle",
+  "engine.split.text-changed": "Card split undone",
+  "engine.split.template": "Card has no continuation template",
+  "engine.split.page-drift": "Card continuation on another page in print",
   // The post-build PDF checks, run on the exported file (#399) — the lib's
   // `pdf` and `heuristic` categories, covered by the same registry-keyed test.
   "pdf.structure.qpdf": "PDF structure",

@@ -324,6 +324,262 @@
     };
   }
 
+  // src/engine/shared/split.ts
+  var SPLIT_CSS = "[data-gp-split-cont] { break-before: page; }";
+  function wordsOf(text) {
+    return text.split(/\s+/).filter(Boolean);
+  }
+  function sameWords(before, after) {
+    return before.length === after.length && before.every((w, i) => w === after[i]);
+  }
+
+  // src/engine/viewer/split-dom.ts
+  var CARD_SELECTOR = "[data-gp-split]";
+  var CONT = "data-gp-split-cont";
+  var JOIN = "data-gp-split-join";
+  var COPY = "data-gp-split-copy";
+  function ensureSplitCss(doc = document) {
+    if (doc.getElementById("gp-split-css"))
+      return;
+    const style = doc.createElement("style");
+    style.id = "gp-split-css";
+    style.textContent = SPLIT_CSS;
+    doc.head.appendChild(style);
+  }
+  function cardsOf(root = document) {
+    return Array.from(root.querySelectorAll(CARD_SELECTOR));
+  }
+  function flowOf(card) {
+    const sel = card.getAttribute("data-gp-split");
+    if (!sel)
+      return null;
+    try {
+      return card.querySelector(sel);
+    } catch {
+      return null;
+    }
+  }
+  function templateOf(card) {
+    return card.querySelector("template[data-gp-split-head]");
+  }
+  function childrenMatching(parent, sel) {
+    return Array.from(parent.children).filter((c) => {
+      try {
+        return c.matches(sel);
+      } catch {
+        return false;
+      }
+    });
+  }
+  function unitsOf(flow) {
+    const out = [];
+    for (const block of Array.from(flow.children)) {
+      if (block.tagName === "GP-ANCHOR" || block.tagName === "TEMPLATE")
+        continue;
+      const whole = () => void out.push({ el: block, block, kind: "block" });
+      if (block.hasAttribute("data-gp-nosplit")) {
+        whole();
+        continue;
+      }
+      const declared = block.getAttribute("data-gp-split-units");
+      let units = [];
+      let kind = "unit";
+      if (declared)
+        units = childrenMatching(block, declared);
+      else if ((block.tagName === "UL" || block.tagName === "OL") && !block.hasAttribute("reversed")) {
+        units = childrenMatching(block, "li");
+        kind = "list-item";
+      } else if (block.tagName === "TABLE") {
+        const bodies = childrenMatching(block, "tbody");
+        if (bodies.length === 1 && !block.querySelector(":scope > tfoot")) {
+          units = Array.from(bodies[0].children).filter((r) => r.tagName === "TR");
+          kind = "table-row";
+        }
+      }
+      if (!units.length)
+        whole();
+      else
+        for (const el of units)
+          out.push({ el, block, kind });
+    }
+    return out;
+  }
+  function stripIds(el) {
+    el.removeAttribute("id");
+    for (const d of Array.from(el.querySelectorAll("[id]")))
+      d.removeAttribute("id");
+  }
+  function copyOf(el) {
+    const c = el.cloneNode(true);
+    stripIds(c);
+    c.setAttribute(COPY, "");
+    return c;
+  }
+  function tailOf(block, first) {
+    const shell = block.cloneNode(false);
+    stripIds(shell);
+    shell.setAttribute(JOIN, "");
+    let target = shell;
+    let from = first;
+    if (block.tagName === "TABLE") {
+      for (const c of childrenMatching(block, "colgroup, thead"))
+        shell.appendChild(copyOf(c));
+      const body = first.parentElement;
+      target = body.cloneNode(false);
+      stripIds(target);
+      target.setAttribute(JOIN, "");
+      shell.appendChild(target);
+    } else if (block.tagName === "OL") {
+      const start = parseInt(block.getAttribute("start") ?? "1", 10) || 1;
+      const index = Array.from(block.children).filter((c) => c.tagName === "LI").indexOf(first);
+      shell.setAttribute("start", String(start + index));
+    } else {
+      const repeat = block.getAttribute("data-gp-split-repeat");
+      if (repeat)
+        for (const c of childrenMatching(block, repeat))
+          shell.appendChild(copyOf(c));
+    }
+    while (from) {
+      const next = from.nextElementSibling;
+      target.appendChild(from);
+      if (!next)
+        break;
+      from = next;
+    }
+    return shell;
+  }
+  function continuationOf(head) {
+    for (let n = head.nextElementSibling;n; n = n.nextElementSibling) {
+      if (n.hasAttribute(CONT))
+        return n;
+      if (!/(^|\s)gp-/.test(n.className))
+        return null;
+    }
+    return null;
+  }
+  function makeContinuation(head) {
+    const tpl = templateOf(head);
+    const root = tpl?.content.firstElementChild;
+    if (!tpl || !root)
+      return null;
+    const cont = root.cloneNode(true);
+    if (!cont.querySelector("[data-gp-flow]"))
+      return null;
+    stripIds(cont);
+    for (const a of Array.from(head.attributes))
+      if (a.name.startsWith("data-gp-split"))
+        cont.setAttribute(a.name, a.value);
+    cont.setAttribute("data-gp-split", "[data-gp-flow]");
+    cont.setAttribute(CONT, "");
+    cont.appendChild(tpl.cloneNode(true));
+    return cont;
+  }
+  function flowWords(card) {
+    const flow = flowOf(card);
+    if (!flow)
+      return [];
+    const text = [];
+    const walk = (node) => {
+      for (const n of Array.from(node.childNodes)) {
+        if (n.nodeType === 3)
+          text.push(n.textContent ?? "");
+        else if (n instanceof Element && !n.hasAttribute(COPY))
+          walk(n);
+      }
+    };
+    walk(flow);
+    return wordsOf(text.join(" "));
+  }
+  function splitCardAt(card, index) {
+    const flow = flowOf(card);
+    const units = flow ? unitsOf(flow) : [];
+    const unit = units[index];
+    if (!flow || !unit || index < 1)
+      return { ok: false };
+    const cont = makeContinuation(card);
+    if (!cont) {
+      return {
+        ok: false,
+        diagnostic: {
+          code: "engine.split.template",
+          message: `A card marked data-gp-split has no usable <template data-gp-split-head> ` + `(one root element holding an empty [data-gp-flow]), so it stays as the browser breaks it.`
+        }
+      };
+    }
+    const before = flowWords(card);
+    const contFlow = flowOf(cont);
+    const following = [];
+    for (let n = unit.block.nextElementSibling;n; n = n.nextElementSibling)
+      following.push(n);
+    const blockStart = units.findIndex((u) => u.block === unit.block);
+    const head = blockStart === index ? unit.block : tailOf(unit.block, unit.el);
+    const moved = [head, ...following];
+    for (const el of moved)
+      contFlow.appendChild(el);
+    card.after(cont);
+    const cut = card.getAttribute("data-gp-split-cut");
+    if (cut)
+      card.classList.add(cut);
+    if (!sameWords(before, [...flowWords(card), ...flowWords(cont)])) {
+      mergeBack(card);
+      return {
+        ok: false,
+        diagnostic: {
+          code: "engine.split.text-changed",
+          message: `Splitting a card would have changed its words, so it was left as the browser breaks it.`
+        }
+      };
+    }
+    return { ok: true, cont, kind: unit.kind };
+  }
+  function mergeInto(target, shell) {
+    while (shell.firstChild) {
+      const n = shell.firstChild;
+      if (n instanceof Element && n.hasAttribute(COPY))
+        n.remove();
+      else if (n instanceof Element && n.hasAttribute(JOIN)) {
+        mergeInto(target.lastElementChild, n);
+        n.remove();
+      } else
+        target.appendChild(n);
+    }
+  }
+  function mergeBack(head) {
+    const cont = continuationOf(head);
+    const hf = flowOf(head);
+    const cf = cont ? flowOf(cont) : null;
+    if (!cont || !hf || !cf)
+      return;
+    const first = cf.firstElementChild;
+    if (first?.hasAttribute(JOIN)) {
+      const last = Array.from(hf.children).filter((c) => c.tagName !== "GP-ANCHOR").at(-1);
+      if (last)
+        mergeInto(last, first);
+      first.remove();
+    }
+    while (cf.firstChild)
+      hf.appendChild(cf.firstChild);
+    cont.remove();
+    const cut = head.getAttribute("data-gp-split-cut");
+    if (cut)
+      head.classList.remove(cut);
+  }
+  function labelContinuations(root = document) {
+    return Array.from(root.querySelectorAll(`[${CONT}]`)).map((c, i) => {
+      c.id = `gp-split-${i + 1}`;
+      return c.id;
+    });
+  }
+  function replaySplitOps(ops) {
+    ensureSplitCss();
+    for (const op of ops) {
+      const card = cardsOf()[op.n];
+      if (card)
+        splitCardAt(card, op.unit);
+    }
+    return labelContinuations();
+  }
+
   // src/engine/shared/print-area.ts
   function printAreaFromMeta(doc) {
     const raw = doc.querySelector('meta[name="gp-print-area"]')?.getAttribute("content");
@@ -691,6 +947,7 @@
     targetTexts,
     fillLeaders,
     instrument,
+    applySplitOps: replaySplitOps,
     addCss,
     setGenerated,
     pinRoots,

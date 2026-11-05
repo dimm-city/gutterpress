@@ -9,6 +9,7 @@
 import { leaderFillCount, LEADER_RE, RECTO_VERSO_VALUES } from "../shared/synthesis.ts";
 import { evaluate } from "../shared/content-value.ts";
 import { paddingOf, pinEdgesIn, pinKey, type PinEdge } from "../shared/pin-edges.ts";
+import { replaySplitOps } from "../viewer/split-dom.ts";
 import { printAreaFromMeta, type PrintArea } from "../shared/print-area.ts";
 
 export interface StringSource {
@@ -594,6 +595,7 @@ const api = {
   targetTexts,
   fillLeaders,
   instrument,
+  applySplitOps: replaySplitOps,
   addCss,
   setGenerated,
   pinRoots,

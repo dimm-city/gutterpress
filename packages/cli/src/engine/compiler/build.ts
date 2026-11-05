@@ -58,6 +58,7 @@ import {
   synthesize,
   type Tier2Output,
 } from "./tier2.ts";
+import { describeSplit, type SplitResult } from "../shared/split.ts";
 import { postprocess, type PostprocessResult } from "./postprocess.ts";
 
 /** Generated page name carrying the author's `@page :blank` rules. */
@@ -250,7 +251,12 @@ export type BuildDiagnosticCode =
   | "engine.image.low-dpi"
   | "engine.pin.margin-box"
   | "engine.page-background.unreferenced"
-  | "engine.hyphenation.unsupported";
+  | "engine.hyphenation.unsupported"
+  | "engine.split.unsplittable"
+  | "engine.split.unconverged"
+  | "engine.split.text-changed"
+  | "engine.split.template"
+  | "engine.split.page-drift";
 
 export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.width.overflow",
@@ -264,6 +270,11 @@ export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.pin.margin-box",
   "engine.page-background.unreferenced",
   "engine.hyphenation.unsupported",
+  "engine.split.unsplittable",
+  "engine.split.unconverged",
+  "engine.split.text-changed",
+  "engine.split.template",
+  "engine.split.page-drift",
 ];
 
 export interface BuildDiagnostic {
@@ -848,7 +859,12 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // know which page things landed on, so all three go through the
     // measure -> synthesize -> fixpoint loop.
     const rectoDecls = model.breaks.filter(isRectoVersoBreak);
+    // Cards marked data-gp-split are cut at the page breaks the viewer measures.
+    const hasSplitCards = await page.evaluate<boolean>(
+      `document.querySelector("[data-gp-split]") !== null`,
+    );
     const needsMeasure =
+      hasSplitCards ||
       tier3Reasons.length > 0 ||
       consumedStrings(model).size > 0 ||
       rectoDecls.length > 0 ||
@@ -933,6 +949,37 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         );
       if (brokenXrefs.length) log(`WARNING: ${brokenXrefs.length} broken cross-reference href(s): ${brokenXrefs.join(", ")}`);
 
+
+      // ---- measured split, before anything is placed or quoted ----------------
+      // Cutting a card adds pages, so it comes first: the viewer measures the
+      // breaks and returns the ops, the print page replays them, and every
+      // later step (recto blanks, page numbers) sees the split document.
+      const predictArgs = {
+        stringSets: model.stringSets.map((s) => ({ selector: s.selector, name: s.name, value: s.value })),
+        rectoDecls,
+        xrefSelectors,
+        resets: model.counterResets,
+        targets: [...targets],
+        split: hasSplitCards,
+      };
+      let predicted: PredictedPageMap | null = null;
+      let splitIds: string[] = [];
+      if (hasSplitCards) {
+        predicted = await predictPageMap(browser, url, AGENT, VIEWER, predictArgs, sheetViewport);
+        const split = predicted?.split;
+        if (split) {
+          log(`tier 3: ${describeSplit(split.ops, split)} in ${split.ms.toFixed(0)}ms`);
+          for (const d of split.diagnostics) {
+            diagnose(d.code, d.message);
+            log(`WARNING: ${d.message}`);
+          }
+          splitIds = await page.evaluate<string[]>(
+            `window.__gp.applySplitOps(${JSON.stringify(split.ops)})`,
+          );
+          for (const id of splitIds) targets.add(id);
+          await page.evaluate(`window.__gp.instrument(${JSON.stringify([...targets])})`);
+        }
+      }
 
       // ---- recto/verso placement, before anything quotes a page number ----
       // A blank page shifts every later page by exactly one and changes no
@@ -1164,18 +1211,12 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       // guess holds — the shipped bytes. `predicted` is null only if the
       // predict page itself fails (e.g. a malformed document); the fixpoint
       // loop below is unchanged and is the fallback either way.
-      const predicted = await predictPageMap(
+      predicted ??= await predictPageMap(
         browser,
         url,
         AGENT,
         VIEWER,
-        {
-          stringSets: model.stringSets.map((s) => ({ selector: s.selector, name: s.name, value: s.value })),
-          rectoDecls,
-          xrefSelectors,
-          resets: model.counterResets,
-          targets: [...targets],
-        },
+        { ...predictArgs, targets: [...targets] },
         sheetViewport,
       );
       if (predicted) predictedForResult = { pageMap: predicted.pageMap, pageCount: predicted.pageCount };
@@ -1227,6 +1268,24 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           `Tier 3 did not reach a fixpoint in ${passes} passes — page numbers in generated text may be one pass stale.`,
         );
         log(`tier 3: NOT converged after ${passes} passes`);
+      }
+      // The print agrees with the viewer's split where each continuation starts.
+      if (predicted?.split && splitIds.length) {
+        const drifted = splitIds.filter(
+          (id) =>
+            pageMap[id] !== undefined &&
+            predicted!.pageMap[id] !== undefined &&
+            pageMap[id] !== predicted!.pageMap[id],
+        );
+        if (drifted.length) {
+          diagnose(
+            "engine.split.page-drift",
+            `${drifted.length} split card continuation(s) printed on a different page than the ` +
+              `preview shows (${drifted.map((id) => `${id}: preview p${predicted!.pageMap[id]}, print p${pageMap[id]}`).slice(0, 5).join("; ")}). ` +
+              `The PDF is the authoritative layout.`,
+          );
+          log(`WARNING: ${drifted.length} split continuation(s) landed off the predicted page`);
+        } else log(`split: all ${splitIds.length} continuation(s) printed on their predicted page`);
       }
       // No de-instrumentation, no final reprint: measurement never touches an
       // author-visible attribute (elements are measured through their own ids
@@ -2080,6 +2139,8 @@ interface PredictedPageMap {
   pageMap: Record<string, number>;
   pageCount: number;
   ms: number;
+  /** the measured split, when the document has cards marked data-gp-split */
+  split?: SplitResult;
 }
 
 /**
@@ -2111,6 +2172,7 @@ async function predictPageMap(
     xrefSelectors: string[];
     resets: Array<{ selector: string; start: number }>;
     targets: string[];
+    split?: boolean;
   },
   sheetViewport: Record<string, unknown>,
 ): Promise<PredictedPageMap | null> {
@@ -2152,10 +2214,16 @@ async function predictPageMap(
     const result = await page.evaluate<{
       pageMap: Record<string, number>;
       pageCount: number;
+      split?: SplitResult;
     }>(`(async () => {
-      const api = await window.Gutterpress.fragmentDocument({});
+      const G = window.Gutterpress;
+      // the break rule has to be in the model fragmentDocument() extracts
+      if (${args.split === true}) G.ensureSplitCss();
+      const api = await G.fragmentDocument({});
+      // cut the marked cards at the measured breaks (the print page replays the ops)
+      const split = ${args.split === true} ? G.measuredSplit(api) : undefined;
       const pageMap = {};
-      for (const id of ${JSON.stringify(args.targets)}) {
+      for (const id of [...${JSON.stringify(args.targets)}, ...(split ? split.continuations : [])]) {
         const el = document.getElementById(id);
         if (!el) continue;
         // an id may name an injected zero-size <gp-anchor>; measure its
@@ -2163,7 +2231,7 @@ async function predictPageMap(
         const target = el.tagName === "GP-ANCHOR" ? el.parentElement ?? el : el;
         pageMap[id] = api.pageOf(target) + 1;
       }
-      return { pageMap, pageCount: api.totalPages };
+      return { pageMap, pageCount: api.totalPages, split };
     })()`);
     return { ...result, ms: performance.now() - t0 };
   } catch {
