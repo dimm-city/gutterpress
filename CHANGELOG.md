@@ -9,6 +9,20 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Measured split: a card that spans a page break continues as a second whole
+  card.** An element marked `data-gp-split` is cut where the page breaks into a
+  head part and a continuation built from its `<template data-gp-split-head>`,
+  moving whole units: blocks, list items (the new `ol` carries on its count),
+  table rows (the header is copied), declared units with a repeated head
+  (`data-gp-split-units`, `data-gp-split-repeat`), and a straddling paragraph
+  cut at a line with two lines on each side. The viewer page measures and
+  decides, one cut per scope per pass, and the print page replays the same cuts
+  before recto blanks and page numbers are placed; the preview cuts at load too
+  (`refresh()` keeps the cuts, `resplit()` makes them again). The build reports
+  `engine.split.summary` (breaks by kind, pages before and after, the scopes that
+  grew) and warns with `engine.split.unsplittable`, `.unconverged`, `.template`,
+  `.text-changed` and `.page-drift`. Markup and limits:
+  `docs/engine/measured-split.md`.
 - **`pdfx.blackText: k-only-neutral`.** Grey text at 24pt and under (channels
   within 0.04 of each other) also prints on the black plate alone, at about
   its tone; a coloured ink keeps its colour. `pdf.print.black-text` names it.

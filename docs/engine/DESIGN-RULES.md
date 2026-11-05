@@ -372,3 +372,26 @@ Three things Gutterpress cannot do, written down rather than left to be discover
 
 A limit that is measured, bounded and documented is a design constraint. The
 same limit undocumented is a bug report waiting to be filed by a customer.
+
+---
+
+## 11. A measured DOM change is decided once, in the viewer, and replayed in print
+
+Cutting a card at a page break needs to know where the break is, and only layout
+knows. The viewer measures (client rects, no print), decides, and records the
+operations; the print page replays the same operations with the same code
+(`engine/viewer/split-dom.ts` is bundled into both) before anything is placed
+or quoted that depends on page numbers. Nothing is decided twice, so the two
+pages cannot cut differently. See [`measured-split.md`](./measured-split.md).
+
+**The bug that shaped it.** The first continuation id sat on the card. A card that
+starts a page by a forced break has its PDF destination recorded on the page
+BEFORE (`/Dests` read 44 for a card the PDF shows on 45), so every continuation
+read as one page of drift. The id now sits on the flow element inside the card,
+which is on the page the card starts.
+
+**What keeps it honest.** `build.split.test.ts` builds a book, prints it, and asserts
+that every continuation printed on the page the viewer predicted, that the PDF
+has as many pages as the preview, and that every row, item and word is printed once
+and in order.
+
