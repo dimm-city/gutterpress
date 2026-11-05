@@ -12,9 +12,13 @@ import {
   type LayoutOptions,
 } from "./fragment.ts";
 import { decorate, type DecorationApi } from "./decorate.ts";
+import { ensureSplitCss, hasSplitCards, measuredSplit, unsplitAll } from "./split.ts";
+import type { SplitResult } from "../shared/split.ts";
 
 export interface GutterpressApi extends GutterpressViewerApi {
   decoration: DecorationApi;
+  /** the last measured split of `data-gp-split` cards, if the document has any */
+  split?: SplitResult;
   /** 1-based, matching `.gp-sheet[data-page]` and every other book-facing
    * page number in the API (pageOf() is the one deliberate exception — it's
    * documented 0-based for DOM-index math). Clamped to [1, totalPages]. */
@@ -41,7 +45,12 @@ let resizeListener: (() => void) | undefined;
 
 export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
   const t0 = performance.now();
+  // Cards marked data-gp-split are cut at the page breaks measured here, as
+  // the build does: the break rule has to be in the model before the first layout.
+  const splitting = hasSplitCards();
+  if (splitting) ensureSplitCss();
   const layout = await fragmentDocument(opts);
+  const split = splitting ? measuredSplit(layout) : undefined;
   // Single mode is a 1-column wrap, not the unwrapped default — apply it
   // BEFORE the first decorate() or the initial paint is the long-horizontal-
   // row layout and only the first view-mode toggle would fix it.
@@ -53,6 +62,7 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
   // re-applied explicitly, not just relied on to survive.
   let spreadOn = false;
   const api: GutterpressApi = Object.assign(layout, {
+    split,
     decoration,
     goto(page: number) {
       // Public surface is 1-based (matches dataset.page); sheetFor()/`current`
@@ -70,7 +80,12 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
     prev: () => api.goto(api.currentPage() - 1),
     currentPage: () => current + 1,
     refresh() {
-      layout.relayout();
+      // undo the cuts, lay the whole document out again, cut it again
+      if (splitting) {
+        unsplitAll();
+        layout.relayout();
+        api.split = measuredSplit(layout);
+      } else layout.relayout();
       applySpreadMode(layout.strips, spreadOn);
       decoration.redraw();
       emit();

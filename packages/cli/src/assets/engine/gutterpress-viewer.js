@@ -3196,91 +3196,6 @@
     return { left: px(r.x), top: px(r.y), width: px(r.w), height: px(r.h) };
   }
 
-  // src/engine/viewer/index.ts
-  var resizeListener;
-  async function mount(opts = {}) {
-    const t0 = performance.now();
-    const layout = await fragmentDocument(opts);
-    applySpreadMode(layout.strips, false);
-    const decoration = decorate(layout, { designer: opts.designer });
-    let spreadOn = false;
-    const api = Object.assign(layout, {
-      decoration,
-      goto(page) {
-        const clamped = Math.max(1, Math.min(layout.totalPages, Math.round(page)));
-        current = clamped - 1;
-        const target = decoration.sheetFor(current);
-        target?.scrollIntoView({ block: "start", inline: "center" });
-        emit();
-      },
-      next: () => api.goto(api.currentPage() + 1),
-      prev: () => api.goto(api.currentPage() - 1),
-      currentPage: () => current + 1,
-      refresh() {
-        layout.relayout();
-        applySpreadMode(layout.strips, spreadOn);
-        decoration.redraw();
-        emit();
-      },
-      setSpread(on) {
-        spreadOn = on;
-        applySpreadMode(layout.strips, spreadOn);
-        decoration.redraw();
-        emit();
-      }
-    });
-    let current = 0;
-    const emit = () => {
-      const detail = { page: current, pagecount: layout.totalPages };
-      window.dispatchEvent(new CustomEvent("gp:page", { detail }));
-      if (window.parent !== window)
-        window.parent.postMessage({ gp: detail }, "*");
-    };
-    const ns = window.Gutterpress;
-    if (ns) {
-      for (const k of Object.keys(ns))
-        if (!(k in api))
-          api[k] = ns[k];
-    }
-    window.Gutterpress = api;
-    emit();
-    window.dispatchEvent(new CustomEvent("gp:layout", {
-      detail: { ms: performance.now() - t0, pages: layout.totalPages }
-    }));
-    fitZoom();
-    if (resizeListener)
-      window.removeEventListener("resize", resizeListener);
-    resizeListener = fitZoom;
-    window.addEventListener("resize", resizeListener);
-    return api;
-  }
-  function fitZoom() {
-    if (document.documentElement.style.getPropertyValue("--gutterpress-zoom")) {
-      document.body.style.removeProperty("--gutterpress-fit-zoom");
-      return;
-    }
-    const sheet = document.querySelector(".gp-sheet");
-    if (!sheet)
-      return;
-    const pageW = parseFloat(sheet.style.getPropertyValue("--gp-page-w"));
-    if (!pageW)
-      return;
-    const stagePadding = parseFloat(getComputedStyle(document.body).paddingLeft) + parseFloat(getComputedStyle(document.body).paddingRight);
-    const available = window.innerWidth - stagePadding;
-    if (available > 0 && available < pageW)
-      document.body.style.setProperty("--gutterpress-fit-zoom", String(available / pageW));
-    else
-      document.body.style.removeProperty("--gutterpress-fit-zoom");
-  }
-  if (typeof document !== "undefined" && !window.__GP_MANUAL__) {
-    const params = new URLSearchParams(location.search);
-    const start = () => mount({ designer: params.has("designer") });
-    if (document.readyState === "loading")
-      document.addEventListener("DOMContentLoaded", start, { once: true });
-    else
-      start();
-  }
-
   // src/engine/viewer/split.ts
   var exports_split = {};
   __export(exports_split, {
@@ -3704,6 +3619,101 @@
       code: "engine.split.unsplittable",
       message: `A unit inside a split card is taller than a page (or leaves no room for the card's own ` + `foot), so that card stays as the browser breaks it.`
     };
+  }
+
+  // src/engine/viewer/index.ts
+  var resizeListener;
+  async function mount(opts = {}) {
+    const t0 = performance.now();
+    const splitting = hasSplitCards();
+    if (splitting)
+      ensureSplitCss();
+    const layout = await fragmentDocument(opts);
+    const split = splitting ? measuredSplit(layout) : undefined;
+    applySpreadMode(layout.strips, false);
+    const decoration = decorate(layout, { designer: opts.designer });
+    let spreadOn = false;
+    const api = Object.assign(layout, {
+      split,
+      decoration,
+      goto(page) {
+        const clamped = Math.max(1, Math.min(layout.totalPages, Math.round(page)));
+        current = clamped - 1;
+        const target = decoration.sheetFor(current);
+        target?.scrollIntoView({ block: "start", inline: "center" });
+        emit();
+      },
+      next: () => api.goto(api.currentPage() + 1),
+      prev: () => api.goto(api.currentPage() - 1),
+      currentPage: () => current + 1,
+      refresh() {
+        if (splitting) {
+          unsplitAll();
+          layout.relayout();
+          api.split = measuredSplit(layout);
+        } else
+          layout.relayout();
+        applySpreadMode(layout.strips, spreadOn);
+        decoration.redraw();
+        emit();
+      },
+      setSpread(on) {
+        spreadOn = on;
+        applySpreadMode(layout.strips, spreadOn);
+        decoration.redraw();
+        emit();
+      }
+    });
+    let current = 0;
+    const emit = () => {
+      const detail = { page: current, pagecount: layout.totalPages };
+      window.dispatchEvent(new CustomEvent("gp:page", { detail }));
+      if (window.parent !== window)
+        window.parent.postMessage({ gp: detail }, "*");
+    };
+    const ns = window.Gutterpress;
+    if (ns) {
+      for (const k of Object.keys(ns))
+        if (!(k in api))
+          api[k] = ns[k];
+    }
+    window.Gutterpress = api;
+    emit();
+    window.dispatchEvent(new CustomEvent("gp:layout", {
+      detail: { ms: performance.now() - t0, pages: layout.totalPages }
+    }));
+    fitZoom();
+    if (resizeListener)
+      window.removeEventListener("resize", resizeListener);
+    resizeListener = fitZoom;
+    window.addEventListener("resize", resizeListener);
+    return api;
+  }
+  function fitZoom() {
+    if (document.documentElement.style.getPropertyValue("--gutterpress-zoom")) {
+      document.body.style.removeProperty("--gutterpress-fit-zoom");
+      return;
+    }
+    const sheet = document.querySelector(".gp-sheet");
+    if (!sheet)
+      return;
+    const pageW = parseFloat(sheet.style.getPropertyValue("--gp-page-w"));
+    if (!pageW)
+      return;
+    const stagePadding = parseFloat(getComputedStyle(document.body).paddingLeft) + parseFloat(getComputedStyle(document.body).paddingRight);
+    const available = window.innerWidth - stagePadding;
+    if (available > 0 && available < pageW)
+      document.body.style.setProperty("--gutterpress-fit-zoom", String(available / pageW));
+    else
+      document.body.style.removeProperty("--gutterpress-fit-zoom");
+  }
+  if (typeof document !== "undefined" && !window.__GP_MANUAL__) {
+    const params = new URLSearchParams(location.search);
+    const start = () => mount({ designer: params.has("designer") });
+    if (document.readyState === "loading")
+      document.addEventListener("DOMContentLoaded", start, { once: true });
+    else
+      start();
   }
 
   // src/engine/viewer/global.ts

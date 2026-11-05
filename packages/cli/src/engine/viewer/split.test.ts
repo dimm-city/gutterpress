@@ -36,7 +36,7 @@ interface Rendered {
   ids: string[];
 }
 
-async function render(cards: string, extra = ""): Promise<Rendered> {
+async function render(cards: string, extra = "", refreshes = 0): Promise<Rendered> {
   const dir = await fsp.mkdtemp(path.join(HERE, ".split-"));
   try {
     await fsp.writeFile(path.join(dir, "book.html"), bookHtml(cards, extra, true));
@@ -49,8 +49,9 @@ async function render(cards: string, extra = ""): Promise<Rendered> {
         await page.goto(url);
         await page.waitForFunction("window.Gutterpress?.totalPages > 0");
         await new Promise((r) => setTimeout(r, 200));
-        return (await page.evaluate((source: string) => {
+        return (await page.evaluate((source: string, refreshes: number) => {
           const G = (window as any).Gutterpress;
+          for (let i = 0; i < refreshes; i++) G.refresh();
           const parts = [...document.querySelectorAll("[data-gp-split]")].map((el) => {
             const [first, last] = G.pageRangeOf(el);
             return {
@@ -78,7 +79,7 @@ async function render(cards: string, extra = ""): Promise<Rendered> {
             restored: JSON.stringify(now) === JSON.stringify(was),
             ids,
           };
-        }, cards)) as Rendered;
+        }, cards, refreshes)) as Rendered;
       } finally {
         await page.close();
       }
@@ -212,6 +213,20 @@ describe("measured split in the viewer", () => {
         total(source.replace(/<template.*?<\/template>/g, "")),
       );
       expect(r.restored).toBe(true);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  testIf(
+    "refresh() undoes the cuts and cuts again to the same result",
+    async () => {
+      const body = para("A") + list("ul", 12) + para("Z");
+      const once = await render(card({ body }));
+      const again = await render(card({ body }), "", 2);
+      expect(again.parts.map((p) => p.text)).toEqual(once.parts.map((p) => p.text));
+      expect(again.pages).toBe(once.pages);
+      expect(again.ids).toEqual(once.ids);
+      expect(again.restored).toBe(true);
     },
     TEST_TIMEOUT_MS,
   );
