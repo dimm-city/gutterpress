@@ -66,9 +66,10 @@ export const DOC_CACHE_MAX = 8;
  * image. Through the loading task, which both PDF.js lines have: PDF.js 6
  * (unpdf 1.8 and newer) dropped `PDFDocumentProxy.destroy()`, and that
  * TypeError made the preserve-text inspections below fall back to flattening
- * every transparent page whole (#499).
+ * every transparent page whole (#499). The parity gate (scripts/) reads PDFs
+ * the same way and releases them through this too.
  */
-function releasePdf(doc: PDFDocumentProxy): Promise<void> {
+export function releasePdf(doc: PDFDocumentProxy): Promise<void> {
   return doc.loadingTask.destroy();
 }
 
