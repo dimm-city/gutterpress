@@ -3200,6 +3200,7 @@
   var exports_split = {};
   __export(exports_split, {
     unsplitAll: () => unsplitAll,
+    spanningCards: () => spanningCards,
     measuredSplit: () => measuredSplit,
     hasSplitCards: () => hasSplitCards,
     ensureSplitCss: () => ensureSplitCss
@@ -3210,6 +3211,12 @@
   var SPLIT_CSS = "[data-gp-split-cont] { break-before: page; }";
   function firstCrossingUnit(startPage, lastPages) {
     return lastPages.findIndex((p) => p > startPage);
+  }
+  function stepBackOverAvoid(k, joined) {
+    let i = k;
+    while (i > 1 && joined[i])
+      i--;
+    return joined[i] && i === 1 ? k : i;
   }
   function pullBack(unit) {
     return unit - 1 >= 1 ? unit - 1 : null;
@@ -3314,6 +3321,7 @@
       }
       const declared = block.getAttribute("data-gp-split-units");
       let units = [];
+      const groups = [];
       let kind = "unit";
       if (declared)
         units = childrenMatching(block, declared);
@@ -3323,12 +3331,26 @@
       } else if (block.tagName === "TABLE") {
         const bodies = childrenMatching(block, "tbody");
         if (bodies.length === 1 && !block.querySelector(":scope > tfoot")) {
-          units = Array.from(bodies[0].children).filter((r) => r.tagName === "TR");
+          const rows = Array.from(bodies[0].children).filter((r) => r.tagName === "TR");
+          let covered = 0;
+          for (const row of rows) {
+            if (covered > 0 && groups.length)
+              groups[groups.length - 1].last = row;
+            else {
+              units.push(row);
+              groups.push({ el: row });
+            }
+            const reach = Math.max(0, ...Array.from(row.cells, (c) => c.rowSpan - 1));
+            covered = Math.max(covered - 1, reach);
+          }
           kind = "table-row";
         }
       }
       if (!units.length)
         whole();
+      else if (groups.length)
+        for (const g of groups)
+          out.push({ ...g, block, kind });
       else
         for (const el of units)
           out.push({ el, block, kind });
@@ -3336,9 +3358,14 @@
     return out;
   }
   function stripIds(el) {
-    el.removeAttribute("id");
-    for (const d of Array.from(el.querySelectorAll("[id]")))
-      d.removeAttribute("id");
+    const bare = (e) => {
+      e.removeAttribute("id");
+      e.removeAttribute("data-source-range");
+      e.removeAttribute("data-source-line");
+    };
+    bare(el);
+    for (const d of Array.from(el.querySelectorAll("[id], [data-source-range], [data-source-line]")))
+      bare(d);
   }
   function copyOf(el) {
     const c = el.cloneNode(true);
@@ -3388,6 +3415,9 @@
     }
     return null;
   }
+  function continuationCard(card) {
+    return continuationOf(card) !== null;
+  }
   function headOf(cont) {
     for (let n = cont.previousElementSibling;n; n = n.previousElementSibling) {
       if (/(^|\s)gp-/.test(n.className))
@@ -3435,12 +3465,17 @@
       return false;
     const range = document.createRange();
     range.setStart(spot.node, spot.offset);
+    let from = spot.node;
+    while (spot.offset === 0 && from.parentNode && from.parentNode !== p && !from.previousSibling)
+      from = from.parentNode;
+    if (from !== spot.node)
+      range.setStartBefore(from);
     range.setEnd(p, p.childNodes.length);
     const rest = p.cloneNode(false);
-    stripIds(rest);
     rest.setAttribute(JOIN, "");
     rest.classList.add("gp-split-cont");
     rest.appendChild(range.extractContents());
+    stripIds(rest);
     p.after(rest);
     return true;
   }
@@ -3528,6 +3563,16 @@
     }
     return { ok: true, cont, kind };
   }
+  function sameShell(a, b) {
+    const x = a.cloneNode(false);
+    const y = b.cloneNode(false);
+    for (const e of [x, y]) {
+      e.removeAttribute("id");
+      e.removeAttribute("data-source-range");
+      e.removeAttribute("data-source-line");
+    }
+    return x.isEqualNode(y);
+  }
   function mergeInto(target, shell, inline = shell.classList.contains("gp-split-cont")) {
     while (shell.firstChild) {
       const n = shell.firstChild;
@@ -3537,7 +3582,7 @@
       else if (n instanceof Element && n.hasAttribute(JOIN)) {
         mergeInto(target.lastElementChild, n);
         n.remove();
-      } else if (inline && n instanceof Element && last instanceof Element && last.cloneNode(false).isEqualNode(n.cloneNode(false))) {
+      } else if (inline && n instanceof Element && last instanceof Element && sameShell(last, n)) {
         mergeInto(last, n, true);
         n.remove();
       } else
@@ -3565,6 +3610,11 @@
     if (cut)
       head.classList.remove(cut);
   }
+  function clearLabels(root2) {
+    for (const e of Array.from(root2.querySelectorAll("[id^='gp-split-']")))
+      if (/^gp-split-\d+(-head)?$/.test(e.id))
+        e.removeAttribute("id");
+  }
   function unsplitAll(root2 = document) {
     const conts = Array.from(root2.querySelectorAll(`[${CONT}]`)).reverse();
     for (const cont of conts) {
@@ -3572,18 +3622,28 @@
       if (head)
         mergeBack(head);
     }
+    clearLabels(root2);
     return conts.length;
   }
   function labelContinuations(root2 = document) {
-    const ids = [];
+    clearLabels(root2);
+    const continuations = [];
+    const heads = [];
     for (const cont of Array.from(root2.querySelectorAll(`[${CONT}]`))) {
       const flow = flowOf(cont);
       if (!flow)
         continue;
-      flow.id = `gp-split-${ids.length + 1}`;
-      ids.push(flow.id);
+      const n = continuations.length + 1;
+      flow.id = `gp-split-${n}`;
+      continuations.push(flow.id);
+      const head = headOf(cont);
+      const hf = head ? flowOf(head) : null;
+      const last = hf ? unitsOf(hf).at(-1)?.el : undefined;
+      if (last && !last.id)
+        last.id = `gp-split-${n}-head`;
+      heads.push(last?.id ?? "");
     }
-    return ids;
+    return { continuations, heads };
   }
 
   // src/engine/viewer/split.ts
@@ -3593,17 +3653,68 @@
       return [];
     const pageAt = (r) => strip.offset + indexInStrip(r.left, r.top, strip);
     let line = 0;
-    let key = "";
+    let bottom = -Infinity;
+    let page = -1;
     return wordRanges(p).map((range) => {
       const rects = Array.from(range.getClientRects());
       if (!rects.length)
         return { line, lastPage: -1 };
-      const first = rects[0];
-      const k = `${pageAt(first)}:${Math.round(first.top)}`;
-      if (k !== key)
-        line++;
-      key = k;
-      return { line, lastPage: pageAt(rects[rects.length - 1]) };
+      let first = 0;
+      let lastPage = -1;
+      rects.forEach((r, i) => {
+        const at = pageAt(r);
+        if (at !== page || r.top >= bottom - 1)
+          line++;
+        if (i === 0)
+          first = line;
+        page = at;
+        bottom = r.bottom;
+        lastPage = at;
+      });
+      return { line: first, lastPage };
+    });
+  }
+  var FORCED = /^(page|left|right|recto|verso)$/;
+  function forcedBreaks(api) {
+    const out = [];
+    for (const b of api.model.breaks) {
+      if (b.prop === "break-inside" || !FORCED.test(b.value.trim()))
+        continue;
+      let els;
+      try {
+        els = Array.from(document.querySelectorAll(b.selector));
+      } catch {
+        continue;
+      }
+      for (const el of els) {
+        const cs = getComputedStyle(el);
+        const value = b.prop === "break-before" ? cs.breakBefore : cs.breakAfter;
+        if (FORCED.test(value.trim()))
+          out.push({ el, after: b.prop !== "break-before" });
+      }
+    }
+    return out;
+  }
+  function separated(sites, a, b) {
+    const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
+    return sites.some(({ el, after }) => {
+      if (after) {
+        if (el === a || el.contains(a) && !el.contains(b))
+          return true;
+        return !!(a.compareDocumentPosition(el) & FOLLOWING) && !a.contains(el) && !el.contains(b) && !!(el.compareDocumentPosition(b) & FOLLOWING);
+      }
+      if (el.contains(a))
+        return false;
+      return !!(a.compareDocumentPosition(el) & FOLLOWING) && !a.contains(el) && (el === b || el.contains(b) || !!(el.compareDocumentPosition(b) & FOLLOWING));
+    });
+  }
+  var AVOID = /^avoid/;
+  function joinedUnits(units) {
+    return units.map((u, i) => {
+      if (i === 0)
+        return false;
+      const before = getComputedStyle(units[i - 1].last ?? units[i - 1].el).breakAfter;
+      return AVOID.test(before) || AVOID.test(getComputedStyle(u.el).breakBefore);
     });
   }
   function scopeSpans(api) {
@@ -3617,6 +3728,28 @@
   }
   function hasSplitCards() {
     return document.querySelector("[data-gp-split]") !== null;
+  }
+  function spanningCards(api) {
+    let all = 0;
+    let cut = 0;
+    for (const card of cardsOf()) {
+      const [s, e] = api.pageRangeOf(card);
+      if (e <= s)
+        continue;
+      all++;
+      if (continuationCard(card))
+        cut++;
+    }
+    return { all, cut };
+  }
+  function dropOp(ops, op) {
+    const at = ops.indexOf(op);
+    if (at < 0)
+      return;
+    ops.splice(at, 1);
+    for (const later of ops.slice(at))
+      if (later.n > op.n)
+        later.n--;
   }
   function measuredSplit(api) {
     const t0 = performance.now();
@@ -3638,7 +3771,10 @@
     for (;; ) {
       const cards = cardsOf().filter((c) => !settled.has(c));
       const info = cards.map((card) => {
-        const [s, e] = api.pageRangeOf(card);
+        const [first, e] = api.pageRangeOf(card);
+        const flow = flowOf(card);
+        const firstUnit = flow ? unitsOf(flow)[0] : undefined;
+        const s = Math.max(first, firstUnit ? api.pageRangeOf(firstUnit.el)[0] : first);
         if (e <= s)
           pending.delete(card);
         return { scope: scopeOf(card), spans: e > s, start: s };
@@ -3651,57 +3787,74 @@
         break;
       }
       passes++;
-      for (const i of picked) {
+      const plans = picked.map((i) => {
         const card = cards[i];
         const flow = flowOf(card);
-        if (!flow) {
-          settled.add(card);
-          continue;
-        }
+        if (!flow)
+          return { card, kind: "settle" };
         const prior = pending.get(card);
         if (prior) {
-          pending.delete(card);
           const head = prior.word === undefined ? undefined : unitsOf(flow)[prior.unit]?.el;
           const word2 = head ? pullBackWord(wordPositions(api, head).map((w) => w.line)) : null;
+          return { card, kind: "pull", prior, word: word2 };
+        }
+        const units = unitsOf(flow);
+        const start = info[i].start;
+        const k = firstCrossingUnit(start, units.map((u) => Math.max(api.pageRangeOf(u.el)[1], api.pageRangeOf(u.last ?? u.el)[1])));
+        if (k < 0)
+          return { card, kind: "settle" };
+        const crossing = units[k];
+        const [from, to] = api.pageRangeOf(crossing.el);
+        const word = crossing.kind === "block" && crossing.el.tagName === "P" && from === start && to > from ? chooseWordBreak(wordPositions(api, crossing.el), start) : null;
+        const at = word === null ? stepBackOverAvoid(k, joinedUnits(units)) : k;
+        if (at === 0 && word === null) {
+          return { card, kind: "settle", note: isContinuation(card) ? unsplittable(card) : undefined };
+        }
+        return { card, kind: "cut", k: at, word };
+      });
+      const sites = forcedBreaks(api);
+      let last = null;
+      for (const plan of plans) {
+        const { card } = plan;
+        if (plan.kind === "settle") {
+          settled.add(card);
+          if (plan.note)
+            note(plan.note);
+          continue;
+        }
+        if (last && !separated(sites, last, card))
+          continue;
+        last = card;
+        if (plan.kind === "pull") {
+          const { prior } = plan;
+          pending.delete(card);
           mergeBack(card);
           const keep = prior.word !== undefined;
-          const unit = keep ? prior.unit : pullBack(prior.unit);
-          if (unit !== null && splitCardAt(card, unit, keep ? word2 ?? undefined : undefined).ok) {
+          let unit = keep ? prior.unit : pullBack(prior.unit);
+          const flow = flowOf(card);
+          if (unit !== null && !keep && flow)
+            unit = stepBackOverAvoid(unit, joinedUnits(unitsOf(flow)));
+          if (unit !== null && splitCardAt(card, unit, keep ? plan.word ?? undefined : undefined).ok) {
             prior.unit = unit;
-            prior.word = keep ? word2 ?? undefined : undefined;
+            prior.word = keep ? plan.word ?? undefined : undefined;
             prior.kind = prior.word === undefined ? "block" : prior.kind;
             pending.set(card, prior);
           } else {
-            ops.splice(ops.indexOf(prior), 1);
+            dropOp(ops, prior);
             settled.add(card);
-            note(unsplittable());
+            note(unsplittable(card));
           }
           continue;
         }
-        const units = unitsOf(flow);
-        const k = firstCrossingUnit(info[i].start, units.map((u) => api.pageRangeOf(u.el)[1]));
-        if (k < 0) {
-          settled.add(card);
-          continue;
-        }
-        const crossing = units[k];
-        const [from, to] = api.pageRangeOf(crossing.el);
-        const word = crossing.kind === "block" && crossing.el.tagName === "P" && from === info[i].start && to > from ? chooseWordBreak(wordPositions(api, crossing.el), info[i].start) : null;
-        if (k === 0 && word === null) {
-          if (isContinuation(card))
-            note(unsplittable());
-          settled.add(card);
-          continue;
-        }
         const n = cardsOf().indexOf(card);
-        const res = splitCardAt(card, k, word ?? undefined);
+        const res = splitCardAt(card, plan.k, plan.word ?? undefined);
         if (!res.ok) {
           if (res.diagnostic)
             note(res.diagnostic);
           settled.add(card);
           continue;
         }
-        const op = { n, unit: k, kind: res.kind, ...word === null ? {} : { word } };
+        const op = { n, unit: plan.k, kind: res.kind, ...plan.word === null ? {} : { word: plan.word } };
         ops.push(op);
         pending.set(card, op);
       }
@@ -3712,7 +3865,7 @@
         code: "engine.split.unconverged",
         message: `Splitting cards did not settle in ${SPLIT_PASS_CAP} passes; the cards still spanning ` + `pages stay as the browser breaks them.`
       });
-    const continuations = labelContinuations();
+    const ids = labelContinuations();
     const after = scopeSpans(api);
     const kinds = {};
     for (const op of ops)
@@ -3720,7 +3873,7 @@
     return {
       ops,
       diagnostics,
-      continuations,
+      ...ids,
       ms: performance.now() - t0,
       pagesBefore,
       pagesAfter: api.totalPages,
@@ -3729,10 +3882,15 @@
       scopes: [...after].map(([scope, n]) => ({ scope, before: before.get(scope) ?? n, after: n }))
     };
   }
-  function unsplittable() {
+  function nameOf(card) {
+    const text = (card.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
+    const scope = scopeOf(card);
+    return `"${text}"${scope ? ` (scope ${scope})` : ""}`;
+  }
+  function unsplittable(card) {
     return {
       code: "engine.split.unsplittable",
-      message: `A unit inside a split card is taller than a page (or leaves no room for the card's own ` + `foot), so that card stays as the browser breaks it.`
+      message: `A unit inside the split card ${nameOf(card)} is taller than a page (or leaves no room for ` + `the card's own foot), so that card stays as the browser breaks it.`
     };
   }
 
@@ -3745,6 +3903,7 @@
       ensureSplitCss();
     const layout = await fragmentDocument(opts);
     const split = splitting ? measuredSplit(layout) : undefined;
+    let nativeSpanning = splitting ? spanningCards(layout).all : 0;
     applySpreadMode(layout.strips, false);
     const decoration = decorate(layout, { designer: opts.designer });
     let spreadOn = false;
@@ -3765,12 +3924,20 @@
         unsplitAll();
         layout.relayout();
         api.split = measuredSplit(layout);
+        nativeSpanning = spanningCards(layout).all;
         applySpreadMode(layout.strips, spreadOn);
         decoration.redraw();
         emit();
       },
       refresh() {
         layout.relayout();
+        if (splitting) {
+          const now = spanningCards(layout);
+          if (now.cut > 0 || now.all > nativeSpanning) {
+            api.resplit();
+            return;
+          }
+        }
         applySpreadMode(layout.strips, spreadOn);
         decoration.redraw();
         emit();
@@ -3798,7 +3965,7 @@
     window.Gutterpress = api;
     emit();
     window.dispatchEvent(new CustomEvent("gp:layout", {
-      detail: { ms: performance.now() - t0, pages: layout.totalPages }
+      detail: { ms: performance.now() - t0, pages: layout.totalPages, splitMs: split?.ms }
     }));
     fitZoom();
     if (resizeListener)

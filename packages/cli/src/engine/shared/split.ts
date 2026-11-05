@@ -39,7 +39,9 @@ export type SplitDiagnosticCode =
   | "engine.split.unconverged"
   | "engine.split.text-changed"
   | "engine.split.template"
-  | "engine.split.page-drift";
+  | "engine.split.page-drift"
+  | "engine.split.failed"
+  | "engine.split.head-spill";
 
 export interface SplitDiagnostic {
   code: SplitDiagnosticCode;
@@ -53,6 +55,35 @@ export interface SplitDiagnostic {
  */
 export function firstCrossingUnit(startPage: number, lastPages: number[]): number {
   return lastPages.findIndex((p) => p > startPage);
+}
+
+/**
+ * The cut point moved back over units that must stay with the next one
+ * (`break-after: avoid` on the unit before, `break-before: avoid` on the
+ * unit itself), so a sub-heading never ends a head part. `joined[i]` is true
+ * when no break is allowed before unit `i`. Stops at 1: a head keeps a unit.
+ */
+export function stepBackOverAvoid(k: number, joined: boolean[]): number {
+  let i = k;
+  while (i > 1 && joined[i]) i--;
+  return joined[i] && i === 1 ? k : i;
+}
+
+/**
+ * Where the print starts to disagree with the preview: the continuations
+ * whose page offset (print minus preview) differs from the one before it.
+ * An offset that holds from there on is the layouts drifting once, upstream
+ * of any cut, and is reported once, not once per continuation.
+ */
+export function driftOrigins(offsets: Array<number | undefined>): number[] {
+  const origins: number[] = [];
+  let prev = 0;
+  offsets.forEach((o, i) => {
+    if (o === undefined) return;
+    if (o !== prev) origins.push(i);
+    prev = o;
+  });
+  return origins;
 }
 
 /**
@@ -143,11 +174,17 @@ export interface SplitStats {
   scopes: Array<{ scope: string; before: number; after: number }>;
 }
 
-export interface SplitResult extends SplitStats {
+/** What the build reads back from print: where each continuation and the last unit of its head landed. */
+export interface SplitIds {
+  /** ids of the continuations' flow elements, in document order */
+  continuations: string[];
+  /** id of the last unit of the part each continuation was cut from (same order) */
+  heads: string[];
+}
+
+export interface SplitResult extends SplitStats, SplitIds {
   ops: SplitOp[];
   diagnostics: SplitDiagnostic[];
-  /** ids of the continuations (document order), for the page-drift check */
-  continuations: string[];
   ms: number;
 }
 

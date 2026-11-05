@@ -58,7 +58,7 @@ import {
   synthesize,
   type Tier2Output,
 } from "./tier2.ts";
-import { describeSplit, type SplitResult } from "../shared/split.ts";
+import { describeSplit, driftOrigins, type SplitResult } from "../shared/split.ts";
 import { postprocess, type PostprocessResult } from "./postprocess.ts";
 
 /** Generated page name carrying the author's `@page :blank` rules. */
@@ -257,7 +257,9 @@ export type BuildDiagnosticCode =
   | "engine.split.text-changed"
   | "engine.split.template"
   | "engine.split.page-drift"
-  | "engine.split.summary";
+  | "engine.split.summary"
+  | "engine.split.failed"
+  | "engine.split.head-spill";
 
 export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.width.overflow",
@@ -277,6 +279,8 @@ export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.split.template",
   "engine.split.page-drift",
   "engine.split.summary",
+  "engine.split.failed",
+  "engine.split.head-spill",
 ];
 
 export interface BuildDiagnostic {
@@ -966,6 +970,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       };
       let predicted: PredictedPageMap | null = null;
       let splitIds: string[] = [];
+      let splitHeads: string[] = [];
       if (hasSplitCards) {
         predicted = await predictPageMap(browser, url, AGENT, VIEWER, predictArgs, sheetViewport);
         const split = predicted?.split;
@@ -977,11 +982,28 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
             diagnose(d.code, d.message);
             log(`WARNING: ${d.message}`);
           }
-          splitIds = await page.evaluate<string[]>(
+          const replayed = await page.evaluate<{ continuations: string[]; heads: string[]; failed: number }>(
             `window.__gp.applySplitOps(${JSON.stringify(split.ops)})`,
           );
-          for (const id of splitIds) targets.add(id);
+          splitIds = replayed.continuations;
+          splitHeads = replayed.heads;
+          // the print page must have cut the same cards as the viewer did
+          if (replayed.failed || splitIds.length !== split.continuations.length) {
+            diagnose(
+              "engine.split.failed",
+              `The print page made ${splitIds.length} split card continuation(s) where the preview made ` +
+                `${split.continuations.length}${replayed.failed ? ` (${replayed.failed} cut(s) did not apply)` : ""}, so the ` +
+                `printed page breaks do not match the preview's.`,
+            );
+          }
+          for (const id of [...splitIds, ...splitHeads]) if (id) targets.add(id);
           await page.evaluate(`window.__gp.instrument(${JSON.stringify([...targets])})`);
+        } else {
+          diagnose(
+            "engine.split.failed",
+            `The cards marked data-gp-split could not be measured for splitting, so they print as the ` +
+              `browser breaks them.`,
+          );
         }
       }
 
@@ -1220,7 +1242,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         url,
         AGENT,
         VIEWER,
-        { ...predictArgs, targets: [...targets] },
+        { ...predictArgs, targets: [...targets], split: false },
         sheetViewport,
       );
       if (predicted) predictedForResult = { pageMap: predicted.pageMap, pageCount: predicted.pageCount };
@@ -1273,22 +1295,42 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         );
         log(`tier 3: NOT converged after ${passes} passes`);
       }
-      // The print agrees with the viewer's split where each continuation starts.
+      // The print must agree with the viewer's split: each head ends on the page it
+      // started (the continuation is on the next), and each continuation is where the
+      // preview put it. A page offset that holds from some continuation on is the two
+      // layouts drifting once, upstream of any cut, and is reported once, at its start.
       if (predicted?.split && splitIds.length) {
-        const drifted = splitIds.filter(
-          (id) =>
-            pageMap[id] !== undefined &&
-            predicted!.pageMap[id] !== undefined &&
-            pageMap[id] !== predicted!.pageMap[id],
+        const page_ = (id: string): number | undefined => (id ? pageMap[id] : undefined);
+        const spilled = splitIds.filter((id, i) => {
+          const head = page_(splitHeads[i] ?? "");
+          const cont = page_(id);
+          return head !== undefined && cont !== undefined && cont !== head + 1;
+        });
+        if (spilled.length) {
+          diagnose(
+            "engine.split.head-spill",
+            `${spilled.length} split card part(s) did not end on the page they started: the continuation ` +
+              `is not on the next page (${spilled.slice(0, 5).join(", ")}). The card's closed foot or a ` +
+              `printed difference cost it the room; the PDF is the authoritative layout.`,
+          );
+          log(`WARNING: ${spilled.length} split head(s) spilled onto a second page in print`);
+        }
+        const offsets = splitIds.map((id) =>
+          pageMap[id] !== undefined && predicted!.pageMap[id] !== undefined
+            ? pageMap[id]! - predicted!.pageMap[id]!
+            : undefined,
         );
-        if (drifted.length) {
+        const origins = driftOrigins(offsets);
+        if (origins.length) {
+          const at = splitIds[origins[0]!]!;
           diagnose(
             "engine.split.page-drift",
-            `${drifted.length} split card continuation(s) printed on a different page than the ` +
-              `preview shows (${drifted.map((id) => `${id}: preview p${predicted!.pageMap[id]}, print p${pageMap[id]}`).slice(0, 5).join("; ")}). ` +
+            `From split continuation ${at} on, print puts the card parts ${Math.abs(offsets[origins[0]!]!)} page(s) ` +
+              `${offsets[origins[0]!]! < 0 ? "earlier" : "later"} than the preview does (preview p${predicted!.pageMap[at]}, ` +
+              `print p${pageMap[at]}), ${origins.length > 1 ? `changing ${origins.length - 1} more time(s)` : "and the offset holds to the end"}. ` +
               `The PDF is the authoritative layout.`,
           );
-          log(`WARNING: ${drifted.length} split continuation(s) landed off the predicted page`);
+          log(`WARNING: split continuations drift from the predicted pages at ${at}`);
         } else log(`split: all ${splitIds.length} continuation(s) printed on their predicted page`);
       }
       // No de-instrumentation, no final reprint: measurement never touches an
@@ -2227,7 +2269,7 @@ async function predictPageMap(
       // cut the marked cards at the measured breaks (the print page replays the ops)
       const split = ${args.split === true} ? G.measuredSplit(api) : undefined;
       const pageMap = {};
-      for (const id of [...${JSON.stringify(args.targets)}, ...(split ? split.continuations : [])]) {
+      for (const id of [...${JSON.stringify(args.targets)}, ...(split ? [...split.continuations, ...split.heads.filter(Boolean)] : [])]) {
         const el = document.getElementById(id);
         if (!el) continue;
         // an id may name an injected zero-size <gp-anchor>; measure its

@@ -21,6 +21,7 @@ import {
   sameWords,
   wordsOf,
   type SplitDiagnostic,
+  type SplitIds,
   type SplitKind,
   type SplitOp,
 } from "../shared/split.ts";
@@ -32,6 +33,8 @@ const COPY = "data-gp-split-copy";
 
 export interface SplitUnit {
   el: Element;
+  /** the last row of a group a `rowspan` ties together; absent for a single element */
+  last?: Element;
   /** the flow child this unit belongs to */
   block: Element;
   kind: SplitKind;
@@ -94,6 +97,7 @@ export function unitsOf(flow: Element): SplitUnit[] {
     }
     const declared = block.getAttribute("data-gp-split-units");
     let units: Element[] = [];
+    const groups: Array<{ el: Element; last?: Element }> = [];
     let kind: SplitKind = "unit";
     if (declared) units = childrenMatching(block, declared);
     else if ((block.tagName === "UL" || block.tagName === "OL") && !block.hasAttribute("reversed")) {
@@ -102,19 +106,37 @@ export function unitsOf(flow: Element): SplitUnit[] {
     } else if (block.tagName === "TABLE") {
       const bodies = childrenMatching(block, "tbody");
       if (bodies.length === 1 && !block.querySelector(":scope > tfoot")) {
-        units = Array.from(bodies[0]!.children).filter((r) => r.tagName === "TR");
+        const rows = Array.from(bodies[0]!.children).filter((r) => r.tagName === "TR");
+        // a row that a `rowspan` above still covers is no cut point: it joins the unit before it
+        let covered = 0;
+        for (const row of rows) {
+          if (covered > 0 && groups.length) groups[groups.length - 1]!.last = row;
+          else {
+            units.push(row);
+            groups.push({ el: row });
+          }
+          const reach = Math.max(0, ...Array.from((row as HTMLTableRowElement).cells, (c) => c.rowSpan - 1));
+          covered = Math.max(covered - 1, reach);
+        }
         kind = "table-row";
       }
     }
     if (!units.length) whole();
+    else if (groups.length) for (const g of groups) out.push({ ...g, block, kind });
     else for (const el of units) out.push({ el, block, kind });
   }
   return out;
 }
 
+/** What marks an element as THE one: its id and its place in the source. A copy has neither. */
 function stripIds(el: Element): void {
-  el.removeAttribute("id");
-  for (const d of Array.from(el.querySelectorAll("[id]"))) d.removeAttribute("id");
+  const bare = (e: Element) => {
+    e.removeAttribute("id");
+    e.removeAttribute("data-source-range");
+    e.removeAttribute("data-source-line");
+  };
+  bare(el);
+  for (const d of Array.from(el.querySelectorAll("[id], [data-source-range], [data-source-line]"))) bare(d);
 }
 
 function copyOf(el: Element): Element {
@@ -166,6 +188,11 @@ function continuationOf(head: Element): Element | null {
     if (!/(^|\s)gp-/.test(n.className)) return null;
   }
   return null;
+}
+
+/** Whether a card has been cut: its continuation follows it. */
+export function continuationCard(card: Element): boolean {
+  return continuationOf(card) !== null;
 }
 
 /** The part `cont` was cut from. */
@@ -229,12 +256,17 @@ function cutParagraphAt(p: Element, index: number): boolean {
   if (!spot || index < 1) return false;
   const range = document.createRange();
   range.setStart(spot.node, spot.offset);
+  // a word that opens an inline element takes the element with it, not an empty clone of it
+  let from: Node = spot.node;
+  while (spot.offset === 0 && from.parentNode && from.parentNode !== p && !from.previousSibling)
+    from = from.parentNode;
+  if (from !== spot.node) range.setStartBefore(from);
   range.setEnd(p, p.childNodes.length);
   const rest = p.cloneNode(false) as Element;
-  stripIds(rest);
   rest.setAttribute(JOIN, "");
   rest.classList.add("gp-split-cont");
   rest.appendChild(range.extractContents());
+  stripIds(rest);
   p.after(rest);
   return true;
 }
@@ -331,6 +363,18 @@ export function splitCardAt(card: Element, index: number, word?: number): SplitR
   return { ok: true, cont, kind };
 }
 
+/** Two elements that differ at most by the id or source marks a copy never carries. */
+function sameShell(a: Element, b: Element): boolean {
+  const x = a.cloneNode(false) as Element;
+  const y = b.cloneNode(false) as Element;
+  for (const e of [x, y]) {
+    e.removeAttribute("id");
+    e.removeAttribute("data-source-range");
+    e.removeAttribute("data-source-line");
+  }
+  return x.isEqualNode(y);
+}
+
 /** Fold a join shell back into the part it was cut from. */
 function mergeInto(target: Element, shell: Element, inline = shell.classList.contains("gp-split-cont")): void {
   while (shell.firstChild) {
@@ -344,7 +388,7 @@ function mergeInto(target: Element, shell: Element, inline = shell.classList.con
       inline &&
       n instanceof Element &&
       last instanceof Element &&
-      last.cloneNode(false).isEqualNode(n.cloneNode(false))
+      sameShell(last, n)
     ) {
       // an inline element the cut split in two (<em>a | b</em>) is one again
       mergeInto(last, n, true);
@@ -372,6 +416,12 @@ export function mergeBack(head: Element): void {
   if (cut) head.classList.remove(cut);
 }
 
+/** Take the ids `labelContinuations` set off, so a second labelling (or an undo) leaves none behind. */
+function clearLabels(root: ParentNode): void {
+  for (const e of Array.from(root.querySelectorAll("[id^='gp-split-']")))
+    if (/^gp-split-\d+(-head)?$/.test(e.id)) e.removeAttribute("id");
+}
+
 /** Undo every split in the document, last first so chains unwind. */
 export function unsplitAll(root: ParentNode = document): number {
   const conts = Array.from(root.querySelectorAll(`[${CONT}]`)).reverse();
@@ -379,6 +429,7 @@ export function unsplitAll(root: ParentNode = document): number {
     const head = headOf(cont);
     if (head) mergeBack(head);
   }
+  clearLabels(root);
   return conts.length;
 }
 
@@ -389,23 +440,33 @@ export function unsplitAll(root: ParentNode = document): number {
  * recorded on the page before in the PDF. Done once, at the end, because the
  * loop may pull a split back and the print page replays only the final ops.
  */
-export function labelContinuations(root: ParentNode = document): string[] {
-  const ids: string[] = [];
+export function labelContinuations(root: ParentNode = document): SplitIds {
+  clearLabels(root);
+  const continuations: string[] = [];
+  const heads: string[] = [];
   for (const cont of Array.from(root.querySelectorAll(`[${CONT}]`))) {
     const flow = flowOf(cont);
     if (!flow) continue;
-    flow.id = `gp-split-${ids.length + 1}`;
-    ids.push(flow.id);
+    const n = continuations.length + 1;
+    flow.id = `gp-split-${n}`;
+    continuations.push(flow.id);
+    // the part it was cut from, read through its last unit (an id of its own is kept)
+    const head = headOf(cont);
+    const hf = head ? flowOf(head) : null;
+    const last = hf ? unitsOf(hf).at(-1)?.el : undefined;
+    if (last && !last.id) last.id = `gp-split-${n}-head`;
+    heads.push(last?.id ?? "");
   }
-  return ids;
+  return { continuations, heads };
 }
 
 /** Replay recorded ops in order (the print page, or a preview rebuilt from the same ops). */
-export function replaySplitOps(ops: SplitOp[]): string[] {
+export function replaySplitOps(ops: SplitOp[]): SplitIds & { failed: number } {
   ensureSplitCss();
+  let failed = 0;
   for (const op of ops) {
     const card = cardsOf()[op.n];
-    if (card) splitCardAt(card, op.unit, op.word);
+    if (!card || !splitCardAt(card, op.unit, op.word).ok) failed++;
   }
-  return labelContinuations();
+  return { ...labelContinuations(), failed };
 }

@@ -383,6 +383,7 @@
       }
       const declared = block.getAttribute("data-gp-split-units");
       let units = [];
+      const groups = [];
       let kind = "unit";
       if (declared)
         units = childrenMatching(block, declared);
@@ -392,12 +393,26 @@
       } else if (block.tagName === "TABLE") {
         const bodies = childrenMatching(block, "tbody");
         if (bodies.length === 1 && !block.querySelector(":scope > tfoot")) {
-          units = Array.from(bodies[0].children).filter((r) => r.tagName === "TR");
+          const rows = Array.from(bodies[0].children).filter((r) => r.tagName === "TR");
+          let covered = 0;
+          for (const row of rows) {
+            if (covered > 0 && groups.length)
+              groups[groups.length - 1].last = row;
+            else {
+              units.push(row);
+              groups.push({ el: row });
+            }
+            const reach = Math.max(0, ...Array.from(row.cells, (c) => c.rowSpan - 1));
+            covered = Math.max(covered - 1, reach);
+          }
           kind = "table-row";
         }
       }
       if (!units.length)
         whole();
+      else if (groups.length)
+        for (const g of groups)
+          out.push({ ...g, block, kind });
       else
         for (const el of units)
           out.push({ el, block, kind });
@@ -405,9 +420,14 @@
     return out;
   }
   function stripIds(el) {
-    el.removeAttribute("id");
-    for (const d of Array.from(el.querySelectorAll("[id]")))
-      d.removeAttribute("id");
+    const bare = (e) => {
+      e.removeAttribute("id");
+      e.removeAttribute("data-source-range");
+      e.removeAttribute("data-source-line");
+    };
+    bare(el);
+    for (const d of Array.from(el.querySelectorAll("[id], [data-source-range], [data-source-line]")))
+      bare(d);
   }
   function copyOf(el) {
     const c = el.cloneNode(true);
@@ -457,6 +477,14 @@
     }
     return null;
   }
+  function headOf(cont) {
+    for (let n = cont.previousElementSibling;n; n = n.previousElementSibling) {
+      if (/(^|\s)gp-/.test(n.className))
+        continue;
+      return n.hasAttribute("data-gp-split") ? n : null;
+    }
+    return null;
+  }
   function wordSpots(el) {
     const nodes = [];
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -488,12 +516,17 @@
       return false;
     const range = document.createRange();
     range.setStart(spot.node, spot.offset);
+    let from = spot.node;
+    while (spot.offset === 0 && from.parentNode && from.parentNode !== p && !from.previousSibling)
+      from = from.parentNode;
+    if (from !== spot.node)
+      range.setStartBefore(from);
     range.setEnd(p, p.childNodes.length);
     const rest = p.cloneNode(false);
-    stripIds(rest);
     rest.setAttribute(JOIN, "");
     rest.classList.add("gp-split-cont");
     rest.appendChild(range.extractContents());
+    stripIds(rest);
     p.after(rest);
     return true;
   }
@@ -581,6 +614,16 @@
     }
     return { ok: true, cont, kind };
   }
+  function sameShell(a, b) {
+    const x = a.cloneNode(false);
+    const y = b.cloneNode(false);
+    for (const e of [x, y]) {
+      e.removeAttribute("id");
+      e.removeAttribute("data-source-range");
+      e.removeAttribute("data-source-line");
+    }
+    return x.isEqualNode(y);
+  }
   function mergeInto(target, shell, inline = shell.classList.contains("gp-split-cont")) {
     while (shell.firstChild) {
       const n = shell.firstChild;
@@ -590,7 +633,7 @@
       else if (n instanceof Element && n.hasAttribute(JOIN)) {
         mergeInto(target.lastElementChild, n);
         n.remove();
-      } else if (inline && n instanceof Element && last instanceof Element && last.cloneNode(false).isEqualNode(n.cloneNode(false))) {
+      } else if (inline && n instanceof Element && last instanceof Element && sameShell(last, n)) {
         mergeInto(last, n, true);
         n.remove();
       } else
@@ -618,25 +661,40 @@
     if (cut)
       head.classList.remove(cut);
   }
+  function clearLabels(root) {
+    for (const e of Array.from(root.querySelectorAll("[id^='gp-split-']")))
+      if (/^gp-split-\d+(-head)?$/.test(e.id))
+        e.removeAttribute("id");
+  }
   function labelContinuations(root = document) {
-    const ids = [];
+    clearLabels(root);
+    const continuations = [];
+    const heads = [];
     for (const cont of Array.from(root.querySelectorAll(`[${CONT}]`))) {
       const flow = flowOf(cont);
       if (!flow)
         continue;
-      flow.id = `gp-split-${ids.length + 1}`;
-      ids.push(flow.id);
+      const n = continuations.length + 1;
+      flow.id = `gp-split-${n}`;
+      continuations.push(flow.id);
+      const head = headOf(cont);
+      const hf = head ? flowOf(head) : null;
+      const last = hf ? unitsOf(hf).at(-1)?.el : undefined;
+      if (last && !last.id)
+        last.id = `gp-split-${n}-head`;
+      heads.push(last?.id ?? "");
     }
-    return ids;
+    return { continuations, heads };
   }
   function replaySplitOps(ops) {
     ensureSplitCss();
+    let failed = 0;
     for (const op of ops) {
       const card = cardsOf()[op.n];
-      if (card)
-        splitCardAt(card, op.unit, op.word);
+      if (!card || !splitCardAt(card, op.unit, op.word).ok)
+        failed++;
     }
-    return labelContinuations();
+    return { ...labelContinuations(), failed };
   }
 
   // src/engine/shared/print-area.ts

@@ -65,6 +65,8 @@ const SOURCE_LABELS: Record<string, string> = {
   "engine.split.template": "Card has no continuation template",
   "engine.split.page-drift": "Card continuation on another page in print",
   "engine.split.summary": "Split cards",
+  "engine.split.failed": "Card splitting did not apply in print",
+  "engine.split.head-spill": "Split card part ran onto a second page",
   // The post-build PDF checks, run on the exported file (#399) — the lib's
   // `pdf` and `heuristic` categories, covered by the same registry-keyed test.
   "pdf.structure.qpdf": "PDF structure",

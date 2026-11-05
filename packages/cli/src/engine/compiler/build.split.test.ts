@@ -30,6 +30,7 @@ afterAll(async () => {
 const cards =
   card({ scope: "a", body: para("Intro1") + list("ol", 12) + table(8) }) +
   card({ scope: "a", body: para("Intro2") + ladder(8) + para("Close2") }) +
+  `</section><section>` +
   card({ scope: "b", body: para("Intro3") + `<p>LONG ${words(14)} END</p>` + table(12) + list("ul", 6) });
 
 async function pdfPages(bytes: Uint8Array): Promise<string[]> {
@@ -55,10 +56,14 @@ testIf(
       // the one finding is the summary line: breaks by kind, pages before and after
       expect(result.diagnostics.map((d) => d.code)).toEqual(["engine.split.summary"]);
       expect(result.diagnostics[0]!.message).toMatch(/^split: \d+ break\(s\) .*\d+pp -> \d+pp/);
-      const ids = Object.keys(result.pageMap).filter((k) => k.startsWith("gp-split-"));
+      const ids = Object.keys(result.pageMap).filter((k) => /^gp-split-\d+$/.test(k));
       expect(ids.length).toBeGreaterThan(3);
       // the print put every continuation where the viewer predicted it
-      for (const id of ids) expect(result.pageMap[id]).toBe(result.predicted!.pageMap[id]!);
+      for (const id of ids) {
+        expect(result.pageMap[id]).toBe(result.predicted!.pageMap[id]!);
+        // each head ends on the page it started: its last unit is on the page before its continuation
+        expect(result.pageMap[`${id}-head`]).toBe(result.pageMap[id]! - 1);
+      }
       expect(result.pageCount).toBe(result.predicted!.pageCount);
 
       const pages = await pdfPages(result.bytes);
@@ -113,6 +118,49 @@ testIf(
       const result = await build({ input: pathToFileURL(file).href, browser, dpiFloor: 0 });
       expect(result.predicted).toBeNull();
       expect(result.diagnostics).toEqual([]);
+    } finally {
+      await browser.close();
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
+  },
+  TEST_TIMEOUT_MS,
+);
+
+testIf(
+  "a failed pull-back, two scopes on a page, a rowspan and ids in a cut paragraph: print cuts what the viewer cut",
+  async () => {
+    const div = (h: number, t: string) => `<div style="height:${h}px">${t}</div>`;
+    const blocks = (n: number, tag: string) => Array.from({ length: n }, (_, i) => div(40, `${tag}${i}`)).join("");
+    const mk = (name: string, scope: string, cut: string, body: string) =>
+      `<div class="card" data-gp-split=".inner" data-gp-split-scope="${scope}" data-gp-split-cut="${cut}">` +
+      `<template data-gp-split-head><div class="card contd"><div class="tab">CARD ▸</div>` +
+      `<div class="inner" data-gp-flow></div></div></template><div class="tab">CARD ${name}</div>` +
+      `<div class="inner">${body}</div></div>`;
+    const rows =
+      `<table><thead><tr><th>h</th><th>h</th></tr></thead><tbody><tr><td rowspan="2">R1a</td><td>R1b</td></tr>` +
+      `<tr><td>R2b</td></tr>` +
+      Array.from({ length: 9 }, (_, i) => `<tr><td>r${i}a</td><td>r${i}b</td></tr>`).join("") +
+      `</tbody></table>`;
+    const cards =
+      mk("A", "a", "cutA", div(150, "A0") + div(100, "A1")) + // its head cannot keep its foot: the cut is dropped
+      `</section><section>` +
+      mk("B", "b", "cut", blocks(5, "B")) +
+      mk("D", "d", "cut", blocks(6, "D") + `<p id="para">one two <a id="L" href="#x">three four five</a> ${"six ".repeat(60)}</p>` + rows);
+    const dir = await fsp.mkdtemp(path.join(HERE, ".build-split-"));
+    const browser = await launchChromium();
+    try {
+      const file = path.join(dir, "book.html");
+      await fsp.writeFile(file, bookHtml(cards, ".cutA { padding-bottom: 90px; }"), "utf8");
+      const result = await build({ input: pathToFileURL(file).href, browser, dpiFloor: 0 });
+      const codes = result.diagnostics.map((d) => d.code);
+      expect(codes).not.toContain("engine.split.failed");
+      expect(codes).not.toContain("engine.split.head-spill");
+      expect(codes).not.toContain("engine.split.page-drift");
+      const printed = Object.keys(result.pageMap).filter((k) => /^gp-split-\d+$/.test(k));
+      const predicted = Object.keys(result.predicted!.pageMap).filter((k) => /^gp-split-\d+$/.test(k));
+      expect(printed.length).toBeGreaterThan(3);
+      expect(printed).toEqual(predicted);
+      for (const id of printed) expect(result.pageMap[id]).toBe(result.predicted!.pageMap[id]!);
     } finally {
       await browser.close();
       await fsp.rm(dir, { recursive: true, force: true });

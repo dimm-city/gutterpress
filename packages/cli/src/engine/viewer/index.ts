@@ -12,7 +12,7 @@ import {
   type LayoutOptions,
 } from "./fragment.ts";
 import { decorate, type DecorationApi } from "./decorate.ts";
-import { ensureSplitCss, hasSplitCards, measuredSplit, unsplitAll } from "./split.ts";
+import { ensureSplitCss, hasSplitCards, measuredSplit, spanningCards, unsplitAll } from "./split.ts";
 import type { SplitResult } from "../shared/split.ts";
 
 export interface GutterpressApi extends GutterpressViewerApi {
@@ -53,6 +53,9 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
   if (splitting) ensureSplitCss();
   const layout = await fragmentDocument(opts);
   const split = splitting ? measuredSplit(layout) : undefined;
+  // cards that still span pages after the cut stay native (a unit taller than a page):
+  // refresh() compares against this to tell content that grew from content that never fit
+  let nativeSpanning = splitting ? spanningCards(layout).all : 0;
   // Single mode is a 1-column wrap, not the unwrapped default — apply it
   // BEFORE the first decorate() or the initial paint is the long-horizontal-
   // row layout and only the first view-mode toggle would fix it.
@@ -86,14 +89,23 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
       unsplitAll();
       layout.relayout();
       api.split = measuredSplit(layout);
+      nativeSpanning = spanningCards(layout).all;
       applySpreadMode(layout.strips, spreadOn);
       decoration.redraw();
       emit();
     },
     refresh() {
       // keeps the cuts made at mount: finding them again takes a layout pass per break
-      // (about 12s on a 244-page book), too slow for every style tweak
+      // (about 12s on a 244-page book), too slow for every style tweak. It cuts again
+      // only when a cut part now spans pages or a card that fitted does not (content grew).
       layout.relayout();
+      if (splitting) {
+        const now = spanningCards(layout);
+        if (now.cut > 0 || now.all > nativeSpanning) {
+          api.resplit();
+          return;
+        }
+      }
       applySpreadMode(layout.strips, spreadOn);
       decoration.redraw();
       emit();
@@ -121,7 +133,7 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
   emit();
   window.dispatchEvent(
     new CustomEvent("gp:layout", {
-      detail: { ms: performance.now() - t0, pages: layout.totalPages },
+      detail: { ms: performance.now() - t0, pages: layout.totalPages, splitMs: split?.ms },
     }),
   );
   fitZoom();
