@@ -6,6 +6,8 @@ import {
   pickPerScope,
   pullBack,
   pullBackWord,
+  reserveFrom,
+  shortOfReserve,
   sameWords,
   spanPages,
   wordsOf,
@@ -121,5 +123,24 @@ describe("pullBackWord", () => {
   test("leaves two lines or gives up", () => {
     expect(pullBackWord([1, 1, 2, 2])).toBeNull();
     expect(pullBackWord([])).toBeNull();
+  });
+});
+
+describe("reserve", () => {
+  test("reads an absolute CSS length in px", () => {
+    expect(reserveFrom("20px")).toBe(20);
+    expect(reserveFrom("15pt")).toBeCloseTo(20);
+    expect(reserveFrom("0.25in")).toBe(24);
+    expect(reserveFrom("10")).toBe(10);
+  });
+  test("is 0 when absent or not a length", () => {
+    expect(reserveFrom(null)).toBe(0);
+    expect(reserveFrom("2em")).toBe(0);
+    expect(reserveFrom("big")).toBe(0);
+  });
+  test("a part is short of it when less room is left below the box", () => {
+    expect(shortOfReserve(19, 20)).toBe(true);
+    expect(shortOfReserve(20, 20)).toBe(false);
+    expect(shortOfReserve(0, 0)).toBe(false);
   });
 });

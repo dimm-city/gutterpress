@@ -10,6 +10,7 @@ import { launchChromium } from "../shared/cdp.ts";
 import { closeBrowser, getBrowser } from "../viewer/test-support/browser.ts";
 import { serveDir } from "../viewer/test-support/serve-dir.ts";
 import { bookHtml, card, ladder, list, para, table, words } from "../viewer/test-support/split-fixture.ts";
+import { spawnSync } from "node:child_process";
 import { build } from "./build.ts";
 
 /**
@@ -161,6 +162,51 @@ testIf(
       expect(printed.length).toBeGreaterThan(3);
       expect(printed).toEqual(predicted);
       for (const id of printed) expect(result.pageMap[id]).toBe(result.predicted!.pageMap[id]!);
+    } finally {
+      await browser.close();
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
+  },
+  TEST_TIMEOUT_MS,
+);
+
+testIf(
+  "with a reserve, nothing a cut class hangs below its part prints on the next page",
+  async () => {
+    const withReserve = card({ scope: "a", body: Array.from({ length: 14 }, (_, i) => `<div style="height:46px">U${i}</div>`).join("") })
+      .replace('data-gp-split-cut="cut"', 'data-gp-split-cut="cut" data-gp-split-reserve="20px"');
+    const dir = await fsp.mkdtemp(path.join(HERE, ".build-split-"));
+    const browser = await launchChromium();
+    try {
+      const file = path.join(dir, "book.html");
+      // the cut class hangs a red 20px shadow below the part, outside its box
+      await fsp.writeFile(file, bookHtml(withReserve, ".cut { box-shadow: 0 20px 0 #f00; }"), "utf8");
+      const result = await build({ input: pathToFileURL(file).href, browser, dpiFloor: 0 });
+      expect(result.diagnostics.map((d) => d.code)).not.toContain("engine.split.head-spill");
+      const heads = Object.keys(result.pageMap).filter((k) => /^gp-split-\d+-head$/.test(k));
+      expect(heads.length).toBeGreaterThan(2);
+      if (!Bun.which("pdftoppm")) return; // the pixel scan needs poppler; the page check above does not
+      await fsp.writeFile(path.join(dir, "out.pdf"), result.bytes);
+      const ran = spawnSync("pdftoppm", ["-r", "48", path.join(dir, "out.pdf"), path.join(dir, "pg")]);
+      expect(ran.stderr.toString()).toBe("");
+      const pages = (await fsp.readdir(dir)).filter((f) => f.endsWith(".ppm")).sort();
+      expect(pages).toHaveLength(result.pageCount);
+      for (const name of pages) {
+        // the top of the page content (32px down, 24 to 32px at 48 dpi) holds only the continuation's tab:
+        // red there is a foot that spilled from the page before
+        const buf = await fsp.readFile(path.join(dir, name));
+        const m = /^P6\s+(\d+)\s+(\d+)\s+255\s/.exec(buf.subarray(0, 40).toString("latin1"))!;
+        const w = Number(m[1]);
+        const h = Number(m[2]);
+        const data = buf.subarray(m[0].length);
+        let red = 0;
+        for (let y = 16; y < Math.min(h, 24); y++)
+          for (let x = 0; x < w; x++) {
+            const o = (y * w + x) * 3;
+            if (data[o]! > 200 && data[o + 1]! < 60 && data[o + 2]! < 60) red++;
+          }
+        expect(red).toBe(0);
+      }
     } finally {
       await browser.close();
       await fsp.rm(dir, { recursive: true, force: true });

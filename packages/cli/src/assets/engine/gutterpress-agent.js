@@ -326,6 +326,7 @@
 
   // src/engine/shared/split.ts
   var SPLIT_CSS = "[data-gp-split-cont] { break-before: page; margin-block-start: 0; }";
+  var PX_PER = { px: 1, pt: 96 / 72, pc: 16, in: 96, cm: 96 / 2.54, mm: 96 / 25.4 };
   function wordsOf(text) {
     return text.split(/\s+/).filter(Boolean);
   }

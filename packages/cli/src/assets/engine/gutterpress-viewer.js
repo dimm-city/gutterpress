@@ -3212,6 +3212,16 @@
   function firstCrossingUnit(startPage, lastPages) {
     return lastPages.findIndex((p) => p > startPage);
   }
+  var PX_PER = { px: 1, pt: 96 / 72, pc: 16, in: 96, cm: 96 / 2.54, mm: 96 / 25.4 };
+  function reserveFrom(value) {
+    const m = /^\s*(\d*\.?\d+)\s*(px|pt|pc|in|cm|mm)?\s*$/i.exec(value ?? "");
+    if (!m)
+      return 0;
+    return parseFloat(m[1]) * PX_PER[m[2]?.toLowerCase() ?? "px"];
+  }
+  function shortOfReserve(room, reserve) {
+    return reserve > 0 && room < reserve - 0.5;
+  }
   function stepBackOverAvoid(k, joined) {
     let i = k;
     while (i > 1 && joined[i])
@@ -3674,6 +3684,17 @@
       return { line: first, lastPage };
     });
   }
+  function roomBelow(api, card) {
+    const strip = api.strips.find((s) => s.el.contains(card));
+    const rect = Array.from(card.getClientRects()).at(-1);
+    if (!strip || !rect)
+      return Infinity;
+    const { rowStride, height } = stripMetrics(strip.el);
+    const zoom = cssZoomOf(strip.el);
+    const top = strip.el.getBoundingClientRect().top;
+    const row = Math.max(0, Math.floor(((rect.top - top) / zoom + 1) / rowStride));
+    return height - ((rect.bottom - top) / zoom - row * rowStride);
+  }
   var FORCED = /^(page|left|right|recto|verso)$/;
   function forcedBreaks(api) {
     const out = [];
@@ -3775,9 +3796,10 @@
         const flow = flowOf(card);
         const firstUnit = flow ? unitsOf(flow)[0] : undefined;
         const s = Math.max(first, firstUnit ? api.pageRangeOf(firstUnit.el)[0] : first);
-        if (e <= s)
+        const short = pending.has(card) && shortOfReserve(roomBelow(api, card), reserveFrom(card.getAttribute("data-gp-split-reserve")));
+        if (e <= s && !short)
           pending.delete(card);
-        return { scope: scopeOf(card), spans: e > s, start: s };
+        return { scope: scopeOf(card), spans: e > s || short, start: s };
       });
       const picked = pickPerScope(info);
       if (!picked.length)

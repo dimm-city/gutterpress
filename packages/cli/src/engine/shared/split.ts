@@ -63,6 +63,27 @@ export function firstCrossingUnit(startPage: number, lastPages: number[]): numbe
   return lastPages.findIndex((p) => p > startPage);
 }
 
+const PX_PER = { px: 1, pt: 96 / 72, pc: 16, in: 96, cm: 96 / 2.54, mm: 96 / 25.4 } as const;
+
+/**
+ * A reserve (`data-gp-split-reserve`) in CSS px: a number with an absolute CSS
+ * unit (`px`, `pt`, `pc`, `in`, `cm`, `mm`; none means px). Anything else is 0.
+ */
+export function reserveFrom(value: string | null | undefined): number {
+  const m = /^\s*(\d*\.?\d+)\s*(px|pt|pc|in|cm|mm)?\s*$/i.exec(value ?? "");
+  if (!m) return 0;
+  return parseFloat(m[1]!) * PX_PER[(m[2]?.toLowerCase() ?? "px") as keyof typeof PX_PER];
+}
+
+/**
+ * Whether a head part leaves less than its reserve below it: its border box
+ * must end at least `reserve` above the page content's bottom edge, so what
+ * its cut class hangs below the box (outline, shadow, a flag) prints on the page.
+ */
+export function shortOfReserve(room: number, reserve: number): boolean {
+  return reserve > 0 && room < reserve - 0.5;
+}
+
 /**
  * The cut point moved back over units that must stay with the next one
  * (`break-after: avoid` on the unit before, `break-before: avoid` on the

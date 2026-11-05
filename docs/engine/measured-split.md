@@ -35,6 +35,7 @@ knows what a "skill card" is.
 | `data-gp-split-scope="<id>"` | the card | cards that share one flow of pages (a learning path, a chapter section). A scope is cut one card per pass; two scopes are cut in the same pass only when a forced page break lies between them, and one after the other otherwise. Default is one scope for the whole book |
 | `data-gp-split-cut="<class>"` | the card | class added to a part that continues (the closed foot) |
 | `<template data-gp-split-head>` | inside the card | the continuation's root element, with an empty `[data-gp-flow]`. Put it last, so `:first-child` rules still see the tab |
+| `data-gp-split-reserve="<length>"` | the card | room a head part keeps below its border box, measured after the cut class is applied: the box must end at least this far above the page content's bottom edge, so what the cut class hangs outside the box (an outline, a hard shadow, a flag) prints on the page and not at the top of the next. Absolute CSS units (`px`, `pt`, `pc`, `in`, `cm`, `mm`); default 0. A head that ends nearer gives up a unit (or a line) |
 | `data-gp-nosplit` | a flow child | keep this block whole |
 | `data-gp-split-units="<selector>"` | a flow child | its matching direct children are units, cut between |
 | `data-gp-split-repeat="<selector>"` | the same block | direct children copied onto every part (a ladder's label bar) |
@@ -135,7 +136,8 @@ compared; a change undoes the cut.
   straddling paragraphs), but a line box that ends within half a pixel of the page
   foot is the knife-edge case in `docs/known-limitations.md` §4: the PDF decides, and
   `engine.split.page-drift` says so.
-- `data-gp-split-reserve` (room for the closed foot while measuring) is not
-  implemented: pull-back does the same one pass later.
+- The reserve is checked in the viewer, which measures the head's box; the print check
+  (`engine.split.head-spill`) reads PDF destinations, which carry a page, not a height, so it
+  reports a head that ended on another page but not one that ended inside its reserve.
 - Table `tfoot`, several `tbody`, `ol[reversed]` and `white-space: pre` paragraphs are
   not cut.

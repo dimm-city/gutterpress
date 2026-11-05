@@ -244,6 +244,43 @@ describe("a continuation heads its page cleanly", () => {
   );
 });
 
+describe("data-gp-split-reserve", () => {
+  /** room left under each cut head, in px, from the strip's column height */
+  const rooms = (v: TestPage) =>
+    v.evaluate(() => {
+      const strip = document.querySelector(".gp-strip") as HTMLElement;
+      const h = parseFloat(getComputedStyle(strip).getPropertyValue("--gp-content-h"));
+      const top = strip.getBoundingClientRect().top;
+      const pitch = h + (parseFloat(getComputedStyle(strip).rowGap) || 0);
+      return [...document.querySelectorAll("[data-gp-split]")]
+        .filter((c) => c.nextElementSibling?.hasAttribute("data-gp-split-cont") || c.nextElementSibling?.nextElementSibling?.hasAttribute("data-gp-split-cont"))
+        .map((c) => {
+          const r = Array.from(c.getClientRects()).at(-1)!;
+          return Math.round(h - (r.bottom - top - Math.floor((r.top - top + 1) / pitch) * pitch));
+        });
+    }) as Promise<number[]>;
+
+  // the cut class hangs a 20px shadow below the part's box; blocks of 46px put a head's box at the foot
+  const foot = ".cut { box-shadow: 0 20px 0 #c00 }";
+  const body = blocks(12, "R").replace(/height:40px/g, "height:46px");
+
+  testIf(
+    "a head part ends at least the reserve above the page foot, the cut class's own foot included",
+    async () => {
+      const without = await withPages(mk("R", "r", "cut", body), foot, ({ viewer }) => rooms(viewer));
+      expect(Math.min(...without)).toBeLessThan(20); // the control: with no reserve a head ends at the foot
+      const reserved = await withPages(
+        mk("R", "r", "cut", body, ` data-gp-split-reserve="20px"`),
+        foot,
+        ({ viewer }) => rooms(viewer),
+      );
+      expect(reserved.length).toBeGreaterThan(1);
+      for (const room of reserved) expect(room).toBeGreaterThanOrEqual(20);
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
 describe("paragraph lines", () => {
   testIf(
     "a raised or smaller inline does not count as a line: two lines stay on each side",

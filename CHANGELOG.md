@@ -21,7 +21,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   (`refresh()` keeps the cuts, `resplit()` makes them again). The build reports
   `engine.split.summary` (breaks by kind, pages before and after, the scopes that
   grew) and warns with `engine.split.unsplittable`, `.unconverged`, `.template`,
-  `.text-changed`, `.page-drift`, `.head-spill` and `.failed`. Markup and limits:
+  `.text-changed`, `.page-drift`, `.head-spill` and `.failed`. `data-gp-split-reserve="20px"`
+  keeps that much room under a head part for what its cut class hangs below the
+  box (outline, shadow, flag). Markup and limits:
   `docs/engine/measured-split.md`.
 - **`pdfx.blackText: k-only-neutral`.** Grey text at 24pt and under (channels
   within 0.04 of each other) also prints on the black plate alone, at about

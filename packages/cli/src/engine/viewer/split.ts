@@ -18,6 +18,8 @@ import {
   stepBackOverAvoid,
   pullBack,
   pullBackWord,
+  reserveFrom,
+  shortOfReserve,
   spanPages,
   type SplitDiagnostic,
   type SplitOp,
@@ -39,7 +41,7 @@ import {
   unsplitAll,
   wordRanges,
 } from "./split-dom.ts";
-import { indexInStrip, type GutterpressViewerApi } from "./fragment.ts";
+import { cssZoomOf, indexInStrip, stripMetrics, type GutterpressViewerApi } from "./fragment.ts";
 
 type Layout = Pick<GutterpressViewerApi, "pageRangeOf" | "relayout" | "totalPages" | "strips" | "model">;
 
@@ -71,6 +73,18 @@ function wordPositions(api: Layout, p: Element): WordPos[] {
     });
     return { line: first, lastPage };
   });
+}
+
+/** Room left below the card's last fragment to the bottom of the page content, in CSS px. */
+function roomBelow(api: Layout, card: Element): number {
+  const strip = api.strips.find((s) => s.el.contains(card));
+  const rect = Array.from(card.getClientRects()).at(-1);
+  if (!strip || !rect) return Infinity;
+  const { rowStride, height } = stripMetrics(strip.el);
+  const zoom = cssZoomOf(strip.el);
+  const top = strip.el.getBoundingClientRect().top;
+  const row = Math.max(0, Math.floor(((rect.top - top) / zoom + 1) / rowStride));
+  return height - ((rect.bottom - top) / zoom - row * rowStride);
 }
 
 const FORCED = /^(page|left|right|recto|verso)$/;
@@ -198,8 +212,10 @@ export function measuredSplit(api: Layout): SplitResult {
       const flow = flowOf(card);
       const firstUnit = flow ? unitsOf(flow)[0] : undefined;
       const s = Math.max(first, firstUnit ? api.pageRangeOf(firstUnit.el)[0] : first);
-      if (e <= s) pending.delete(card);
-      return { scope: scopeOf(card), spans: e > s, start: s };
+      // a head that ends too near the foot of the page (less than its reserve) counts as spanning
+      const short = pending.has(card) && shortOfReserve(roomBelow(api, card), reserveFrom(card.getAttribute("data-gp-split-reserve")));
+      if (e <= s && !short) pending.delete(card);
+      return { scope: scopeOf(card), spans: e > s || short, start: s };
     });
     const picked = pickPerScope(info);
     if (!picked.length) break;
