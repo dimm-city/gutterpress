@@ -61,8 +61,19 @@ const docCache = new Map<string, CacheEntry>();
  */
 export const DOC_CACHE_MAX = 8;
 
+/**
+ * Release a document: its worker transport and every decoded page, font and
+ * image. Through the loading task, which both PDF.js lines have: PDF.js 6
+ * (unpdf 1.8 and newer) dropped `PDFDocumentProxy.destroy()`, and that
+ * TypeError made the preserve-text inspections below fall back to flattening
+ * every transparent page whole (#499).
+ */
+function releasePdf(doc: PDFDocumentProxy): Promise<void> {
+  return doc.loadingTask.destroy();
+}
+
 function destroyEntry(entry: CacheEntry): void {
-  entry.doc.then((d) => d.destroy()).catch(() => {});
+  entry.doc.then(releasePdf).catch(() => {});
 }
 
 /**
@@ -638,7 +649,7 @@ export async function unsplittableTextReasons(
       if (!showsText && !reasons.has(i)) reasons.set(i, "no-text");
     }
   } finally {
-    await doc.destroy();
+    await releasePdf(doc);
   }
   return reasons;
 }
@@ -740,7 +751,7 @@ export async function pagesWithVisibleShadingPaints(
       if (found) out.push(i);
     }
   } finally {
-    await doc.destroy();
+    await releasePdf(doc);
   }
   return out;
 }

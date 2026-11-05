@@ -24,6 +24,7 @@ import {
   getOpPass,
   isLoadable,
   unsplittableTextReasons,
+  pagesWithVisibleShadingPaints,
 } from "./pdf-inspect";
 import type { PDFDocumentProxy } from "unpdf/pdfjs";
 
@@ -180,8 +181,9 @@ describe("pdf-inspect cache eviction + clearPdfCache", () => {
     clearPdfCache(); // isolate from documents cached by earlier suites
     const first = (await loadPdf(paths[0]!))!;
     let destroyed = false;
-    const origDestroy = first.destroy.bind(first);
-    first.destroy = () => {
+    const task = first.loadingTask;
+    const origDestroy = task.destroy.bind(task);
+    task.destroy = () => {
       destroyed = true;
       return origDestroy();
     };
@@ -215,8 +217,9 @@ describe("pdf-inspect cache eviction + clearPdfCache", () => {
 
     const first = (await loadPdf(paths[0]!))!;
     let destroyed = false;
-    const origDestroy = first.destroy.bind(first);
-    first.destroy = () => {
+    const task = first.loadingTask;
+    const origDestroy = task.destroy.bind(task);
+    task.destroy = () => {
       destroyed = true;
       return origDestroy();
     };
@@ -248,8 +251,9 @@ describe("pdf-inspect cache eviction + clearPdfCache", () => {
     const active = retainPdfCache();
     const doc = (await loadPdf(paths[0]!))!;
     let destroyed = false;
-    const origDestroy = doc.destroy.bind(doc);
-    doc.destroy = () => {
+    const task = doc.loadingTask;
+    const origDestroy = task.destroy.bind(task);
+    task.destroy = () => {
       destroyed = true;
       return origDestroy();
     };
@@ -262,6 +266,25 @@ describe("pdf-inspect cache eviction + clearPdfCache", () => {
     active();
     await new Promise((r) => setTimeout(r, 20));
     expect(destroyed).toBe(true);
+  });
+});
+
+// unpdf 1.8 and newer ship PDF.js 6, whose document proxy has no `destroy()`.
+// pdf-inspect releases a document through its loading task, which both PDF.js
+// lines have, so on the unpdf the lockfile tracks the preserve-text planner's
+// inspections complete instead of throwing (#499): build-runner turns that
+// throw into "could not inspect this PDF's text" and flattens every
+// transparent page whole.
+describe("document release on the locked unpdf (#499)", () => {
+  test("the preserve-text inspections complete and release their document", async () => {
+    const { PDFDocument, StandardFonts } = await import("pdf-lib");
+    const source = await PDFDocument.create();
+    const font = source.embedStandardFont(StandardFonts.Helvetica);
+    source.addPage([100, 100]).drawText("Hello", { x: 10, y: 50, size: 12, font });
+    const bytes = await source.save();
+    // Plain opaque text is eligible for a live-text split; nothing paints a shading.
+    expect(await unsplittableTextReasons(bytes)).toEqual(new Map());
+    expect(await pagesWithVisibleShadingPaints(bytes, [1])).toEqual([]);
   });
 });
 

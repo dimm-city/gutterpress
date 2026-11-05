@@ -33,6 +33,14 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **`pdfx.transparency: preserve-text` flattened every transparent page whole
+  for a book built with the CLI installed from npm.** `unpdf` resolved to 1.8
+  or newer there (PDF.js 6), whose document proxy has no `destroy()`: the text
+  inspection threw, the build warned "could not inspect this PDF's text" and
+  rasterised the text with the artwork. Documents are now released through
+  the loading task, which PDF.js 5 and 6 both have, and the lockfile tracks
+  the `unpdf` the range resolves to (1.9.1), so the test suite runs what
+  consumers install. (#499)
 - **The ink-coverage check did not measure total ink coverage.** Ghostscript's
   `inkcov` device reports the share of the page each ink touches, not how much
   ink it lays down, so a page of 72% cyan read as 100% and a 400% patch on a
