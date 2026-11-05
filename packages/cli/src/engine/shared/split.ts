@@ -30,6 +30,8 @@ export interface SplitOp {
   n: number;
   unit: number;
   kind: SplitKind;
+  /** a paragraph unit is cut before this word (0-based, whitespace-separated); absent = break before the unit */
+  word?: number;
 }
 
 export type SplitDiagnosticCode =
@@ -60,6 +62,45 @@ export function firstCrossingUnit(startPage: number, lastPages: number[]): numbe
  */
 export function pullBack(unit: number): number | null {
   return unit - 1 >= 1 ? unit - 1 : null;
+}
+
+/** Lines a paragraph keeps on each side of a cut (orphans and widows). */
+export const MIN_LINES = 2;
+
+/** One word of a paragraph as measured: its line (consecutive, in order) and the last page it touches. */
+export interface WordPos {
+  line: number;
+  lastPage: number;
+}
+
+/**
+ * Where to cut a paragraph that starts on the card's page and runs onto the
+ * next: before the first word not wholly on the start page (a word broken at
+ * a hyphen across the boundary moves whole), but never leaving fewer than
+ * `MIN_LINES` lines on either side. Null means break before the whole
+ * paragraph instead.
+ */
+export function chooseWordBreak(words: WordPos[], startPage: number): number | null {
+  let i = words.findIndex((w) => w.lastPage > startPage);
+  if (i < 1) return null;
+  const lastLine = words[words.length - 1]!.line;
+  if (lastLine - words[i]!.line + 1 < MIN_LINES) {
+    i = words.findIndex((w) => w.line === lastLine - (MIN_LINES - 1));
+    if (i < 1) return null;
+  }
+  return words[i - 1]!.line - words[0]!.line + 1 >= MIN_LINES ? i : null;
+}
+
+/**
+ * One line fewer for a head part that still spans a page: the cut moves to the
+ * start of the head's last line, or null (cut before the whole paragraph) if
+ * that would leave fewer than `MIN_LINES` lines.
+ */
+export function pullBackWord(lines: number[]): number | null {
+  if (!lines.length) return null;
+  const last = lines[lines.length - 1]!;
+  if (last - lines[0]! + 1 < MIN_LINES + 1) return null;
+  return lines.findIndex((l) => l === last);
 }
 
 /**

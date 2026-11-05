@@ -9,7 +9,7 @@ import { getAssetPath } from "../../lib/embedded-assets.ts";
 import { launchChromium } from "../shared/cdp.ts";
 import { closeBrowser, getBrowser } from "../viewer/test-support/browser.ts";
 import { serveDir } from "../viewer/test-support/serve-dir.ts";
-import { bookHtml, card, ladder, list, para, table } from "../viewer/test-support/split-fixture.ts";
+import { bookHtml, card, ladder, list, para, table, words } from "../viewer/test-support/split-fixture.ts";
 import { build } from "./build.ts";
 
 /**
@@ -30,7 +30,7 @@ afterAll(async () => {
 const cards =
   card({ scope: "a", body: para("Intro1") + list("ol", 12) + table(8) }) +
   card({ scope: "a", body: para("Intro2") + ladder(8) + para("Close2") }) +
-  card({ scope: "b", body: para("Intro3") + table(12) + list("ul", 6) });
+  card({ scope: "b", body: para("Intro3") + `<p>LONG ${words(14)} END</p>` + table(12) + list("ul", 6) });
 
 async function pdfPages(bytes: Uint8Array): Promise<string[]> {
   const doc = await getDocumentProxy(bytes);

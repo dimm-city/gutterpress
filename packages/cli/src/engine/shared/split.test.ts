@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+  chooseWordBreak,
   describeSplit,
   firstCrossingUnit,
   pickPerScope,
   pullBack,
+  pullBackWord,
   sameWords,
   spanPages,
   wordsOf,
@@ -78,5 +80,46 @@ describe("describeSplit", () => {
     expect(line).toContain("10pp -> 11pp (+1)");
     expect(line).toContain("p1 3->4");
     expect(line).not.toContain("p2");
+  });
+});
+
+/** words laid out `perLine` to a line, on pages that hold `linesPerPage` lines */
+function laid(total: number, perLine: number, linesPerPage: number) {
+  return Array.from({ length: total }, (_, i) => {
+    const line = Math.floor(i / perLine) + 1;
+    return { line, lastPage: Math.floor((line - 1) / linesPerPage) };
+  });
+}
+
+describe("chooseWordBreak", () => {
+  test("cuts before the first word that is not wholly on the start page", () => {
+    // 10 lines of 4 words, 6 lines to a page: the 7th line starts the next page
+    expect(chooseWordBreak(laid(40, 4, 6), 0)).toBe(24);
+  });
+  test("keeps two lines after the cut: a lone last line comes along", () => {
+    // 7 lines, the 7th on the next page: cut moves up a line
+    expect(chooseWordBreak(laid(28, 4, 6), 0)).toBe(20);
+  });
+  test("keeps two lines before the cut, else the whole paragraph moves", () => {
+    // starts on the last line of its page
+    expect(chooseWordBreak(laid(40, 4, 1), 0)).toBeNull();
+  });
+  test("a paragraph wholly on the start page has no cut", () => {
+    expect(chooseWordBreak(laid(8, 4, 6), 0)).toBeNull();
+  });
+  test("a word that wraps across the boundary moves whole", () => {
+    const w = laid(24, 4, 6);
+    w[19] = { line: 5, lastPage: 1 }; // the last word of line 5 breaks at a hyphen onto the next page
+    expect(chooseWordBreak(w, 0)).toBe(19);
+  });
+});
+
+describe("pullBackWord", () => {
+  test("moves the cut to the start of the head's last line", () => {
+    expect(pullBackWord([1, 1, 2, 2, 3, 3, 3])).toBe(4);
+  });
+  test("leaves two lines or gives up", () => {
+    expect(pullBackWord([1, 1, 2, 2])).toBeNull();
+    expect(pullBackWord([])).toBeNull();
   });
 });

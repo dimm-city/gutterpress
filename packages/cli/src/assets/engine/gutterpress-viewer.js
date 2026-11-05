@@ -3214,6 +3214,27 @@
   function pullBack(unit) {
     return unit - 1 >= 1 ? unit - 1 : null;
   }
+  var MIN_LINES = 2;
+  function chooseWordBreak(words, startPage) {
+    let i = words.findIndex((w) => w.lastPage > startPage);
+    if (i < 1)
+      return null;
+    const lastLine = words[words.length - 1].line;
+    if (lastLine - words[i].line + 1 < MIN_LINES) {
+      i = words.findIndex((w) => w.line === lastLine - (MIN_LINES - 1));
+      if (i < 1)
+        return null;
+    }
+    return words[i - 1].line - words[0].line + 1 >= MIN_LINES ? i : null;
+  }
+  function pullBackWord(lines) {
+    if (!lines.length)
+      return null;
+    const last = lines[lines.length - 1];
+    if (last - lines[0] + 1 < MIN_LINES + 1)
+      return null;
+    return lines.findIndex((l) => l === last);
+  }
   function pickPerScope(cards) {
     const seen = new Set;
     const picked = [];
@@ -3375,6 +3396,54 @@
     }
     return null;
   }
+  function wordSpots(el) {
+    const nodes = [];
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode();n; n = walker.nextNode())
+      nodes.push(n);
+    const starts = [];
+    let flat = "";
+    for (const n of nodes) {
+      starts.push(flat.length);
+      flat += n.data;
+    }
+    const at = (g, inclusive) => {
+      let i = nodes.length - 1;
+      while (i > 0 && starts[i] > (inclusive ? g : g - 1))
+        i--;
+      return [nodes[i], g - starts[i]];
+    };
+    return Array.from(flat.matchAll(/\S+/g), (m) => {
+      const [node, offset] = at(m.index, true);
+      const [endNode, endOffset] = at(m.index + m[0].length, false);
+      return { node, offset, endNode, endOffset };
+    });
+  }
+  function wordRanges(el) {
+    return wordSpots(el).map((w) => {
+      const r = document.createRange();
+      r.setStart(w.node, w.offset);
+      r.setEnd(w.endNode, w.endOffset);
+      return r;
+    });
+  }
+  function cutParagraphAt(p, index) {
+    if (/^pre/.test(getComputedStyle(p).whiteSpace))
+      return false;
+    const spot = wordSpots(p)[index];
+    if (!spot || index < 1)
+      return false;
+    const range = document.createRange();
+    range.setStart(spot.node, spot.offset);
+    range.setEnd(p, p.childNodes.length);
+    const rest = p.cloneNode(false);
+    stripIds(rest);
+    rest.setAttribute(JOIN, "");
+    rest.classList.add("gp-split-cont");
+    rest.appendChild(range.extractContents());
+    p.after(rest);
+    return true;
+  }
   function makeContinuation(head) {
     const tpl = templateOf(head);
     const root2 = tpl?.content.firstElementChild;
@@ -3408,11 +3477,11 @@
     walk2(flow);
     return wordsOf(text.join(" "));
   }
-  function splitCardAt(card, index) {
+  function splitCardAt(card, index, word) {
     const flow = flowOf(card);
-    const units = flow ? unitsOf(flow) : [];
-    const unit = units[index];
-    if (!flow || !unit || index < 1)
+    let units = flow ? unitsOf(flow) : [];
+    let unit = units[index];
+    if (!flow || !unit || index < 1 && word === undefined)
       return { ok: false };
     const cont = makeContinuation(card);
     if (!cont) {
@@ -3425,6 +3494,15 @@
       };
     }
     const before = flowWords(card);
+    let kind = unit.kind;
+    if (word !== undefined) {
+      if (unit.kind !== "block" || unit.el.tagName !== "P" || !cutParagraphAt(unit.el, word))
+        return { ok: false };
+      units = unitsOf(flow);
+      index += 1;
+      unit = units[index];
+      kind = "paragraph";
+    }
     const contFlow = flowOf(cont);
     const following = [];
     for (let n = unit.block.nextElementSibling;n; n = n.nextElementSibling)
@@ -3448,19 +3526,24 @@
         }
       };
     }
-    return { ok: true, cont, kind: unit.kind };
+    return { ok: true, cont, kind };
   }
-  function mergeInto(target, shell) {
+  function mergeInto(target, shell, inline = shell.classList.contains("gp-split-cont")) {
     while (shell.firstChild) {
       const n = shell.firstChild;
+      const last = target.lastChild;
       if (n instanceof Element && n.hasAttribute(COPY))
         n.remove();
       else if (n instanceof Element && n.hasAttribute(JOIN)) {
         mergeInto(target.lastElementChild, n);
         n.remove();
+      } else if (inline && n instanceof Element && last instanceof Element && last.cloneNode(false).isEqualNode(n.cloneNode(false))) {
+        mergeInto(last, n, true);
+        n.remove();
       } else
         target.appendChild(n);
     }
+    target.normalize();
   }
   function mergeBack(head) {
     const cont = continuationOf(head);
@@ -3499,6 +3582,25 @@
   }
 
   // src/engine/viewer/split.ts
+  function wordPositions(api, p) {
+    const strip = api.strips.find((s) => s.el.contains(p));
+    if (!strip)
+      return [];
+    const pageAt = (r) => strip.offset + indexInStrip(r.left, r.top, strip);
+    let line = 0;
+    let key = "";
+    return wordRanges(p).map((range) => {
+      const rects = Array.from(range.getClientRects());
+      if (!rects.length)
+        return { line, lastPage: -1 };
+      const first = rects[0];
+      const k = `${pageAt(first)}:${Math.round(first.top)}`;
+      if (k !== key)
+        line++;
+      key = k;
+      return { line, lastPage: pageAt(rects[rects.length - 1]) };
+    });
+  }
   function scopeSpans(api) {
     const ranges = new Map;
     for (const card of cardsOf()) {
@@ -3554,10 +3656,15 @@
         const prior = pending.get(card);
         if (prior) {
           pending.delete(card);
+          const head = prior.word === undefined ? undefined : unitsOf(flow)[prior.unit]?.el;
+          const word2 = head ? pullBackWord(wordPositions(api, head).map((w) => w.line)) : null;
           mergeBack(card);
-          const unit = pullBack(prior.unit);
-          if (unit !== null && splitCardAt(card, unit).ok) {
+          const keep = prior.word !== undefined;
+          const unit = keep ? prior.unit : pullBack(prior.unit);
+          if (unit !== null && splitCardAt(card, unit, keep ? word2 ?? undefined : undefined).ok) {
             prior.unit = unit;
+            prior.word = keep ? word2 ?? undefined : undefined;
+            prior.kind = prior.word === undefined ? "block" : prior.kind;
             pending.set(card, prior);
           } else {
             ops.splice(ops.indexOf(prior), 1);
@@ -3572,21 +3679,24 @@
           settled.add(card);
           continue;
         }
-        if (k === 0) {
+        const crossing = units[k];
+        const [from, to] = api.pageRangeOf(crossing.el);
+        const word = crossing.kind === "block" && crossing.el.tagName === "P" && from === info[i].start && to > from ? chooseWordBreak(wordPositions(api, crossing.el), info[i].start) : null;
+        if (k === 0 && word === null) {
           if (isContinuation(card))
             note(unsplittable());
           settled.add(card);
           continue;
         }
         const n = cardsOf().indexOf(card);
-        const res = splitCardAt(card, k);
+        const res = splitCardAt(card, k, word ?? undefined);
         if (!res.ok) {
           if (res.diagnostic)
             note(res.diagnostic);
           settled.add(card);
           continue;
         }
-        const op = { n, unit: k, kind: res.kind };
+        const op = { n, unit: k, kind: res.kind, ...word === null ? {} : { word } };
         ops.push(op);
         pending.set(card, op);
       }

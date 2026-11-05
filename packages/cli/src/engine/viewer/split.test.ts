@@ -101,12 +101,12 @@ function expectWholeParts(r: Rendered) {
 
 describe("measured split in the viewer", () => {
   testIf(
-    "blocks: the first block that crosses the break starts the continuation",
+    "blocks: a block that crosses the break starts the continuation, a straddling paragraph is cut at a line",
     async () => {
       const body = para("A") + para("B") + para("C") + para("D") + para("E") + para("F");
       const r = await render(card({ body }));
       expect(r.codes).toEqual([]);
-      expect(Object.keys(r.kinds)).toEqual(["block"]);
+      expect(Object.keys(r.kinds).sort()).toEqual(["block", "paragraph"]);
       expect(r.parts.length).toBeGreaterThan(1);
       expect(r.parts[0]!.cut).toBe(true);
       expect(r.parts[1]!.cont).toBe(true);
@@ -172,7 +172,8 @@ describe("measured split in the viewer", () => {
   testIf(
     "a unit taller than a page keeps the native break and says so",
     async () => {
-      const r = await render(card({ body: para("A") + `<p>HUGE ${words(220)}</p>` + para("Z") }));
+      const huge = `<div style="height: 400px">HUGE</div>`;
+      const r = await render(card({ body: para("A") + huge + para("Z") }));
       expect(r.codes).toContain("engine.split.unsplittable");
       expect(r.restored).toBe(true);
     },
@@ -227,6 +228,34 @@ describe("measured split in the viewer", () => {
       expect(again.pages).toBe(once.pages);
       expect(again.ids).toEqual(once.ids);
       expect(again.restored).toBe(true);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  testIf(
+    "a paragraph that straddles the break is cut at a line, two lines each side, no word lost",
+    async () => {
+      const long = `<p>LONG ${words(12)} END</p>`;
+      const r = await render(card({ body: para("Intro") + long + para("Tail") }));
+      expect(r.kinds.paragraph).toBeGreaterThan(0);
+      expectWholeParts(r);
+      const flat = r.parts.map((p) => p.text).join(" ");
+      expect(flat.match(/lorem ipsum/g)!.length).toBe(
+        `Intro ${words(4)} LONG ${words(12)} END Tail ${words(4)}`.match(/lorem ipsum/g)!.length,
+      );
+      expect(r.restored).toBe(true);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  testIf(
+    "a paragraph taller than a page is cut into pages instead of left native",
+    async () => {
+      const r = await render(card({ body: `<p>HUGE ${words(30)}</p>` }));
+      expect(r.codes).toEqual([]);
+      expect(r.kinds.paragraph).toBeGreaterThan(1);
+      expectWholeParts(r);
+      expect(r.restored).toBe(true);
     },
     TEST_TIMEOUT_MS,
   );

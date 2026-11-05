@@ -12,13 +12,16 @@
  */
 import {
   SPLIT_PASS_CAP,
+  chooseWordBreak,
   firstCrossingUnit,
   pickPerScope,
   pullBack,
+  pullBackWord,
   spanPages,
   type SplitDiagnostic,
   type SplitOp,
   type SplitResult,
+  type WordPos,
 } from "../shared/split.ts";
 import {
   cardsOf,
@@ -31,10 +34,29 @@ import {
   splitCardAt,
   unitsOf,
   unsplitAll,
+  wordRanges,
 } from "./split-dom.ts";
-import type { GutterpressViewerApi } from "./fragment.ts";
+import { indexInStrip, type GutterpressViewerApi } from "./fragment.ts";
 
-type Layout = Pick<GutterpressViewerApi, "pageRangeOf" | "relayout" | "totalPages">;
+type Layout = Pick<GutterpressViewerApi, "pageRangeOf" | "relayout" | "totalPages" | "strips">;
+
+/** Every word of a paragraph with its line and last page, from the live layout. */
+function wordPositions(api: Layout, p: Element): WordPos[] {
+  const strip = api.strips.find((s) => s.el.contains(p));
+  if (!strip) return [];
+  const pageAt = (r: DOMRect): number => strip.offset + indexInStrip(r.left, r.top, strip);
+  let line = 0;
+  let key = "";
+  return wordRanges(p).map((range) => {
+    const rects = Array.from(range.getClientRects());
+    if (!rects.length) return { line, lastPage: -1 };
+    const first = rects[0]!;
+    const k = `${pageAt(first)}:${Math.round(first.top)}`;
+    if (k !== key) line++;
+    key = k;
+    return { line, lastPage: pageAt(rects[rects.length - 1]!) };
+  });
+}
 
 function scopeSpans(api: Layout): Map<string, number> {
   const ranges = new Map<string, Array<[number, number]>>();
@@ -100,10 +122,15 @@ export function measuredSplit(api: Layout): SplitResult {
       if (prior) {
         // the head still spans pages: keep one unit fewer
         pending.delete(card);
+        const head = prior.word === undefined ? undefined : unitsOf(flow)[prior.unit]?.el;
+        const word = head ? pullBackWord(wordPositions(api, head).map((w) => w.line)) : null;
         mergeBack(card);
-        const unit = pullBack(prior.unit);
-        if (unit !== null && splitCardAt(card, unit).ok) {
+        const keep = prior.word !== undefined; // a paragraph: one line fewer, else the whole paragraph moves
+        const unit = keep ? prior.unit : pullBack(prior.unit);
+        if (unit !== null && splitCardAt(card, unit, keep ? (word ?? undefined) : undefined).ok) {
           prior.unit = unit;
+          prior.word = keep ? (word ?? undefined) : undefined;
+          prior.kind = prior.word === undefined ? "block" : prior.kind;
           pending.set(card, prior);
         } else {
           ops.splice(ops.indexOf(prior), 1);
@@ -121,7 +148,14 @@ export function measuredSplit(api: Layout): SplitResult {
         settled.add(card); // only the card's own chrome spills
         continue;
       }
-      if (k === 0) {
+      // a paragraph that starts on this page and runs onto the next is cut at a line
+      const crossing = units[k]!;
+      const [from, to] = api.pageRangeOf(crossing.el);
+      const word =
+        crossing.kind === "block" && crossing.el.tagName === "P" && from === info[i]!.start && to > from
+          ? chooseWordBreak(wordPositions(api, crossing.el), info[i]!.start)
+          : null;
+      if (k === 0 && word === null) {
         // the first unit does not fit where the card starts: a continuation
         // starts a page, so there it is taller than a page
         if (isContinuation(card)) note(unsplittable());
@@ -129,13 +163,13 @@ export function measuredSplit(api: Layout): SplitResult {
         continue;
       }
       const n = cardsOf().indexOf(card);
-      const res = splitCardAt(card, k);
+      const res = splitCardAt(card, k, word ?? undefined);
       if (!res.ok) {
         if (res.diagnostic) note(res.diagnostic);
         settled.add(card);
         continue;
       }
-      const op: SplitOp = { n, unit: k, kind: res.kind };
+      const op: SplitOp = { n, unit: k, kind: res.kind, ...(word === null ? {} : { word }) };
       ops.push(op);
       pending.set(card, op);
     }

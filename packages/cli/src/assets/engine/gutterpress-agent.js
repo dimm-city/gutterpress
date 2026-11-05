@@ -457,6 +457,46 @@
     }
     return null;
   }
+  function wordSpots(el) {
+    const nodes = [];
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode();n; n = walker.nextNode())
+      nodes.push(n);
+    const starts = [];
+    let flat = "";
+    for (const n of nodes) {
+      starts.push(flat.length);
+      flat += n.data;
+    }
+    const at = (g, inclusive) => {
+      let i = nodes.length - 1;
+      while (i > 0 && starts[i] > (inclusive ? g : g - 1))
+        i--;
+      return [nodes[i], g - starts[i]];
+    };
+    return Array.from(flat.matchAll(/\S+/g), (m) => {
+      const [node, offset] = at(m.index, true);
+      const [endNode, endOffset] = at(m.index + m[0].length, false);
+      return { node, offset, endNode, endOffset };
+    });
+  }
+  function cutParagraphAt(p, index) {
+    if (/^pre/.test(getComputedStyle(p).whiteSpace))
+      return false;
+    const spot = wordSpots(p)[index];
+    if (!spot || index < 1)
+      return false;
+    const range = document.createRange();
+    range.setStart(spot.node, spot.offset);
+    range.setEnd(p, p.childNodes.length);
+    const rest = p.cloneNode(false);
+    stripIds(rest);
+    rest.setAttribute(JOIN, "");
+    rest.classList.add("gp-split-cont");
+    rest.appendChild(range.extractContents());
+    p.after(rest);
+    return true;
+  }
   function makeContinuation(head) {
     const tpl = templateOf(head);
     const root = tpl?.content.firstElementChild;
@@ -490,11 +530,11 @@
     walk(flow);
     return wordsOf(text.join(" "));
   }
-  function splitCardAt(card, index) {
+  function splitCardAt(card, index, word) {
     const flow = flowOf(card);
-    const units = flow ? unitsOf(flow) : [];
-    const unit = units[index];
-    if (!flow || !unit || index < 1)
+    let units = flow ? unitsOf(flow) : [];
+    let unit = units[index];
+    if (!flow || !unit || index < 1 && word === undefined)
       return { ok: false };
     const cont = makeContinuation(card);
     if (!cont) {
@@ -507,6 +547,15 @@
       };
     }
     const before = flowWords(card);
+    let kind = unit.kind;
+    if (word !== undefined) {
+      if (unit.kind !== "block" || unit.el.tagName !== "P" || !cutParagraphAt(unit.el, word))
+        return { ok: false };
+      units = unitsOf(flow);
+      index += 1;
+      unit = units[index];
+      kind = "paragraph";
+    }
     const contFlow = flowOf(cont);
     const following = [];
     for (let n = unit.block.nextElementSibling;n; n = n.nextElementSibling)
@@ -530,19 +579,24 @@
         }
       };
     }
-    return { ok: true, cont, kind: unit.kind };
+    return { ok: true, cont, kind };
   }
-  function mergeInto(target, shell) {
+  function mergeInto(target, shell, inline = shell.classList.contains("gp-split-cont")) {
     while (shell.firstChild) {
       const n = shell.firstChild;
+      const last = target.lastChild;
       if (n instanceof Element && n.hasAttribute(COPY))
         n.remove();
       else if (n instanceof Element && n.hasAttribute(JOIN)) {
         mergeInto(target.lastElementChild, n);
         n.remove();
+      } else if (inline && n instanceof Element && last instanceof Element && last.cloneNode(false).isEqualNode(n.cloneNode(false))) {
+        mergeInto(last, n, true);
+        n.remove();
       } else
         target.appendChild(n);
     }
+    target.normalize();
   }
   function mergeBack(head) {
     const cont = continuationOf(head);
@@ -575,7 +629,7 @@
     for (const op of ops) {
       const card = cardsOf()[op.n];
       if (card)
-        splitCardAt(card, op.unit);
+        splitCardAt(card, op.unit, op.word);
     }
     return labelContinuations();
   }

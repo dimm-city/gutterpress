@@ -177,6 +177,68 @@ function headOf(cont: Element): Element | null {
   return null;
 }
 
+interface WordSpot {
+  node: Text;
+  offset: number;
+  endNode: Text;
+  endOffset: number;
+}
+
+/** The whitespace-separated words of a paragraph's text, as positions in its text nodes. */
+function wordSpots(el: Element): WordSpot[] {
+  const nodes: Text[] = [];
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n as Text);
+  const starts: number[] = [];
+  let flat = "";
+  for (const n of nodes) {
+    starts.push(flat.length);
+    flat += n.data;
+  }
+  const at = (g: number, inclusive: boolean): [Text, number] => {
+    let i = nodes.length - 1;
+    while (i > 0 && starts[i]! > (inclusive ? g : g - 1)) i--;
+    return [nodes[i]!, g - starts[i]!];
+  };
+  return Array.from(flat.matchAll(/\S+/g), (m) => {
+    const [node, offset] = at(m.index!, true);
+    const [endNode, endOffset] = at(m.index! + m[0].length, false);
+    return { node, offset, endNode, endOffset };
+  });
+}
+
+/** One Range per word of a paragraph, for measuring where each lands. */
+export function wordRanges(el: Element): Range[] {
+  return wordSpots(el).map((w) => {
+    const r = document.createRange();
+    r.setStart(w.node, w.offset);
+    r.setEnd(w.endNode, w.endOffset);
+    return r;
+  });
+}
+
+/**
+ * Cut a paragraph before word `index`: the rest moves into a clone of the
+ * paragraph (id dropped, class `gp-split-cont`) inserted after it. Partial
+ * inline ancestors are cloned by the extraction, no text is trimmed. False
+ * when the paragraph keeps whitespace as written or has no such word.
+ */
+function cutParagraphAt(p: Element, index: number): boolean {
+  if (/^pre/.test(getComputedStyle(p).whiteSpace)) return false;
+  const spot = wordSpots(p)[index];
+  if (!spot || index < 1) return false;
+  const range = document.createRange();
+  range.setStart(spot.node, spot.offset);
+  range.setEnd(p, p.childNodes.length);
+  const rest = p.cloneNode(false) as Element;
+  stripIds(rest);
+  rest.setAttribute(JOIN, "");
+  rest.classList.add("gp-split-cont");
+  rest.appendChild(range.extractContents());
+  p.after(rest);
+  return true;
+}
+
 /** A continuation for `head`, from its template, ready to take the units; null if it has none. */
 function makeContinuation(head: Element): Element | null {
   const tpl = templateOf(head);
@@ -217,11 +279,11 @@ export type SplitResultKind =
  * a new continuation inserted right after it, the card gains its cut class.
  * Words are checked before and after; a mismatch undoes the split.
  */
-export function splitCardAt(card: Element, index: number): SplitResultKind {
+export function splitCardAt(card: Element, index: number, word?: number): SplitResultKind {
   const flow = flowOf(card);
-  const units = flow ? unitsOf(flow) : [];
-  const unit = units[index];
-  if (!flow || !unit || index < 1) return { ok: false };
+  let units = flow ? unitsOf(flow) : [];
+  let unit = units[index];
+  if (!flow || !unit || (index < 1 && word === undefined)) return { ok: false };
   const cont = makeContinuation(card);
   if (!cont) {
     return {
@@ -235,6 +297,16 @@ export function splitCardAt(card: Element, index: number): SplitResultKind {
     };
   }
   const before = flowWords(card);
+  let kind = unit.kind;
+  if (word !== undefined) {
+    // cut inside the paragraph first, then move its tail with everything after it
+    if (unit.kind !== "block" || unit.el.tagName !== "P" || !cutParagraphAt(unit.el, word))
+      return { ok: false };
+    units = unitsOf(flow);
+    index += 1;
+    unit = units[index]!;
+    kind = "paragraph";
+  }
   const contFlow = flowOf(cont)!;
   const following: Element[] = [];
   for (let n = unit.block.nextElementSibling; n; n = n.nextElementSibling) following.push(n);
@@ -256,19 +328,30 @@ export function splitCardAt(card: Element, index: number): SplitResultKind {
       },
     };
   }
-  return { ok: true, cont, kind: unit.kind };
+  return { ok: true, cont, kind };
 }
 
 /** Fold a join shell back into the part it was cut from. */
-function mergeInto(target: Element, shell: Element): void {
+function mergeInto(target: Element, shell: Element, inline = shell.classList.contains("gp-split-cont")): void {
   while (shell.firstChild) {
     const n = shell.firstChild;
+    const last = target.lastChild;
     if (n instanceof Element && n.hasAttribute(COPY)) n.remove();
     else if (n instanceof Element && n.hasAttribute(JOIN)) {
       mergeInto(target.lastElementChild!, n);
       n.remove();
+    } else if (
+      inline &&
+      n instanceof Element &&
+      last instanceof Element &&
+      last.cloneNode(false).isEqualNode(n.cloneNode(false))
+    ) {
+      // an inline element the cut split in two (<em>a | b</em>) is one again
+      mergeInto(last, n, true);
+      n.remove();
     } else target.appendChild(n);
   }
+  target.normalize();
 }
 
 /** Undo the split of `head` (the exact inverse of `splitCardAt`). */
@@ -316,7 +399,7 @@ export function replaySplitOps(ops: SplitOp[]): string[] {
   ensureSplitCss();
   for (const op of ops) {
     const card = cardsOf()[op.n];
-    if (card) splitCardAt(card, op.unit);
+    if (card) splitCardAt(card, op.unit, op.word);
   }
   return labelContinuations();
 }
