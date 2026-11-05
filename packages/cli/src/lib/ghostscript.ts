@@ -488,6 +488,10 @@ function psFileName(path: string): string {
  * (CGATS21_CRPC1 holds it to about 240%). PostScript undercolour removal and
  * black generation act only in Ghostscript's non-ICC conversion path, so they
  * have no effect on this ICC-managed conversion.
+ *
+ * No /Creator: pdfwrite keeps the input's Info entries over the DOCINFO
+ * pdfmark's, so the build stamps it on the input instead ({@link stampCreator},
+ * #497). /Title likewise applies only when the input has none.
  */
 function makePdfxDefPs(params: {
   iccPath: string;
@@ -512,7 +516,6 @@ function makePdfxDefPs(params: {
 /ICCProfile ${psFileName(normalizedIccPath)} def
 
 [/Title ${psText(params.title)}
-/Creator (gutterpress)
 /GTS_PDFXVersion (${pdfxVersion})
 /Trapped /False
 ${docInfoConformance}/DOCINFO pdfmark
@@ -541,8 +544,10 @@ ${registry}  /DestOutputProfile {icc_PDFX}
  *
  * Uses pdf-lib (pure JS, MIT) rather than Ghostscript, so the plain-PDF build
  * path needs no system tool at all — gs is now required only for PDF/X CMYK
- * conversion. `updateMetadata: false` keeps pdf-lib from rewriting
- * the ModDate/Producer so the only change is the /Creator field.
+ * conversion. The PDF/X build stamps its raw PDF the same way before
+ * converting, since pdfwrite carries the input's Info entries into the output
+ * (#497). `updateMetadata: false` keeps pdf-lib from rewriting the
+ * ModDate/Producer so the only change is the /Creator field.
  */
 export async function stampCreator(pdfPath: string): Promise<void> {
   const { PDFDocument } = await import("pdf-lib");

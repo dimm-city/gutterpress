@@ -8,11 +8,17 @@
  * none, for a CLI run from outside the book — and validated an empty
  * manifest's defaults, announcing that a book with `preset: dtrpg` had no
  * preset.
+ *
+ * The PDF/X file's Info /Creator must be gutterpress (#497). Ghostscript's
+ * pdfwrite keeps the input's Info entries over its DOCINFO pdfmark, so the
+ * file used to carry Chromium's user-agent string; the build stamps the raw
+ * PDF before converting, as it always did for a plain PDF.
  */
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PDFDocument } from "pdf-lib";
 import { resolveChromiumExecutable } from "./chromium";
 import { resolveGhostscript } from "./ghostscript";
 import { isToolAvailable } from "./tool-probe";
@@ -29,7 +35,7 @@ afterEach(async () => {
 });
 
 testIf(
-  "the post-build gate validates the manifest the build loaded",
+  "a pdfx build validates the manifest it loaded and names gutterpress as Creator",
   async () => {
     const dir = await mkdtemp(join(tmpdir(), "gutterpress-pdfx-finish-"));
     dirs.push(dir);
@@ -40,8 +46,9 @@ testIf(
     resetWarnOnce();
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     let warnings: string[] = [];
+    let pdfPath = "";
     try {
-      await runBuild({
+      const result = await runBuild({
         inputDir: dir,
         format: "pdfx",
         outDir: join(dir, "out"),
@@ -49,11 +56,17 @@ testIf(
         skipPreValidate: true,
         rawArgs: {},
       });
+      pdfPath = result.pdfPath!;
       warnings = warn.mock.calls.map((c) => String(c[0]));
     } finally {
       warn.mockRestore();
     }
     expect(warnings.filter((w) => w.includes("No `preset` in manifest.yaml"))).toEqual([]);
+
+    // Read as stored: pdf-lib would otherwise name itself as Producer on load.
+    const pdf = await PDFDocument.load(await readFile(pdfPath), { updateMetadata: false });
+    expect(pdf.getCreator()).toBe("gutterpress");
+    expect(pdf.getProducer()).toMatch(/Ghostscript/);
   },
   120_000
 );

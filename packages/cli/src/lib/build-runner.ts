@@ -769,9 +769,9 @@ class HtmlOutput implements OutputStrategy {
 
 /**
  * `--format pdf` / `--format pdfx` — stage the rendered book, render it to PDF
- * via the Gutterpress engine's native Chromium pagination, then for plain pdf
- * stamp /Creator and for pdfx resolve the ICC, optionally strip annotations, and
- * convert to CMYK PDF/X. Runs post-build validation for pdfx, then finalizes.
+ * via the Gutterpress engine's native Chromium pagination, stamp /Creator, then
+ * for pdfx resolve the ICC, optionally strip annotations, and convert to CMYK
+ * PDF/X. Runs post-build validation for pdfx, then finalizes.
  * The staging scratch dir is removed in a finally so it never leaks.
  */
 class PdfOutput implements OutputStrategy {
@@ -824,18 +824,19 @@ class PdfOutput implements OutputStrategy {
       );
       for (const d of engineDiagnostics) log.warn(d.message);
 
-      if (!pdfxMode) {
-        // stampCreator writes /Creator (Gutterpress) into the PDF's Info dict using
-        // pdf-lib (in-process, no system tool). The information is cosmetic — if it
-        // fails for any reason, keep the raw Chromium output as the final PDF rather
-        // than failing the build. `rawPdf` equals the final `pdfFile` when !pdfxMode.
-        try {
-          await stampCreator(rawPdf);
-        } catch (err) {
-          log.warn(
-            `Skipping /Creator stamp: ${err instanceof Error ? err.message : String(err)}`
-          );
-        }
+      // stampCreator writes /Creator (gutterpress) into the PDF's Info dict using
+      // pdf-lib (in-process, no system tool). For pdfx it runs on the raw PDF
+      // before the conversion: Ghostscript's pdfwrite keeps the input's Info
+      // entries over its own DOCINFO pdfmark, so this is also what the PDF/X
+      // file carries (#497). The information is cosmetic — if it fails for any
+      // reason, keep the raw Chromium output rather than failing the build.
+      // `rawPdf` equals the final `pdfFile` when !pdfxMode.
+      try {
+        await stampCreator(rawPdf);
+      } catch (err) {
+        log.warn(
+          `Skipping /Creator stamp: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
 
       let effectiveIccPath: string | null = null;

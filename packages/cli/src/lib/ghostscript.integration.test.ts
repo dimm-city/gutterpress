@@ -16,7 +16,7 @@ import {
 } from "pdf-lib";
 import { execCapture } from "./exec";
 import { getAssetPath } from "./embedded-assets";
-import { convertToPdfxCmyk, resolveGhostscript } from "./ghostscript";
+import { convertToPdfxCmyk, resolveGhostscript, stampCreator } from "./ghostscript";
 import { getPerPageInkCoverage } from "./pdf-parse";
 
 const ghostscript = await resolveGhostscript();
@@ -147,6 +147,38 @@ testWithGhostscript(
       expect(black!.c).toBeGreaterThanOrEqual(45);
       expect(black!.c).toBeLessThanOrEqual(52);
       expect(black!.tac).toBeLessThanOrEqual(245);
+    } finally {
+      await rm(stage, { recursive: true, force: true });
+    }
+  },
+  60_000
+);
+
+testWithGhostscript(
+  "the PDF/X file's Creator is the one stamped on the input, which pdfwrite keeps (#497)",
+  async () => {
+    const stage = await mkdtemp(join(tmpdir(), "gutterpress-gs-creator-integration-"));
+    try {
+      const inputPdf = join(stage, "creator.pdf");
+      const outputPdf = join(stage, "creator-pdfx.pdf");
+      // pdf-lib names itself as Creator, as Chromium names its user agent: an
+      // Info entry pdfwrite carries into the output over the definition file's
+      // DOCINFO pdfmark. The build therefore stamps the raw PDF first.
+      const source = await PDFDocument.create();
+      source.addPage([144, 144]);
+      await writeFile(inputPdf, await source.save());
+      await stampCreator(inputPdf);
+
+      await convertToPdfxCmyk(inputPdf, outputPdf, {
+        iccPath: await getAssetPath("profiles/CGATS21_CRPC1.icc"),
+        pdfx: "x1a",
+        stagingDir: stage,
+      });
+
+      // Read as stored: pdf-lib would otherwise name itself as Producer on load.
+      const converted = await PDFDocument.load(await readFile(outputPdf), { updateMetadata: false });
+      expect(converted.getCreator()).toBe("gutterpress");
+      expect(converted.getProducer()).toMatch(/Ghostscript/);
     } finally {
       await rm(stage, { recursive: true, force: true });
     }

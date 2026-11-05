@@ -46,6 +46,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   checks looked for a manifest in the working directory, found none, and
   validated an empty manifest's defaults. They validate the manifest the
   build loaded. (#496)
+- **A PDF/X file named Chromium's user-agent string as its `/Creator`.**
+  Ghostscript keeps the input's document information over the PDF/X
+  definition file's, so the Creator the build meant to write never reached
+  the file. The build stamps `gutterpress` on the PDF before converting, as
+  it does for a plain PDF; `/Producer` stays Ghostscript's. (#497)
 - **The ink-coverage check did not measure total ink coverage.** Ghostscript's
   `inkcov` device reports the share of the page each ink touches, not how much
   ink it lays down, so a page of 72% cyan read as 100% and a 400% patch on a
