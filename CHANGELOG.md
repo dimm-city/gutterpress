@@ -21,7 +21,7 @@ This project follows [Semantic Versioning](https://semver.org/).
   (`refresh()` keeps the cuts, `resplit()` makes them again). The build reports
   `engine.split.summary` (breaks by kind, pages before and after, the scopes that
   grew) and warns with `engine.split.unsplittable`, `.unconverged`, `.template`,
-  `.text-changed` and `.page-drift`. Markup and limits:
+  `.text-changed`, `.page-drift`, `.head-spill` and `.failed`. Markup and limits:
   `docs/engine/measured-split.md`.
 - **`pdfx.blackText: k-only-neutral`.** Grey text at 24pt and under (channels
   within 0.04 of each other) also prints on the black plate alone, at about

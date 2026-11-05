@@ -14,8 +14,14 @@
 /** Viewer-only measure passes the split loop may take (separate from the print `maxPasses`). */
 export const SPLIT_PASS_CAP = 24;
 
-/** `data-gp-split-cont` parts start a page: the tab must head its page, not hang off the foot of the last. */
-export const SPLIT_CSS = "[data-gp-split-cont] { break-before: page; }";
+/**
+ * `data-gp-split-cont` parts start a page: the tab must head its page, not hang off the foot of the
+ * last. A forced break keeps the margin that touches it (an unforced one drops it), so a continuation
+ * with a negative top margin, as a card whose tab overhangs its top has, would start in the last
+ * 4px of the page before and print a hairline of its tab there: its top margin is dropped, as the
+ * browser drops it for a card that falls on a new page by itself.
+ */
+export const SPLIT_CSS = "[data-gp-split-cont] { break-before: page; margin-block-start: 0; }";
 
 /** What a unit is, for the census the build logs. */
 export type SplitKind = "block" | "list-item" | "table-row" | "unit" | "paragraph";

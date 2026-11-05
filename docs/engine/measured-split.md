@@ -32,7 +32,7 @@ knows what a "skill card" is.
 | Attribute | On | Meaning |
 | --- | --- | --- |
 | `data-gp-split="<selector>"` | the card | selector (inside the card) of the **flow** element whose children are cut |
-| `data-gp-split-scope="<id>"` | the card | cards that share one flow of pages (a learning path, a chapter section). Scopes are cut in parallel; default is one scope for the whole book |
+| `data-gp-split-scope="<id>"` | the card | cards that share one flow of pages (a learning path, a chapter section). A scope is cut one card per pass; two scopes are cut in the same pass only when a forced page break lies between them, and one after the other otherwise. Default is one scope for the whole book |
 | `data-gp-split-cut="<class>"` | the card | class added to a part that continues (the closed foot) |
 | `<template data-gp-split-head>` | inside the card | the continuation's root element, with an empty `[data-gp-flow]`. Put it last, so `:first-child` rules still see the tab |
 | `data-gp-nosplit` | a flow child | keep this block whole |
@@ -45,18 +45,27 @@ Units, in the order the cut looks at them:
 - `ul` / `ol`: each `li` is a unit; the new `ol` carries on its `start` count
   (`ol[reversed]` stays whole);
 - `table` with one `tbody` and no `tfoot`: each `tr` is a unit and the `colgroup`
-  and `thead` are copied onto the continuation (other tables stay whole);
+  and `thead` are copied onto the continuation (other tables stay whole). Rows a
+  `rowspan` ties together are one unit;
 - a block with `data-gp-split-units`;
 - a `p` that straddles the break is cut at a line (below).
 
 The continuation gets the card's `data-gp-split*` attributes (so it can be cut
 again), a copy of the template, the attribute `data-gp-split-cont`, and the
-rule `[data-gp-split-cont] { break-before: page }`: a continuation always heads
-its page. Copied heads and table headers carry `data-gp-split-copy`, a cut
+rule `[data-gp-split-cont] { break-before: page; margin-block-start: 0 }`: a
+continuation always heads its page, and drops its top margin as the browser
+drops it for a card that falls on a new page by itself (a forced break keeps
+it: a card whose tab overhangs by a negative margin printed a hairline of that
+tab at the foot of the page before).
+
+A copy never carries what marks the original: no `id` and no
+`data-source-range`/`data-source-line`, which stay on the head part, so an id or
+the preview's edit-in-place keeps one target. Copied heads and table headers carry `data-gp-split-copy`, a cut
 paragraph's second half is a `p.gp-split-cont` (use it to drop a first-line
 indent or a drop cap), and the continuations are given ids `gp-split-1`, `-2`,
 ... on their flow element, in document order, so the build can read the page
-each landed on.
+each landed on; the last unit of each head gets `gp-split-N-head` (its own id,
+if it has one) for the same reason.
 
 ## How it runs
 
@@ -74,9 +83,12 @@ blanks and page numbers are placed, and compares where each continuation printed
 with where the viewer put it. The preview (`mount()`) runs the same loop.
 
 The loop: a split only adds height after its break, so everything before it is
-final. Each pass takes the first card of each scope that still spans pages,
-cuts it before the first unit not wholly on the page the card starts on, and
-re-lays the document out (`relayout()`, no print). A head that still spans
+final. Each pass measures the first card of each scope that still spans pages
+(all of them, before any is cut), cuts it before the first unit not wholly on
+the page the card starts on (a card whose tab ends a page and whose first unit
+starts the next is measured from that unit), and re-lays the document out
+(`relayout()`, no print). A cut never leaves a unit that must stay with the next
+(`break-after: avoid`, `break-before: avoid`) at the foot of a head. A head that still spans
 pages (its closed foot cost it a line) gives its last unit to the continuation
 rather than growing a third part. Passes are capped at 24
 (`SPLIT_PASS_CAP`), separate from the print `maxPasses`.
@@ -98,7 +110,13 @@ compared; a change undoes the cut.
 - `engine.split.unconverged`: the pass cap was reached; the remaining breaks are native.
 - `engine.split.template`: a `data-gp-split` card without a usable template.
 - `engine.split.text-changed`: a cut would have changed the words and was undone.
-- `engine.split.page-drift`: a continuation printed on another page than the preview put it.
+- `engine.split.page-drift`: print puts the continuations on other pages than the preview does
+  from some continuation on. It names the first one: an offset that holds from there on is the
+  layouts drifting once, not a cut gone wrong.
+- `engine.split.head-spill`: a head part did not end on the page it started (its continuation is
+  not on the next page in print).
+- `engine.split.failed`: the viewer could not measure the cards, or the print page made other
+  continuations than the viewer did.
 
 ## Limits
 
@@ -106,8 +124,13 @@ compared; a change undoes the cut.
   the page. A path whose last page is full can grow by a page; the build log says
   which scopes grew. Failing a build on growth belongs in the book's CI.
 - One cut per scope per pass: a card longer than 24 pages is not cut to the end.
-- The preview cuts at load only; `refresh()` keeps the cuts and `resplit()` makes
-  them again (a layout pass per break, about 12 s on a 244-page book).
+- The preview cuts at load and when the page is rebuilt (a hot reload re-runs the whole loop:
+  a layout pass per break, 6 to 12 s on a 244-page book; `gp:layout` reports `splitMs`).
+  `refresh()` (inline edits, style changes) keeps the cuts and cuts again, as `resplit()` does,
+  only when a part now spans pages or a card that fitted no longer does.
+- A ladder's tiers are cut only where the stylesheet lets the browser break it: the cut
+  follows the native break, stepping back over `break-after: avoid`. A keep-together chain
+  taller than the room left on the page moves whole, whatever `data-gp-split-units` says.
 - Viewer and print agree on line breaks in a fixture of 477 pages (385 of 385
   straddling paragraphs), but a line box that ends within half a pixel of the page
   foot is the knife-edge case in `docs/known-limitations.md` §4: the PDF decides, and

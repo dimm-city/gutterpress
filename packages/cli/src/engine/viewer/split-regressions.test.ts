@@ -227,6 +227,23 @@ describe("a cut leaves no copy of what was one thing", () => {
   );
 });
 
+describe("a continuation heads its page cleanly", () => {
+  testIf(
+    "it drops a negative top margin that a forced break would keep, so nothing of it prints on the page before",
+    async () => {
+      // a card whose tab overhangs by a negative top margin (the Field Guide's skill card)
+      await withPages(mk("N", "n", "cut", blocks(8, "N")), ".card { margin-top: -4px; padding-top: 4px }", async ({ viewer }) => {
+        const m = (await viewer.evaluate(() =>
+          [...document.querySelectorAll("[data-gp-split]")].map((c) => [c.hasAttribute("data-gp-split-cont"), getComputedStyle(c).marginTop]),
+        )) as Array<[boolean, string]>;
+        expect(m.some(([cont]) => cont)).toBe(true);
+        for (const [cont, top] of m) expect(top).toBe(cont ? "0px" : "-4px");
+      });
+    },
+    TEST_TIMEOUT_MS,
+  );
+});
+
 describe("paragraph lines", () => {
   testIf(
     "a raised or smaller inline does not count as a line: two lines stay on each side",

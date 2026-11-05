@@ -325,7 +325,7 @@
   }
 
   // src/engine/shared/split.ts
-  var SPLIT_CSS = "[data-gp-split-cont] { break-before: page; }";
+  var SPLIT_CSS = "[data-gp-split-cont] { break-before: page; margin-block-start: 0; }";
   function wordsOf(text) {
     return text.split(/\s+/).filter(Boolean);
   }

@@ -3208,7 +3208,7 @@
 
   // src/engine/shared/split.ts
   var SPLIT_PASS_CAP = 24;
-  var SPLIT_CSS = "[data-gp-split-cont] { break-before: page; }";
+  var SPLIT_CSS = "[data-gp-split-cont] { break-before: page; margin-block-start: 0; }";
   function firstCrossingUnit(startPage, lastPages) {
     return lastPages.findIndex((p) => p > startPage);
   }
