@@ -33,6 +33,24 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **`pdfx.transparency: preserve-text` flattened every transparent page whole
+  for a book built with the CLI installed from npm.** `unpdf` resolved to 1.8
+  or newer there (PDF.js 6), whose document proxy has no `destroy()`: the text
+  inspection threw, the build warned "could not inspect this PDF's text" and
+  rasterised the text with the artwork. Documents are now released through
+  the loading task, which PDF.js 5 and 6 both have, and the lockfile tracks
+  the `unpdf` the range resolves to (1.9.1), so the test suite runs what
+  consumers install. (#499)
+- **A PDF/X build's post-build validation said the manifest had no `preset`**
+  when the CLI ran from outside the book folder without `--manifest`: the
+  checks looked for a manifest in the working directory, found none, and
+  validated an empty manifest's defaults. They validate the manifest the
+  build loaded. (#496)
+- **A PDF/X file named Chromium's user-agent string as its `/Creator`.**
+  Ghostscript keeps the input's document information over the PDF/X
+  definition file's, so the Creator the build meant to write never reached
+  the file. The build stamps `gutterpress` on the PDF before converting, as
+  it does for a plain PDF; `/Producer` stays Ghostscript's. (#497)
 - **The ink-coverage check did not measure total ink coverage.** Ghostscript's
   `inkcov` device reports the share of the page each ink touches, not how much
   ink it lays down, so a page of 72% cyan read as 100% and a 400% patch on a

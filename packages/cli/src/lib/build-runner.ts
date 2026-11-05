@@ -196,6 +196,14 @@ export interface BuildContext {
   renderDir: string;
   outDir: string;
   manifestDir: string;
+  /**
+   * The manifest file the build loaded. Both validation gates validate this
+   * file, so they resolve the config the build did — not, as the post-build
+   * gate did with no `--manifest`, whatever a scan of the working directory
+   * finds, which is no manifest at all when the CLI runs from outside the
+   * book (#496).
+   */
+  manifestPath: string;
   config: ReturnType<typeof resolveConfig>;
   gates: Gates;
   /**
@@ -318,6 +326,7 @@ export async function resolveBuildContext(
     workDir,
     target,
     manifestDir,
+    manifestPath,
     config,
     gates,
     prevalidatedLayoutWarningKeys: new Set(),
@@ -389,7 +398,7 @@ export async function loadBuildPlugins(ctx: BuildContext): Promise<LoadedPlugins
  * loader — this function changes NOTHING about that case.
  */
 async function runQualityGates(ctx: BuildContext): Promise<void> {
-  const { gates, opts, renderDir } = ctx;
+  const { gates, renderDir, manifestPath } = ctx;
 
   const pluginStylePaths = gates.preValidate
     ? (await loadBuildPlugins(ctx)).pluginStylePaths
@@ -401,7 +410,7 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
       {
         input: renderDir,
         phase: "pre-build",
-        manifest: opts.manifestPath,
+        manifest: manifestPath,
         pluginStylePaths,
         skipStylelint: gates.skipStylelint,
       },
@@ -760,9 +769,9 @@ class HtmlOutput implements OutputStrategy {
 
 /**
  * `--format pdf` / `--format pdfx` — stage the rendered book, render it to PDF
- * via the Gutterpress engine's native Chromium pagination, then for plain pdf
- * stamp /Creator and for pdfx resolve the ICC, optionally strip annotations, and
- * convert to CMYK PDF/X. Runs post-build validation for pdfx, then finalizes.
+ * via the Gutterpress engine's native Chromium pagination, stamp /Creator, then
+ * for pdfx resolve the ICC, optionally strip annotations, and convert to CMYK
+ * PDF/X. Runs post-build validation for pdfx, then finalizes.
  * The staging scratch dir is removed in a finally so it never leaks.
  */
 class PdfOutput implements OutputStrategy {
@@ -772,7 +781,7 @@ class PdfOutput implements OutputStrategy {
     browser: EngineBrowser | undefined
   ): Promise<BuildRunnerResult> {
     if (!browser) throw new BuildError("PDF build reached the render stage without a browser");
-    const { workDir, outDir, inputDir, config, opts, format, manifestDir, gates } = ctx;
+    const { workDir, outDir, inputDir, config, opts, format, manifestDir, manifestPath, gates } = ctx;
 
     const pdfxMode: PdfxFlavor | undefined =
       format === "pdfx" ? (opts.pdfxFlavor ?? config.pdfx.flavor) : undefined;
@@ -815,18 +824,19 @@ class PdfOutput implements OutputStrategy {
       );
       for (const d of engineDiagnostics) log.warn(d.message);
 
-      if (!pdfxMode) {
-        // stampCreator writes /Creator (Gutterpress) into the PDF's Info dict using
-        // pdf-lib (in-process, no system tool). The information is cosmetic — if it
-        // fails for any reason, keep the raw Chromium output as the final PDF rather
-        // than failing the build. `rawPdf` equals the final `pdfFile` when !pdfxMode.
-        try {
-          await stampCreator(rawPdf);
-        } catch (err) {
-          log.warn(
-            `Skipping /Creator stamp: ${err instanceof Error ? err.message : String(err)}`
-          );
-        }
+      // stampCreator writes /Creator (gutterpress) into the PDF's Info dict using
+      // pdf-lib (in-process, no system tool). For pdfx it runs on the raw PDF
+      // before the conversion: Ghostscript's pdfwrite keeps the input's Info
+      // entries over its own DOCINFO pdfmark, so this is also what the PDF/X
+      // file carries (#497). The information is cosmetic — if it fails for any
+      // reason, keep the raw Chromium output rather than failing the build.
+      // `rawPdf` equals the final `pdfFile` when !pdfxMode.
+      try {
+        await stampCreator(rawPdf);
+      } catch (err) {
+        log.warn(
+          `Skipping /Creator stamp: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
 
       let effectiveIccPath: string | null = null;
@@ -955,14 +965,15 @@ class PdfOutput implements OutputStrategy {
       }
 
 
-      // Post-build validation (pdfx only)
+      // Post-build validation (pdfx only), against the manifest this build
+      // loaded (#496).
       if (gates.postValidate) {
         log.info("Post-build validation");
         const result = await executeAndReport(
           {
             pdf: pdfFile,
             phase: "post-build",
-            manifest: opts.manifestPath,
+            manifest: manifestPath,
           },
           "text"
         );

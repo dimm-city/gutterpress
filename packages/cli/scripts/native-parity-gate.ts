@@ -120,7 +120,7 @@ import { launchChromium, type Browser, type Session } from "../src/engine/shared
 import { build, type BuildResult } from "../src/engine/compiler/build.ts";
 import { restartedPageValues, toFolioPage } from "../src/engine/shared/synthesis.ts";
 import { inspectPdf } from "../src/engine/shared/pdf-inspect.ts";
-import { getPageSize, getTextPass, type TextRun } from "../src/lib/pdf-inspect.ts";
+import { getPageSize, getTextPass, releasePdf, type TextRun } from "../src/lib/pdf-inspect.ts";
 import { loadManifestWithPath, resolveConfig } from "../src/lib/manifest.ts";
 import { renderChaptersToFile } from "../src/lib/markdown/index.ts";
 import { loadPluginsWithCss } from "../src/lib/markdown/plugins.ts";
@@ -1250,7 +1250,7 @@ export async function measureExactFitBoundary(
     return { error: err instanceof Error ? err.message : String(err) };
   } finally {
     await page?.close();
-    await doc?.destroy();
+    if (doc) await releasePdf(doc);
   }
 }
 

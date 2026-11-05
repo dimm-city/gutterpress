@@ -8,7 +8,7 @@ import { getDocumentProxy } from "unpdf";
 import { launchChromium, type Browser } from "../src/engine/shared/cdp.ts";
 import { resolveChromiumExecutable } from "../src/lib/chromium.ts";
 import { getAssetPath } from "../src/lib/embedded-assets.ts";
-import type { TextRun } from "../src/lib/pdf-inspect.ts";
+import { releasePdf, type TextRun } from "../src/lib/pdf-inspect.ts";
 import {
   EXACT_FIT_BROWSER_JS,
   EXACT_FIT_TOLERANCE_PX,
@@ -151,7 +151,7 @@ describe("paintedBoxes — where print drew something other than text", () => {
         [53.333, 106.667],
       ]);
     } finally {
-      await doc.destroy();
+      await releasePdf(doc);
     }
   });
 });
