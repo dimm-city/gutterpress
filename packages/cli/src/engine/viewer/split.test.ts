@@ -36,7 +36,7 @@ interface Rendered {
   ids: string[];
 }
 
-async function render(cards: string, extra = "", refreshes = 0): Promise<Rendered> {
+async function render(cards: string, extra = "", resplits = 0, refresh = false): Promise<Rendered> {
   const dir = await fsp.mkdtemp(path.join(HERE, ".split-"));
   try {
     await fsp.writeFile(path.join(dir, "book.html"), bookHtml(cards, extra, true));
@@ -49,9 +49,10 @@ async function render(cards: string, extra = "", refreshes = 0): Promise<Rendere
         await page.goto(url);
         await page.waitForFunction("window.Gutterpress?.totalPages > 0");
         await new Promise((r) => setTimeout(r, 200));
-        return (await page.evaluate((source: string, refreshes: number) => {
+        return (await page.evaluate((source: string, resplits: number, refresh: boolean) => {
           const G = (window as any).Gutterpress;
-          for (let i = 0; i < refreshes; i++) G.refresh();
+          for (let i = 0; i < resplits; i++) G.resplit();
+          if (refresh) G.refresh();
           const parts = [...document.querySelectorAll("[data-gp-split]")].map((el) => {
             const [first, last] = G.pageRangeOf(el);
             return {
@@ -63,7 +64,7 @@ async function render(cards: string, extra = "", refreshes = 0): Promise<Rendere
             };
           });
           const split = G.split;
-          const ids = [...document.querySelectorAll("[data-gp-split-cont]")].map((e) => e.id);
+          const ids = [...document.querySelectorAll("[data-gp-split-cont]")].map((e) => e.querySelector("[data-gp-flow]")!.id);
           G.unsplitAll();
           const doc = new DOMParser().parseFromString(source, "text/html");
           const norm = (e: Element) => e.outerHTML.replace(/\sid="gp-split-\d+"/g, "").replace(/\s+/g, " ");
@@ -79,7 +80,7 @@ async function render(cards: string, extra = "", refreshes = 0): Promise<Rendere
             restored: JSON.stringify(now) === JSON.stringify(was),
             ids,
           };
-        }, cards, refreshes)) as Rendered;
+        }, cards, resplits, refresh)) as Rendered;
       } finally {
         await page.close();
       }
@@ -219,7 +220,7 @@ describe("measured split in the viewer", () => {
   );
 
   testIf(
-    "refresh() undoes the cuts and cuts again to the same result",
+    "resplit() undoes the cuts and cuts again to the same result",
     async () => {
       const body = para("A") + list("ul", 12) + para("Z");
       const once = await render(card({ body }));
@@ -256,6 +257,18 @@ describe("measured split in the viewer", () => {
       expect(r.kinds.paragraph).toBeGreaterThan(1);
       expectWholeParts(r);
       expect(r.restored).toBe(true);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  testIf(
+    "refresh() keeps the cuts made at mount",
+    async () => {
+      const body = para("A") + list("ul", 12) + para("Z");
+      const once = await render(card({ body }));
+      const kept = await render(card({ body }), "", 0, true);
+      expect(kept.parts.map((p) => p.text)).toEqual(once.parts.map((p) => p.text));
+      expect(kept.pages).toBe(once.pages);
     },
     TEST_TIMEOUT_MS,
   );

@@ -3575,10 +3575,15 @@
     return conts.length;
   }
   function labelContinuations(root2 = document) {
-    return Array.from(root2.querySelectorAll(`[${CONT}]`)).map((c, i) => {
-      c.id = `gp-split-${i + 1}`;
-      return c.id;
-    });
+    const ids = [];
+    for (const cont of Array.from(root2.querySelectorAll(`[${CONT}]`))) {
+      const flow = flowOf(cont);
+      if (!flow)
+        continue;
+      flow.id = `gp-split-${ids.length + 1}`;
+      ids.push(flow.id);
+    }
+    return ids;
   }
 
   // src/engine/viewer/split.ts
@@ -3756,13 +3761,16 @@
       next: () => api.goto(api.currentPage() + 1),
       prev: () => api.goto(api.currentPage() - 1),
       currentPage: () => current + 1,
+      resplit() {
+        unsplitAll();
+        layout.relayout();
+        api.split = measuredSplit(layout);
+        applySpreadMode(layout.strips, spreadOn);
+        decoration.redraw();
+        emit();
+      },
       refresh() {
-        if (splitting) {
-          unsplitAll();
-          layout.relayout();
-          api.split = measuredSplit(layout);
-        } else
-          layout.relayout();
+        layout.relayout();
         applySpreadMode(layout.strips, spreadOn);
         decoration.redraw();
         emit();

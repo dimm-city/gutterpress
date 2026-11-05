@@ -27,6 +27,8 @@ export interface GutterpressApi extends GutterpressViewerApi {
   prev(): void;
   /** 1-based; see `goto()`. */
   currentPage(): number;
+  /** cut `data-gp-split` cards again from scratch: undo the cuts, re-lay out, re-measure */
+  resplit(): void;
   /** re-fragment + redecorate after a content/CSS change (hot reload) */
   refresh(): void;
   /** two-up/spread view mode (viewer.css's `.gp-strip[data-wrap]`); no-op
@@ -79,13 +81,19 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
     next: () => api.goto(api.currentPage() + 1),
     prev: () => api.goto(api.currentPage() - 1),
     currentPage: () => current + 1,
-    refresh() {
+    resplit() {
       // undo the cuts, lay the whole document out again, cut it again
-      if (splitting) {
-        unsplitAll();
-        layout.relayout();
-        api.split = measuredSplit(layout);
-      } else layout.relayout();
+      unsplitAll();
+      layout.relayout();
+      api.split = measuredSplit(layout);
+      applySpreadMode(layout.strips, spreadOn);
+      decoration.redraw();
+      emit();
+    },
+    refresh() {
+      // keeps the cuts made at mount: finding them again takes a layout pass per break
+      // (about 12s on a 244-page book), too slow for every style tweak
+      layout.relayout();
       applySpreadMode(layout.strips, spreadOn);
       decoration.redraw();
       emit();

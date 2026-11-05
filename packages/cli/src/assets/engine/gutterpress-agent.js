@@ -619,10 +619,15 @@
       head.classList.remove(cut);
   }
   function labelContinuations(root = document) {
-    return Array.from(root.querySelectorAll(`[${CONT}]`)).map((c, i) => {
-      c.id = `gp-split-${i + 1}`;
-      return c.id;
-    });
+    const ids = [];
+    for (const cont of Array.from(root.querySelectorAll(`[${CONT}]`))) {
+      const flow = flowOf(cont);
+      if (!flow)
+        continue;
+      flow.id = `gp-split-${ids.length + 1}`;
+      ids.push(flow.id);
+    }
+    return ids;
   }
   function replaySplitOps(ops) {
     ensureSplitCss();

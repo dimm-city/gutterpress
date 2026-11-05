@@ -52,7 +52,9 @@ testIf(
       await fsp.writeFile(file, bookHtml(cards), "utf8");
       const result = await build({ input: pathToFileURL(file).href, browser, dpiFloor: 0 });
 
-      expect(result.diagnostics).toEqual([]);
+      // the one finding is the summary line: breaks by kind, pages before and after
+      expect(result.diagnostics.map((d) => d.code)).toEqual(["engine.split.summary"]);
+      expect(result.diagnostics[0]!.message).toMatch(/^split: \d+ break\(s\) .*\d+pp -> \d+pp/);
       const ids = Object.keys(result.pageMap).filter((k) => k.startsWith("gp-split-"));
       expect(ids.length).toBeGreaterThan(3);
       // the print put every continuation where the viewer predicted it

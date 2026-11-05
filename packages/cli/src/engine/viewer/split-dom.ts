@@ -384,14 +384,20 @@ export function unsplitAll(root: ParentNode = document): number {
 
 /**
  * Give each continuation an id (`gp-split-1`, ...) in document order, so the
- * build can read which page it landed on. Done once, at the end, because the
+ * build can read which page it landed on. The id sits on the flow element, not
+ * the card: a card that starts a page by a forced break has its destination
+ * recorded on the page before in the PDF. Done once, at the end, because the
  * loop may pull a split back and the print page replays only the final ops.
  */
 export function labelContinuations(root: ParentNode = document): string[] {
-  return Array.from(root.querySelectorAll(`[${CONT}]`)).map((c, i) => {
-    c.id = `gp-split-${i + 1}`;
-    return c.id;
-  });
+  const ids: string[] = [];
+  for (const cont of Array.from(root.querySelectorAll(`[${CONT}]`))) {
+    const flow = flowOf(cont);
+    if (!flow) continue;
+    flow.id = `gp-split-${ids.length + 1}`;
+    ids.push(flow.id);
+  }
+  return ids;
 }
 
 /** Replay recorded ops in order (the print page, or a preview rebuilt from the same ops). */

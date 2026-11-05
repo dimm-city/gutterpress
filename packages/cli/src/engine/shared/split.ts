@@ -152,7 +152,7 @@ export interface SplitResult extends SplitStats {
 }
 
 /** The one-line log: `split: N breaks, +P pages` and the scopes that grew. */
-export function describeSplit(ops: SplitOp[], stats: SplitStats): string {
+export function describeSplit(ops: SplitOp[], stats: SplitStats, ms?: number): string {
   const grown = stats.scopes
     .filter((s) => s.after !== s.before)
     .map((s) => `${s.scope || "(all)"} ${s.before}->${s.after}`);
@@ -164,6 +164,7 @@ export function describeSplit(ops: SplitOp[], stats: SplitStats): string {
     `split: ${ops.length} break(s)${kinds ? ` (${kinds})` : ""}, ` +
     `${stats.pagesBefore}pp -> ${stats.pagesAfter}pp (${delta >= 0 ? "+" : ""}${delta}), ` +
     `${stats.passes} pass(es)` +
+    (ms === undefined ? "" : ` in ${(ms / 1000).toFixed(1)}s`) +
     (grown.length ? `; grew: ${grown.join(", ")}` : "")
   );
 }

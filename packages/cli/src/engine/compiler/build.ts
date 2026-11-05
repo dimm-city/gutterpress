@@ -256,7 +256,8 @@ export type BuildDiagnosticCode =
   | "engine.split.unconverged"
   | "engine.split.text-changed"
   | "engine.split.template"
-  | "engine.split.page-drift";
+  | "engine.split.page-drift"
+  | "engine.split.summary";
 
 export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.width.overflow",
@@ -275,6 +276,7 @@ export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.split.text-changed",
   "engine.split.template",
   "engine.split.page-drift",
+  "engine.split.summary",
 ];
 
 export interface BuildDiagnostic {
@@ -968,7 +970,9 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         predicted = await predictPageMap(browser, url, AGENT, VIEWER, predictArgs, sheetViewport);
         const split = predicted?.split;
         if (split) {
-          log(`tier 3: ${describeSplit(split.ops, split)} in ${split.ms.toFixed(0)}ms`);
+          const summary = describeSplit(split.ops, split, split.ms);
+          log(`tier 3: ${summary}`);
+          if (split.ops.length) diagnose("engine.split.summary", summary, "info");
           for (const d of split.diagnostics) {
             diagnose(d.code, d.message);
             log(`WARNING: ${d.message}`);
