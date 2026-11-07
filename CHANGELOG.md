@@ -33,6 +33,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+<<<<<<< HEAD
 - **A revision switch the app dies in the middle of is put right.** Switching
   revisions (and restoring a version) now records what it is doing in
   `.git/gutterpress-switch.json` once your work is saved, and removes it when
@@ -49,6 +50,19 @@ This project follows [Semantic Versioning](https://semver.org/).
   same way (back to the saved version, nothing deleted), and an automatic
   version is never taken of a half-switched book. The editor is not locked
   while a switch runs. (#502)
+=======
+- **A `--out` build rendered unstyled, wrong-size pages under a snap Chromium,
+  with no warning (#501).** The staged `book.html`, stylesheets and fonts went
+  to the OS temp dir, which a snap's private `/tmp` hides from the browser.
+  The build now recognises a snap browser (by the path, its real path or
+  Ubuntu's `chromium-browser` shim) and stages in that snap's own data folder,
+  `~/snap/<name>/common/`, never in the book; if the scratch dir is still
+  unreadable it warns that the pages will render unstyled. A build killed
+  mid-way can leave a `gutterpress-build-*` folder there, outside the book.
+  Flatpak browsers are not detected. The desktop app uses its own browser
+  and is unaffected. `CHROMIUM_PATH` is now read when a browser is looked
+  up, not once at start-up.
+>>>>>>> origin/release/0.11.24
 - **`pdfx.transparency: preserve-text` flattened every transparent page whole
   for a book built with the CLI installed from npm.** `unpdf` resolved to 1.8
   or newer there (PDF.js 6), whose document proxy has no `destroy()`: the text
@@ -95,6 +109,19 @@ This project follows [Semantic Versioning](https://semver.org/).
   well pulls the trim in further instead of replacing it, and the crop marks
   follow the trim.
 - **`--icc` is not required for `--format pdfx`**: the help no longer says so.
+
+### Security
+
+- **The dependency audit is clear except for three build-time packages.**
+  The CLI moves to `glob` 14 and `rimraf` 6.1.4 (GHSA-3g3m-2fjr-6pw4), and the
+  lockfile holds `joi` 18.3.2 and `follow-redirects` 1.16.2 (GHSA-4528-x5fx-h6hg,
+  GHSA-mrwp-f3q8-3g9p; reached only through the desktop's development-only
+  `wait-on`). Still ignored in `security-audit.yml`, with the reason: `glob` 13
+  in `htmlhint` 1.9.2 and `minimatch` 9/10 in `@typescript-eslint`,
+  `electron-builder` and `@electron/universal` (GHSA-g3hv-75wg-m249), none of
+  which has a release that takes the fix; `deepmerge` (low) has none either.
+  The CLI calls glob only on the book's own folder, never with an `AbortSignal`,
+  and minimatch patterns come from the author's own manifest.
 
 ## [0.11.23] - 2026-10-31
 

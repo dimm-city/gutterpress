@@ -72,6 +72,14 @@ The CLI needs a Chromium-based browser for PDF rendering. Some PDF/X and
 validation features also need Ghostscript or qpdf; see [System
 Setup](../examples/gutterpress-user-guide/07-system-setup.md).
 
+A Chromium installed as a snap (Ubuntu's `chromium-browser`) is confined: it
+reads only non-hidden files under your home folder and has a private `/tmp`.
+Gutterpress stages a build's pages in the snap's own folder
+(`~/snap/<name>/common`), so `--out` may point anywhere, but a book folder
+outside your home (such as under `/tmp`) renders unstyled; the build warns.
+Build from a folder under your home, or set `CHROMIUM_PATH` to a non-snap
+browser. Flatpak browsers are not detected.
+
 ## Verify downloads
 
 Releases produced by the current release workflow attach `SHA256SUMS.txt` and

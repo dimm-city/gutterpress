@@ -137,6 +137,8 @@ browser to render PDFs.
 2. Standard install locations for Chrome, Chromium, Edge, and Brave on your OS (the paths installed by the commands above)
 3. A `PATH` probe (`which` / `where.exe`) for Chrome, Chromium, Edge, Brave, Vivaldi, Opera, and their platform-specific variants
 
+**Chromium installed as a snap (Ubuntu).** `chromium-browser` on Ubuntu installs a snap, which is confined: it has a private `/tmp` and can read only non-hidden files under your home folder (not `~/snap`, except its own folder). Gutterpress detects a snap browser and stages the pages it renders in that snap's own data folder (`~/snap/<name>/common/gutterpress-build-*`, removed when the build ends), so `--out` can point anywhere, including `/tmp`, and nothing is written into your book folder. If the book itself is outside your home folder (for example under `/tmp`), the snap cannot read it and the build warns that pages will render unstyled: build from a folder under your home directory, or set `CHROMIUM_PATH` to a non-snap Chrome or Chromium. Flatpak browsers are confined too but are not detected.
+
 **Fix:** install Chrome, Chromium, Edge, Brave, Vivaldi, or Opera normally, or
 set `CHROMIUM_PATH=/path/to/your/browser` if it's in a non-standard location.
 The Gutterpress desktop app includes its own browser and needs no separate browser

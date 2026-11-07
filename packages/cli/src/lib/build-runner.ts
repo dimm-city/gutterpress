@@ -29,6 +29,7 @@ import { BuildError } from "./build-error";
 import type { BuildDiagnostic } from "../engine/compiler/build.ts";
 import type { Browser as EngineBrowser, Session as EngineSession } from "../engine/shared/cdp.ts";
 import { UsageError } from "./cli-args";
+import { chooseScratchParent, snapNameOf, snapUnreadableWarning, resolveChromiumExecutable } from "./chromium";
 import { preflightBuildTools, computeGates, type Gates } from "./build-preflight";
 import { shipViewerHtml, createStageRoot, stageBookAssets } from "./build-staging";
 
@@ -243,6 +244,13 @@ function layoutWarningKey(file: string, line: number | undefined, message: strin
   return `${path.resolve(file)}\0${line ?? 0}\0${message}`;
 }
 
+/** The snap a build's system browser is, if any (#501). */
+async function snapBrowserName(format: string): Promise<string | undefined> {
+  if (format === "html") return undefined;
+  const exe = await resolveChromiumExecutable();
+  return exe === undefined ? undefined : snapNameOf(exe);
+}
+
 /**
  * Stage 1 — load the manifest, merge CLI overrides into the resolved config,
  * pick the output dir, and compute the lint/validate gates. Pure planning: no
@@ -307,14 +315,19 @@ export async function resolveBuildContext(
   // For our own `dist/`, the work dir is a sibling of the destination so the
   // publish is a same-filesystem atomic rename. For a caller-supplied target we
   // must not create scratch directories in someone else's folder, so it goes to
-  // the OS temp dir and the publish is a copy.
+  // the OS temp dir and the publish is a copy. A snap browser cannot read the
+  // OS temp dir (it has a private /tmp), so for it the scratch moves into
+  // the snap's own data folder (#501), never the book. The desktop's own browser
+  // (`engineBrowser`) is not confined.
+  const snapName = opts.engineBrowser ? undefined : await snapBrowserName(format);
+  const workName = `gutterpress-build-${randomBytes(6).toString("hex")}`;
   const workDir =
     target.kind === "project"
       ? path.join(
           path.dirname(target.dir),
           `.${path.basename(target.dir)}-build-${randomBytes(6).toString("hex")}`
         )
-      : path.join(os.tmpdir(), `gutterpress-build-${randomBytes(6).toString("hex")}`);
+      : path.join(chooseScratchParent({ snapName }), workName);
 
   return {
     opts,
@@ -1034,6 +1047,15 @@ export async function runBuild(
   const ctx = await resolveBuildContext(opts);
 
   log.info(`Build (${ctx.format}): ${ctx.inputDir} -> ${ctx.outDir}`);
+
+  // A snap browser reads only non-hidden files under the home directory. The
+  // scratch dir is chosen to be readable; if it still is not (our own `dist/`
+  // beside a book outside home), say so rather than print an unstyled book.
+  const snapWarning = snapUnreadableWarning(
+    ctx.workDir,
+    opts.engineBrowser ? undefined : await snapBrowserName(ctx.format)
+  );
+  if (snapWarning) log.warn(snapWarning);
 
   // Pre-flight tool check.
   //
