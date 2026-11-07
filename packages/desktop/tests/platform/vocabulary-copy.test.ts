@@ -78,7 +78,7 @@ describe("Update, Get the changes and Back up now", () => {
     expect(tab).toContain('"Get latest"');
     expect(tab).toContain('"Getting the latest…"');
     expect(tab).toContain('"Get latest: bring in changes from the online copy without sending yours"');
-    expect(read("lib/routes/sync-controller.svelte.ts")).toContain('{ label: "Get the changes", onClick: () => void this.handleGetLatest() }');
+    expect(read("lib/routes/sync-controller.svelte.ts")).toContain('{ label: "Get changes", onClick: () => void this.handleGetLatest() }');
   });
 
   test("Back up now is back in the Online copy tab, and Help names both (#485)", () => {

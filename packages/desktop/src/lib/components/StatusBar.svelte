@@ -50,6 +50,8 @@
     checked = false,
     /** Passages with two takes (counted from the Problems list). */
     decide = 0,
+    /** The Problems list has loaded, so its count beats a host count that may be stale. */
+    problemsLoaded = false,
     /** Current save phase from the editor buffer. */
     savePhase = "clean" as "clean" | "dirty" | "saving" | "error",
     /** Why the last save failed, when the editor said. */
@@ -108,6 +110,7 @@
     remoteNeeds?: "sign-in" | "own-tools" | null;
     checked?: boolean;
     decide?: number;
+    problemsLoaded?: boolean;
     autoBackup?: boolean;
     savePhase?: "clean" | "dirty" | "saving" | "error";
     saveError?: string | null;
@@ -144,6 +147,9 @@
     return () => clearInterval(timer);
   });
 
+  // Cmd on a Mac, Ctrl elsewhere: the key the "Unsaved changes" line names.
+  const saveKey = typeof navigator !== "undefined" && /mac/i.test(navigator.platform ?? "") ? "Cmd+S" : "Ctrl+S";
+
   let line = $derived(
     statusLine({
       savePhase,
@@ -160,6 +166,8 @@
       remoteNeeds,
       checked,
       decide,
+      problemsLoaded,
+      saveKey,
       updatesAvailable,
       backingUp: forceSyncing,
       gettingLatest,
@@ -172,10 +180,16 @@
   // only changes when the state does.
 
   let popoverOpen = $state(false);
+  let statusBtn = $state<HTMLButtonElement | null>(null);
+  /** Close the popover; `refocus` puts focus back on the status control (Escape, or an action taken). */
+  function closePopover(refocus = false): void {
+    popoverOpen = false;
+    if (refocus) statusBtn?.focus();
+  }
   const busy = $derived(forceSyncing || gettingLatest || forceSaving);
 
   function run(id: StatusActionId): void {
-    popoverOpen = false;
+    closePopover(true);
     switch (id) {
       case "save":
         void onSave?.();
@@ -208,6 +222,7 @@
   function clickStatus(): void {
     if (line.click === "action" && line.clickAction) run(line.clickAction);
     else if (line.click === "popover") popoverOpen = !popoverOpen;
+    else popoverOpen = false;
   }
 
   // The Update button: its tooltip says exactly what it will do.
@@ -224,7 +239,7 @@
 
 </script>
 
-<div class="status-bar" role="status" aria-label="Application status">
+<div class="status-bar" role="group" aria-label="Application status">
   <!-- Left cluster: [folder → start screen Books] | [book switcher] | [status] [Update].
        A divider precedes each group after the first, so a hidden switcher or
        status control leaves no stray line. Settings and help sit at the far right. -->
@@ -247,6 +262,7 @@
         <button
           type="button"
           class="status-control {line.tone}"
+          bind:this={statusBtn}
           data-state={line.key}
           onclick={clickStatus}
           title={line.left ? `${line.left}. ${line.title}` : line.title}
@@ -254,8 +270,8 @@
           aria-haspopup={line.click === "popover" ? "dialog" : undefined}
           aria-expanded={line.click === "popover" ? popoverOpen : undefined}
         ><Icon name={line.icon} size={13} />{#if line.left}<span class="clause here">{line.left}</span><span class="sep" aria-hidden="true">·</span>{/if}<span class="clause status-text">{line.right}</span></button>
-        {#if popoverOpen && line.click === "popover"}
-          <StatusPopover {line} {busy} onAction={run} onClose={() => (popoverOpen = false)} />
+        {#if popoverOpen}
+          <StatusPopover {line} {busy} onAction={run} onClose={closePopover} />
         {/if}
       </div>
       <!-- Changes only when the state does, never on the minute tick. -->
@@ -340,7 +356,7 @@
      takes the accent and a dot, so the cue is never colour alone. */
   .labelled {
     gap: 4px;
-    font-size: 11px;
+    font-size: 12px;
   }
   .labelled.has-updates {
     color: var(--app-link);
@@ -367,8 +383,8 @@
     align-items: center;
     gap: 5px;
     min-width: 0;
-    max-width: 420px;
-    font-size: 11px;
+    max-width: 460px;
+    font-size: 12px;
     background: transparent;
     border: none;
     padding: 2px 6px;
@@ -382,6 +398,7 @@
   .status-control:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .status-control.pending { font-style: italic; }
   .status-control.warn { color: var(--app-warning-text); }
+  /* The separator is the one thing that fades: text never carries opacity. */
   .sep { opacity: 0.6; }
   .status-control.error { color: var(--app-error-text); font-weight: 600; }
   /* Narrow (the app's single-pane layout): the line gives way to the buttons beside it. */

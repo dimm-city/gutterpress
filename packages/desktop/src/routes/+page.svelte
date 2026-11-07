@@ -22,7 +22,7 @@
   import type { MarkdownFileLaunchEvent } from "#lib/platform/contract.ts";
   import type { ProblemEntry } from "#lib/platform/dtos.ts";
   import { buildProblems, exportProblems, problemCounts } from "#lib/problems.ts";
-  import { saveFailureReason } from "#lib/save-status.ts";
+  import { NOTHING_NEW_NOTICE, saveFailureReason } from "#lib/save-status.ts";
   import StatusBar from "#lib/components/StatusBar.svelte";
   import ProblemsPanel from "#lib/components/ProblemsPanel.svelte";
   import ActivityIndicator from "#lib/components/ActivityIndicator.svelte";
@@ -553,6 +553,7 @@
     toast: () => toast,
     clearStaleProjectState: () => {
       problems = [];
+      problemsLoaded = false;
       projectComponents = [];
       projectVariants = [];
       projectClasses = [];
@@ -578,6 +579,7 @@
       crashRecovery.reset();
       pendingRecoveryScanDir = null;
       problems = [];
+      problemsLoaded = false;
       projectComponents = [];
       projectVariants = [];
       projectClasses = [];
@@ -962,11 +964,12 @@
       if (status.projectDir !== lifecycle.currentDir) return;
       syncController.applyStatus(status);
       if (shouldReconcileAfterSync(status)) {
+        syncController.noteFilesWritten();
         onSyncFilesChanged();
       }
       if (readerMode) return;
       if (status.state === "syncing") identityNoticeArmed = true;
-      syncController.applyConvergeReport(status.combinedFiles, status.keptBothFiles);
+      syncController.applyConvergeReport(status.combinedFiles, status.keptBothFiles, true);
     });
     return () => off?.();
   });
@@ -1340,20 +1343,25 @@
       platform: getPlatform(),
       autoSave: () => settings.current.versionHistory.autoSave,
       onError: (msg) => {
-        if (editorFiles.isActive(instance)) {
-          // The bar's "see why" says it in plain words, without the route's JSON.
+        if (!editorFiles.isActive(instance)) return;
+        if (/^Save failed:/i.test(msg)) {
+          // The bar's "see why" says it in plain words, without the route's JSON. This is the one
+          // toast for a failed save, whether the debounce or an explicit Save ran it.
           saveError = saveFailureReason(msg);
           toast?.error(`Couldn't save. ${saveError}`);
+        } else {
+          // Opening a file failed (not a save): say what the editor said, and don't call it a save.
+          saveError = null;
+          toast?.error(msg);
         }
       },
       onContentReplaced: (path, content) => {
         if (editorFiles.isActive(instance) && instance.filePath === path) showEditorContent(path, content);
       },
       onAutoReloaded: () => {
-        // A reload that follows a backup, an update or a repair is that action's
-        // own doing, and its outcome toast already said so.
-        const afterPass = syncController.forceSyncing || syncController.gettingLatest || Date.now() - syncController.lastPassAt < 10_000;
-        if (editorFiles.isActive(instance) && !afterPass) {
+        // A reload that follows a pass that wrote files (an update, a combine, a repair) is that
+        // pass's own doing, and its outcome toast already said so.
+        if (editorFiles.isActive(instance) && !syncController.passTouchedFiles) {
           toast?.show("This file was changed outside Gutterpress, so it was refreshed.", "info", undefined, undefined, "reloaded");
         }
       },
@@ -1829,6 +1837,8 @@
   // toolbar with an errors+warnings count badge.
   let problemsOpen = $state(false);
   let problems = $state<ProblemEntry[]>([]);
+  /** The first lint of this book has come back, so its count of two takes is the truth. */
+  let problemsLoaded = $state(false);
   /** Passages with two takes waiting for a decision (the status bar's "to decide"). */
   const decideCount = $derived(problems.filter((p) => p.source === "source.sync.merge-markers").length);
   /** Findings from the last export (see the `buildPdf` wrapper above). */
@@ -1909,6 +1919,7 @@
         // The project may have changed while the lint was in flight.
         if (lifecycle.currentDir === dir) {
           problems = entries;
+          problemsLoaded = true;
           problemsError = null;
         }
       })
@@ -1918,6 +1929,7 @@
         // distinct error state instead of silently clearing to [].
         if (lifecycle.currentDir === dir) {
           problems = [];
+          problemsLoaded = false;
           problemsError = "We couldn't check your book this time.";
         }
       })
@@ -2945,8 +2957,8 @@
     forceSaving = true;
     try {
       await buffer.flush();
-    } catch (e) {
-      toast?.error(`Save failed: ${friendlyHostError(e instanceof Error ? e.message : String(e))}`);
+    } catch {
+      // The buffer's own onError already showed the one error toast, and the bar says why.
     } finally {
       forceSaving = false;
     }
@@ -2959,6 +2971,8 @@
   async function saveVersion(): Promise<"saved" | "unchanged"> {
     const dir = lifecycle.currentDir;
     if (!dir) return "unchanged";
+    // What is typed but not yet on disk belongs in this version: write it first, then ask what changed.
+    await buffer?.flush().catch(() => {});
     // Nothing new since the last version: say so without asking for a name first.
     try {
       const pending = await api.vcs.unversionedChanges(dir);
@@ -3446,8 +3460,9 @@
     remoteNeeds={remoteNeeds}
     checked={syncController.checkedDir === lifecycle.currentDir && lifecycle.currentDir !== null}
     decide={decideCount}
-    savePhase={editorSavePhase}
+    savePhase={editorSavePhase === "error" && !shownSaveError ? "clean" : editorSavePhase}
     saveError={shownSaveError}
+    problemsLoaded={problemsLoaded}
     autoSave={settings.current.versionHistory.autoSave}
     autoBackup={settings.current.versionHistory.autoSync}
     {forceSaving}
@@ -3466,7 +3481,13 @@
     onOpenBackup={openOnlineCopy}
     onOpenProblems={openProblemsList}
     onTurnOnHistory={turnOnVersionHistory}
-    onSaveVersion={() => saveVersion().catch(() => {})}
+    onSaveVersion={() =>
+      saveVersion()
+        .then((result) => {
+          // From the bar nothing else says it: the tab's own button shows this line itself.
+          if (result === "unchanged") toast?.show(NOTHING_NEW_NOTICE, "info", undefined, undefined, "version-saved");
+        })
+        .catch(() => {})}
     onOpenSettings={() => openSettings()}
     onOpenHelp={openHelp}
     onOpenBooks={openBooks}

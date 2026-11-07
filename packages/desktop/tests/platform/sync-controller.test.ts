@@ -125,8 +125,8 @@ test("synced with a converge report -> one toast per kind of kept-both file", as
   };
   await h.ctrl.handleForceSync();
   expect(h.toast.info.calls).toHaveLength(2);
-  // One message for the pass: "backed up" folds into the two-takes line, which names no file.
-  expect(h.toast.info.calls[0]![0]).toBe("Backed up. Some passages were changed in two places. Choose which to keep.");
+  // One message for the pass, which never says "Backed up" while two takes are waiting.
+  expect(h.toast.info.calls[0]![0]).toBe("New changes came in. Some passages were changed in both places. Choose which to keep.");
   expect(h.onSyncCompleted.calls).toEqual([[true, false]]);
   expect(h.toast.info.calls[1]![0]).toContain("cover.png");
   expect(h.toast.info.calls[1]![0]).toContain("cover.online.png");
@@ -268,7 +268,7 @@ test("combined files -> a sticky toast with a Review button that opens the Probl
   expect(toast.info.calls).toEqual([]);
   expect(show.calls).toHaveLength(1);
   const [message, type, duration, action] = show.calls[0]!;
-  expect(message).toBe("Some passages were changed in two places. Choose which to keep.");
+  expect(message).toBe("New changes came in. Some passages were changed in both places. Choose which to keep.");
   expect(type).toBe("info");
   expect(duration).toBe(0);
   expect(action?.label).toBe("Review");
@@ -291,7 +291,7 @@ test("keptBothMessage names the pair and never says 'conflict'", () => {
 
 test("combinedFilesMessage names no file: the status bar counts, Review lists", () => {
   const one = combinedFilesMessage(["a/one.md"]);
-  expect(one).toBe("Some passages were changed in two places. Choose which to keep.");
+  expect(one).toBe("New changes came in. Some passages were changed in both places. Choose which to keep.");
   expect(combinedFilesMessage(["a.md", "b.md", "c.md", "d.md", "e.md"])).toBe(one);
   expect(one).not.toContain(".md");
 });
@@ -459,7 +459,7 @@ test("checkForUpdates: automatic backing up off -> one sticky prompt with a Get 
   expect(message).toBe("New changes are online for this book.");
   expect(type).toBe("info");
   expect(duration).toBe(0);
-  expect(action!.label).toBe("Get the changes");
+  expect(action!.label).toBe("Get changes");
   expect(m.toast.show.calls[0]![4]).toBe("new-online");
 });
 
@@ -525,7 +525,7 @@ test("handleGetLatest: overlapping passages are named, as after any pass", async
   const m = makeManual({ showless: true, latest: { status: "up-to-date", message: "", filesChanged: true, pushDeferred: true, combinedFiles: ["chapters/chapter-02.md"] } });
   await m.ctrl.handleGetLatest();
   expect(m.toast.info.calls).toHaveLength(1);
-  expect(m.toast.info.calls[0]![0]).toBe("Got the changes from the online copy. Some passages were changed in two places. Choose which to keep.");
+  expect(m.toast.info.calls[0]![0]).toBe("New changes came in. Some passages were changed in both places. Choose which to keep.");
 });
 
 test("handleGetLatest: not signed in or offline -> says so in the product's words", async () => {
@@ -745,11 +745,17 @@ test("the host's ahead / behind / decide fields are read when present and ignore
   expect(h.ctrl.updatesAvailable).toBe(true);
 });
 
-test("a manual pass marks when it last ran, so a reload that follows it stays quiet", async () => {
-  const m = makeManual({ sync: { status: "up-to-date", message: "" } });
-  expect(m.ctrl.lastPassAt).toBe(0);
-  await m.ctrl.handleForceSync();
-  expect(Date.now() - m.ctrl.lastPassAt).toBeLessThan(1000);
+test("a reload after a pass that wrote files stays quiet; one after a pass that wrote nothing does not", async () => {
+  const wrote = makeManual({ sync: { status: "synced", message: "", mergedRemoteChanges: true, filesChanged: true } });
+  expect(wrote.ctrl.passTouchedFiles).toBe(false);
+  await wrote.ctrl.handleForceSync();
+  expect(wrote.ctrl.passTouchedFiles).toBe(true);
+  const none = makeManual({ sync: { status: "up-to-date", message: "" } });
+  await none.ctrl.handleForceSync();
+  expect(none.ctrl.passTouchedFiles).toBe(false);
+  // The host's own pass reports its writes through the page.
+  none.ctrl.noteFilesWritten();
+  expect(none.ctrl.passTouchedFiles).toBe(true);
 });
 
 test("the first answer to the check for online changes is recorded", async () => {
@@ -773,4 +779,46 @@ test("a host 'syncing' right after an instant local 'synced' does not flash 'Bac
   expect(h.ctrl.backup).toMatchObject({ state: "synced", local: true });
   h.ctrl.applyStatus({ state: "synced", projectDir: "/proj", lastSyncAt: "2026-11-07T10:00:00Z", source: "network" } as unknown as SyncStatus);
   expect(h.ctrl.backup?.local).toBeUndefined();
+});
+
+test("a host 'syncing' well after the local answer is a real pass and shows", () => {
+  const h = make();
+  const realNow = Date.now;
+  let t = 1_000_000;
+  Date.now = () => t;
+  try {
+    h.ctrl.applyStatus({ state: "synced", projectDir: "/proj", lastSyncAt: null, source: "local" } as unknown as SyncStatus);
+    t += 10_000;
+    h.ctrl.applyStatus({ state: "syncing", projectDir: "/proj", lastSyncAt: null } as SyncStatus);
+    expect(h.ctrl.backup).toMatchObject({ state: "syncing" });
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test("a 'syncing' after a network 'synced' shows, and a pass ending in error replaces the answer", () => {
+  const h = make();
+  h.ctrl.applyStatus({ state: "synced", projectDir: "/proj", lastSyncAt: "2026-11-07T10:00:00Z", source: "network" } as unknown as SyncStatus);
+  h.ctrl.applyStatus({ state: "syncing", projectDir: "/proj", lastSyncAt: null } as SyncStatus);
+  expect(h.ctrl.backup).toMatchObject({ state: "syncing" });
+  h.ctrl.applyStatus({ state: "error", projectDir: "/proj", lastSyncAt: null, message: "The online copy is full." } as SyncStatus);
+  expect(h.ctrl.backup).toMatchObject({ state: "error", message: "The online copy is full." });
+});
+
+test("a failed check for online changes is still an answer: the bar stops 'Checking online…'", async () => {
+  for (const reason of ["offline", "auth", "no-remote"]) {
+    const m = makeManual({ reason });
+    await m.ctrl.refreshSyncDiag("/proj");
+    await m.ctrl.checkForUpdates();
+    expect(m.ctrl.checkedDir).toBe("/proj");
+    if (reason !== "no-remote") expect(m.ctrl.backup).toMatchObject({ state: reason });
+  }
+});
+
+test("the host's own two-takes toast has its own key, so a manual error is never replaced by it", async () => {
+  const m = makeManual({ sync: { status: "error", message: "The online copy is full." } });
+  await m.ctrl.handleForceSync();
+  m.ctrl.applyConvergeReport(["a.md"], [], true);
+  const keys = m.toast.show.calls.map((c) => c[4]);
+  expect(keys).toEqual(["sync-outcome", "converge-ambient"]);
 });

@@ -42,6 +42,11 @@ interface SyncToast {
 /** One outcome toast per author action, and one for "new changes online": a newer one replaces the older. */
 const OUTCOME_KEY = "sync-outcome";
 const NEW_ONLINE_KEY = "new-online";
+/** The host's own passes (the status stream) report their two takes under this key. */
+const CONVERGE_AMBIENT_KEY = "converge-ambient";
+
+/** A host `syncing` this soon after the instant local answer is the pass that confirms it, not news. */
+export const LOCAL_ANSWER_QUIET_MS = 3000;
 
 /** How often to look for new online changes while automatic backup is off. */
 export const UPDATE_CHECK_INTERVAL_MS = 5 * 60_000;
@@ -118,7 +123,7 @@ function outcomeState(outcome: SyncOutcome): SyncState | "not-found" {
  * opens the list that names them.
  */
 export function combinedFilesMessage(_files: string[]): string {
-  return "Some passages were changed in two places. Choose which to keep.";
+  return "New changes came in. Some passages were changed in both places. Choose which to keep.";
 }
 
 /**
@@ -154,8 +159,16 @@ export class SyncController {
   private streamed = $state<StreamedStatus | null>(null);
   /** The book whose online changes this session has checked for at least once (manual mode's first real answer). */
   checkedDir = $state<string | null>(null);
-  /** When a pass (the host's or a manual one) last started or finished, for quieting follow-on notices. */
-  lastPassAt = 0;
+  /** When a pass last wrote files into the book (the host's or a manual one), so the editor's reload after it stays quiet. */
+  private filesWrittenAt = 0;
+  /** True while a pass is running, or just wrote files: a reload then is that pass's own doing. */
+  get passTouchedFiles(): boolean {
+    return this.forceSyncing || this.gettingLatest || Date.now() - this.filesWrittenAt < 10_000;
+  }
+  /** A pass wrote files into the book (called for the host's own passes too). */
+  noteFilesWritten(): void {
+    this.filesWrittenAt = Date.now();
+  }
   /** The book's automatic versions keep failing (a `source: "versions"` status) until a backup pass succeeds. */
   private versionsProblemOf = $state<{ dir: string; message: string | null } | null>(null);
   /** The newest operation log the host named for a book ("Technical details" in Version history). */
@@ -197,12 +210,21 @@ export class SyncController {
       return;
     }
     // WP-C's fields, all optional: absent from an older host.
-    const extra = status as unknown as { ahead?: number; behind?: boolean; decide?: number; source?: string };
-    if (status.state === "syncing" || status.state === "synced") this.lastPassAt = Date.now();
+    const extra = status as unknown as { ahead?: number; behind?: boolean; decide?: number; source?: string; reason?: string; host?: string };
     // The first network pass right after an instant local "Backed up" usually just confirms it:
     // keep the answer on screen instead of flashing "Backing up…" (the pass's own result replaces it).
+    // Only a `syncing` that comes straight after it (the orchestrator's first pass starts about a second
+    // after open): a later one is a real pass, and a real push must show.
     const prev = this.streamed;
-    if (status.state === "syncing" && prev?.dir === status.projectDir && prev.local && prev.state === "synced") return;
+    if (
+      status.state === "syncing" &&
+      prev?.dir === status.projectDir &&
+      prev.local &&
+      prev.state === "synced" &&
+      Date.now() - prev.seenAt < LOCAL_ANSWER_QUIET_MS
+    ) {
+      return;
+    }
     this.streamed = {
       dir: status.projectDir,
       state: status.state,
@@ -213,6 +235,8 @@ export class SyncController {
       ...(typeof extra.behind === "boolean" ? { behind: extra.behind } : {}),
       ...(typeof extra.decide === "number" ? { decide: extra.decide } : {}),
       ...(extra.source === "local" ? { local: true } : {}),
+      ...(typeof extra.reason === "string" ? { reason: extra.reason } : {}),
+      ...(typeof extra.host === "string" ? { host: extra.host } : {}),
     };
     // The host knows the online copy has moved on (or has not): keep the Update button's cue in step.
     if (typeof extra.behind === "boolean") this.updatesAvailable = extra.behind;
@@ -260,15 +284,22 @@ export class SyncController {
     } catch {
       return;
     }
-    if (this.deps.currentDir() !== dir || result.reason) return;
+    if (this.deps.currentDir() !== dir) return;
+    // Any answer is an answer: record it, so the bar stops saying "Checking online…". An offline or
+    // rejected check is also the online copy's latest word, in place of an older local one.
     this.checkedDir = dir;
+    if (result.reason === "offline" || result.reason === "auth") {
+      this.recordManual(dir, result.reason);
+      return;
+    }
+    if (result.reason) return;
     const discovered = result.available && !this.updatesAvailable;
     this.updatesAvailable = result.available;
     if (!result.available) this.deps.toast()?.dismissKey?.(NEW_ONLINE_KEY);
     if (discovered) {
       const t = this.deps.toast();
       const message = "New changes are online for this book.";
-      if (t?.show) t.show(message, "info", 0, { label: "Get the changes", onClick: () => void this.handleGetLatest() }, NEW_ONLINE_KEY);
+      if (t?.show) t.show(message, "info", 0, { label: "Get changes", onClick: () => void this.handleGetLatest() }, NEW_ONLINE_KEY);
       else t?.info?.(`${message} Use the Update button to bring them in.`);
     }
   }
@@ -316,7 +347,6 @@ export class SyncController {
     const dir = this.deps.currentDir();
     if (!dir || this.gettingLatest || this.forceSyncing) return;
     this.gettingLatest = true;
-    this.lastPassAt = Date.now();
     const failed = "Couldn't get the latest changes. Your work is saved on this computer — try again when you're ready.";
     try {
       const outcome = await this.deps.getLatest(dir);
@@ -326,8 +356,8 @@ export class SyncController {
         this.clearNewOnline();
         this.recordManual(dir, outcomeState(outcome));
         if (outcome.filesChanged) {
-          this.deps.onFilesChanged();
-          if (!this.applyConvergeReport(outcome.combinedFiles, outcome.keptBothFiles, "Got the changes from the online copy.")) {
+          this.filesChanged();
+          if (!this.applyConvergeReport(outcome.combinedFiles, outcome.keptBothFiles)) {
             this.notify("success", "Got the changes from the online copy.");
           }
         } else {
@@ -338,14 +368,13 @@ export class SyncController {
       } else if (outcome.status === "offline") {
         this.notify("info", OFFLINE);
       } else {
-        if (outcome.filesChanged) this.deps.onFilesChanged();
+        if (outcome.filesChanged) this.filesChanged();
         this.notify("error", outcome.message || failed);
       }
     } catch {
       this.notify("error", failed);
     } finally {
-      this.lastPassAt = Date.now();
-      if (this.deps.currentDir() === dir) this.gettingLatest = false;
+        if (this.deps.currentDir() === dir) this.gettingLatest = false;
     }
   }
 
@@ -356,21 +385,24 @@ export class SyncController {
    * kept as a side-by-side pair. Returns whether it showed anything, so a manual
    * pass can fold its own "done" line into this one instead of adding a second toast.
    */
-  applyConvergeReport(combinedFiles?: string[], keptBothFiles?: KeptBothFile[], lead?: string): boolean {
+  applyConvergeReport(combinedFiles?: string[], keptBothFiles?: KeptBothFile[], ambient = false): boolean {
     const t = this.deps.toast();
+    // The host's own passes get their own keys, so a manual Back up or Get changes error is never replaced by them.
+    const outcomeKey = ambient ? CONVERGE_AMBIENT_KEY : OUTCOME_KEY;
     let shown = false;
     if (combinedFiles && combinedFiles.length > 0) {
-      const message = `${lead ? `${lead} ` : ""}${combinedFilesMessage(combinedFiles)}`;
+      const message = combinedFilesMessage(combinedFiles);
       const review = this.deps.onReviewCombined;
-      // Sticky (duration 0) when it carries the way in: the author decides when
-      // they have seen it. It replaces the pass's own outcome toast (same key),
-      // so one action leaves one message; the status bar's "to decide" stays.
-      if (review && t?.show) t.show(message, "info", 0, { label: "Review", onClick: review }, OUTCOME_KEY);
-      else this.notify("info", message);
+      // Sticky (duration 0) when it carries the way in: the author decides when they have seen it.
+      // For a manual pass it replaces the pass's own outcome toast (same key), so one action
+      // leaves one message; the status bar's "to decide" stays until they have.
+      if (review && t?.show) t.show(message, "info", 0, { label: "Review", onClick: review }, outcomeKey);
+      else if (t?.show) t.show(message, "info", undefined, undefined, outcomeKey);
+      else t?.info?.(message);
       shown = true;
     }
     if (keptBothFiles && keptBothFiles.length > 0) {
-      if (t?.show) t.show(keptBothMessage(keptBothFiles), "info", undefined, undefined, shown ? "sync-kept-both" : OUTCOME_KEY);
+      if (t?.show) t.show(keptBothMessage(keptBothFiles), "info", undefined, undefined, shown ? `${outcomeKey}-kept-both` : outcomeKey);
       else t?.info?.(keptBothMessage(keptBothFiles));
       shown = true;
     }
@@ -388,7 +420,6 @@ export class SyncController {
     const dir = this.deps.currentDir();
     if (!dir || this.forceSyncing || this.gettingLatest) return;
     this.forceSyncing = true;
-    this.lastPassAt = Date.now();
     const retry = (this.deps.autoBackup?.() ?? true)
       ? "we'll try again later."
       : "try again when you're ready.";
@@ -406,20 +437,20 @@ export class SyncController {
         ? (outcome.combinedFiles?.length ?? 0) > 0 || (outcome.keptBothFiles?.length ?? 0) > 0
         : false;
       if (outcome.status === "synced") {
-        this.deps.onSyncCompleted(outcome.mergedRemoteChanges, outcome.filesChanged === true, converged);
-        this.applyConvergeReport(outcome.combinedFiles, outcome.keptBothFiles, converged ? "Backed up." : undefined);
+        this.completed(outcome.mergedRemoteChanges, outcome.filesChanged === true, converged);
+        this.applyConvergeReport(outcome.combinedFiles, outcome.keptBothFiles);
       } else if (outcome.status === "up-to-date") {
-        if (outcome.filesChanged) this.deps.onSyncCompleted(false, true, converged);
+        if (outcome.filesChanged) this.completed(false, true, converged);
         else this.notify("info", "Already up to date — nothing new to back up.");
         if (converged) this.applyConvergeReport(outcome.combinedFiles, outcome.keptBothFiles);
       } else if (outcome.status === "auth") {
-        if (outcome.filesChanged) this.deps.onFilesChanged();
+        if (outcome.filesChanged) this.filesChanged();
         this.notify("error", NOT_SIGNED_IN);
       } else if (outcome.status === "offline") {
-        if (outcome.filesChanged) this.deps.onFilesChanged();
+        if (outcome.filesChanged) this.filesChanged();
         this.notify("info", OFFLINE);
       } else {
-        if (outcome.filesChanged) this.deps.onFilesChanged();
+        if (outcome.filesChanged) this.filesChanged();
         // Error state. The lib's error-arm messages are ALL authored writer
         // copy (the MSG_* constants or an authored generic — transport.ts
         // failureOutcome; never raw git text), and some carry the actual fix
@@ -432,9 +463,18 @@ export class SyncController {
       if (this.deps.currentDir() === dir) this.recordManual(dir, "error");
       this.notify("error", failed);
     } finally {
-      this.lastPassAt = Date.now();
-      if (this.deps.currentDir() === dir) this.forceSyncing = false;
+        if (this.deps.currentDir() === dir) this.forceSyncing = false;
     }
+  }
+
+  private filesChanged(): void {
+    this.noteFilesWritten();
+    this.deps.onFilesChanged();
+  }
+
+  private completed(merged: boolean, filesChanged: boolean, quiet: boolean): void {
+    if (filesChanged) this.noteFilesWritten();
+    this.deps.onSyncCompleted(merged, filesChanged, quiet);
   }
 
   private recordManual(dir: string, state: SyncState | "not-found"): void {
@@ -467,7 +507,7 @@ export class SyncController {
           : "Online copy repaired. Your book is backed up.",
       );
       // The repair's own toast above is the one message: no second "Backed up".
-      this.deps.onSyncCompleted(true, n > 0 || outcome.filesChanged === true, true);
+      this.completed(true, n > 0 || outcome.filesChanged === true, true);
     } catch {
       if (this.deps.currentDir() === dir) this.recordManual(dir, "error");
       this.notify("error", failed);

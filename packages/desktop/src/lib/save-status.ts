@@ -20,6 +20,10 @@ export type BackupSyncState = SyncState | "not-found";
 export interface StatusBackup {
   state: BackupSyncState;
   message?: string;
+  /** The host's machine-readable cause for an `error` (`not-found`), preferred over matching the message. */
+  reason?: string;
+  /** `github` when the online copy is on GitHub, where a 404 usually means no access. */
+  host?: string;
   /** ISO time of the last finished pass. */
   lastSyncAt?: string | null;
   /** Versions on this computer the online copy lacks (the host, when it counted). */
@@ -41,6 +45,8 @@ export interface StatusLineInput {
   forceSaving: boolean;
   /** Why the last save failed, when the editor said. */
   saveError?: string | null;
+  /** The platform's save shortcut as written ("Ctrl+S", "Cmd+S"). */
+  saveKey?: string;
   /** The host said automatic versions keep failing (and why). */
   versionsProblem: { message: string | null } | null;
   /** The online copy's last word: the host's stream or the last manual pass (`null` until the first). */
@@ -63,11 +69,13 @@ export interface StatusLineInput {
   checked?: boolean;
   /** Passages with two takes (counted from the Problems list). */
   decide?: number;
+  /** The Problems list has loaded, so its count beats a host count that may be stale. */
+  problemsLoaded?: boolean;
   /** Settings → Saving "Back up online automatically". */
   autoBackup?: boolean;
   /** The book can back up (an https online copy with a saved sign-in). */
   canSync?: boolean;
-  /** Clock, for "3 mins ago". */
+  /** Clock, for "3 minutes ago". */
   now?: number;
 }
 
@@ -112,7 +120,7 @@ export interface StatusAction {
 
 export interface StatusLine {
   key: StatusKey;
-  /** The whole line as one string ("Saved here · Backed up 3 mins ago"). */
+  /** The whole line as one string ("Saved here · Backed up 3 minutes ago"). */
   text: string;
   /** The "this computer" clause; absent when the state is the whole story (Saving…, Unsaved changes). */
   left?: string;
@@ -120,13 +128,14 @@ export interface StatusLine {
   right: string;
   /** The same line without a time, so a minute ticking over is not announced. */
   announce: string;
+  /** The popover's short headline: a sentence-case line, not an echo of the bar. */
+  headline: string;
   /** The tooltip: what it means and what a click does. */
   title: string;
-  /** The popover's one sentence. */
+  /** The popover's sentence. */
   detail: string;
-  /** The tone as a shape (check, cloud, warning, error), never colour alone. */
   icon: "circle-check" | "refresh-cw" | "pen-line" | "cloud-upload" | "triangle-alert" | "circle-x" | "cloud" | "cloud-download" | "cloud-off" | "key-round" | "laptop" | "history";
-  /** `pending` is in flight; `warn` needs the author; `error` is a failed save; `plain` is information. */
+  /** `pending` is in flight (a spinner); `warn` needs the author; `error` is a failed save; `plain` is information. */
   tone: "ok" | "pending" | "warn" | "error" | "plain";
   /** What a click on the status does: do the fix, open the popover, or nothing. */
   click: "action" | "popover" | "none";
@@ -134,8 +143,12 @@ export interface StatusLine {
   clickAction?: StatusActionId;
   /** The popover's one primary action, if any. */
   primary?: StatusAction;
-  /** The bar's own button: `Update` when there is something to get, `Back up` when only to send. */
-  button?: { label: "Update" | "Back up"; action: "update" | "back-up" | "get-changes" };
+  /** The primary is a quiet outline button: nothing is wrong, the action is optional. */
+  primaryQuiet?: boolean;
+  /** A second, quieter popover action. */
+  secondary?: StatusAction;
+  /** The bar's own button, only when there is something to get or send (or a pass is running). */
+  button?: { label: "Get changes" | "Back up now" | "Update"; action: "update" | "back-up" | "get-changes" };
 }
 
 const HERE = "Saved here";
@@ -146,6 +159,7 @@ interface Spec {
   /** Without the left clause. */
   whole?: boolean;
   announce?: string;
+  headline?: string;
   title: string;
   detail?: string;
   icon: StatusLine["icon"];
@@ -153,6 +167,8 @@ interface Spec {
   click?: StatusLine["click"];
   clickAction?: StatusActionId;
   primary?: StatusAction;
+  primaryQuiet?: boolean;
+  secondary?: StatusAction;
   button?: StatusLine["button"];
 }
 
@@ -164,6 +180,7 @@ function make(s: Spec): StatusLine {
     ...(s.whole ? {} : { left: HERE }),
     right: s.right,
     announce: s.announce ?? text,
+    headline: s.headline ?? s.right,
     title: s.title,
     detail: s.detail ?? s.title,
     icon: s.icon,
@@ -171,13 +188,36 @@ function make(s: Spec): StatusLine {
     click: s.click ?? "popover",
     ...(s.clickAction ? { clickAction: s.clickAction } : {}),
     ...(s.primary ? { primary: s.primary } : {}),
+    ...(s.primaryQuiet ? { primaryQuiet: true } : {}),
+    ...(s.secondary ? { secondary: s.secondary } : {}),
     ...(s.button ? { button: s.button } : {}),
   };
 }
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
+/** "just now", "3 minutes ago", "2 hours ago": spelled out, never "mins" or "hrs". */
+export function ago(ms: number, now: number): string {
+  const min = Math.round((now - ms) / 60_000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min} ${min === 1 ? "minute" : "minutes"} ago`;
+  const hours = Math.round(min / 60);
+  if (hours < 24) return `${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+  const days = Math.round(hours / 24);
+  if (days < 14) return `${days} ${days === 1 ? "day" : "days"} ago`;
+  try {
+    return `on ${new Date(ms).toLocaleDateString()}`;
+  } catch {
+    return "a while ago";
+  }
+}
+
 const SAFE = "Your work is safe on this computer.";
+
+/** A pause the author can't clear by waiting: not a dropped connection or a busy server. */
+function isTransient(message: string | undefined): boolean {
+  return !message || /try again|timed? ?out|temporar|network|connection|busy|reach|unavailable/i.test(message);
+}
 
 /**
  * The one line in the status bar, by precedence:
@@ -190,15 +230,19 @@ const SAFE = "Your work is safe on this computer.";
 export function statusLine(i: StatusLineInput): StatusLine {
   const now = i.now ?? Date.now();
   const b = i.backup;
-  // The host reports a missing online copy as an "error" whose message says so (or "not-found" itself).
-  const missing = b?.state === "not-found" || (b?.state === "error" && /can't find this online copy/i.test(b.message ?? ""));
+  // The host's machine-readable `reason` first; the message text is only a fallback for an older host.
+  const missing =
+    b?.state === "not-found" ||
+    (b?.state === "error" && (b.reason === "not-found" || (b.reason === undefined && /can't find this online copy/i.test(b.message ?? ""))));
   const st: BackupSyncState | null = missing ? "not-found" : b && b.state !== "idle" ? b.state : null;
+  const lastAt = Date.parse(b?.lastSyncAt ?? "");
+  const lastKnown = Number.isNaN(lastAt) ? null : lastAt;
 
   // 3. A failed save outranks everything.
   if (i.savePhase === "error") {
     return make({
       key: "save-failed",
-      right: "Couldn't save · see why",
+      right: "Couldn't save",
       whole: true,
       title: "Your latest changes couldn't be saved to this computer. Click to see why and try again.",
       detail: i.saveError ? `${i.saveError}` : "Your latest changes couldn't be saved to this computer.",
@@ -209,11 +253,14 @@ export function statusLine(i: StatusLineInput): StatusLine {
   }
   // 2. Autosave off: the author's own Save is the fix.
   if (i.savePhase === "dirty" && !i.autoSave && !i.forceSaving) {
+    const key = i.saveKey ?? "Ctrl+S";
     return make({
       key: "unsaved",
-      right: "Unsaved changes",
+      right: `Unsaved changes · ${key} to save`,
+      announce: "Unsaved changes",
+      headline: "Unsaved changes",
       whole: true,
-      title: "Your changes aren't saved to this computer yet. Click to save now (Ctrl+S).",
+      title: `Your changes aren't saved to this computer yet. Click to save now (${key}).`,
       icon: "pen-line",
       tone: "warn",
       click: "action",
@@ -244,14 +291,14 @@ export function statusLine(i: StatusLineInput): StatusLine {
       primary: { id: "save-version", label: "Save a version" },
     });
   }
-  // 12. Two takes of a passage: stays until decided, over any backup news.
-  const decide = Math.max(i.decide ?? 0, b?.decide ?? 0);
+  // 12. Two takes of a passage: stays until decided, over any backup news. The Problems list is the
+  // truth once it has loaded; the host's count (per pass, it can stick) only fills in before that.
+  const decide = i.problemsLoaded ? (i.decide ?? 0) : Math.max(i.decide ?? 0, b?.decide ?? 0);
   if (decide > 0) {
     return make({
       key: "decide",
       right: `${plural(decide, "passage", "passages")} to decide`,
-      whole: true,
-      title: `${plural(decide, "passage was", "passages were")} changed in two places, and the book holds both. Click to choose which to keep.`,
+      title: `${plural(decide, "passage was", "passages were")} changed in both places, and the book holds both. Click to choose which to keep.`,
       icon: "triangle-alert",
       tone: "warn",
       click: "action",
@@ -264,6 +311,7 @@ export function statusLine(i: StatusLineInput): StatusLine {
   const ahead = (b?.ahead ?? 0) > 0 || st === "unsent";
   const hasOnline = i.hasRemote || (st !== null && st !== "local");
   const manual = i.autoBackup === false && !!i.canSync;
+  const sinceBackup = lastKnown === null ? "" : `Last backed up ${ago(lastKnown, now)}.`;
 
   if (hasOnline && !inFlight) {
     // 13-16. Something is stopping the online copy.
@@ -271,6 +319,7 @@ export function statusLine(i: StatusLineInput): StatusLine {
       return make({
         key: "offline",
         right: "Offline — will back up when you're back",
+        headline: "You're offline",
         title: `${SAFE} It will back up online when you're connected again. Click for options.`,
         detail: `${SAFE} It will back up online when you're connected again.`,
         icon: "cloud-off",
@@ -292,34 +341,38 @@ export function statusLine(i: StatusLineInput): StatusLine {
       });
     }
     if (st === "not-found") {
+      const github = b?.host === "github";
       return make({
         key: "not-found",
         right: "Can't find the online copy",
-        title: "Gutterpress can't find the online copy. It may have been renamed or deleted, or your account may not have access. Click for options.",
-        detail: `Gutterpress can't find the online copy. It may have been renamed or deleted, or your account may not have access. ${SAFE}`,
+        title: "Gutterpress can't find the online copy. It may have been renamed or deleted, or your account may no longer have access. Click for options.",
+        detail: `Gutterpress can't find the online copy. It may have been renamed or deleted, or your account may no longer have access.${github ? " On GitHub that often means Gutterpress needs you to sign in again." : ""} ${SAFE}`,
         icon: "triangle-alert",
         tone: "warn",
-        primary: { id: "open-backup", label: "Check the address" },
+        primary: { id: "open-backup", label: "Check the online link" },
+        ...(github ? { secondary: { id: "open-backup", label: "Sign in again" } as const } : {}),
       });
     }
     if (st === "error") {
+      const transient = isTransient(b?.message);
       return make({
         key: "paused",
-        right: "Backup paused · see why",
+        right: "Backup paused",
         title: b?.message || "Backing up is paused. Click to see why.",
         detail: `${b?.message || "Backing up is paused."} ${SAFE}`,
         icon: "triangle-alert",
         tone: "warn",
-        primary: { id: "try-again", label: "Try again" },
+        primary: transient ? { id: "try-again", label: "Try again" } : { id: "open-backup", label: "Open backup & history" },
       });
     }
     // 9-11. Out of step with the online copy.
     if (behind && ahead) {
       return make({
         key: "behind-ahead",
-        right: "Online has changes · you have changes",
+        right: "Changes here and online",
+        headline: "New changes online and on this computer",
         title: "Both this computer and the online copy have changes the other lacks. Click to update: get theirs, then back up yours.",
-        detail: "Both this computer and the online copy have changes the other lacks. Update gets theirs, then backs up yours. Where the same passage changed in both places, you choose which to keep.",
+        detail: "Update brings in the online changes, then backs up yours. If the same passage changed in both places, you'll choose which to keep.",
         icon: "cloud",
         tone: "plain",
         primary: { id: "update", label: "Update" },
@@ -334,21 +387,23 @@ export function statusLine(i: StatusLineInput): StatusLine {
         detail: "Someone, or another computer, changed this book online. Getting the changes leaves your own changes as they are.",
         icon: "cloud-download",
         tone: "plain",
-        primary: { id: "get-changes", label: "Get the changes" },
-        button: { label: "Update", action: "get-changes" },
+        primary: { id: "get-changes", label: "Get changes" },
+        button: { label: "Get changes", action: "get-changes" },
       });
     }
     if (ahead) {
       const n = b?.ahead ?? 0;
+      const right = n > 0 ? `${plural(n, "change", "changes")} not backed up` : "Not backed up yet";
       return make({
         key: "ahead",
-        right: n > 0 ? `${plural(n, "change", "changes")} not backed up` : "Not backed up yet",
+        right,
+        headline: right,
         title: `${n > 0 ? `${plural(n, "change is", "changes are")}` : "Your latest changes are"} saved on this computer but not in the online copy yet. Click to back up now.`,
         detail: "These changes are saved on this computer. Backing up sends them to the online copy.",
         icon: "cloud-upload",
         tone: "warn",
         primary: { id: "back-up", label: "Back up now" },
-        button: { label: "Back up", action: "back-up" },
+        button: { label: "Back up now", action: "back-up" },
       });
     }
   }
@@ -366,43 +421,43 @@ export function statusLine(i: StatusLineInput): StatusLine {
     });
   }
   if (hasOnline) {
-    // Own tools: an address Gutterpress can't back up over.
+    // An address Gutterpress can't back up over: claim nothing about what is or isn't online.
     if (st === "local" || (st === null && i.remoteNeeds === "own-tools")) {
       return make({
         key: "own-tools",
-        right: "Backed up with your own tools",
-        title: "This book's online copy is managed outside Gutterpress, so Gutterpress doesn't back it up. Click for details.",
+        right: "Online copy managed outside Gutterpress",
+        headline: "Managed outside Gutterpress",
+        title: "This book's online copy is managed outside Gutterpress, so Gutterpress doesn't back it up or check it. Click for details.",
         icon: "cloud",
         tone: "plain",
-        primary: { id: "open-backup", label: "Backup & history…" },
+        primary: { id: "open-backup", label: "Open backup & history" },
       });
     }
-    const last = Date.parse(b?.lastSyncAt ?? "");
-    const lastKnown = Number.isNaN(last) ? null : last;
     // 6. No real answer yet: say so, never a bare "Saved".
     if (st === null && !i.checked) {
       return make({
         key: "checking",
         right: "Checking online…",
         title: "Checking whether the online copy is up to date. Your work is safe on this computer. Click for details.",
-        detail: "Checking whether the online copy is up to date. " + SAFE,
+        detail: `Checking whether the online copy is up to date. ${sinceBackup || "Nothing is known about it yet."} ${SAFE}`,
         icon: "refresh-cw",
         tone: "pending",
       });
     }
     // 7. Backed up.
     if (st === "synced") {
-      const when = lastKnown === null ? "" : ` ${relativeTime(lastKnown, now)}`;
+      const when = lastKnown === null ? "" : ` ${ago(lastKnown, now)}`;
       return make({
         key: "backed-up",
         right: `Backed up${when}`,
+        headline: `Backed up${when}`,
         announce: `${HERE} · Backed up`,
-        title: `Your latest work is in the online copy${lastKnown === null ? "" : ` (last backed up ${relativeTime(lastKnown, now)})`}.${b?.local ? " Checking online in the background." : ""} Click for details.`,
-        detail: `Your latest work is in the online copy${lastKnown === null ? "" : `, last backed up ${relativeTime(lastKnown, now)}`}.`,
+        title: `Your latest work is in the online copy${lastKnown === null ? "" : ` (last backed up ${ago(lastKnown, now)})`}.${b?.local ? " Checking online in the background." : ""} Click for details.`,
+        detail: "Your latest work is in the online copy.",
         icon: "circle-check",
         tone: "ok",
         primary: { id: "back-up", label: "Back up now" },
-        ...(manual ? { button: { label: "Update", action: "update" } as const } : {}),
+        primaryQuiet: true,
       });
     }
     // Checked, nothing new online, but nothing said what this computer has to send.
@@ -414,7 +469,7 @@ export function statusLine(i: StatusLineInput): StatusLine {
       icon: "circle-check",
       tone: "ok",
       primary: { id: "back-up", label: "Back up now" },
-      ...(manual ? { button: { label: "Update", action: "update" } as const } : {}),
+      primaryQuiet: true,
     });
   }
   // 4. A plain folder.

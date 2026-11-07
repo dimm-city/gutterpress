@@ -48,18 +48,20 @@ describe("statusLine: saving", () => {
 
   test("with autosave off, unsaved work is 'Unsaved changes', and the click saves", () => {
     expect(statusLine(input({ savePhase: "dirty", autoSave: false }))).toMatchObject({
-      text: "Unsaved changes",
+      text: "Unsaved changes · Ctrl+S to save",
+      headline: "Unsaved changes",
       icon: "pen-line",
       tone: "warn",
       click: "action",
       clickAction: "save",
     });
     expect(text({ savePhase: "dirty", autoSave: false, forceSaving: true })).toBe("Saving…");
+    expect(text({ savePhase: "dirty", autoSave: false, saveKey: "Cmd+S" })).toBe("Unsaved changes · Cmd+S to save");
   });
 
   test("a failed save outranks everything, shows the reason and offers Try again", () => {
     const l = statusLine(input({ savePhase: "error", saveError: "The disk is full.", sync: "synced", decide: 2 }));
-    expect(l).toMatchObject({ key: "save-failed", text: "Couldn't save · see why", icon: "circle-x", tone: "error", click: "popover" });
+    expect(l).toMatchObject({ key: "save-failed", text: "Couldn't save", icon: "circle-x", tone: "error", click: "popover" });
     expect(l.detail).toBe("The disk is full.");
     expect(l.primary).toEqual({ id: "save", label: "Try again" });
   });
@@ -79,8 +81,9 @@ describe("statusLine: where it stands with the online copy", () => {
 
   test("backed up carries a relative time that follows the clock", () => {
     const at = ago(3 * MIN);
-    expect(text({ ...online, sync: "synced", extra: { lastSyncAt: at } })).toBe("Saved here · Backed up 3 mins ago");
-    expect(statusLine(input({ ...online, sync: "synced", extra: { lastSyncAt: at }, now: NOW + 60 * MIN })).text).toBe("Saved here · Backed up 1 hr ago");
+    expect(text({ ...online, sync: "synced", extra: { lastSyncAt: at } })).toBe("Saved here · Backed up 3 minutes ago");
+    expect(statusLine(input({ ...online, sync: "synced", extra: { lastSyncAt: at }, now: NOW + 60 * MIN })).text).toBe("Saved here · Backed up 1 hour ago");
+    expect(statusLine(input({ ...online, sync: "synced", extra: { lastSyncAt: ago(2 * 60 * MIN) } })).text).toBe("Saved here · Backed up 2 hours ago");
     expect(text({ ...online, sync: "synced", extra: { lastSyncAt: ago(0) } })).toBe("Saved here · Backed up just now");
     expect(text({ ...online, sync: "synced" })).toBe("Saved here · Backed up");
   });
@@ -93,7 +96,7 @@ describe("statusLine: where it stands with the online copy", () => {
 
   test("a local-only answer is marked as still being confirmed in the tooltip", () => {
     const l = statusLine(input({ ...online, sync: "synced", extra: { lastSyncAt: ago(2 * MIN), local: true } }));
-    expect(l.text).toBe("Saved here · Backed up 2 mins ago");
+    expect(l.text).toBe("Saved here · Backed up 2 minutes ago");
     expect(l.title).toContain("Checking online in the background");
   });
 
@@ -116,7 +119,7 @@ describe("statusLine: where it stands with the online copy", () => {
     const l = statusLine(input({ ...online, canSync: true, sync: "unsent", extra: { ahead: 3 } }));
     expect(l).toMatchObject({ key: "ahead", text: "Saved here · 3 changes not backed up", icon: "cloud-upload", tone: "warn" });
     expect(l.primary).toEqual({ id: "back-up", label: "Back up now" });
-    expect(l.button).toEqual({ label: "Back up", action: "back-up" });
+    expect(l.button).toEqual({ label: "Back up now", action: "back-up" });
     expect(text({ ...online, sync: "synced", extra: { ahead: 1 } })).toBe("Saved here · 1 change not backed up");
     expect(text({ ...online, sync: "unsent" })).toBe("Saved here · Not backed up yet");
   });
@@ -125,14 +128,15 @@ describe("statusLine: where it stands with the online copy", () => {
     for (const over of [{ updatesAvailable: true, sync: "synced" as const }, { sync: "synced" as const, extra: { behind: true } }]) {
       const l = statusLine(input({ ...online, ...over }));
       expect(l).toMatchObject({ key: "behind", text: "Saved here · New changes online", icon: "cloud-download", tone: "plain" });
-      expect(l.primary).toEqual({ id: "get-changes", label: "Get the changes" });
-      expect(l.button).toEqual({ label: "Update", action: "get-changes" });
+      expect(l.primary).toEqual({ id: "get-changes", label: "Get changes" });
+      expect(l.button).toEqual({ label: "Get changes", action: "get-changes" });
     }
   });
 
   test("behind and ahead is one Update", () => {
     const l = statusLine(input({ ...online, updatesAvailable: true, sync: "unsent", extra: { ahead: 2 } }));
-    expect(l).toMatchObject({ key: "behind-ahead", text: "Saved here · Online has changes · you have changes" });
+    expect(l).toMatchObject({ key: "behind-ahead", text: "Saved here · Changes here and online", headline: "New changes online and on this computer" });
+    expect(l.detail).toBe("Update brings in the online changes, then backs up yours. If the same passage changed in both places, you'll choose which to keep.");
     expect(l.primary).toEqual({ id: "update", label: "Update" });
     expect(l.button).toEqual({ label: "Update", action: "update" });
   });
@@ -171,14 +175,15 @@ describe("statusLine: where it stands with the online copy", () => {
 
   test("a paused backup shows the host's own explanation as the tooltip and in the popover", () => {
     const l = statusLine(input({ ...online, sync: "error", message: "The online copy is full." }));
-    expect(l).toMatchObject({ key: "paused", text: "Saved here · Backup paused · see why", title: "The online copy is full." });
+    expect(l).toMatchObject({ key: "paused", text: "Saved here · Backup paused", title: "The online copy is full." });
     expect(l.detail).toContain("The online copy is full.");
-    expect(l.primary).toEqual({ id: "try-again", label: "Try again" });
+    expect(l.primary).toEqual({ id: "open-backup", label: "Open backup & history" }); // "full" is not cleared by waiting
   });
 
   test("an online copy Gutterpress can't back up over is said plainly", () => {
-    expect(text({ ...online, sync: "local" })).toBe("Saved here · Backed up with your own tools");
-    expect(text({ ...online, remoteNeeds: "own-tools" })).toBe("Saved here · Backed up with your own tools");
+    // Claims nothing about what is or isn't online.
+    expect(text({ ...online, sync: "local" })).toBe("Saved here · Online copy managed outside Gutterpress");
+    expect(text({ ...online, remoteNeeds: "own-tools" })).toBe("Saved here · Online copy managed outside Gutterpress");
   });
 });
 
@@ -203,9 +208,11 @@ describe("statusLine: no online copy", () => {
 describe("statusLine: two takes", () => {
   test("outranks a quiet or noisy online copy, counts passages, and a click opens the list", () => {
     const l = statusLine(input({ hasRemote: true, sync: "synced", decide: 2 }));
-    expect(l).toMatchObject({ key: "decide", text: "2 passages to decide", icon: "triangle-alert", tone: "warn", click: "action", clickAction: "open-problems" });
-    expect(text({ hasRemote: true, sync: "offline", decide: 1 })).toBe("1 passage to decide");
-    expect(text({ sync: "synced", extra: { decide: 3 }, hasRemote: true })).toBe("3 passages to decide");
+    expect(l).toMatchObject({ key: "decide", text: "Saved here · 2 passages to decide", icon: "triangle-alert", tone: "warn", click: "action", clickAction: "open-problems" });
+    expect(text({ hasRemote: true, sync: "offline", decide: 1 })).toBe("Saved here · 1 passage to decide");
+    // Before the Problems list has loaded the host's count fills in; after, the list is the truth.
+    expect(text({ sync: "synced", extra: { decide: 3 }, hasRemote: true })).toBe("Saved here · 3 passages to decide");
+    expect(key({ sync: "synced", extra: { decide: 3 }, hasRemote: true, problemsLoaded: true, decide: 0 })).toBe("backed-up");
   });
 
   test("a failed save and unsaved changes still come first", () => {
@@ -237,7 +244,7 @@ describe("statusLine: versions that need attention", () => {
   test("never hides a sign-in, a pause or a backup in flight", () => {
     const online = { hasRemote: true, versionsProblem: problem };
     expect(text({ ...online, sync: "auth" })).toBe("Saved here · Sign in to back up");
-    expect(text({ ...online, sync: "error" })).toBe("Saved here · Backup paused · see why");
+    expect(text({ ...online, sync: "error" })).toBe("Saved here · Backup paused");
     expect(text({ ...online, sync: "syncing" })).toBe("Saved here · Backing up…");
   });
 
@@ -260,11 +267,62 @@ describe("statusLine: precedence", () => {
 });
 
 describe("statusLine: buttons, tooltips and tone shapes", () => {
-  test("the Update button shows for manual mode even when backed up", () => {
-    const l = statusLine(input({ hasRemote: true, canSync: true, autoBackup: false, sync: "synced", extra: { lastSyncAt: ago(MIN) } }));
-    expect(l.key).toBe("backed-up");
-    expect(l.button).toEqual({ label: "Update", action: "update" });
-    expect(statusLine(input({ hasRemote: true, canSync: true, autoBackup: true, sync: "synced", extra: { lastSyncAt: ago(MIN) } })).button).toBeUndefined();
+  test("the bar button shows only when there is something to get or send", () => {
+    const base = { hasRemote: true, canSync: true, autoBackup: false } as const;
+    expect(statusLine(input({ ...base, sync: "synced", extra: { lastSyncAt: ago(MIN) } })).button).toBeUndefined();
+    expect(statusLine(input({ ...base, autoBackup: true, sync: "synced", extra: { lastSyncAt: ago(MIN) } })).button).toBeUndefined();
+    expect(statusLine(input({ ...base, checked: true })).button).toBeUndefined();
+  });
+
+  test("one name per action: Get changes, Back up now, Update only for both", () => {
+    const base = { hasRemote: true, canSync: true } as const;
+    const behind = statusLine(input({ ...base, updatesAvailable: true, sync: "synced" }));
+    const ahead = statusLine(input({ ...base, sync: "unsent" }));
+    const both = statusLine(input({ ...base, updatesAvailable: true, sync: "unsent" }));
+    expect([behind.button?.label, behind.primary?.label]).toEqual(["Get changes", "Get changes"]);
+    expect([ahead.button?.label, ahead.primary?.label]).toEqual(["Back up now", "Back up now"]);
+    expect([both.button?.label, both.primary?.label]).toEqual(["Update", "Update"]);
+  });
+
+  test("Back up now in the backed-up popover is the quiet button", () => {
+    const l = statusLine(input({ hasRemote: true, sync: "synced" }));
+    expect(l.primary).toEqual({ id: "back-up", label: "Back up now" });
+    expect(l.primaryQuiet).toBe(true);
+  });
+
+  test("a pause that waiting won't fix sends the author to Backup & history; a transient one offers Try again", () => {
+    const full = statusLine(input({ hasRemote: true, sync: "error", message: "The online copy is full." }));
+    expect(full.primary).toEqual({ id: "open-backup", label: "Open backup & history" });
+    const net = statusLine(input({ hasRemote: true, sync: "error", message: "The connection timed out. Try again in a moment." }));
+    expect(net.primary).toEqual({ id: "try-again", label: "Try again" });
+    expect(statusLine(input({ hasRemote: true, sync: "error" })).primary?.id).toBe("try-again");
+  });
+
+  test("popover headlines are short and never repeat the bar's separators or 'see why'", () => {
+    const states: Over[] = [{}, { noHistory: true }, { hasRemote: true }, { hasRemote: true, sync: "synced" }, { hasRemote: true, sync: "offline" }, { hasRemote: true, sync: "error" }, { savePhase: "error" }, { hasRemote: true, updatesAvailable: true, sync: "unsent" }];
+    for (const over of states) {
+      const l = statusLine(input(over));
+      expect(l.headline).not.toContain("see why");
+      expect(l.headline).not.toContain("·");
+      expect(l.headline.length).toBeLessThan(45);
+    }
+    expect(statusLine(input({ hasRemote: true, sync: "offline" })).headline).toBe("You're offline");
+    expect(statusLine(input({ savePhase: "error" })).headline).toBe("Couldn't save");
+    expect(statusLine(input({ hasRemote: true, sync: "synced", extra: { lastSyncAt: ago(0) } })).headline).toBe("Backed up just now");
+  });
+
+  test("the checking popover says what was last known", () => {
+    expect(statusLine(input({ hasRemote: true, sync: "idle", extra: { lastSyncAt: ago(3 * MIN) } })).detail).toContain("Last backed up 3 minutes ago.");
+  });
+
+  test("can't find: the host's reason wins over its message; GitHub adds Sign in again", () => {
+    const l = statusLine(input({ hasRemote: true, sync: "error", extra: { reason: "not-found", host: "github" }, message: "something else" }));
+    expect(l).toMatchObject({ key: "not-found", primary: { id: "open-backup", label: "Check the online link" }, secondary: { id: "open-backup", label: "Sign in again" } });
+    expect(l.detail).toContain("may no longer have access");
+    const other = statusLine(input({ hasRemote: true, sync: "error", extra: { reason: "not-found" } }));
+    expect(other.secondary).toBeUndefined();
+    // An error with a different reason, even with matching words, stays a pause.
+    expect(key({ hasRemote: true, sync: "error", extra: { reason: "full" }, message: "Gutterpress can't find this online copy." })).toBe("paused");
   });
 
   test("a tooltip never says 'click for details'; it says what the state means", () => {

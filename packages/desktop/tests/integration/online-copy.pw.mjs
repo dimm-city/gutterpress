@@ -767,7 +767,13 @@ await screenshot(join(tmpdir(), "online-copy-bar-auto.png"));
 await openSettings();
 await evalJs(`(() => { const sw = document.querySelector('#settings-autosync'); sw.checked = false; sw.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
 await closeSettings();
-check(await waitFor(`!!(${updateBtn})`), "the status bar offers Update once automatic backing up is off");
+await sleep(500);
+check(!(await evalJs(`!!(${updateBtn})`)), "backed up, even with automatic backing up off, the bar shows no button: nothing to get or send");
+
+// Changes online: the toast, the bar line and the one button all name the same action.
+await evalJs(`window.__sync.updatesOnline = true; window.dispatchEvent(new Event('focus')); true`);
+const prompt = `[...document.querySelectorAll('.toast')].find((t) => t.querySelector('.toast-message')?.textContent.trim() === 'New changes are online for this book.')`;
+check(await waitFor(`!!(${prompt}) && !!(${updateBtn})`), "new changes online raise the toast and the bar's button");
 const shape = await evalJs(`(() => {
   const bar = document.querySelector('.status-bar');
   const btn = ${updateBtn};
@@ -777,53 +783,38 @@ const shape = await evalJs(`(() => {
     title: btn.title,
     hasIcon: !!btn.querySelector('svg'),
     disabled: btn.disabled,
+    bar: document.querySelector('.status-bar .status-control').innerText.replace(/\\s+/g, ' ').trim(),
+    toast: (${prompt}).querySelector('.toast-message').textContent.trim(),
+    action: (${prompt}).querySelector('.toast-action')?.textContent.trim(),
     order: [left(bar.querySelector('button[aria-label^="Books"]')), left(bar.querySelector('.status-control')), left(btn), left(bar.querySelector('button[aria-label="Settings"]'))],
     labels: [...bar.querySelectorAll('button')].map((b) => b.getAttribute('aria-label') ?? b.textContent.trim()),
   };
 })()`);
-log(`bar with Update: ${JSON.stringify(shape)}`);
-check(shape.text === "Update" && shape.hasIcon && !shape.disabled, "Update is an icon and the word Update");
-check(shape.title === "Get the latest changes from the online copy, then back up yours.", `its tooltip says what it does (${shape.title})`);
-check(shape.order.every((x, i) => i === 0 || x > shape.order[i - 1]), `the bar reads Books, status, Update, then settings (${shape.order.map(Math.round)})`);
-check(!shape.labels.some((l) => /Back up now|Get latest|^Sync/.test(l)), `no Get latest, Sync or Back up now in the bar (${shape.labels.join(", ")})`);
-await screenshot(join(tmpdir(), "online-copy-bar-sync.png"));
-
-await click(".status-bar button.labelled");
-check(await waitFor(`${updateBtn}?.textContent.trim() === 'Updating…' && ${updateBtn}.disabled`), "while it runs Update reads Updating…, and waits");
-check(await evalJs(`window.__sync.calls.length === 1 && window.__sync.calls[0].push === undefined`), "Update ran one full pass (no get-only flag)");
-await evalJs(`window.__sync.release(); true`);
-check(await waitFor(`${updateBtn}?.textContent.trim() === 'Update' && !${updateBtn}.disabled`), "it is back to Update when the pass ends");
-
-await evalJs(`window.__sync.updatesOnline = true; window.dispatchEvent(new Event('focus')); true`);
-const prompt = `[...document.querySelectorAll('.toast')].find((t) => t.querySelector('.toast-message')?.textContent.trim() === 'New changes are online for this book.')`;
-check(await waitFor(`!!(${prompt})`), "new changes online raise the toast");
-const cue = await evalJs(`(() => ({
-  toast: (${prompt}).querySelector('.toast-message').textContent.trim(),
-  action: (${prompt}).querySelector('.toast-action')?.textContent.trim(),
-  title: (${updateBtn}).title,
-  bar: document.querySelector('.status-bar .status-control').innerText.replace(/\\s+/g, ' ').trim(),
-}))()`);
-check(cue.toast === "New changes are online for this book." && cue.action === "Get the changes", `the toast offers Get the changes (${cue.action})`);
-check(cue.bar === "Saved here · New changes online", `the bar says so (${cue.bar})`);
-check(/^Get the changes from the online copy\./.test(cue.title), `Update says it will get them and keep yours (${cue.title})`);
+log(`bar with its button: ${JSON.stringify(shape)}`);
+check(shape.text === "Get changes" && shape.hasIcon && !shape.disabled, "the button is an icon and the words Get changes");
+check(shape.action === "Get changes", `the toast names the same action (${shape.action})`);
+check(shape.bar === "Saved here · New changes online", `the bar says so (${shape.bar})`);
+check(shape.title === "Get the changes from the online copy. Your own changes stay as they are.", `its tooltip says what it does (${shape.title})`);
+check(shape.order.every((x, i) => i === 0 || x > shape.order[i - 1]), `the bar reads Books, status, button, then settings (${shape.order.map(Math.round)})`);
+check(!shape.labels.some((l) => /Update|Get latest|^Sync/.test(l)), `no Update, Get latest or Sync in the bar (${shape.labels.join(", ")})`);
 await sleep(600); // let the toast finish fading in
 await screenshot(join(tmpdir(), "online-copy-bar-sync-updates.png"));
-await click(".toast-action", "Get the changes");
-check(await waitFor(`${updateBtn}?.textContent.trim() === 'Updating…'`), "the toast's action runs the pass that sends nothing");
-check(await evalJs(`window.__sync.calls.length === 2 && window.__sync.calls[1].push === false`), "it asked for push: false");
+await click(".status-bar button.labelled");
+check(await waitFor(`${updateBtn}?.textContent.trim() === 'Updating…' && ${updateBtn}.disabled`), "while it runs the button reads Updating…, and waits");
+check(await evalJs(`window.__sync.calls.length === 1 && window.__sync.calls[0].push === false`), "Get changes asked for the pass that sends nothing (push: false)");
 await evalJs(`window.__sync.release(); true`);
-check(await waitFor(`!(${prompt}) && /^Saved here · (?!New changes)/.test(document.querySelector('.status-bar .status-control').innerText.replace(/\\s+/g, ' ').trim())`), "the cue and the stale toast clear once the changes are in");
+check(await waitFor(`!(${prompt}) && !(${updateBtn}) && /^Saved here · (?!New changes)/.test(document.querySelector('.status-bar .status-control').innerText.replace(/\\s+/g, ' ').trim())`), "the cue, the button and the stale toast clear once the changes are in");
 
 // Online copy, with automatic backing up off: Get latest beside Sync now (#485).
 await openTabFromBar();
 check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Get latest|Sync now'`), `with automatic backing up off, the status card offers Get latest and Sync now (${await cardButtons()})`);
 await screenshot(join(tmpdir(), "online-copy-tab-manual.png"));
 await click("#project-settings-panel .status-action button", "Get latest");
-check(await waitFor(`window.__sync.calls.length === 3 && window.__sync.calls[2].push === false`), "the card's Get latest sends nothing");
+check(await waitFor(`window.__sync.calls.length === 2 && window.__sync.calls[1].push === false`), "the card's Get latest sends nothing");
 await evalJs(`window.__sync.release(); true`);
 await click("#project-settings-panel .status-action button", "Sync now");
 check(await waitFor(`${statusActions}.some((b) => b.textContent.trim() === 'Syncing…')`), "Sync now reads Syncing… while it runs");
-check(await evalJs(`window.__sync.calls.length === 4 && window.__sync.calls[3].push === undefined`), "Sync now is the full pass");
+check(await evalJs(`window.__sync.calls.length === 3 && window.__sync.calls[2].push === undefined`), "Sync now is the full pass");
 await evalJs(`window.__sync.release(); true`);
 check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Get latest|Sync now'`), "and both are ready again");
 await closeDialog();
@@ -836,21 +827,20 @@ for (const width of [700, 260]) {
   await sleep(800);
   const narrow = await evalJs(`(() => {
     const bar = document.querySelector('.status-bar').getBoundingClientRect();
-    const btn = ${updateBtn};
+    const btn = document.querySelector('.status-bar button.labelled') ?? document.querySelector('.status-bar button[aria-label="Settings"]');
     const control = document.querySelector('.status-bar .status-control');
     const text = document.querySelector('.status-bar .status-text');
     const here = control.querySelector('.here');
     const rects = [...document.querySelectorAll('.status-bar button')].map((b) => b.getBoundingClientRect());
     return {
       spill: rects.some((r) => r.right > bar.right + 1 || r.left < bar.left - 1),
-      updateShown: btn.getClientRects().length > 0,
       hereHidden: !here || here.getClientRects().length === 0,
       tooltipHasHere: control.title.startsWith('Saved here.'),
       ellipsis: getComputedStyle(text).textOverflow === 'ellipsis' && getComputedStyle(text).overflow === 'hidden',
-      updateBeforeSettings: btn.getBoundingClientRect().right <= document.querySelector('.status-bar button[aria-label="Settings"]').getBoundingClientRect().left,
+      updateBeforeSettings: control.getBoundingClientRect().right <= document.querySelector('.status-bar button[aria-label="Settings"]').getBoundingClientRect().left,
     };
   })()`);
-  check(!narrow.spill && narrow.updateShown && narrow.hereHidden && narrow.tooltipHasHere && narrow.ellipsis && narrow.updateBeforeSettings, `at ${width}px it still fits, with "Saved here" in the tooltip (${JSON.stringify(narrow)})`);
+  check(!narrow.spill && narrow.hereHidden && narrow.tooltipHasHere && narrow.ellipsis && narrow.updateBeforeSettings, `at ${width}px it still fits, with "Saved here" in the tooltip (${JSON.stringify(narrow)})`);
   if (width === 260) await screenshot(join(tmpdir(), "online-copy-bar-narrow.png"));
 }
 await send("Emulation.clearDeviceMetricsOverride");
