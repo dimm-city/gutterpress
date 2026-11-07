@@ -2300,3 +2300,21 @@ describe("localBackupStatus and work that is not in a version yet", () => {
     }
   });
 });
+
+describe("localBackupStatus without the unversioned walk", () => {
+  test("countUnversioned: false answers from refs only, ignoring files not in a version", async () => {
+    const h = await setupClone();
+    try {
+      await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nEdited elsewhere.\n");
+      expect(await localBackupStatus(h.projectDir, { countUnversioned: false })).toEqual({
+        state: "synced",
+        ahead: 0,
+        behind: false,
+      });
+      expect(await localBackupStatus(h.projectDir)).toMatchObject({ state: "unsent", unversioned: 1 });
+    } finally {
+      await h.cleanup();
+    }
+  });
+});
+

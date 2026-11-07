@@ -28,4 +28,10 @@ export interface RemoteHooks {
    * `mainWindow` reference) only ever calls this one method.
    */
   cloneRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
+  /**
+   * A sensible folder to put books opened from the online copy in: the
+   * platform's documents folder plus "Gutterpress". Only a path: nothing is
+   * created until a clone actually uses it.
+   */
+  defaultCloneParent(): string;
 }

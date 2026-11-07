@@ -89,6 +89,7 @@ export function makeHostServices(overrides: HostServicesOverrides = {}): HostSer
       tokenStore: {} as TokenStore,
       GITHUB_HOST: "github.com",
       cloneRepository: unstubbed("remote.cloneRepository"),
+      defaultCloneParent: () => "/home/test/Documents/Gutterpress",
     },
     savePaths: { register: noop, consume: () => false },
     sync: {

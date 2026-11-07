@@ -5,8 +5,9 @@ import type { RequestHandler } from './$types';
  * What "Repair the online copy" would set aside, for the confirm text: the
  * revisions and versions that exist only on this computer. A repair keeps the
  * old history in a repair copy but starts from the online one, so these are
- * what would be left out. Reads this computer's history only (no network,
- * nothing written).
+ * what would be left out. Reads this computer's history; it first refreshes the
+ * online copy's remote-tracking refs when that is cheap (a recent check is
+ * reused), which fetches but changes no version, file or local revision.
  */
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   validate: async (raw) => ({
