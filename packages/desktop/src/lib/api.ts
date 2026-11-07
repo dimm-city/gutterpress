@@ -70,6 +70,7 @@ export type {
   Revision,
   RevisionList,
   RepairCopy,
+  UnfinishedSwitch,
   RemoteConnection,
   RemoteRepository,
   BackupTarget,
@@ -103,6 +104,7 @@ import type {
   Revision,
   RevisionList,
   RepairCopy,
+  UnfinishedSwitch,
   RemoteConnection,
   RemoteRepository,
   BackupTarget,
@@ -799,8 +801,11 @@ export const api = {
     restoreRepairCopy: (projectDir: string, id: string) =>
       post<{ restoredId: string; backupId?: string }>('/api/vcs/restore-repair-copy', { projectDir, id }),
     /** Delete a kept repair copy (#508). */
-    discardRepairCopy: (projectDir: string, id: string) =>
-      post<{ discarded: true }>('/api/vcs/discard-repair-copy', { projectDir, id }),
+    discardRepairCopy: (projectDir: string, id: string, discardUnsaved = false) =>
+      post<{ discarded: true }>('/api/vcs/discard-repair-copy', { projectDir, id, confirm: true, discardUnsaved }),
+    /** "Keep files as they are" for a switch that could not be put right. */
+    keepUnfinishedSwitch: (projectDir: string) =>
+      post<{ kept: true }>('/api/vcs/keep-unfinished-switch', { projectDir }),
     /** Start a new revision from what is open now and switch to it (#448). */
     createRevision: (projectDir: string, name: string) =>
       post<{ current: string }>('/api/vcs/create-revision', { projectDir, name }),

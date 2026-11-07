@@ -940,6 +940,8 @@ interface SwitchJournal {
   branch?: string;
   /** When the move began (ms). */
   startedAt?: number;
+  /** Ref of the copy of the tree a repair kept for this switch (so a retry reuses it). */
+  keptCopy?: string;
   /** Folders that held the target's new files before the move, so they are not the move's to remove. */
   preexistingDirs?: string[];
 }
@@ -1029,7 +1031,14 @@ function pruneNewEmptyDirs(dir: string, file: string, keep: Set<string>): void {
  * on a side ref, so a forced rollback can never lose what was written after the
  * journal. Returns the ref, or `undefined` when the tree already equals `from`.
  */
-async function keepTreeBeforeRepair(dir: string, from: string, cache: GitCache): Promise<string | undefined> {
+async function keepTreeBeforeRepair(
+  dir: string,
+  from: string,
+  to: string,
+  fromBranch: string | undefined,
+  cache: GitCache,
+  prior?: string,
+): Promise<string | undefined> {
   const ref = `${BEFORE_REPAIR_REF_PREFIX}${new Date().toISOString().replace(/[^0-9]/g, "")}`;
   const changes = await listWorkdirChanges(dir, cache);
   await stageChanges(dir, changes, cache);
@@ -1039,8 +1048,10 @@ async function keepTreeBeforeRepair(dir: string, from: string, cache: GitCache):
     dir,
     cache,
     ref,
-    parent: [from],
-    message: "Kept before repairing an interrupted switch",
+    // `from` is the saved version; `to` lets a later restore tell the author's
+    // files from the ones the half-done move wrote.
+    parent: to === from ? [from] : [from, to],
+    message: `Kept before repairing an interrupted switch${fromBranch ? `\n\nRevision: ${fromBranch}` : ""}`,
     author,
   });
   const [kept, saved] = await Promise.all([
@@ -1051,10 +1062,22 @@ async function keepTreeBeforeRepair(dir: string, from: string, cache: GitCache):
     await git.deleteRef({ fs, dir, ref });
     return undefined;
   }
-  // Staging was only to take the copy. Files the saved version lacks go back to
-  // being untracked, so the forced checkout that follows leaves them on disk.
-  for (const f of await targetOnlyFiles(dir, from, id, cache)) {
-    await git.remove({ fs, dir, cache, filepath: f });
+  // A retry of the same repair: the tree is what the earlier try already kept.
+  if (prior) {
+    const earlier = await git
+      .resolveRef({ fs, dir, ref: prior })
+      .then((oid) => git.readCommit({ fs, dir, cache, oid }))
+      .catch(() => undefined);
+    if (earlier && earlier.commit.tree === kept.commit.tree) {
+      await git.deleteRef({ fs, dir, ref });
+      return prior;
+    }
+  }
+  // Staging was only to take the copy: put every staged path back to what the
+  // saved version has, so the index never claims an edit is already saved (a
+  // forced checkout does that too, but "keep files as they are" does not run one).
+  for (const f of [...changes.adds, ...changes.removes]) {
+    await git.resetIndex({ fs, dir, cache, filepath: f });
   }
   return ref;
 }
@@ -1095,7 +1118,12 @@ export async function repairInterruptedSwitchUnlocked(dir: string): Promise<stri
   if (!unreadable && journal.kind === "switch" && journal.branch && open === journal.branch) {
     message = `Switching to "${journal.branch}" was interrupted after it had finished, so nothing needed fixing.`;
   } else {
-    const kept = await keepTreeBeforeRepair(dir, journal.from, cache);
+    const kept = await keepTreeBeforeRepair(dir, journal.from, journal.to, journal.fromBranch, cache, journal.keptCopy);
+    if (kept && !unreadable && kept !== journal.keptCopy) {
+      // Written before the checkout, so a checkout that fails still leaves the journal naming its copy.
+      journal.keptCopy = kept;
+      writeAtomically(switchJournalPath(dir), JSON.stringify(journal), true);
+    }
     await git.checkout({ fs, dir, cache, ref: journal.fromBranch ?? journal.from, force: true });
     const left: string[] = [];
     if (!unreadable) {
@@ -1133,7 +1161,9 @@ export async function repairInterruptedSwitchUnlocked(dir: string): Promise<stri
       "Nothing you wrote before then was lost; do it again when you're ready.";
     if (unreadable) message += " The record of the interrupted change could not be read, so any leftover files from it were kept.";
     if (kept) {
-      message += ` A copy of the files as they were before this repair was kept. It is listed under Book setup → Revisions, where you can put its files back or discard it (it is not in your version history). From the command line: git checkout ${kept} -- .`;
+      message +=
+        " A copy of the files as they were before this repair was kept. Book setup → Revisions lists it, " +
+        "where you can put back the files you changed or discard it.";
     }
     if (left.length) {
       message += ` These files were left alone because they may be yours: ${left.slice(0, 10).join(", ")}${left.length > 10 ? ` and ${left.length - 10} more` : ""}.`;
@@ -1167,35 +1197,96 @@ export async function takeSwitchRepairNotice(projectDir: string): Promise<string
   }
 }
 
+/** A switch the app could not finish putting right, for the author to settle. */
+export interface UnfinishedSwitch {
+  /** Plain words: what is wrong and where to go. */
+  message: string;
+  /** Id of the copy of the files kept for this switch, when there is one. */
+  copy?: string;
+}
+
+function readJournalFile(dir: string): SwitchJournal | undefined {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(switchJournalPath(dir), "utf8"));
+    return typeof parsed?.from === "string" && typeof parsed?.to === "string" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
- * The message a build refuses with while a switch journal is unresolved, or
- * `null` when the book is not part-way through a move. A build of that tree
- * would run on files from two revisions mixed together and could still make a
- * PDF that looks fine, so builds stop (#507). Plain words; the saved copy is
- * named for anyone working from the command line.
+ * The switch still unresolved in this book (its journal is there), or `null`.
+ * A build of that tree would run on files from two revisions mixed together and
+ * could still make a PDF that looks fine, so builds stop (#507).
  */
-export async function unfinishedSwitchMessage(projectDir: string): Promise<string | null> {
+export async function unfinishedSwitchState(projectDir: string): Promise<UnfinishedSwitch | null> {
   const source = await detectProjectSource(projectDir);
   if (source.type !== "local-git-folder") return null;
   const dir = gitScopeFor(source);
   if (!fs.existsSync(switchJournalPath(dir))) return null;
-  const newest = (await readRepairCopies(dir))[0];
-  return (
-    "This book is part-way through switching revisions, so its files may be a mix of two revisions " +
-    "and it can't be built yet. Open the book in Gutterpress and read the repair notice under " +
-    "Book setup → Revisions to put it right." +
-    (newest ? ` A copy of your files was kept as "${newest.ref}".` : "")
-  );
+  const kept = readJournalFile(dir)?.keptCopy;
+  const copy =
+    kept && kept.startsWith(BEFORE_REPAIR_REF_PREFIX) && (await git.resolveRef({ fs, dir, ref: kept }).catch(() => null))
+      ? kept.slice(BEFORE_REPAIR_REF_PREFIX.length)
+      : undefined;
+  return {
+    message:
+      "This book is part-way through switching revisions, so its files may be a mix of two revisions and " +
+      "it can't be built or saved yet. In Gutterpress, Book setup → Revisions says how to put it right.",
+    ...(copy ? { copy } : {}),
+  };
+}
+
+/**
+ * What a build refuses with while a switch is unresolved, or `null`. `cli` adds
+ * the saved copy's ref for someone working from the command line; the app never
+ * shows it.
+ */
+export async function unfinishedSwitchMessage(projectDir: string, options: { cli?: boolean } = {}): Promise<string | null> {
+  const state = await unfinishedSwitchState(projectDir);
+  if (!state) return null;
+  return options.cli && state.copy
+    ? `${state.message} Your files were kept as "${BEFORE_REPAIR_REF_PREFIX}${state.copy}" (git checkout ${BEFORE_REPAIR_REF_PREFIX}${state.copy} -- .).`
+    : state.message;
+}
+
+/**
+ * "Keep files as they are": the author accepts the book as the half-done move
+ * left it. A copy is kept first (unless this switch already has one), then the
+ * journal is cleared so the book can be built and saved again. A later save
+ * records the files as they stand.
+ */
+export async function keepUnfinishedSwitchAsIs(projectDir: string): Promise<void> {
+  const source = await detectProjectSource(projectDir);
+  if (source.type !== "local-git-folder") return;
+  const dir = gitScopeFor(source);
+  await withRepoLock(dir, async () => {
+    if (!fs.existsSync(switchJournalPath(dir))) return;
+    const journal = readJournalFile(dir);
+    const head = await git.resolveRef({ fs, dir, ref: "HEAD" });
+    await keepTreeBeforeRepair(
+      dir,
+      journal?.from ?? head,
+      journal?.to ?? head,
+      journal?.fromBranch,
+      {},
+      journal?.keptCopy,
+    );
+    endSwitchJournal(dir);
+  });
 }
 
 // ── Repair copies (#508) ─────────────────────────────────────────────────────
 //
 // Each repair that overwrites files first keeps them on refs/gutterpress/
-// before-repair-<time>. They live only in the book's git folder: a push names
-// the revision it sends (never a wildcard), so they never go online, and the
-// revision list reads refs/heads only. To keep them from piling up they are
-// pruned (never one newer than the last saved version), and the author can
-// restore files from one or discard it.
+// before-repair-<time>: a commit on the version the book was on (`from`) and,
+// as a second parent, the revision being moved to. The files the author changed
+// are the ones that differ from both; the rest is the half-done move. Copies
+// live only in the book's git folder: a push names the revision it sends (never
+// a wildcard), so they never go online, and the revision list reads refs/heads
+// only. A copy is "saved" once those files are in the recent history of the open
+// revision; only saved copies are ever pruned, and the author can restore files
+// from one or discard it.
 
 /** A kept copy of the files from just before a repair. */
 export interface RepairCopy {
@@ -1203,15 +1294,25 @@ export interface RepairCopy {
   id: string;
   /** When the copy was taken (ms). */
   savedAt: number;
+  /** The files the author changed are all in the open revision's history already. */
+  saved: boolean;
+  /** The revision the book was on when the copy was taken. */
+  revision?: string;
 }
 
-/** Most repair copies kept, and the age after which an older one may be dropped. */
+/** Most saved repair copies kept, and the age after which an older saved one may be dropped. */
 export const REPAIR_COPY_KEEP = 5;
 export const REPAIR_COPY_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+/** How many recent versions of the open revision count as "in history". */
+const REPAIR_COPY_HISTORY_DEPTH = 50;
 
-interface RepairCopyRef extends RepairCopy {
+/** Message recorded on the version made when files are put back from a copy. */
+export const RESTORED_COPY_MESSAGE = "Restored files from a saved copy";
+
+interface RepairCopyRef extends Omit<RepairCopy, "saved"> {
   ref: string;
   oid: string;
+  parents: string[];
 }
 
 /** Repair copies, newest first. */
@@ -1226,7 +1327,15 @@ async function readRepairCopies(dir: string): Promise<RepairCopyRef[]> {
         try {
           const oid = await git.resolveRef({ fs, dir, ref });
           const { commit } = await git.readCommit({ fs, dir, oid });
-          return { id: n.slice(prefix.length), ref, oid, savedAt: commit.committer.timestamp * 1000 };
+          const revision = /^Revision: (.+)$/m.exec(commit.message)?.[1];
+          return {
+            id: n.slice(prefix.length),
+            ref,
+            oid,
+            parents: commit.parent,
+            savedAt: commit.committer.timestamp * 1000,
+            ...(revision ? { revision } : {}),
+          };
         } catch {
           return null; // a ref whose commit is gone: nothing to show
         }
@@ -1235,55 +1344,141 @@ async function readRepairCopies(dir: string): Promise<RepairCopyRef[]> {
   return found.filter((c): c is RepairCopyRef => c !== null).sort((a, b) => b.savedAt - a.savedAt);
 }
 
-/** Drop old repair copies (caller holds the repo lock): beyond the newest few, or past the age limit, and always older than the last saved version. */
+/** The files in a copy that are the author's: not as the saved version had them and not as the move wrote them. */
+async function changedInCopy(dir: string, copy: RepairCopyRef): Promise<Array<{ path: string; oid: string }>> {
+  const from = copy.parents[0];
+  if (!from) return [];
+  const to = copy.parents[1] ?? from;
+  const found: Array<{ path: string; oid: string }> = [];
+  await git.walk({
+    fs,
+    dir,
+    cache: {},
+    trees: [git.TREE({ ref: copy.oid }), git.TREE({ ref: from }), git.TREE({ ref: to })],
+    map: async (filepath, [c, f, t]) => {
+      if (filepath === "." || !c || (await c.type()) !== "blob") return;
+      const oid = await c.oid();
+      if (oid === (await f?.oid()) || oid === (await t?.oid())) return;
+      found.push({ path: filepath, oid });
+    },
+  });
+  return found;
+}
+
+/** Every changed file is in a recent version of the open revision with exactly these bytes. */
+async function filesAreInHistory(dir: string, files: Array<{ path: string; oid: string }>): Promise<boolean> {
+  if (!files.length) return true;
+  const log = await git.log({ fs, dir, depth: REPAIR_COPY_HISTORY_DEPTH }).catch(() => []);
+  for (const f of files) {
+    let found = false;
+    for (const entry of log) {
+      const blob = await git.readBlob({ fs, dir, oid: entry.oid, filepath: f.path }).catch(() => undefined);
+      if (blob?.oid === f.oid) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
+  }
+  return true;
+}
+
+/**
+ * Drop old repair copies (caller holds the repo lock). Only a copy whose files
+ * are already in the history is ever dropped, and then only beyond the newest
+ * few or past the age limit. One holding files saved nowhere else stays.
+ */
 export async function pruneRepairCopiesUnlocked(dir: string, now = Date.now()): Promise<void> {
   const copies = await readRepairCopies(dir);
-  if (!copies.length) return;
-  const [head] = await git.log({ fs, dir, depth: 1 }).catch(() => []);
-  if (!head) return;
-  const lastSaved = head.commit.committer.timestamp * 1000;
-  for (const [i, c] of copies.entries()) {
-    const stale = i >= REPAIR_COPY_KEEP || now - c.savedAt > REPAIR_COPY_MAX_AGE_MS;
-    if (stale && c.savedAt < lastSaved) await git.deleteRef({ fs, dir, ref: c.ref });
+  const saved: RepairCopyRef[] = [];
+  for (const c of copies) if (await filesAreInHistory(dir, await changedInCopy(dir, c))) saved.push(c);
+  for (const [i, c] of saved.entries()) {
+    if (i >= REPAIR_COPY_KEEP || now - c.savedAt > REPAIR_COPY_MAX_AGE_MS) await git.deleteRef({ fs, dir, ref: c.ref });
   }
 }
 
-/** The book's repair copies, newest first (empty for a plain folder). */
+/** The book's repair copies, newest first (empty for a plain folder). A read: nothing is pruned here. */
 export async function listRepairCopies(projectDir: string): Promise<RepairCopy[]> {
   const source = await detectProjectSource(projectDir);
   if (source.type !== "local-git-folder") return [];
   const dir = gitScopeFor(source);
-  await withRepoLock(dir, () => pruneRepairCopiesUnlocked(dir)).catch(() => undefined);
-  return (await readRepairCopies(dir)).map(({ id, savedAt }) => ({ id, savedAt }));
+  return Promise.all(
+    (await readRepairCopies(dir)).map(async ({ id, savedAt, revision, ...c }) => ({
+      id,
+      savedAt,
+      saved: await filesAreInHistory(dir, await changedInCopy(dir, { id, savedAt, revision, ...c })),
+      ...(revision ? { revision } : {}),
+    })),
+  );
 }
 
 const REPAIR_COPY_ID = /^\d{8,20}$/;
 
-async function repairCopyFor(projectDir: string, id: string): Promise<{ dir: string; copy: RepairCopyRef }> {
+async function repairCopyFor(projectDir: string, id: string) {
   const source = await detectProjectSource(projectDir);
   if (source.type !== "local-git-folder") throw new Error(NO_VERSION_HISTORY);
   const dir = gitScopeFor(source);
   const copy = REPAIR_COPY_ID.test(id) ? (await readRepairCopies(dir)).find((c) => c.id === id) : undefined;
   if (!copy) throw new Error("That saved copy is no longer there.");
-  return { dir, copy };
+  return { source, dir, copy };
 }
 
 /**
- * Put the files from a repair copy back, through the same safe restore as a
- * version (work not yet saved is kept as a version first). The copy stays until
- * it is discarded or pruned.
+ * Put back the files the author changed that a repair kept (not the half-done
+ * move's files), then save them as a version, so they are in the history and
+ * the index agrees with the files. Work not yet saved is saved first. The
+ * copy stays until it is discarded or pruned.
  */
 export async function restoreRepairCopy(
   options: Omit<RestoreVersionOptions, "id"> & { id: string },
-): Promise<RestoreVersionResult> {
-  const { copy } = await repairCopyFor(options.projectDir, options.id);
-  return restoreVersionWithBackup({ ...options, id: copy.oid });
+): Promise<RestoreVersionResult & { files: number }> {
+  const { projectDir, authorName, authorEmail } = options;
+  const { source, dir, copy } = await repairCopyFor(projectDir, options.id);
+  const provider = new LocalGitSourceProvider(source);
+  return withRepoLock(dir, async () => {
+    await repairInterruptedSwitchUnlocked(dir).catch(() => undefined);
+    if (fs.existsSync(switchJournalPath(dir))) {
+      throw new Error(
+        "This book is still part-way through switching revisions. Put that right first (Book setup → Revisions), then restore from the copy.",
+      );
+    }
+    const files = await changedInCopy(dir, copy);
+    if (!files.length) throw new Error("That copy holds no files you changed, so there is nothing to put back.");
+    const save = async (message: string): Promise<string | undefined> => {
+      try {
+        return (await provider.snapshotUnlocked({ projectDir, message, authorName, authorEmail })).id;
+      } catch (e) {
+        if (isNoChangesError(e)) return undefined;
+        throw e;
+      }
+    };
+    const backupId = (await hasPendingChanges(dir)) ? await save(RESTORE_BACKUP_MESSAGE) : undefined;
+    for (const f of files) {
+      const abs = path.join(dir, f.path);
+      if (path.relative(dir, abs).startsWith("..")) continue;
+      const { blob } = await git.readBlob({ fs, dir, oid: f.oid });
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, blob);
+    }
+    const restoredId = (await save(RESTORED_COPY_MESSAGE)) ?? (await git.resolveRef({ fs, dir, ref: "HEAD" }));
+    return { restoredId, backupId, files: files.length };
+  });
 }
 
-/** Delete a repair copy. */
-export async function discardRepairCopy(projectDir: string, id: string): Promise<void> {
+/**
+ * Delete a repair copy. One whose files are saved nowhere else is refused
+ * unless `unsaved` says the author chose to lose them.
+ */
+export async function discardRepairCopy(projectDir: string, id: string, options: { unsaved?: boolean } = {}): Promise<void> {
   const { dir, copy } = await repairCopyFor(projectDir, id);
-  await withRepoLock(dir, () => git.deleteRef({ fs, dir, ref: copy.ref }));
+  await withRepoLock(dir, async () => {
+    if (!options.unsaved && !(await filesAreInHistory(dir, await changedInCopy(dir, copy)))) {
+      throw new Error(
+        "That copy holds files that aren't saved anywhere else. Put them back first, or choose to discard them anyway.",
+      );
+    }
+    await git.deleteRef({ fs, dir, ref: copy.ref });
+  });
 }
 
 // ── Safe restore (#13) ────────────────────────────────────────────────────────

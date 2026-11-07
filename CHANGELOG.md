@@ -35,15 +35,21 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 - **A book part-way through a revision switch could still be built (#507).**
   When a repair could not put the book back, the files were a mix of two
-  revisions and a build of them could make a PDF that looked fine. Builds
-  (the `build` command, `preview` and the desktop export) now stop with a
-  plain message that points to the repair notice and names the saved copy.
+  revisions and a build of them could make a PDF that looked fine. The `build`
+  command, the desktop export and `preview --format pdf` now try the repair
+  first, as opening the book does, and stop with a plain message if it still
+  cannot finish. The HTML preview server is not guarded. Book setup →
+  Revisions shows the unfinished switch even when the repair keeps failing,
+  with "Try again" and "Keep files as they are".
 - **Copies kept before a switch repair piled up and could not be reached
   (#508).** Book setup → Revisions now lists them, with "Restore files from
-  this copy" (the same safe restore as a version) and "Discard". At most five
-  are kept and none past 30 days, and one is never removed while it is newer
-  than the last saved version. They live only in the book's git folder: a
-  backup sends the revision it names, never `refs/gutterpress/*`.
+  this copy" and "Discard". Restoring puts back only the files you changed
+  (not the other revision's), saves them as a version, and settles any
+  unfinished switch first. A copy whose files are not yet in a version is
+  never removed on its own, and Discard asks again for it; copies already in
+  a version are kept to the newest five and 30 days. They live only in the
+  book's git folder: a backup sends the revision it names, never
+  `refs/gutterpress/*`.
 - **A `--out` build rendered unstyled, wrong-size pages under a snap Chromium,
   with no warning (#501).** The staged `book.html`, stylesheets and fonts went
   to the OS temp dir, which a snap's private `/tmp` hides from the browser.

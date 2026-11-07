@@ -707,3 +707,19 @@ describe("renameRevision names", () => {
     }
   });
 });
+
+describe("repair copies stay on this computer (#508)", () => {
+  test("a backup never sends refs/gutterpress/*", async () => {
+    const h = await setupClone();
+    try {
+      const tip = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
+      await git.writeRef({ fs, dir: h.projectDir, ref: "refs/gutterpress/before-repair-20261107000000001", value: tip, force: true });
+      await saveVersion(h, "chapter-03.md", "A version to send");
+      expect((await syncProject({ projectDir: h.projectDir, credential: h.credential })).status).toBe("synced");
+      expect(await git.listRefs({ fs, dir: h.serverDir, filepath: "refs/gutterpress" })).toEqual([]);
+      expect((await git.listRefs({ fs, dir: h.serverDir, filepath: "refs/heads" })).length).toBeGreaterThan(0);
+    } finally {
+      await h.cleanup();
+    }
+  });
+});

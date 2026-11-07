@@ -1045,9 +1045,14 @@ export async function runBuild(
   opts: BuildRunnerOptions
 ): Promise<BuildRunnerResult> {
   // A book part-way through a revision switch holds files from two revisions;
-  // building it could produce a PDF that looks fine (#507). Desktop export,
-  // `build` and `preview` all come through here.
-  const unfinished = await (await import("./source-provider.ts")).unfinishedSwitchMessage(opts.inputDir);
+  // building it could produce a PDF that looks fine (#507). Settle it first, the
+  // same way opening the book does, and refuse only if that fails. Covers every
+  // path through here: the `build` command, the desktop export and `preview`'s
+  // PDF build. The HTML preview server does not build through here and is not
+  // guarded.
+  const sp = await import("./source-provider.ts");
+  await sp.repairInterruptedSwitch(opts.inputDir).catch(() => undefined);
+  const unfinished = await sp.unfinishedSwitchMessage(opts.inputDir, { cli: !opts.engineBrowser });
   if (unfinished) throw new UsageError(unfinished);
 
   const ctx = await resolveBuildContext(opts);
