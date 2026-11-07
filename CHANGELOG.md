@@ -31,8 +31,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   Ubuntu 26.04 and the Docker image on Debian 13, whose Ghostscript packages
   (10.06.0, 10.05) are new enough.
 
-### Changed
-
 - **Book setup → Online copy is now Backup & history, and answers "is my work
   safe?" first.** A status card (version history off, not backed up yet,
   checking, safe, changes not backed up, new changes online, sign in again,
