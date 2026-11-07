@@ -109,7 +109,7 @@ describe("#507 builds refuse while a switch is unresolved", () => {
     expect((await unfinishedSwitchMessage(dir))!).not.toContain("refs/");
   });
 
-  test("runBuild on a real book: a repair that cannot finish refuses; one that can lets the build run", async () => {
+  test("runBuild on a real book: refuses with an unresolved switch; only the desktop export repairs, then builds", async () => {
     const dir = await book();
     put(dir, "chapter-01.md", "# Hello\n");
     await commitAll(dir, "chapter");
@@ -117,11 +117,17 @@ describe("#507 builds refuse while a switch is unresolved", () => {
     fs.writeFileSync(journal(dir), JSON.stringify({ kind: "switch", from: bad, to: bad, fromBranch: "main" }));
     await expect(runBuild({ inputDir: dir, format: "html", rawArgs: {} } as never)).rejects.toThrow(/part-way through switching revisions/);
     expect(fs.existsSync(journal(dir))).toBe(true);
+    // The desktop export refuses too when its repair cannot finish.
+    await expect(runBuild({ inputDir: dir, format: "html", rawArgs: {}, engineBrowser: (async () => ({})) as never } as never)).rejects.toThrow(/part-way/);
     // An unreadable record on a clean tree is rolled back to HEAD by the repair, then the build runs.
+    // An unreadable record on a clean tree: a plain command-line run never repairs, it refuses naming the copy hint...
     fs.writeFileSync(journal(dir), "{");
+    await expect(runBuild({ inputDir: dir, format: "html", rawArgs: {} } as never)).rejects.toThrow(/part-way through switching revisions/);
+    expect(fs.existsSync(journal(dir))).toBe(true);
+    // ...while the desktop export (it injects its own browser) repairs first, in its own process, then builds.
     const out = fs.mkdtempSync(path.join(process.env.HOME ?? "/tmp", "rc-out-"));
     try {
-      const r = await runBuild({ inputDir: dir, format: "html", outDir: out, rawArgs: {} } as never);
+      const r = await runBuild({ inputDir: dir, format: "html", outDir: out, rawArgs: {}, engineBrowser: (async () => ({})) as never } as never);
       expect(r.htmlPath).toBe(path.join(out, "book.html"));
       expect(fs.existsSync(journal(dir))).toBe(false);
     } finally {
@@ -199,6 +205,20 @@ describe("#508 repair copy lifecycle", () => {
     expect(read(dir, "ch2.md")).toBe("# two\n");
     await switchBranch({ projectDir: dir, branch: "main" });
     expect(read(dir, "ch2.md")).toBe("# typed after relaunch\n");
+  });
+
+  test("restore keeps an executable file executable", async () => {
+    const dir = await book();
+    const from = await git.resolveRef({ fs, dir, ref: "refs/heads/main" });
+    const to = await git.resolveRef({ fs, dir, ref: "refs/heads/second" });
+    fs.writeFileSync(journal(dir), JSON.stringify({ kind: "switch", from, fromBranch: "main", to, branch: "second" }));
+    put(dir, "tool.sh", "#!/bin/sh\n");
+    fs.chmodSync(path.join(dir, "tool.sh"), 0o755);
+    await repairInterruptedSwitch(dir);
+    const [id] = await ids(dir);
+    fs.rmSync(path.join(dir, "tool.sh"), { force: true });
+    await restoreRepairCopy({ projectDir: dir, id: id! });
+    expect(fs.statSync(path.join(dir, "tool.sh")).mode & 0o111).not.toBe(0);
   });
 
   test("restore saves work not yet in a version first, and an unresolved journal is settled or refused, never overwritten", async () => {

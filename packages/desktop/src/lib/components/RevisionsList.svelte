@@ -54,6 +54,7 @@
     | { kind: "new" }
     | { kind: "rename"; revision: Revision }
     | { kind: "delete"; revision: Revision; everywhere: boolean; lost: number | null }
+    | { kind: "keep-as-is" }
     | { kind: "restore-copy"; copy: RepairCopy }
     | { kind: "discard-copy"; copy: RepairCopy };
   let pending = $state<Pending | null>(null);
@@ -140,6 +141,13 @@
   const discardCopy = (c: RepairCopy) => run(() => api.vcs.discardRepairCopy(projectDir, c.id, !c.saved));
   /** "Keep files as they are" for a switch that could not be put right. */
   const keepAsIs = () => run(() => api.vcs.keepUnfinishedSwitch(projectDir));
+  /** Said when "Try again" ran and the switch is still unfinished. */
+  let retryFailed = $state(false);
+  async function tryAgain(): Promise<void> {
+    retryFailed = false;
+    await load();
+    retryFailed = Boolean(list?.unfinishedSwitch);
+  }
   const copyWhen = (c: RepairCopy): string =>
     new Date(c.savedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
   const rename = (from: string) => run(() => api.vcs.renameRevision(projectDir, from, typed));
@@ -209,9 +217,10 @@
           stand now{list.unfinishedSwitch.copy ? " (a copy is kept below)" : ""}; check them before you build or save.
         </p>
         <div class="unfinished-actions">
-          <button class="ghost small" onclick={() => void load()} disabled={working || checking}>Try again</button>
-          <button class="ghost small" onclick={() => void keepAsIs()} disabled={working || disabled}>Keep files as they are</button>
+          <button class="ghost small" onclick={() => void tryAgain()} disabled={working || checking}>Try again</button>
+          <button class="ghost small" onclick={() => open({ kind: "keep-as-is" })} disabled={working || disabled}>Keep files as they are</button>
         </div>
+        {#if retryFailed}<p class="error" role="alert">Still couldn't put the book back. Your files are unchanged.</p>{/if}
         {#if error && !pending}<p class="error" role="alert">{error}</p>{/if}
       </div>
     {/if}
@@ -310,11 +319,12 @@
   <div class="dlg-backdrop" role="presentation" onclick={cancel}></div>
   <form
     class="dlg-shell rev-dialog"
-    use:dialogBehavior={{ onClose: cancel, labelledBy: "rev-dialog-title", initialFocus: p.kind === "delete" || p.kind === "restore-copy" || p.kind === "discard-copy" ? ".dlg-actions .dlg-ghost" : "input" }}
+    use:dialogBehavior={{ onClose: cancel, labelledBy: "rev-dialog-title", initialFocus: p.kind === "delete" || p.kind === "keep-as-is" || p.kind === "restore-copy" || p.kind === "discard-copy" ? ".dlg-actions .dlg-ghost" : "input" }}
     onsubmit={(e) => {
       e.preventDefault();
       if (p.kind === "new") void create();
       else if (p.kind === "rename") void rename(p.revision.name);
+      else if (p.kind === "keep-as-is") void keepAsIs();
       else if (p.kind === "restore-copy") void restoreCopy(p.copy.id);
       else if (p.kind === "discard-copy") void discardCopy(p.copy);
     }}
@@ -354,6 +364,16 @@
       <footer class="dlg-actions">
         <button type="button" class="dlg-ghost" onclick={cancel} disabled={working}>Cancel</button>
         <button type="submit" class="dlg-primary app-btn-primary" disabled={working || !kept || kept === p.revision.name}>{working ? "Renaming…" : "Rename"}</button>
+      </footer>
+    {:else if p.kind === "keep-as-is"}
+      <header class="dlg-header"><h2 id="rev-dialog-title">Keep files as they are?</h2></header>
+      <div class="dlg-body">
+        <p>Your book will stay exactly as it is now, which may mix files from two drafts. A copy is kept, so you can still restore.</p>
+      </div>
+      {#if error}<p class="dlg-error error" role="alert">{error}</p>{/if}
+      <footer class="dlg-actions">
+        <button type="button" class="dlg-ghost" onclick={cancel} disabled={working}>Cancel</button>
+        <button type="submit" class="dlg-primary app-btn-primary" disabled={working}>{working ? "Keeping…" : "Keep files as they are"}</button>
       </footer>
     {:else if p.kind === "restore-copy"}
       <header class="dlg-header"><h2 id="rev-dialog-title">Restore files from this copy?</h2></header>

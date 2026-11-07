@@ -1345,11 +1345,11 @@ async function readRepairCopies(dir: string): Promise<RepairCopyRef[]> {
 }
 
 /** The files in a copy that are the author's: not as the saved version had them and not as the move wrote them. */
-async function changedInCopy(dir: string, copy: RepairCopyRef): Promise<Array<{ path: string; oid: string }>> {
+async function changedInCopy(dir: string, copy: RepairCopyRef): Promise<Array<{ path: string; oid: string; mode: number }>> {
   const from = copy.parents[0];
   if (!from) return [];
   const to = copy.parents[1] ?? from;
-  const found: Array<{ path: string; oid: string }> = [];
+  const found: Array<{ path: string; oid: string; mode: number }> = [];
   await git.walk({
     fs,
     dir,
@@ -1359,7 +1359,8 @@ async function changedInCopy(dir: string, copy: RepairCopyRef): Promise<Array<{ 
       if (filepath === "." || !c || (await c.type()) !== "blob") return;
       const oid = await c.oid();
       if (oid === (await f?.oid()) || oid === (await t?.oid())) return;
-      found.push({ path: filepath, oid });
+      if ((await c.mode()) === 0o120000) return; // a symlink is not brought back
+      found.push({ path: filepath, oid, mode: await c.mode() });
     },
   });
   return found;
@@ -1459,6 +1460,7 @@ export async function restoreRepairCopy(
       const { blob } = await git.readBlob({ fs, dir, oid: f.oid });
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       fs.writeFileSync(abs, blob);
+      if (f.mode & 0o111) fs.chmodSync(abs, 0o755); // keep the executable bit
     }
     const restoredId = (await save(RESTORED_COPY_MESSAGE)) ?? (await git.resolveRef({ fs, dir, ref: "HEAD" }));
     return { restoredId, backupId, files: files.length };

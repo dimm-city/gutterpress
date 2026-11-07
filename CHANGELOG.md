@@ -36,9 +36,9 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **A book part-way through a revision switch could still be built (#507).**
   When a repair could not put the book back, the files were a mix of two
   revisions and a build of them could make a PDF that looked fine. The `build`
-  command, the desktop export and `preview --format pdf` now try the repair
-  first, as opening the book does, and stop with a plain message if it still
-  cannot finish. The HTML preview server is not guarded. Book setup →
+  command, the desktop export and `preview --format pdf` now stop with a plain
+  message (the desktop export tries the repair first; a command-line run never
+  repairs, since it cannot lock out a running app). The HTML preview server is not guarded. Book setup →
   Revisions shows the unfinished switch even when the repair keeps failing,
   with "Try again" and "Keep files as they are".
 - **Copies kept before a switch repair piled up and could not be reached
@@ -57,7 +57,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   or hiding it, switching files, Save (Ctrl/Cmd+S),
   closing, and building or exporting still save at once. The preview
   already folds saves that land during a rebuild into one follow-up rebuild.
-
 - **A `--out` build rendered unstyled, wrong-size pages under a snap Chromium,
   with no warning (#501).** The staged `book.html`, stylesheets and fonts went
   to the OS temp dir, which a snap's private `/tmp` hides from the browser.
