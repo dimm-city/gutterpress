@@ -604,7 +604,7 @@ export type SyncOutcome =
   | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
   // The online copy's address answered "not found" (404): a typo'd, renamed or
   // deleted online copy, or one this account can't see. Not a sign-in failure.
-  | { status: "not-found"; message: string; snapshotId?: string; filesChanged?: boolean }
+  | { status: "not-found"; message: string; host?: "github"; snapshotId?: string; filesChanged?: boolean }
   | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "error"; message: string; snapshotId?: string; filesChanged?: boolean };
 

@@ -17,10 +17,11 @@ import git from "isomorphic-git";
 import { cp, mkdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
 
-import { readRevisionRefs, withRepoLock } from "../source-provider.ts";
+import { BEFORE_REPAIR_REF_PREFIX, readRevisionRefs, withRepoLock } from "../source-provider.ts";
 import { cloneRepository } from "./clone.ts";
 import { errorLogData, resolveLogger } from "./operation-log.ts";
-import { syncProject } from "./sync.ts";
+import { refreshRemoteCopies, syncProject } from "./sync.ts";
+import type { HostCredential, TokenStore } from "./token-store.ts";
 import type { SyncOutcome, SyncProjectOptions } from "./sync-types.ts";
 import { repoDirFor, resolveTransport } from "./transport.ts";
 
@@ -55,6 +56,8 @@ export interface RepairPreview {
   revisions: string[];
   /** Versions (saved points) found only on this computer, across every revision. */
   versions: number;
+  /** Saved copies of the book kept by an earlier recovery (they would be set aside too; counted in `versions`). */
+  repairCopies?: number;
   /** True when this computer's history could not be read, so the counts may be short. */
   unreadable?: boolean;
 }
@@ -69,8 +72,16 @@ const PREVIEW_DEPTH = 2000;
  * would be left out. Reads refs and history on this computer only (the online
  * side is as it was last checked); no network, nothing written.
  */
-export async function previewRepair(projectDir: string): Promise<RepairPreview> {
+export async function previewRepair(
+  projectDir: string,
+  options: { tokenStore?: TokenStore; credential?: HostCredential; httpClient?: RepairOnlineBackupOptions["httpClient"] } = {},
+): Promise<RepairPreview> {
   const dir = await repoDirFor(projectDir);
+  // Bring what is known of the online copy up to date when that is cheap (a
+  // recent check is reused; any failure leaves the refs as they were).
+  if (options.tokenStore || options.credential) {
+    await refreshRemoteCopies({ projectDir, ...options, maxAgeMs: 60_000 }).catch(() => null);
+  }
   try {
     const { local, online } = await readRevisionRefs(dir);
     const walk = async (tip: string) =>
@@ -81,8 +92,16 @@ export async function previewRepair(projectDir: string): Promise<RepairPreview> 
     for (const tip of local.values()) {
       for (const oid of await walk(tip)) if (!onlineSet.has(oid)) onlyHere.add(oid);
     }
+    // Copies an earlier recovery kept (refs/gutterpress/before-repair-*) live in the old history too.
+    const copies = (await git.listRefs({ fs, dir, filepath: "refs/gutterpress" }).catch(() => [] as string[])).filter(
+      (r) => `refs/gutterpress/${r}`.startsWith(BEFORE_REPAIR_REF_PREFIX),
+    );
+    for (const r of copies) {
+      const tip = await git.resolveRef({ fs, dir, ref: `refs/gutterpress/${r}` }).catch(() => null);
+      if (tip) for (const oid of await walk(tip)) if (!onlineSet.has(oid)) onlyHere.add(oid);
+    }
     const revisions = [...local.keys()].filter((name) => !online.has(name)).sort((a, b) => a.localeCompare(b));
-    return { revisions, versions: onlyHere.size };
+    return { revisions, versions: onlyHere.size, ...(copies.length ? { repairCopies: copies.length } : {}) };
   } catch (e) {
     resolveLogger(undefined, "repair").warn("preview", "could not read this computer's history", errorLogData(e));
     return { revisions: [], versions: 0, unreadable: true };

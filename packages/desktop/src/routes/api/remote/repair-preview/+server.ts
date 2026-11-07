@@ -1,4 +1,4 @@
-import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
+import { defineRoute, getHostServices, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
@@ -14,7 +14,13 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   }),
   call: async ({ body }) => {
     const lib = await loadLib();
-    const { revisions, versions, unreadable } = await lib.previewRepair(body.projectDir);
-    return { setAside: { revisions, versions }, ...(unreadable ? { unreadable: true } : {}) };
+    const { revisions, versions, unreadable, repairCopies } = await lib.previewRepair(body.projectDir, {
+      tokenStore: getHostServices().remote.tokenStore,
+    });
+    return {
+      setAside: { revisions, versions },
+      ...(repairCopies ? { repairCopies } : {}),
+      ...(unreadable ? { unreadable: true } : {}),
+    };
   },
 });

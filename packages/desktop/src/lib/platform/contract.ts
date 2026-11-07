@@ -295,6 +295,12 @@ export interface SyncStatus {
    * the network pass confirms it); "network" = a pass just finished.
    */
   source?: "versions" | "local" | "network";
+  /** With state "error": the online copy's address answered "not found" (404). Prefer this to matching `message`. */
+  reason?: "not-found";
+  /** With `reason: "not-found"`: the online copy is on GitHub. */
+  host?: "github";
+  /** With `reason: "not-found"` on GitHub: offering "Sign in again" can help. */
+  canSignIn?: boolean;
   /** Versions on this computer the online copy lacks (with state "unsent"). Optional: absent = unknown. */
   ahead?: number;
   /** The online copy, as last heard from, holds versions this computer has not got. */

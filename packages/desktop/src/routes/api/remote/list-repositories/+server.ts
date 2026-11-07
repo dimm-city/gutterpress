@@ -1,12 +1,8 @@
 import { handleRemoteErrors } from '../../../../../electron/server-bridge/friendly-errors';
+import { cachedRepositoryPage, rememberRepositoryPage } from '../../_lib/repo-pages';
 import { defineRoute, getHostServices, loadLib } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-type RepoPage = { repos: unknown[]; page: number; hasMore: boolean };
-
-/** How long a fetched page is reused (prefetch after sign-in, then the picker opens at once). */
-const PAGE_CACHE_MS = 60_000;
-const pageCache = new Map<string, { at: number; value: RepoPage }>();
 
 /**
  * Without `page`: every repository (the original behaviour, an array). With
@@ -30,10 +26,10 @@ export const POST: RequestHandler = defineRoute<{ page: number | null; refresh: 
       if (body.page === null) return lib.listGitHubRepositories(credential);
       // Keyed by the account's token tail: a different sign-in is a different list.
       const key = `${credential.token.slice(-12)}:${body.page}`;
-      const hit = pageCache.get(key);
-      if (!body.refresh && hit && Date.now() - hit.at < PAGE_CACHE_MS) return hit.value;
+      const hit = body.refresh ? null : cachedRepositoryPage(key);
+      if (hit) return hit;
       const value = await lib.listGitHubRepositoriesPage(credential, body.page);
-      pageCache.set(key, { at: Date.now(), value });
+      rememberRepositoryPage(key, value);
       return value;
     }),
 });

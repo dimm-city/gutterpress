@@ -148,13 +148,18 @@ describe("set-up-backup progress", () => {
 });
 
 describe("POST /api/remote/repair-preview", () => {
-  test("says what a repair would set aside, from the lib", async () => {
+  test("says what a repair would set aside, from the lib, refreshing with the host's sign-ins", async () => {
     openProject();
+    let options: { tokenStore?: unknown } | undefined;
     setLibForTests({
-      previewRepair: async () => ({ revisions: ["Second-edition"], versions: 3 }),
+      previewRepair: async (_dir: string, o: { tokenStore?: unknown }) => {
+        options = o;
+        return { revisions: ["Second-edition"], versions: 3, repairCopies: 1 };
+      },
     } as unknown as Partial<LibModule>);
     const res = await repairPreview({ request: request({ projectDir: "/abs/project" }) } as never);
-    expect(await res.json()).toEqual({ setAside: { revisions: ["Second-edition"], versions: 3 } });
+    expect(await res.json()).toEqual({ setAside: { revisions: ["Second-edition"], versions: 3 }, repairCopies: 1 });
+    expect(options?.tokenStore).toBe(tokenStore);
   });
 
   test("403 outside the open book", async () => {
@@ -200,3 +205,55 @@ describe("POST /api/remote/list-repositories", () => {
     expect(asked).toEqual([1, 1, 2]);
   });
 });
+
+describe("set-up-backup: double submit and the repository list", () => {
+  test("a first call finishing does not clear a second call's progress", async () => {
+    openProject();
+    let finishFirst!: () => void;
+    const firstDone = new Promise<void>((r) => (finishFirst = r));
+    let calls = 0;
+    setLibForTests({
+      setUpOnlineBackup: async (opts: { onProgress: (s: string) => void }) => {
+        const mine = ++calls;
+        opts.onProgress(mine === 1 ? "creating" : "sending");
+        if (mine === 1) await firstDone;
+        else await new Promise((r) => setTimeout(r, 30));
+        return { status: "connected", repository: { fullName: "me/my-book" } };
+      },
+    } as unknown as Partial<LibModule>);
+    const body = { projectDir: "/abs/project", target: { kind: "create", name: "my-book" } };
+    const first = setUpBackup({ request: request(body) } as never);
+    await new Promise((r) => setTimeout(r, 5));
+    const second = setUpBackup({ request: request(body) } as never);
+    await new Promise((r) => setTimeout(r, 5));
+    finishFirst();
+    await first;
+    const now = await (await setUpBackupProgress({ request: request({ projectDir: "/abs/project" }) } as never)).json();
+    expect(now).toMatchObject({ progress: { step: "sending" } });
+    await second;
+  });
+
+  test("creating an online copy forgets the cached repository pages", async () => {
+    registerHostServices(
+      makeHostServices({
+        fsGuard: { projectRoots: () => ["/abs/project"], readOnlyRoots: () => [] as string[] },
+        remote: { tokenStore: { get: async () => ({ token: "ghp_forget_test_token_9" }) }, GITHUB_HOST: "github.com" } as never,
+      }),
+    );
+    let listed = 0;
+    setLibForTests({
+      listGitHubRepositoriesPage: async (_c: unknown, page: number) => (listed++, { repos: [], page, hasMore: false }),
+      setUpOnlineBackup: async () => ({ status: "connected", repository: { fullName: "me/new" } }),
+    } as unknown as Partial<LibModule>);
+    const list = () => listRepositories({ request: request({ page: 1 }) } as never);
+    await list();
+    await list();
+    expect(listed).toBe(1);
+    await setUpBackup({
+      request: request({ projectDir: "/abs/project", target: { kind: "create", name: "new" } }),
+    } as never);
+    await list();
+    expect(listed).toBe(2);
+  });
+});
+

@@ -171,7 +171,7 @@ export class SyncController {
     }
     this.streamed = { dir: status.projectDir, state: status.state, lastSyncAt: status.lastSyncAt, message: status.message, seenAt: Date.now() };
     // A finished pass makes a version first, so it also proves the automatic versions work again.
-    if (status.state === "synced" || status.state === "unsent") this.versionsProblemOf = null;
+    if ((status.state === "synced" || status.state === "unsent") && status.source !== "local") this.versionsProblemOf = null;
   }
 
   /** The stream has no replay: read what the host kept for a book that just opened, unless a live event beat it. */

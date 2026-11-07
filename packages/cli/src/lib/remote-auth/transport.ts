@@ -174,15 +174,31 @@ export async function resolveTransport(
 // One all-branch fetch tells the revision list AND the online versions what is
 // online, so the second caller within a short window reads the refs the first
 // one wrote instead of paying another round trip. Process-local and keyed by
-// the repository directory; a mutation (backup, rename/delete a revision,
-// repair) forgets it so the next check is real.
+// the repository directory. A mutation (backup, rename/delete a revision,
+// repair) bumps the directory's generation: a fetch that started before it
+// can no longer mark its (possibly stale) refs fresh, and nobody joins it.
+// The time of the last good check is kept either way — only freshness is lost.
 
 interface OnlineCheck {
+  /** Epoch ms of the last good check (kept across mutations); 0 = never. */
   at: number;
-  /** A check still running: concurrent callers share it. */
-  pending?: Promise<unknown>;
+  /** The refs are known to match the server as of `at` (lost on a mutation). */
+  fresh: boolean;
+  /** Bumped by every mutation. */
+  gen: number;
+  /** A check still running: concurrent callers (of the same generation) share it. */
+  pending?: { promise: Promise<unknown>; gen: number };
 }
 const onlineChecks = new Map<string, OnlineCheck>();
+
+function checkOf(dir: string): OnlineCheck {
+  let c = onlineChecks.get(dir);
+  if (!c) {
+    c = { at: 0, fresh: false, gen: 0 };
+    onlineChecks.set(dir, c);
+  }
+  return c;
+}
 
 /** Epoch ms of the last successful online check of `dir`, or null. */
 export function lastOnlineCheckAt(dir: string): number | null {
@@ -190,32 +206,48 @@ export function lastOnlineCheckAt(dir: string): number | null {
   return at ? at : null;
 }
 
-/** True when `dir` was checked online successfully within `maxAgeMs`. */
+/** True when `dir`'s refs were checked against the server within `maxAgeMs` and nothing has changed since. */
 export function onlineCheckIsFresh(dir: string, maxAgeMs: number, now = Date.now()): boolean {
-  const at = lastOnlineCheckAt(dir);
-  return at !== null && maxAgeMs > 0 && now - at <= maxAgeMs;
+  const c = onlineChecks.get(dir);
+  return Boolean(c && c.fresh && c.at && maxAgeMs > 0 && now - c.at <= maxAgeMs);
 }
 
-export function noteOnlineCheck(dir: string, now = Date.now()): void {
-  onlineChecks.set(dir, { at: now });
+/** The generation a check starts in; hand it back to {@link noteOnlineCheck}. */
+export function onlineCheckGeneration(dir: string): number {
+  return checkOf(dir).gen;
 }
 
-/** Something changed online (or may have): the next check must go to the server. */
+/** A check that started in `gen` succeeded. Only marks the refs fresh when nothing changed meanwhile. */
+export function noteOnlineCheck(dir: string, gen: number, now = Date.now()): void {
+  const c = checkOf(dir);
+  if (c.gen !== gen) return;
+  c.at = now;
+  c.fresh = true;
+}
+
+/** The server was reached and agreed (a backup finished): update the time, not the freshness of other refs. */
+export function touchOnlineCheckTime(dir: string, now = Date.now()): void {
+  checkOf(dir).at = now;
+}
+
+/** Something changed online (or may have): the next check must go to the server. The last-checked time stays. */
 export function forgetOnlineCheck(dir: string): void {
-  onlineChecks.delete(dir);
+  const c = checkOf(dir);
+  c.gen++;
+  c.fresh = false;
+  delete c.pending;
 }
 
-/** Share one in-flight check per directory. */
+/** Share one in-flight check per directory and generation. */
 export async function shareOnlineCheck<T>(dir: string, run: () => Promise<T>): Promise<T> {
-  const running = onlineChecks.get(dir)?.pending as Promise<T> | undefined;
-  if (running) return running;
-  const entry: OnlineCheck = { at: onlineChecks.get(dir)?.at ?? 0 };
+  const c = checkOf(dir);
+  if (c.pending && c.pending.gen === c.gen) return c.pending.promise as Promise<T>;
+  const mine = { promise: undefined as unknown as Promise<unknown>, gen: c.gen };
   const p = run().finally(() => {
-    const cur = onlineChecks.get(dir);
-    if (cur) delete cur.pending;
+    if (checkOf(dir).pending === mine) delete checkOf(dir).pending;
   });
-  entry.pending = p;
-  onlineChecks.set(dir, entry);
+  mine.promise = p;
+  c.pending = mine;
   return p;
 }
 

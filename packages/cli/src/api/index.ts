@@ -462,6 +462,7 @@ export {
   syncProject,
   refreshRemoteCopies,
   lastOnlineCheck,
+  forgetOnlineCheckFor,
   localBackupStatus,
   checkRemoteUpdates,
   SYNC_SNAPSHOT_MESSAGE,

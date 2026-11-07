@@ -108,6 +108,12 @@ export interface SyncStatusPayload {
    * at open (instant; the network pass confirms it). "network": a pass just
    * finished. (`"versions"` above is the unrelated automatic-version failure.)
    */
+  /** Why a status is an "error" the renderer can act on: the online copy's address answered "not found". */
+  reason?: "not-found";
+  /** With `reason: "not-found"`: the online copy is on GitHub. */
+  host?: "github";
+  /** With `reason: "not-found"` on GitHub: offering "Sign in again" / "Give access" can help. */
+  canSignIn?: boolean;
   /** Versions on this computer the online copy lacks (the "unsent" count). */
   ahead?: number;
   /** The online copy, as last heard from, has versions this computer has not got. */
@@ -155,6 +161,8 @@ export interface AutoSyncOrchestratorDeps {
   operationLogPath: (repoSlug: string) => string;
   /** The last network answer kept for `dir`, if any (read once at open). */
   readLastKnown?: (dir: string) => Promise<LastKnownBackup | null>;
+  /** Forget the kept answer for `dir` (the online copy changed hands). */
+  clearLastKnown?: (dir: string) => void;
   /** Keep the answer a network pass just gave (fire-and-forget; never throws). */
   saveLastKnown?: (dir: string, value: LastKnownBackup) => void;
 }
@@ -453,6 +461,10 @@ export class AutoSyncOrchestrator {
           projectDir: dir,
           lastSyncAt: completedAt,
           message: outcome.message,
+          // Machine-readable, so the renderer need not match the text. On GitHub
+          // a 404 is often missing access, so a sign-in (or access) path is offered.
+          reason: "not-found",
+          ...(outcome.host ? { host: outcome.host, canSignIn: true } : {}),
           ...(outcome.filesChanged ? { filesChanged: true } : {}),
         };
         break;
@@ -488,6 +500,12 @@ export class AutoSyncOrchestrator {
     }
   }
 
+  /** The online copy changed hands (sign-in changed, disconnected): forget what was known about it. */
+  forgetKnown(dir: string): void {
+    this.lastSyncAt.delete(dir);
+    this.deps.clearLastKnown?.(dir);
+  }
+
   /**
    * Emit a finished pass's status with the contract extras (`source: "network"`,
    * the unsent count, whether the online copy is ahead, how many files need a
@@ -510,7 +528,9 @@ export class AutoSyncOrchestrator {
     const decide = (payload.combinedFiles?.length ?? 0) + (payload.keptBothFiles?.length ?? 0);
     if (decide > 0) full.decide = decide;
     this.deps.emit(full);
-    if (payload.lastSyncAt) {
+    // Only a pass that reached the online copy updates what the next launch
+    // shows; a failed one leaves the last good answer and its time alone.
+    if (payload.lastSyncAt && (full.state === "synced" || full.state === "unsent")) {
       this.deps.saveLastKnown?.(dir, {
         state: full.state,
         at: payload.lastSyncAt,
@@ -548,30 +568,22 @@ export class AutoSyncOrchestrator {
       if (watched !== null && watched !== dir) return null;
       if (!(await this.syncGate(lib, dir))) return null;
       // A real answer (a pass, or the unsent report) got here first: it is better.
-      if (this.getState(dir)?.inFlight || this.lastSyncAt.get(dir)) return null;
-      const lastSyncAt = kept?.at ?? null;
+      const superseded = (): boolean => Boolean(this.getState(dir)?.inFlight || this.lastSyncAt.get(dir));
+      if (superseded()) return null;
+      // A switch left part-way means the files are a mix: no honest answer from refs.
+      if (await lib.unfinishedSwitchState(dir).catch(() => null)) return null;
+      // `null` too on a detached or unborn HEAD: there is no revision to speak for.
       const local = await lib.localBackupStatus(dir);
-      if (local) {
-        return {
-          state: local.state,
-          projectDir: dir,
-          lastSyncAt,
-          source: "local",
-          ...(local.state === "unsent" && local.ahead > 0 ? { ahead: local.ahead } : {}),
-          ...(local.behind ? { behind: true } : {}),
-        };
-      }
-      if (kept && (kept.state === "synced" || kept.state === "unsent")) {
-        // Nothing to compare (no versions of this revision yet): the kept answer.
-        return {
-          state: kept.state,
-          projectDir: dir,
-          lastSyncAt,
-          source: "local",
-          ...(kept.ahead ? { ahead: kept.ahead } : {}),
-        };
-      }
-      return null;
+      // The refs walk took time: a pass may have answered meanwhile.
+      if (!local || superseded()) return null;
+      return {
+        state: local.state,
+        projectDir: dir,
+        lastSyncAt: kept?.at ?? null,
+        source: "local",
+        ...(local.state === "unsent" && local.ahead > 0 ? { ahead: local.ahead } : {}),
+        ...(local.behind ? { behind: true } : {}),
+      };
     } catch {
       // The pass at ~1 s answers instead.
       return null;
@@ -670,6 +682,7 @@ export class AutoSyncOrchestrator {
       if (this.deps.getWatchedDir() !== dir || this.getState(dir)?.inFlight) return;
       if (this.cadenceMs(lib, settings) !== null) return;
       if (!(await this.syncGate(lib, dir))) return;
+      if (await lib.unfinishedSwitchState(dir).catch(() => null)) return;
       const local = await lib.localBackupStatus(dir);
       if (!local) return;
       this.deps.emit({

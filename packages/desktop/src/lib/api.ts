@@ -920,7 +920,7 @@ export const api = {
      */
     /** What a repair would set aside: revisions and versions found only on this computer. */
     previewRepair: (projectDir: string) =>
-      post<{ setAside: { revisions: string[]; versions: number }; unreadable?: true }>('/api/remote/repair-preview', { projectDir }),
+      post<{ setAside: { revisions: string[]; versions: number }; repairCopies?: number; unreadable?: true }>('/api/remote/repair-preview', { projectDir }),
     repairOnlineBackup: (projectDir: string) =>
       post<{ outcome: SyncOutcome; restoredFiles: string[] }>('/api/remote/repair', { projectDir }),
 

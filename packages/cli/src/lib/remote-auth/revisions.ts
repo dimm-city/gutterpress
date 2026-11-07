@@ -150,6 +150,7 @@ async function sendRef(
   remoteName: string,
   remove = false,
 ): Promise<void> {
+  forgetOnlineCheck(dir); // a fetch already in flight must not mark its refs fresh across this change
   await git.push({
     fs,
     http,

@@ -662,6 +662,15 @@ test("a failing safety net is kept apart from the backup state, and a finished p
   expect(h.ctrl.versionsProblem).toBeNull();
 });
 
+test("an answer worked out from refs at open does not clear the versions warning", () => {
+  const h = make();
+  h.ctrl.applyStatus(status({ state: "error", source: "versions", message: "Close the other program." }));
+  h.ctrl.applyStatus(status({ state: "synced", source: "local" }));
+  expect(h.ctrl.versionsProblem).not.toBeNull();
+  h.ctrl.applyStatus(status({ state: "synced", source: "network" }));
+  expect(h.ctrl.versionsProblem).toBeNull();
+});
+
 test("the newest operation log the host names is kept for Version history", () => {
   const h = make();
   expect(h.ctrl.logFile).toBeNull();

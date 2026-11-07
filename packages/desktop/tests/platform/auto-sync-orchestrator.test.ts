@@ -62,6 +62,8 @@ interface FakeLibOptions {
   openRevision?: { where: "online" | "this-computer"; notBackedUp: boolean } | null;
   /** The watched project dir (default DIR). */
   watchedDir?: string;
+  /** A switch left part-way (the fake `unfinishedSwitchState`). */
+  unfinishedSwitch?: { message: string } | null;
   /** The online copy holds versions this computer lacks (the fake `localBackupStatus`). */
   behind?: boolean;
   /** The last network answer kept from an earlier launch. */
@@ -111,6 +113,7 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
               ...(opts.openRevision ? [{ name: "main", current: true, ...opts.openRevision }] : []),
             ],
           },
+    unfinishedSwitchState: async () => opts.unfinishedSwitch ?? null,
     // The refs-only answer, derived from the same fake open revision.
     localBackupStatus: async () => {
       const open = opts.openRevision;
@@ -704,15 +707,50 @@ test("reportLocal says Backed up when the online copy has everything, and has no
   expect(h.emitted).toEqual([{ state: "synced", projectDir: DIR, lastSyncAt: null, source: "local" }]);
 });
 
-test("reportLocal falls back to the kept answer when there is nothing to compare, and stays quiet with neither", async () => {
+test("reportLocal never speaks for a detached or unborn HEAD, even with a kept answer", async () => {
   const kept = makeHarness({ openRevision: null, lastKnown: { state: "unsent", at: "2026-01-02T00:00:00.000Z", ahead: 3 } });
   await kept.orch.reportLocal(DIR);
-  expect(kept.emitted).toEqual([
-    { state: "unsent", projectDir: DIR, lastSyncAt: "2026-01-02T00:00:00.000Z", source: "local", ahead: 3 },
-  ]);
-  const none = makeHarness({ openRevision: null });
-  await none.orch.reportLocal(DIR);
-  expect(none.emitted).toEqual([]);
+  expect(kept.emitted).toEqual([]);
+});
+
+test("reportLocal and reportUnsent say nothing while a switch is left part-way", async () => {
+  const h = makeHeadless();
+  function makeHeadless() {
+    return makeHarness({
+      autoSyncDelayMs: null,
+      openRevision: { where: "online", notBackedUp: false },
+      unfinishedSwitch: { message: "part-way" },
+    });
+  }
+  await h.orch.reportLocal(DIR);
+  await h.orch.reportUnsent(DIR);
+  expect(h.emitted).toEqual([]);
+});
+
+test("a pass that answers while the refs are being read wins over the local answer", async () => {
+  const h = makeHarness({ openRevision: { where: "online", notBackedUp: false } });
+  const pending = h.orch.localStatus(DIR);
+  h.orch.setLastSyncAt(DIR, "2026-01-03T00:00:00.000Z"); // a pass finished meanwhile
+  expect(await pending).toBeNull();
+});
+
+test("only a pass that reached the online copy updates the kept answer", async () => {
+  const failed = makeHarness({ syncProject: () => ({ status: "offline" }) });
+  await failed.orch.run(DIR);
+  expect(failed.saved).toEqual([]);
+  const ok = makeHarness({ openRevision: { where: "online", notBackedUp: false } });
+  await ok.orch.run(DIR);
+  expect(ok.saved.length).toBe(1);
+});
+
+test("forgetKnown drops the kept answer and the last pass time", async () => {
+  const cleared: string[] = [];
+  const h = makeHarness({ openRevision: { where: "online", notBackedUp: false } });
+  (h.orch as unknown as { deps: { clearLastKnown: (d: string) => void } }).deps.clearLastKnown = (d) => cleared.push(d);
+  h.orch.setLastSyncAt(DIR, "2026-01-03T00:00:00.000Z");
+  h.orch.forgetKnown(DIR);
+  expect(cleared).toEqual([DIR]);
+  expect(h.orch.getLastSyncAt(DIR)).toBeNull();
 });
 
 test("reportLocal stays quiet for a book that cannot sync, another book, or once a real answer exists", async () => {
@@ -776,4 +814,15 @@ test("a 'not found' outcome is an error saying so, never the sign-in state", asy
   const done = h.emitted.at(-1)!;
   expect(done.state).toBe("error");
   expect(done.message).toBe("Gutterpress can't find this online copy.");
+  expect(done.reason).toBe("not-found");
+  expect(done.host).toBeUndefined();
+  expect(done.canSignIn).toBeUndefined();
+});
+
+test("a 'not found' on GitHub says so in a field, and offers signing in", async () => {
+  const h = makeHarness({
+    syncProject: () => ({ status: "not-found", host: "github", message: "Gutterpress can't find this online copy on GitHub." }),
+  });
+  await h.orch.run(DIR);
+  expect(h.emitted.at(-1)).toMatchObject({ state: "error", reason: "not-found", host: "github", canSignIn: true });
 });

@@ -59,7 +59,7 @@ import {
 } from "./updater";
 import type { MarkdownFileLaunchEvent, UpdaterEventPayload } from "../src/lib/platform/shared-types";
 import { removeRecentFolder, toggleFavoriteFolder } from "./recent-folders";
-import { readProjectState, writeProjectState } from "./project-state";
+import { clearProjectStateField, readProjectState, writeProjectState } from "./project-state";
 import {
   electronTokenStore,
   markLinuxBasicTextStorageNoticeShown,
@@ -453,6 +453,12 @@ const autoSync = new AutoSyncOrchestrator({
   operationLogPath,
   // The last network answer, kept per book so the next launch can show it at once.
   readLastKnown: async (dir) => readProjectState((await readPrefs()).projectStates, dir)?.lastBackup as LastKnownBackup | null ?? null,
+  clearLastKnown: (dir) => {
+    void updatePrefs((prefs) => ({
+      ...prefs,
+      projectStates: clearProjectStateField(prefs.projectStates, dir, "lastBackup"),
+    })).catch(() => {});
+  },
   saveLastKnown: (dir, value) => {
     void updatePrefs((prefs) => ({
       ...prefs,
@@ -537,6 +543,10 @@ onCredentialChange((host) => {
       // remote resolves to — a publish-platform key (itch.io, `host#account`
       // compound keys) must not trigger a git sync.
       if (!diag.remoteHost || host.trim().toLowerCase() !== diag.remoteHost) return;
+      // The sign-in for this book's online copy changed: what was known of it
+      // (the kept answer, the freshness of the last check) no longer holds.
+      autoSync.forgetKnown(dir);
+      await lib.forgetOnlineCheckFor(dir);
       if (diag.canSync) {
         void autoSync.armInterval(dir);
         void autoSync.run(dir);

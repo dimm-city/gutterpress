@@ -28,6 +28,8 @@ import {
   isPushRejected,
   checkRemoteUpdates,
   isUnrelatedHistories,
+  forgetOnlineCheckFor,
+  lastOnlineCheck,
   localBackupStatus,
   refreshRemoteCopies,
   syncProject,
@@ -37,7 +39,7 @@ import { listRevisions, providerFor } from "../source-provider.ts";
 import { detectProjectSource } from "../project-source.ts";
 import { mergeWithMarkers } from "./converge-merge.ts";
 import { listOnlineVersions } from "../version-changes.ts";
-import { MSG_HISTORY_UNREADABLE, MSG_NOT_FOUND } from "./sync-messages.ts";
+import { MSG_HISTORY_UNREADABLE, MSG_NOT_FOUND, MSG_NOT_FOUND_GITHUB } from "./sync-messages.ts";
 import type { HostCredential } from "./token-store.ts";
 import {
   createFixtureRepo,
@@ -2195,6 +2197,106 @@ describe("localBackupStatus", () => {
       expect(await localBackupStatus(dir)).toEqual({ state: "unsent", ahead: 0, behind: false });
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+
+describe("the online check freshness is not fooled by a change that lands mid-fetch", () => {
+  test("a fetch in flight across a backup does not mark its refs fresh", async () => {
+    const h = await setupClone();
+    try {
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      let requests = 0;
+      const gated: typeof httpNode = {
+        request: async (args) => {
+          requests++;
+          if (requests === 1) await gate;
+          return httpNode.request(args);
+        },
+      };
+      const inFlight = refreshRemoteCopies({ projectDir: h.projectDir, httpClient: gated });
+      await new Promise((r) => setTimeout(r, 50));
+      // A backup (or any change online) lands while the fetch waits.
+      await forgetOnlineCheckFor(h.projectDir);
+      release();
+      expect((await inFlight).refreshed).toBe(true);
+      const before = requests;
+      // Not fresh: it must go to the server rather than trust refs written across the change.
+      await refreshRemoteCopies({ projectDir: h.projectDir, httpClient: gated, maxAgeMs: 60_000 });
+      expect(requests).toBeGreaterThan(before);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("a backup keeps the time of the last check and only drops its freshness", async () => {
+    const h = await setupClone();
+    try {
+      const first = await refreshRemoteCopies({ projectDir: h.projectDir });
+      expect(first.checkedAt).toBeString();
+      await syncProject({ projectDir: h.projectDir });
+      const after = await lastOnlineCheck(h.projectDir);
+      expect(after).toBeString();
+      expect(Date.parse(after!)).toBeGreaterThanOrEqual(Date.parse(first.checkedAt!));
+      // And the next check is real, not served from before the backup.
+      const { requests, client } = (() => {
+        const c = { requests: 0 };
+        return { requests: c, client: { request: (a: never) => (c.requests++, httpNode.request(a)) } as typeof httpNode };
+      })();
+      await refreshRemoteCopies({ projectDir: h.projectDir, httpClient: client, maxAgeMs: 60_000 });
+      expect(requests.requests).toBeGreaterThan(0);
+    } finally {
+      await h.cleanup();
+    }
+  });
+});
+
+describe("a 404 on github.com", () => {
+  test("is worded for GitHub, still starts with the plain text, and carries host: github", async () => {
+    const h = await setupClone();
+    try {
+      await git.setConfig({ fs, dir: h.projectDir, path: "remote.origin.url", value: "https://github.com/ada/gone.git" });
+      const notFound: typeof httpNode = {
+        request: async ({ url, method }) => ({
+          url,
+          method: method ?? "GET",
+          statusCode: 404,
+          statusMessage: "Not Found",
+          headers: {},
+          body: (async function* () {})(),
+        }),
+      };
+      const outcome = await syncProject({ projectDir: h.projectDir, httpClient: notFound });
+      expect(outcome).toMatchObject({ status: "not-found", host: "github", message: MSG_NOT_FOUND_GITHUB });
+      expect(MSG_NOT_FOUND_GITHUB).toMatch(/^Gutterpress can't find this online copy on GitHub\./);
+    } finally {
+      await h.cleanup();
+    }
+  });
+});
+
+describe("localBackupStatus and work that is not in a version yet", () => {
+  test("a file changed outside the app makes it unsent, not backed up", async () => {
+    const h = await setupClone();
+    try {
+      expect(await localBackupStatus(h.projectDir)).toMatchObject({ state: "synced" });
+      await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nEdited elsewhere.\n");
+      expect(await localBackupStatus(h.projectDir)).toMatchObject({ state: "unsent", ahead: 0, unversioned: 1 });
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("none on a detached HEAD", async () => {
+    const h = await setupClone();
+    try {
+      const head = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
+      await git.checkout({ fs, dir: h.projectDir, ref: head });
+      expect(await localBackupStatus(h.projectDir)).toBeNull();
+    } finally {
+      await h.cleanup();
     }
   });
 });

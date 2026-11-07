@@ -55,6 +55,18 @@ export function readProjectState(
   return entry && typeof entry === "object" ? entry : null;
 }
 
+/** Remove one field from a project's bucket (a patch cannot: `undefined` is ignored). */
+export function clearProjectStateField(
+  states: ProjectStateMap | undefined,
+  projectDir: string,
+  key: keyof ProjectState,
+): ProjectStateMap {
+  const current = readProjectState(states, projectDir);
+  if (!current || !(key in current)) return states ?? {};
+  const { [key]: _removed, ...rest } = current;
+  return { ...(states ?? {}), [projectDir]: rest };
+}
+
 /**
  * Merge-patch a project's state bucket, returning a NEW map (upserting the key).
  * `undefined` patch values are ignored so a partial patch never clears a field.

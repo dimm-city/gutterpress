@@ -44,13 +44,14 @@ import { randomUUID } from "node:crypto";
 import pkg from "../../../package.json" with { type: "json" };
 import { defaultGitHttp } from "./git-http.ts";
 
-import { isContained, readRevisionRefs, resolveGitAuthor, withRepoLock } from "../source-provider.ts";
+import { countUnversionedChanges, isContained, readRevisionRefs, resolveGitAuthor, withRepoLock } from "../source-provider.ts";
 import { errorLogData, type LogData, resolveLogger } from "./operation-log.ts";
 import { convergeMerge } from "./converge-merge.ts";
 import {
   MSG_BUSY,
   SYNC_LATE_EDIT_MESSAGE,
   MSG_NO_REMOTE,
+  MSG_NOT_FOUND_GITHUB,
   MSG_SSH_REMOTE,
   MSG_SYNCED,
   MSG_SYNCED_MERGED,
@@ -66,6 +67,8 @@ import {
   forgetOnlineCheck,
   lastOnlineCheckAt,
   noteOnlineCheck,
+  onlineCheckGeneration,
+  touchOnlineCheckTime,
   onAuthFor,
   onlineCheckIsFresh,
   shareOnlineCheck,
@@ -239,8 +242,18 @@ export async function syncProject(
   };
   // The pass moved refs online and here: the next online check must be real.
   let syncedDir: string | undefined;
-  const finish = (outcome: SyncOutcome): SyncOutcome => {
-    if (syncedDir) forgetOnlineCheck(syncedDir);
+  let remoteHost: string | undefined;
+  const finish = (found: SyncOutcome): SyncOutcome => {
+    // On GitHub a 404 usually means Gutterpress has no access to that repository.
+    const outcome: SyncOutcome =
+      found.status === "not-found" && remoteHost === "github.com"
+        ? { ...found, message: MSG_NOT_FOUND_GITHUB, host: "github" }
+        : found;
+    if (syncedDir) {
+      forgetOnlineCheck(syncedDir);
+      // The server was reached and agreed: that is a check, though not of every revision.
+      if (outcome.status === "synced" || outcome.status === "up-to-date") touchOnlineCheckTime(syncedDir);
+    }
     logger.info("result", "sync complete", {
       status: outcome.status, stage, push, elapsedMs: Math.round(performance.now() - started),
       snapshot: outcome.snapshotId ?? "none", filesChanged: outcome.filesChanged ?? false,
@@ -252,6 +265,8 @@ export async function syncProject(
     step("repo");
     const dir = await repoDirFor(options.projectDir);
     syncedDir = dir;
+    // A fetch already in flight must not mark its refs fresh across this pass.
+    forgetOnlineCheck(dir);
     step("lock");
     return withRepoLock(dir, async (): Promise<SyncOutcome> => {
       // One object cache for this sync only — released with it.
@@ -282,6 +297,7 @@ export async function syncProject(
         const branch = await currentBranchOrThrow(dir);
         step("transport");
         const transport = await resolveTransport(dir, options);
+        remoteHost = transport.host.toLowerCase();
         if (transport.credential) {
           secrets.push(transport.credential.token);
           const username = transport.credential.kind === "github-oauth"
@@ -533,15 +549,20 @@ const AHEAD_DEPTH = 1000;
  */
 export async function localBackupStatus(
   projectDir: string,
-): Promise<{ state: "synced" | "unsent"; ahead: number; behind: boolean } | null> {
+): Promise<{ state: "synced" | "unsent"; ahead: number; behind: boolean; unversioned?: number } | null> {
   const dir = await repoDirFor(projectDir);
   const { current, local, online } = await readRevisionRefs(dir);
   if (!current) return null;
   const here = local.get(current);
   if (!here) return null;
+  // Work saved to disk but not yet in a version (edited outside the app, or the
+  // app stopped before its automatic version) is not backed up either.
+  const pending = await countUnversionedChanges(projectDir).catch(() => null);
+  const unversioned = pending ? pending.changedFiles + (pending.stale ? 1 : 0) : 0;
+  const unsaved = unversioned > 0 ? { unversioned } : {};
   const there = online.get(current);
-  if (!there) return { state: "unsent", ahead: 0, behind: false };
-  if (here === there) return { state: "synced", ahead: 0, behind: false };
+  if (!there) return { state: "unsent", ahead: 0, behind: false, ...unsaved };
+  if (here === there) return { state: unversioned > 0 ? "unsent" : "synced", ahead: 0, behind: false, ...unsaved };
   const cache: GitCache = {};
   const hereHasThere = await isContained(dir, there, here, cache);
   const thereHasHere = await isContained(dir, here, there, cache);
@@ -553,7 +574,21 @@ export async function localBackupStatus(
     const mine = await git.log({ fs, dir, ref: here, depth: AHEAD_DEPTH, cache }).catch(() => []);
     ahead = mine.filter((c) => !known.has(c.oid)).length;
   }
-  return { state: thereHasHere ? "synced" : "unsent", ahead, behind: !hereHasThere };
+  return {
+    state: thereHasHere && unversioned === 0 ? "synced" : "unsent",
+    ahead,
+    behind: !hereHasThere,
+    ...unsaved,
+  };
+}
+
+/** The book's online copy changed hands (sign-in changed, disconnected, new address): drop what was known about it. */
+export async function forgetOnlineCheckFor(projectDir: string): Promise<void> {
+  try {
+    forgetOnlineCheck(await repoDirFor(projectDir));
+  } catch {
+    // Nothing to forget.
+  }
 }
 
 /** When this session last checked the book's online copy successfully (ISO), or null. */
@@ -604,6 +639,7 @@ async function fetchAllBranches(
   options: { credential?: HostCredential; tokenStore?: TokenStore },
   http: typeof defaultGitHttp,
 ): Promise<OnlineCheckResult> {
+  const generation = onlineCheckGeneration(dir);
   try {
     const transport = await resolveTransport(dir, {
       ...(options.credential ? { credential: options.credential } : {}),
@@ -619,7 +655,7 @@ async function fetchAllBranches(
       tags: false,
       ...onAuthFor(transport.credential),
     });
-    noteOnlineCheck(dir);
+    noteOnlineCheck(dir, generation);
     return { refreshed: true, checkedAt: isoOrNull(lastOnlineCheckAt(dir)) };
   } catch (e) {
     return onlineCheckFailure(e, isoOrNull(lastOnlineCheckAt(dir)));

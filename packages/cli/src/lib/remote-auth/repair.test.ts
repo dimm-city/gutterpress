@@ -208,4 +208,19 @@ describe("previewRepair", () => {
       await h.cleanup();
     }
   });
+
+  test("copies an earlier recovery kept are set aside too, and counted", async () => {
+    const h = await setup();
+    try {
+      await writeFile(path.join(h.projectDir, "kept.md"), "# kept\n");
+      await git.add({ fs, dir: h.projectDir, filepath: "kept.md" });
+      const oid = await git.commit({ fs, dir: h.projectDir, author: AUTHOR, message: "kept copy", ref: "refs/gutterpress/before-repair-20261107000000001" });
+      expect(oid).toBeString();
+      const preview = await previewRepair(h.projectDir);
+      expect(preview.repairCopies).toBe(1);
+      expect(preview.versions).toBeGreaterThanOrEqual(1);
+    } finally {
+      await h.cleanup();
+    }
+  });
 });

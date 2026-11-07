@@ -25,7 +25,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   problem.** A 404 from the online copy now gives a `not-found` outcome and
   says so ("Gutterpress can't find this online copy. It may have been renamed
   or deleted, or your account may not have access to it."), instead of asking
-  for the sign-in again.
+  for the sign-in again. On GitHub it says "Gutterpress can't find this online
+  copy on GitHub…" and the status carries `reason: "not-found"`, `host: "github"`
+  and `canSignIn`. A status worked out from what this computer knows also counts
+  work edited outside the app as not backed up yet.
 - **Desktop: a repair preview** (`remote/repair-preview`) lists the revisions
   and counts the versions that exist only on this computer and would be set
   aside by "Repair the online copy".
