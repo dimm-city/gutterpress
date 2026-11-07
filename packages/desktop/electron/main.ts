@@ -1311,6 +1311,7 @@ const GITHUB_HOST = "github.com";
 const remoteHooksImpl: RemoteHooks = {
   tokenStore: electronTokenStore,
   GITHUB_HOST,
+  defaultCloneParent: () => path.join(app.getPath("documents"), "Gutterpress"),
   cloneRepository: async (args) => {
     if (!args || typeof args.url !== "string" || typeof args.parentDir !== "string") {
       throw new Error("remote:cloneRepository requires { url, parentDir, folderName }");

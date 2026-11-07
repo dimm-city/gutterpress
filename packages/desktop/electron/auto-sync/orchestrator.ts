@@ -516,7 +516,7 @@ export class AutoSyncOrchestrator {
     const full: SyncStatusPayload = { ...payload, source: "network" };
     if (payload.state === "synced" || payload.state === "unsent") {
       try {
-        const local = await lib.localBackupStatus(dir);
+        const local = await lib.localBackupStatus(dir, { countUnversioned: false });
         if (local) {
           if (payload.state === "unsent" && local.ahead > 0) full.ahead = local.ahead;
           if (local.behind) full.behind = true;

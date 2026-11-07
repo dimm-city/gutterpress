@@ -377,3 +377,27 @@ describe("messages", () => {
     expect(await repairInterruptedSwitch(dir)).toContain("Switching revisions was interrupted");
   });
 });
+
+describe("status reads never repair a half-done switch", () => {
+  test("countUnversionedChanges with repair: false leaves the journal and the files alone; the default repairs", async () => {
+    const dir = await book();
+    await crashedState(dir);
+    halfSwitched(dir);
+    await countUnversionedChanges(dir, { repair: false });
+    expect(fs.existsSync(journal(dir))).toBe(true);
+    expect(read(dir, "ch1.md")).toBe("ONE second"); // still the half-moved file
+    await countUnversionedChanges(dir);
+    expect(fs.existsSync(journal(dir))).toBe(false);
+    expect(read(dir, "ch1.md")).toBe("one");
+  });
+
+  test("the plain-words messages point at Book setup → Backup & history → Drafts", async () => {
+    const dir = await book();
+    await crashedState(dir);
+    halfSwitched(dir);
+    const state = await (await import("./source-provider.ts")).unfinishedSwitchState(dir);
+    expect(state?.message).toContain("Book setup → Backup & history → Drafts");
+    expect(state?.message).not.toContain("Revisions");
+  });
+});
+

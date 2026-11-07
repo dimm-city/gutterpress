@@ -863,9 +863,13 @@ export interface UnversionedChanges {
  * A book inside a larger repo (`subPath`) is counted on its own folder only.
  * Queued behind the repo lock so it never reads the index mid-snapshot;
  * otherwise a lock-free walk that reads no history.
+ *
+ * By default a half-done switch is put right first (opening a book lands
+ * here), which WRITES. A status read passes `repair: false` so it never does.
  */
 export async function countUnversionedChanges(
   projectDir: string,
+  options: { repair?: boolean } = {},
 ): Promise<UnversionedChanges | null> {
   const source = await detectProjectSource(projectDir);
   if (source.type !== "local-git-folder") return null;
@@ -875,7 +879,7 @@ export async function countUnversionedChanges(
   const appWritten = [EXTENSIONS_DIR, LEGACY_PLUGINS_DIR].map((d) => `${bookPrefix}${d}/${VENDORED_NPM_DIR}/`);
   return withRepoLock(dir, async () => {
     // Opening a book lands here: a half-done switch is put right before it is counted.
-    await repairInterruptedSwitchUnlocked(dir);
+    if (options.repair !== false) await repairInterruptedSwitchUnlocked(dir);
     const { adds, removes } = await listWorkdirChanges(dir);
     const mine = new Set(
       [...adds, ...removes].filter((f) => f.startsWith(bookPrefix) && !appWritten.some((p) => f.startsWith(p))),
@@ -1162,7 +1166,7 @@ export async function repairInterruptedSwitchUnlocked(dir: string): Promise<stri
     if (unreadable) message += " The record of the interrupted change could not be read, so any leftover files from it were kept.";
     if (kept) {
       message +=
-        " A copy of the files as they were before this repair was kept. Book setup → Revisions lists it, " +
+        " A copy of the files as they were before this repair was kept. Book setup → Backup & history → Drafts lists it, " +
         "where you can put back the files you changed or discard it.";
     }
     if (left.length) {
@@ -1232,7 +1236,7 @@ export async function unfinishedSwitchState(projectDir: string): Promise<Unfinis
   return {
     message:
       "This book is part-way through switching revisions, so its files may be a mix of two revisions and " +
-      "it can't be built or saved yet. In Gutterpress, Book setup → Revisions says how to put it right.",
+      "it can't be built or saved yet. In Gutterpress, Book setup → Backup & history → Drafts says how to put it right.",
     ...(copy ? { copy } : {}),
   };
 }
@@ -1440,7 +1444,7 @@ export async function restoreRepairCopy(
     await repairInterruptedSwitchUnlocked(dir).catch(() => undefined);
     if (fs.existsSync(switchJournalPath(dir))) {
       throw new Error(
-        "This book is still part-way through switching revisions. Put that right first (Book setup → Revisions), then restore from the copy.",
+        "This book is still part-way through switching revisions. Put that right first (Book setup → Backup & history → Drafts), then restore from the copy.",
       );
     }
     const files = await changedInCopy(dir, copy);
@@ -1581,7 +1585,7 @@ export async function restoreVersionWithBackup(
 // ── Revisions (#273, #448) ───────────────────────────────────────────────────
 //
 // A book can hold several revisions of itself (git branches): separate lines of
-// work such as "Second edition". Book setup → Online copy lists them, says where
+// work such as "Second edition". Book setup → Backup & history lists them, says where
 // each is kept, and starts, switches, renames and deletes them. A revision counts
 // whether or not it exists on this computer yet: one that so far lives only in
 // the online copy is switched to by creating the local branch from it, which is

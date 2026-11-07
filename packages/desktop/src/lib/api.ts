@@ -924,6 +924,8 @@ export const api = {
     /** `movedGitTo`: the folder (outside the book) the old version history was moved into; pass it to `showRepairBackup`. */
     repairOnlineBackup: (projectDir: string) =>
       post<{ outcome: SyncOutcome; restoredFiles: string[]; movedGitTo: string }>('/api/remote/repair', { projectDir }),
+    /** Where books opened from the online copy go by default (the documents folder + Gutterpress). Only a path: not created until a clone uses it. */
+    defaultCloneParent: () => post<{ path: string }>('/api/remote/default-clone-parent', {}),
     /** Show a repair's backup folder in the file manager. Only to look at: it can't be brought back from inside the app. */
     showRepairBackup: (folder: string) =>
       post<{ ok: boolean }>('/api/remote/show-repair-backup', { filePath: folder }),

@@ -540,7 +540,9 @@ const AHEAD_DEPTH = 1000;
 
 /**
  * Where the open revision stands against the online copy, from refs on disk
- * alone (no network, nothing written): `synced` when the online copy, as last
+ * alone (no network; no ref, version or file is written; it does walk the
+ * book's files to see what is not in a version yet, unless `countUnversioned`
+ * is false): `synced` when the online copy, as last
  * heard from, has every version here; `unsent` when this computer has versions
  * it lacks (`ahead` of them, capped by the walk depth); `behind` when the last
  * heard-from online tip holds versions this computer has not got. `null` for a
@@ -549,6 +551,7 @@ const AHEAD_DEPTH = 1000;
  */
 export async function localBackupStatus(
   projectDir: string,
+  options: { countUnversioned?: boolean } = {},
 ): Promise<{ state: "synced" | "unsent"; ahead: number; behind: boolean; unversioned?: number } | null> {
   const dir = await repoDirFor(projectDir);
   const { current, local, online } = await readRevisionRefs(dir);
@@ -557,7 +560,12 @@ export async function localBackupStatus(
   if (!here) return null;
   // Work saved to disk but not yet in a version (edited outside the app, or the
   // app stopped before its automatic version) is not backed up either.
-  const pending = await countUnversionedChanges(projectDir).catch(() => null);
+  // (`countUnversioned: false` skips the tree walk when only ahead/behind are
+  // wanted. The walk never repairs a half-done switch: a status read writes nothing there.)
+  const pending =
+    options.countUnversioned === false
+      ? null
+      : await countUnversionedChanges(projectDir, { repair: false }).catch(() => null);
   const unversioned = pending ? pending.changedFiles + (pending.stale ? 1 : 0) : 0;
   const unsaved = unversioned > 0 ? { unversioned } : {};
   const there = online.get(current);
