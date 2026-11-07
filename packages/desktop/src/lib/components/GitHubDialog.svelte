@@ -206,6 +206,8 @@
     branches = [{ name: repo.defaultBranch }];
     destination = null;
     step = "configure";
+    // Save it in Documents/Gutterpress unless the author picks another folder; if that can't be read they choose one.
+    api.remote.defaultCloneParent().then((r) => { if (!destination && r?.path) destination = r.path; }).catch(() => {});
     // Branch list loads in the background; the default is already selected.
     api.remote
       .listRemoteBranches(repo.owner, repo.name)
@@ -214,6 +216,9 @@
       })
       .catch(() => {});
   }
+
+  /** The default folder reads as "Documents/Gutterpress"; any other is shown whole. */
+  const shownFolder = (p: string): string => p.replace(/^.*[\\/](Documents[\\/]Gutterpress)$/, "$1");
 
   async function pickDestination() {
     const pathStr = await api.dialog.openDirectory();
@@ -484,7 +489,7 @@
         <div class="field">
           <span>Save it in</span>
           <div class="dest-row">
-            <span class="dest-path">{destination ?? "Choose a folder…"}</span>
+            <span class="dest-path">{destination ? shownFolder(destination) : "Choose a folder…"}</span>
             <button class="dlg-ghost" onclick={pickDestination}>{destination ? "Change…" : "Choose…"}</button>
           </div>
         </div>
@@ -612,8 +617,7 @@
   .dest-row { display: flex; gap: 8px; align-items: center; }
   .dest-path {
     flex: 1;
-    font-family: var(--app-font-mono);
-    font-size: 12px;
+    font-size: 13px;
     color: var(--app-text-muted);
     white-space: nowrap;
     overflow: hidden;
