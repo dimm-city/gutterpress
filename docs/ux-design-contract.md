@@ -523,7 +523,7 @@ buttons.
 ### 3. Saving, versions and revisions
 
 - **Auto-save is SHIPPED and works as follows** (do not respecify): a FIXED
-  debounced disk save 500ms after the last edit (`EditorBuffer`) and an
+  debounced disk save 2s after the last edit (12s at most into unbroken typing) (`EditorBuffer`) and an
   ALWAYS-ON crash-recovery draft 1000ms after the last edit, plus explicit
   `Cmd/Ctrl+S` / toolbar Save. Neither delay is a user setting (#274), but
   auto-save itself is an on/off switch, default on: Settings → Saving, "Save
@@ -1296,7 +1296,7 @@ scope to the 2 priority personas (Maya, Kai).
 | Publish failure (user-caused, preflight-caught) | ≤5% | provider e2e tests + GitHub-issue reports |
 | Publish failure (app-caused) | ≤1% | same |
 | PDF export crash | 0 in the e2e suite (fleet rate is aspirational — no telemetry) | CI gate |
-| Data loss | none beyond the last auto-save debounce (500ms) + recovery snapshot (1s) — crash recovery must restore to within 1s of the last edit | recovery test suite |
+| Data loss | none beyond the last auto-save debounce (2s idle, 12s max) + recovery snapshot (1s) — crash recovery must restore to within 1s of the last edit | recovery test suite |
 
 ### Performance gates
 
@@ -1522,7 +1522,7 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 | Hiding features behind unlock gates | Contradicts escape-hatch principle; regresses shipped UI | Soft emphasis: Advanced badge, never hidden (§4) |
 | Opening help in an external browser tab | Breaks flow; offline failure | In-app help: the start screen's Help tab (`HelpContent`) |
 | Print-tool "modes" (pointer/text/frame tools) | Wrong mental model | Markdown-first; properties in inspector |
-| Requiring save before preview | Breaks the live loop | Shipped: 500ms debounced save + live preview (default; turning auto-save off is the author's opt-in to preview-on-save) |
+| Requiring save before preview | Breaks the live loop | Shipped: 2s idle-debounced save (12s max) + live preview (default; turning auto-save off is the author's opt-in to preview-on-save) |
 | Raw engine / `@page` errors shown to authors | Opaque, frightening | Plain-language Problems entries (shipped, §10) |
 | Raw rule IDs / linter jargon as primary text | Writer-first product | Plain-language labels, codes demoted (shipped, §10) |
 | Reintroducing stylelint or any bundler-hostile dep for editor lint | Breaks `bun build --compile` (docs/architecture-rules.md §3) | Extend `printsafe.ts` |
