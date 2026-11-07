@@ -17,36 +17,37 @@
   // src/engine/viewer/fragment.ts
   var exports_fragment = {};
   __export(exports_fragment, {
-    wrapGeometry: () => wrapGeometry,
-    waitForLayoutReady: () => waitForLayoutReady,
-    versoShiftPt: () => versoShiftPt,
-    synthesizeColumnBreaks: () => synthesizeColumnBreaks,
-    stripMetrics: () => stripMetrics,
-    strideOf: () => strideOf,
-    stabilizeFullHeightPageRoots: () => stabilizeFullHeightPageRoots,
-    spreadModeSupported: () => spreadModeSupported,
-    runPageBox: () => runPageBox,
-    rowStrideOf: () => rowStrideOf,
-    pageRangeOf: () => pageRangeOf,
-    pageOf: () => pageOf,
-    padToSignature: () => padToSignature,
-    measure: () => measure,
-    makeOverflowFragmentable: () => makeOverflowFragmentable,
-    loadStyleSources: () => loadStyleSources,
-    injectViewerCss: () => injectViewerCss,
-    injectPageVars: () => injectPageVars,
-    injectBreakMapping: () => injectBreakMapping,
-    indexInStrip: () => indexInStrip,
-    fragmentDocument: () => fragmentDocument,
-    cssZoomOf: () => cssZoomOf,
-    contentEdgeRect: () => contentEdgeRect,
-    compensateRectoBreaks: () => compensateRectoBreaks,
-    columnReserve: () => columnReserve,
-    collectCssText: () => collectCssText,
-    buildStrips: () => buildStrips,
-    blankPageIndices: () => blankPageIndices,
+    PX_PER_PT: () => PX_PER_PT,
     applySpreadMode: () => applySpreadMode,
-    PX_PER_PT: () => PX_PER_PT
+    blankPageIndices: () => blankPageIndices,
+    buildStrips: () => buildStrips,
+    collectCssText: () => collectCssText,
+    columnReserve: () => columnReserve,
+    compensateRectoBreaks: () => compensateRectoBreaks,
+    contentEdgeRect: () => contentEdgeRect,
+    cssZoomOf: () => cssZoomOf,
+    extendSpanningPageRoots: () => extendSpanningPageRoots,
+    fragmentDocument: () => fragmentDocument,
+    indexInStrip: () => indexInStrip,
+    injectBreakMapping: () => injectBreakMapping,
+    injectPageVars: () => injectPageVars,
+    injectViewerCss: () => injectViewerCss,
+    loadStyleSources: () => loadStyleSources,
+    makeOverflowFragmentable: () => makeOverflowFragmentable,
+    measure: () => measure,
+    padToSignature: () => padToSignature,
+    pageOf: () => pageOf,
+    pageRangeOf: () => pageRangeOf,
+    rowStrideOf: () => rowStrideOf,
+    runPageBox: () => runPageBox,
+    spreadModeSupported: () => spreadModeSupported,
+    stabilizeFullHeightPageRoots: () => stabilizeFullHeightPageRoots,
+    strideOf: () => strideOf,
+    stripMetrics: () => stripMetrics,
+    synthesizeColumnBreaks: () => synthesizeColumnBreaks,
+    versoShiftPt: () => versoShiftPt,
+    waitForLayoutReady: () => waitForLayoutReady,
+    wrapGeometry: () => wrapGeometry
   });
 
   // src/engine/viewer/viewer.css
@@ -382,17 +383,17 @@
   // src/engine/shared/gcpm-extract.ts
   var exports_gcpm_extract = {};
   __export(exports_gcpm_extract, {
-    toPt: () => toPt,
-    splitTopLevel: () => splitTopLevel,
-    resolvePage: () => resolvePage,
-    parseSize: () => parseSize,
-    parseMargin: () => parseMargin,
-    parseDeclarations: () => parseDeclarations,
-    mediaPrintBodies: () => mediaPrintBodies,
-    extract: () => extract,
-    PAGE_SIZES: () => PAGE_SIZES,
+    DEFAULT_PAGE_MARGIN_PT: () => DEFAULT_PAGE_MARGIN_PT,
     MARGIN_BOX_NAMES: () => MARGIN_BOX_NAMES,
-    DEFAULT_PAGE_MARGIN_PT: () => DEFAULT_PAGE_MARGIN_PT
+    PAGE_SIZES: () => PAGE_SIZES,
+    extract: () => extract,
+    mediaPrintBodies: () => mediaPrintBodies,
+    parseDeclarations: () => parseDeclarations,
+    parseMargin: () => parseMargin,
+    parseSize: () => parseSize,
+    resolvePage: () => resolvePage,
+    splitTopLevel: () => splitTopLevel,
+    toPt: () => toPt
   });
   var MARGIN_BOX_NAMES = [
     "top-left-corner",
@@ -1251,6 +1252,14 @@
 `);
   }
 
+  // src/engine/shared/page-root-span.ts
+  function spanningMinHeight(height, content, offset = 0) {
+    if (!(content > 0) || height <= content + 1)
+      return null;
+    const sheets = Math.ceil((height + offset) / content);
+    return sheets * content - offset - 1;
+  }
+
   // src/engine/viewer/fragment.ts
   var PX_PER_PT = 96 / 72;
   function injectViewerCss(doc = document) {
@@ -1536,6 +1545,44 @@
       }
     }
     return stabilized;
+  }
+  function extendSpanningPageRoots(strips) {
+    let extended = 0;
+    const reads = [];
+    for (const strip of strips) {
+      const { height, rowStride } = stripMetrics(strip.el);
+      if (!(height > 0))
+        continue;
+      const zoom = cssZoomOf(strip.el);
+      const stripTop = strip.el.getBoundingClientRect().top;
+      for (const root of Array.from(strip.el.querySelectorAll(".page, .spread"))) {
+        if (!root.querySelector(".gp-pin.gp-bottom"))
+          continue;
+        if (!Array.from(root.querySelectorAll(".gp-pin.gp-bottom")).some((pin) => pin.offsetParent === root))
+          continue;
+        const rects = Array.from(root.getClientRects());
+        if (!rects.length)
+          continue;
+        const total = rects.reduce((sum, r) => sum + r.height, 0) / zoom;
+        const first = (rects[0].top - stripTop) / zoom % rowStride;
+        const min = spanningMinHeight(total, height, first > 0.5 && first < height ? first : 0);
+        if (min != null)
+          reads.push({ root, min });
+      }
+    }
+    for (const { root, min } of reads) {
+      root.dataset.gpSpanMin = root.style.minHeight || "-";
+      root.style.minHeight = `${min}px`;
+      extended++;
+    }
+    return extended;
+  }
+  function restoreSpanningPageRoots(doc = document) {
+    for (const el of Array.from(doc.querySelectorAll("[data-gp-span-min]"))) {
+      const value = el.dataset.gpSpanMin;
+      el.style.minHeight = value === "-" ? "" : value ?? "";
+      delete el.dataset.gpSpanMin;
+    }
   }
   function restoreFullHeightPageRoots(doc = document) {
     for (const el of Array.from(doc.querySelectorAll('[data-gp-leading-page-root="stabilized"]'))) {
@@ -1927,6 +1974,7 @@
     await layoutReady;
     makeOverflowFragmentable(strips);
     stabilizeFullHeightPageRoots(model, strips);
+    extendSpanningPageRoots(strips);
     synthesizeColumnBreaks(model);
     measure(strips);
     const blanks = compensateRectoBreaks(model, strips);
@@ -1947,6 +1995,7 @@
       pageRangeOf: (sel) => pageRangeOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
       relayout: () => {
         restoreFullHeightPageRoots();
+        restoreSpanningPageRoots();
         restoreScrollContainers();
         restorePinRoots();
         unwrapStrips(strips);
@@ -1957,6 +2006,7 @@
         strips.push(...rebuilt);
         makeOverflowFragmentable(strips);
         stabilizeFullHeightPageRoots(model, strips);
+        extendSpanningPageRoots(strips);
         synthesizeColumnBreaks(model);
         measure(strips);
         api.blankPages = compensateRectoBreaks(model, strips);
@@ -1977,13 +2027,13 @@
   // src/engine/shared/content-value.ts
   var exports_content_value = {};
   __export(exports_content_value, {
-    unquote: () => unquote,
-    resolveUrlArg: () => resolveUrlArg,
-    parseContent: () => parseContent,
-    needsMeasurement: () => needsMeasurement,
-    formatCounter: () => formatCounter,
+    evaluate: () => evaluate,
     evaluateContent: () => evaluateContent,
-    evaluate: () => evaluate
+    formatCounter: () => formatCounter,
+    needsMeasurement: () => needsMeasurement,
+    parseContent: () => parseContent,
+    resolveUrlArg: () => resolveUrlArg,
+    unquote: () => unquote
   });
   var FUNC = /^([a-z-]+)\(/i;
   function parseContent(value) {

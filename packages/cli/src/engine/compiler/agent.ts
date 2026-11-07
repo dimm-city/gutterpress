@@ -9,6 +9,7 @@
 import { leaderFillCount, LEADER_RE, RECTO_VERSO_VALUES } from "../shared/synthesis.ts";
 import { evaluate } from "../shared/content-value.ts";
 import { paddingOf, pinEdgesIn, pinKey, type PinEdge } from "../shared/pin-edges.ts";
+import { spanningMinHeight } from "../shared/page-root-span.ts";
 import { printAreaFromMeta, type PrintArea } from "../shared/print-area.ts";
 
 export interface StringSource {
@@ -252,6 +253,77 @@ export interface PageContentHeights {
   named: Record<string, number>;
 }
 
+/** `.gp-bottom` pins whose containing block is the page root itself. */
+function bottomPins(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(".gp-pin.gp-bottom")).filter(
+    (pin) => pin.offsetParent === root,
+  );
+}
+
+/** True when nothing but other pins / whitespace follows `pin` inside `root`. */
+function endsRoot(pin: HTMLElement, root: HTMLElement): boolean {
+  for (let el: Element | null = pin; el && el !== root; el = el.parentElement) {
+    for (let n: Node | null = el.nextSibling; n; n = n.nextSibling) {
+      if (n.nodeType === 3 && !(n.textContent ?? "").trim()) continue;
+      if (n.nodeType === 1 && (n as Element).matches(".gp-pin")) continue;
+      if (n.nodeType === 1 || n.nodeType === 3) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * A page root that runs across N sheets and holds a bottom pin gets a
+ * min-height of N sheets (less core's 1px cushion), so its bottom edge, and the
+ * pin, is the foot of its last sheet (#519). Only roots with a bottom pin are
+ * touched: stretching any other root would move whatever follows it. Run once,
+ * no re-measure loop: the cushion keeps a sheet-exact edge from adding a sheet.
+ * Twin of `extendSpanningPageRoots` in viewer/fragment.ts.
+ */
+export function extendPageRoots(contentHeights: PageContentHeights): number {
+  let n = 0;
+  for (const root of Array.from(document.querySelectorAll<HTMLElement>(".page, .spread"))) {
+    // Idempotent across tier-3 passes: drop our own earlier value, re-measure.
+    if (root.dataset.gpSpanMin) {
+      root.style.minHeight = root.dataset.gpSpanMin === "-" ? "" : root.dataset.gpSpanMin;
+      delete root.dataset.gpSpanMin;
+    }
+    if (!bottomPins(root).length) continue;
+    const h = root.getBoundingClientRect().height;
+    const min = spanningMinHeight(h, pageContextOf(root, contentHeights).height);
+    if (min == null) continue;
+    root.dataset.gpSpanMin = root.style.minHeight || "-";
+    root.style.minHeight = `${min}px`;
+    n++;
+  }
+  return n;
+}
+
+/** The page name and content height of the `@page` context an element lands in. */
+function pageContextOf(
+  el: Element,
+  contentHeights: PageContentHeights,
+): { name: string; height: number } {
+    // `page` is read from computed style so cascade/specificity and downstream
+    // book wrapper classes are already resolved. Walk ancestors as a backstop
+    // for a leaf inside a wrapper that owns the named-page assignment.
+    for (let node: Element | null = el; node; node = node.parentElement) {
+      const pageName = getComputedStyle(node).getPropertyValue("page").trim();
+      if (pageName && pageName !== "auto") {
+        return {
+          name: pageName,
+          // Computed style exposes the assigned page NAME but not which
+          // pseudo-page (:left/:right/:first/...) the element ultimately lands
+          // on. Node therefore sends the minimum content height across every
+          // applicable variant. This can warn conservatively when variants
+          // differ, but can never miss an element too tall for one of them.
+          height: contentHeights.named[pageName] ?? contentHeights.default,
+        };
+      }
+    }
+    return { name: "default", height: contentHeights.default };
+  }
+
 /**
  * Print-quality audit of the document, run once against the real layout.
  *
@@ -272,26 +344,7 @@ export function auditContent(
     (el.id ? `#${el.id}` : "") +
     (el.className && typeof el.className === "string" ? `.${el.className.split(/\s+/)[0]}` : "");
 
-  const pageContext = (el: Element): { name: string; height: number } => {
-    // `page` is read from computed style so cascade/specificity and downstream
-    // book wrapper classes are already resolved. Walk ancestors as a backstop
-    // for a leaf inside a wrapper that owns the named-page assignment.
-    for (let node: Element | null = el; node; node = node.parentElement) {
-      const pageName = getComputedStyle(node).getPropertyValue("page").trim();
-      if (pageName && pageName !== "auto") {
-        return {
-          name: pageName,
-          // Computed style exposes the assigned page NAME but not which
-          // pseudo-page (:left/:right/:first/...) the element ultimately lands
-          // on. Node therefore sends the minimum content height across every
-          // applicable variant. This can warn conservatively when variants
-          // differ, but can never miss an element too tall for one of them.
-          height: contentHeights.named[pageName] ?? contentHeights.default,
-        };
-      }
-    }
-    return { name: "default", height: contentHeights.default };
-  };
+  const pageContext = (el: Element) => pageContextOf(el, contentHeights);
 
   for (const el of Array.from(document.querySelectorAll<HTMLElement>("figure,img,table,pre,svg,div"))) {
     const h = el.getBoundingClientRect().height;
@@ -307,15 +360,14 @@ export function auditContent(
     }
   }
 
-  // A bottom pin is placed against its page root's bottom edge, which is the
-  // page foot only while the root fits one sheet (its `min-height` is one
-  // content box). Taller, and that edge is the end of the text.
+  // A bottom pin that is NOT the last thing in its page root: `extendPageRoots`
+  // puts it at the foot of the root's last sheet, not where it was written.
   for (const root of Array.from(document.querySelectorAll<HTMLElement>(".page, .spread"))) {
     const h = root.getBoundingClientRect().height;
     const limit = pageContext(root).height;
     if (h <= limit + 1) continue;
-    for (const pin of Array.from(root.querySelectorAll<HTMLElement>(".gp-pin.gp-bottom"))) {
-      if (pin.offsetParent !== root) continue;
+    for (const pin of bottomPins(root)) {
+      if (endsRoot(pin, root)) continue;
       const img = pin.matches("img") ? (pin as HTMLImageElement) : pin.querySelector("img");
       const src = img ? img.getAttribute("src") ?? "" : "";
       out.push({
@@ -604,6 +656,7 @@ export function setPinFurniture(
 
 const api = {
   auditContent,
+  extendPageRoots,
   collectCss,
   forcedBreakSites,
   counterResetSites,

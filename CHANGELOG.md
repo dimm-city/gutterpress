@@ -9,9 +9,12 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **Build warning: a bottom pin in an `@page` block longer than one sheet.** The pin lands
-  at the end of the text, not the page foot; the warning names it and says to start a new
-  `@page` (#519).
+- **A bottom pin in an `@page` block longer than one sheet now sits at the foot of its
+  last sheet.** The page root gets a min-height of whole sheets (less the existing 1px
+  cushion, so no sheet is added) in both the PDF and the preview, instead of the pin
+  landing under the last line of text. The `engine.pin.page-span` build warning now fires
+  only for a bottom pin that is not the last thing in its block, because it moves to the
+  last sheet rather than staying where it was written (#519).
 
 - **Desktop: the status bar says when saving is paused by an unfinished revision
   switch.** An amber "Saved here · Saving is paused — see Drafts" opens Book setup →

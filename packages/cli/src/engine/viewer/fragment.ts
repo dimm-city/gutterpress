@@ -30,6 +30,7 @@ import {
 } from "../shared/pin-edges.ts";
 import { pageGeometryVarsCss } from "../shared/page-vars.ts";
 import { printAreaFromMeta } from "../shared/print-area.ts";
+import { spanningMinHeight } from "../shared/page-root-span.ts";
 
 export const PX_PER_PT = 96 / 72;
 
@@ -677,6 +678,57 @@ export function stabilizeFullHeightPageRoots(model: GcpmModel, strips: StripInfo
     }
   }
   return stabilized;
+}
+
+/**
+ * A page root that runs across N sheets and holds a bottom pin gets a
+ * min-height of N sheets (less core's 1px cushion), so its bottom edge, and the
+ * pin, is the foot of its last sheet (#519). Fragments are summed because the
+ * strip's multicol splits the root per column; the cushion keeps a sheet-exact
+ * edge from adding a column. Only roots with a bottom pin are touched, as in
+ * the compiler. Twin of `extendPageRoots` in compiler/agent.ts; the arithmetic
+ * is shared (`spanningMinHeight`).
+ */
+export function extendSpanningPageRoots(strips: StripInfo[]): number {
+  let extended = 0;
+  const reads: Array<{ root: HTMLElement; min: number }> = [];
+  for (const strip of strips) {
+    const { height, rowStride } = stripMetrics(strip.el);
+    if (!(height > 0)) continue;
+    const zoom = cssZoomOf(strip.el);
+    const stripTop = strip.el.getBoundingClientRect().top;
+    for (const root of Array.from(strip.el.querySelectorAll<HTMLElement>(".page, .spread"))) {
+      if (!root.querySelector(".gp-pin.gp-bottom")) continue;
+      if (
+        !Array.from(root.querySelectorAll<HTMLElement>(".gp-pin.gp-bottom")).some(
+          (pin) => pin.offsetParent === root,
+        )
+      )
+        continue;
+      const rects = Array.from(root.getClientRects());
+      if (!rects.length) continue;
+      const total = rects.reduce((sum, r) => sum + r.height, 0) / zoom;
+      const first = ((rects[0]!.top - stripTop) / zoom) % rowStride;
+      const min = spanningMinHeight(total, height, first > 0.5 && first < height ? first : 0);
+      if (min != null) reads.push({ root, min });
+    }
+  }
+  // WRITE phase after every read, so measuring one root never sees another's change.
+  for (const { root, min } of reads) {
+    root.dataset.gpSpanMin = root.style.minHeight || "-";
+    root.style.minHeight = `${min}px`;
+    extended++;
+  }
+  return extended;
+}
+
+/** Restore the exact authored inline min-height before a refresh rebuild. */
+function restoreSpanningPageRoots(doc: Document = document): void {
+  for (const el of Array.from(doc.querySelectorAll<HTMLElement>("[data-gp-span-min]"))) {
+    const value = el.dataset.gpSpanMin;
+    el.style.minHeight = value === "-" ? "" : (value ?? "");
+    delete el.dataset.gpSpanMin;
+  }
 }
 
 /** Restore the exact authored inline display before a refresh rebuild. */
@@ -1496,6 +1548,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
   await layoutReady;
   makeOverflowFragmentable(strips);
   stabilizeFullHeightPageRoots(model, strips);
+  extendSpanningPageRoots(strips);
   synthesizeColumnBreaks(model);
   measure(strips);
   const blanks = compensateRectoBreaks(model, strips);
@@ -1524,6 +1577,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
     // there is no separate "cheap" path to keep.
     relayout: () => {
       restoreFullHeightPageRoots();
+      restoreSpanningPageRoots();
       restoreScrollContainers();
       restorePinRoots();
       unwrapStrips(strips);
@@ -1534,6 +1588,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
       strips.push(...rebuilt);
       makeOverflowFragmentable(strips);
       stabilizeFullHeightPageRoots(model, strips);
+      extendSpanningPageRoots(strips);
       synthesizeColumnBreaks(model);
       measure(strips);
       api.blankPages = compensateRectoBreaks(model, strips);

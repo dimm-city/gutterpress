@@ -618,6 +618,17 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     await page.evaluate(`window.__gp.addCss("gp-page-vars", ${JSON.stringify(pageVarsCss)})`);
     log(`page geometry published (--gp-content-h: ${Math.round(contentHeightPx)}px, --gp-page-*)`);
 
+    // A bottom pin in a page root longer than one sheet belongs at the foot of
+    // its last sheet (#519). Run before every print that can ship (the tier-3
+    // loop, the audit); idempotent. The viewer does the same (fragment.ts).
+    const extendRoots = () =>
+      page.evaluate(
+        `window.__gp.extendPageRoots(${JSON.stringify({
+          default: contentHeightPx,
+          named: namedContentHeightsPx,
+        })})`,
+      );
+
     // ---- pinned edges: what needs the root's physical page ---------------
     // Margin boxes on a freed edge cannot render natively (their margin is
     // gone — measured, including every thin-margin/padding compensation
@@ -1195,6 +1206,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       for (let pass = 1; pass <= maxPasses; pass++) {
         passes = pass;
         prints++;
+        await extendRoots();
         bytes = await printPdf(page);
         const facts = await inspectPdf(bytes);
         // Chromium creates a /Dest for every id ANY link in the document
@@ -1242,6 +1254,10 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // and rasters below the print resolution bar. Content heights come from
     // the per-page-context table computed once at the top of the build.
     {
+      // A bottom pin in a page root longer than one sheet belongs at the foot of
+      // its last sheet (#519): stretch the root to whole sheets before auditing
+      // and printing. The viewer does the same (fragment.ts).
+      await extendRoots();
       const audit = await page.evaluate<Array<{ kind: string; what: string; detail: string }>>(
         `window.__gp.auditContent(${JSON.stringify({
           default: contentHeightPx,
@@ -1257,7 +1273,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         else if (w.kind === "pin-span")
           diagnose(
             "engine.pin.page-span",
-            `.gp-pin .gp-bottom on ${w.what} is in an @page block that runs across ${w.detail} pages, so it is placed at the end of the text, not the page foot. Start a new @page before the content it should sit with.`,
+            `.gp-pin .gp-bottom on ${w.what} is in an @page block that runs across ${w.detail} pages, so it is placed at the foot of the last page, not beside the text it follows. Move it to the end of the block, or start a new @page before the content it should sit with.`,
           );
         else
           diagnose(
