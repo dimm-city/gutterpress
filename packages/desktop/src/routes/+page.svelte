@@ -22,6 +22,7 @@
   import type { MarkdownFileLaunchEvent } from "#lib/platform/contract.ts";
   import type { ProblemEntry } from "#lib/platform/dtos.ts";
   import { buildProblems, exportProblems, problemCounts } from "#lib/problems.ts";
+  import { NOTHING_NEW_NOTICE, saveFailureReason } from "#lib/save-status.ts";
   import StatusBar from "#lib/components/StatusBar.svelte";
   import ProblemsPanel from "#lib/components/ProblemsPanel.svelte";
   import ActivityIndicator from "#lib/components/ActivityIndicator.svelte";
@@ -464,8 +465,8 @@
     diagnose: (dir) => api.remote.diagnoseProjectRemote(dir),
     currentDir: () => lifecycle.currentDir,
     toast: () => toast,
-    onSyncCompleted: (mergedRemoteChanges, filesChanged) =>
-      onSyncCompleted(mergedRemoteChanges, filesChanged),
+    onSyncCompleted: (mergedRemoteChanges, filesChanged, quiet) =>
+      onSyncCompleted(mergedRemoteChanges, filesChanged, quiet),
     onFilesChanged: () => onSyncFilesChanged(),
     autoBackup: () => settings.current.versionHistory.autoSync,
     getStatus: (dir) => api.sync.getStatus(dir),
@@ -478,6 +479,14 @@
   });
 
   // Why the book's automatic versions keep failing: only news while they are on.
+  // What the online copy needs before it can back up, from the diagnosis: a sign-in, or nothing
+  // Gutterpress can do (an address it can't back up over).
+  const remoteNeeds = $derived.by((): "sign-in" | "own-tools" | null => {
+    const g = syncController.syncDiag?.guidance;
+    if (g === "connect-github-to-sync" || g === "https-connect-server") return "sign-in";
+    if (g === "ssh-use-own-tools") return "own-tools";
+    return null;
+  });
   const versionsProblem = $derived(settings.current.versionHistory.autoSnapshot ? syncController.versionsProblem : null);
 
   // ── Project session capability state (#12) ───────────────────────────────────
@@ -544,6 +553,7 @@
     toast: () => toast,
     clearStaleProjectState: () => {
       problems = [];
+      problemsLoaded = false;
       projectComponents = [];
       projectVariants = [];
       projectClasses = [];
@@ -569,6 +579,7 @@
       crashRecovery.reset();
       pendingRecoveryScanDir = null;
       problems = [];
+      problemsLoaded = false;
       projectComponents = [];
       projectVariants = [];
       projectClasses = [];
@@ -902,12 +913,21 @@
   // Backing up completed. Online changes may land on disk even when the final outcome
   // is "up-to-date" (the pass got the latest first, then there was nothing to send), so the
   // file-change signal is separate from the user-facing merge/backup copy.
-  function onSyncCompleted(mergedRemoteChanges: boolean, filesChanged = mergedRemoteChanges) {
-    toast?.success(
-      mergedRemoteChanges
-        ? "Backed up — changes from the online copy were combined in, so the preview will refresh."
-        : "Backed up — your changes are in the online copy.",
-    );
+  // `quiet`: the caller already told the author what happened (a repair, or a
+  // pass that found two takes), so this adds no second toast.
+  function onSyncCompleted(mergedRemoteChanges: boolean, filesChanged = mergedRemoteChanges, quiet = false) {
+    if (!quiet) {
+      // The same key as every other sync outcome: one message per action.
+      toast?.show(
+        mergedRemoteChanges
+          ? "Backed up — changes from the online copy were combined in, so the preview will refresh."
+          : "Backed up — your changes are in the online copy.",
+        "success",
+        undefined,
+        undefined,
+        "sync-outcome",
+      );
+    }
     // Backing up may add new versions to the book's version history (both
     // sending and getting latest) — refresh the Version history list so new
     // entries appear if it's open in Book setup.
@@ -944,11 +964,12 @@
       if (status.projectDir !== lifecycle.currentDir) return;
       syncController.applyStatus(status);
       if (shouldReconcileAfterSync(status)) {
+        syncController.noteFilesWritten();
         onSyncFilesChanged();
       }
       if (readerMode) return;
       if (status.state === "syncing") identityNoticeArmed = true;
-      syncController.applyConvergeReport(status.combinedFiles, status.keptBothFiles);
+      syncController.applyConvergeReport(status.combinedFiles, status.keptBothFiles, true);
     });
     return () => off?.();
   });
@@ -1233,6 +1254,9 @@
     return basenameOf(file);
   });
   let editorSavePhase = $derived(buffer?.phase ?? "clean");
+  /** Why the last save failed, for the status bar's "Couldn't save · see why". */
+  let saveError = $state<string | null>(null);
+  const shownSaveError = $derived(editorSavePhase === "error" ? saveError : null);
   let externalChange = $derived(buffer?.externalChange ?? null);
   let externalFileName = $derived(editorFilePath ? basenameOf(editorFilePath) : "");
 
@@ -1319,13 +1343,27 @@
       platform: getPlatform(),
       autoSave: () => settings.current.versionHistory.autoSave,
       onError: (msg) => {
-        if (editorFiles.isActive(instance)) toast?.error(msg);
+        if (!editorFiles.isActive(instance)) return;
+        if (/^Save failed:/i.test(msg)) {
+          // The bar's "see why" says it in plain words, without the route's JSON. This is the one
+          // toast for a failed save, whether the debounce or an explicit Save ran it.
+          saveError = saveFailureReason(msg);
+          toast?.error(`Couldn't save. ${saveError}`);
+        } else {
+          // Opening a file failed (not a save): say what the editor said, and don't call it a save.
+          saveError = null;
+          toast?.error(msg);
+        }
       },
       onContentReplaced: (path, content) => {
         if (editorFiles.isActive(instance) && instance.filePath === path) showEditorContent(path, content);
       },
       onAutoReloaded: () => {
-        if (editorFiles.isActive(instance)) toast?.info?.("Reloaded from disk");
+        // A reload that follows a pass that wrote files (an update, a combine, a repair) is that
+        // pass's own doing, and its outcome toast already said so.
+        if (editorFiles.isActive(instance) && !syncController.passTouchedFiles) {
+          toast?.show("This file was changed outside Gutterpress, so it was refreshed.", "info", undefined, undefined, "reloaded");
+        }
       },
       onDirty: (pending) => {
         if (editorFiles.isActive(instance)) {
@@ -1799,6 +1837,10 @@
   // toolbar with an errors+warnings count badge.
   let problemsOpen = $state(false);
   let problems = $state<ProblemEntry[]>([]);
+  /** The first lint of this book has come back, so its count of two takes is the truth. */
+  let problemsLoaded = $state(false);
+  /** Passages with two takes waiting for a decision (the status bar's "to decide"). */
+  const decideCount = $derived(problems.filter((p) => p.source === "source.sync.merge-markers").length);
   /** Findings from the last export (see the `buildPdf` wrapper above). */
   let buildProblemEntries = $state<ProblemEntry[]>([]);
   let problemsLoading = $state(false);
@@ -1877,6 +1919,7 @@
         // The project may have changed while the lint was in flight.
         if (lifecycle.currentDir === dir) {
           problems = entries;
+          problemsLoaded = true;
           problemsError = null;
         }
       })
@@ -1886,6 +1929,7 @@
         // distinct error state instead of silently clearing to [].
         if (lifecycle.currentDir === dir) {
           problems = [];
+          problemsLoaded = false;
           problemsError = "We couldn't check your book this time.";
         }
       })
@@ -2099,6 +2143,7 @@
     label: string;
     initialValue: string;
     options?: readonly { value: string; label: string }[];
+    confirmLabel?: string;
     resolve: (value: string | null) => void;
   } | null>(null);
 
@@ -2107,6 +2152,7 @@
     label: string;
     initialValue: string;
     options?: readonly { value: string; label: string }[];
+    confirmLabel?: string;
   }): Promise<string | null> {
     return new Promise((resolve) => {
       textPrompt = { ...opts, resolve };
@@ -2911,8 +2957,8 @@
     forceSaving = true;
     try {
       await buffer.flush();
-    } catch (e) {
-      toast?.error(`Save failed: ${friendlyHostError(e instanceof Error ? e.message : String(e))}`);
+    } catch {
+      // The buffer's own onError already showed the one error toast, and the bar says why.
     } finally {
       forceSaving = false;
     }
@@ -2925,10 +2971,28 @@
   async function saveVersion(): Promise<"saved" | "unchanged"> {
     const dir = lifecycle.currentDir;
     if (!dir) return "unchanged";
+    // What is typed but not yet on disk belongs in this version: write it first, then ask what changed.
+    await buffer?.flush().catch(() => {});
+    // Nothing new since the last version: say so without asking for a name first.
     try {
-      await api.vcs.saveSnapshot(dir);
+      const pending = await api.vcs.unversionedChanges(dir);
+      if (pending.changedFiles === 0 && !pending.stale) return "unchanged";
+    } catch {
+      // Can't tell: let the save itself say so.
+    }
+    // A milestone ("Sent to printer") is worth a name; blank keeps the plain note.
+    const name = await promptText({
+      title: "Save a version",
+      label: "Name this version (optional), for example: Sent to printer",
+      initialValue: "",
+      confirmLabel: "Save version",
+    });
+    // Cancelled: nothing saved, nothing said. Callers treat a throw as "the page already spoke".
+    if (name === null) throw new Error("cancelled");
+    try {
+      await api.vcs.saveSnapshot(dir, name.trim() || undefined);
       identityNoticeArmed = true;
-      toast?.success("Saved a version.");
+      toast?.show("Saved a version.", "success", undefined, undefined, "version-saved");
       return "saved";
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -2936,6 +3000,20 @@
       if (/nothing new to save/i.test(msg)) return "unchanged";
       toast?.error(friendlyHostError(unwrapRouteError(msg)));
       throw e;
+    }
+  }
+
+  /** The status bar's "No version history": turn it on for this plain folder. */
+  async function turnOnVersionHistory(): Promise<void> {
+    const dir = lifecycle.currentDir;
+    if (!dir) return;
+    try {
+      await api.vcs.enableVersionHistory(dir);
+      await projectSession.classify(dir);
+      void syncController.refreshSyncDiag(dir);
+      toast?.success("Version history is on. The first version is saved.");
+    } catch {
+      toast?.error("Couldn't turn on version history. Your book is unchanged. Try again, and check the app log if it keeps happening.");
     }
   }
 
@@ -3377,7 +3455,14 @@
     sourceMode={lifecycle.sourceMode}
     canSync={!!(syncController.syncDiag?.canSync)}
     hasRemote={projectSession.projectHasRemote}
-    savePhase={editorSavePhase}
+    classified={projectSession.projectCapabilities !== null}
+    noHistory={projectSession.projectCapabilities?.canEnableVersionHistory === true}
+    remoteNeeds={remoteNeeds}
+    checked={syncController.checkedDir === lifecycle.currentDir && lifecycle.currentDir !== null}
+    decide={decideCount}
+    savePhase={editorSavePhase === "error" && !shownSaveError ? "clean" : editorSavePhase}
+    saveError={shownSaveError}
+    problemsLoaded={problemsLoaded}
     autoSave={settings.current.versionHistory.autoSave}
     autoBackup={settings.current.versionHistory.autoSync}
     {forceSaving}
@@ -3392,7 +3477,17 @@
     onGetLatest={() => syncController.handleGetLatest()}
     gettingLatest={syncController.gettingLatest}
     updatesAvailable={syncController.updatesAvailable}
-    onOpenOnlineCopy={openOnlineCopy}
+    onSave={() => handleForceSave()}
+    onOpenBackup={openOnlineCopy}
+    onOpenProblems={openProblemsList}
+    onTurnOnHistory={turnOnVersionHistory}
+    onSaveVersion={() =>
+      saveVersion()
+        .then((result) => {
+          // From the bar nothing else says it: the tab's own button shows this line itself.
+          if (result === "unchanged") toast?.show(NOTHING_NEW_NOTICE, "info", undefined, undefined, "version-saved");
+        })
+        .catch(() => {})}
     onOpenSettings={() => openSettings()}
     onOpenHelp={openHelp}
     onOpenBooks={openBooks}
@@ -3552,6 +3647,7 @@
     label={textPrompt.label}
     initialValue={textPrompt.initialValue}
     options={textPrompt.options}
+    confirmLabel={textPrompt.confirmLabel}
     onDone={finishTextPrompt}
   />
 {/if}

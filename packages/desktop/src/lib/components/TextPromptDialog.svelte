@@ -1,11 +1,12 @@
 <script lang="ts">
   import { dialogBehavior } from "#lib/dialog.ts";
 
-  let { title, label, initialValue, options, onDone }: {
+  let { title, label, initialValue, options, confirmLabel = "Apply", onDone }: {
     title: string;
     label: string;
     initialValue: string;
     options?: readonly { value: string; label: string }[];
+    confirmLabel?: string;
     onDone: (value: string | null) => void;
   } = $props();
   let value = $state<string | undefined>();
@@ -39,7 +40,7 @@
   </label>
   <footer class="dlg-actions">
     <button type="button" class="dlg-ghost" onclick={() => finish(null)}>Cancel</button>
-    <button type="submit" class="dlg-primary app-btn-primary">Apply</button>
+    <button type="submit" class="dlg-primary app-btn-primary">{confirmLabel}</button>
   </footer>
 </form>
 
