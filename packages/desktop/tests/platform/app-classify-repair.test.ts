@@ -28,6 +28,7 @@ function lib(extra: Record<string, unknown>, order: string[]): void {
     },
     capabilitiesFor: () => ({}),
     hasProjectManifest: () => true,
+    unfinishedSwitchState: async () => null,
     ...extra,
   } as unknown as Partial<LibModule>);
 }
@@ -65,6 +66,12 @@ test("a repair that fails is reported, and the book still opens", async () => {
   );
   const body = await (await classify({ request: request() } as never)).json();
   expect(body.repairNotice).toContain("could not be put back");
+});
+
+test("reports an unfinished switch so the status bar can say saving is paused (#516)", async () => {
+  registerHostServices(makeHostServices({}));
+  lib({ repairInterruptedSwitch: async () => null, takeSwitchRepairNotice: async () => null, unfinishedSwitchState: async () => ({ message: "x" }) }, []);
+  expect((await (await classify({ request: request() } as never)).json()).unfinishedSwitch).toBe(true);
 });
 
 test("no notice when nothing was pending", async () => {
