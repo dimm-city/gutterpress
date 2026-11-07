@@ -57,7 +57,7 @@ function openProject(overrides: Parameters<typeof makeHostServices>[0] = {}): Ho
 }
 
 function fakeLib(lib: Record<string, unknown>): void {
-  setLibForTests(lib as Partial<LibModule>);
+  setLibForTests({ repairInterruptedSwitch: async () => null, takeSwitchRepairNotice: async () => null, ...lib } as Partial<LibModule>);
 }
 
 afterEach(() => {
@@ -87,6 +87,25 @@ describe("POST /api/vcs/list-revisions", () => {
     const res = await listRevisions({ request: request({ projectDir: DIR }) } as never);
     expect(await res.json()).toEqual({ ...revisions, checkedOnline: false });
     expect(calls).toEqual([`list(${DIR})`]);
+  });
+
+  test("repairs an interrupted switch first and passes its message on once", async () => {
+    const order: string[] = [];
+    openProject();
+    fakeLib({
+      repairInterruptedSwitch: async () => {
+        order.push("repair");
+        return "put back";
+      },
+      takeSwitchRepairNotice: async () => "put back",
+      listRevisions: async () => {
+        order.push("list");
+        return revisions;
+      },
+    });
+    const res = await listRevisions({ request: request({ projectDir: DIR }) } as never);
+    expect(await res.json()).toEqual({ ...revisions, checkedOnline: false, repairNotice: "put back" });
+    expect(order).toEqual(["repair", "list"]);
   });
 
   test("refresh: true checks the online copy first, with the host's sign-ins, and reports it worked", async () => {

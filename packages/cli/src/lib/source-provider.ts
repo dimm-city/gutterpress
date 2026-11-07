@@ -757,6 +757,8 @@ export async function snapshotWorkingTreeUnlocked(
   // caller supplied its own, in which case we use that so its index view
   // stays coherent past our commit (see SnapshotOptions.cache).
   const cache: GitCache = options.cache ?? {};
+  // Never save a half-switched tree as a version: put it right first.
+  await repairInterruptedSwitchUnlocked(dir);
   // Crash-window marker: staging (git.add/remove) and git.commit are two
   // separate writes. A crash between them leaves the index matching the
   // workdir with NO commit — and because the changes walk compares
@@ -870,6 +872,8 @@ export async function countUnversionedChanges(
   // The vendored npm trees (the current folder and the one older books used).
   const appWritten = [EXTENSIONS_DIR, LEGACY_PLUGINS_DIR].map((d) => `${bookPrefix}${d}/${VENDORED_NPM_DIR}/`);
   return withRepoLock(dir, async () => {
+    // Opening a book lands here: a half-done switch is put right before it is counted.
+    await repairInterruptedSwitchUnlocked(dir);
     const { adds, removes } = await listWorkdirChanges(dir);
     const mine = new Set(
       [...adds, ...removes].filter((f) => f.startsWith(bookPrefix) && !appWritten.some((p) => f.startsWith(p))),
@@ -903,6 +907,135 @@ export function gitDirFor(projectDir: string): string {
 /** Marker written before staging and removed after commit; presence means a prior snapshot may have died after staging. */
 export function snapshotStagingMarkerPath(projectDir: string): string {
   return path.join(gitDirFor(projectDir), SNAPSHOT_STAGING_MARKER);
+}
+
+// ── Interrupted switch journal ───────────────────────────────────────────────
+//
+// A revision switch (and a restore) rewrites the working tree in several steps
+// that git cannot make atomic. The journal says one is under way; it lives in
+// the git directory, is written by rename (never torn) after the safety
+// version holds everything, and is removed only once the tree is settled. If
+// it is still there at the next look, the app died mid-way, and
+// {@link repairInterruptedSwitch} puts the book back to the saved version.
+
+const SWITCH_JOURNAL = "gutterpress-switch.json";
+const SWITCH_NOTICE = "gutterpress-switch-notice.json";
+
+interface SwitchJournal {
+  kind: "switch" | "restore";
+  /** The version the book was on (it holds everything: saved before the journal). */
+  from: string;
+  /** The revision the book was on, when it was on one. */
+  fromBranch?: string;
+  /** The version being moved to. */
+  to: string;
+  /** The revision being moved to (a switch only). */
+  branch?: string;
+}
+
+const switchJournalPath = (dir: string): string => path.join(gitDirFor(dir), SWITCH_JOURNAL);
+const switchNoticePath = (dir: string): string => path.join(gitDirFor(dir), SWITCH_NOTICE);
+
+function writeAtomically(file: string, text: string): void {
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, text);
+  fs.renameSync(tmp, file);
+}
+
+async function beginSwitchJournal(dir: string, journal: Omit<SwitchJournal, "from" | "fromBranch">): Promise<void> {
+  const from = await git.resolveRef({ fs, dir, ref: "HEAD" }).catch(() => undefined);
+  if (!from) return; // no version to go back to
+  const fromBranch = (await git.currentBranch({ fs, dir }).catch(() => undefined)) || undefined;
+  writeAtomically(switchJournalPath(dir), JSON.stringify({ ...journal, from, fromBranch }));
+}
+
+const endSwitchJournal = (dir: string): void => fs.rmSync(switchJournalPath(dir), { force: true });
+
+function pruneEmptyDirs(dir: string, file: string): void {
+  let d = path.dirname(path.join(dir, file));
+  while (d.length > dir.length && d.startsWith(dir)) {
+    try {
+      fs.rmdirSync(d); // throws unless empty
+    } catch {
+      return;
+    }
+    d = path.dirname(d);
+  }
+}
+
+/**
+ * Finish an interrupted switch or restore (caller holds the repo lock): a
+ * switch whose revision is already open is simply done; anything else is rolled
+ * back, by forcing the saved version over the tree and removing the files and
+ * folders the half-done move created. Returns the message for the author, or
+ * `null` when nothing was pending. The message is also kept for
+ * {@link takeSwitchRepairNotice}.
+ */
+export async function repairInterruptedSwitchUnlocked(dir: string): Promise<string | null> {
+  if (!fs.existsSync(switchJournalPath(dir))) return null;
+  let journal: SwitchJournal;
+  try {
+    journal = JSON.parse(fs.readFileSync(switchJournalPath(dir), "utf8"));
+  } catch {
+    endSwitchJournal(dir);
+    return null;
+  }
+  const open = await git.currentBranch({ fs, dir }).catch(() => undefined);
+  let message: string;
+  if (journal.kind === "switch" && journal.branch && open === journal.branch) {
+    message = `A switch to "${journal.branch}" was interrupted after it had finished, so nothing needed fixing.`;
+  } else {
+    const cache: GitCache = {};
+    await git.checkout({ fs, dir, cache, ref: journal.fromBranch ?? journal.from, force: true });
+    // Files only the target has are untracked now; delete them and the folders made for them.
+    const stray: string[] = [];
+    await git
+      .walk({
+        fs,
+        dir,
+        cache,
+        trees: [git.TREE({ ref: journal.from }), git.TREE({ ref: journal.to })],
+        map: async (filepath, [a, b]) => {
+          if (filepath === "." || a || !b) return;
+          if ((await b.type()) === "blob") stray.push(filepath);
+        },
+      })
+      .catch(() => undefined); // target version unreadable: nothing to sweep
+    for (const f of stray) {
+      fs.rmSync(path.join(dir, f), { force: true });
+      pruneEmptyDirs(dir, f);
+    }
+    message =
+      "Switching revisions was interrupted (the app closed part-way), so the book was put back " +
+      `exactly as it was before${journal.fromBranch ? `, on "${journal.fromBranch}"` : ""}. ` +
+      "Nothing you wrote was lost; switch again when you're ready.";
+  }
+  writeAtomically(switchNoticePath(dir), JSON.stringify({ message }));
+  endSwitchJournal(dir);
+  return message;
+}
+
+/** Repair an interrupted switch or restore, queued behind the repo lock. */
+export async function repairInterruptedSwitch(projectDir: string): Promise<string | null> {
+  const source = await detectProjectSource(projectDir);
+  if (source.type !== "local-git-folder") return null;
+  const dir = gitScopeFor(source);
+  if (!fs.existsSync(switchJournalPath(dir))) return null;
+  return withRepoLock(dir, () => repairInterruptedSwitchUnlocked(dir));
+}
+
+/** The message left by a repair, once: read it, then clear it. */
+export async function takeSwitchRepairNotice(projectDir: string): Promise<string | null> {
+  const source = await detectProjectSource(projectDir);
+  if (source.type !== "local-git-folder") return null;
+  const file = switchNoticePath(gitScopeFor(source));
+  try {
+    const { message } = JSON.parse(fs.readFileSync(file, "utf8"));
+    fs.rmSync(file, { force: true });
+    return typeof message === "string" ? message : null;
+  } catch {
+    return null;
+  }
 }
 
 // ── Safe restore (#13) ────────────────────────────────────────────────────────
@@ -980,8 +1113,11 @@ export async function restoreVersionWithBackup(
       backupId = backup.id;
     }
     try {
+      await beginSwitchJournal(repoDir, { kind: "restore", to: id });
       await provider.restoreUnlocked({ projectDir, id });
+      endSwitchJournal(repoDir);
     } catch (cause) {
+      await repairInterruptedSwitchUnlocked(repoDir).catch(() => undefined);
       // The restore itself failed AFTER any safety snapshot was committed.
       // Tell the author their work is safe — the backup is already in their
       // version history — and keep the underlying failure on `cause`.
@@ -1349,6 +1485,9 @@ export async function switchBranch(
     // local branch. `remote` is passed explicitly so a remote that isn't
     // named "origin" works too — checkout would otherwise assume origin.
     const { oid: toOid, remote } = await resolveRevision(repoDir, branch);
+    // Everything is saved above, so the tree is clean here: the journal lets a
+    // crash from this point on be undone (repairInterruptedSwitch).
+    await beginSwitchJournal(repoDir, { kind: "switch", to: toOid, branch });
     try {
       await git.checkout({
         fs,
@@ -1360,14 +1499,20 @@ export async function switchBranch(
       });
     } catch (e) {
       if (isCheckoutConflictError(e)) {
+        // Refused before any file moved: nothing to undo, and a forced
+        // rollback would overwrite the very file that changed.
+        endSwitchJournal(repoDir);
         throw new Error(
           "Couldn't switch revisions — some files changed on disk right as the switch " +
             "started. Try again.",
           { cause: e },
         );
       }
+      // Failed part-way (disk full, unreadable file...): put the book back.
+      await repairInterruptedSwitchUnlocked(repoDir).catch(() => undefined);
       throw e;
     }
+    endSwitchJournal(repoDir);
     const changedPaths =
       fromOid && fromOid !== toOid
         ? await diffCommitPaths(repoDir, fromOid, toOid, cache)

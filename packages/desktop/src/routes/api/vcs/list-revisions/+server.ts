@@ -20,11 +20,15 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; refresh: b
   },
   call: async ({ body }) => {
     const lib = await loadLib();
+    // A switch the app died in the middle of is put right first; `repairNotice`
+    // tells the author, once.
+    await lib.repairInterruptedSwitch(body.projectDir);
+    const repairNotice = await lib.takeSwitchRepairNotice(body.projectDir);
     const checkedOnline = body.refresh
       ? (await lib.refreshRemoteCopies({ projectDir: body.projectDir, tokenStore: getHostServices().remote.tokenStore })).refreshed
       : false;
     const list = await lib.listRevisions(body.projectDir);
-    return list && { ...list, checkedOnline };
+    return list && { ...list, checkedOnline, ...(repairNotice ? { repairNotice } : {}) };
   },
   onError: (e) => friendlyVcsError(e, 'vcs/list-revisions'),
 });

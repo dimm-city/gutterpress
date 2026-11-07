@@ -100,6 +100,16 @@ history-start versions "First version":
 | combining with the online copy | "Combined your changes with the online copy's" |
 | keeping both takes of a file that can't be combined | "Kept both takes of the files that can't be combined" |
 
+**Switching revisions is crash-safe.** "Saved before switching revision" holds
+everything, and only then does the switch write `.git/gutterpress-switch.json`
+(what it was on, what it is moving to), moving the files and removing the file
+last. If the app dies in between, the next open, save or backup of the book
+(`repairInterruptedSwitch` in `source-provider.ts`) puts the book back to that
+saved version, removes what the half-switch added, and Book setup → Revisions
+says: "Switching revisions was interrupted ... the book was put back exactly as
+it was." Restoring a version uses the same journal. Tests:
+`packages/cli/src/lib/switch-crash-recovery.test.ts`.
+
 ---
 
 ## Vision Statement

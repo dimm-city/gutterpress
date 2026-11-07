@@ -284,6 +284,8 @@ export {
   createRevision,
   revisionNameFrom,
   switchBranch,
+  repairInterruptedSwitch,
+  takeSwitchRepairNotice,
   SWITCH_BRANCH_SNAPSHOT_MESSAGE,
 } from "../lib/source-provider.ts";
 
