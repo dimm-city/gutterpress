@@ -406,11 +406,13 @@
     setAside = null;
     if (!projectDir) return;
     // The host's preview (what exists only on this computer), when this version of it has one.
-    const preview = (api.remote as unknown as { repairPreview?: (dir: string) => Promise<{ setAside: { revisions: string[]; versions: number } }> }).repairPreview;
+    const preview = (api.remote as unknown as { previewRepair?: (dir: string) => Promise<{ setAside: { revisions: string[]; versions: number }; unreadable?: boolean }> }).previewRepair;
     if (!preview) return;
     setAsideLoading = true;
     try {
-      setAside = (await preview(projectDir))?.setAside ?? null;
+      const r = await preview(projectDir);
+      // `unreadable`: this computer's history couldn't be read, so no honest list: keep the generic wording.
+      setAside = r?.unreadable ? null : (r?.setAside ?? null);
     } catch {
       setAside = null;
     } finally {

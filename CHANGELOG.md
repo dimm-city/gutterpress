@@ -31,6 +31,26 @@ This project follows [Semantic Versioning](https://semver.org/).
   Ubuntu 26.04 and the Docker image on Debian 13, whose Ghostscript packages
   (10.06.0, 10.05) are new enough.
 
+### Changed
+
+- **Book setup → Online copy is now Backup & history, and answers "is my work
+  safe?" first.** A status card (version history off, not backed up yet,
+  checking, safe, changes not backed up, new changes online, sign in again,
+  can't reach, can't find) with its one button; History (the author's note is
+  the version's title); Drafts (the old Revisions, shown as typed, the first
+  one as "Main draft"); and the repair tools under "Something wrong with the
+  online copy?", which opens by itself only after two backups in a row fail
+  for a reason other than being offline. "Back up online…" is a three-step
+  wizard, sign-in forms use plain words, Open from GitHub asks "Which draft?"
+  only when there is more than one, and Go back to a version now says what
+  it did. Repair names what it would set aside when the host can say.
+- **The tab opens at once.** One shared snapshot per book is shown straight
+  away and refreshed in the background only when over a minute old, the
+  online check says "Checking the online copy…" and the card says how long
+  ago it was checked, local actions (switch, rename, new draft) no longer go
+  online again, Version history's first page is read as the tab opens, and
+  the GitHub picker shows the last list at once.
+
 ### Fixed
 
 - **A book part-way through a revision switch could still be built (#507).**
