@@ -59,7 +59,7 @@ export interface SyncControllerDeps {
   /** Host round-trip: has the book's open revision moved online? (reads refs only; never throws) */
   checkUpdates: (dir: string) => Promise<{ available: boolean; reason?: string; host?: string }>;
   /** Host round-trip: "Repair the online copy" for the given project dir. */
-  repair: (dir: string) => Promise<{ outcome: SyncOutcome; restoredFiles: string[] }>;
+  repair: (dir: string) => Promise<{ outcome: SyncOutcome; restoredFiles: string[]; movedGitTo?: string }>;
   /** Host round-trip: diagnose the project's remote (protocol/credential/provider). */
   diagnose: (dir: string) => Promise<ProjectRemoteDiagnosis>;
   /** The currently open project dir, or null when none is open. */
@@ -500,18 +500,19 @@ export class SyncController {
    * "Repair the online copy" (lib remote-auth/repair.ts): one fixed sequence,
    * no diagnosis. Re-entry is guarded by the Online copy tab's own "running" phase.
    */
-  async handleRepair(): Promise<void> {
+  /** Resolves with the folder the old history was set aside in (for "Show in folder"), when the repair finished. */
+  async handleRepair(): Promise<string | null> {
     const dir = this.deps.currentDir();
-    if (!dir || this.forceSyncing) return;
+    if (!dir || this.forceSyncing) return null;
     const failed = "The repair didn't finish. Your work is saved on this computer — see Troubleshooting → Logs for details.";
     try {
-      const { outcome, restoredFiles } = await this.deps.repair(dir);
-      if (this.deps.currentDir() !== dir) return;
+      const { outcome, restoredFiles, movedGitTo } = await this.deps.repair(dir);
+      if (this.deps.currentDir() !== dir) return null;
       const state = outcomeState(outcome);
       this.recordManual(dir, state);
       if (state !== "synced") {
         this.notify("error", outcome.message || failed);
-        return;
+        return null;
       }
       const n = restoredFiles.length;
       this.clearNewOnline();
@@ -523,9 +524,11 @@ export class SyncController {
       );
       // The repair's own toast above is the one message: no second "Backed up".
       this.completed(true, n > 0 || outcome.filesChanged === true, true);
+      return movedGitTo ?? null;
     } catch {
       if (this.deps.currentDir() === dir) this.recordManual(dir, "error");
       this.notify("error", failed);
+      return null;
     }
   }
 }

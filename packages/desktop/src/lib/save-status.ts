@@ -11,7 +11,7 @@
  * Pure: no DOM, no host imports, no clock reads (callers pass `now`). Never
  * claims a fact it wasn't given.
  */
-import { relativeTime } from "./format";
+import { agoFull, relativeTime } from "./format";
 import type { SyncState } from "./platform/contract";
 
 /** The online copy's last word. `not-found` is the online copy's address leading nowhere (the host's 404 outcome). */
@@ -531,7 +531,7 @@ const files = (n: number): string => `${n} file${n === 1 ? "" : "s"}`;
  * `changedFiles: 0` can't be trusted to mean "nothing to save".
  */
 export function versionsLine(i: { lastVersionAt: number | null; changedFiles: number | null; stale?: boolean; now: number }): string {
-  const last = i.lastVersionAt == null ? "no versions yet" : `last version ${relativeTime(i.lastVersionAt, i.now)}`;
+  const last = i.lastVersionAt == null ? "no versions yet" : `last version ${agoFull(i.lastVersionAt, i.now)}`;
   const pending = i.changedFiles
     ? ` · ${files(i.changedFiles)} not in a version yet`
     : i.stale

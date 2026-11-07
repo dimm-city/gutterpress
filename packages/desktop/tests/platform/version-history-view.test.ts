@@ -60,10 +60,10 @@ describe("each card's changed files", () => {
   });
 
   test("opening the screen and Show older versions list versions only (#461), ahead of any card", () => {
-    for (const name of ["loadHistory", "loadOlder"]) {
-      expect(fn(name)).toContain("await changesOf.listFirst(api.vcs.listSnapshotsPage(projectDir");
-      expect(fn(name)).not.toMatch(/versionChanges|changesOf\.(load|show)/);
-    }
+    // The first page is the one Backup & history started reading when it opened, when it did.
+    expect(fn("loadHistory")).toContain("await changesOf.listFirst(onlineCopy.takeVersionsPage(projectDir) ?? api.vcs.listSnapshotsPage(projectDir))");
+    expect(fn("loadOlder")).toContain("await changesOf.listFirst(api.vcs.listSnapshotsPage(projectDir");
+    for (const name of ["loadHistory", "loadOlder"]) expect(fn(name)).not.toMatch(/versionChanges|changesOf\.(load|show)/);
     // The one call for a version's changes is the controller's.
     expect(script.match(/api\.vcs\.versionChanges\(/g)).toHaveLength(1);
   });
@@ -88,7 +88,7 @@ describe("versions online and not on this computer yet", () => {
     expect(list.indexOf('<section class="online"')).toBeGreaterThan(-1);
     expect(list.indexOf('<section class="online"')).toBeLessThan(list.indexOf("{#each days as day"));
     const row = snippet("onlineRow");
-    expect(row).toContain("{versionLabel(entry.message)}");
+    expect(row).toContain("{versionTitle(entry.message)}");
     expect(row).toContain('{when(entry.timestamp)}{entry.author ? ` · ${entry.author}` : ""}');
     expect(row).toContain("{@render changedFiles(entry.changes, entry.moreChanges)}");
     // Not a button: they come in with the next backup, nothing to select or restore yet.

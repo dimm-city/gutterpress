@@ -24,3 +24,16 @@ export function relativeTime(ms: number, now: number = Date.now()): string {
   if (days < 14) return `${days} day${days === 1 ? "" : "s"} ago`;
   try { return new Date(ms).toLocaleDateString(); } catch { return ""; }
 }
+
+/** "3 minutes ago", "2 hours ago": written in full, never "mins" or "hrs". */
+export function agoFull(ms: number, now: number): string {
+  const min = Math.round((now - ms) / 60_000);
+  if (min < 1) return "just now";
+  const unit = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"} ago`;
+  if (min < 60) return unit(min, "minute");
+  const hours = Math.round(min / 60);
+  if (hours < 24) return unit(hours, "hour");
+  const days = Math.round(hours / 24);
+  if (days < 14) return unit(days, "day");
+  try { return `on ${new Date(ms).toLocaleDateString()}`; } catch { return ""; }
+}

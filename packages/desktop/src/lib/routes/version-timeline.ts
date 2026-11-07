@@ -188,3 +188,27 @@ export function autoRunSummary(entries: SnapshotEntry[]): string {
   const span = oldest === newest ? newest : `${oldest}–${newest}`;
   return `Versions made automatically · ${span} · ${entries.length} times`;
 }
+
+/**
+ * A version row's title: the author's own note when there is one ("Sent to
+ * printer"), else the plain label ("Automatic version"); "Version saved by you— Edit 150" is gone.
+ */
+export function versionTitle(message: string): string {
+  return versionDescription(message) ?? versionLabel(message);
+}
+
+/** The line under a noted version's title; null when the title already is the label. */
+export function versionSubtitle(_message: string): string | null {
+  // A noted version's note is its title; "Version saved by you" under it says nothing more.
+  return null;
+}
+
+/** "Today, 11:40 AM" / "Yesterday, 4:05 PM" / "Nov 5, 10:42 AM". */
+export function whenShort(ms: number, now: number): string {
+  const d = new Date(ms);
+  const day = (t: number) => `${new Date(t).getFullYear()}-${new Date(t).getMonth()}-${new Date(t).getDate()}`;
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (day(ms) === day(now)) return `Today, ${time}`;
+  if (day(ms) === day(now - 86_400_000)) return `Yesterday, ${time}`;
+  return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, ${time}`;
+}

@@ -383,7 +383,7 @@ describe("vocabulary", () => {
 
 describe("versionsLine: the line about this computer", () => {
   test("names when the last version was made", () => {
-    expect(versionsLine({ lastVersionAt: NOW - 10 * MIN, changedFiles: 0, now: NOW })).toBe("Saved · last version 10 mins ago");
+    expect(versionsLine({ lastVersionAt: NOW - 10 * MIN, changedFiles: 0, now: NOW })).toBe("Saved · last version 10 minutes ago");
     expect(versionsLine({ lastVersionAt: NOW - 3 * DAY, changedFiles: null, now: NOW })).toBe("Saved · last version 3 days ago");
     expect(versionsLine({ lastVersionAt: NOW, changedFiles: 0, now: NOW })).toBe("Saved · last version just now");
   });

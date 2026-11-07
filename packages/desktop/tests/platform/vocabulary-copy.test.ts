@@ -70,54 +70,57 @@ describe("Update, Get the changes and Back up now", () => {
     expect(bar).not.toContain('"Sync"');
     expect(bar).not.toContain('"Get latest"');
     expect(bar).not.toContain("New online");
-    expect(markup("lib/components/ProjectConnectionsSection.svelte")).toContain('"Sync now"');
+    // The tab names its one button for the state: Back up now, Update, Get changes, Try again.
+    expect(markup("lib/components/ProjectConnectionsSection.svelte")).not.toMatch(/Sync now|Get latest/);
   });
 
-  test("Get latest is still in the tab; the new-changes prompt names the same thing the popover does", () => {
-    const tab = markup("lib/components/ProjectConnectionsSection.svelte");
-    expect(tab).toContain('"Get latest"');
-    expect(tab).toContain('"Getting the latest…"');
-    expect(tab).toContain('"Get latest: bring in changes from the online copy without sending yours"');
+  test("the tab's Get changes shows only when behind; the new-changes prompt names the same thing the popover does", () => {
+    const tab = read("lib/components/ProjectConnectionsSection.svelte");
+    expect(tab).toContain('"Get changes"');
+    expect(tab).toContain('"Getting changes…"');
     expect(read("lib/routes/sync-controller.svelte.ts")).toContain('{ label: "Get changes", onClick: () => void this.handleGetLatest() }');
   });
 
-  test("Back up now is back in the Online copy tab, and Help names both (#485)", () => {
-    const tab = markup("lib/components/ProjectConnectionsSection.svelte");
+  test("Back up now is in the Backup & history tab, and Help describes the one Update button", () => {
+    const tab = read("lib/components/ProjectConnectionsSection.svelte");
     expect(tab).toContain('"Back up now"');
-    expect(tab).toContain('"Back up now: get the latest changes from the online copy, then back up yours"');
+    expect(tab).toContain('update: "Update"');
     const help = markup("lib/components/HelpContent.svelte");
     expect(help).toContain("<em>Back up now</em>");
-    expect(help).toContain("<em>Get latest</em>");
+    expect(help).toContain("<em>Get changes</em>");
+    expect(help).toContain("<em>Update</em>");
+    expect(help).not.toContain("Get latest");
   });
 });
 
-describe("Book setup → Online copy", () => {
-  test("the tab is Online copy, id online-copy; nothing links to the old Backup tab", () => {
+describe("Book setup → Backup & history", () => {
+  test("the tab is Backup & history, id online-copy; nothing links to the old Backup tab", () => {
     const view = read("lib/components/ProjectSettingsView.svelte");
-    expect(view).toContain('{ id: "online-copy", label: "Online copy" }');
+    expect(view).toContain('{ id: "online-copy", label: "Backup & history" }');
     expect(view).not.toMatch(/id: "backup"|label: "Backup"/);
     expect(read("routes/+page.svelte")).toContain('"online-copy"');
     expect(read("routes/+page.svelte")).not.toMatch(/"backup"/);
   });
 
-  test("three cards in order: where the book is kept (troubleshooting at its foot), Revisions, Version history", () => {
+  test("status card, History, Drafts, then the drawer for when something is wrong", () => {
     const tab = markup("lib/components/ProjectConnectionsSection.svelte");
-    const order = [tab.indexOf('class="section-card status'), tab.indexOf("Backing up keeps failing?"), tab.indexOf("<RevisionsList"), tab.indexOf('id="version-history-title"')];
+    const order = [tab.indexOf('class="section-card status'), tab.indexOf('id="version-history-title"'), tab.indexOf("<RevisionsList"), tab.indexOf("Something wrong with the online copy?")];
     expect(order.every((i) => i > -1)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    expect(tab).toContain('<details class="trouble">');
+    expect(tab).toContain('<details class="trouble section-card" bind:open={troubleOpen}>');
   });
 
-  test("if backing up keeps failing: Test connection, Sign in again, Repair, then Start over", () => {
-    const tab = markup("lib/components/ProjectConnectionsSection.svelte");
-    const order = ["Test connection", "Sign in again", "Repair the online copy", "Start over from the online copy"].map((t) => tab.indexOf(t));
+  test("the drawer: Check the connection, Sign in again, Repair, then (under More…) Start over", () => {
+    const all = markup("lib/components/ProjectConnectionsSection.svelte");
+    const tab = all.slice(all.indexOf("Something wrong with the online copy?"));
+    const order = ["Check the connection", "Sign in again", "Repair…", "More…", "Start over…"].map((t) => tab.indexOf(t));
     expect(order.every((i) => i > -1)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
   test("Version history is a screen of its own, opened from the tab, never in the editor pane", () => {
     const tab = markup("lib/components/ProjectConnectionsSection.svelte");
-    expect(tab).toContain("Browse versions");
+    expect(tab).toContain("See all");
     expect(tab).not.toContain("<ProjectActivityView");
     const page = read("routes/+page.svelte");
     expect(page).toContain("<VersionHistoryView");
@@ -125,43 +128,46 @@ describe("Book setup → Online copy", () => {
   });
 
   test("each situation's action is worded as the design says", () => {
-    const tab = markup("lib/components/ProjectConnectionsSection.svelte");
-    for (const text of ["Turn on version history", "Keep this book safe online…", "Back up now", "Sync now", "Get latest", "Try again", "Save a version", "Repair the online copy", "Start over from the online copy", "Test connection", "Sign in again"]) {
+    // The button labels live in the script (LABELS), the drawer's in the markup.
+    const tab = read("lib/components/ProjectConnectionsSection.svelte");
+    for (const text of ["Turn on version history", "Back up online…", "Back up now", "Get changes", "Update", "Try again", "Save a version", "Repair…", "Start over…", "Check the connection", "Sign in again"]) {
       expect(tab).toContain(text);
     }
   });
 
-  test("Revisions: New revision sits in the card's header, above the list", () => {
+  test("Drafts: New draft sits in the card's header, above the list", () => {
     const rev = markup("lib/components/RevisionsList.svelte");
-    expect(rev.indexOf("New revision")).toBeGreaterThan(-1);
-    expect(rev.indexOf("New revision")).toBeLessThan(rev.indexOf('<ul class="rev-list"'));
+    expect(rev.indexOf("New draft")).toBeGreaterThan(-1);
+    expect(rev.indexOf("New draft")).toBeLessThan(rev.indexOf('<ul class="rev-list"'));
   });
 
-  test("Revisions: the four places, the actions, and the notes the design asks for", () => {
+  test("Drafts: the four places, the actions, and the notes the design asks for", () => {
     const rev = read("lib/components/RevisionsList.svelte");
     for (const text of [
-      "Current",
-      "Online · not backed up yet",
+      "You are here",
+      "Not backed up yet",
       "Only on this computer",
-      "Only online",
+      "Online only, not on this computer yet",
+      "Checking the online copy…",
       "Switch",
       "Rename…",
       "Delete…",
-      "New revision",
+      "New draft",
       "Delete on this computer only",
       "Delete everywhere",
       "It is deleted from the online copy. It isn't on this computer.",
       "It is renamed in the online copy. It isn't on this computer.",
-      "Find a revision",
-      "No revisions match.",
+      "Find a draft",
+      "No drafts match.",
       "This also renames it in the online copy. Anyone else working on",
-      "Couldn't check the online copy just now, so revisions made elsewhere may be missing.",
+      "Couldn't check the online copy just now, so drafts made elsewhere may be missing.",
+      "Saved copies after a repair",
     ]) {
       expect(rev).toContain(text);
     }
   });
 
-  test("Revisions: Rename… for every revision, Delete… for all but the open one", () => {
+  test("Drafts: Rename… for every draft, Delete… for all but the open one", () => {
     const rev = markup("lib/components/RevisionsList.svelte");
     const start = rev.indexOf('role="menu"');
     const menu = rev.slice(start, rev.indexOf("</div>", start));
@@ -175,15 +181,16 @@ describe("Book setup → Online copy", () => {
 describe("Version history", () => {
   const view = markup("lib/components/VersionHistoryView.svelte");
 
-  test("a short card on Online copy: the newest versions, Save a version and Browse versions", () => {
+  test("a short card on Backup & history: the newest versions, Save a version and See all", () => {
     const tab = markup("lib/components/ProjectConnectionsSection.svelte");
-    expect(tab).toContain('<h3 id="version-history-title">Version history</h3>');
-    expect(tab.indexOf("Save a version")).toBeLessThan(tab.indexOf("Browse versions"));
+    expect(tab).toContain('<h3 id="version-history-title">History</h3>');
+    expect(tab.indexOf("Save a version")).toBeLessThan(tab.indexOf("See all"));
   });
 
-  test("the screen: versions on the left, the selected one's Pages or Changed files, Restore this version at its top", () => {
+  test("the screen: versions on the left, the selected one's Pages or Changed files, Go back to this version at its top", () => {
     expect(view).toContain("Version history</h1>");
-    expect(view).toContain("Restore this version");
+    expect(view).toContain("Go back to this version");
+    expect(read("lib/components/VersionHistoryView.svelte")).toContain("Went back to");
     expect(view).toContain(">Pages</button>");
     expect(view).toContain("Changed files");
     expect(view).toContain("Your current work is saved as a version first.");
@@ -192,7 +199,7 @@ describe("Version history", () => {
 
   test("versions online and not here yet are listed under their own heading, and say when they come in (#484)", () => {
     expect(view).toContain("Online, not yet on this computer</h2>");
-    expect(view).toContain("They come in with <strong>Get latest</strong>, or the next time this book backs up.");
+    expect(view).toContain("They come in with <strong>Get changes</strong>, or the next time this book backs up.");
   });
 
   test("each card names what its version changed, in 0.11.22's words (#484)", () => {
@@ -214,6 +221,7 @@ describe("Settings and Help", () => {
     const help = markup("lib/components/HelpContent.svelte");
     expect(help).not.toMatch(/lists each file|Where your work is kept|Edits saved/i);
     expect(help).toContain("marks the overlapping passage as two takes");
-    expect(help).toContain("Online copy");
+    expect(help).toContain("online copy");
+    expect(help).toContain("Backup &amp; history");
   });
 });
