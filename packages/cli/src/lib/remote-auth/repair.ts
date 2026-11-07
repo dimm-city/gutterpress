@@ -19,11 +19,12 @@ import path from "node:path";
 
 import { BEFORE_REPAIR_REF_PREFIX, readRevisionRefs, withRepoLock } from "../source-provider.ts";
 import { cloneRepository } from "./clone.ts";
+import { defaultGitHttp } from "./git-http.ts";
 import { errorLogData, resolveLogger } from "./operation-log.ts";
 import { refreshRemoteCopies, syncProject } from "./sync.ts";
 import type { HostCredential, TokenStore } from "./token-store.ts";
 import type { SyncOutcome, SyncProjectOptions } from "./sync-types.ts";
-import { repoDirFor, resolveTransport } from "./transport.ts";
+import { repoDirFor, resolveTransport, serverTip } from "./transport.ts";
 
 /** Message recorded on the version a repair saves (older history says "Repaired online backup"). */
 export const REPAIR_SNAPSHOT_MESSAGE = "Repaired the online copy";
@@ -144,6 +145,12 @@ export async function repairOnlineBackup(
     } catch {
       branch = undefined; // unreadable HEAD: take the online default branch
     }
+    // A draft that exists only on this computer can't be downloaded: take the
+    // online default branch instead (the draft goes aside with the old history).
+    if (branch) {
+      const online = await serverTip(transport, branch, options.httpClient ?? defaultGitHttp).catch(() => branch);
+      if (!online) branch = undefined;
+    }
     logger.info("download", "starting", { remote: transport.remote, branch: branch ?? "default" });
     const fresh = await cloneRepository({
       url: transport.url,
@@ -185,8 +192,10 @@ export async function repairOnlineBackup(
       missing = [];
     }
     return { restoredFiles: missing, credential: transport.credential };
-  }).catch((e) => {
+  }).catch(async (e) => {
     logger.error("repair", "repair failed", errorLogData(e));
+    // A failed download leaves an empty <backupDir>; the folder is only worth keeping if the old history moved into it.
+    if (!fs.existsSync(movedGitTo)) await rm(options.backupDir, { recursive: true, force: true }).catch(() => {});
     throw e;
   });
 

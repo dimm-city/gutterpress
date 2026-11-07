@@ -174,6 +174,9 @@ export function friendlyPdfError(e: unknown): string {
   if (code === "EXPORT_CANCELED") {
     return "";
   }
+  if (code === "UNFINISHED_SWITCH") {
+    return "Gutterpress can't export while the book is part-way through switching drafts. Go to Book setup → Backup & history → Drafts to put it right.";
+  }
   if (isMissingManifestError(msg)) {
     return 'PDF export needs manifest.yaml. Choose "Set up as a book" first, then try again.';
   }

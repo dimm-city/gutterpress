@@ -134,7 +134,7 @@ function friendlyCloneError(e: unknown): Error {
     return e;
   }
   return new Error(
-    "The book couldn't be downloaded from GitHub. Please try again.",
+    "The book couldn't be downloaded from the online copy. Check its address and your sign-in in Book setup → Backup & history.",
     { cause: e },
   );
 }

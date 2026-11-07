@@ -1055,7 +1055,11 @@ export async function runBuild(
   const sp = await import("./source-provider.ts");
   if (opts.engineBrowser) await sp.repairInterruptedSwitch(opts.inputDir).catch(() => undefined);
   const unfinished = await sp.unfinishedSwitchMessage(opts.inputDir, { cli: !opts.engineBrowser });
-  if (unfinished) throw new UsageError(unfinished);
+  if (unfinished) {
+    const err = new UsageError(unfinished);
+    (err as UsageError & { code?: string }).code = "UNFINISHED_SWITCH";
+    throw err;
+  }
 
   const ctx = await resolveBuildContext(opts);
 

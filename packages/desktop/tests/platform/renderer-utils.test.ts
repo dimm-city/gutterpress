@@ -178,3 +178,11 @@ test("friendlyPdfError stops telling desktop authors to pass allowShrink", () =>
   expect(shown).not.toContain("allowShrink");
   expect(shown).toContain("div.dc-sidebar.inset");
 });
+
+test("friendlyPdfError explains an export refused during an unfinished draft switch", () => {
+  const err = Object.assign(new Error("anything the engine said"), { code: "UNFINISHED_SWITCH" });
+  const shown = friendlyPdfError(err);
+  expect(shown).toContain("part-way through switching drafts");
+  expect(shown).toContain("Backup & history → Drafts");
+  expect(shown).not.toContain("System tools");
+});

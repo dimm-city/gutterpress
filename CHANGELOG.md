@@ -110,10 +110,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   command, the desktop export and `preview --format pdf` now stop with a plain
   message (the desktop export tries the repair first; a command-line run never
   repairs, since it cannot lock out a running app). The HTML preview server is not guarded. Book setup →
-  Revisions shows the unfinished switch even when the repair keeps failing,
-  with "Try again" and "Keep files as they are".
+  Backup & history → Drafts shows the unfinished switch even when the repair
+  keeps failing, with "Put the book back" and "Keep the files as they are".
 - **Copies kept before a switch repair piled up and could not be reached
-  (#508).** Book setup → Revisions now lists them, with "Restore files from
+  (#508).** Book setup → Backup & history → Drafts now lists them, with "Restore files from
   this copy" and "Discard". Restoring puts back only the files you changed
   (not the other revision's), saves them as a version, and settles any
   unfinished switch first. A copy whose files are not yet in a version is
@@ -201,10 +201,20 @@ This project follows [Semantic Versioning](https://semver.org/).
   well pulls the trim in further instead of replacing it, and the crop marks
   follow the trim.
 - **`--icc` is not required for `--format pdfx`**: the help no longer says so.
+- **Pre-beta polish.** Exporting while the book is part-way through switching
+  drafts now says so, and points to Book setup → Backup & history → Drafts,
+  instead of "PDF export failed". A saved sign-in the online copy rejects is
+  reported as signed out, not "Offline", by the passive online check, the
+  copies refresh and the version lists. Repair no longer fails when the
+  current draft exists only on this computer: it takes the online main draft,
+  and that draft goes aside with the rest; a failed download no longer leaves
+  an empty safety folder, and its message no longer names GitHub or says to
+  retry. A passage with two takes no longer adds five "unknown class" layout
+  warnings to its error in the preview.
 
 ### Security
 
-- **The dependency audit is clear except for three build-time packages.**
+- **The dependency audit is clear except for three build-time packages (#494).**
   The CLI moves to `glob` 14 and `rimraf` 6.1.4 (GHSA-3g3m-2fjr-6pw4), and the
   lockfile holds `joi` 18.3.2 and `follow-redirects` 1.16.2 (GHSA-4528-x5fx-h6hg,
   GHSA-mrwp-f3q8-3g9p; reached only through the desktop's development-only

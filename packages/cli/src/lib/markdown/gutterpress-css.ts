@@ -472,6 +472,8 @@ export const GP_CLASSES: ReadonlySet<string> = new Set([
   "gp-no-break", "gp-break-before",
   // shape wrap
   "gp-shape",
+  // the preview's two-takes conflict block (two-versions.ts carries its own CSS)
+  "gp-two-versions", "gp-version", "gp-version-yours", "gp-version-online", "gp-version-text",
   // pin + edge modifiers + the paper's-edge escape hatch
   "gp-pin", "gp-top", "gp-bottom", "gp-flush",
   // depth ladder

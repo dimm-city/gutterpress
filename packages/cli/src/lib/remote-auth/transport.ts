@@ -513,14 +513,38 @@ export async function serverTip(
   branch: string,
   http: typeof httpNode,
 ): Promise<string | undefined> {
-  const refs = await git.listServerRefs({
-    http,
-    url: transport.url,
-    prefix: `refs/heads/${branch}`,
-    ...onAuthFor(transport.credential),
-    // One shot: never loop on a rejected credential.
-    ...(transport.credential ? { onAuthFailure: () => ({ cancel: true }) } : {}),
-  });
+  let authRejected = false;
+  let refs: Awaited<ReturnType<typeof git.listServerRefs>>;
+  try {
+    refs = await git.listServerRefs({
+      http,
+      url: transport.url,
+      prefix: `refs/heads/${branch}`,
+      ...onAuthFor(transport.credential),
+      // One shot: never loop on a rejected credential.
+      ...(transport.credential
+        ? {
+            onAuthFailure: () => {
+              authRejected = true;
+              return { cancel: true };
+            },
+          }
+        : {}),
+    });
+  } catch (e) {
+    // Cancelling the retry makes isomorphic-git throw UserCanceledError with
+    // no status code. Say what happened: the server rejected the sign-in.
+    if (authRejected) {
+      const err = new Error("The online copy rejected the saved sign-in.", { cause: e }) as Error & {
+        code: string;
+        data: { statusCode: number };
+      };
+      err.code = "HttpError";
+      err.data = { statusCode: 401 };
+      throw err;
+    }
+    throw e;
+  }
   return refs.find((r) => r.ref === `refs/heads/${branch}`)?.oid;
 }
 

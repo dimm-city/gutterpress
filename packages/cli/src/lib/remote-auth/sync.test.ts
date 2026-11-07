@@ -1897,6 +1897,18 @@ describe("checkRemoteUpdates", () => {
     }
   });
 
+  test("a rejected saved sign-in reports 'auth', not 'offline' (checkRemoteUpdates and refreshRemoteCopies)", async () => {
+    const h = await setupClone({ requireAuth: { username: "u", password: "p" } });
+    try {
+      const wrong = { host: "127.0.0.1", kind: "token" as const, token: "nope", username: "u", createdAt: Date.now() };
+      expect(await checkRemoteUpdates({ projectDir: h.projectDir, credential: wrong })).toEqual({ available: false, reason: "auth" });
+      const refreshed = await refreshRemoteCopies({ projectDir: h.projectDir, credential: wrong });
+      expect(refreshed).toMatchObject({ refreshed: false, reason: "auth" });
+    } finally {
+      await h.cleanup();
+    }
+  });
+
   test("reports reason 'no-remote' when the book has no remote", async () => {
     const dir = await tempDir("gutterpress-updates-noremote-");
     try {
