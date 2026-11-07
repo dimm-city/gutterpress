@@ -1045,9 +1045,16 @@ export async function runBuild(
   opts: BuildRunnerOptions
 ): Promise<BuildRunnerResult> {
   // A book part-way through a revision switch holds files from two revisions;
-  // building it could produce a PDF that looks fine (#507). Desktop export,
-  // `build` and `preview` all come through here.
-  const unfinished = await (await import("./source-provider.ts")).unfinishedSwitchMessage(opts.inputDir);
+  // building it could produce a PDF that looks fine (#507). Covers the `build`
+  // command, the desktop export and `preview --format pdf`; the HTML preview
+  // server does not build through here and is not guarded. The desktop export
+  // (which injects `engineBrowser`) first tries the repair, in the same process
+  // as the app's own repair lock. A plain CLI run never repairs: the repo lock
+  // is in-process only, so it could not keep a running app from being rolled
+  // back underneath it. It refuses, with the saved copy named.
+  const sp = await import("./source-provider.ts");
+  if (opts.engineBrowser) await sp.repairInterruptedSwitch(opts.inputDir).catch(() => undefined);
+  const unfinished = await sp.unfinishedSwitchMessage(opts.inputDir, { cli: !opts.engineBrowser });
   if (unfinished) throw new UsageError(unfinished);
 
   const ctx = await resolveBuildContext(opts);

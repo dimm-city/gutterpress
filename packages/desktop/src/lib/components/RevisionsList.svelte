@@ -61,6 +61,7 @@
     | { kind: "new" }
     | { kind: "rename"; revision: Revision }
     | { kind: "delete"; revision: Revision; everywhere: boolean; lost: number | null }
+    | { kind: "keep-as-is" }
     | { kind: "restore-copy"; copy: RepairCopy }
     | { kind: "discard-copy"; copy: RepairCopy };
   let pending = $state<Pending | null>(null);
@@ -150,7 +151,17 @@
   const switchTo = (name: string) => run(() => api.vcs.switchBranch(projectDir, name));
   const create = () => run(() => api.vcs.createRevision(projectDir, typed));
   const restoreCopy = (id: string) => run(() => api.vcs.restoreRepairCopy(projectDir, id));
-  const discardCopy = (id: string) => run(() => api.vcs.discardRepairCopy(projectDir, id));
+  const discardCopy = (c: RepairCopy) => run(() => api.vcs.discardRepairCopy(projectDir, c.id, !c.saved));
+  /** "Keep files as they are" for a switch that could not be put right. */
+  const keepAsIs = () => run(() => api.vcs.keepUnfinishedSwitch(projectDir));
+  /** Said when "Try again" ran and the switch is still unfinished. */
+  let retryFailed = $state(false);
+  async function tryAgain(): Promise<void> {
+    retryFailed = false;
+    // The host puts a half-done switch right when it reads the list: read it again, on this computer only.
+    apply(await onlineCopy.refresh(projectDir, { network: false }));
+    retryFailed = Boolean(list?.unfinishedSwitch);
+  }
   const copyWhen = (c: RepairCopy): string =>
     new Date(c.savedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
   const rename = (from: string) => run(() => api.vcs.renameRevision(projectDir, from, typed));
@@ -214,6 +225,22 @@
         <Icon name="plus" size={14} /> New draft
       </button>
     </header>
+
+    {#if list.unfinishedSwitch}
+      <div class="unfinished" role="alert">
+        <p>{list.unfinishedSwitch.message}</p>
+        <p class="section-sub">
+          "Try again" puts the book back the way it was before the switch. "Keep files as they are" leaves the files as they
+          stand now{list.unfinishedSwitch.copy ? " (a copy is kept below)" : ""}; check them before you build or save.
+        </p>
+        <div class="unfinished-actions">
+          <button class="ghost small" onclick={() => void tryAgain()} disabled={working || checking}>Try again</button>
+          <button class="ghost small" onclick={() => open({ kind: "keep-as-is" })} disabled={working || disabled}>Keep files as they are</button>
+        </div>
+        {#if retryFailed}<p class="error" role="alert">Still couldn't put the book back. Your files are unchanged.</p>{/if}
+        {#if error && !pending}<p class="error" role="alert">{error}</p>{/if}
+      </div>
+    {/if}
 
     {#if filtering}
       <div class="section-tools">
@@ -283,7 +310,11 @@
         <ul class="rev-list" aria-label="Saved copies after a repair">
           {#each list.repairCopies as c (c.id)}
             <li class="rev">
-              <div class="rev-main"><span class="rev-name">Copy from {copyWhen(c)}</span></div>
+              <div class="rev-main">
+                <span class="rev-name">Copy from {copyWhen(c)}</span>
+                {#if c.revision}<span class="rev-where plain">from "{c.revision}"</span>{/if}
+                <span class="rev-where {c.saved ? 'ok' : 'pending'}">{c.saved ? "Your changes are saved in a version" : "Not saved anywhere else"}</span>
+              </div>
               <div class="rev-actions">
                 <button class="ghost small" onclick={() => open({ kind: "restore-copy", copy: c })} disabled={working || disabled}>Restore files from this copy</button>
                 <button class="ghost small" onclick={() => open({ kind: "discard-copy", copy: c })} disabled={working || disabled}>Discard</button>
@@ -305,13 +336,14 @@
   <div class="dlg-backdrop" role="presentation" onclick={cancel}></div>
   <form
     class="dlg-shell rev-dialog"
-    use:dialogBehavior={{ onClose: cancel, labelledBy: "rev-dialog-title", initialFocus: p.kind === "delete" || p.kind === "restore-copy" || p.kind === "discard-copy" ? ".dlg-actions .dlg-ghost" : "input" }}
+    use:dialogBehavior={{ onClose: cancel, labelledBy: "rev-dialog-title", initialFocus: p.kind === "delete" || p.kind === "keep-as-is" || p.kind === "restore-copy" || p.kind === "discard-copy" ? ".dlg-actions .dlg-ghost" : "input" }}
     onsubmit={(e) => {
       e.preventDefault();
       if (p.kind === "new") void create();
       else if (p.kind === "rename") void rename(p.revision.name);
+      else if (p.kind === "keep-as-is") void keepAsIs();
       else if (p.kind === "restore-copy") void restoreCopy(p.copy.id);
-      else if (p.kind === "discard-copy") void discardCopy(p.copy.id);
+      else if (p.kind === "discard-copy") void discardCopy(p.copy);
     }}
   >
     {#if p.kind === "new"}
@@ -348,10 +380,20 @@
         <button type="button" class="dlg-ghost" onclick={cancel} disabled={working}>Cancel</button>
         <button type="submit" class="dlg-primary app-btn-primary" disabled={working || !kept || kept === p.revision.name || kept === revisionNameFrom(draftName(p.revision.name))}>{working ? "Renaming…" : "Rename"}</button>
       </footer>
+    {:else if p.kind === "keep-as-is"}
+      <header class="dlg-header"><h2 id="rev-dialog-title">Keep files as they are?</h2></header>
+      <div class="dlg-body">
+        <p>Your book will stay exactly as it is now, which may mix files from two drafts. A copy is kept, so you can still restore.</p>
+      </div>
+      {#if error}<p class="dlg-error error" role="alert">{error}</p>{/if}
+      <footer class="dlg-actions">
+        <button type="button" class="dlg-ghost" onclick={cancel} disabled={working}>Cancel</button>
+        <button type="submit" class="dlg-primary app-btn-primary" disabled={working}>{working ? "Keeping…" : "Keep files as they are"}</button>
+      </footer>
     {:else if p.kind === "restore-copy"}
       <header class="dlg-header"><h2 id="rev-dialog-title">Restore files from this copy?</h2></header>
       <div class="dlg-body">
-        <p>Your book's files go back to how they were in the copy from {copyWhen(p.copy)}. Anything you have changed since is saved as a version first, so nothing is lost.</p>
+        <p>The files you changed before the interruption are put back from the copy from {copyWhen(p.copy)}, and saved as a version. Files from the other revision are not brought back. Anything you have changed since is saved as a version first, so nothing is lost.</p>
       </div>
       {#if error}<p class="dlg-error error" role="alert">{error}</p>{/if}
       <footer class="dlg-actions">
@@ -361,12 +403,16 @@
     {:else if p.kind === "discard-copy"}
       <header class="dlg-header"><h2 id="rev-dialog-title">Discard this copy?</h2></header>
       <div class="dlg-body">
-        <p>The copy from {copyWhen(p.copy)} is deleted for good. Your book and its versions are not changed.</p>
+        {#if p.copy.saved}
+          <p>The copy from {copyWhen(p.copy)} is deleted for good. The files in it are already saved in a version, so your book and its versions are not changed.</p>
+        {:else}
+          <p class="warn">The files you changed in the copy from {copyWhen(p.copy)} are not saved anywhere else. Discarding it loses them for good. To keep them, choose Restore files from this copy instead.</p>
+        {/if}
       </div>
       {#if error}<p class="dlg-error error" role="alert">{error}</p>{/if}
       <footer class="dlg-actions">
         <button type="button" class="dlg-ghost" onclick={cancel} disabled={working}>Keep it</button>
-        <button type="submit" class="dlg-danger" disabled={working}>{working ? "Discarding…" : "Discard"}</button>
+        <button type="submit" class="dlg-danger" disabled={working}>{working ? "Discarding…" : p.copy.saved ? "Discard" : "Discard and lose the files"}</button>
       </footer>
     {:else}
       <header class="dlg-header"><h2 id="rev-dialog-title">Delete "{draftName(p.revision.name)}"?</h2></header>
@@ -422,6 +468,9 @@
   .rev-where.ok :global(svg) { color: var(--app-success-strong); }
   .rev-where.pending { color: var(--app-warning-text); }
   .rev-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; min-height: 28px; }
+  .unfinished { margin: 0 16px 8px; padding: 10px 12px; border: 1px solid var(--app-warning-text); border-radius: 6px; font-size: 13px; }
+  .unfinished p { margin: 0 0 6px; }
+  .unfinished-actions { display: flex; gap: 8px; }
   .check-line { display: flex; align-items: center; gap: 6px; min-height: 18px; margin: 4px 0 0; font-size: 12px; color: var(--app-text-muted); }
   .spin {
     width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0;

@@ -810,6 +810,16 @@ export interface RepairCopy {
   id: string;
   /** When the copy was taken (ms). */
   savedAt: number;
+  /** Every file the author changed is already in the open revision's history. */
+  saved: boolean;
+  /** The revision the book was on when the copy was taken. */
+  revision?: string;
+}
+
+/** A switch that could not be put right (mirrors the lib's `UnfinishedSwitch`). */
+export interface UnfinishedSwitch {
+  message: string;
+  copy?: string;
 }
 
 /** The book's revisions (mirrors the lib's `RevisionList`) plus whether the online copy was checked just now. */
@@ -818,6 +828,8 @@ export interface RevisionList {
   revisions: Revision[];
   /** Copies of the files kept before a repair, newest first. */
   repairCopies?: RepairCopy[];
+  /** A switch is still unresolved: the card says so and offers a way out. */
+  unfinishedSwitch?: UnfinishedSwitch;
   /** The refresh from the online copy ran and succeeded; false = the list is what this computer last knew. */
   checkedOnline: boolean;
   /** A switch the app was interrupted in was put right just now; plain-words message for the author. */
