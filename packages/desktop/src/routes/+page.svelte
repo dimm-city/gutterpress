@@ -1344,6 +1344,13 @@
     editorFiles.reset();
   }
 
+  /** The window lost focus or was hidden: save a pending edit now. The gates
+   *  (autosave on, no external-change banner, not in an error state) live in
+   *  {@link EditorBuffer.flushOnFocusLoss}. */
+  async function flushIfAutosaving(): Promise<void> {
+    await buffer?.flushOnFocusLoss(settings.current.versionHistory.autoSave);
+  }
+
   async function flushEditorBuffer(
     target: EditorBuffer | null = buffer,
     recordMarker = true,
@@ -2484,8 +2491,22 @@
       onPreviewNavKey(e);
     }
 
+    function onHidden() {
+      if (document.visibilityState === "hidden") void flushIfAutosaving();
+    }
+
+    function onWindowBlur() {
+      void flushIfAutosaving();
+    }
+
     window.addEventListener("keydown", onKeydown);
-    return () => window.removeEventListener("keydown", onKeydown);
+    window.addEventListener("blur", onWindowBlur);
+    document.addEventListener("visibilitychange", onHidden);
+    return () => {
+      window.removeEventListener("keydown", onKeydown);
+      window.removeEventListener("blur", onWindowBlur);
+      document.removeEventListener("visibilitychange", onHidden);
+    };
   });
 
   // ----------------------------------------------------------------

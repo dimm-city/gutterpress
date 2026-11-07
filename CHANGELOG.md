@@ -50,6 +50,14 @@ This project follows [Semantic Versioning](https://semver.org/).
   a version are kept to the newest five and 30 days. They live only in the
   book's git folder: a backup sends the revision it names, never
   `refs/gutterpress/*`.
+- **Autosave waits for you to stop typing.** It used to write 500 ms after the
+  last keystroke, so a short pause mid-sentence saved the file and rebuilt the
+  preview before the edit was finished. It now writes after 2 seconds with no
+  typing, and at most 12 seconds into unbroken typing. Leaving the window
+  or hiding it, switching files, Save (Ctrl/Cmd+S),
+  closing, and building or exporting still save at once. The preview
+  already folds saves that land during a rebuild into one follow-up rebuild.
+
 - **A `--out` build rendered unstyled, wrong-size pages under a snap Chromium,
   with no warning (#501).** The staged `book.html`, stylesheets and fonts went
   to the OS temp dir, which a snap's private `/tmp` hides from the browser.

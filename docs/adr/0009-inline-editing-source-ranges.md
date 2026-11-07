@@ -154,7 +154,7 @@ Three supporting rules:
 Writes never touch the filesystem directly: they go through `EditorBuffer`, or
 through `applyRangeEdit` when a CodeMirror view is mounted on the target file
 so the edit shares that view's undo history. A commit flushes immediately
-rather than waiting out the autosave debounce (default 500 ms).
+rather than waiting out the autosave debounce (default 2 s idle, 12 s max).
 
 ### 4. The paginated DOM is never patched optimistically — **superseded 2026-08-24**
 
