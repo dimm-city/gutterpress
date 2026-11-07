@@ -190,7 +190,9 @@ const SAFE = "Your work is safe on this computer.";
 export function statusLine(i: StatusLineInput): StatusLine {
   const now = i.now ?? Date.now();
   const b = i.backup;
-  const st: BackupSyncState | null = b && b.state !== "idle" ? b.state : null;
+  // The host reports a missing online copy as an "error" whose message says so (or "not-found" itself).
+  const missing = b?.state === "not-found" || (b?.state === "error" && /can't find this online copy/i.test(b.message ?? ""));
+  const st: BackupSyncState | null = missing ? "not-found" : b && b.state !== "idle" ? b.state : null;
 
   // 3. A failed save outranks everything.
   if (i.savePhase === "error") {

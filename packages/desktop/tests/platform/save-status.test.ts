@@ -164,6 +164,11 @@ describe("statusLine: where it stands with the online copy", () => {
     expect(statusLine(input({ ...online, sync: "not-found" }))).toMatchObject({ key: "not-found", text: "Saved here · Can't find the online copy" });
   });
 
+  test("the host's 'can't find this online copy' error reads as not found", () => {
+    const message = "Gutterpress can't find this online copy. It may have been renamed or deleted, or your account may not have access to it. Check the address, or sign in again.";
+    expect(key({ ...online, sync: "error", message })).toBe("not-found");
+  });
+
   test("a paused backup shows the host's own explanation as the tooltip and in the popover", () => {
     const l = statusLine(input({ ...online, sync: "error", message: "The online copy is full." }));
     expect(l).toMatchObject({ key: "paused", text: "Saved here · Backup paused · see why", title: "The online copy is full." });

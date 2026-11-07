@@ -765,3 +765,12 @@ test("a pass that finds the online copy gone is recorded as not-found", async ()
   await m.ctrl.handleForceSync();
   expect(m.ctrl.backup).toMatchObject({ state: "not-found" });
 });
+
+test("a host 'syncing' right after an instant local 'synced' does not flash 'Backing up…'", () => {
+  const h = make();
+  h.ctrl.applyStatus({ state: "synced", projectDir: "/proj", lastSyncAt: null, source: "local" } as unknown as SyncStatus);
+  h.ctrl.applyStatus({ state: "syncing", projectDir: "/proj", lastSyncAt: null } as SyncStatus);
+  expect(h.ctrl.backup).toMatchObject({ state: "synced", local: true });
+  h.ctrl.applyStatus({ state: "synced", projectDir: "/proj", lastSyncAt: "2026-11-07T10:00:00Z", source: "network" } as unknown as SyncStatus);
+  expect(h.ctrl.backup?.local).toBeUndefined();
+});

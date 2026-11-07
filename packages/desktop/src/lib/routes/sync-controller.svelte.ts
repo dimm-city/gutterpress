@@ -199,6 +199,10 @@ export class SyncController {
     // WP-C's fields, all optional: absent from an older host.
     const extra = status as unknown as { ahead?: number; behind?: boolean; decide?: number; source?: string };
     if (status.state === "syncing" || status.state === "synced") this.lastPassAt = Date.now();
+    // The first network pass right after an instant local "Backed up" usually just confirms it:
+    // keep the answer on screen instead of flashing "Backing up…" (the pass's own result replaces it).
+    const prev = this.streamed;
+    if (status.state === "syncing" && prev?.dir === status.projectDir && prev.local && prev.state === "synced") return;
     this.streamed = {
       dir: status.projectDir,
       state: status.state,
