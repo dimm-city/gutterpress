@@ -50,6 +50,7 @@ async function book() {
   fs.rmSync(path.join(dir, "old.css"));
   await commitAll(dir, "second");
   await git.checkout({ fs, dir, ref: "main" });
+  fs.rmSync(path.join(dir, "new"), { recursive: true, force: true }); // checkout leaves empty folders
   return dir;
 }
 
@@ -226,10 +227,10 @@ describe("repairInterruptedSwitch", () => {
     await expectMainClean(dir);
   });
 
-  test("an unreadable journal is dropped, not trusted", async () => {
+  test("an unreadable journal on a clean tree rolls back to HEAD and says it could not be read", async () => {
     const dir = await book();
     fs.writeFileSync(journal(dir), "{not json");
-    expect(await repairInterruptedSwitch(dir)).toBeNull();
+    expect(await repairInterruptedSwitch(dir)).toContain("could not be read");
     expect(fs.existsSync(journal(dir))).toBe(false);
   });
 
@@ -250,5 +251,129 @@ describe("a failed restore", () => {
     expect(read(dir, "ch1.md")).toBe("one");
     expect(read(dir, "ch2.md")).toBe("two edited");
     expect(fs.existsSync(journal(dir))).toBe(false);
+  });
+});
+
+/** The files of the side ref a repair kept, by path. */
+async function keptCopy(dir: string): Promise<{ ref: string; read: (f: string) => Promise<string> }> {
+  const refs = await git.listRefs({ fs, dir, filepath: "refs/gutterpress" });
+  expect(refs.length).toBe(1);
+  const ref = `refs/gutterpress/${refs[0]}`;
+  const oid = await git.resolveRef({ fs, dir, ref });
+  return {
+    ref,
+    read: async (f) => new TextDecoder().decode((await git.readBlob({ fs, dir, oid, filepath: f })).blob),
+  };
+}
+
+describe("a repair never loses what was written after the journal", () => {
+  test("edits made after the crash, before the repair, are kept on a side ref and named", async () => {
+    const dir = await book();
+    await crashedState(dir);
+    halfSwitched(dir);
+    put(dir, "ch2.md", "typed after relaunch");
+    put(dir, "notes/new.md", "new file");
+    const message = await repairInterruptedSwitch(dir);
+    const kept = await keptCopy(dir);
+    expect(await kept.read("ch2.md")).toBe("typed after relaunch");
+    expect(await kept.read("notes/new.md")).toBe("new file");
+    expect(message).toContain(kept.ref);
+    expect(read(dir, "ch2.md")).toBe("two"); // the tree is the saved version
+  });
+
+  test("a snapshot after a crash cannot swallow an edit: it is on the side ref", async () => {
+    const dir = await book();
+    await crashedState(dir);
+    halfSwitched(dir);
+    put(dir, "ch2.md", "typed after relaunch");
+    const provider = providerFor(await detectProjectSource(dir));
+    await provider.snapshot({ projectDir: dir, message: "auto" }).catch(() => {});
+    expect(await (await keptCopy(dir)).read("ch2.md")).toBe("typed after relaunch");
+  });
+
+  test("an edit made during the checkout, which then fails, is kept", async () => {
+    const dir = await book();
+    await failingCheckout(() => put(dir, "ch2.md", "typed during switch"), () =>
+      expect(switchBranch({ projectDir: dir, branch: "second" })).rejects.toThrow("disk full"),
+    );
+    expect(await (await keptCopy(dir)).read("ch2.md")).toBe("typed during switch");
+  });
+
+  test("no side ref is made when the tree already equals the saved version", async () => {
+    const dir = await book();
+    await crashedState(dir);
+    await repairInterruptedSwitch(dir);
+    expect(await git.listRefs({ fs, dir, filepath: "refs/gutterpress" })).toEqual([]);
+  });
+});
+
+describe("the sweep deletes only what the half-done move wrote", () => {
+  test("an author's ignored file at a target-only path is kept and listed", async () => {
+    const dir = await book();
+    put(dir, ".gitignore", "new/\n");
+    await commitAll(dir, "ignore new");
+    put(dir, "new/a.md", "MY OWN NOTES");
+    await crashedState(dir, { startedAt: Date.now() + 60_000 }); // the file is older than the move
+    const message = await repairInterruptedSwitch(dir);
+    expect(read(dir, "new/a.md")).toBe("MY OWN NOTES");
+    expect(message).toContain("new/a.md");
+  });
+
+  test("a file the move wrote (same bytes as the target) is removed", async () => {
+    const dir = await book();
+    await crashedState(dir, { startedAt: Date.now() + 60_000 });
+    halfSwitched(dir);
+    await repairInterruptedSwitch(dir);
+    expect(fs.existsSync(path.join(dir, "new"))).toBe(false);
+  });
+
+  test("the author's own empty folders survive, only folders the move made go", async () => {
+    const dir = await book();
+    fs.mkdirSync(path.join(dir, "new/deep"), { recursive: true });
+    await crashedState(dir, { preexistingDirs: ["new", "new/deep"] });
+    await repairInterruptedSwitch(dir);
+    expect(fs.existsSync(path.join(dir, "new/deep"))).toBe(true);
+  });
+
+  test("a folder at a target-only path does not wedge the repair or later saves", async () => {
+    const dir = await book();
+    put(dir, "new/a.md/inside.md", "a folder named like the target's file");
+    await crashedState(dir, { preexistingDirs: ["new", "new/a.md"] });
+    const message = await repairInterruptedSwitch(dir);
+    expect(message).toContain("new/a.md");
+    expect(read(dir, "new/a.md/inside.md")).toContain("folder named");
+    const provider = providerFor(await detectProjectSource(dir));
+    await provider.snapshot({ projectDir: dir, message: "later" });
+    expect(fs.existsSync(journal(dir))).toBe(false);
+  });
+});
+
+describe("an unreadable journal", () => {
+  test("on a dirty tree keeps the author's edits on a side ref and rolls back to HEAD", async () => {
+    const dir = await book();
+    fs.writeFileSync(journal(dir), "{not json");
+    put(dir, "ch2.md", "unsaved edit");
+    put(dir, "notes/untracked.md", "mine");
+    const message = await repairInterruptedSwitch(dir);
+    const kept = await keptCopy(dir);
+    expect(await kept.read("ch2.md")).toBe("unsaved edit");
+    expect(await kept.read("notes/untracked.md")).toBe("mine");
+    expect(read(dir, "notes/untracked.md")).toBe("mine");
+    expect(message).toContain(kept.ref);
+    expect(fs.existsSync(journal(dir))).toBe(false);
+  });
+});
+
+describe("messages", () => {
+  test("an interrupted restore says restoring a version was interrupted", async () => {
+    const dir = await book();
+    await crashedState(dir, { kind: "restore", branch: undefined });
+    expect(await repairInterruptedSwitch(dir)).toContain("Restoring a version was interrupted");
+  });
+
+  test("an interrupted switch says switching revisions was interrupted", async () => {
+    const dir = await book();
+    await crashedState(dir);
+    expect(await repairInterruptedSwitch(dir)).toContain("Switching revisions was interrupted");
   });
 });

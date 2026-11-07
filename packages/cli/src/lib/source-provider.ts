@@ -917,9 +917,14 @@ export function snapshotStagingMarkerPath(projectDir: string): string {
 // version holds everything, and is removed only once the tree is settled. If
 // it is still there at the next look, the app died mid-way, and
 // {@link repairInterruptedSwitch} puts the book back to the saved version.
+// Before it overwrites anything, the repair keeps a copy of the tree as it is
+// then on a side ref (nothing written after the journal can be lost), and it
+// deletes only what it can show the half-done move itself wrote.
 
 const SWITCH_JOURNAL = "gutterpress-switch.json";
 const SWITCH_NOTICE = "gutterpress-switch-notice.json";
+/** Side refs holding a copy of the tree taken just before a repair overwrote it. */
+export const BEFORE_REPAIR_REF_PREFIX = "refs/gutterpress/before-repair-";
 
 interface SwitchJournal {
   kind: "switch" | "restore";
@@ -931,36 +936,125 @@ interface SwitchJournal {
   to: string;
   /** The revision being moved to (a switch only). */
   branch?: string;
+  /** When the move began (ms). */
+  startedAt?: number;
+  /** Folders that held the target's new files before the move, so they are not the move's to remove. */
+  preexistingDirs?: string[];
 }
 
 const switchJournalPath = (dir: string): string => path.join(gitDirFor(dir), SWITCH_JOURNAL);
 const switchNoticePath = (dir: string): string => path.join(gitDirFor(dir), SWITCH_NOTICE);
 
-function writeAtomically(file: string, text: string): void {
+function writeAtomically(file: string, text: string, durable = false): void {
   const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, text);
+  const fd = fs.openSync(tmp, "w");
+  try {
+    fs.writeSync(fd, text);
+    if (durable) fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
   fs.renameSync(tmp, file);
+  if (durable) {
+    try {
+      const d = fs.openSync(path.dirname(file), "r");
+      fs.fsyncSync(d);
+      fs.closeSync(d);
+    } catch {
+      // directories cannot be synced everywhere; the rename is atomic regardless
+    }
+  }
 }
 
-async function beginSwitchJournal(dir: string, journal: Omit<SwitchJournal, "from" | "fromBranch">): Promise<void> {
+/** Files the target version has and the saved one does not. */
+async function targetOnlyFiles(dir: string, from: string, to: string, cache: GitCache): Promise<string[]> {
+  const found: string[] = [];
+  await git
+    .walk({
+      fs,
+      dir,
+      cache,
+      trees: [git.TREE({ ref: from }), git.TREE({ ref: to })],
+      map: async (filepath, [a, b]) => {
+        if (filepath === "." || a || !b) return;
+        if ((await b.type()) === "blob") found.push(filepath);
+      },
+    })
+    .catch(() => undefined); // target version unreadable: nothing to sweep
+  return found;
+}
+
+const ancestorsOf = (file: string): string[] => {
+  const out: string[] = [];
+  for (let d = path.posix.dirname(file); d !== "." && d !== "/"; d = path.posix.dirname(d)) out.push(d);
+  return out;
+};
+
+async function beginSwitchJournal(dir: string, journal: Pick<SwitchJournal, "kind" | "to" | "branch">): Promise<void> {
   const from = await git.resolveRef({ fs, dir, ref: "HEAD" }).catch(() => undefined);
   if (!from) return; // no version to go back to
   const fromBranch = (await git.currentBranch({ fs, dir }).catch(() => undefined)) || undefined;
-  writeAtomically(switchJournalPath(dir), JSON.stringify({ ...journal, from, fromBranch }));
+  const preexisting = new Set<string>();
+  for (const f of await targetOnlyFiles(dir, from, journal.to, {})) {
+    for (const d of ancestorsOf(f)) if (fs.existsSync(path.join(dir, d))) preexisting.add(d);
+  }
+  const full: SwitchJournal = {
+    ...journal,
+    from,
+    fromBranch,
+    startedAt: Date.now(),
+    preexistingDirs: [...preexisting],
+  };
+  writeAtomically(switchJournalPath(dir), JSON.stringify(full), true);
 }
 
 const endSwitchJournal = (dir: string): void => fs.rmSync(switchJournalPath(dir), { force: true });
 
-function pruneEmptyDirs(dir: string, file: string): void {
-  let d = path.dirname(path.join(dir, file));
-  while (d.length > dir.length && d.startsWith(dir)) {
+/** Remove `file`'s parent folders while they are empty and were not there before the move. */
+function pruneNewEmptyDirs(dir: string, file: string, keep: Set<string>): void {
+  for (const d of ancestorsOf(file)) {
+    if (keep.has(d)) return;
     try {
-      fs.rmdirSync(d); // throws unless empty
+      fs.rmdirSync(path.join(dir, d)); // throws unless empty
     } catch {
       return;
     }
-    d = path.dirname(d);
   }
+}
+
+/**
+ * Keep a copy of the whole tree (tracked and untracked, not ignored) as a commit
+ * on a side ref, so a forced rollback can never lose what was written after the
+ * journal. Returns the ref, or `undefined` when the tree already equals `from`.
+ */
+async function keepTreeBeforeRepair(dir: string, from: string, cache: GitCache): Promise<string | undefined> {
+  const ref = `${BEFORE_REPAIR_REF_PREFIX}${new Date().toISOString().replace(/[^0-9]/g, "")}`;
+  const changes = await listWorkdirChanges(dir, cache);
+  await stageChanges(dir, changes, cache);
+  const author = await resolveGitAuthor(dir);
+  const id = await git.commit({
+    fs,
+    dir,
+    cache,
+    ref,
+    parent: [from],
+    message: "Kept before repairing an interrupted switch",
+    author,
+  });
+  const [kept, saved] = await Promise.all([
+    git.readCommit({ fs, dir, cache, oid: id }),
+    git.readCommit({ fs, dir, cache, oid: from }),
+  ]);
+  if (kept.commit.tree === saved.commit.tree) {
+    await git.deleteRef({ fs, dir, ref });
+    return undefined;
+  }
+  // Staging was only to take the copy. Files the saved version lacks go back to
+  // being untracked, so the forced checkout that follows leaves them on disk.
+  for (const f of await targetOnlyFiles(dir, from, id, cache)) {
+    await git.remove({ fs, dir, cache, filepath: f });
+  }
+  return ref;
 }
 
 /**
@@ -973,42 +1067,75 @@ function pruneEmptyDirs(dir: string, file: string): void {
  */
 export async function repairInterruptedSwitchUnlocked(dir: string): Promise<string | null> {
   if (!fs.existsSync(switchJournalPath(dir))) return null;
-  let journal: SwitchJournal;
+  let journal: SwitchJournal | undefined;
   try {
-    journal = JSON.parse(fs.readFileSync(switchJournalPath(dir), "utf8"));
+    const parsed = JSON.parse(fs.readFileSync(switchJournalPath(dir), "utf8"));
+    if (typeof parsed?.from === "string" && typeof parsed?.to === "string") journal = parsed;
   } catch {
-    endSwitchJournal(dir);
-    return null;
+    // handled below
   }
+  const cache: GitCache = {};
+  const unreadable = !journal;
+  if (!journal) {
+    // Unreadable: the book was clean at HEAD when a move began, so HEAD is the
+    // version to go back to. Nothing is deleted without knowing what the move wrote.
+    const head = await git.resolveRef({ fs, dir, ref: "HEAD" });
+    journal = {
+      kind: "switch",
+      from: head,
+      to: head,
+      fromBranch: (await git.currentBranch({ fs, dir }).catch(() => undefined)) || undefined,
+    };
+  }
+  const what = journal.kind === "restore" ? "Restoring a version" : "Switching revisions";
   const open = await git.currentBranch({ fs, dir }).catch(() => undefined);
   let message: string;
-  if (journal.kind === "switch" && journal.branch && open === journal.branch) {
-    message = `A switch to "${journal.branch}" was interrupted after it had finished, so nothing needed fixing.`;
+  if (!unreadable && journal.kind === "switch" && journal.branch && open === journal.branch) {
+    message = `Switching to "${journal.branch}" was interrupted after it had finished, so nothing needed fixing.`;
   } else {
-    const cache: GitCache = {};
+    const kept = await keepTreeBeforeRepair(dir, journal.from, cache);
     await git.checkout({ fs, dir, cache, ref: journal.fromBranch ?? journal.from, force: true });
-    // Files only the target has are untracked now; delete them and the folders made for them.
-    const stray: string[] = [];
-    await git
-      .walk({
-        fs,
-        dir,
-        cache,
-        trees: [git.TREE({ ref: journal.from }), git.TREE({ ref: journal.to })],
-        map: async (filepath, [a, b]) => {
-          if (filepath === "." || a || !b) return;
-          if ((await b.type()) === "blob") stray.push(filepath);
-        },
-      })
-      .catch(() => undefined); // target version unreadable: nothing to sweep
-    for (const f of stray) {
-      fs.rmSync(path.join(dir, f), { force: true });
-      pruneEmptyDirs(dir, f);
+    const left: string[] = [];
+    if (!unreadable) {
+      const keep = new Set(journal.preexistingDirs ?? []);
+      for (const f of await targetOnlyFiles(dir, journal.from, journal.to, cache)) {
+        const abs = path.join(dir, f);
+        let st: ReturnType<typeof fs.lstatSync> | undefined;
+        try {
+          st = fs.lstatSync(abs);
+        } catch {
+          // never written
+        }
+        if (st) {
+          // Delete only what the half-done move wrote: the target's own bytes,
+          // or a file touched since it began. Anything else is the author's.
+          let mine = false;
+          if (st.isFile()) {
+            const sameBytes = await git
+              .hashBlob({ object: fs.readFileSync(abs) })
+              .then(async ({ oid }) => {
+                const b = await git.readBlob({ fs, dir, cache, oid: journal!.to, filepath: f }).catch(() => undefined);
+                return b?.oid === oid;
+              });
+            mine = sameBytes || st.mtimeMs >= (journal.startedAt ?? Infinity);
+          }
+          if (mine) fs.rmSync(abs, { force: true });
+          else left.push(f);
+        }
+        pruneNewEmptyDirs(dir, f, keep);
+      }
     }
     message =
-      "Switching revisions was interrupted (the app closed part-way), so the book was put back " +
+      `${what} was interrupted (the app closed part-way), so the book was put back ` +
       `exactly as it was before${journal.fromBranch ? `, on "${journal.fromBranch}"` : ""}. ` +
-      "Nothing you wrote was lost; switch again when you're ready.";
+      "Nothing you wrote before then was lost; do it again when you're ready.";
+    if (unreadable) message += " The record of the interrupted change could not be read, so any leftover files from it were kept.";
+    if (kept) {
+      message += ` A copy of the files as they stood just before this repair is kept as "${kept}" in the book's history.`;
+    }
+    if (left.length) {
+      message += ` These files were left alone because they may be yours: ${left.slice(0, 10).join(", ")}${left.length > 10 ? ` and ${left.length - 10} more` : ""}.`;
+    }
   }
   writeAtomically(switchNoticePath(dir), JSON.stringify({ message }));
   endSwitchJournal(dir);

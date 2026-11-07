@@ -35,13 +35,19 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 - **A revision switch the app dies in the middle of is put right.** Switching
   revisions (and restoring a version) now records what it is doing in
-  `.git/gutterpress-switch.json` once your work is saved. If the app is killed
-  part-way (an out-of-memory kill left a book half on one revision and half on
-  another), the next time the book is opened, saved or backed up the book is
-  put back exactly as it was, files and folders the half-switch made are
-  removed, and Book setup says so. A checkout that fails for any reason is
-  undone the same way, and an automatic version is never taken of a
-  half-switched book. (#502)
+  `.git/gutterpress-switch.json` once your work is saved, and removes it when
+  the move is done. If the app is killed part-way (an out-of-memory kill left a
+  book half on one revision and half on another), the next time the book is
+  opened, before the editor reads any file, the book is put back to the saved
+  version and a message says so. Before that, a copy of the files as they
+  stand is kept under `refs/gutterpress/before-repair-<time>` in the book's
+  history and named in the message, so nothing written after the crash is
+  lost. Only files the half-done move wrote are removed, and only folders it
+  made; anything that may be yours is left and listed. A checkout that fails
+  for any reason is undone the same way, an unreadable record is handled the
+  same way (back to the saved version, nothing deleted), and an automatic
+  version is never taken of a half-switched book. The editor is not locked
+  while a switch runs. (#502)
 - **`pdfx.transparency: preserve-text` flattened every transparent page whole
   for a book built with the CLI installed from npm.** `unpdf` resolved to 1.8
   or newer there (PDF.js 6), whose document proxy has no `destroy()`: the text
