@@ -1,27 +1,32 @@
 <script lang="ts">
   /**
    * StatusBar — slim bottom bar hosting the start-screen (Books) button, the
-   * book switcher, the one status control with Get latest and Sync beside it,
-   * and the settings and help buttons.
+   * book switcher, the one status control with its Update button, and the
+   * settings and help buttons.
    *
    * Layout (left → right):
-   *   [folder → start screen Books] | [book switcher] | [status] [Get latest] [Sync] ··· [settings] [help]
+   *   [folder → start screen Books] | [book switcher] | [status ▾] [Update] ··· [settings] [help]
    *
-   * The status control is one line for saving AND the online copy ("Saved ·
-   * Backed up"); clicking it opens Book setup → Online copy, the one place the
-   * rest lives, Back up now and Get latest included. Get latest (bring in the
-   * online copy's changes, send nothing) and Sync (get the latest changes, then
-   * back up yours) sit beside it only while automatic backing up is off. A
-   * reader sees none of this: they get the latest on their own. The words come
-   * from the pure `statusLine` (#lib/save-status); the live state comes from
-   * the sync controller. The Problems badge stays on the editor toolbar.
+   * The status control is two small clauses, this computer and then the online
+   * copy ("Saved here · Backed up 3 mins ago"). Its click does the one thing
+   * that fixes or explains the state: "Unsaved changes" saves, two takes open
+   * the list to decide, a lost sign-in opens the sign-in; everything else opens
+   * a small popover (StatusPopover) with one sentence and the primary action.
+   * The Update button replaces Get latest and Sync: it shows only when there is
+   * something to get or send (and always in manual mode, where nothing happens
+   * on its own). A reader sees none of this: they get the latest on their own.
+   * The words come from the pure `statusLine` (#lib/save-status); the live
+   * state comes from the sync controller. The Problems badge stays on the
+   * editor toolbar.
    *
    * PWA-clean: all host work via api.* routes (CLAUDE.md §8).
    * No node: builtins or gutterpress value imports.
    */
+  import { onMount } from "svelte";
   import BookSwitcher from "#lib/components/BookSwitcher.svelte";
   import Icon from "#lib/components/Icon.svelte";
-  import { statusLine } from "#lib/save-status.ts";
+  import StatusPopover from "#lib/components/StatusPopover.svelte";
+  import { statusLine, type StatusActionId } from "#lib/save-status.ts";
   import type { LastBackup } from "#lib/backup-state.ts";
   import type { ProjectBookEntry } from "#lib/routes/project-session-controller.svelte.ts";
 
@@ -33,10 +38,22 @@
     /** Whether the book can back up (an https online copy with a saved sign-in). */
     canSync = false,
     /** Whether the book has an online copy at all (any address), even one Gutterpress
-     *  can't back up to: an unknown state is then "Saved", not "Saved on this computer". */
+     *  can't back up to: an unknown state is then "Checking online…", never a bare "Saved". */
     hasRemote = false,
+    /** The book was classified and its online copy diagnosed, so "no online copy" is a fact. */
+    classified = true,
+    /** A plain folder: version history is off. */
+    noHistory = false,
+    /** What the online copy needs from the author before it can back up (from the diagnosis). */
+    remoteNeeds = null as "sign-in" | "own-tools" | null,
+    /** The renderer's own check for online changes has answered at least once. */
+    checked = false,
+    /** Passages with two takes (counted from the Problems list). */
+    decide = 0,
     /** Current save phase from the editor buffer. */
     savePhase = "clean" as "clean" | "dirty" | "saving" | "error",
+    /** Why the last save failed, when the editor said. */
+    saveError = null as string | null,
     /** Settings → Saving "Save changes automatically". Off, a dirty buffer is
      *  waiting for the author's Save, not about to save itself — so it reads
      *  "Unsaved changes", never "Saving…". */
@@ -45,30 +62,38 @@
     autoBackup = true,
     /** Whether a manual force-save is in progress. */
     forceSaving = false,
-    /** Whether a manual Sync is in progress. */
+    /** Whether a manual Back up / Update is in progress. */
     forceSyncing = false,
-    /** A reader sees no status control, no Get latest and no Sync. */
+    /** A reader sees no status control and no Update. */
     readerMode = false,
     /** Books in the open project's repo; switcher shows only when > 1. */
     books = [] as ProjectBookEntry[],
     /** The book the session currently targets. */
     activeBookDir = null as string | null,
-    /** The online copy's last word for the open book (the host's stream or the last manual Sync). */
+    /** The online copy's last word for the open book (the host's stream or the last manual pass). */
     backup = null as LastBackup | null,
     /** Why automatic versions keep failing, once the host has said so (only while they are on: a failing safety net you turned off isn't news). */
     versionsProblem = null as { message: string | null } | null,
     /** Called with a book's folder path when the author switches books. */
     onSwitchBook = undefined as ((path: string) => void) | undefined,
-    /** Called when the author clicks "Sync". */
+    /** Back up: get the latest changes, then back up yours. */
     onForceSync = undefined as (() => void | Promise<void>) | undefined,
-    /** Called for "Get latest": bring in the online changes without sending any. */
+    /** Get the online changes without sending any. */
     onGetLatest = undefined as (() => void | Promise<void>) | undefined,
-    /** A "Get latest" is in progress. */
+    /** A "get the changes" is in progress. */
     gettingLatest = false,
     /** The last check found changes online this computer has not got. */
     updatesAvailable = false,
-    /** Called when the status control is clicked: opens Book setup → Online copy. */
-    onOpenOnlineCopy = undefined as (() => void) | undefined,
+    /** Save now (the click on "Unsaved changes", and Try again after a failed save). */
+    onSave = undefined as (() => void | Promise<void>) | undefined,
+    /** Open Book setup on Backup & history. */
+    onOpenBackup = undefined as (() => void) | undefined,
+    /** Open the Problems list on the two-takes entries. */
+    onOpenProblems = undefined as (() => void) | undefined,
+    /** Turn on version history for a plain folder. */
+    onTurnOnHistory = undefined as (() => void | Promise<void>) | undefined,
+    /** Save a version (asks for an optional name). */
+    onSaveVersion = undefined as (() => void | Promise<unknown>) | undefined,
     onOpenSettings = undefined as (() => void) | undefined,
     onOpenHelp = undefined as (() => void) | undefined,
     /** Called by the folder button: opens the start screen's Books tab. */
@@ -78,8 +103,14 @@
     sourceMode?: "folder" | "url";
     canSync?: boolean;
     hasRemote?: boolean;
+    classified?: boolean;
+    noHistory?: boolean;
+    remoteNeeds?: "sign-in" | "own-tools" | null;
+    checked?: boolean;
+    decide?: number;
     autoBackup?: boolean;
     savePhase?: "clean" | "dirty" | "saving" | "error";
+    saveError?: string | null;
     autoSave?: boolean;
     forceSaving?: boolean;
     forceSyncing?: boolean;
@@ -93,7 +124,11 @@
     onGetLatest?: () => void | Promise<void>;
     gettingLatest?: boolean;
     updatesAvailable?: boolean;
-    onOpenOnlineCopy?: () => void;
+    onSave?: () => void | Promise<void>;
+    onOpenBackup?: () => void;
+    onOpenProblems?: () => void;
+    onTurnOnHistory?: () => void | Promise<void>;
+    onSaveVersion?: () => void | Promise<unknown>;
     onOpenSettings?: () => void;
     onOpenHelp?: () => void;
     onOpenBooks?: () => void;
@@ -101,19 +136,87 @@
 
   // The status control: only for an open folder book, and never for a reader.
   let showStatus = $derived(!!projectDir && sourceMode === "folder" && !readerMode);
-  // Manual mode: automatic backing up is off but the book can back up, so the
-  // bar offers Get latest and Sync beside the control.
-  let showManualSync = $derived(showStatus && canSync && !autoBackup);
+
+  // The clock behind "3 mins ago": it ticks once a minute.
+  let now = $state(Date.now());
+  onMount(() => {
+    const timer = setInterval(() => (now = Date.now()), 60_000);
+    return () => clearInterval(timer);
+  });
+
   let line = $derived(
     statusLine({
       savePhase,
+      saveError,
       autoSave,
+      autoBackup,
+      canSync,
       forceSaving,
       versionsProblem,
       backup,
       hasRemote,
+      classified,
+      noHistory,
+      remoteNeeds,
+      checked,
+      decide,
+      updatesAvailable,
       backingUp: forceSyncing,
+      gettingLatest,
+      now,
     }),
+  );
+
+  // Screen readers hear a state change, never the minute ticking over: the
+  // live region holds `line.announce`, the line without its time, so its text
+  // only changes when the state does.
+
+  let popoverOpen = $state(false);
+  const busy = $derived(forceSyncing || gettingLatest || forceSaving);
+
+  function run(id: StatusActionId): void {
+    popoverOpen = false;
+    switch (id) {
+      case "save":
+        void onSave?.();
+        break;
+      case "back-up":
+      case "update":
+        void onForceSync?.();
+        break;
+      case "get-changes":
+        void onGetLatest?.();
+        break;
+      case "try-again":
+        void (savePhase === "error" ? onSave?.() : onForceSync?.());
+        break;
+      case "open-backup":
+        onOpenBackup?.();
+        break;
+      case "turn-on-history":
+        void onTurnOnHistory?.();
+        break;
+      case "save-version":
+        void onSaveVersion?.();
+        break;
+      case "open-problems":
+        onOpenProblems?.();
+        break;
+    }
+  }
+
+  function clickStatus(): void {
+    if (line.click === "action" && line.clickAction) run(line.clickAction);
+    else if (line.click === "popover") popoverOpen = !popoverOpen;
+  }
+
+  // The Update button: its tooltip says exactly what it will do.
+  const buttonTitle = $derived(
+    line.button?.action === "get-changes"
+      ? "Get the changes from the online copy. Your own changes stay as they are."
+      : line.button?.action === "back-up"
+        ? "Back up your changes to the online copy."
+        : "Get the latest changes from the online copy, then back up yours.",
   );
 
   // Book switcher: only when the open repo actually has more than one book.
@@ -122,7 +225,7 @@
 </script>
 
 <div class="status-bar" role="status" aria-label="Application status">
-  <!-- Left cluster: [folder → start screen Books] | [book switcher] | [status] [Get latest] [Sync].
+  <!-- Left cluster: [folder → start screen Books] | [book switcher] | [status] [Update].
        A divider precedes each group after the first, so a hidden switcher or
        status control leaves no stray line. Settings and help sit at the far right. -->
   <div class="status-left">
@@ -140,35 +243,33 @@
     {/if}
     {#if showStatus}
       <span class="divider" aria-hidden="true"></span>
-      <button
-        type="button"
-        class="status-control {line.tone}"
-        onclick={() => onOpenOnlineCopy?.()}
-        title={line.title}
-      ><Icon name={line.icon} size={13} /><span class="status-text" aria-live="polite" aria-atomic="true">{line.text}</span></button>
-    {/if}
-    {#if showManualSync}
-      <!-- Automatic backing up is off. Get latest brings in the online copy's
-           changes and never sends anything back; Sync is one pass that gets
-           the latest changes, then backs up this computer's. -->
-      <button
-        type="button"
-        class="status-icon-btn get-latest"
-        class:has-updates={updatesAvailable}
-        onclick={() => void onGetLatest?.()}
-        disabled={gettingLatest || forceSyncing}
-        title={updatesAvailable ? "New changes are online — get them (your changes stay on this computer)" : "Get latest: bring in changes from the online copy without sending yours"}
-        aria-label={updatesAvailable ? "Get latest — new changes are online" : "Get latest"}
-      ><Icon name="arrow-down-to-line" size={14} />{#if updatesAvailable || gettingLatest}<span>{gettingLatest ? "Getting…" : "New online"}</span>{/if}</button>
-      <button
-        type="button"
-        class="status-icon-btn labelled"
-        class:has-updates={updatesAvailable}
-        onclick={() => void onForceSync?.()}
-        disabled={forceSyncing || gettingLatest}
-        title={updatesAvailable ? "Sync — new changes are online: get them, then back up yours" : "Sync: get the latest changes from the online copy, then back up yours"}
-        aria-label={updatesAvailable ? "Sync — new changes are online" : undefined}
-      ><Icon name="refresh-cw" size={14} /><span>{forceSyncing ? "Syncing…" : "Sync"}</span></button>
+      <div class="status-wrap">
+        <button
+          type="button"
+          class="status-control {line.tone}"
+          data-state={line.key}
+          onclick={clickStatus}
+          title={line.left ? `${line.left}. ${line.title}` : line.title}
+          aria-label={line.text}
+          aria-haspopup={line.click === "popover" ? "dialog" : undefined}
+          aria-expanded={line.click === "popover" ? popoverOpen : undefined}
+        ><Icon name={line.icon} size={13} />{#if line.left}<span class="clause here">{line.left}</span><span class="sep" aria-hidden="true">·</span>{/if}<span class="clause status-text">{line.right}</span></button>
+        {#if popoverOpen && line.click === "popover"}
+          <StatusPopover {line} {busy} onAction={run} onClose={() => (popoverOpen = false)} />
+        {/if}
+      </div>
+      <!-- Changes only when the state does, never on the minute tick. -->
+      <span class="sr-only" aria-live="polite" aria-atomic="true">{line.announce}</span>
+      {#if line.button && canSync}
+        <button
+          type="button"
+          class="status-icon-btn labelled"
+          class:has-updates={line.key === "behind" || line.key === "behind-ahead"}
+          onclick={() => run(line.button!.action)}
+          disabled={busy}
+          title={buttonTitle}
+        ><Icon name="refresh-cw" size={14} /><span>{forceSyncing || gettingLatest ? "Updating…" : line.button.label}</span></button>
+      {/if}
     {/if}
   </div>
 
@@ -235,17 +336,7 @@
     outline: 2px solid var(--app-focus-ring);
     outline-offset: 1px;
   }
-  /* Get latest is an icon until changes are waiting online: then it names them
-     ("New online") and takes the accent, as it did in 0.11.22. */
-  .get-latest {
-    gap: 4px;
-    font-size: 11px;
-  }
-  .get-latest.has-updates {
-    color: var(--app-link);
-    font-weight: 600;
-  }
-  /* Sync is the one icon button with a word. With changes waiting online it
+  /* Update is the one icon button with a word. With changes waiting online it
      takes the accent and a dot, so the cue is never colour alone. */
   .labelled {
     gap: 4px;
@@ -266,16 +357,17 @@
     cursor: default;
   }
 
-  /* The one status control: a button that opens Book setup → Online copy.
+  /* The one status control: a button that does the one thing that fixes or explains its state.
      Resting is calm but readable; in flight is italic; what needs the author
      takes the warning token and a failed save the error token (the icon's
      shape says the same). */
+  .status-wrap { position: relative; display: inline-flex; min-width: 0; }
   .status-control {
     display: inline-flex;
     align-items: center;
     gap: 5px;
     min-width: 0;
-    max-width: 340px;
+    max-width: 420px;
     font-size: 11px;
     background: transparent;
     border: none;
@@ -290,10 +382,22 @@
   .status-control:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .status-control.pending { font-style: italic; }
   .status-control.warn { color: var(--app-warning-text); }
+  .sep { opacity: 0.6; }
   .status-control.error { color: var(--app-error-text); font-weight: 600; }
   /* Narrow (the app's single-pane layout): the line gives way to the buttons beside it. */
+  /* Under 820px the "Saved here" clause moves into the tooltip: icon and the
+     online clause stay. */
   @media screen and (max-width: 820px) {
-    .status-control { max-width: 160px; }
+    .status-control { max-width: 200px; }
+    .status-control .here, .status-control .sep { display: none; }
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 
   /* A `|` before each group after the Books button. Rendered only with the

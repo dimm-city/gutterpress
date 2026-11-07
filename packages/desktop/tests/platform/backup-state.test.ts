@@ -62,7 +62,8 @@ describe("readyView: never claims a backup without evidence", () => {
   test("a finished backup is named with its time", () => {
     const v = readyView(copy, { state: "synced", lastSyncAt: "2026-10-28T11:58:00Z" }, true, now);
     expect(v).toMatchObject({ headline: "Backed up · 2 mins ago", ok: true, action: "back-up" });
-    expect(v.detail).toContain(copy);
+    // The address is shown once, by the card; the detail does not repeat it.
+    expect(v.detail).not.toContain(copy);
     // "synced" with no time is not evidence.
     expect(readyView(copy, { state: "synced", lastSyncAt: null }, true, now).ok).toBe(false);
   });

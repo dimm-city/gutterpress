@@ -48,7 +48,18 @@ export function onlineCopyName(remoteUrl: string): string {
 }
 
 /** What is known about the book's last backing up: the host's last status, or a backup run from Online copy. */
-export type LastBackup = Pick<SyncStatus, "state" | "lastSyncAt" | "message">;
+export type LastBackup = Pick<SyncStatus, "lastSyncAt" | "message"> & {
+  /** The host's ambient state, plus `not-found` (the online copy's address leads nowhere). */
+  state: SyncStatus["state"] | "not-found";
+  /** Versions on this computer the online copy lacks, when the host counted. */
+  ahead?: number;
+  /** The online copy has changes this computer lacks, when the host checked. */
+  behind?: boolean;
+  /** Passages with two takes, when the host counted. */
+  decide?: number;
+  /** From this computer's own records only; the network has not confirmed it yet. */
+  local?: boolean;
+};
 
 export interface ReadyView {
   headline: string;
@@ -79,10 +90,10 @@ export function readyView(copy: string, last: LastBackup | null, autoSync: boole
     case "synced": {
       const at = Date.parse(last.lastSyncAt ?? "");
       if (Number.isNaN(at)) break;
-      return { headline: `Backed up · ${relativeTime(at, now)}`, detail: `Online copy: ${copy}. ${ongoing}`, ok: true, action: "back-up" };
+      return { headline: `Backed up · ${relativeTime(at, now)}`, detail: ongoing, ok: true, action: "back-up" };
     }
     case "unsent":
-      return { headline: "Not backed up yet", detail: `Online copy: ${copy}. ${ongoing}`, ok: false, action: "back-up" };
+      return { headline: "Not backed up yet", detail: ongoing, ok: false, action: "back-up" };
     case "offline":
       return { headline: `Couldn't reach ${copy}.`, detail: "Check your internet connection, or try again later. Your work is saved on this computer.", ok: false, action: "try-again" };
     case "auth":

@@ -15,6 +15,21 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The status bar says where the book stands, and its click fixes it.** One
+  line in two clauses, "Saved here · Backed up 3 mins ago", with 17 states in a
+  fixed order. It says "Checking online…" instead of a bare "Saved" until the
+  online copy answers. "Unsaved changes" saves; two takes open the list to
+  decide; a lost sign-in opens the sign-in; everything else opens a small
+  popover with one sentence and one action. Tooltips now say what the state
+  means. The time updates every minute; screen readers hear state changes, not
+  the clock. One **Update** button replaces Get latest and Sync. Under 820px the
+  line shortens to its online clause. A failed save names the reason.
+- **Fewer, quieter notices.** A newer outcome toast replaces the last instead of
+  stacking, "New changes are online" goes away once an update succeeds, a
+  repair or a combining backup says it once, and "Reloaded from disk" no longer
+  follows a backup or update.
+- **Save a version… asks for an optional name** ("Sent to printer"), and says
+  "Nothing new to save" without asking when nothing changed.
 - **`pdf.print.bleed` is on for `dtrpg`.** It reads every page's boxes and asks
   for the bleed on the top, bottom and outside edge, not on both sides: between
   the TrimBox and the BleedBox, allowing the page-size tolerance, and a page

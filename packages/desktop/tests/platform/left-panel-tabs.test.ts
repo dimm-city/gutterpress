@@ -67,12 +67,11 @@ describe("status bar structure", () => {
     return i;
   };
 
-  test("left cluster: Books (folder) button, the book switcher, the one status control, then Get latest and Sync", () => {
+  test("left cluster: Books (folder) button, the book switcher, the one status control, then the Update button", () => {
     const order = [
       at('<Icon name="folder"'),
       at("<BookSwitcher"),
       at('class="status-control'),
-      at('class="status-icon-btn get-latest"'),
       at('class="status-icon-btn labelled"'),
       at('class="shell-actions"'),
     ];
@@ -92,33 +91,29 @@ describe("status bar structure", () => {
     expect(markup).not.toContain("SyncStatusPill");
   });
 
-  /** The buttons shown only with automatic backing up off, for an author whose book can back up (the last block of the left cluster). */
-  const manual = () => {
-    const start = at("{#if showManualSync}");
+  /** The one Update button: the last block of the left cluster, inside the block a reader never gets. */
+  const update = () => {
+    const start = at("{#if line.button && canSync}");
     return markup.slice(start, markup.indexOf("</div>", start));
   };
 
-  test("a reader gets no status control, Get latest or Sync (#485)", () => {
+  test("a reader gets no status control and no Update button", () => {
     expect(markup).toContain("{#if showStatus}");
     expect(src).toContain("showStatus = $derived(!!projectDir && sourceMode === \"folder\" && !readerMode)");
-    expect(src).toContain("showManualSync = $derived(showStatus && canSync && !autoBackup)");
-    // Both buttons live inside the one block a reader never gets.
-    expect(manual()).toContain("onclick={() => void onGetLatest?.()}");
-    expect(manual()).toContain("onclick={() => void onForceSync?.()}");
-    expect(markup.match(/onGetLatest|onForceSync/g)).toHaveLength(2);
+    expect(update()).toContain("run(line.button!.action)");
+    // The old Get latest and Sync buttons are gone: one button, driven by the state.
+    expect(markup).not.toContain("get-latest");
+    expect(markup).not.toContain('"Sync"');
+    expect(markup.match(/class="status-icon-btn labelled"/g)).toHaveLength(1);
   });
 
-  test("with automatic backing up off, Get latest (sends nothing) sits before Sync, as in 0.11.22 (#485)", () => {
-    const block = manual();
-    expect(block.indexOf("onGetLatest")).toBeLessThan(block.indexOf("onForceSync"));
-    expect(block).toContain('<Icon name="arrow-down-to-line"');
-    expect(block).toContain('aria-label={updatesAvailable ? "Get latest — new changes are online" : "Get latest"}');
-    expect(block).toContain('"Get latest: bring in changes from the online copy without sending yours"');
-    expect(block).toContain('{gettingLatest ? "Getting…" : "New online"}');
-    // Neither runs while the other does.
-    expect(block).toContain("disabled={gettingLatest || forceSyncing}");
-    expect(block).toContain("disabled={forceSyncing || gettingLatest}");
-    // Back up now lives in Book setup → Online copy, not in the bar.
+  test("the Update button is disabled while a pass runs, shows Updating…, and its tooltip says what it does", () => {
+    const block = update();
+    expect(block).toContain("disabled={busy}");
+    expect(block).toContain('"Updating…"');
+    expect(block).toContain("title={buttonTitle}");
+    expect(src).toContain("const busy = $derived(forceSyncing || gettingLatest || forceSaving)");
+    // Back up now lives in the status popover and Book setup, not as a second button in the bar.
     expect(markup).not.toContain("Back up now");
   });
 
@@ -126,7 +121,20 @@ describe("status bar structure", () => {
     expect(markup).toMatch(
       /\{#if showBookSwitcher\}\s*<span class="divider" aria-hidden="true"><\/span>\s*<BookSwitcher[^\n]*\n\s*\{\/if\}/,
     );
-    expect(markup).toMatch(/\{#if showStatus\}\s*<span class="divider" aria-hidden="true"><\/span>\s*<button[^>]*class="status-control/);
+    expect(markup).toMatch(/\{#if showStatus\}\s*<span class="divider" aria-hidden="true"><\/span>\s*<div class="status-wrap">\s*<button[^>]*class="status-control/);
     expect(markup.match(/class="divider"/g)).toHaveLength(2);
+  });
+
+  test("aria-live carries only the time-free line, so the minute tick is silent", () => {
+    expect(markup).toContain('aria-live="polite" aria-atomic="true">{line.announce}</span>');
+    expect(markup.match(/aria-live/g)).toHaveLength(1);
+    expect(src).toContain("setInterval(() => (now = Date.now()), 60_000)");
+  });
+
+  test("the popover is the BookSwitcher pattern: opens upward, closes on Escape or an outside click", () => {
+    const pop = readFileSync(new URL("../../src/lib/components/StatusPopover.svelte", import.meta.url), "utf8");
+    expect(pop).toContain("bottom: 100%");
+    expect(pop).toContain('e.key === "Escape"');
+    expect(pop).toContain('addEventListener("mousedown"');
   });
 });

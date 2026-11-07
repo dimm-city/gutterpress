@@ -536,22 +536,31 @@ buttons.
   Cancel — the one modal in the saving flow, and only when auto-save is
   off. The status control itself stays subtle (no modal) — see
   Anti-Patterns.
-- **One status control, Authors only, is SHIPPED** (#448): the status bar's one
-  line combines saving and the online copy — "Saving…", "Saved on this
-  computer", "Saved · Backed up", "Saved · Backing up…", "Saved · Offline —
-  backs up when you're back", "Saved · Sign in to back up", "Saved · Backing up
-  paused", "Saved · Not backed up yet", "Couldn't save", "Versions need
-  attention" — with a shape (check, cloud, warning, error) carrying the tone, not
-  colour alone. Clicking it opens Book setup → Online copy, the one place for
-  versions, version history, revisions and the online copy. It sits on the
-  left, after the book switcher. With automatic backing up off, **Get latest**
-  (receives, sends nothing) and **Sync** (gets the latest, then backs up) sit
-  beside it, and "New changes are online for this book." stays a toast with
-  Get latest. Online copy offers **Back up now** (with automatic backing up off
-  it reads **Sync now**; after a failure, **Try again**) and **Get latest**
-  whenever the book can back up, whatever the setting (#485). A Reader sees
-  none of it: no control, no buttons, no online toasts (a Reader gets the
-  latest changes automatically).
+- **One status control, Authors only** (#448, reshaped in 0.11.24): the status
+  bar's one control reads as two clauses, this computer and then the online
+  copy — "Saved here · Backed up 3 mins ago" (the time follows the clock, one
+  tick a minute, and is never announced). The states, by precedence: "Couldn't
+  save · see why", "Unsaved changes", "Saving…", "Versions need attention",
+  "N passages to decide", then the online copy (Offline, Sign in to back up,
+  Can't find the online copy, Backup paused), "New changes online", "Online has
+  changes · you have changes", "N changes not backed up", Backing up…,
+  "Checking online…" (never a bare "Saved" while the online copy's state is
+  unknown), Backed up, "Not backed up online", "No version history". A shape
+  (check, cloud, warning, error) carries the tone, not colour alone. A click does the
+  one thing that fixes the state: "Unsaved changes" saves, "to decide" opens
+  the Problems list, "Sign in to back up" opens the sign-in; every other state
+  opens a small popover (one sentence, one primary action, and **Backup &
+  history…**). Tooltips say what the state means and what a click does. One
+  **Update** button replaces Get latest and Sync: it shows when there is
+  something to get (**Update**) or only to send (**Back up**), and always with
+  automatic backing up off. Under 820px the "Saved here" clause moves into the
+  tooltip. "New changes are online for this book." stays a toast with **Get the
+  changes**, replaced by the next outcome and dismissed once a pass succeeds;
+  one outcome toast per action. Online copy offers **Back up now** (with
+  automatic backing up off it reads **Sync now**; after a failure, **Try
+  again**) and **Get latest** whenever the book can back up, whatever the
+  setting (#485). A Reader sees none of it: no control, no buttons, no online
+  toasts (a Reader gets the latest changes automatically).
 - **Revisions are SHIPPED in Book setup → Online copy** (#448, which replaced
   #273's switcher in Settings → Saving): the list names each revision, marks
   the one the author is working on, and says where each is kept (Online; Online

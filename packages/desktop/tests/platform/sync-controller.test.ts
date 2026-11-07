@@ -125,9 +125,9 @@ test("synced with a converge report -> one toast per kind of kept-both file", as
   };
   await h.ctrl.handleForceSync();
   expect(h.toast.info.calls).toHaveLength(2);
-  expect(h.toast.info.calls[0]![0]).toContain("chapter-02.md");
-  expect(h.toast.info.calls[0]![0]).toContain("Two takes of a passage were kept");
-  expect(h.toast.info.calls[0]![0]).toContain("the online copy's");
+  // One message for the pass: "backed up" folds into the two-takes line, which names no file.
+  expect(h.toast.info.calls[0]![0]).toBe("Backed up. Some passages were changed in two places. Choose which to keep.");
+  expect(h.onSyncCompleted.calls).toEqual([[true, false]]);
   expect(h.toast.info.calls[1]![0]).toContain("cover.png");
   expect(h.toast.info.calls[1]![0]).toContain("cover.online.png");
 });
@@ -152,7 +152,7 @@ test("auth -> error toast; onFilesChanged only when filesChanged", async () => {
   noChange.sync.next = { status: "auth", message: "" };
   await noChange.ctrl.handleForceSync();
   expect(noChange.toast.error.calls).toEqual([
-    ["Not signed in to the online copy. Sign in from Book setup → Online copy."],
+    ["Not signed in to the online copy. Sign in to keep backing up."],
   ]);
   expect(noChange.onFilesChanged.calls.length).toBe(0);
 
@@ -268,10 +268,11 @@ test("combined files -> a sticky toast with a Review button that opens the Probl
   expect(toast.info.calls).toEqual([]);
   expect(show.calls).toHaveLength(1);
   const [message, type, duration, action] = show.calls[0]!;
-  expect(message).toContain("chapter-02.md");
+  expect(message).toBe("Some passages were changed in two places. Choose which to keep.");
   expect(type).toBe("info");
   expect(duration).toBe(0);
   expect(action?.label).toBe("Review");
+  expect(show.calls[0]![4]).toBe("sync-outcome");
   action!.onClick();
   expect(onReviewCombined.calls).toHaveLength(1);
 });
@@ -288,11 +289,11 @@ test("keptBothMessage names the pair and never says 'conflict'", () => {
   expect(many).toContain("and 2 more");
 });
 
-test("combinedFilesMessage names up to three files then counts the rest", () => {
-  expect(combinedFilesMessage(["a/one.md"])).toContain("one.md");
-  const many = combinedFilesMessage(["a.md", "b.md", "c.md", "d.md", "e.md"]);
-  expect(many).toContain("a.md, b.md, c.md");
-  expect(many).toContain("and 2 more");
+test("combinedFilesMessage names no file: the status bar counts, Review lists", () => {
+  const one = combinedFilesMessage(["a/one.md"]);
+  expect(one).toBe("Some passages were changed in two places. Choose which to keep.");
+  expect(combinedFilesMessage(["a.md", "b.md", "c.md", "d.md", "e.md"])).toBe(one);
+  expect(one).not.toContain(".md");
 });
 
 // ── refreshSyncDiag ──────────────────────────────────────────────────────────
@@ -410,7 +411,7 @@ test("handleRepair: a no-op when no project is open", async () => {
 // ── The "new changes online" prompt and Sync ────────────────────────────────
 
 function makeManual(opts: { auto?: boolean; reader?: boolean; available?: boolean; reason?: string; sync?: SyncOutcome | Error; latest?: SyncOutcome | Error; showless?: boolean } = {}) {
-  const show = spy<[string, string?, number?, { label: string; onClick: () => void }?]>();
+  const show = spy<[string, string?, number?, { label: string; onClick: () => void }?, string?]>();
   const toast = { ...makeToast(), ...(opts.showless ? {} : { show }) };
   const onFilesChanged = spy<[]>();
   const onSyncCompleted = spy<[boolean, boolean]>();
@@ -458,14 +459,15 @@ test("checkForUpdates: automatic backing up off -> one sticky prompt with a Get 
   expect(message).toBe("New changes are online for this book.");
   expect(type).toBe("info");
   expect(duration).toBe(0);
-  expect(action!.label).toBe("Get latest");
+  expect(action!.label).toBe("Get the changes");
+  expect(m.toast.show.calls[0]![4]).toBe("new-online");
 });
 
 test("checkForUpdates: without a toast action surface the plain toast points at Get latest", async () => {
   const m = makeManual({ showless: true });
   await m.ctrl.refreshSyncDiag("/proj");
   await m.ctrl.checkForUpdates();
-  expect(m.toast.info.calls).toEqual([["New changes are online for this book. Use Get latest to bring them in."]]);
+  expect(m.toast.info.calls).toEqual([["New changes are online for this book. Use the Update button to bring them in."]]);
 });
 
 test("the prompt's Get latest receives the changes and sends nothing (#485)", async () => {
@@ -480,7 +482,8 @@ test("the prompt's Get latest receives the changes and sends nothing (#485)", as
   expect(m.ctrl.gettingLatest).toBe(false);
   expect(m.onFilesChanged.calls).toHaveLength(1);
   expect(m.onSyncCompleted.calls).toEqual([]); // never "Backed up — …"
-  expect(m.toast.success.calls).toEqual([["Got the latest changes from the online copy."]]);
+  // One outcome toast, keyed so the next one replaces it.
+  expect(m.toast.show.calls[1]).toEqual(["Got the changes from the online copy.", "success", undefined, undefined, "sync-outcome"]);
 });
 
 test("checkForUpdates: stays quiet while a Sync or a Get latest is in flight", async () => {
@@ -512,7 +515,7 @@ test("handleGetLatest: everything already online -> the status reads 'synced'", 
 });
 
 test("handleGetLatest: nothing new -> info toast, no reload", async () => {
-  const m = makeManual({ latest: { status: "up-to-date", message: "" } });
+  const m = makeManual({ showless: true, latest: { status: "up-to-date", message: "" } });
   await m.ctrl.handleGetLatest();
   expect(m.onFilesChanged.calls).toEqual([]);
   expect(m.toast.info.calls).toEqual([["Already up to date — nothing new online."]]);
@@ -522,20 +525,20 @@ test("handleGetLatest: overlapping passages are named, as after any pass", async
   const m = makeManual({ showless: true, latest: { status: "up-to-date", message: "", filesChanged: true, pushDeferred: true, combinedFiles: ["chapters/chapter-02.md"] } });
   await m.ctrl.handleGetLatest();
   expect(m.toast.info.calls).toHaveLength(1);
-  expect(m.toast.info.calls[0]![0]).toContain("Two takes of a passage were kept in chapter-02.md");
+  expect(m.toast.info.calls[0]![0]).toBe("Got the changes from the online copy. Some passages were changed in two places. Choose which to keep.");
 });
 
 test("handleGetLatest: not signed in or offline -> says so in the product's words", async () => {
-  const auth = makeManual({ latest: { status: "auth", message: "raw" } });
+  const auth = makeManual({ showless: true, latest: { status: "auth", message: "raw" } });
   await auth.ctrl.handleGetLatest();
-  expect(auth.toast.error.calls).toEqual([["Not signed in to the online copy. Sign in from Book setup → Online copy."]]);
-  const offline = makeManual({ latest: { status: "offline", message: "raw" } });
+  expect(auth.toast.error.calls).toEqual([["Not signed in to the online copy. Sign in to keep backing up."]]);
+  const offline = makeManual({ showless: true, latest: { status: "offline", message: "raw" } });
   await offline.ctrl.handleGetLatest();
   expect(offline.toast.info.calls).toEqual([["Couldn't reach the online copy. Check your internet connection, or try again later."]]);
 });
 
 test("handleGetLatest: a thrown call toasts the fixed failure and clears gettingLatest", async () => {
-  const m = makeManual({ latest: new Error("net down") });
+  const m = makeManual({ showless: true, latest: new Error("net down") });
   await m.ctrl.handleGetLatest();
   expect(m.toast.error.calls[0]![0]).toContain("Couldn't get the latest changes");
   expect(m.ctrl.gettingLatest).toBe(false);
@@ -708,3 +711,57 @@ function makeSeeded(kept: SyncStatus | null) {
   });
   return h;
 }
+
+// ── Quieter, keyed notices and the host's new status fields (WP-A) ───────────
+
+test("a finished Update dismisses the stale 'new changes online' toast", async () => {
+  const dismissed: string[] = [];
+  const m = makeManual();
+  (m.toast as unknown as { dismissKey: (k: string) => void }).dismissKey = (k) => void dismissed.push(k);
+  await m.ctrl.refreshSyncDiag("/proj");
+  await m.ctrl.checkForUpdates();
+  await m.ctrl.handleGetLatest();
+  expect(dismissed).toContain("new-online");
+  expect(m.toast.show.calls[0]![4]).toBe("new-online");
+});
+
+test("every outcome toast of an action shares one key, so the next replaces the last", async () => {
+  const m = makeManual({ sync: { status: "synced", message: "", mergedRemoteChanges: false } });
+  await m.ctrl.handleForceSync();
+  await m.ctrl.handleForceSync();
+  // The "Backed up" toast itself comes from the page (onSyncCompleted); a failure comes from here.
+  const bad = makeManual({ sync: { status: "error", message: "The online copy is full." } });
+  await bad.ctrl.handleForceSync();
+  expect(bad.toast.show.calls[0]).toEqual(["The online copy is full.", "error", undefined, undefined, "sync-outcome"]);
+});
+
+test("the host's ahead / behind / decide fields are read when present and ignored when absent", () => {
+  const h = make();
+  h.ctrl.applyStatus({ state: "synced", projectDir: "/proj", lastSyncAt: null } as SyncStatus);
+  expect(h.ctrl.backup).toMatchObject({ state: "synced" });
+  expect(h.ctrl.backup?.ahead).toBeUndefined();
+  h.ctrl.applyStatus({ state: "unsent", projectDir: "/proj", lastSyncAt: null, ahead: 3, behind: true, decide: 2, source: "local" } as unknown as SyncStatus);
+  expect(h.ctrl.backup).toMatchObject({ state: "unsent", ahead: 3, behind: true, decide: 2, local: true });
+  expect(h.ctrl.updatesAvailable).toBe(true);
+});
+
+test("a manual pass marks when it last ran, so a reload that follows it stays quiet", async () => {
+  const m = makeManual({ sync: { status: "up-to-date", message: "" } });
+  expect(m.ctrl.lastPassAt).toBe(0);
+  await m.ctrl.handleForceSync();
+  expect(Date.now() - m.ctrl.lastPassAt).toBeLessThan(1000);
+});
+
+test("the first answer to the check for online changes is recorded", async () => {
+  const m = makeManual({ available: false });
+  expect(m.ctrl.checkedDir).toBe(null);
+  await m.ctrl.refreshSyncDiag("/proj");
+  await m.ctrl.checkForUpdates();
+  expect(m.ctrl.checkedDir).toBe("/proj");
+});
+
+test("a pass that finds the online copy gone is recorded as not-found", async () => {
+  const m = makeManual({ showless: true, sync: { status: "not-found", message: "x" } as unknown as SyncOutcome });
+  await m.ctrl.handleForceSync();
+  expect(m.ctrl.backup).toMatchObject({ state: "not-found" });
+});
