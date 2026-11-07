@@ -1,71 +1,89 @@
 /**
  * #501: a snap browser cannot read the OS temp dir, so a `--out` build staged
- * its pages there and rendered unstyled. Detection and the scratch-dir choice.
+ * its pages there and rendered unstyled. Detection, naming and the scratch dir.
  */
 import { test, expect, afterEach } from "bun:test";
 import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { chooseScratchParent, isSnapExecutable, isSnapReadable } from "./chromium.ts";
+import {
+  chooseScratchParent,
+  isSnapReadable,
+  snapNameOf,
+  snapUnreadableWarning,
+} from "./chromium.ts";
 import { resolveBuildContext } from "./build-runner.ts";
 
 const cleanup: string[] = [];
+const realHome = process.env.HOME;
 afterEach(async () => {
   delete process.env.CHROMIUM_PATH;
+  process.env.HOME = realHome;
   for (const d of cleanup.splice(0)) await rm(d, { recursive: true, force: true });
 });
 
-test("isSnapExecutable: snap paths, the launcher symlink, and ordinary browsers", async () => {
-  expect(isSnapExecutable("/snap/chromium/3000/usr/lib/chromium-browser/chrome")).toBe(true);
-  expect(isSnapExecutable("/usr/bin/google-chrome")).toBe(false);
-  const dir = await mkdtemp(join(tmpdir(), "gp-snap-"));
-  cleanup.push(dir);
-  // /snap/bin/chromium is a symlink to the `snap` launcher.
-  await writeFile(join(dir, "snap"), "");
-  await symlink(join(dir, "snap"), join(dir, "chromium"));
-  expect(isSnapExecutable(join(dir, "chromium"))).toBe(true);
+async function scratch(): Promise<string> {
+  const d = await mkdtemp(join(tmpdir(), "gp-snap-"));
+  cleanup.push(d);
+  return d;
+}
+
+test("snapNameOf derives the snap from the path, the launcher link, or the apt shim", async () => {
+  expect(snapNameOf("/snap/bin/brave")).toBe("brave");
+  expect(snapNameOf("/snap/chromium/3000/usr/lib/chromium-browser/chrome")).toBe("chromium");
+  const dir = await scratch();
   await writeFile(join(dir, "snapd"), "");
-  await symlink(join(dir, "snapd"), join(dir, "chromium2"));
-  expect(isSnapExecutable(join(dir, "chromium2"))).toBe(true);
-  // Ubuntu's apt /usr/bin/chromium-browser: a shell script that execs the snap.
-  await writeFile(join(dir, "shim"), '#!/bin/sh\nexec /snap/bin/chromium "$@"\n');
-  expect(isSnapExecutable(join(dir, "shim"))).toBe(true);
+  await symlink(join(dir, "snapd"), join(dir, "chromium"));
+  expect(snapNameOf(join(dir, "chromium"))).toBe("chromium");
+  await writeFile(join(dir, "shim"), '#!/bin/sh\nexec /snap/bin/brave "$@"\n');
+  expect(snapNameOf(join(dir, "shim"))).toBe("brave");
   await writeFile(join(dir, "chrome"), "");
-  expect(isSnapExecutable(join(dir, "chrome"))).toBe(false);
+  expect(snapNameOf(join(dir, "chrome"))).toBeUndefined();
+  expect(snapNameOf("/usr/bin/google-chrome")).toBeUndefined();
 });
 
-test("isSnapReadable: under home but not in a hidden top-level folder", () => {
-  expect(isSnapReadable("/home/u/books/a", "/home/u")).toBe(true);
-  expect(isSnapReadable("/home/u/books/.dist-build-x", "/home/u")).toBe(true);
-  expect(isSnapReadable("/home/u/.cache/x", "/home/u")).toBe(false);
-  expect(isSnapReadable("/tmp/x", "/home/u")).toBe(false);
-  expect(isSnapReadable("/home/u", "/home/u")).toBe(false);
-  expect(isSnapReadable("/home/other/x", "/home/u")).toBe(false);
+test("isSnapReadable: home yes, hidden top-level and ~/snap no, the snap's own folder yes", () => {
+  const h = "/home/u";
+  expect(isSnapReadable("/home/u/books/a", h)).toBe(true);
+  expect(isSnapReadable("/home/u/.cache/x", h)).toBe(false);
+  expect(isSnapReadable("/tmp/x", h)).toBe(false);
+  expect(isSnapReadable("/home/u", h)).toBe(false);
+  expect(isSnapReadable("/home/other/x", h)).toBe(false);
+  expect(isSnapReadable("/home/u/snap/brave/common/x", h)).toBe(false);
+  expect(isSnapReadable("/home/u/snap/brave/common/x", h, "chromium")).toBe(false);
+  expect(isSnapReadable("/home/u/snap/brave/common/x", h, "brave")).toBe(true);
 });
 
-test("chooseScratchParent: temp dir normally; beside the book, else the snap data folder, for a snap", () => {
-  const base = { bookDir: "/home/u/book", tmpDir: "/tmp", home: "/home/u" };
-  expect(chooseScratchParent({ ...base, snapBrowser: false })).toBe("/tmp");
-  expect(chooseScratchParent({ ...base, snapBrowser: true })).toBe("/home/u/book");
-  expect(chooseScratchParent({ ...base, snapBrowser: true, bookDir: "/tmp/book" })).toBe(
-    "/home/u/snap/chromium/common"
+test("chooseScratchParent: the temp dir normally; the snap's own data folder for a snap", () => {
+  expect(chooseScratchParent({ tmpDir: "/tmp", home: "/home/u" })).toBe("/tmp");
+  expect(chooseScratchParent({ snapName: "brave", tmpDir: "/tmp", home: "/home/u" })).toBe(
+    "/home/u/snap/brave/common"
   );
 });
 
-test("resolveBuildContext with --out stages under a snap-readable folder when the browser is a snap", async () => {
-  const dir = await mkdtemp(join(process.cwd(), ".tmp-snap-"));
-  cleanup.push(dir);
-  await mkdir(join(dir, "snap-root"));
-  await writeFile(join(dir, "manifest.yaml"), "title: T\n");
-  // A fake browser at a /snap/ real path is not creatable; use the launcher name.
-  await writeFile(join(dir, "snap"), "");
-  process.env.CHROMIUM_PATH = join(dir, "snap");
-  const out = join(dir, "out");
-  const ctx = await resolveBuildContext({ inputDir: dir, format: "pdf", outDir: out, rawArgs: {} });
-  expect(ctx.workDir.startsWith(tmpdir())).toBe(false);
-  expect(ctx.workDir).toContain(dir);
-  process.env.CHROMIUM_PATH = "/usr/bin/true";
-  const ctx2 = await resolveBuildContext({ inputDir: dir, format: "pdf", outDir: out, rawArgs: {} });
-  expect(ctx2.workDir.startsWith(tmpdir())).toBe(true);
+test("snapUnreadableWarning: only for a snap whose scratch dir it cannot read", () => {
+  expect(snapUnreadableWarning("/tmp/x", undefined, "/home/u")).toBeUndefined();
+  expect(snapUnreadableWarning("/home/u/snap/brave/common/x", "brave", "/home/u")).toBeUndefined();
+  expect(snapUnreadableWarning("/tmp/book/.dist-build-x", "brave", "/home/u")).toContain("render unstyled");
+});
+
+test("resolveBuildContext with --out stages in the snap's data folder, nothing in the book; a non-snap browser is unchanged", async () => {
+  const root = await scratch();
+  const book = join(root, "book");
+  await mkdir(book, { recursive: true });
+  await writeFile(join(book, "manifest.yaml"), "title: T\n");
+  const out = join(root, "out");
+
+  await writeFile(join(root, "shim"), '#!/bin/sh\nexec /snap/bin/brave "$@"\n');
+  process.env.CHROMIUM_PATH = join(root, "shim");
+  const ctx = await resolveBuildContext({ inputDir: book, format: "pdf", outDir: out, rawArgs: {} });
+  expect(ctx.workDir).toBe(join(homedir(), "snap", "brave", "common", ctx.workDir.split("/").pop()!));
+  expect(ctx.workDir.split("/").pop()).toMatch(/^gutterpress-build-/);
+  expect(ctx.workDir.startsWith(book)).toBe(false);
+
+  await writeFile(join(root, "plain"), "#!/bin/sh\n");
+  process.env.CHROMIUM_PATH = join(root, "plain");
+  const ctx2 = await resolveBuildContext({ inputDir: book, format: "pdf", outDir: out, rawArgs: {} });
+  expect(ctx2.workDir.startsWith(join(tmpdir(), "gutterpress-build-"))).toBe(true);
 });
