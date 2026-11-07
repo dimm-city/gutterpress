@@ -921,8 +921,12 @@ export const api = {
     /** What a repair would set aside: revisions and versions found only on this computer. */
     previewRepair: (projectDir: string) =>
       post<{ setAside: { revisions: string[]; versions: number }; repairCopies?: number; unreadable?: true }>('/api/remote/repair-preview', { projectDir }),
+    /** `movedGitTo`: the folder (outside the book) the old version history was moved into; pass it to `showRepairBackup`. */
     repairOnlineBackup: (projectDir: string) =>
-      post<{ outcome: SyncOutcome; restoredFiles: string[] }>('/api/remote/repair', { projectDir }),
+      post<{ outcome: SyncOutcome; restoredFiles: string[]; movedGitTo: string }>('/api/remote/repair', { projectDir }),
+    /** Show a repair's backup folder in the file manager. Only to look at: it can't be brought back from inside the app. */
+    showRepairBackup: (folder: string) =>
+      post<{ ok: boolean }>('/api/remote/show-repair-backup', { filePath: folder }),
 
     /**
      * "Scorched earth": copy the folder to a backup, empty it, download a

@@ -15,6 +15,7 @@ import { makeHostServices } from "../support/host-services-fake";
 import { setLibForTests, type LibModule } from "../../src/routes/api/_lib/route";
 import { POST as setUpBackup } from "../../src/routes/api/remote/set-up-backup/+server";
 import { POST as setUpBackupProgress } from "../../src/routes/api/remote/set-up-backup-progress/+server";
+import { POST as showRepairBackup } from "../../src/routes/api/remote/show-repair-backup/+server";
 import { POST as repairPreview } from "../../src/routes/api/remote/repair-preview/+server";
 import { POST as listRepositories } from "../../src/routes/api/remote/list-repositories/+server";
 
@@ -257,3 +258,24 @@ describe("set-up-backup: double submit and the repository list", () => {
   });
 });
 
+describe("POST /api/remote/show-repair-backup", () => {
+  test("reveals a folder inside the repair backups, and nothing else", async () => {
+    const shown: string[] = [];
+    registerHostServices(
+      makeHostServices({
+        vcs: { repairBackupDir: (slug: string) => `/userdata/repair-backups/${slug}/2026-11-07T00-00-00Z` } as never,
+        desktop: { showItemInFolder: (p: string) => void shown.push(p) } as never,
+      }),
+    );
+    const ok = await showRepairBackup({
+      request: request({ filePath: "/userdata/repair-backups/book/2026-11-07T00-00-00Z" }),
+    } as never);
+    expect(await ok.json()).toEqual({ ok: true });
+    expect(shown).toEqual(["/userdata/repair-backups/book/2026-11-07T00-00-00Z"]);
+    for (const filePath of ["/home/me/book", "/userdata/repair-backups", "/userdata/repair-backups/../secrets"]) {
+      const { status } = await caught(showRepairBackup({ request: request({ filePath }) } as never));
+      expect(status).toBe(403);
+    }
+    expect(shown.length).toBe(1);
+  });
+});

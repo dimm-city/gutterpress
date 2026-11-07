@@ -56,7 +56,7 @@ export interface RepairPreview {
   revisions: string[];
   /** Versions (saved points) found only on this computer, across every revision. */
   versions: number;
-  /** Saved copies of the book kept by an earlier recovery (they would be set aside too; counted in `versions`). */
+  /** Saved copies of the book kept by an earlier recovery (set aside with the old history, so no longer listed in the app; counted in `versions`). */
   repairCopies?: number;
   /** True when this computer's history could not be read, so the counts may be short. */
   unreadable?: boolean;
@@ -66,11 +66,15 @@ export interface RepairPreview {
 const PREVIEW_DEPTH = 2000;
 
 /**
- * Before the author confirms a repair: what would it set aside? A repair keeps
- * the old history in a repair copy but starts from the online one, so any
- * revision, and any version of a revision, the online copy lacks is what
- * would be left out. Reads refs and history on this computer only (the online
- * side is as it was last checked); no network, nothing written.
+ * Before the author confirms a repair: what would it set aside? A repair moves
+ * the whole old history (`.git`) into a backup folder OUTSIDE the book and
+ * starts from the online one, so any revision, and any version of a revision,
+ * the online copy lacks is what would be left out of the book. It is kept in
+ * that folder (`movedGitTo` in the repair result) to look at, but it does NOT
+ * appear under "Saved copies after a repair" and can't be brought back from
+ * inside the app; the same goes for earlier before-repair copies, which travel
+ * with the old history. Reads refs and history on this computer only (the
+ * online side is as it was last checked); no network, nothing written.
  */
 export async function previewRepair(
   projectDir: string,
