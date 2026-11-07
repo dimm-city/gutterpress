@@ -1,8 +1,11 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { findTool } from "./tool-probe";
 import { INSTALL_HINTS } from "./install-hints";
 
-const SYSTEM_PATHS: string[] = [
+// A function, not a constant: the env overrides are read at call time.
+const systemPaths = (): string[] => [
   // Explicit override always wins. CHROMIUM_PATH is THE documented variable
   // (User Guide ch. 7, docs/docker.md, the CLI's own error messages).
   process.env.CHROMIUM_PATH,
@@ -87,7 +90,7 @@ const PATH_CANDIDATES: string[] = [
  */
 export async function resolveChromiumExecutable(): Promise<string | undefined> {
   // 1+2: fixed paths.
-  for (const candidate of SYSTEM_PATHS) {
+  for (const candidate of systemPaths()) {
     if (existsSync(candidate)) return candidate;
   }
   // 3: PATH probe.
@@ -124,4 +127,71 @@ export async function requireChromiumExecutable(): Promise<string> {
       "This message is about the CLI, which does need one.",
     ].join("\n")
   );
+}
+
+/**
+ * Is this browser executable a snap? A snap is confined: it gets a private
+ * `/tmp` and may read only non-hidden files under the user's home, so a page
+ * staged anywhere else renders unstyled (#501). `/snap/bin/chromium` is a
+ * symlink to the `snap` launcher (`/usr/bin/snap`), so both the path as given
+ * and its real path are checked, for a `/snap/` prefix or the launcher itself (`snap`, or `snapd` on current Ubuntu).
+ */
+export function isSnapExecutable(executable: string): boolean {
+  let real = executable;
+  try {
+    real = realpathSync(executable);
+  } catch {
+    // Unresolvable: judge by the path as given.
+  }
+  const isSnapPath = (p: string): boolean => p.replaceAll("\\", "/").startsWith("/snap/");
+  return (
+    isSnapPath(executable) ||
+    isSnapPath(real) ||
+    ["snap", "snapd"].includes(path.basename(real)) ||
+    isSnapWrapperScript(real)
+  );
+}
+
+/**
+ * Ubuntu's `/usr/bin/chromium-browser` (apt) is not the browser but a small
+ * shell script that ends in `exec /snap/bin/chromium "$@"`.
+ */
+function isSnapWrapperScript(file: string): boolean {
+  try {
+    if (statSync(file).size > 16 * 1024) return false;
+    const text = readFileSync(file, "utf8");
+    return text.startsWith("#!") && /\bexec\s+\/snap\/bin\//.test(text);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Can a confined (snap) browser read files in `dir`? Snap's home access covers
+ * everything under `$HOME` except the hidden entries directly in it.
+ */
+export function isSnapReadable(dir: string, home: string = os.homedir()): boolean {
+  const rel = path.relative(path.resolve(home), path.resolve(dir));
+  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return false;
+  return !rel.split(path.sep)[0]!.startsWith(".");
+}
+
+/**
+ * Where a build's scratch directory (the staged book.html, stylesheets and
+ * fonts the browser reads) goes when the destination is not our own `dist/`.
+ * Normally the OS temp dir; for a snap browser, the first place it can read:
+ * beside the book, else the snap's own data folder under the home directory.
+ * `suffix` is the unique directory name.
+ */
+export function chooseScratchParent(opts: {
+  snapBrowser: boolean;
+  bookDir: string;
+  tmpDir?: string;
+  home?: string;
+}): string {
+  const tmpDir = opts.tmpDir ?? os.tmpdir();
+  if (!opts.snapBrowser) return tmpDir;
+  const home = opts.home ?? os.homedir();
+  if (isSnapReadable(opts.bookDir, home)) return opts.bookDir;
+  return path.join(home, "snap", "chromium", "common");
 }
