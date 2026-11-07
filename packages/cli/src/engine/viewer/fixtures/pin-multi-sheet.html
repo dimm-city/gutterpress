@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @page {
+        size: 600px 400px;
+        margin: 40px;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; }
+      .page { position: relative; min-height: calc(var(--gp-content-h, 1px) - 1px); }
+      p { margin: 0; height: 20px; font: 12px/20px monospace; }
+      .pin { position: absolute; right: 0; bottom: 0; width: 80px; height: 20px; background: #c24; }
+      .short { position: relative; min-height: calc(var(--gp-content-h, 1px) - 1px); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <!-- 22 x 20px = 440px: two sheets of a 360px content box -->
+      <div class="page" id="long">
+        <p>1</p><p>2</p><p>3</p><p>4</p><p>5</p><p>6</p><p>7</p><p>8</p><p>9</p><p>10</p><p>11</p>
+        <p>12</p><p>13</p><p>14</p><p>15</p><p>16</p><p>17</p><p>18</p><p>19</p><p>20</p><p>21</p><p>22</p>
+        <div class="pin gp-pin gp-bottom"></div>
+      </div>
+    </main>
+    <script src="gutterpress-viewer.js"></script>
+  </body>
+</html>
