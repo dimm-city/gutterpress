@@ -33,11 +33,14 @@
     projectDir,
     onClose,
     onDone,
+    onFailed,
   }: {
     projectDir: string;
     onClose: () => void;
     /** The book is set up and its first backup is online: the parent re-reads the book's state. */
     onDone: () => void;
+    /** The send failed after the window was closed (it carried on in the background): the parent says so. */
+    onFailed?: (message: string) => void;
   } = $props();
 
   type Step = "where" | "other" | "signin" | "name" | "sending" | "done";
@@ -135,6 +138,7 @@
           github = { connected: false };
           step = closedEarly ? step : "signin";
         } else if (!closedEarly) step = "name";
+        if (closedEarly) onFailed?.(result.message);
         return;
       }
       sentTo = { fullName: result.repository.fullName, private: result.repository.private };
@@ -143,6 +147,7 @@
     } catch (e) {
       error = friendlyHostError(unwrapRouteError(e instanceof Error ? e.message : String(e)));
       if (!closedEarly) step = "name";
+      else onFailed?.(error ?? "Backing up didn't finish. Your work is safe on this computer.");
     } finally {
       clearTimeout(slowTimer);
       clearInterval(poll);

@@ -57,22 +57,23 @@ export function createRepoListCache(read: ReadRepositories) {
   };
 }
 
-type Paged = { listRemoteRepositoriesPage?: (o: { page?: number; refresh?: boolean }) => Promise<{ repos: RemoteRepository[]; hasMore: boolean }> };
+/** The host's paged call, as `api.remote.listRemoteRepositoriesPage` has it: the page number first, then options. */
+export type ReadPage = (page: number, options?: { refresh?: boolean }) => Promise<{ repos: RemoteRepository[]; page: number; hasMore: boolean }>;
 
-/** Every page the host will give (its paged call when it has one), else the whole list as before. */
-async function readAll(options?: { refresh?: boolean }): Promise<RemoteRepository[]> {
-  const paged = (api.remote as unknown as Paged).listRemoteRepositoriesPage;
-  if (!paged) return (await api.remote.listRemoteRepositories()) as RemoteRepository[];
-  const all: RemoteRepository[] = [];
-  for (let page = 1; page <= 50; page++) {
-    const r = await paged({ page, ...(options?.refresh && page === 1 ? { refresh: true } : {}) });
-    all.push(...r.repos);
-    if (!r.hasMore) break;
-  }
-  return all;
+/** Read every page the host gives, in order (`refresh` skips the host's own cache on the first). */
+export function readAllPages(readPage: ReadPage): ReadRepositories {
+  return async (options) => {
+    const all: RemoteRepository[] = [];
+    for (let page = 1; page <= 50; page++) {
+      const r = await readPage(page, page === 1 && options?.refresh ? { refresh: true } : undefined);
+      all.push(...r.repos);
+      if (!r.hasMore) break;
+    }
+    return all;
+  };
 }
 
-const shared = createRepoListCache(readAll);
+const shared = createRepoListCache(readAllPages((page, options) => api.remote.listRemoteRepositoriesPage(page, options)));
 export const peekRepositories = shared.peek;
 export const refreshRepositories = shared.refresh;
 export const prefetchRepositories = shared.prefetch;

@@ -36,3 +36,25 @@ describe("repo list cache", () => {
     expect(dedupeByFullName([repo("x"), repo("y"), repo("x")])).toHaveLength(2);
   });
 });
+
+import { readAllPages, type ReadPage } from "../../src/lib/routes/repo-list-cache";
+
+describe("paged repo read (the real api signature: page number first)", () => {
+  test("reads every page in order and stops when there is no more", async () => {
+    const calls: Array<[number, unknown]> = [];
+    const readPage: ReadPage = async (page, options) => {
+      calls.push([page, options]);
+      return { repos: [repo(`p${page}a`), repo(`p${page}b`)], page, hasMore: page < 2 };
+    };
+    const all = await readAllPages(readPage)();
+    expect(all.map((r) => r.fullName)).toEqual(["a/p1a", "a/p1b", "a/p2a", "a/p2b"]);
+    expect(calls).toEqual([[1, undefined], [2, undefined]]);
+  });
+
+  test("a refresh asks the host to skip its cache on the first page only", async () => {
+    const calls: Array<[number, unknown]> = [];
+    const readPage: ReadPage = async (page, options) => (calls.push([page, options]), { repos: [repo("x")], page, hasMore: page < 2 });
+    await readAllPages(readPage)({ refresh: true });
+    expect(calls).toEqual([[1, { refresh: true }], [2, undefined]]);
+  });
+});

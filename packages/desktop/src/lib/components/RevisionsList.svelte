@@ -306,7 +306,7 @@
       <div class="copies" id="repair-copies">
         <h4>Saved copies after a repair</h4>
         <p class="section-sub">
-          Gutterpress couldn't finish a repair or a switch, so it kept a copy of your files here first. Nothing is lost. You can bring a copy back, or discard it when you don't need it. A copy clears itself after your next saved version, once its files are safe in a version.
+          Gutterpress couldn't finish a repair or a switch, so it kept a copy of your files here first. Nothing is lost. You can bring a copy back, or discard it when you don't need it. Copies you no longer need clear themselves once their files are in a saved version.
         </p>
         <ul class="rev-list" aria-label="Saved copies after a repair">
           {#each list.repairCopies as c (c.id)}

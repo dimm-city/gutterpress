@@ -148,7 +148,7 @@
 
   const card = $derived(
     situation
-      ? backupCard({ situation, backup: backup && decide > 0 ? { ...backup, decide } : backup, checking, where, github: onGitHub, autoBackup, now, bookName, drafts })
+      ? backupCard({ situation, backup: decide > 0 ? { ...(backup ?? { state: "idle" as const, lastSyncAt: null }), decide } : backup, checking, where, github: onGitHub, autoBackup, now, bookName, drafts })
       : null,
   );
 
@@ -271,6 +271,12 @@
       await reload();
       return "Version history is on. The first version is saved.";
     });
+
+  /** The wizard's send failed after its window was closed: say so, and read the book's state again. */
+  function wizardFailed(message: string) {
+    toast?.error(message);
+    void reload();
+  }
 
   /** The wizard finished: the book is set up and sent. */
   function wizardDone() {
@@ -667,7 +673,7 @@
 </div>
 
 {#if wizardOpen && projectDir}
-  <BackupWizard {projectDir} onClose={() => (wizardOpen = false)} onDone={wizardDone} />
+  <BackupWizard {projectDir} onClose={() => (wizardOpen = false)} onDone={wizardDone} onFailed={wizardFailed} />
 {/if}
 
 {#if repairAsk}
