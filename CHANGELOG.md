@@ -33,6 +33,17 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A `--out` build rendered unstyled, wrong-size pages under a snap Chromium,
+  with no warning (#501).** The staged `book.html`, stylesheets and fonts went
+  to the OS temp dir, which a snap's private `/tmp` hides from the browser.
+  The build now recognises a snap browser (by the path, its real path or
+  Ubuntu's `chromium-browser` shim) and stages in that snap's own data folder,
+  `~/snap/<name>/common/`, never in the book; if the scratch dir is still
+  unreadable it warns that the pages will render unstyled. A build killed
+  mid-way can leave a `gutterpress-build-*` folder there, outside the book.
+  Flatpak browsers are not detected. The desktop app uses its own browser
+  and is unaffected. `CHROMIUM_PATH` is now read when a browser is looked
+  up, not once at start-up.
 - **`pdfx.transparency: preserve-text` flattened every transparent page whole
   for a book built with the CLI installed from npm.** `unpdf` resolved to 1.8
   or newer there (PDF.js 6), whose document proxy has no `destroy()`: the text

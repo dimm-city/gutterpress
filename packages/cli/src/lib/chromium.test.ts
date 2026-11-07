@@ -9,8 +9,8 @@
  * which — per `build-runner.browser-lifecycle.test.ts` — leaks across the
  * whole shared test run) and always restored in `afterEach`.
  *
- * `SYSTEM_PATHS` is built ONCE at module-load time from `process.env`
- * (chromium.ts:5-39), so tests that vary `CHROMIUM_PATH` / its deprecated alias `PUPPETEER_EXECUTABLE_PATH`
+ * The candidate list is now built per call from `process.env` (#501), so it
+ * no longer needs a fresh module; the helper below still re-imports, harmlessly. Tests that vary `CHROMIUM_PATH` / its deprecated alias `PUPPETEER_EXECUTABLE_PATH`
  * / `LOCALAPPDATA` must re-import a fresh module instance AFTER setting the
  * env var — a plain `import("./chromium")` would hit Bun's module cache and
  * silently reuse the first test's env snapshot. `freshChromium()` below
