@@ -10,18 +10,8 @@
 import { draftName } from "#lib/revision-name.ts";
 import type { BackupState } from "#lib/backup-state.ts";
 
-/** "3 minutes ago", "2 hours ago": written in full, never "mins" or "hrs". */
-export function agoFull(ms: number, now: number): string {
-  const min = Math.round((now - ms) / 60_000);
-  if (min < 1) return "just now";
-  const unit = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"} ago`;
-  if (min < 60) return unit(min, "minute");
-  const hours = Math.round(min / 60);
-  if (hours < 24) return unit(hours, "hour");
-  const days = Math.round(hours / 24);
-  if (days < 14) return unit(days, "day");
-  try { return `on ${new Date(ms).toLocaleDateString()}`; } catch { return ""; }
-}
+import { agoFull } from "#lib/format.ts";
+export { agoFull };
 const relativeTime = agoFull;
 
 export type CardTone = "ok" | "warn" | "pending" | "plain";
@@ -111,7 +101,10 @@ export function backupCard(i: CardInput): CardView {
 
   const b = i.backup;
   const state = b?.state;
-  const lost = state === "not-found" || (state === "error" && /can'?t find/i.test(b?.message ?? ""));
+  // The host's own `reason` first; the wording regex only for an older host that sends none.
+  const reason = (b as { reason?: string } | null)?.reason;
+  const lost = state === "not-found" || (state === "error" && (reason === "not-found" || (reason === undefined && /can'?t find/i.test(b?.message ?? ""))));
+  const onGitHub = i.github || (b as { host?: string } | null)?.host === "github";
   if ((b?.decide ?? 0) > 0) {
     const n = b!.decide!;
     return { icon: "triangle-alert", tone: "warn", title: `${plural(n, "passage needs", "passages need")} your decision`, detail: "The same passage was changed here and online. Nothing is lost. Your work is safe on this computer.", action: "review-decisions" };
@@ -126,7 +119,7 @@ export function backupCard(i: CardInput): CardView {
     };
   }
   if (lost) {
-    return { icon: "triangle-alert", tone: "warn", title: "Can't find the online copy", detail: "It may have been renamed or deleted, or your account may not have access. Your work is safe on this computer.", action: "check-address", secondary: "sign-in" };
+    return { icon: "triangle-alert", tone: "warn", title: "Can't find the online copy", detail: `It may have been renamed or deleted, or your account may not have access.${onGitHub ? " On GitHub that often means Gutterpress needs you to sign in again." : ""} Your work is safe on this computer.`, action: "check-address", ...(onGitHub ? { secondary: "sign-in" as const } : {}) };
   }
   if (state === "offline") {
     return { icon: "cloud-off", tone: "plain", title: "You're offline", detail: "Your work is saved here and will back up when you're back online.", action: "try-again" };
@@ -172,16 +165,17 @@ export function backupCard(i: CardInput): CardView {
  * A repair moves this book's whole old version history into a safety folder outside the book and starts from
  * the online copy's, so what exists only here leaves the book's history. It is kept, not deleted.
  */
-export function repairSetAsideText(setAside: { revisions: string[]; versions: number } | null): string {
+export function repairSetAsideText(setAside: { revisions: string[]; versions: number } | null, savedCopies = 0): string {
+  const copies = savedCopies > 0 ? ` The ${savedCopies === 1 ? "saved copy" : `${savedCopies} saved copies`} from earlier repairs go${savedCopies === 1 ? "es" : ""} into the safety folder too.` : "";
   const KEPT = "It stays in a safety folder outside your book. It is not deleted, but it won't show in your book's history.";
   if (!setAside) {
-    return `Anything that exists only on this computer, such as a draft or versions that were never backed up, is set aside too. ${KEPT}`;
+    return `Anything that exists only on this computer, such as a draft or versions that were never backed up, is set aside too. ${KEPT}${copies}`;
   }
   const { revisions, versions } = setAside;
-  if (revisions.length === 0 && versions === 0) return "Everything on this computer is already online, so nothing would be lost from your history.";
+  if (revisions.length === 0 && versions === 0) return `Everything on this computer is already online, so nothing would be lost from your history.${copies}`;
   const parts = [
     revisions.length ? `${revisions.length} ${revisions.length === 1 ? "draft" : "drafts"} (${revisions.map((n) => `"${draftName(n)}"`).join(", ")})` : "",
     versions ? `${versions} ${versions === 1 ? "version" : "versions"}` : "",
   ].filter(Boolean);
-  return `This will set aside ${parts.join(" and ")} that ${revisions.length + versions === 1 ? "is" : "are"} only on this computer. ${KEPT}`;
+  return `This will set aside ${parts.join(" and ")} that ${revisions.length + versions === 1 ? "is" : "are"} only on this computer. ${KEPT}${copies}`;
 }

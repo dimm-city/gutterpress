@@ -62,6 +62,7 @@
     onCloseBook,
     onOpenAccounts,
     onReviewDecisions,
+    decide = 0,
     toast = null,
   }: {
     projectDir: string | null;
@@ -80,7 +81,7 @@
     /** Get the changes: the page's own pass that gets the latest and sends nothing (its toasts and editor refresh). */
     onGetLatest?: () => Promise<void>;
     /** Repair the online copy: the page's repair (its toasts and editor refresh). */
-    onRepair?: () => Promise<void>;
+    onRepair?: () => Promise<string | null | void>;
     /** Save a version now: the page's own save (its toast); resolves "unchanged" when there was nothing new. */
     onSaveVersion?: () => Promise<"saved" | "unchanged">;
     /** Open the Version history screen over this one, on a version or the newest. */
@@ -91,6 +92,8 @@
     onOpenAccounts?: () => void;
     /** "Choose…" on the two-takes card: opens the Problems list on them (the host reports a count once it can). */
     onReviewDecisions?: () => void;
+    /** Passages with two takes waiting for a decision (the same count the status bar shows). */
+    decide?: number;
     /** Start over's outcome: Book setup closes with the book, so it is a toast. */
     toast?: ToastController | null;
   } = $props();
@@ -145,7 +148,7 @@
 
   const card = $derived(
     situation
-      ? backupCard({ situation, backup, checking, where, github: onGitHub, autoBackup, now, bookName, drafts })
+      ? backupCard({ situation, backup: backup && decide > 0 ? { ...backup, decide } : backup, checking, where, github: onGitHub, autoBackup, now, bookName, drafts })
       : null,
   );
 
@@ -385,6 +388,10 @@
   /** What a repair would set aside (the host's preview, when it has one). */
   let setAside = $state<{ revisions: string[]; versions: number } | null>(null);
   let setAsideLoading = $state(false);
+  /** Saved copies from earlier repairs that this one would move into the safety folder too. */
+  let savedCopies = $state(0);
+  /** Where the last repair put the old history, for "Show in folder". */
+  let repairBackup = $state<string | null>(null);
 
   // Two backups in a row that failed for a reason other than being offline: open the drawer.
   $effect(() => {
@@ -430,13 +437,12 @@
     setAside = null;
     if (!projectDir) return;
     // The host's preview (what exists only on this computer), when this version of it has one.
-    const preview = (api.remote as unknown as { previewRepair?: (dir: string) => Promise<{ setAside: { revisions: string[]; versions: number }; unreadable?: boolean }> }).previewRepair;
-    if (!preview) return;
     setAsideLoading = true;
     try {
-      const r = await preview(projectDir);
+      const r = await api.remote.previewRepair(projectDir);
       // `unreadable`: this computer's history couldn't be read, so no honest list: keep the generic wording.
       setAside = r?.unreadable ? null : (r?.setAside ?? null);
+      savedCopies = r?.unreadable ? 0 : (r?.repairCopies ?? 0);
     } catch {
       setAside = null;
     } finally {
@@ -444,14 +450,19 @@
     }
   }
 
-  const setAsideText = $derived(repairSetAsideText(setAside));
+  const setAsideText = $derived(repairSetAsideText(setAside, savedCopies));
+
+  const showBackupFolder = () => {
+    if (repairBackup) void api.remote.showRepairBackup(repairBackup).catch(() => {});
+  };
 
   async function repair() {
     repairAsk = false;
     running = "repair";
+    repairBackup = null;
     await act(async () => {
-      await onRepair?.();
-      return null;
+      repairBackup = (await onRepair?.()) || null;
+      return repairBackup ? "Repaired. Your old version history is kept in a safety folder outside your book." : null;
     });
     running = null;
     if (projectDir) onlineCopy.dropVersionsPage(projectDir);
@@ -545,7 +556,7 @@
         </div>
       {/if}
 
-      {#if done}<p class="status-note done" role="status" bind:this={doneEl} tabindex="-1">{done}</p>{/if}
+      {#if done}<p class="status-note done" role="status" bind:this={doneEl} tabindex="-1">{done}{#if repairBackup} <button class="link" onclick={showBackupFolder}>Show in folder</button>{/if}</p>{/if}
       {#if actionError}<p class="status-note error" role="alert" bind:this={errorEl} tabindex="-1">{actionError}</p>{/if}
     </section>
 

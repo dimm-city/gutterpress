@@ -165,6 +165,16 @@
     await tick();
     if (!cached) dialogEl?.focus();
     else (filterEl ?? dialogEl)?.focus();
+    // Nothing cached: the first page (up to 100) shows as soon as it is read, while the rest keep loading.
+    if (!cached) {
+      void api.remote.listRemoteRepositoriesPage(1, force ? { refresh: true } : undefined).then((r) => {
+        if (repos.length === 0 && reposLoading) {
+          repos = r.repos;
+          reposLoading = false;
+          reposRefreshing = r.hasMore;
+        }
+      }).catch(() => {});
+    }
     try {
       repos = (await refreshRepositories(account, force ? { refresh: true } : undefined)) as RemoteRepository[];
     } catch (e) {

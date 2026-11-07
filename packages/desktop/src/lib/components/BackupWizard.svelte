@@ -113,6 +113,7 @@
     progress = null;
     slow = false;
     closedEarly = false;
+    sendStartedAt = Date.now();
     const slowTimer = setTimeout(() => (slow = true), 20_000);
     const poll = setInterval(() => void readProgress(), 700);
     try {
@@ -148,12 +149,12 @@
     }
   }
 
+  let sendStartedAt = 0;
   async function readProgress() {
     try {
-      const r = await fetch("/api/remote/set-up-backup-progress", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      if (!r.ok) return;
-      const p = (await r.json()) as { label?: string } | null;
-      if (p?.label) progress = p.label;
+      const { progress: p } = await api.remote.setUpBackupProgress(projectDir);
+      // Only a step from this attempt: an older one left behind by an earlier try is ignored.
+      if (p?.label && Date.parse(p.at) >= sendStartedAt - 1000) progress = p.label;
     } catch {
       // No progress to show: the plain "Sending your book…" stays.
     }

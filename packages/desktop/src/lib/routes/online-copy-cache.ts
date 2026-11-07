@@ -51,7 +51,7 @@ export interface OnlineCopySnapshot {
 
 export interface OnlineCopyReads {
   diagnose: (dir: string) => Promise<ProjectRemoteDiagnosis>;
-  listRevisions: (dir: string, options?: { refresh?: boolean }) => Promise<RevisionList | null>;
+  listRevisions: (dir: string, options?: { refresh?: boolean; maxAgeMs?: number }) => Promise<RevisionList | null>;
   firstVersionsPage?: (dir: string) => Promise<{ entries: VersionEntry[]; hasMore: boolean }>;
 }
 
@@ -85,7 +85,7 @@ export function createOnlineCopyCache(reads: OnlineCopyReads, now: () => number 
 
   const generation = new Map<string, number>();
 
-  async function load(dir: string, network: boolean, diagnoseToo: boolean): Promise<OnlineCopySnapshot> {
+  async function load(dir: string, network: boolean, diagnoseToo: boolean, forceCheck: boolean): Promise<OnlineCopySnapshot> {
     const gen = (generation.get(dir) ?? 0) + 1;
     generation.set(dir, gen);
     const latest = () => generation.get(dir) === gen;
@@ -107,7 +107,8 @@ export function createOnlineCopyCache(reads: OnlineCopyReads, now: () => number 
     let list: RevisionList | null = local;
     let online = false;
     try {
-      list = (await reads.listRevisions(dir, { refresh: true })) ?? local;
+      // The host reuses an online check younger than its own window (20 s); right after an action it must be a real one.
+      list = (await reads.listRevisions(dir, forceCheck ? { refresh: true, maxAgeMs: 0 } : { refresh: true })) ?? local;
       online = (list as (RevisionList & WithChecked) | null)?.checkedOnline ?? true;
     } catch {
       // The list stays as it was.
@@ -133,7 +134,7 @@ export function createOnlineCopyCache(reads: OnlineCopyReads, now: () => number 
       const running = networkRuns.get(dir);
       if (running) return running;
     }
-    const p = load(dir, network, options.diagnose ?? false);
+    const p = load(dir, network, options.diagnose ?? false, options.fresh ?? false);
     if (network) {
       networkRuns.set(dir, p);
       void p.then(

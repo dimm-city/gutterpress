@@ -3560,6 +3560,8 @@
     onSaveVersion={saveVersion}
     onBrowseVersions={(id) => (versionsFor = { id: id ?? null })}
     onCloseBook={() => lifecycle.stopPreview()}
+    decide={decideCount}
+    onReviewDecisions={() => { closeProjectSettings(); openProblemsList(); }}
     onOpenAccounts={() => (accountsOpen = true)}
   />
 {/if}

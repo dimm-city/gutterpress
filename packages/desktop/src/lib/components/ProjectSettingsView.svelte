@@ -87,6 +87,8 @@
     onBrowseVersions,
     onCloseBook,
     onOpenAccounts,
+    decide = 0,
+    onReviewDecisions,
     triggerEl,
   }: {
     projectDir: string | null;
@@ -115,7 +117,7 @@
     /** The Backup & history tab's Get latest: the page's get-latest pass, which sends nothing. */
     onGetLatest?: () => Promise<void>;
     /** The Backup & history tab's Repair the online copy: the page's repair. */
-    onRepair?: () => Promise<void>;
+    onRepair?: () => Promise<string | null | void>;
     /** The Backup & history tab's Save a version: the page's save; resolves "unchanged" when there was nothing new. */
     onSaveVersion?: () => Promise<"saved" | "unchanged">;
     /** Backup & history › History: the parent opens the Version history screen over this one. */
@@ -124,6 +126,10 @@
     onCloseBook?: () => Promise<boolean>;
     /** Open the Accounts page, over this one. */
     onOpenAccounts?: () => void;
+    /** Passages with two takes waiting for a decision (the status bar's count). */
+    decide?: number;
+    /** Backup & history › Choose…: close Book setup and open the Problems list on them. */
+    onReviewDecisions?: () => void;
     /** The control that opened the view, for focus restore on close. */
     triggerEl?: HTMLElement | null;
   } = $props();
@@ -340,7 +346,7 @@
 
       {#if activeTab === "online-copy"}
         <!-- This book's versions, revisions and online copy: signing in to its GitHub account or server happens here, in place; Version history replaces the tab's content. -->
-        <ProjectConnectionsSection bind:this={onlineCopy} {projectDir} {backup} {versionsProblem} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} {onBackUpNow} {onGetLatest} {onRepair} {onSaveVersion} {onBrowseVersions} {onCloseBook} {onOpenAccounts} {toast} />
+        <ProjectConnectionsSection bind:this={onlineCopy} {projectDir} {backup} {versionsProblem} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} {onBackUpNow} {onGetLatest} {onRepair} {onSaveVersion} {onBrowseVersions} {onCloseBook} {onOpenAccounts} {decide} {onReviewDecisions} {toast} />
       {/if}
 
       {#if activeTab === "advanced"}
