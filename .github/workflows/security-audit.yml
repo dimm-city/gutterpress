@@ -24,10 +24,12 @@ jobs:
         # No install is needed. Remove each exception once the package can move
         # to a patched release (`bun audit` with no --ignore lists what is left):
         # deepmerge 4.3.1 (GHSA-gcqx-w48m-w2h4, low), via the desktop app's
-        # @sveltejs/vite-plugin-svelte, has no patched release yet; glob 13.0.6
+        # @sveltejs/vite-plugin-svelte, has no patched release yet; glob 13.0.7
         # (GHSA-3g3m-2fjr-6pw4, moderate: affects 9.0.0-14.0.1, patched in 14.0.2),
-        # the CLI's own runtime dependency (`^13`) and htmlhint's and rimraf's, so
-        # the fix is a major bump; minimatch 9.0.9 and 10.2.6 (GHSA-g3hv-75wg-m249,
-        # moderate: affects 7.0.0-11.0.0), via glob, @typescript-eslint and
-        # electron-builder, whose ranges stop below 11.
+        # only through htmlhint 1.9.2 (its latest, `glob ^13`; the CLI's own glob
+        # and rimraf are on 14 now); minimatch 9.0.9 and 10.2.6 (GHSA-g3hv-75wg-m249,
+        # moderate: affects 7.0.0-11.0.0), via @typescript-eslint, electron-builder's
+        # app-builder-lib and @electron/universal, whose latest releases still ask
+        # for `^10`/`^9`. bun has no per-parent overrides, and a global minimatch 11
+        # override would break eslint's `require("minimatch")` (3.x, callable export).
         run: bun audit --ignore=GHSA-gcqx-w48m-w2h4 --ignore=GHSA-3g3m-2fjr-6pw4 --ignore=GHSA-g3hv-75wg-m249
