@@ -100,7 +100,7 @@ describe("status bar structure", () => {
   test("a reader gets no status control and no Update button", () => {
     expect(markup).toContain("{#if showStatus}");
     expect(src).toContain("showStatus = $derived(!!projectDir && sourceMode === \"folder\" && !readerMode)");
-    expect(update()).toContain("run(line.button!.action)");
+    expect(update()).toContain("run(line.button!.action, false)");
     // The old Get latest and Sync buttons are gone: one button, driven by the state.
     expect(markup).not.toContain("get-latest");
     expect(markup).not.toContain('"Sync"');

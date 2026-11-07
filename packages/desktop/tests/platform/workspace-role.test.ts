@@ -63,7 +63,7 @@ describe("a Reader's toolbar", () => {
 describe("a Reader's status bar and online copy", () => {
   test("has no status control or Update button, and the flag reaches it", () => {
     expect(statusBar).toContain('let showStatus = $derived(!!projectDir && sourceMode === "folder" && !readerMode);');
-    expect(statusBar).toMatch(/\{#if line\.button && canSync\}[\s\S]*?run\(line\.button!\.action\)[\s\S]*?\{\/if\}/);
+    expect(statusBar).toMatch(/\{#if line\.button && canSync\}[\s\S]*?run\(line\.button!\.action, false\)[\s\S]*?\{\/if\}/);
     expect(page).toMatch(/<StatusBar[\s\S]*?\{readerMode\}[\s\S]*?\/>/);
   });
 

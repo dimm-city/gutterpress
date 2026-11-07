@@ -57,7 +57,7 @@ export interface SyncControllerDeps {
   /** Host round-trip: "Get latest", the same pass with `push: false`: fetch and merge, never send. */
   getLatest: (dir: string) => Promise<SyncOutcome>;
   /** Host round-trip: has the book's open revision moved online? (reads refs only; never throws) */
-  checkUpdates: (dir: string) => Promise<{ available: boolean; reason?: string }>;
+  checkUpdates: (dir: string) => Promise<{ available: boolean; reason?: string; host?: string }>;
   /** Host round-trip: "Repair the online copy" for the given project dir. */
   repair: (dir: string) => Promise<{ outcome: SyncOutcome; restoredFiles: string[] }>;
   /** Host round-trip: diagnose the project's remote (protocol/credential/provider). */
@@ -96,7 +96,12 @@ export interface ManualBackup {
   state: SyncState | "not-found";
   /** ISO time the attempt finished. */
   at: string;
+  /** `github` when the online copy is on GitHub (kept so the "Sign in again" secondary still shows). */
+  host?: string;
 }
+
+/** A state that is a problem to fix, not an answer: a later good check or a sign-in clears it. */
+const FAILURE_STATES: ReadonlySet<string> = new Set(["offline", "auth", "not-found"]);
 
 const baseName = (p: string): string => p.split("/").pop() ?? p;
 
@@ -161,9 +166,12 @@ export class SyncController {
   checkedDir = $state<string | null>(null);
   /** When a pass last wrote files into the book (the host's or a manual one), so the editor's reload after it stays quiet. */
   private filesWrittenAt = 0;
+  /** When the host's own pass last said "syncing" and has not yet sent its final status (0 = none running). */
+  private hostPassStartedAt = 0;
   /** True while a pass is running, or just wrote files: a reload then is that pass's own doing. */
   get passTouchedFiles(): boolean {
-    return this.forceSyncing || this.gettingLatest || Date.now() - this.filesWrittenAt < 10_000;
+    const hostPass = this.hostPassStartedAt > 0 && Date.now() - this.hostPassStartedAt < 120_000;
+    return this.forceSyncing || this.gettingLatest || hostPass || Date.now() - this.filesWrittenAt < 10_000;
   }
   /** A pass wrote files into the book (called for the host's own passes too). */
   noteFilesWritten(): void {
@@ -184,9 +192,10 @@ export class SyncController {
     const dir = this.deps.currentDir();
     const s = this.streamed?.dir === dir ? this.streamed : null;
     const m = this.lastManual?.dir === dir ? this.lastManual : null;
-    if (m && (!s || Date.parse(m.at) >= s.seenAt)) return { state: m.state, lastSyncAt: m.at };
-    // The host's status may not carry a time (none has run in its session): the last manual pass can.
-    if (s && !s.lastSyncAt && m) return { ...s, lastSyncAt: m.at };
+    if (m && (!s || Date.parse(m.at) >= s.seenAt)) return { state: m.state, lastSyncAt: m.at, ...(m.host ? { host: m.host } : {}) };
+    // The host's status may not carry a time (none has run in its session): a manual pass that backed up can
+    // (a failed one has no backup time to lend).
+    if (s && !s.lastSyncAt && m?.state === "synced") return { ...s, lastSyncAt: m.at };
     return s;
   }
 
@@ -215,6 +224,9 @@ export class SyncController {
     // keep the answer on screen instead of flashing "Backing up…" (the pass's own result replaces it).
     // Only a `syncing` that comes straight after it (the orchestrator's first pass starts about a second
     // after open): a later one is a real pass, and a real push must show.
+    // The host's pass may pull changes and reload the editor before its final status arrives: note it
+    // running before the guard below can return, and clear it on the terminal status.
+    this.hostPassStartedAt = status.state === "syncing" ? Date.now() : 0;
     const prev = this.streamed;
     if (
       status.state === "syncing" &&
@@ -256,6 +268,7 @@ export class SyncController {
     if (this.streamed?.dir !== dir) void this.seedStatus(dir);
     // A sign-in that was just saved answers a "didn't accept the saved sign-in".
     else if (this.streamed.state === "auth" || this.streamed.state === "connect") this.streamed = null;
+    if (this.lastManual?.dir === dir && this.lastManual.state === "auth") this.lastManual = null;
     try {
       const diag = await this.deps.diagnose(dir);
       // Project may have changed while the diagnosis was in flight.
@@ -278,7 +291,7 @@ export class SyncController {
     const dir = this.deps.currentDir();
     if (!dir || !this.syncDiag?.canSync || (this.deps.autoBackup?.() ?? true) || this.deps.isReader?.()) return;
     if (this.forceSyncing || this.gettingLatest) return;
-    let result: { available: boolean; reason?: string };
+    let result: { available: boolean; reason?: string; host?: string };
     try {
       result = await this.deps.checkUpdates(dir);
     } catch {
@@ -288,11 +301,13 @@ export class SyncController {
     // Any answer is an answer: record it, so the bar stops saying "Checking online…". An offline or
     // rejected check is also the online copy's latest word, in place of an older local one.
     this.checkedDir = dir;
-    if (result.reason === "offline" || result.reason === "auth") {
-      this.recordManual(dir, result.reason);
+    if (result.reason === "offline" || result.reason === "auth" || result.reason === "not-found") {
+      this.recordManual(dir, result.reason, result.host);
       return;
     }
     if (result.reason) return;
+    // A good answer: an earlier "offline" or "can't find" from a check no longer holds.
+    if (this.lastManual?.dir === dir && FAILURE_STATES.has(this.lastManual.state)) this.lastManual = null;
     const discovered = result.available && !this.updatesAvailable;
     this.updatesAvailable = result.available;
     if (!result.available) this.deps.toast()?.dismissKey?.(NEW_ONLINE_KEY);
@@ -477,8 +492,8 @@ export class SyncController {
     this.deps.onSyncCompleted(merged, filesChanged, quiet);
   }
 
-  private recordManual(dir: string, state: SyncState | "not-found"): void {
-    this.lastManual = { dir, state, at: new Date().toISOString() };
+  private recordManual(dir: string, state: SyncState | "not-found", host?: string): void {
+    this.lastManual = { dir, state, at: new Date().toISOString(), ...(host ? { host } : {}) };
   }
 
   /**

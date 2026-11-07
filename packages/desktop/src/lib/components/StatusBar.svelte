@@ -188,8 +188,9 @@
   }
   const busy = $derived(forceSyncing || gettingLatest || forceSaving);
 
-  function run(id: StatusActionId): void {
-    closePopover(true);
+  /** `fromPopover`: the action came from the panel, so focus goes back to the control; the bar's own button keeps focus where it is. */
+  function run(id: StatusActionId, fromPopover = false): void {
+    closePopover(fromPopover);
     switch (id) {
       case "save":
         void onSave?.();
@@ -271,7 +272,7 @@
           aria-expanded={line.click === "popover" ? popoverOpen : undefined}
         ><Icon name={line.icon} size={13} />{#if line.left}<span class="clause here">{line.left}</span><span class="sep" aria-hidden="true">·</span>{/if}<span class="clause status-text">{line.right}</span></button>
         {#if popoverOpen}
-          <StatusPopover {line} {busy} onAction={run} onClose={closePopover} />
+          <StatusPopover {line} {busy} onAction={(id) => run(id, true)} onClose={closePopover} />
         {/if}
       </div>
       <!-- Changes only when the state does, never on the minute tick. -->
@@ -281,7 +282,7 @@
           type="button"
           class="status-icon-btn labelled"
           class:has-updates={line.key === "behind" || line.key === "behind-ahead"}
-          onclick={() => run(line.button!.action)}
+          onclick={() => run(line.button!.action, false)}
           disabled={busy}
           title={buttonTitle}
         ><Icon name="refresh-cw" size={14} /><span>{forceSyncing || gettingLatest ? "Updating…" : line.button.label}</span></button>

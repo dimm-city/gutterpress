@@ -295,6 +295,8 @@ describe("statusLine: buttons, tooltips and tone shapes", () => {
     expect(full.primary).toEqual({ id: "open-backup", label: "Open backup & history" });
     const net = statusLine(input({ hasRemote: true, sync: "error", message: "The connection timed out. Try again in a moment." }));
     expect(net.primary).toEqual({ id: "try-again", label: "Try again" });
+    expect(net.secondary).toEqual({ id: "open-backup", label: "Open backup & history" });
+    expect(net.detail).toBe("Backup stopped for now. Your work is safe on this computer.");
     expect(statusLine(input({ hasRemote: true, sync: "error" })).primary?.id).toBe("try-again");
   });
 

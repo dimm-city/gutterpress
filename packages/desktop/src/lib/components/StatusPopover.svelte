@@ -40,7 +40,8 @@
     let current = key;
     return {
       update(next: string) {
-        if (next !== current) onClose(false);
+        // Focus inside the panel would be left on nothing: hand it back to the status control.
+        if (next !== current) onClose(!!root?.contains(document.activeElement));
         current = next;
       },
     };

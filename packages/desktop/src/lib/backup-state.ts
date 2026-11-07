@@ -59,6 +59,10 @@ export type LastBackup = Pick<SyncStatus, "lastSyncAt" | "message"> & {
   decide?: number;
   /** From this computer's own records only; the network has not confirmed it yet. */
   local?: boolean;
+  /** The host's machine-readable cause for an error (`not-found`). */
+  reason?: string;
+  /** `github` when the online copy is on GitHub. */
+  host?: string;
 };
 
 export interface ReadyView {

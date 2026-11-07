@@ -359,10 +359,12 @@ export function statusLine(i: StatusLineInput): StatusLine {
         key: "paused",
         right: "Backup paused",
         title: b?.message || "Backing up is paused. Click to see why.",
-        detail: `${b?.message || "Backing up is paused."} ${SAFE}`,
+        // A dropped connection says nothing the author can act on; anything else shows the host's own words.
+        detail: transient ? `Backup stopped for now. ${SAFE}` : `${b?.message || "Backing up is paused."} ${SAFE}`,
         icon: "triangle-alert",
         tone: "warn",
         primary: transient ? { id: "try-again", label: "Try again" } : { id: "open-backup", label: "Open backup & history" },
+        ...(transient ? { secondary: { id: "open-backup", label: "Open backup & history" } as const } : {}),
       });
     }
     // 9-11. Out of step with the online copy.

@@ -410,7 +410,7 @@ test("handleRepair: a no-op when no project is open", async () => {
 
 // ── The "new changes online" prompt and Sync ────────────────────────────────
 
-function makeManual(opts: { auto?: boolean; reader?: boolean; available?: boolean; reason?: string; sync?: SyncOutcome | Error; latest?: SyncOutcome | Error; showless?: boolean } = {}) {
+function makeManual(opts: { auto?: boolean; reader?: boolean; available?: boolean; reason?: string; host?: string; sync?: SyncOutcome | Error; latest?: SyncOutcome | Error; showless?: boolean } = {}) {
   const show = spy<[string, string?, number?, { label: string; onClick: () => void }?, string?]>();
   const toast = { ...makeToast(), ...(opts.showless ? {} : { show }) };
   const onFilesChanged = spy<[]>();
@@ -420,7 +420,7 @@ function makeManual(opts: { auto?: boolean; reader?: boolean; available?: boolea
   const syncs: string[] = [];
   /** Get latest passes: the same pass with push: false, which never sends. */
   const pulls: string[] = [];
-  const state = { dir: "/proj" as string | null, available: opts.available ?? true, reason: opts.reason };
+  const state = { dir: "/proj" as string | null, available: opts.available ?? true, reason: opts.reason as string | undefined, host: opts.host };
   const outcome = opts.sync ?? { status: "synced", message: "", mergedRemoteChanges: true, filesChanged: true };
   // What the lib's push: false pass returns: always "up-to-date", never "synced".
   const latest = opts.latest ?? { status: "up-to-date", message: "", filesChanged: true };
@@ -435,7 +435,7 @@ function makeManual(opts: { auto?: boolean; reader?: boolean; available?: boolea
     },
     checkUpdates: (d) => {
       checks.push(d);
-      return Promise.resolve({ available: state.available, ...(state.reason ? { reason: state.reason } : {}) });
+      return Promise.resolve({ available: state.available, ...(state.reason ? { reason: state.reason } : {}), ...(state.host ? { host: state.host } : {}) });
     },
     repair: () => Promise.reject(new Error("not wired")),
     diagnose: () => Promise.resolve(DIAG),
@@ -806,11 +806,12 @@ test("a 'syncing' after a network 'synced' shows, and a pass ending in error rep
 });
 
 test("a failed check for online changes is still an answer: the bar stops 'Checking online…'", async () => {
-  for (const reason of ["offline", "auth", "no-remote"]) {
-    const m = makeManual({ reason });
+  for (const reason of ["offline", "auth", "not-found", "no-remote"]) {
+    const m = makeManual({ reason, host: reason === "not-found" ? "github" : undefined });
     await m.ctrl.refreshSyncDiag("/proj");
     await m.ctrl.checkForUpdates();
     expect(m.ctrl.checkedDir).toBe("/proj");
+    if (reason === "not-found") expect(m.ctrl.backup).toMatchObject({ state: "not-found", host: "github" });
     if (reason !== "no-remote") expect(m.ctrl.backup).toMatchObject({ state: reason });
   }
 });
@@ -821,4 +822,43 @@ test("the host's own two-takes toast has its own key, so a manual error is never
   m.ctrl.applyConvergeReport(["a.md"], [], true);
   const keys = m.toast.show.calls.map((c) => c[4]);
   expect(keys).toEqual(["sync-outcome", "converge-ambient"]);
+});
+
+test("offline, then a successful check: the failure is cleared and the bar can say something true again", async () => {
+  const m = makeManual({ reason: "offline", available: false });
+  await m.ctrl.refreshSyncDiag("/proj");
+  await m.ctrl.checkForUpdates();
+  expect(m.ctrl.backup).toMatchObject({ state: "offline" });
+  m.state.reason = undefined;
+  await m.ctrl.checkForUpdates();
+  expect(m.ctrl.backup).toBe(null);
+  expect(m.ctrl.checkedDir).toBe("/proj");
+});
+
+test("auth, then a sign-in (the diagnosis refresh): the 'sign in' record goes", async () => {
+  const m = makeManual({ reason: "auth", available: false });
+  await m.ctrl.refreshSyncDiag("/proj");
+  await m.ctrl.checkForUpdates();
+  expect(m.ctrl.backup).toMatchObject({ state: "auth" });
+  m.state.reason = undefined;
+  await m.ctrl.refreshSyncDiag("/proj");
+  expect(m.ctrl.backup).toBe(null);
+});
+
+test("a failed record never lends its time to the host's status", () => {
+  const h = make();
+  h.ctrl.applyStatus({ state: "synced", projectDir: "/proj", lastSyncAt: null } as SyncStatus);
+  (h.ctrl as unknown as { lastManual: unknown }).lastManual = { dir: "/proj", state: "offline", at: "2026-11-07T10:00:00Z" };
+  expect(h.ctrl.backup?.lastSyncAt).toBe(null);
+});
+
+test("a host pass counts as touching files from its 'syncing' (even a skipped one) until its final status", () => {
+  const h = make();
+  h.ctrl.applyStatus({ state: "synced", projectDir: "/proj", lastSyncAt: null, source: "local" } as unknown as SyncStatus);
+  expect(h.ctrl.passTouchedFiles).toBe(false);
+  h.ctrl.applyStatus({ state: "syncing", projectDir: "/proj", lastSyncAt: null } as SyncStatus); // the flicker guard skips it
+  expect(h.ctrl.backup).toMatchObject({ state: "synced" });
+  expect(h.ctrl.passTouchedFiles).toBe(true);
+  h.ctrl.applyStatus({ state: "synced", projectDir: "/proj", lastSyncAt: "2026-11-07T10:00:00Z" } as SyncStatus);
+  expect(h.ctrl.passTouchedFiles).toBe(false);
 });
