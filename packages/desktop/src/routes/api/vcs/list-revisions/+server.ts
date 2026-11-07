@@ -28,9 +28,12 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; refresh: b
   call: async ({ body }) => {
     const lib = await loadLib();
     // A switch the app died in the middle of is put right first; `repairNotice`
-    // tells the author, once.
-    await lib.repairInterruptedSwitch(body.projectDir);
-    const repairNotice = await lib.takeSwitchRepairNotice(body.projectDir);
+    // tells the author, once. A repair that keeps failing must not hide the
+    // card: the list still comes back, with `unfinishedSwitch` saying what is
+    // wrong so the author can try again or keep the files as they are.
+    await lib.repairInterruptedSwitch(body.projectDir).catch(() => null);
+    const repairNotice = await lib.takeSwitchRepairNotice(body.projectDir).catch(() => null);
+    const unfinishedSwitch = await lib.unfinishedSwitchState(body.projectDir).catch(() => null);
     // `checkedAt`: when the online copy was last asked (ISO; null if never this session).
     // `checkedOnline`: whether THIS call's check worked.
     let checkedOnline = false;
@@ -56,6 +59,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; refresh: b
         checkedOnline,
         ...(reason ? { reason } : {}),
         ...(repairNotice ? { repairNotice } : {}),
+        ...(unfinishedSwitch ? { unfinishedSwitch } : {}),
       }
     );
   },
