@@ -95,6 +95,7 @@
     content = "",
     onChange,
     onSave,
+    onBlur,
     onAnchorLine,
     components = [],
     variants = [],
@@ -116,6 +117,8 @@
     onBlockProperties?: () => void;
     onChange?: (value: string) => void;
     onSave?: () => void;
+    /** The editor lost focus: flush the pending save now. */
+    onBlur?: () => void;
     /**
      * Editor→preview sync. Fires with the 1-based "anchor" source line: the top
      * visible line on scroll, or the caret line on a deliberate (non-typing)
@@ -432,6 +435,7 @@
         ]),
         editableTheme,
         EditorView.lineWrapping,
+        EditorView.domEventHandlers({ blur: () => { onBlur?.(); return false; } }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !applyingExternal) {
             onChange?.(update.state.doc.toString());

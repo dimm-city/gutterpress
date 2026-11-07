@@ -1344,6 +1344,13 @@
     editorFiles.reset();
   }
 
+  /** Blur / window hidden: save a pending edit now (autosave on only; with it
+   *  off, edits wait for an explicit save). Errors surface via onError. */
+  async function flushIfAutosaving(): Promise<void> {
+    if (!buffer?.hasPendingSave || !settings.current.versionHistory.autoSave) return;
+    await buffer.flush().catch(() => {});
+  }
+
   async function flushEditorBuffer(
     target: EditorBuffer | null = buffer,
     recordMarker = true,
@@ -2484,8 +2491,16 @@
       onPreviewNavKey(e);
     }
 
+    function onHidden() {
+      if (document.visibilityState === "hidden") void flushIfAutosaving();
+    }
+
     window.addEventListener("keydown", onKeydown);
-    return () => window.removeEventListener("keydown", onKeydown);
+    document.addEventListener("visibilitychange", onHidden);
+    return () => {
+      window.removeEventListener("keydown", onKeydown);
+      document.removeEventListener("visibilitychange", onHidden);
+    };
   });
 
   // ----------------------------------------------------------------
@@ -3185,6 +3200,7 @@
               content={editorContent}
               onChange={onEditorChange}
               onSave={() => void handleForceSave()}
+              onBlur={() => void flushIfAutosaving()}
               onAnchorLine={(line, origin) =>
                 editorSync.onEditorAnchorLine(line, origin, editorChapter)}
               components={projectComponents}

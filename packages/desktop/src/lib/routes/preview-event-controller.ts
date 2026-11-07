@@ -107,7 +107,7 @@ export class PreviewEventController {
   private deps: PreviewEventDeps;
   // First-render-only success-toast gate. `renderingComplete` fires for
   // BOTH the initial render of a project AND every watcher-triggered rebuild
-  // (the 500ms auto-save debounce), so toasting unconditionally stacks
+  // (the auto-save debounce), so toasting unconditionally stacks
   // "Your book is ready — N pages" toasts nearly permanently on screen while
   // the author types. Later rebuilds stay ambient (ProblemsPanel/page count
   // in existing chrome); only the first render of a session gets the toast.
