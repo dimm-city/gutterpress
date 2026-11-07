@@ -507,7 +507,8 @@
         <span class="status-icon"><Icon name={card.icon} size={18} /></span>
         <div class="status-text">
           <h3 id="online-status-title">{card.title}</h3>
-          <p>{card.detail}{#if card.showChecked && checkedAt !== null && !checking} {" "}<span class="checked">Checked {checkedAgo(checkedAt, now)}.</span>{/if}</p>
+          <p>{card.detail}</p>
+          {#if card.showChecked && checkedAt !== null && !checking}<p class="checked">Checked {checkedAgo(checkedAt, now)}.</p>{/if}
           {#if card.note}<p class="note">{card.note}</p>{/if}
         </div>
         <div class="status-action">
@@ -740,8 +741,7 @@
   .auto { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 12.5px; color: var(--app-text-secondary); }
   .auto input { margin: 0; }
   .section-foot { display: flex; align-items: center; gap: 12px; }
-  .checked, .status-text .note { color: var(--app-text-muted); }
-  .status-text .note { margin: 4px 0 0; font-size: 12px; }
+  .status-text .checked, .status-text .note { margin: 4px 0 0; font-size: 12px; color: var(--app-text-muted); }
   .trouble summary { color: var(--app-text-secondary); display: flex; align-items: center; gap: 6px; }
   .trouble[open] summary :global(svg) { transform: rotate(90deg); }
   .result { display: flex; align-items: center; gap: 6px; padding: 4px 0 0; }

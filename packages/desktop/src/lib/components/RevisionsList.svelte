@@ -33,6 +33,8 @@
   import * as onlineCopy from "#lib/routes/online-copy-cache.ts";
   import { dialogBehavior } from "#lib/dialog.ts";
   import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
+  import { whenShort } from "#lib/routes/version-timeline.ts";
+  import { agoFull } from "#lib/routes/backup-card.ts";
   import { draftLabels, draftName, revisionNameFrom, revisionsShown } from "#lib/revision-name.ts";
 
   let {
@@ -310,8 +312,9 @@
           {#each list.repairCopies as c (c.id)}
             <li class="rev">
               <div class="rev-main">
-                <span class="rev-name">Copy from {copyWhen(c)}</span>
-                {#if c.revision}<span class="rev-where plain">from "{c.revision}"</span>{/if}
+                <span class="rev-name">Copy from {whenShort(c.savedAt, Date.now())}</span>
+                <span class="rev-where plain">{agoFull(c.savedAt, Date.now())}</span>
+                {#if c.revision}<span class="rev-where plain">from "{label(c.revision)}"</span>{/if}
                 <span class="rev-where {c.saved ? 'ok' : 'pending'}">{c.saved ? "Your changes are saved in a version" : "Not saved anywhere else"}</span>
               </div>
               <div class="rev-actions">
