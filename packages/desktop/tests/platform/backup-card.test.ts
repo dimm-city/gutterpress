@@ -20,12 +20,12 @@ describe("backupCard", () => {
     expect(card({ backup: { state: "idle", lastSyncAt: null } }).title).toBe("Your online copy is set up");
     const c = card({ backup: { state: "unsent", lastSyncAt: new Date(NOW - 2 * 3600_000).toISOString() }, checking: true });
     expect(c.title).toBe("Checking your online copy…");
-    expect(c.detail).toContain("2 hrs ago");
+    expect(c.detail).toContain("2 hours ago");
   });
   test("safe names the place once and the time", () => {
     const c = card({ backup: synced() });
     expect(c).toMatchObject({ title: "Your book is safe online", tone: "ok", action: "back-up" });
-    expect(c.detail).toBe("Last backed up 3 mins ago to GitHub · ada/harbor. Gutterpress backs up as you work.");
+    expect(c.detail).toBe("Last backed up 3 minutes ago to GitHub · ada/harbor. Gutterpress backs up as you work.");
     expect(c.detail.match(/ada\/harbor/g)?.length).toBe(1);
   });
   test("ahead, behind, both", () => {
@@ -38,8 +38,8 @@ describe("backupCard", () => {
     expect(card({ backup: synced({ decide: 2, behind: true }) })).toMatchObject({ title: "2 passages need your decision", action: "review-decisions" });
   });
   test("offline, sign-in lost, can't find, paused", () => {
-    expect(card({ backup: { state: "offline", lastSyncAt: null } })).toMatchObject({ title: "Can't reach the online copy", action: "try-again" });
-    expect(card({ backup: { state: "auth", lastSyncAt: null } })).toMatchObject({ title: "Sign in again to keep backing up", action: "sign-in" });
+    expect(card({ backup: { state: "offline", lastSyncAt: null } })).toMatchObject({ title: "You're offline", action: "try-again" });
+    expect(card({ backup: { state: "auth", lastSyncAt: null } })).toMatchObject({ title: "Your saved sign-in no longer works", action: "sign-in" });
     expect(card({ backup: { state: "not-found", lastSyncAt: null } })).toMatchObject({ title: "Can't find the online copy", action: "check-address", secondary: "sign-in" });
     expect(card({ backup: { state: "error", lastSyncAt: null, message: "Disk is full." } })).toMatchObject({ title: "Backup paused", action: "try-again" });
   });
@@ -53,8 +53,8 @@ describe("backupCard", () => {
 describe("checkedAgo", () => {
   test("seconds then minutes", () => {
     expect(checkedAgo(NOW - 2000, NOW)).toBe("just now");
-    expect(checkedAgo(NOW - 20_000, NOW)).toBe("20 s ago");
-    expect(checkedAgo(NOW - 5 * 60_000, NOW)).toBe("5 mins ago");
+    expect(checkedAgo(NOW - 20_000, NOW)).toBe("20 seconds ago");
+    expect(checkedAgo(NOW - 5 * 60_000, NOW)).toBe("5 minutes ago");
   });
 });
 

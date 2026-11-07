@@ -40,6 +40,7 @@
     tokenUrl,
     hint,
     submitLabel = "Connect",
+    showTitle = true,
     takeFocus = false,
     onConnected,
     onCancel,
@@ -54,6 +55,8 @@
     tokenUrl?: string | null;
     hint?: string;
     submitLabel?: string;
+    /** Heading naming the service; left out where the card above already says whose sign-in this is. */
+    showTitle?: boolean;
     /** Put the cursor in the field to fill first (the address, or the token of a known server) when the form appears. */
     takeFocus?: boolean;
     /** The server accepted the token and it is saved. */
@@ -127,7 +130,7 @@
 </script>
 
 <form class="server-form" onsubmit={(e) => { e.preventDefault(); void submit(); }}>
-  {#if knownHost}<h4 class="sign-in-title">Sign in to {hostName}</h4>{/if}
+  {#if knownHost && showTitle}<h4 class="sign-in-title">Sign in to {hostName}</h4>{/if}
   {#if hint}<p class="hint">{hint}</p>{/if}
   {#if knownHost === undefined}
     <label class="field">
@@ -136,15 +139,15 @@
     </label>
   {/if}
   <label class="field">
-    <span class="lbl">Your account name</span>
+    <span class="lbl">Username (if asked)</span>
     <input bind:value={username} autocomplete="username" spellcheck="false" aria-describedby="gs-name-hint" />
-    <span class="hint" id="gs-name-hint">Leave it empty if your service doesn't ask for one.</span>
+    <span class="hint" id="gs-name-hint">Leave it empty if your service doesn't ask for a username.</span>
   </label>
   <label class="field">
-    <span class="lbl">Password or access key</span>
+    <span class="lbl">Sign-in key</span>
     <!-- "new-password" actually suppresses autofill/save prompts; browsers ignore "off" on password fields. -->
     <input bind:this={tokenEl} bind:value={token} type="password" autocomplete="new-password" aria-describedby="gs-key-hint" />
-    <span class="hint" id="gs-key-hint">Your service may call this an "access token". Many services want one instead of your password.</span>
+    <span class="hint" id="gs-key-hint">Your service may call this a password or an "access token". Many services want a key you make on their site instead of your password.</span>
   </label>
   <button type="button" class="link" onclick={() => void api.shell.openExternal(helpUrl ?? OTHER_SERVER_GUIDE).catch(() => {})}>
     Show me how{helpUrl ? ` on ${hostName}` : ""} <Icon name="external-link" size={11} />

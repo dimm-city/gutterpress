@@ -8,7 +8,20 @@
  * host does report (safe, not backed up yet, offline, sign-in, paused).
  */
 import type { BackupState } from "#lib/backup-state.ts";
-import { relativeTime } from "#lib/format.ts";
+
+/** "3 minutes ago", "2 hours ago": written in full, never "mins" or "hrs". */
+export function agoFull(ms: number, now: number): string {
+  const min = Math.round((now - ms) / 60_000);
+  if (min < 1) return "just now";
+  const unit = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"} ago`;
+  if (min < 60) return unit(min, "minute");
+  const hours = Math.round(min / 60);
+  if (hours < 24) return unit(hours, "hour");
+  const days = Math.round(hours / 24);
+  if (days < 14) return unit(days, "day");
+  try { return `on ${new Date(ms).toLocaleDateString()}`; } catch { return ""; }
+}
+const relativeTime = agoFull;
 
 export type CardTone = "ok" | "warn" | "pending" | "plain";
 export type CardIcon = "circle-check" | "triangle-alert" | "refresh-cw" | "cloud-upload" | "cloud-download" | "cloud-off" | "cloud" | "laptop" | "history" | "info" | "key";
@@ -37,6 +50,8 @@ export interface CardInput {
   github: boolean;
   autoBackup: boolean;
   now: number;
+  /** The book's title, for sentences about its online copy. */
+  bookName?: string;
 }
 
 export interface CardView {
@@ -55,8 +70,8 @@ const plural = (n: number, one: string, many: string): string => `${n} ${n === 1
 export function checkedAgo(at: number, now: number): string {
   const s = Math.max(0, Math.round((now - at) / 1000));
   if (s < 5) return "just now";
-  if (s < 60) return `${s} s ago`;
-  return relativeTime(at, now);
+  if (s < 60) return `${s} seconds ago`;
+  return agoFull(at, now);
 }
 
 export function backupCard(i: CardInput): CardView {
@@ -91,8 +106,8 @@ export function backupCard(i: CardInput): CardView {
     return {
       icon: "key",
       tone: "warn",
-      title: "Sign in again to keep backing up",
-      detail: i.github ? `GitHub no longer accepts the saved sign-in for ${i.where}.` : `The online copy at ${i.where} no longer accepts your saved sign-in.`,
+      title: "Your saved sign-in no longer works",
+      detail: `${i.bookName ? `The online copy of "${i.bookName}"` : `The online copy at ${i.where}`} no longer accepts it. Sign in again to keep backing up.`,
       action: "sign-in",
     };
   }
@@ -100,7 +115,7 @@ export function backupCard(i: CardInput): CardView {
     return { icon: "triangle-alert", tone: "warn", title: "Can't find the online copy", detail: "It may have been renamed or deleted, or your account may not have access.", action: "check-address", secondary: "sign-in" };
   }
   if (state === "offline") {
-    return { icon: "cloud-off", tone: "plain", title: "Can't reach the online copy", detail: "Your work is saved here and will back up when you're back online.", action: "try-again" };
+    return { icon: "cloud-off", tone: "plain", title: "You're offline", detail: "Your work is saved here and will back up when you're back online.", action: "try-again" };
   }
   if (state === "error") {
     return { icon: "triangle-alert", tone: "warn", title: "Backup paused", detail: `${(b?.message ?? "").trim() || "Backing up hit a problem."} Your work is safe on this computer.`.replace(/\s+/g, " "), action: "try-again" };

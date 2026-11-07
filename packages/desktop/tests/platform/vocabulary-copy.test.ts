@@ -77,8 +77,8 @@ describe("Sync, Get latest and Back up now", () => {
       expect(bar).toContain(text);
     }
     const tab = read("lib/components/ProjectConnectionsSection.svelte");
-    expect(tab).toContain('"Get the changes"');
-    expect(tab).toContain('"Getting the changes…"');
+    expect(tab).toContain('"Get changes"');
+    expect(tab).toContain('"Getting changes…"');
     expect(read("lib/routes/sync-controller.svelte.ts")).toContain('{ label: "Get latest", onClick: () => void this.handleGetLatest() }');
   });
 
@@ -129,7 +129,7 @@ describe("Book setup → Backup & history", () => {
   test("each situation's action is worded as the design says", () => {
     // The button labels live in the script (LABELS), the drawer's in the markup.
     const tab = read("lib/components/ProjectConnectionsSection.svelte");
-    for (const text of ["Turn on version history", "Back up online…", "Back up now", "Get the changes", "Update", "Try again", "Save a version", "Repair…", "Start over…", "Check the connection", "Sign in again"]) {
+    for (const text of ["Turn on version history", "Back up online…", "Back up now", "Get changes", "Update", "Try again", "Save a version", "Repair…", "Start over…", "Check the connection", "Sign in again"]) {
       expect(tab).toContain(text);
     }
   });

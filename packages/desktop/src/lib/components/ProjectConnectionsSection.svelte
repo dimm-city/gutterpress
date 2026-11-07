@@ -117,6 +117,7 @@
   let doneEl = $state<HTMLElement>();
   let errorEl = $state<HTMLElement>();
 
+  let bookName = $state<string | undefined>(undefined);
   let wizardOpen = $state(false);
   /** "Sign in again" was asked for on a card that otherwise shows another button (can't find). */
   let signInOpen = $state(false);
@@ -132,7 +133,7 @@
 
   const card = $derived(
     situation
-      ? backupCard({ situation, backup, checking, where, github: onGitHub, autoBackup, now })
+      ? backupCard({ situation, backup, checking, where, github: onGitHub, autoBackup, now, bookName })
       : null,
   );
 
@@ -162,6 +163,7 @@
     const stop = dir ? onlineCopy.subscribe(dir, apply) : () => {};
     const tickId = setInterval(() => (now = Date.now()), 15_000);
     void load();
+    if (dir) void api.manifest.read(dir).then((m) => (bookName = m.title || undefined)).catch(() => {});
     return () => {
       stop();
       clearInterval(tickId);
@@ -320,17 +322,17 @@
     "turn-on-versions": "Turn on version history",
     "set-up-backup": "Back up online…",
     "back-up": "Back up now",
-    "get-changes": "Get the changes",
+    "get-changes": "Get changes",
     update: "Update",
     "try-again": "Try again",
     "sign-in": "Sign in",
     "review-decisions": "Choose…",
-    "check-address": "Check the connection",
+    "check-address": "Check the online link",
   };
   const busyLabel = (a: CardAction): string | null =>
     a === "turn-on-versions" && busy ? "Turning on…"
     : a === "back-up" || a === "update" || a === "try-again" ? (running === "back-up" ? "Backing up…" : null)
-    : a === "get-changes" && running === "get-latest" ? "Getting the changes…"
+    : a === "get-changes" && running === "get-latest" ? "Getting changes…"
     : null;
 
   function runAction(a: CardAction) {
@@ -512,7 +514,7 @@
           {#if onGitHub}
             <GitHubConnect primary label="Sign in to GitHub" onConnected={githubConnected} />
           {:else}
-            <GitServerForm host={diag.remoteHost ?? ""} tokenUrl={diag.tokenSettingsUrl} repoUrl={diag.remoteUrl} submitLabel="Sign in" onConnected={serverConnected} />
+            <GitServerForm host={diag.remoteHost ?? ""} tokenUrl={diag.tokenSettingsUrl} repoUrl={diag.remoteUrl} submitLabel="Sign in" showTitle={false} onConnected={serverConnected} />
           {/if}
         </div>
       {:else if situation === "own-tools"}
