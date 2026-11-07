@@ -76,6 +76,8 @@
     backup = null as LastBackup | null,
     /** Why automatic versions keep failing, once the host has said so (only while they are on: a failing safety net you turned off isn't news). */
     versionsProblem = null as { message: string | null } | null,
+    /** A revision switch is unresolved: saving is paused (see Drafts). */
+    switchPaused = false,
     /** Called with a book's folder path when the author switches books. */
     onSwitchBook = undefined as ((path: string) => void) | undefined,
     /** Back up: get the latest changes, then back up yours. */
@@ -122,6 +124,7 @@
     activeBookDir?: string | null;
     backup?: LastBackup | null;
     versionsProblem?: { message: string | null } | null;
+    switchPaused?: boolean;
     onSwitchBook?: (path: string) => void;
     onForceSync?: () => void | Promise<void>;
     onGetLatest?: () => void | Promise<void>;
@@ -159,6 +162,7 @@
       canSync,
       forceSaving,
       versionsProblem,
+      switchPaused,
       backup,
       hasRemote,
       classified,

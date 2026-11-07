@@ -45,6 +45,7 @@
   import SnippetPicker from "#lib/components/SnippetPicker.svelte";
   import { PreviewClient, type OutlineEntry, type PreviewEvent, type PreviewTarget } from "#lib/preview-client.ts";
   import { activeOutlineIndexForLine } from "#lib/routes/outline.ts";
+  import * as onlineCopyCache from "#lib/routes/online-copy-cache.ts";
   import { PageNavController } from "#lib/routes/page-nav-controller.svelte.ts";
   import { ZoomViewController } from "#lib/routes/zoom-view-controller.svelte.ts";
   import { PreviewEventController } from "#lib/routes/preview-event-controller.ts";
@@ -488,6 +489,17 @@
     return null;
   });
   const versionsProblem = $derived(settings.current.versionHistory.autoSnapshot ? syncController.versionsProblem : null);
+
+  // Saving paused by an unfinished revision switch (#516): the Drafts card's own reads (and its
+  // "Put the book back" / "Keep the files as they are" refreshes) publish the shared snapshot, so
+  // following it sets and clears the status bar's flag. No new reads here.
+  $effect(() => {
+    const dir = lifecycle.currentDir;
+    if (!dir) return;
+    return onlineCopyCache.subscribe(dir, (snap) => {
+      if (snap.revisions) projectSession.switchUnfinished = !!snap.revisions.unfinishedSwitch;
+    });
+  });
 
   // ── Project session capability state (#12) ───────────────────────────────────
   // The classification wiring (source detection → capabilities → subPath →
@@ -3472,6 +3484,7 @@
     activeBookDir={projectSession.activeBookDir}
     backup={syncController.backup}
     {versionsProblem}
+    switchPaused={projectSession.switchUnfinished}
     onSwitchBook={(path) => void switchBook(path)}
     onForceSync={() => syncController.handleForceSync()}
     onGetLatest={() => syncController.handleGetLatest()}

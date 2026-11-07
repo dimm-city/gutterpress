@@ -72,6 +72,8 @@ export interface ProjectClassification {
   lastActiveBook?: string;
   /** An interrupted revision switch was put right as the book opened; plain-words message. */
   repairNotice?: string;
+  /** A switch is still unresolved after opening: saving is paused until it is settled in Drafts. */
+  unfinishedSwitch?: boolean;
 }
 
 // ── Local version history (#13) ───────────────────────────────────────────────

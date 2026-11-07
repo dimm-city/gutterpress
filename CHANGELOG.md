@@ -9,6 +9,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Desktop: the status bar says when saving is paused by an unfinished revision
+  switch.** An amber "Saved here · Saving is paused — see Drafts" opens Book setup →
+  Backup & history, and clears once the switch is put back or kept as it is (#516).
+
 - **Desktop: host follow-ups for the backup status.** A finished backup no
   longer walks the whole book to count unsent versions, and a status read never
   repairs a half-done switch. Setting up a backup keeps each call's progress

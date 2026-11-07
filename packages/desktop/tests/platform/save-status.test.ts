@@ -429,3 +429,27 @@ describe("saveFailureReason", () => {
     }
   });
 });
+
+describe("an unfinished revision switch (#516)", () => {
+  test("says saving is paused, in amber, and opens Backup & history", () => {
+    const l = statusLine(input({ switchPaused: true, hasRemote: true, sync: "synced" }));
+    expect(l.key).toBe("switch-paused");
+    expect(l.text).toBe("Saved here · Saving is paused — see Drafts");
+    expect(l.tone).toBe("warn");
+    expect(l.click).toBe("action");
+    expect(l.clickAction).toBe("open-backup");
+    expect(bannedTermsIn(l.text + l.title + l.detail)).toEqual([]);
+  });
+
+  test("outranks the backup states and the other warnings, but not a failed save", () => {
+    const paused = { switchPaused: true, hasRemote: true, versionsProblem: { message: null }, decide: 2, problemsLoaded: true } as const;
+    for (const sync of ["offline", "auth", "error", "unsent", "synced"] as const) {
+      expect(statusLine(input({ ...paused, sync })).key).toBe("switch-paused");
+    }
+    expect(statusLine(input({ ...paused, savePhase: "error", sync: "synced" })).key).toBe("save-failed");
+  });
+
+  test("is gone once the switch is settled", () => {
+    expect(statusLine(input({ switchPaused: false, hasRemote: true, sync: "synced" })).key).toBe("backed-up");
+  });
+});
