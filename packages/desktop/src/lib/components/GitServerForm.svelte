@@ -147,7 +147,7 @@
     <span class="lbl">Sign-in key</span>
     <!-- "new-password" actually suppresses autofill/save prompts; browsers ignore "off" on password fields. -->
     <input bind:this={tokenEl} bind:value={token} type="password" autocomplete="new-password" aria-describedby="gs-key-hint" />
-    <span class="hint" id="gs-key-hint">Your service may call this a password or an "access token". Many services want a key you make on their site instead of your password.</span>
+    <span class="hint" id="gs-key-hint">Your service may call this a password or an "access token". Many services want a key you make on their site instead of your password. Gutterpress keeps your sign-in key on this computer only.</span>
   </label>
   <button type="button" class="link" onclick={() => void api.shell.openExternal(helpUrl ?? OTHER_SERVER_GUIDE).catch(() => {})}>
     Show me how{helpUrl ? ` on ${hostName}` : ""} <Icon name="external-link" size={11} />
@@ -164,7 +164,7 @@
 <style>
   .server-form { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
   .field { display: flex; flex-direction: column; gap: 3px; align-self: stretch; max-width: 420px; }
-  .sign-in-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--app-text); }
+  .sign-in-title { margin: 0; font-size: 13px; font-weight: 400; color: var(--app-text-secondary); }
   .lbl { font-size: 13px; font-weight: 600; color: var(--app-text); }
   input { box-sizing: border-box; width: 100%; padding: 7px 9px; font: inherit; font-size: 13px; }
   .actions { display: flex; gap: 8px; }

@@ -464,6 +464,10 @@ check(await waitFor(`/Nothing new to save|nothing new/i.test(document.querySelec
 
 await click('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button', "See all");
 check(await waitFor(`!!document.querySelector('.vh .ver')`), "See all opens the Version history screen");
+// Nothing is chosen for the author, and no Go back button shows until a version is.
+check(await evalJs(`document.querySelectorAll('.vh .ver.selected').length === 0 && document.querySelectorAll('.vh .detail-actions button').length === 0`), "no version is pre-selected, and Go back waits for one");
+await evalJs(`document.querySelector('.vh .ver').click(); true`);
+check(await waitFor(`document.querySelectorAll('.vh .ver.selected').length === 1 && !!document.querySelector('.vh .detail-actions button')`), "choosing a version selects it and offers Go back to this version");
 const vh = await evalJs(`(() => {
   const root = document.querySelector('.vh');
   return {
@@ -567,9 +571,9 @@ if (pagesUrl) {
 
 // Restore asks once, at the top.
 await click(".vh .detail-actions button", "Go back to this version");
-check(await waitFor(`/saved as a version first/.test(document.querySelector('.vh .detail-actions')?.textContent ?? '')`, 3000), "Going back says your current work is saved as a version first");
-check((await evalJs(`[...document.querySelectorAll('.vh .detail-actions button')].map((b) => b.textContent.trim()).join('|')`)) === "Cancel|Go back", "and asks Cancel or Go back");
-await click(".vh .detail-actions button", "Cancel");
+check(await waitFor(`/saved as a version first/.test(document.querySelector('.vh .confirm-band')?.textContent ?? '')`, 3000), "Going back says your current work is saved as a version first");
+check((await evalJs(`[...document.querySelectorAll('.vh .confirm-band button')].map((b) => b.textContent.trim()).join('|')`)) === "Cancel|Go back to this version", "and asks Cancel or Go back to this version");
+await click(".vh .confirm-band button", "Cancel");
 
 // Closing returns to Book setup, where it was opened.
 await click(".vh .vh-close");
@@ -708,7 +712,8 @@ check((await cardButtons()) === "Back up now", `the status card offers Back up n
 await click("#project-settings-panel .status-action button", "Back up now");
 check(await waitFor(`${statusActions}.map((b) => b.textContent.trim() + (b.disabled ? '*' : '')).join('|') === 'Backing up…*'`), "Back up now reads Backing up… while it runs");
 check(await evalJs(`window.__sync.calls.length === 1 && window.__sync.calls[0].push === undefined`), "Back up now ran one full pass, with automatic backing up on");
-await evalJs(`window.__sync.release(); true`);
+// The open draft was only online-side before the pass; the pass makes it backed up everywhere.
+await evalJs(`window.__revisions.revisions.forEach((r) => { if (r.current) { r.where = 'online'; r.notBackedUp = false; } }); window.__sync.release(); true`);
 check(await waitFor(`/^Your book is safe online/.test(document.querySelector('#project-settings-panel .status-text h3')?.textContent.trim() ?? '')`), `the card then says the book is safe online (${await cardTitle()})`);
 check((await cardButtons()) === "Back up now", `backed up, it still offers Back up now (${await cardButtons()})`);
 await screenshot(join(tmpdir(), "online-copy-tab-auto.png"));

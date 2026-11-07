@@ -150,7 +150,8 @@
     step = "repos";
     error = null;
     // The last list this session read shows at once; a newer one is read behind it.
-    const cached = force ? null : peekRepositories();
+    const account = username ?? "";
+    const cached = force ? null : peekRepositories(account);
     if (cached) {
       repos = cached;
       reposLoading = false;
@@ -165,7 +166,7 @@
     if (!cached) dialogEl?.focus();
     else (filterEl ?? dialogEl)?.focus();
     try {
-      repos = (await refreshRepositories()) as RemoteRepository[];
+      repos = (await refreshRepositories(account, force ? { refresh: true } : undefined)) as RemoteRepository[];
     } catch (e) {
       // A list already on screen stays; only an empty screen shows the failure.
       if (repos.length === 0) error = e instanceof Error ? e.message : String(e);

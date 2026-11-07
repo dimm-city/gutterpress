@@ -50,6 +50,35 @@ describe("backupCard", () => {
   });
 });
 
+describe("drafts and reassurance", () => {
+  test("a book is only safe when the open draft is online; others only here get a muted note", () => {
+    const c = card({ backup: synced(), drafts: { currentBackedUp: false, othersOnlyHere: 0 } });
+    expect(c).toMatchObject({ title: "This draft isn't backed up yet", tone: "warn", action: "back-up" });
+    const s = card({ backup: synced(), drafts: { currentBackedUp: true, othersOnlyHere: 1 } });
+    expect(s).toMatchObject({ title: "Your book is safe online", tone: "ok" });
+    expect(s.note).toBe("1 other draft is only on this computer.");
+    expect(card({ backup: synced(), drafts: { currentBackedUp: true, othersOnlyHere: 2 } }).note).toBe("2 other drafts are only on this computer.");
+  });
+  test("the checked time shows only for safe, ahead and behind", () => {
+    expect(card({ backup: synced() }).showChecked).toBe(true);
+    expect(card({ backup: synced({ ahead: 1 }) }).showChecked).toBe(true);
+    expect(card({ backup: synced({ behind: true }) }).showChecked).toBe(true);
+    expect(card({ backup: { state: "offline", lastSyncAt: null } }).showChecked).toBeUndefined();
+  });
+  test("warning cards tell the author their work is safe", () => {
+    for (const c of [
+      card({ backup: { state: "auth", lastSyncAt: null } }),
+      card({ backup: { state: "not-found", lastSyncAt: null } }),
+      card({ backup: synced({ decide: 1 }) }),
+      card({ backup: { state: "error", lastSyncAt: null, message: "ENOENT: /x/y/z at a.js:1:2" } }),
+      card({ situation: "connect-server", where: "git.example.com" }),
+    ]) expect(c.detail).toContain("safe on this computer");
+  });
+  test("a technical paused message becomes a plain sentence", () => {
+    expect(card({ backup: { state: "error", lastSyncAt: null, message: "ENOENT: /x/y/z at a.js:1:2" } }).detail).toBe("Gutterpress couldn't back up just now. Your work is safe on this computer.");
+  });
+});
+
 describe("checkedAgo", () => {
   test("seconds then minutes", () => {
     expect(checkedAgo(NOW - 2000, NOW)).toBe("just now");
@@ -61,7 +90,7 @@ describe("checkedAgo", () => {
 describe("version row copy", () => {
   test("the author's note is the title, the label the subtitle", () => {
     expect(versionTitle("Sent to printer")).toBe("Sent to printer");
-    expect(versionSubtitle("Sent to printer")).toBe("Version saved by you");
+    expect(versionSubtitle("Sent to printer")).toBeNull();
     expect(versionTitle("Automatic version")).toBe("Automatic version");
     expect(versionSubtitle("Automatic version")).toBeNull();
     expect(versionTitle("Saved a version")).toBe("Version saved by you");
@@ -74,13 +103,14 @@ describe("repairSetAsideText", () => {
     const t = repairSetAsideText({ revisions: ["Second-edition"], versions: 3 });
     expect(t).toContain('1 draft ("Second edition") and 3 versions');
     expect(t).toContain("only on this computer");
-    expect(t).toContain("Saved copies after a repair");
+    expect(t).toContain("safety folder outside your book");
+    expect(t).not.toContain("Saved copies");
   });
   test("says nothing is lost when everything is online, and stays generic without a preview", () => {
-    expect(repairSetAsideText({ revisions: [], versions: 0 })).toContain("nothing would be set aside");
+    expect(repairSetAsideText({ revisions: [], versions: 0 })).toContain("nothing would be lost");
     const g = repairSetAsideText(null);
-    expect(g).toContain("Anything that isn't online yet");
-    expect(g).toContain("Saved copies after a repair");
+    expect(g).toContain("Anything that exists only on this computer");
+    expect(g).toContain("safety folder");
   });
   test("one version reads in the singular", () => {
     expect(repairSetAsideText({ revisions: [], versions: 1 })).toContain("1 version that is only");

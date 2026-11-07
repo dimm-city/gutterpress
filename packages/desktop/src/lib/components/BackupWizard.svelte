@@ -52,8 +52,13 @@
   let chosenRepo = $state("");
   let error = $state<string | null>(null);
   let sentTo = $state<{ fullName: string; private: boolean } | null>(null);
+  /** What the host says it is doing while the book is sent ("Sending your book… (12 of 40 files)"), when it says. */
+  let progress = $state<string | null>(null);
+  let slow = $state(false);
+  /** The author closed the window while the book was still being sent: it carries on in the background. */
+  let closedEarly = false;
 
-  const stepNumber = $derived(step === "where" || step === "other" ? 1 : step === "signin" ? 2 : 3);
+  const stepNumber = $derived(step === "where" ? 1 : step === "signin" ? 2 : 3);
 
   onMount(() => {
     void (async () => {
@@ -81,15 +86,15 @@
     useExisting = on;
     error = null;
     if (!on) return;
-    const cached = peekRepositories();
-    if (cached) {
-      emptyRepos = cached.filter((r) => r.maybeEmpty);
-      if (!chosenRepo && emptyRepos[0]) chosenRepo = emptyRepos[0].fullName;
-    } else reposLoading = true;
+    const account = github?.username ?? "";
+    const cached = peekRepositories(account);
+    if (cached) emptyRepos = cached.filter((r) => r.maybeEmpty);
+    else reposLoading = true;
     reposError = null;
     try {
-      emptyRepos = (await refreshRepositories()).filter((r) => r.maybeEmpty);
-      if (!emptyRepos.some((r) => r.fullName === chosenRepo)) chosenRepo = emptyRepos[0]?.fullName ?? "";
+      emptyRepos = (await refreshRepositories(account)).filter((r) => r.maybeEmpty);
+      // Never preselect one: "maybe empty" is only a hint, and the real check runs when the book is sent.
+      if (!emptyRepos.some((r) => r.fullName === chosenRepo)) chosenRepo = "";
     } catch (e) {
       if (!cached) reposError = friendlyHostError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -105,6 +110,11 @@
     }
     error = null;
     step = "sending";
+    progress = null;
+    slow = false;
+    closedEarly = false;
+    const slowTimer = setTimeout(() => (slow = true), 20_000);
+    const poll = setInterval(() => void readProgress(), 700);
     try {
       const result = await api.remote.setUpBackup(
         projectDir,
@@ -119,21 +129,44 @@
           useExisting = true;
         }
         error = result.message;
-        step = "name";
+        // Not signed in (or signed out meanwhile): signing in again is the way forward, not a retry.
+        if (result.reason === "not-connected" || result.reason === "auth") {
+          github = { connected: false };
+          step = closedEarly ? step : "signin";
+        } else if (!closedEarly) step = "name";
         return;
       }
       sentTo = { fullName: result.repository.fullName, private: result.repository.private };
-      step = "done";
+      if (!closedEarly) step = "done";
       onDone();
     } catch (e) {
       error = friendlyHostError(unwrapRouteError(e instanceof Error ? e.message : String(e)));
-      step = "name";
+      if (!closedEarly) step = "name";
+    } finally {
+      clearTimeout(slowTimer);
+      clearInterval(poll);
+    }
+  }
+
+  async function readProgress() {
+    try {
+      const r = await fetch("/api/remote/set-up-backup-progress", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      if (!r.ok) return;
+      const p = (await r.json()) as { label?: string } | null;
+      if (p?.label) progress = p.label;
+    } catch {
+      // No progress to show: the plain "Sending your book…" stays.
     }
   }
 
   const open = (url: string) => void api.shell.openExternal(url).catch(() => {});
+  /** Esc and the backdrop leave a send alone; "Close" after a long wait lets it carry on in the background. */
   const close = () => {
     if (step !== "sending") onClose();
+  };
+  const closeWhileSending = () => {
+    closedEarly = true;
+    onClose();
   };
 </script>
 
@@ -153,7 +186,7 @@
   </header>
 
   <div class="dlg-body">
-    {#if step !== "done" && step !== "sending"}<p class="steps" aria-label="Step {stepNumber} of 3">Step {stepNumber} of 3</p>{/if}
+    {#if step !== "done" && step !== "sending" && step !== "other"}<p class="steps" aria-label="Step {stepNumber} of 3">Step {stepNumber} of 3</p>{/if}
 
     {#if step === "where"}
       <button class="choice" onclick={chooseGitHub}>
@@ -173,10 +206,11 @@
         Make one (it takes a minute), then come back here.
       </p>
     {:else if step === "other"}
-      <p>Gutterpress can back up to other services too, but the online copy has to be set up there first, then connected to this book with the tool that service gives you.</p>
+      <p>Most people choose GitHub. It's free and takes a minute to set up.</p>
+      <p class="hint">Gutterpress can back up to other services too, but the online copy has to be set up there first and then connected to this book with the tool that service gives you.</p>
       <button class="link" onclick={() => open(OTHER_SERVER_GUIDE)}>How to back up there <Icon name="external-link" size={11} /></button>
     {:else if step === "signin"}
-      <p>GitHub will ask you to type a short code. Gutterpress opens the page for you.</p>
+      {#if error}<p class="error" role="alert">{error}</p>{/if}
       <GitHubConnect primary autoStart label="Sign in to GitHub" onConnected={signedIn} />
     {:else if step === "name"}
       <p class="hint ok"><Icon name="circle-check" size={14} /> Signed in to GitHub{github?.username ? ` as @${github.username}` : ""}.</p>
@@ -197,13 +231,15 @@
           <p class="error" role="alert">{reposError}</p>
         {:else if emptyRepos.length === 0}
           <p class="hint">
-            No empty online copies found on your GitHub account. Make one on github.com (leave "Add a README" off), then come back.
+            No empty online copies found on your GitHub account. Make a new one on github.com and don't add any starting files, then come back.
           </p>
           <button class="ghost" onclick={() => open("https://github.com/new")}>Open github.com to make one…</button>
         {:else}
+          <p class="hint">It has to be empty. Make a new one on github.com and don't add any starting files.</p>
           <label class="field">
-            <span class="lbl">Empty online copy</span>
+            <span class="lbl">Choose a copy you made earlier</span>
             <select class="input" bind:value={chosenRepo}>
+              <option value="" disabled>Choose one…</option>
               {#each emptyRepos as r (r.fullName)}
                 <option value={r.fullName}>{r.fullName}{r.private ? " (private)" : ""}</option>
               {/each}
@@ -214,19 +250,20 @@
       {/if}
       {#if error}<p class="error" role="alert">{error}</p>{/if}
     {:else if step === "sending"}
-      <p role="status">This can take a moment for a book with many pictures.</p>
+      <p role="status">{progress ?? "Sending your book…"}</p>
       <div class="progress-track" aria-hidden="true"><div class="progress-fill"></div></div>
+      <p class="hint">You can keep working. This window can stay open.</p>
+      {#if slow}<p class="hint" role="status">Taking longer than usual. Your work is safe.</p>{/if}
     {:else}
       <p class="done" role="status"><Icon name="circle-check" size={18} /> Done. Your book is backed up. Gutterpress will keep it up to date.</p>
       {#if sentTo}<p class="hint">Kept at {sentTo.fullName} on GitHub{sentTo.private ? " (private)" : ""}.</p>{/if}
     {/if}
   </div>
 
+  {#if step !== "sending" || slow}
   <footer class="dlg-actions">
     {#if step === "where"}
       <button class="dlg-ghost" onclick={close}>Cancel</button>
-    {:else if step === "other"}
-      <button class="dlg-ghost" onclick={() => (step = "where")}>Back</button>
     {:else if step === "signin"}
       <button class="dlg-ghost" onclick={() => (step = "where")}>Back</button>
     {:else if step === "name"}
@@ -236,8 +273,14 @@
       </button>
     {:else if step === "done"}
       <button class="dlg-primary app-btn-primary" onclick={onClose}>Close</button>
+    {:else if step === "other"}
+      <button class="dlg-ghost" onclick={() => (step = "where")}>Back</button>
+      <button class="dlg-primary app-btn-primary" onclick={chooseGitHub}>Use GitHub instead</button>
+    {:else if step === "sending" && slow}
+      <button class="dlg-ghost" onclick={closeWhileSending}>Close</button>
     {/if}
   </footer>
+  {/if}
 </div>
 
 <style>

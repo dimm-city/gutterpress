@@ -7,6 +7,7 @@
  * outcome) are optional: without them the card falls back to the states the
  * host does report (safe, not backed up yet, offline, sign-in, paused).
  */
+import { draftName } from "#lib/revision-name.ts";
 import type { BackupState } from "#lib/backup-state.ts";
 
 /** "3 minutes ago", "2 hours ago": written in full, never "mins" or "hrs". */
@@ -52,6 +53,8 @@ export interface CardInput {
   now: number;
   /** The book's title, for sentences about its online copy. */
   bookName?: string;
+  /** Where the drafts are kept: whether the open one is online, and how many others are only on this computer. */
+  drafts?: { currentBackedUp: boolean; othersOnlyHere: number };
 }
 
 export interface CardView {
@@ -62,11 +65,22 @@ export interface CardView {
   action: CardAction;
   /** A second button beside the primary one ("Sign in again" beside "Check the address"). */
   secondary?: CardAction;
+  /** A muted line under the detail ("1 other draft is only on this computer."). */
+  note?: string;
+  /** The detail ends with when the online copy was last checked (safe, ahead and behind). */
+  showChecked?: boolean;
+}
+
+/** A host message as one plain sentence, or null when it looks technical (a path, a URL, a code, very long). */
+function plainSentence(m: string | undefined): string | null {
+  const t = (m ?? "").replace(/\s+/g, " ").trim();
+  if (!t || t.length > 140 || /https?:|[\\/]\w+\/|\b[A-Z_]{4,}\b|\bat \S+:\d+/.test(t)) return null;
+  return /[.!?]$/.test(t) ? t : `${t}.`;
 }
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
-/** "20 s ago" under a minute, then the usual "3 mins ago". */
+/** "20 seconds ago" under a minute, then "3 minutes ago" (the one time helper for the tab). */
 export function checkedAgo(at: number, now: number): string {
   const s = Math.max(0, Math.round((now - at) / 1000));
   if (s < 5) return "just now";
@@ -88,7 +102,7 @@ export function backupCard(i: CardInput): CardView {
       };
     case "connect-github":
     case "connect-server":
-      return { icon: "key", tone: "warn", title: "Sign in to back up", detail: `This book's online copy is at ${i.where}. Sign in so Gutterpress can keep it up to date.`, action: "sign-in" };
+      return { icon: "key", tone: "warn", title: "Sign in to back up", detail: `This book's online copy is at ${i.where}. Sign in so Gutterpress can keep it up to date. Your work is safe on this computer.`, action: "sign-in" };
     case "own-tools":
       return { icon: "info", tone: "plain", title: "Backed up with your own tool", detail: "This book's online copy uses an address Gutterpress can't back up to. Keep using your usual tool for it.", action: null };
     case "ready":
@@ -100,25 +114,25 @@ export function backupCard(i: CardInput): CardView {
   const lost = state === "not-found" || (state === "error" && /can'?t find/i.test(b?.message ?? ""));
   if ((b?.decide ?? 0) > 0) {
     const n = b!.decide!;
-    return { icon: "triangle-alert", tone: "warn", title: `${plural(n, "passage needs", "passages need")} your decision`, detail: "The same passage was changed here and online.", action: "review-decisions" };
+    return { icon: "triangle-alert", tone: "warn", title: `${plural(n, "passage needs", "passages need")} your decision`, detail: "The same passage was changed here and online. Nothing is lost. Your work is safe on this computer.", action: "review-decisions" };
   }
   if (state === "auth") {
     return {
       icon: "key",
       tone: "warn",
       title: "Your saved sign-in no longer works",
-      detail: `${i.bookName ? `The online copy of "${i.bookName}"` : `The online copy at ${i.where}`} no longer accepts it. Sign in again to keep backing up.`,
+      detail: `${i.bookName ? `The online copy of "${i.bookName}"` : `The online copy at ${i.where}`} no longer accepts it. Sign in again to keep backing up. Your work is safe on this computer.`,
       action: "sign-in",
     };
   }
   if (lost) {
-    return { icon: "triangle-alert", tone: "warn", title: "Can't find the online copy", detail: "It may have been renamed or deleted, or your account may not have access.", action: "check-address", secondary: "sign-in" };
+    return { icon: "triangle-alert", tone: "warn", title: "Can't find the online copy", detail: "It may have been renamed or deleted, or your account may not have access. Your work is safe on this computer.", action: "check-address", secondary: "sign-in" };
   }
   if (state === "offline") {
     return { icon: "cloud-off", tone: "plain", title: "You're offline", detail: "Your work is saved here and will back up when you're back online.", action: "try-again" };
   }
   if (state === "error") {
-    return { icon: "triangle-alert", tone: "warn", title: "Backup paused", detail: `${(b?.message ?? "").trim() || "Backing up hit a problem."} Your work is safe on this computer.`.replace(/\s+/g, " "), action: "try-again" };
+    return { icon: "triangle-alert", tone: "warn", title: "Backup paused", detail: `${plainSentence(b?.message) ?? "Gutterpress couldn't back up just now."} Your work is safe on this computer.`, action: "try-again" };
   }
   const ahead = b?.ahead ?? 0;
   const behind = b?.behind === true;
@@ -126,10 +140,10 @@ export function backupCard(i: CardInput): CardView {
     return { icon: "cloud", tone: "pending", title: "Changes here and online", detail: "Gutterpress will combine them. If the same passage changed in both places, you will choose which to keep.", action: "update" };
   }
   if (behind) {
-    return { icon: "cloud-download", tone: "pending", title: "New changes are online", detail: "Someone (or another computer) changed this book. Your own changes stay as they are.", action: "get-changes" };
+    return { icon: "cloud-download", tone: "pending", title: "New changes are online", detail: "Someone (or another computer) changed this book. Your own changes stay as they are.", action: "get-changes", showChecked: true };
   }
   if (ahead > 0) {
-    return { icon: "cloud-upload", tone: "warn", title: `${plural(ahead, "change isn't", "changes aren't")} backed up yet`, detail: "They're saved on this computer.", action: "back-up" };
+    return { icon: "cloud-upload", tone: "warn", title: `${plural(ahead, "change isn't", "changes aren't")} backed up yet`, detail: "They're saved on this computer.", action: "back-up", showChecked: true };
   }
   if (state === "syncing") {
     return { icon: "refresh-cw", tone: "pending", title: "Backing up…", detail: i.autoBackup ? "Gutterpress backs up as you work." : "Sending your latest work to the online copy.", action: null };
@@ -146,22 +160,28 @@ export function backupCard(i: CardInput): CardView {
   if (state === "unsent") {
     return { icon: "cloud-upload", tone: "warn", title: "Not backed up yet", detail: i.autoBackup ? "Your latest work is saved here and Gutterpress will back it up soon." : "Your latest work is saved here. Back it up when you're ready.", action: "back-up" };
   }
+  if (i.drafts && !i.drafts.currentBackedUp) {
+    return { icon: "cloud-upload", tone: "warn", title: "This draft isn't backed up yet", detail: "Your work is saved on this computer. Back up now to keep it safe online.", action: "back-up" };
+  }
   const when = known ? `Last backed up ${relativeTime(at, i.now)} to ${i.where}.` : `Kept at ${i.where}.`;
-  return { icon: "circle-check", tone: "ok", title: "Your book is safe online", detail: i.autoBackup ? `${when} Gutterpress backs up as you work.` : `${when} Backing up automatically is off.`, action: "back-up" };
+  return { icon: "circle-check", tone: "ok", title: "Your book is safe online", detail: i.autoBackup ? `${when} Gutterpress backs up as you work.` : `${when} Backing up automatically is off.`, action: "back-up", showChecked: true, ...(i.drafts?.othersOnlyHere ? { note: `${plural(i.drafts.othersOnlyHere, "other draft is", "other drafts are")} only on this computer.` } : {}) };
 }
 
-/** What a repair would set aside, as the confirm says it (`setAside` is the host's preview; null when it has none). */
+/**
+ * What a repair would set aside, as the confirm says it (`setAside` is the host's preview; null when it has none).
+ * A repair moves this book's whole old version history into a safety folder outside the book and starts from
+ * the online copy's, so what exists only here leaves the book's history. It is kept, not deleted.
+ */
 export function repairSetAsideText(setAside: { revisions: string[]; versions: number } | null): string {
-  const SEE = 'They are kept in a repair copy you can bring back: see "Saved copies after a repair" under Drafts.';
+  const KEPT = "It stays in a safety folder outside your book. It is not deleted, but it won't show in your book's history.";
   if (!setAside) {
-    return `Anything that isn't online yet, such as a draft or versions only on this computer, is set aside too. ${SEE}`;
+    return `Anything that exists only on this computer, such as a draft or versions that were never backed up, is set aside too. ${KEPT}`;
   }
   const { revisions, versions } = setAside;
-  if (revisions.length === 0 && versions === 0) return "Everything on this computer is already online, so nothing would be set aside.";
-  const name = (n: string) => `"${n === "main" || n === "master" ? "Main draft" : n.replace(/-+/g, " ")}"`;
+  if (revisions.length === 0 && versions === 0) return "Everything on this computer is already online, so nothing would be lost from your history.";
   const parts = [
-    revisions.length ? `${revisions.length} ${revisions.length === 1 ? "draft" : "drafts"} (${revisions.map(name).join(", ")})` : "",
+    revisions.length ? `${revisions.length} ${revisions.length === 1 ? "draft" : "drafts"} (${revisions.map((n) => `"${draftName(n)}"`).join(", ")})` : "",
     versions ? `${versions} ${versions === 1 ? "version" : "versions"}` : "",
   ].filter(Boolean);
-  return `This will set aside ${parts.join(" and ")} that ${revisions.length + versions === 1 ? "is" : "are"} only on this computer. ${SEE}`;
+  return `This will set aside ${parts.join(" and ")} that ${revisions.length + versions === 1 ? "is" : "are"} only on this computer. ${KEPT}`;
 }

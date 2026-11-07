@@ -103,7 +103,8 @@
       entries = page.entries;
       hasMore = page.hasMore;
       const keep = selected && entries.find((e) => e.id === selected!.id);
-      void select(keep ?? entries.find((e) => e.id === initialId) ?? entries[0] ?? null);
+      // Nothing is chosen for the author: a version opens only when asked for (or kept from before, or clicked in Backup & history).
+      void select(keep ?? entries.find((e) => e.id === initialId) ?? null);
     } catch (e) {
       error = friendlyHostError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -225,8 +226,9 @@
       confirming = false;
       onlineCopy.dropVersionsPage(projectDir);
       restored =
-        `Went back to "${versionTitle(target.message)}" (${when(target.timestamp)}).` +
-        (result?.backupId ? " Your work from before is saved as a version, so you can come back to it. Find it in this list." : "");
+        // True with or without `backupId`: work not yet in a version was saved as one first, and everything else already was.
+        `Went back to "${versionTitle(target.message)}" (${when(target.timestamp)}). Your earlier work is saved as a version, so you can come back to it.`;
+      void result;
       onRestored?.();
       await loadHistory();
     } catch (e) {
@@ -390,15 +392,18 @@
             </p>
           </div>
           <div class="detail-actions">
-            {#if confirming}
-              <span class="confirm">Your files go back to how they were then. Your current work is saved as a version first.</span>
-              <button class="ghost" onclick={() => (confirming = false)} disabled={restoring}>Cancel</button>
-              <button class="app-btn-primary" onclick={() => void restore()} disabled={restoring}>{restoring ? "Going back…" : "Go back"}</button>
-            {:else}
+            {#if !confirming}
               <button class="app-btn-primary" onclick={() => (confirming = true)}>Go back to this version</button>
             {/if}
           </div>
         </div>
+        {#if confirming}
+          <div class="confirm-band" role="group" aria-label="Go back to this version?">
+            <span>Your files go back to how they were then. Your current work is saved as a version first.</span>
+            <button class="ghost" onclick={() => (confirming = false)} disabled={restoring}>Cancel</button>
+            <button class="app-btn-primary" onclick={() => void restore()} disabled={restoring}>{restoring ? "Going back…" : "Go back to this version"}</button>
+          </div>
+        {/if}
         {#if restoreError}<p class="error" role="alert">{restoreError}</p>{/if}
         {#if restored}
           <p class="restored" role="status">
@@ -522,7 +527,11 @@
   .detail-head h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--app-text); overflow-wrap: anywhere; }
   .detail-head .muted { margin: 3px 0 0; }
   .detail-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-  .confirm { font-size: 12.5px; color: var(--app-text-secondary); max-width: 340px; text-align: right; }
+  .confirm-band {
+    display: flex; align-items: center; gap: 10px; margin: 0 20px 8px; padding: 9px 12px; border-radius: 6px;
+    font-size: 13px; color: var(--app-info-text); background: var(--app-info-bg);
+  }
+  .confirm-band span { flex: 1; }
   .sub { margin: 2px 0 0; }
   .restored {
     display: flex; align-items: center; gap: 8px; margin: 0 20px 8px; padding: 9px 12px;

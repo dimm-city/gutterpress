@@ -33,7 +33,7 @@
   import * as onlineCopy from "#lib/routes/online-copy-cache.ts";
   import { dialogBehavior } from "#lib/dialog.ts";
   import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
-  import { draftName, revisionNameFrom, revisionsShown } from "#lib/revision-name.ts";
+  import { draftLabels, draftName, revisionNameFrom, revisionsShown } from "#lib/revision-name.ts";
 
   let {
     projectDir,
@@ -77,6 +77,9 @@
   const matching = $derived(revisionsShown(list?.revisions ?? [], filtering ? find : ""));
   const shown = $derived(showAll || find.trim() ? matching : matching.slice(0, FEW));
   const currentName = $derived(list?.current ?? null);
+  /** Each draft's shown name; two that would read the same carry their stored names. */
+  const labels = $derived(draftLabels((list?.revisions ?? []).map((r) => r.name)));
+  const label = (name: string): string => labels.get(name) ?? draftName(name);
 
   /** Said once when an interrupted switch was put right on opening this card. */
   let repairNotice = $state<string | null>(null);
@@ -215,11 +218,8 @@
       <div>
         <h3 id="revisions-title">Drafts</h3>
         <p class="section-sub">
-          Separate lines of work in this book, like a second edition.{#if currentName}{" "}You're working on <strong>{draftName(currentName)}</strong>.{/if}
+          Separate lines of work in this book, like a second edition.{#if currentName}{" "}You're working on <strong>{label(currentName)}</strong>.{/if}
         </p>
-        {#if hasOnlineCopy && checking}
-          <p class="check-line" role="status"><span class="spin" aria-hidden="true"></span> Checking the online copy…</p>
-        {/if}
       </div>
       <button class="ghost" onclick={() => open({ kind: "new" })} disabled={working || disabled}>
         <Icon name="plus" size={14} /> New draft
@@ -230,12 +230,11 @@
       <div class="unfinished" role="alert">
         <p>{list.unfinishedSwitch.message}</p>
         <p class="section-sub">
-          "Try again" puts the book back the way it was before the switch. "Keep files as they are" leaves the files as they
-          stand now{list.unfinishedSwitch.copy ? " (a copy is kept below)" : ""}; check them before you build or save.
+          Switching drafts didn't finish. "Put the book back" returns it to how it was before the switch. "Keep the files as they are" leaves what is on screen now{list.unfinishedSwitch.copy ? " (a copy is kept below)" : ""}; check them before you build or save.
         </p>
         <div class="unfinished-actions">
-          <button class="ghost small" onclick={() => void tryAgain()} disabled={working || checking}>Try again</button>
-          <button class="ghost small" onclick={() => open({ kind: "keep-as-is" })} disabled={working || disabled}>Keep files as they are</button>
+          <button class="app-btn-primary small" onclick={() => void tryAgain()} disabled={working || checking}>Put the book back</button>
+          <button class="ghost small" onclick={() => open({ kind: "keep-as-is" })} disabled={working || disabled}>Keep the files as they are</button>
         </div>
         {#if retryFailed}<p class="error" role="alert">Still couldn't put the book back. Your files are unchanged.</p>{/if}
         {#if error && !pending}<p class="error" role="alert">{error}</p>{/if}
@@ -260,25 +259,25 @@
       {#each shown as r (r.name)}
         <li class="rev" class:current={r.current}>
           <div class="rev-main">
-            <span class="rev-name">{draftName(r.name)}</span>
+            <span class="rev-name">{label(r.name)}</span>
             {#if r.current}<span class="badge">You are here</span>{/if}
             <span class="rev-where {whereTone(r)}"><Icon name={whereIcon(r)} size={13} /> {whereLabel(r)}</span>
           </div>
           <div class="rev-actions">
             {#if !r.current}
-              <button class="ghost small" aria-label="Switch to {draftName(r.name)}" onclick={() => void switchTo(r.name)} disabled={working || disabled}>Switch</button>
+              <button class="ghost small" aria-label="Switch to {label(r.name)}" onclick={() => void switchTo(r.name)} disabled={working || disabled}>Switch</button>
             {/if}
             <div class="menu-wrap">
               <button
                 class="more"
-                aria-label="More for {draftName(r.name)}"
+                aria-label="More for {label(r.name)}"
                 aria-haspopup="menu"
                 aria-expanded={menuFor === r.name}
                 onclick={(e) => void toggleMenu(r.name, e.currentTarget)}
                 disabled={working || disabled}
               ><Icon name="more-horizontal" size={16} /></button>
               {#if menuFor === r.name}
-                <div class="menu" role="menu" aria-label={draftName(r.name)} tabindex="-1" onkeydown={menuKeydown}>
+                <div class="menu" role="menu" aria-label={label(r.name)} tabindex="-1" onkeydown={menuKeydown}>
                   <button role="menuitem" onclick={() => open({ kind: "rename", revision: r }, draftName(r.name))}>Rename…</button>
                   {#if !r.current}
                     <button role="menuitem" class="danger" onclick={() => open({ kind: "delete", revision: r, everywhere: r.where === "online-only", lost: null })}>Delete…</button>
@@ -305,7 +304,7 @@
       <div class="copies" id="repair-copies">
         <h4>Saved copies after a repair</h4>
         <p class="section-sub">
-          When a draft change was interrupted, your files were saved here before the book was put back. Older copies are removed on their own once a newer version is saved.
+          Gutterpress couldn't finish a repair or a switch, so it kept a copy of your files here first. Nothing is lost. You can bring a copy back, or discard it when you don't need it. A copy clears itself after your next saved version, once its files are safe in a version.
         </p>
         <ul class="rev-list" aria-label="Saved copies after a repair">
           {#each list.repairCopies as c (c.id)}
@@ -353,6 +352,7 @@
           <span class="lbl">Name</span>
           <input class="input" bind:value={typed} placeholder="Second edition" spellcheck="false" autocomplete="off" disabled={working} />
         </label>
+        {#if kept && kept !== typed.trim()}<p class="hint quiet">It is stored as "{kept}".</p>{/if}
         <p class="hint">
           It starts from your book as it is now (work not in a version yet is saved as one first), and you switch to it.{hasOnlineCopy ? " It goes online the next time you back up." : ""}
         </p>
@@ -369,6 +369,7 @@
           <span class="lbl">New name</span>
           <input class="input" bind:value={typed} spellcheck="false" autocomplete="off" disabled={working} />
         </label>
+        {#if kept && kept !== typed.trim()}<p class="hint quiet">It is stored as "{kept}".</p>{/if}
         {#if p.revision.where === "online"}
           <p class="hint">This also renames it in the online copy. Anyone else working on "{draftName(p.revision.name)}" keeps the old name until they switch to the new one.</p>
         {:else if p.revision.where === "online-only"}
@@ -381,14 +382,14 @@
         <button type="submit" class="dlg-primary app-btn-primary" disabled={working || !kept || kept === p.revision.name || kept === revisionNameFrom(draftName(p.revision.name))}>{working ? "Renaming…" : "Rename"}</button>
       </footer>
     {:else if p.kind === "keep-as-is"}
-      <header class="dlg-header"><h2 id="rev-dialog-title">Keep files as they are?</h2></header>
+      <header class="dlg-header"><h2 id="rev-dialog-title">Keep the files as they are?</h2></header>
       <div class="dlg-body">
         <p>Your book will stay exactly as it is now, which may mix files from two drafts. A copy is kept, so you can still restore.</p>
       </div>
       {#if error}<p class="dlg-error error" role="alert">{error}</p>{/if}
       <footer class="dlg-actions">
         <button type="button" class="dlg-ghost" onclick={cancel} disabled={working}>Cancel</button>
-        <button type="submit" class="dlg-primary app-btn-primary" disabled={working}>{working ? "Keeping…" : "Keep files as they are"}</button>
+        <button type="submit" class="dlg-primary app-btn-primary" disabled={working}>{working ? "Keeping…" : "Keep the files as they are"}</button>
       </footer>
     {:else if p.kind === "restore-copy"}
       <header class="dlg-header"><h2 id="rev-dialog-title">Restore files from this copy?</h2></header>
@@ -462,9 +463,9 @@
   .rev-name { font-size: 13.5px; font-weight: 600; color: var(--app-text); overflow-wrap: anywhere; }
   .badge {
     padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600;
-    color: var(--app-accent-text); background: var(--app-accent);
+    color: var(--app-text-on-accent); background: var(--app-accent);
   }
-  .rev-where { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--app-text-muted); }
+  .rev-where { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--app-text-secondary); }
   .rev-where.ok :global(svg) { color: var(--app-success-strong); }
   .rev-where.pending { color: var(--app-warning-text); }
   .rev-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; min-height: 28px; }
@@ -506,6 +507,8 @@
   .rev-dialog { width: min(460px, 92vw); }
   .dlg-body { display: flex; flex-direction: column; gap: 10px; padding: 16px 18px 4px; font-size: 13px; color: var(--app-text-secondary); }
   .dlg-body p { margin: 0; line-height: 1.45; }
+  .dlg-body { padding-bottom: 12px; }
+  .hint.quiet { font-size: 12px; color: var(--app-text-muted); }
   .dlg-body .field { gap: 5px; }
   .dlg-body .lbl { font-size: 12.5px; }
   .dlg-body .input { padding: 8px 10px; font-size: 13px; }

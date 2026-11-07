@@ -35,6 +35,7 @@
    *
    * PWA-clean (§8): api.* routes and getPlatform() only.
    */
+  import { clearRepositories } from "#lib/routes/repo-list-cache.ts";
   import { onMount, tick } from "svelte";
   import AppView from "#lib/components/AppView.svelte";
   import GitHubConnect from "#lib/components/GitHubConnect.svelte";
@@ -258,7 +259,7 @@
       {#if github?.connected}
         <div class="acct">
           <span class="acct-detail">{github.username ? `Connected as @${github.username}` : "Connected"}</span>
-          {@render removable("github.com", "Disconnect GitHub? Books stop backing up until you sign in again.", "Disconnect", () => api.remote.disconnectGitHub())}
+          {@render removable("github.com", "Disconnect GitHub? Books stop backing up until you sign in again.", "Disconnect", () => { clearRepositories(); return api.remote.disconnectGitHub(); })}
         </div>
         {#if removeError?.id === "github.com"}<p class="error" role="alert">{removeError.text}</p>{/if}
         <div class="acct-more">

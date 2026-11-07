@@ -63,9 +63,9 @@
       code = await getPlatform().connectGitHubStart();
       api.shell.openExternal(code.verificationUri).catch(() => {});
       void tick().then(() => copyBtn?.focus());
-      await getPlatform().connectGitHubWait();
+      const conn = await getPlatform().connectGitHubWait();
       // The list of online copies is what the next step usually needs: have it ready.
-      prefetchRepositories();
+      prefetchRepositories(conn?.username ?? "");
       if (mine === attempt) onConnected?.();
     } catch (e) {
       if (mine === attempt) error = friendlyHostError(e instanceof Error ? e.message : String(e));
@@ -117,7 +117,7 @@
         <button class="app-btn app-btn-ghost" onclick={() => code && api.shell.openExternal(code.verificationUri).catch(() => {})}>
           Open GitHub again
         </button>
-        <button class="app-btn app-btn-ghost" onclick={cancel}>Cancel</button>
+        <button class="app-btn app-btn-ghost" onclick={cancel}>{autoStart ? "Stop waiting" : "Cancel"}</button>
       </div>
     </div>
   {/if}

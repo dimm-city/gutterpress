@@ -132,3 +132,49 @@ describe("online-copy cache", () => {
     expect(c.noteBackupResult("/b", "synced")).toBe(0);
   });
 });
+
+describe("online-copy cache: after an action", () => {
+  test("a fresh refresh does not join a check that started before the action", async () => {
+    const f = fakes({ delay: 40 });
+    const c = createOnlineCopyCache(f.reads);
+    const first = c.refresh("/b");
+    await new Promise((r) => setTimeout(r, 5));
+    const second = c.refresh("/b", { fresh: true });
+    await Promise.all([first, second]);
+    expect(f.calls.online).toBe(2);
+    // Without `fresh` a running check is shared.
+    const f2 = fakes({ delay: 40 });
+    const c2 = createOnlineCopyCache(f2.reads);
+    await Promise.all([c2.refresh("/b"), c2.refresh("/b")]);
+    expect(f2.calls.online).toBe(1);
+  });
+
+  test("a late old read after invalidate does not come back into the snapshot", async () => {
+    const f = fakes({ delay: 40 });
+    const c = createOnlineCopyCache(f.reads);
+    const old = c.refresh("/b");
+    await new Promise((r) => setTimeout(r, 5));
+    c.invalidate("/b");
+    await old;
+    expect(c.peek("/b")).toBeUndefined();
+  });
+
+  test("a prefetched Version history page that has aged is read again", async () => {
+    let t = 1000, n = 0;
+    const reads: OnlineCopyReads = { ...fakes().reads, firstVersionsPage: async () => (n++, { entries: [], hasMore: false }) };
+    const c = createOnlineCopyCache(reads, () => t);
+    c.prefetchVersions("/b");
+    t += 6000;
+    expect(c.takeVersionsPage("/b")).toBeUndefined();
+    c.prefetchVersions("/b");
+    c.prefetchVersions("/b");
+    expect(n).toBe(2);
+  });
+
+  test("the same failing status seen twice counts once; a new one counts again", () => {
+    const c = createOnlineCopyCache(fakes().reads);
+    expect(c.noteBackupResult("/b", "error", "t1")).toBe(1);
+    expect(c.noteBackupResult("/b", "error", "t1")).toBe(1);
+    expect(c.noteBackupResult("/b", "error", "t2")).toBe(2);
+  });
+});

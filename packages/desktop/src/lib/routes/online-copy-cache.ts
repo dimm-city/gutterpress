@@ -61,7 +61,10 @@ type WithChecked = { checkedAt?: number | string; checkedOnline?: boolean };
 export function createOnlineCopyCache(reads: OnlineCopyReads, now: () => number = Date.now) {
   const snapshots = new Map<string, OnlineCopySnapshot>();
   const listeners = new Map<string, Set<(s: OnlineCopySnapshot) => void>>();
-  const versionPages = new Map<string, Promise<{ entries: VersionEntry[]; hasMore: boolean }>>();
+  const versionPages = new Map<string, { p: Promise<{ entries: VersionEntry[]; hasMore: boolean }>; at: number }>();
+  /** A prefetched Version history page older than this may be missing a new version, so it is read again. */
+  const PAGE_MAX_AGE_MS = 5_000;
+  let lastKey = new Map<string, string>();
   const failures = new Map<string, number>();
 
   function publish(dir: string, next: OnlineCopySnapshot): OnlineCopySnapshot {
@@ -86,6 +89,8 @@ export function createOnlineCopyCache(reads: OnlineCopyReads, now: () => number 
     const gen = (generation.get(dir) ?? 0) + 1;
     generation.set(dir, gen);
     const latest = () => generation.get(dir) === gen;
+    /** A read that something newer (an action, `invalidate`) replaced must not publish. */
+    const publishNow = (s: OnlineCopySnapshot): OnlineCopySnapshot => (latest() ? publish(dir, s) : s);
     const before = snapshots.get(dir);
     const [diag, local] = await Promise.all([
       network || diagnoseToo || !before?.diag ? reads.diagnose(dir).catch(() => null) : Promise.resolve(before.diag),
@@ -95,10 +100,10 @@ export function createOnlineCopyCache(reads: OnlineCopyReads, now: () => number 
     const keep = { checkedAt: before?.checkedAt ?? null, checkedOnline: before?.checkedOnline ?? false };
     if (!network || !hasRemote) {
       const checking = !network && !!snapshots.get(dir)?.checking;
-      return publish(dir, { diag, revisions: local, checking, ...keep, readAt: now() });
+      return publishNow({ diag, revisions: local, checking, ...keep, readAt: now() });
     }
     // The local answer shows at once; the online check can take a while.
-    publish(dir, { diag, revisions: local, checking: true, ...keep, readAt: now() });
+    publishNow({ diag, revisions: local, checking: true, ...keep, readAt: now() });
     let list: RevisionList | null = local;
     let online = false;
     try {
@@ -111,7 +116,8 @@ export function createOnlineCopyCache(reads: OnlineCopyReads, now: () => number 
     if (!latest()) {
       // A newer read (a local action) replaced this one: keep its drafts, just finish the check.
       const cur = snapshots.get(dir);
-      if (!cur) return publish(dir, { diag, revisions: list, checking: false, checkedAt: at, checkedOnline: online, readAt: now() });
+      // After `invalidate` there is nothing to finish: this old read is dropped.
+      if (!cur) return { diag, revisions: list, checking: false, checkedAt: at, checkedOnline: online, readAt: now() };
       return publish(dir, { ...cur, checking: false, checkedAt: at, checkedOnline: online });
     }
     return publish(dir, { diag, revisions: list, checking: false, checkedAt: at, checkedOnline: online, readAt: now() });
@@ -120,9 +126,10 @@ export function createOnlineCopyCache(reads: OnlineCopyReads, now: () => number 
   /** A read is running that checks the online copy. */
   const networkRuns = new Map<string, Promise<OnlineCopySnapshot>>();
 
-  function refresh(dir: string, options: { network?: boolean; diagnose?: boolean } = {}): Promise<OnlineCopySnapshot> {
+  function refresh(dir: string, options: { network?: boolean; diagnose?: boolean; fresh?: boolean } = {}): Promise<OnlineCopySnapshot> {
     const network = options.network ?? true;
-    if (network) {
+    // `fresh`: something was just done (a backup, a repair), so a check already running started too early to know.
+    if (network && !options.fresh) {
       const running = networkRuns.get(dir);
       if (running) return running;
     }
@@ -177,23 +184,26 @@ export function createOnlineCopyCache(reads: OnlineCopyReads, now: () => number 
       snapshots.delete(dir);
       networkRuns.delete(dir);
       versionPages.delete(dir);
+      generation.set(dir, (generation.get(dir) ?? 0) + 1);
     },
 
     subscribe,
 
     /** Start reading the Version history's first page, so opening the screen is instant. */
     prefetchVersions(dir: string): void {
-      if (!reads.firstVersionsPage || versionPages.has(dir)) return;
+      if (!reads.firstVersionsPage) return;
+      const have = versionPages.get(dir);
+      if (have && now() - have.at < PAGE_MAX_AGE_MS) return;
       const p = reads.firstVersionsPage(dir);
       p.catch(() => versionPages.delete(dir));
-      versionPages.set(dir, p);
+      versionPages.set(dir, { p, at: now() });
     },
 
     /** The prefetched first page, once (a later open reads fresh), or undefined. */
     takeVersionsPage(dir: string): Promise<{ entries: VersionEntry[]; hasMore: boolean }> | undefined {
-      const p = versionPages.get(dir);
+      const have = versionPages.get(dir);
       versionPages.delete(dir);
-      return p;
+      return have && now() - have.at < PAGE_MAX_AGE_MS ? have.p : undefined;
     },
 
     dropVersionsPage: (dir: string): void => void versionPages.delete(dir),
@@ -202,7 +212,11 @@ export function createOnlineCopyCache(reads: OnlineCopyReads, now: () => number 
      * Note a backup result so Backup & history can open its repair tools after
      * two failures in a row that are not just being offline. Returns the count.
      */
-    noteBackupResult(dir: string, state: string | undefined): number {
+    noteBackupResult(dir: string, state: string | undefined, key?: string): number {
+      // The same status seen again (a re-mount, a re-render) is not a second failure.
+      const k = key === undefined ? undefined : `${state}|${key}`;
+      if (k !== undefined && lastKey.get(dir) === k) return failures.get(dir) ?? 0;
+      if (k !== undefined) lastKey.set(dir, k);
       if (state === "error" || state === "auth" || state === "not-found") failures.set(dir, (failures.get(dir) ?? 0) + 1);
       else if (state === "synced" || state === "unsent" || state === "syncing") failures.set(dir, 0);
       return failures.get(dir) ?? 0;

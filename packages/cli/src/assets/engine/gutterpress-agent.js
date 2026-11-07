@@ -40,22 +40,22 @@
   // src/engine/compiler/agent.ts
   var exports_agent = {};
   __export(exports_agent, {
-    xrefSites: () => xrefSites,
-    targetTexts: () => targetTexts,
-    stringSources: () => stringSources,
-    setPinGeometry: () => setPinGeometry,
-    setPinFurniture: () => setPinFurniture,
-    setGenerated: () => setGenerated,
-    printArea: () => printArea,
-    pinRoots: () => pinRoots,
-    instrument: () => instrument,
-    forcedBreakSites: () => forcedBreakSites,
-    fillLeaders: () => fillLeaders,
-    counterResetSites: () => counterResetSites,
-    collectCss: () => collectCss,
-    auditContent: () => auditContent,
+    addCss: () => addCss,
     applyRectoSpacers: () => applyRectoSpacers,
-    addCss: () => addCss
+    auditContent: () => auditContent,
+    collectCss: () => collectCss,
+    counterResetSites: () => counterResetSites,
+    fillLeaders: () => fillLeaders,
+    forcedBreakSites: () => forcedBreakSites,
+    instrument: () => instrument,
+    pinRoots: () => pinRoots,
+    printArea: () => printArea,
+    setGenerated: () => setGenerated,
+    setPinFurniture: () => setPinFurniture,
+    setPinGeometry: () => setPinGeometry,
+    stringSources: () => stringSources,
+    targetTexts: () => targetTexts,
+    xrefSites: () => xrefSites
   });
 
   // src/engine/shared/synthesis.ts

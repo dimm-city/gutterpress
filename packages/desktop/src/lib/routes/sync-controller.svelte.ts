@@ -146,8 +146,9 @@ export class SyncController {
     const dir = this.deps.currentDir();
     const s = this.streamed?.dir === dir ? this.streamed : null;
     const m = this.lastManual?.dir === dir ? this.lastManual : null;
-    if (m && (!s || Date.parse(m.at) >= s.seenAt)) return { state: m.state, lastSyncAt: m.at };
-    return s;
+    const last = m && (!s || Date.parse(m.at) >= s.seenAt) ? { state: m.state, lastSyncAt: m.at } : s;
+    // The last update check already knows when only online has news; Backup & history shows it as "behind".
+    return last && this.updatesAvailable ? ({ ...last, behind: true } as LastBackup) : last;
   }
 
   /** Why the open book's automatic versions need attention, or null when they do not. */

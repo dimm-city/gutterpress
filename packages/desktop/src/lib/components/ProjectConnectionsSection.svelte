@@ -35,8 +35,8 @@
   import { useSettings } from "#lib/settings.svelte.ts";
   import { backupState, onlineCopyName } from "#lib/backup-state.ts";
   import { NOTHING_NEW_NOTICE, versionsLine } from "#lib/save-status.ts";
-  import { versionSubtitle, versionTitle } from "#lib/routes/version-timeline.ts";
-  import { backupCard, checkedAgo, repairSetAsideText, type CardAction } from "#lib/routes/backup-card.ts";
+  import { versionTitle, whenShort } from "#lib/routes/version-timeline.ts";
+  import { agoFull, backupCard, checkedAgo, repairSetAsideText, type CardAction } from "#lib/routes/backup-card.ts";
   import * as onlineCopy from "#lib/routes/online-copy-cache.ts";
   import BackupWizard from "#lib/components/BackupWizard.svelte";
   import GitHubConnect from "#lib/components/GitHubConnect.svelte";
@@ -102,6 +102,7 @@
   let diag = $state<ProjectRemoteDiagnosis | null>(null);
   let checking = $state(false);
   let checkedAt = $state<number | null>(null);
+  let revisions = $state<import("#lib/platform/contract.ts").RevisionList | null>(null);
   let now = $state(Date.now());
   const situation = $derived(diag ? backupState(diag) : null);
   /** What the last action changed ("Signed in to git.example.com."). */
@@ -131,9 +132,20 @@
     return onGitHub ? `GitHub · ${name.replace(/^[^/]*\//, "")}` : name;
   });
 
+  /** Whether the open draft is online, and how many others exist only here: "safe" needs the open draft online. */
+  const drafts = $derived.by(() => {
+    const list = revisions?.revisions;
+    const current = list?.find((r) => r.current);
+    if (!list || !current) return undefined;
+    return {
+      currentBackedUp: current.where === "online" && !current.notBackedUp,
+      othersOnlyHere: list.filter((r) => !r.current && r.where === "this-computer").length,
+    };
+  });
+
   const card = $derived(
     situation
-      ? backupCard({ situation, backup, checking, where, github: onGitHub, autoBackup, now, bookName })
+      ? backupCard({ situation, backup, checking, where, github: onGitHub, autoBackup, now, bookName, drafts })
       : null,
   );
 
@@ -149,13 +161,18 @@
   /** A backup finished, or a version was restored: the newest versions may have changed. */
   export function refreshHistory() {
     onlineCopy.dropVersionsPage(projectDir ?? "");
-    if (projectDir) void loadFacts(projectDir);
+    // A backup (automatic, from the status bar, or from here) may have sent drafts online or brought versions in.
+    if (projectDir) {
+      void onlineCopy.refresh(projectDir, { network: false });
+      void loadFacts(projectDir);
+    }
   }
 
   function apply(snap: onlineCopy.OnlineCopySnapshot): void {
     diag = snap.diag;
     checking = snap.checking;
     checkedAt = snap.checkedAt;
+    revisions = snap.revisions;
   }
 
   onMount(() => {
@@ -167,6 +184,7 @@
     return () => {
       stop();
       clearInterval(tickId);
+      if (dir) onlineCopy.dropVersionsPage(dir);
     };
   });
 
@@ -196,7 +214,7 @@
     onlineCopy.invalidate(projectDir);
     loading = !diag;
     try {
-      apply(await onlineCopy.refresh(projectDir));
+      apply(await onlineCopy.refresh(projectDir, { fresh: true }));
     } catch {
       diag = null;
     } finally {
@@ -259,12 +277,12 @@
 
   // The server accepted the sign-in (GitServerForm checked it against this book's online copy
   // and saved it): the book is now set up to back up there.
-  const serverConnected = (result: { host: string }) =>
+  const serverConnected = (_result: { host: string }) =>
     act(async (dir) => {
       onBackupSetUp?.(dir);
       signInOpen = false;
       await reload();
-      return `Signed in to ${result.host}.`;
+      return null;
     });
 
   const githubConnected = () =>
@@ -272,7 +290,7 @@
       onBackupSetUp?.(dir);
       signInOpen = false;
       await reload();
-      return "Signed in to GitHub.";
+      return null;
     });
 
   // The page's passes, run from here; the sync controller's `backup` is the headline.
@@ -286,7 +304,7 @@
       }
       // A pass can bring in versions, send a new draft online and make a version: read it all again.
       onlineCopy.dropVersionsPage(dir);
-      void onlineCopy.refresh(dir);
+      void onlineCopy.refresh(dir, { fresh: true });
       void loadFacts(dir);
       return null;
     });
@@ -371,7 +389,9 @@
   // Two backups in a row that failed for a reason other than being offline: open the drawer.
   $effect(() => {
     if (!projectDir || !backup) return;
-    if (onlineCopy.noteBackupResult(projectDir, backup.state) >= 2) troubleOpen = true;
+    const seen = backup as { lastSyncAt: string | null; message?: string; seenAt?: number };
+    // Counted per distinct status (its time and message), so reopening the tab never adds one.
+    if (onlineCopy.noteBackupResult(projectDir, backup.state, `${seen.lastSyncAt}|${seen.seenAt ?? ""}|${seen.message ?? ""}`) >= 2) troubleOpen = true;
   });
 
   async function testConnection() {
@@ -485,11 +505,12 @@
         <span class="status-icon"><Icon name={card.icon} size={18} /></span>
         <div class="status-text">
           <h3 id="online-status-title">{card.title}</h3>
-          <p>{card.detail}</p>
+          <p>{card.detail}{#if card.showChecked && checkedAt !== null && !checking} <span class="checked">Checked {checkedAgo(checkedAt, now)}.</span>{/if}</p>
+          {#if card.note}<p class="note">{card.note}</p>{/if}
         </div>
         <div class="status-action">
-          {#if card.action && card.action !== "sign-in"}
-            <button class="app-btn-primary" onclick={() => runAction(card.action)} disabled={busy || (card.action === "review-decisions" && !onReviewDecisions)}>
+          {#if card.action && card.action !== "sign-in" && (card.action !== "review-decisions" || onReviewDecisions)}
+            <button class="app-btn-primary" onclick={() => runAction(card.action)} disabled={busy}>
               {busyLabel(card.action) ?? LABELS[card.action]}
             </button>
           {/if}
@@ -499,14 +520,8 @@
         </div>
       </div>
 
-      {#if situation === "ready"}
-        <p class="check-line" role="status">
-          {#if checking}
-            <span class="spin" aria-hidden="true"></span> Checking the online copy…
-          {:else if checkedAt !== null}
-            Checked {checkedAgo(checkedAt, now)}
-          {/if}
-        </p>
+      {#if situation === "ready" && checking}
+        <p class="check-line" role="status"><span class="spin" aria-hidden="true"></span> Checking the online copy…</p>
       {/if}
 
       {#if needsSignIn && situation !== "own-tools"}
@@ -525,13 +540,6 @@
             <p class="hint">This book's online copy is at {diag.remoteUrl}. Gutterpress backs up only to web addresses that start with https://.</p>
           {/if}
         </div>
-      {/if}
-
-      {#if situation === "ready" && !needsSignIn}
-        <label class="auto">
-          <input type="checkbox" checked={autoBackup} onchange={(e) => setAutoBackup(e.currentTarget.checked)} />
-          Back up automatically
-        </label>
       {/if}
 
       {#if done}<p class="status-note done" role="status" bind:this={doneEl} tabindex="-1">{done}</p>{/if}
@@ -574,7 +582,7 @@
               <button class="recent-row" onclick={() => onBrowseVersions?.(v.id)} disabled={!onBrowseVersions}>
                 <span class="recent-main">
                   <span class="recent-title">{versionTitle(v.message)}</span>
-                  <span class="recent-sub">{versionSubtitle(v.message) ? `${versionSubtitle(v.message)} · ` : ""}{when(v.timestamp)}</span>
+                  <span class="recent-sub">{whenShort(v.timestamp, now)} · {agoFull(v.timestamp, now)}</span>
                 </span>
                 {#if v.backedUp === true}<span class="where ok"><Icon name="circle-check" size={13} /> Backed up</span>{/if}
                 {#if v.backedUp === false}<span class="where"><Icon name="laptop" size={13} /> Only on this computer</span>{/if}
@@ -586,7 +594,13 @@
           {/each}
         </ul>
         <div class="section-foot">
-          <button class="link" onclick={() => onBrowseVersions?.()} disabled={!onBrowseVersions}>Go back to one of these…</button>
+          <button class="ghost small" onclick={() => onBrowseVersions?.()} disabled={!onBrowseVersions}>Go back to one of these…</button>
+          {#if situation === "ready"}
+            <label class="auto">
+              <input type="checkbox" checked={autoBackup} onchange={(e) => setAutoBackup(e.currentTarget.checked)} />
+              Back up automatically
+            </label>
+          {/if}
         </div>
       </section>
 
@@ -594,15 +608,20 @@
       <RevisionsList bind:this={revisionsEl} {projectDir} hasOnlineCopy={!!diag.remoteUrl} disabled={busy} onChanged={draftsChanged} />
 
       <!-- 4. The tools, out of the way. -->
-      {#if situation === "ready" && backup?.state !== "offline"}
+      {#if situation === "ready"}
         <details class="trouble section-card" bind:open={troubleOpen}>
-          <summary>Something wrong with the online copy?</summary>
+          <summary><Icon name="chevron-right" size={13} /> Something wrong with the online copy?</summary>
           <div class="tools">
             <div class="tool">
-              <div><strong>Check the connection</strong><p class="hint">Checks that Gutterpress can reach the online copy and that your sign-in works. Nothing is changed or uploaded.</p></div>
+              <div>
+                <strong>Check the connection</strong>
+                {#if testResult}
+                  <p class="result" class:failed={!testOk} role="status"><Icon name={testOk ? "circle-check" : "triangle-alert"} size={14} /> {testResult}</p>
+                {/if}
+                <p class="hint">Checks that Gutterpress can reach the online copy and that your sign-in works. Nothing is changed or uploaded.{#if backup?.state === "offline"} A network setting (a proxy or a firewall) can look like being offline.{/if}</p>
+              </div>
               <button class="ghost small" onclick={() => void testConnection()} disabled={busy || testing}>{testing ? "Checking…" : "Check the connection"}</button>
             </div>
-            {#if testResult}<p class="result" class:failed={!testOk} role="status">{testResult}</p>{/if}
             {#if onOpenAccounts && onGitHub}
               <div class="tool">
                 <div><strong>Sign in again</strong><p class="hint">Opens Accounts, where you sign in to GitHub again.</p></div>
@@ -610,7 +629,7 @@
               </div>
             {/if}
             <div class="tool">
-              <div><strong>Repair</strong><p class="hint">Fixes backups that keep failing. Gutterpress sets your versions aside, downloads a fresh copy from online, then puts your current files back on top. Your current files don't change.</p></div>
+              <div><strong>Repair</strong><p class="hint">Fixes backups that keep failing. Gutterpress sets this book's version history aside, downloads a fresh copy from the online copy, then puts your current files back on top. Your current files don't change.</p></div>
               <button class="ghost small" onclick={() => void askRepair()} disabled={busy}>{running === "repair" ? "Repairing…" : "Repair…"}</button>
             </div>
             {#if !moreOpen}
@@ -640,9 +659,9 @@
 {#if repairAsk}
   <div class="dlg-backdrop" role="presentation" onclick={() => (repairAsk = false)}></div>
   <div class="dlg-shell repair-dialog" use:dialogBehavior={{ onClose: () => (repairAsk = false), labelledBy: "repair-title", initialFocus: ".dlg-ghost" }}>
-    <header class="dlg-header"><h2 id="repair-title">Repair the online copy?</h2></header>
+    <header class="dlg-header"><h2 id="repair-title">Repair backups?</h2></header>
     <div class="dlg-body">
-      <p>Gutterpress sets your versions aside, downloads a fresh copy from online, then puts your current files back on top. Your current files don't change. Then a version is saved and backed up.</p>
+      <p>Repair sets this book's version history aside, downloads a fresh copy from the online copy, then puts your current files back on top. Your current files don't change. Then a version is saved and backed up.</p>
       <p class:checking-aside={setAsideLoading}>{setAsideLoading ? "Checking what is only on this computer…" : setAsideText}</p>
     </div>
     <footer class="dlg-actions">
@@ -703,7 +722,7 @@
   .tool strong { font-size: 13px; font-weight: 600; color: var(--app-text); }
   .tool .hint { margin-top: 2px; }
   .tool button { flex-shrink: 0; }
-  .result { margin: 0; padding: 0 16px 10px; font-size: 12px; color: var(--app-text-secondary); overflow-wrap: anywhere; }
+  .result { margin: 0; font-size: 12px; color: var(--app-text-secondary); overflow-wrap: anywhere; }
   .result.failed { color: var(--app-error-text); }
   .tool .danger { color: var(--app-error-text); border-color: var(--app-error-text); }
   .warn { color: var(--app-warning-text); }
@@ -716,7 +735,18 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }
-  .auto { display: flex; align-items: center; gap: 6px; padding: 0 16px 14px 66px; font-size: 13px; color: var(--app-text-secondary); }
+  .auto { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 12.5px; color: var(--app-text-secondary); }
+  .auto input { margin: 0; }
+  .section-foot { display: flex; align-items: center; gap: 12px; }
+  .checked, .status-text .note { color: var(--app-text-muted); }
+  .status-text .note { margin: 4px 0 0; font-size: 12px; }
+  .trouble summary { color: var(--app-text-secondary); display: flex; align-items: center; gap: 6px; }
+  .trouble[open] summary :global(svg) { transform: rotate(90deg); }
+  .result { display: flex; align-items: center; gap: 6px; padding: 4px 0 0; }
+  .result :global(svg) { color: var(--app-success-strong); flex-shrink: 0; }
+  .result.failed :global(svg) { color: var(--app-error-text); }
+  .repair-dialog .dlg-actions { padding-top: 12px; }
+  .repair-dialog :global(.dlg-ghost:focus-visible) { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .recent-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .recent-sub { font-size: 12px; color: var(--app-text-muted); }
   .where { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; font-size: 12px; color: var(--app-text-muted); }
