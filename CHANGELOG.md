@@ -40,9 +40,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   book half on one revision and half on another), the next time the book is
   opened, before the editor reads any file, the book is put back to the saved
   version and a message says so. Before that, a copy of the files as they
-  stand is kept under `refs/gutterpress/before-repair-<time>` in the book's
-  history and named in the message, so nothing written after the crash is
-  lost. Only files the half-done move wrote are removed, and only folders it
+  stand is saved inside the book's git folder as
+  `refs/gutterpress/before-repair-<time>` (not in the version history) and
+  named in the message with how to recover it, so nothing written after the
+  crash is lost. Only files the half-done move wrote are removed, and only folders it
   made; anything that may be yours is left and listed. A checkout that fails
   for any reason is undone the same way, an unreadable record is handled the
   same way (back to the saved version, nothing deleted), and an automatic

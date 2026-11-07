@@ -107,7 +107,7 @@ folders that already existed), and it removes the file last. If the app dies in
 between, `repairInterruptedSwitch` (`source-provider.ts`) runs when the book is
 opened (`app/classify-project`, before the editor reads a file or a build
 starts) and, as a backstop, before any save, backup or restore. It first keeps a
-copy of the tree as it stands on `refs/gutterpress/before-repair-<time>`, then
+copy of the tree as it stands on `refs/gutterpress/before-repair-<time>` (inside the git folder, not in the version history; the notice says how to recover it), then
 puts the book back to the saved version, and removes only files whose bytes
 equal the target's (or that were written since the move began) and folders the
 move made; anything else is left and listed. A journal that cannot be read

@@ -1131,7 +1131,7 @@ export async function repairInterruptedSwitchUnlocked(dir: string): Promise<stri
       "Nothing you wrote before then was lost; do it again when you're ready.";
     if (unreadable) message += " The record of the interrupted change could not be read, so any leftover files from it were kept.";
     if (kept) {
-      message += ` A copy of the files as they stood just before this repair is kept as "${kept}" in the book's history.`;
+      message += ` A copy of the files as they were before this repair was saved inside the book's git folder as "${kept}". It is not in your version history. Ask for help to recover it, or run: git checkout ${kept} -- .`;
     }
     if (left.length) {
       message += ` These files were left alone because they may be yours: ${left.slice(0, 10).join(", ")}${left.length > 10 ? ` and ${left.length - 10} more` : ""}.`;
