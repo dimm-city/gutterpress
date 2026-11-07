@@ -277,7 +277,7 @@ describe("a repair never loses what was written after the journal", () => {
     const kept = await keptCopy(dir);
     expect(await kept.read("ch2.md")).toBe("typed after relaunch");
     expect(await kept.read("notes/new.md")).toBe("new file");
-    expect(message).toContain(kept.ref);
+    expect(message).toContain("Book setup"); // points at the app, never at git
     expect(read(dir, "ch2.md")).toBe("two"); // the tree is the saved version
   });
 
@@ -359,7 +359,7 @@ describe("an unreadable journal", () => {
     expect(await kept.read("ch2.md")).toBe("unsaved edit");
     expect(await kept.read("notes/untracked.md")).toBe("mine");
     expect(read(dir, "notes/untracked.md")).toBe("mine");
-    expect(message).toContain(kept.ref);
+    expect(message).toContain("Book setup"); // points at the app, never at git
     expect(fs.existsSync(journal(dir))).toBe(false);
   });
 });
