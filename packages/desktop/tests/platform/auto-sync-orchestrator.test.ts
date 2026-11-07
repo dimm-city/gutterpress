@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import {
+  AUTO_SYNC_OPEN_DELAY_MS,
   AutoSyncOrchestrator,
   type AutoSyncOrchestratorDeps,
   type SyncStatusPayload,
@@ -30,6 +31,8 @@ async function waitFor(pred: () => boolean, timeoutMs = 2000): Promise<void> {
 interface Harness {
   orch: AutoSyncOrchestrator;
   emitted: SyncStatusPayload[];
+  /** Every answer handed to `saveLastKnown`. */
+  saved: Array<[string, { state: string; at: string; ahead?: number }]>;
   /** Every projectDir passed to lib.syncProject, in call order. */
   syncCalls: string[];
   /** Full args of every lib.syncProject call, in order. */
@@ -59,12 +62,19 @@ interface FakeLibOptions {
   openRevision?: { where: "online" | "this-computer"; notBackedUp: boolean } | null;
   /** The watched project dir (default DIR). */
   watchedDir?: string;
+  /** A switch left part-way (the fake `unfinishedSwitchState`). */
+  unfinishedSwitch?: { message: string } | null;
+  /** The online copy holds versions this computer lacks (the fake `localBackupStatus`). */
+  behind?: boolean;
+  /** The last network answer kept from an earlier launch. */
+  lastKnown?: { state: SyncStatusPayload["state"]; at: string; ahead?: number } | null;
 }
 
 function makeHarness(opts: FakeLibOptions = {}): Harness {
   const emitted: SyncStatusPayload[] = [];
   const syncCalls: string[] = [];
   const syncArgs: unknown[] = [];
+  const saved: Array<[string, { state: string; at: string; ahead?: number }]> = [];
   let clock = 1_700_000_000_000;
 
   const lib = {
@@ -103,6 +113,14 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
               ...(opts.openRevision ? [{ name: "main", current: true, ...opts.openRevision }] : []),
             ],
           },
+    unfinishedSwitchState: async () => opts.unfinishedSwitch ?? null,
+    // The refs-only answer, derived from the same fake open revision.
+    localBackupStatus: async () => {
+      const open = opts.openRevision;
+      if (!open) return null;
+      if (open.where === "online" && !open.notBackedUp) return { state: "synced", ahead: 0, behind: false };
+      return { state: "unsent", ahead: open.notBackedUp ? 2 : 0, behind: opts.behind ?? false };
+    },
     resolveLogger: () => ({ info: () => {}, error: () => {} }),
     AUTO_SYNC_PUSH_INTERVAL_MINUTES: 15,
   } as unknown as LibModule;
@@ -120,11 +138,14 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
     now: () => clock,
     getWatchedDir: () => opts.watchedDir ?? DIR,
     operationLogPath: (slug) => `/logs/${slug}.log`,
+    readLastKnown: async () => opts.lastKnown ?? null,
+    saveLastKnown: (dir, value) => saved.push([dir, value]),
   };
 
   return {
     orch: new AutoSyncOrchestrator(deps),
     emitted,
+    saved,
     syncCalls,
     syncArgs,
       setClock: (ms) => {
@@ -609,7 +630,15 @@ test("with automatic backing up off, the first run sends nothing and says whethe
     await h.orch.run(DIR);
     await tick();
     expect(h.syncCalls.length).toBe(0);
-    expect(h.emitted).toEqual([{ state, projectDir: DIR, lastSyncAt: null }]);
+    expect(h.emitted).toEqual([
+      {
+        state,
+        projectDir: DIR,
+        lastSyncAt: null,
+        source: "local",
+        ...(openRevision.notBackedUp ? { ahead: 2 } : {}),
+      },
+    ]);
     expect(h.orch.getState(DIR)?.inFlight).toBe(false);
   }
 });
@@ -619,10 +648,8 @@ test("reportUnsent reports the last pass time and re-reports after each saved ve
   h.orch.setLastSyncAt(DIR, "2026-01-01T00:00:00.000Z");
   await h.orch.reportUnsent(DIR);
   await h.orch.reportUnsent(DIR);
-  expect(h.emitted).toEqual([
-    { state: "unsent", projectDir: DIR, lastSyncAt: "2026-01-01T00:00:00.000Z" },
-    { state: "unsent", projectDir: DIR, lastSyncAt: "2026-01-01T00:00:00.000Z" },
-  ]);
+  const unsent = { state: "unsent", projectDir: DIR, lastSyncAt: "2026-01-01T00:00:00.000Z", source: "local", ahead: 2 };
+  expect(h.emitted).toEqual([unsent, unsent]);
 });
 
 test("reportUnsent stays quiet when passes report for themselves, the book cannot sync, or it is not the open book", async () => {
@@ -652,4 +679,150 @@ test("reportUnsent waits out a pass in flight, and never throws", async () => {
   const broken = makeHarness({ autoSyncDelayMs: null, canSync: true, diagnoseThrows: new Error("keyring locked") });
   await expect(broken.orch.reportUnsent(DIR)).resolves.toBeUndefined();
   expect(broken.emitted).toEqual([]);
+});
+
+
+// ── Immediate local status, and the network pass's contract fields ───────────
+
+test("the open delay before the first network pass is about a second", () => {
+  expect(AUTO_SYNC_OPEN_DELAY_MS).toBeLessThanOrEqual(1_000);
+});
+
+test("reportLocal answers from refs at once, with the time of the last network answer kept from before", async () => {
+  const h = makeHarness({
+    openRevision: { where: "online", notBackedUp: true },
+    behind: true,
+    lastKnown: { state: "synced", at: "2026-01-01T00:00:00.000Z" },
+  });
+  await h.orch.reportLocal(DIR);
+  expect(h.syncCalls.length).toBe(0); // no network
+  expect(h.emitted).toEqual([
+    { state: "unsent", projectDir: DIR, lastSyncAt: "2026-01-01T00:00:00.000Z", source: "local", ahead: 2, behind: true },
+  ]);
+});
+
+test("reportLocal says Backed up when the online copy has everything, and has no time before a first answer", async () => {
+  const h = makeHarness({ openRevision: { where: "online", notBackedUp: false } });
+  await h.orch.reportLocal(DIR);
+  expect(h.emitted).toEqual([{ state: "synced", projectDir: DIR, lastSyncAt: null, source: "local" }]);
+});
+
+test("reportLocal never speaks for a detached or unborn HEAD, even with a kept answer", async () => {
+  const kept = makeHarness({ openRevision: null, lastKnown: { state: "unsent", at: "2026-01-02T00:00:00.000Z", ahead: 3 } });
+  await kept.orch.reportLocal(DIR);
+  expect(kept.emitted).toEqual([]);
+});
+
+test("reportLocal and reportUnsent say nothing while a switch is left part-way", async () => {
+  const h = makeHeadless();
+  function makeHeadless() {
+    return makeHarness({
+      autoSyncDelayMs: null,
+      openRevision: { where: "online", notBackedUp: false },
+      unfinishedSwitch: { message: "part-way" },
+    });
+  }
+  await h.orch.reportLocal(DIR);
+  await h.orch.reportUnsent(DIR);
+  expect(h.emitted).toEqual([]);
+});
+
+test("a pass that answers while the refs are being read wins over the local answer", async () => {
+  const h = makeHarness({ openRevision: { where: "online", notBackedUp: false } });
+  const pending = h.orch.localStatus(DIR);
+  h.orch.setLastSyncAt(DIR, "2026-01-03T00:00:00.000Z"); // a pass finished meanwhile
+  expect(await pending).toBeNull();
+});
+
+test("only a pass that reached the online copy updates the kept answer", async () => {
+  const failed = makeHarness({ syncProject: () => ({ status: "offline" }) });
+  await failed.orch.run(DIR);
+  expect(failed.saved).toEqual([]);
+  const ok = makeHarness({ openRevision: { where: "online", notBackedUp: false } });
+  await ok.orch.run(DIR);
+  expect(ok.saved.length).toBe(1);
+});
+
+test("forgetKnown drops the kept answer and the last pass time", async () => {
+  const cleared: string[] = [];
+  const h = makeHarness({ openRevision: { where: "online", notBackedUp: false } });
+  (h.orch as unknown as { deps: { clearLastKnown: (d: string) => void } }).deps.clearLastKnown = (d) => cleared.push(d);
+  h.orch.setLastSyncAt(DIR, "2026-01-03T00:00:00.000Z");
+  h.orch.forgetKnown(DIR);
+  expect(cleared).toEqual([DIR]);
+  expect(h.orch.getLastSyncAt(DIR)).toBeNull();
+});
+
+test("reportLocal stays quiet for a book that cannot sync, another book, or once a real answer exists", async () => {
+  const open = { where: "online", notBackedUp: false } as const;
+  for (const opts of [
+    { canSync: false, openRevision: open },
+    { watchedDir: "/another-book", openRevision: open },
+  ] satisfies FakeLibOptions[]) {
+    const h = makeHarness(opts);
+    await h.orch.reportLocal(DIR);
+    expect(h.emitted).toEqual([]);
+  }
+  const answered = makeHarness({ openRevision: open });
+  answered.orch.setLastSyncAt(DIR, "2026-01-03T00:00:00.000Z");
+  await answered.orch.reportLocal(DIR);
+  expect(answered.emitted).toEqual([]);
+});
+
+test("scheduleInitialSync emits the local answer immediately and starts the pass after the open delay", async () => {
+  const h = makeHarness({ openRevision: { where: "online", notBackedUp: false } });
+  h.orch.scheduleInitialSync(DIR);
+  await tick();
+  expect(h.emitted.map((e) => [e.state, e.source])).toEqual([["synced", "local"]]);
+  expect(h.syncCalls.length).toBe(0);
+  h.orch.cancelAll();
+});
+
+test("a finished pass carries source 'network', the unsent count, and the files to decide, and keeps the answer", async () => {
+  const h = makeHarness({
+    openRevision: { where: "online", notBackedUp: true },
+    behind: true,
+    syncProject: () => ({
+      status: "up-to-date",
+      pushDeferred: true,
+      combinedFiles: ["a.md", "b.md"],
+      keptBothFiles: [{ path: "c.png", onlinePath: "c.online.png" }],
+    }),
+  });
+  await h.orch.run(DIR);
+  const done = h.emitted.at(-1)!;
+  expect(done).toMatchObject({ state: "unsent", source: "network", ahead: 2, behind: true, decide: 3 });
+  expect(h.saved).toEqual([[DIR, { state: "unsent", at: done.lastSyncAt!, ahead: 2 }]]);
+});
+
+test("a clean synced pass carries no ahead/behind/decide", async () => {
+  const h = makeHarness({ openRevision: { where: "online", notBackedUp: false } });
+  await h.orch.run(DIR);
+  const done = h.emitted.at(-1)!;
+  expect(done.state).toBe("synced");
+  expect(done.source).toBe("network");
+  expect(done.ahead).toBeUndefined();
+  expect(done.behind).toBeUndefined();
+  expect(done.decide).toBeUndefined();
+});
+
+test("a 'not found' outcome is an error saying so, never the sign-in state", async () => {
+  const h = makeHarness({
+    syncProject: () => ({ status: "not-found", message: "Gutterpress can't find this online copy." }),
+  });
+  await h.orch.run(DIR);
+  const done = h.emitted.at(-1)!;
+  expect(done.state).toBe("error");
+  expect(done.message).toBe("Gutterpress can't find this online copy.");
+  expect(done.reason).toBe("not-found");
+  expect(done.host).toBeUndefined();
+  expect(done.canSignIn).toBeUndefined();
+});
+
+test("a 'not found' on GitHub says so in a field, and offers signing in", async () => {
+  const h = makeHarness({
+    syncProject: () => ({ status: "not-found", host: "github", message: "Gutterpress can't find this online copy on GitHub." }),
+  });
+  await h.orch.run(DIR);
+  expect(h.emitted.at(-1)).toMatchObject({ state: "error", reason: "not-found", host: "github", canSignIn: true });
 });

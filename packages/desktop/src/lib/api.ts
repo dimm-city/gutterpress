@@ -769,8 +769,12 @@ export const api = {
     listSnapshotsPage: (projectDir: string, options?: { limit?: number; before?: string }) =>
       post<{ entries: VersionEntry[]; hasMore: boolean }>('/api/vcs/list-snapshots-page', { projectDir, ...options }),
     /** Versions online that this computer has not got, each with the files it changed (#408, #484). */
-    onlineVersions: (projectDir: string) =>
-      post<{ entries: OnlineVersionEntry[]; reason?: 'no-remote' | 'auth' | 'offline' }>('/api/vcs/online-versions', { projectDir }),
+    onlineVersions: (projectDir: string, options?: { maxAgeMs?: number }) =>
+      post<{
+        entries: OnlineVersionEntry[];
+        reason?: 'no-remote' | 'auth' | 'not-found' | 'offline';
+        checkedAt?: string | null;
+      }>('/api/vcs/online-versions', { projectDir, ...options }),
     /** The files one version changed, each with a plain hint; `more` beyond the ones listed (#408). */
     versionChanges: (projectDir: string, id: string) =>
       post<VersionChanges>('/api/vcs/version-changes', { projectDir, id }),
@@ -795,7 +799,7 @@ export const api = {
       post<{ current: string; changedFiles: string[] }>('/api/vcs/switch-branch', { projectDir, branch }),
     /** The book's revisions and where each is kept (#448); `null` without version history.
      *  `refresh` checks the online copy first (best-effort; see `checkedOnline`). */
-    listRevisions: (projectDir: string, options?: { refresh?: boolean }) =>
+    listRevisions: (projectDir: string, options?: { refresh?: boolean; maxAgeMs?: number }) =>
       post<RevisionList | null>('/api/vcs/list-revisions', { projectDir, ...options }),
     /** Put the files from a kept repair copy back (#508), through the safe restore. */
     restoreRepairCopy: (projectDir: string, id: string) =>
@@ -832,6 +836,13 @@ export const api = {
     /** Repositories the user granted the Gutterpress GitHub App. */
     listRemoteRepositories: () =>
       post<RemoteRepository[]>('/api/remote/list-repositories'),
+    /**
+     * One page (up to 100, most recently active first) of the same list, from a
+     * short per-account cache; `refresh` skips the cache. Ask for page 1 to
+     * show the picker at once, then 2, 3… while `hasMore`.
+     */
+    listRemoteRepositoriesPage: (page: number, options?: { refresh?: boolean }) =>
+      post<{ repos: RemoteRepository[]; page: number; hasMore: boolean }>('/api/remote/list-repositories', { page, ...options }),
 
     /**
      * Online backup for a book that started on this computer (#358): create a
@@ -841,6 +852,12 @@ export const api = {
      */
     setUpBackup: (projectDir: string, target: BackupTarget) =>
       post<BackupSetupResult>('/api/remote/set-up-backup', { projectDir, target }),
+    /** The step `setUpBackup` is on for this book (poll while it is pending), or `null`. */
+    setUpBackupProgress: (projectDir: string) =>
+      post<{ progress: { step: 'checking' | 'creating' | 'choosing' | 'sending'; label: string; at: string } | null }>(
+        '/api/remote/set-up-backup-progress',
+        { projectDir },
+      ),
 
     /** Branches of a chosen repository. */
     listRemoteBranches: (owner: string, repo: string) =>
@@ -901,8 +918,15 @@ export const api = {
      * files that exist only online, then save a version and back up. The old
      * history is kept aside, never deleted.
      */
+    /** What a repair would set aside: revisions and versions found only on this computer. */
+    previewRepair: (projectDir: string) =>
+      post<{ setAside: { revisions: string[]; versions: number }; repairCopies?: number; unreadable?: true }>('/api/remote/repair-preview', { projectDir }),
+    /** `movedGitTo`: the folder (outside the book) the old version history was moved into; pass it to `showRepairBackup`. */
     repairOnlineBackup: (projectDir: string) =>
-      post<{ outcome: SyncOutcome; restoredFiles: string[] }>('/api/remote/repair', { projectDir }),
+      post<{ outcome: SyncOutcome; restoredFiles: string[]; movedGitTo: string }>('/api/remote/repair', { projectDir }),
+    /** Show a repair's backup folder in the file manager. Only to look at: it can't be brought back from inside the app. */
+    showRepairBackup: (folder: string) =>
+      post<{ ok: boolean }>('/api/remote/show-repair-backup', { filePath: folder }),
 
     /**
      * "Scorched earth": copy the folder to a backup, empty it, download a

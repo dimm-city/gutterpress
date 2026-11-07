@@ -6,6 +6,8 @@
 
   interface ToastItem {
     id: number;
+    /** Toasts with the same key replace each other instead of stacking. */
+    key?: string;
     message: string;
     type: ToastType;
     action?: {
@@ -28,7 +30,9 @@
 
   export interface ToastController {
     /** Returns the toast's id, for `dismiss` when a newer message supersedes it. */
-    show(message: string, type?: ToastType, duration?: number, action?: ToastItem["action"]): number;
+    show(message: string, type?: ToastType, duration?: number, action?: ToastItem["action"], key?: string): number;
+    /** Take away the toast that carries this key, if it is still up. */
+    dismissKey(key: string): void;
     success(message: string, duration?: number, action?: ToastItem["action"]): number;
     dismiss(id: number): void;
     error(message: string, duration?: number): void;
@@ -40,6 +44,8 @@
 
   let toasts = $state<ToastItem[]>([]);
   let nextId = 1;
+  /** Auto-dismiss timers by toast id, so a replaced toast restarts its clock. */
+  const timers = new Map<number, ReturnType<typeof setTimeout>>();
 
   const ICONS: Record<ToastType, string> = {
     success: `<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/></svg>`,
@@ -56,20 +62,36 @@
   };
 
   function dismiss(id: number) {
+    const timer = timers.get(id);
+    if (timer !== undefined) clearTimeout(timer);
+    timers.delete(id);
     toasts = toasts.map(t => t.id === id ? { ...t, removing: true } : t);
     setTimeout(() => {
       toasts = toasts.filter(t => t.id !== id);
     }, 300);
   }
 
-  function show(message: string, type: ToastType = "info", duration?: number, action?: ToastItem["action"]): number {
-    const id = nextId++;
+  function dismissKey(key: string) {
+    for (const t of toasts) if (t.key === key && !t.removing) dismiss(t.id);
+  }
+
+  function show(message: string, type: ToastType = "info", duration?: number, action?: ToastItem["action"], key?: string): number {
     if (!action && type === "error" && onReportProblem) {
       action = { label: "Report a problem", onClick: onReportProblem };
     }
-    toasts = [...toasts, { id, message, type, action }];
     const ms = duration ?? DURATIONS[type];
-    if (ms > 0) setTimeout(() => dismiss(id), ms);
+    // Same key: the newer message takes the old one's place (and its clock restarts).
+    const existing = key ? toasts.find((t) => t.key === key && !t.removing) : undefined;
+    const id = existing ? existing.id : nextId++;
+    if (existing) {
+      const timer = timers.get(id);
+      if (timer !== undefined) clearTimeout(timer);
+      timers.delete(id);
+      toasts = toasts.map((t) => (t.id === id ? { id, key, message, type, action } : t));
+    } else {
+      toasts = [...toasts, { id, key, message, type, action }];
+    }
+    if (ms > 0) timers.set(id, setTimeout(() => dismiss(id), ms));
     return id;
   }
 
@@ -79,6 +101,7 @@
       show,
       success: (m, d, a) => show(m, "success", d, a),
       dismiss,
+      dismissKey,
       error:   (m, d) => show(m, "error", d),
       warning: (m, d) => show(m, "warning", d),
       info:    (m, d) => show(m, "info", d),

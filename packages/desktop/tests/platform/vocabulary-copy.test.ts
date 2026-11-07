@@ -61,34 +61,35 @@ describe("the screens that were reshaped use the product's words", () => {
   }
 });
 
-describe("Sync, Get latest and Back up now", () => {
-  test("the status bar says Sync, Syncing… and the tooltip the design gives; the Online copy tab says Sync now", () => {
-    const bar = markup("lib/components/StatusBar.svelte");
-    for (const text of ['"Sync"', '"Syncing…"', '"Sync: get the latest changes from the online copy, then back up yours"', '"Sync — new changes are online"']) {
+describe("Update, Get the changes and Back up now", () => {
+  test("the status bar has one Update button (it replaced Get latest and Sync), with tooltips that say what it does", () => {
+    const bar = read("lib/components/StatusBar.svelte");
+    for (const text of ['"Updating…"', '"Get the changes from the online copy. Your own changes stay as they are."', '"Back up your changes to the online copy."', '"Get the latest changes from the online copy, then back up yours."']) {
       expect(bar).toContain(text);
     }
-    // The tab names its one button for the state: Back up now, Update, Get the changes, Try again.
+    expect(bar).not.toContain('"Sync"');
+    expect(bar).not.toContain('"Get latest"');
+    expect(bar).not.toContain("New online");
+    // The tab names its one button for the state: Back up now, Update, Get changes, Try again.
     expect(markup("lib/components/ProjectConnectionsSection.svelte")).not.toMatch(/Sync now|Get latest/);
   });
 
-  test("Get latest is back in the bar, the tab and the toast, as in 0.11.22 (#485)", () => {
-    const bar = markup("lib/components/StatusBar.svelte");
-    for (const text of ['"Get latest"', '"New online"', '"Getting…"', '"Get latest: bring in changes from the online copy without sending yours"']) {
-      expect(bar).toContain(text);
-    }
+  test("the tab's Get changes shows only when behind; the new-changes prompt names the same thing the popover does", () => {
     const tab = read("lib/components/ProjectConnectionsSection.svelte");
     expect(tab).toContain('"Get changes"');
     expect(tab).toContain('"Getting changes…"');
-    expect(read("lib/routes/sync-controller.svelte.ts")).toContain('{ label: "Get latest", onClick: () => void this.handleGetLatest() }');
+    expect(read("lib/routes/sync-controller.svelte.ts")).toContain('{ label: "Get changes", onClick: () => void this.handleGetLatest() }');
   });
 
-  test("Back up now is back in the Online copy tab, and Help names both (#485)", () => {
+  test("Back up now is in the Backup & history tab, and Help describes the one Update button", () => {
     const tab = read("lib/components/ProjectConnectionsSection.svelte");
     expect(tab).toContain('"Back up now"');
     expect(tab).toContain('update: "Update"');
     const help = markup("lib/components/HelpContent.svelte");
     expect(help).toContain("<em>Back up now</em>");
-    expect(help).toContain("<em>Get latest</em>");
+    expect(help).toContain("<em>Get changes</em>");
+    expect(help).toContain("<em>Update</em>");
+    expect(help).not.toContain("Get latest");
   });
 });
 
@@ -198,7 +199,7 @@ describe("Version history", () => {
 
   test("versions online and not here yet are listed under their own heading, and say when they come in (#484)", () => {
     expect(view).toContain("Online, not yet on this computer</h2>");
-    expect(view).toContain("They come in with <strong>Get latest</strong>, or the next time this book backs up.");
+    expect(view).toContain("They come in with <strong>Get changes</strong>, or the next time this book backs up.");
   });
 
   test("each card names what its version changed, in 0.11.22's words (#484)", () => {

@@ -59,7 +59,7 @@ import {
 } from "./updater";
 import type { MarkdownFileLaunchEvent, UpdaterEventPayload } from "../src/lib/platform/shared-types";
 import { removeRecentFolder, toggleFavoriteFolder } from "./recent-folders";
-import { readProjectState, writeProjectState } from "./project-state";
+import { clearProjectStateField, readProjectState, writeProjectState } from "./project-state";
 import {
   electronTokenStore,
   markLinuxBasicTextStorageNoticeShown,
@@ -68,6 +68,7 @@ import {
 } from "./credential-store";
 import {
   AutoSyncOrchestrator,
+  type LastKnownBackup,
   type SyncStatusPayload,
 } from "./auto-sync/orchestrator";
 import { unsyncedStateFor } from "./auto-sync/unsynced-status";
@@ -450,6 +451,20 @@ const autoSync = new AutoSyncOrchestrator({
   now: Date.now,
   getWatchedDir: () => folderWatch.getWatchedDir(),
   operationLogPath,
+  // The last network answer, kept per book so the next launch can show it at once.
+  readLastKnown: async (dir) => readProjectState((await readPrefs()).projectStates, dir)?.lastBackup as LastKnownBackup | null ?? null,
+  clearLastKnown: (dir) => {
+    void updatePrefs((prefs) => ({
+      ...prefs,
+      projectStates: clearProjectStateField(prefs.projectStates, dir, "lastBackup"),
+    })).catch(() => {});
+  },
+  saveLastKnown: (dir, value) => {
+    void updatePrefs((prefs) => ({
+      ...prefs,
+      projectStates: writeProjectState(prefs.projectStates, dir, { lastBackup: value }),
+    })).catch((e) => console.warn("[auto-sync] could not keep the last backup answer:", e));
+  },
 });
 
 /**
@@ -528,6 +543,10 @@ onCredentialChange((host) => {
       // remote resolves to — a publish-platform key (itch.io, `host#account`
       // compound keys) must not trigger a git sync.
       if (!diag.remoteHost || host.trim().toLowerCase() !== diag.remoteHost) return;
+      // The sign-in for this book's online copy changed: what was known of it
+      // (the kept answer, the freshness of the last check) no longer holds.
+      autoSync.forgetKnown(dir);
+      await lib.forgetOnlineCheckFor(dir);
       if (diag.canSync) {
         void autoSync.armInterval(dir);
         void autoSync.run(dir);
@@ -1520,7 +1539,8 @@ const syncSettingsHooksImpl: SyncSettingsHooks = {
   },
   getStatus: async (projectDir) => {
     if (typeof projectDir !== "string" || !projectDir) return null;
-    return lastSyncStatusByDir.get(path.resolve(projectDir)) ?? null;
+    // Nothing kept yet (the renderer asked before the first emit): answer from refs now.
+    return lastSyncStatusByDir.get(path.resolve(projectDir)) ?? (await autoSync.localStatus(projectDir));
   },
 };
 

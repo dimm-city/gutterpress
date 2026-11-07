@@ -356,6 +356,7 @@ export class PreviewOpenController {
         state: unsyncedStateFor(diag),
         projectDir: openedDir,
         lastSyncAt: null,
+        source: "local",
         logFile,
       };
       // "sync:status" is a fire-and-forget event with no replay, so an emit that

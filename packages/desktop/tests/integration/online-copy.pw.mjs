@@ -50,14 +50,15 @@
  *      which drops focus to <body>; Escape pressed then still closes Book setup
  *      (the original #448 bug, fixed by dialogBehavior in #451).
  *   6. For a book that can back up (closing Accounts makes the app look at its
- *      online copy again, stubbed as ready) the status bar shows no Get latest
- *      or Sync while automatic backing up is on, and Get latest then Sync after
- *      the status control once it is off. Sync runs a full pass and reads
- *      "Syncing…" while it runs; Get latest runs the pass with `push: false`
- *      and reads "Getting…". New changes online raise a toast whose action is
- *      Get latest (#485); Get latest reads "New online" and Sync keeps its cue.
- *      Online copy then offers Get latest and Sync now. The bar still fits,
- *      with the status line ellipsized, at 700px and (cut short) at 260px.
+ *      online copy again, stubbed as ready) the status bar shows no Update
+ *      button while it is backed up with automatic backing up on, and one
+ *      Update button after the status control once it is off (it replaced Get
+ *      latest and Sync). Update runs a full pass and reads "Updating…" while it
+ *      runs. New changes online raise a toast whose action is Get the changes
+ *      (a pass with `push: false`), the bar reads "New changes online", and
+ *      both clear once the changes are in. Online copy then offers Get latest
+ *      and Sync now. The bar still fits, with "Saved here" moved into the
+ *      tooltip and the online clause ellipsized, at 700px and 260px.
  *   7. The Settings, Accounts and Open from GitHub controls 0.11.22 had are
  *      back (#481). Settings is How you use Gutterpress, Appearance, Preview,
  *      Editor, Saving and Accounts, with a Reset on each group of settings.
@@ -71,7 +72,7 @@
  *      email has its Reset and typing a Gitea server's address links to that
  *      server's own token page (an unknown one, to the guide). Troubleshooting
  *      is pictured as it is.
- *   8. A Reader sees no status control, Get latest, Sync or new-changes toast,
+ *   8. A Reader sees no status control, Update button or new-changes toast,
  *      even in that state.
  *
  * Screenshots: <os tmpdir>/online-copy-{bar,bar-auto,bar-sync,bar-get-latest,
@@ -361,18 +362,26 @@ await evalJs(`(() => {
   return true;
 })()`);
 
+// Open Book setup on Online copy from the status bar: a state with something to fix goes
+// straight there (sign-in); the rest open the popover, whose "Backup & history…" link goes there.
+async function openTabFromBar() {
+  await click(".status-bar .status-control");
+  await sleep(250);
+  if (await evalJs(`!!document.querySelector('.status-popover')`)) await click(".status-popover .link");
+}
+
 // ── 6. one status control, which opens Book setup on Online copy ─────────────
 check(await waitFor(`!!document.querySelector('.status-bar .status-control')`), "the status bar has a status control");
 const bar = await evalJs(`(() => ({
   controls: document.querySelectorAll('.status-bar .status-control').length,
-  text: document.querySelector('.status-bar .status-control .status-text')?.textContent.trim(),
+  text: document.querySelector('.status-bar .status-control')?.innerText.replace(/\\s+/g, ' ').trim(),
   oldIndicator: !!document.querySelector('.status-bar .save-indicator, .status-bar .sync-pill'),
 }))()`);
 check(bar.controls === 1 && !bar.oldIndicator, `exactly one status control, no save indicator or sync pill (${JSON.stringify(bar)})`);
-check(/^Saved/.test(bar.text), `the control starts with "Saved" (${bar.text})`);
+check(/^Saved here/.test(bar.text), `the control starts with "Saved here" (${bar.text})`);
 await screenshot(join(tmpdir(), "online-copy-bar.png"));
-await click(".status-bar .status-control");
-check(await waitFor(`document.querySelector('#project-settings-tab-online-copy')?.getAttribute('aria-selected') === 'true'`), "clicking it opens Book setup on the Backup & history tab");
+await openTabFromBar();
+check(await waitFor(`document.querySelector('#project-settings-tab-online-copy')?.getAttribute('aria-selected') === 'true'`), "clicking it (or its popover's Backup & history link) opens Book setup on the Backup & history tab");
 
 // ── 7. the tab: three cards — where the book is kept, Revisions, Version history ─
 check(await waitFor(`!!document.querySelector('#project-settings-panel .revisions .rev-list li.rev') && !!document.querySelector('#project-settings-panel .recent .recent-row')`), "the status, Drafts and History cards loaded");
@@ -516,7 +525,7 @@ check(online.heading === "Online, not yet on this computer" && online.atTop, "th
 check(online.rows.length === 2 && online.rows[0].title === "Wrote the gamma ending" && /· Grace$/.test(online.rows[0].meta) && /\d/.test(online.rows[0].meta), `each says what it is, when and by whom (${JSON.stringify(online.rows[0])})`);
 check(online.rows[0].files.join("|") === "03-gamma.md · 2 paragraphs changed", `and the files it changed (${online.rows[0].files.join(" | ")})`);
 check(online.rows[1].title === "Automatic version" && online.rows[1].files.length === 9 && online.rows[1].files[8] === "and 3 more", `past eight files, "and N more" (${online.rows[1].files.join(" | ")})`);
-check(online.selectable === 0 && online.note === "They come in with Get latest, or the next time this book backs up.", `nothing to select there; Get latest or the next backup brings them in (${online.note})`);
+check(online.selectable === 0 && online.note === "They come in with Get changes, or the next time this book backs up.", `nothing to select there; Get changes or the next backup brings them in (${online.note})`);
 
 // Every card lists what its version changed, loaded as it comes into view (#484).
 const cardsListed = `[...document.querySelectorAll('.vh button.ver')].filter((b) => b.getClientRects().length).map((b) => ({
@@ -684,7 +693,7 @@ await evalJs(`(() => {
   };
   return true;
 })()`);
-await click(".status-bar .status-control");
+await openTabFromBar();
 check(await waitFor(`!!document.querySelector('#project-settings-panel details.trouble')`), "the backing-up-keeps-failing tools are there once backing up can work");
 const failing = await evalJs(`(() => {
   const d = document.querySelector('#project-settings-panel details.trouble');
@@ -728,10 +737,11 @@ log(`focus after Save a version: ${focusAfterSave}`);
 await press("Escape", "Escape", 27);
 check(await waitFor(`!document.querySelector('#project-settings-panel')`, 3000), `Escape after Save a version closes Book setup (focus was ${focusAfterSave})`);
 
-// ── 12b. automatic backing up off: Get latest and Sync beside the status control ─
+// ── 12b. automatic backing up off: the one Update button beside the status control ─
 // The passes and the update check are still stubbed (step 12). Closing Accounts makes
 // the app look at the online copy again (stubbed as ready), so the book can back up;
-// Get latest and Sync show only once Settings turns automatic backing up off.
+// the Update button shows only once Settings turns automatic backing up off (it replaced
+// Get latest and Sync).
 await evalJs(`window.__sync.calls = []; window.__sync.diagnosed = 0; true`);
 const openSettings = async () => {
   await click('.status-bar button[aria-label="Settings"]');
@@ -748,104 +758,83 @@ await click('button[aria-label="Close accounts"]');
 check(await waitFor(`window.__sync.diagnosed > 0`), "closing Accounts made the app look at the online copy again");
 await closeSettings();
 await sleep(500);
-const syncBtn = `[...document.querySelectorAll('.status-bar button')].find((b) => /^Sync/.test(b.textContent.trim()))`;
-const latestBtn = `[...document.querySelectorAll('.status-bar button')].find((b) => /^Get latest/.test(b.getAttribute('aria-label') ?? ''))`;
-check(!(await evalJs(`!!(${syncBtn}) || !!(${latestBtn})`)), "a book that can back up shows no Get latest or Sync in the bar while automatic backing up is on");
+const updateBtn = `document.querySelector('.status-bar button.labelled')`;
+check(!(await evalJs(`!!(${updateBtn})`)), "a book that is backed up with automatic backing up on shows no Update button");
 await screenshot(join(tmpdir(), "online-copy-bar-auto.png"));
 await openSettings();
 await evalJs(`(() => { const sw = document.querySelector('#settings-autosync'); sw.checked = false; sw.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
 await closeSettings();
-check(await waitFor(`!!(${syncBtn}) && !!(${latestBtn})`), "the status bar offers Get latest and Sync once automatic backing up is off");
+await sleep(500);
+check(!(await evalJs(`!!(${updateBtn})`)), "backed up, even with automatic backing up off, the bar shows no button: nothing to get or send");
+
+// Changes online: the toast, the bar line and the one button all name the same action.
+await evalJs(`window.__sync.updatesOnline = true; window.dispatchEvent(new Event('focus')); true`);
+const prompt = `[...document.querySelectorAll('.toast')].find((t) => t.querySelector('.toast-message')?.textContent.trim() === 'New changes are online for this book.')`;
+check(await waitFor(`!!(${prompt}) && !!(${updateBtn})`), "new changes online raise the toast and the bar's button");
 const shape = await evalJs(`(() => {
   const bar = document.querySelector('.status-bar');
-  const btn = ${syncBtn};
-  const latest = ${latestBtn};
+  const btn = ${updateBtn};
   const left = (el) => el.getBoundingClientRect().left;
   return {
     text: btn.textContent.trim(),
     title: btn.title,
     hasIcon: !!btn.querySelector('svg'),
     disabled: btn.disabled,
-    latest: { label: latest.getAttribute('aria-label'), title: latest.title, text: latest.textContent.trim(), hasIcon: !!latest.querySelector('svg'), disabled: latest.disabled },
-    order: [left(bar.querySelector('button[aria-label^="Books"]')), left(bar.querySelector('.status-control')), left(latest), left(btn), left(bar.querySelector('button[aria-label="Settings"]'))],
+    bar: document.querySelector('.status-bar .status-control').innerText.replace(/\\s+/g, ' ').trim(),
+    toast: (${prompt}).querySelector('.toast-message').textContent.trim(),
+    action: (${prompt}).querySelector('.toast-action')?.textContent.trim(),
+    order: [left(bar.querySelector('button[aria-label^="Books"]')), left(bar.querySelector('.status-control')), left(btn), left(bar.querySelector('button[aria-label="Settings"]'))],
     labels: [...bar.querySelectorAll('button')].map((b) => b.getAttribute('aria-label') ?? b.textContent.trim()),
   };
 })()`);
-log(`bar with Get latest and Sync: ${JSON.stringify(shape)}`);
-check(shape.text === "Sync" && shape.hasIcon && !shape.disabled, "Sync is an icon and the word Sync");
-check(shape.title === "Sync: get the latest changes from the online copy, then back up yours", `its tooltip says what it does (${shape.title})`);
-check(shape.latest.label === "Get latest" && shape.latest.hasIcon && shape.latest.text === "" && !shape.latest.disabled, `Get latest is an arrow, as in 0.11.22 (${JSON.stringify(shape.latest)})`);
-check(shape.latest.title === "Get latest: bring in changes from the online copy without sending yours", `its tooltip says it sends nothing (${shape.latest.title})`);
-check(shape.order.every((x, i) => i === 0 || x > shape.order[i - 1]), `the bar reads Books, status, Get latest, Sync, then settings (${shape.order.map(Math.round)})`);
-check(!shape.labels.some((l) => /Back up now/.test(l)), `Back up now stays in Online copy, not the bar (${shape.labels.join(", ")})`);
-await screenshot(join(tmpdir(), "online-copy-bar-sync.png"));
-
-await click(".status-bar button", "Sync");
-check(await waitFor(`${syncBtn}?.textContent.trim() === 'Syncing…' && ${syncBtn}.disabled && ${latestBtn}.disabled`), "while it runs Sync reads Syncing…, and both wait");
-check(await evalJs(`window.__sync.calls.length === 1 && window.__sync.calls[0].push === undefined`), "Sync ran one full pass (no get-only flag)");
-await evalJs(`window.__sync.release(); true`);
-check(await waitFor(`${syncBtn}?.textContent.trim() === 'Sync' && !${syncBtn}.disabled && !${latestBtn}.disabled`), "it is back to Sync when the pass ends");
-
-await click('.status-bar button[aria-label="Get latest"]');
-check(await waitFor(`${latestBtn}?.textContent.trim() === 'Getting…' && ${latestBtn}.disabled && ${syncBtn}.disabled`), "while it runs Get latest reads Getting…, and both wait");
-check(await evalJs(`window.__sync.calls.length === 2 && window.__sync.calls[1].push === false`), "Get latest asked for the pass that sends nothing (push: false)");
-await screenshot(join(tmpdir(), "online-copy-bar-get-latest.png"));
-await evalJs(`window.__sync.release(); true`);
-check(await waitFor(`${latestBtn}?.textContent.trim() === '' && !${latestBtn}.disabled && !${syncBtn}.disabled`), "it is back to an arrow when the pass ends");
-
-await evalJs(`window.__sync.updatesOnline = true; window.dispatchEvent(new Event('focus')); true`);
-const prompt = `[...document.querySelectorAll('.toast')].find((t) => t.querySelector('.toast-message')?.textContent.trim() === 'New changes are online for this book.')`;
-check(await waitFor(`!!(${prompt})`), "new changes online raise the toast");
-const cue = await evalJs(`(() => ({
-  toast: (${prompt}).querySelector('.toast-message').textContent.trim(),
-  action: (${prompt}).querySelector('.toast-action')?.textContent.trim(),
-  label: (${syncBtn}).getAttribute('aria-label'),
-  title: (${syncBtn}).title,
-  latest: (${latestBtn}).getAttribute('aria-label'),
-  latestText: (${latestBtn}).textContent.trim(),
-}))()`);
-check(cue.toast === "New changes are online for this book." && cue.action === "Get latest", `the toast offers Get latest (${cue.action})`);
-check(cue.latest === "Get latest — new changes are online" && cue.latestText === "New online", `Get latest names them: New online (${cue.latest}, ${cue.latestText})`);
-check(cue.label === "Sync — new changes are online" && /^Sync — new changes are online/.test(cue.title), `Sync keeps its cue (${cue.label})`);
+log(`bar with its button: ${JSON.stringify(shape)}`);
+check(shape.text === "Get changes" && shape.hasIcon && !shape.disabled, "the button is an icon and the words Get changes");
+check(shape.action === "Get changes", `the toast names the same action (${shape.action})`);
+check(shape.bar === "Saved here · New changes online", `the bar says so (${shape.bar})`);
+check(shape.title === "Get the changes from the online copy. Your own changes stay as they are.", `its tooltip says what it does (${shape.title})`);
+check(shape.order.every((x, i) => i === 0 || x > shape.order[i - 1]), `the bar reads Books, status, button, then settings (${shape.order.map(Math.round)})`);
+check(!shape.labels.some((l) => /Update|Get latest|^Sync/.test(l)), `no Update, Get latest or Sync in the bar (${shape.labels.join(", ")})`);
 await sleep(600); // let the toast finish fading in
 await screenshot(join(tmpdir(), "online-copy-bar-sync-updates.png"));
-await click(".toast-action", "Get latest");
-check(await waitFor(`${latestBtn}?.textContent.trim() === 'Getting…'`), "the toast's Get latest runs the pass that sends nothing");
-check(await evalJs(`window.__sync.calls.length === 3 && window.__sync.calls[2].push === false`), "it asked for push: false");
+await click(".status-bar button.labelled");
+check(await waitFor(`${updateBtn}?.textContent.trim() === 'Updating…' && ${updateBtn}.disabled`), "while it runs the button reads Updating…, and waits");
+check(await evalJs(`window.__sync.calls.length === 1 && window.__sync.calls[0].push === false`), "Get changes asked for the pass that sends nothing (push: false)");
 await evalJs(`window.__sync.release(); true`);
-check(await waitFor(`${latestBtn}?.getAttribute('aria-label') === 'Get latest' && ${syncBtn}?.textContent.trim() === 'Sync' && !${syncBtn}.getAttribute('aria-label')`), "the cue clears once the changes are in");
+check(await waitFor(`!(${prompt}) && !(${updateBtn}) && /^Saved here · (?!New changes)/.test(document.querySelector('.status-bar .status-control').innerText.replace(/\\s+/g, ' ').trim())`), "the cue, the button and the stale toast clear once the changes are in");
 
 // Online copy, with automatic backing up off: Get latest beside Sync now (#485).
-await click(".status-bar .status-control");
+await openTabFromBar();
 check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Back up now'`), `with automatic backing up off, the status card still offers Back up now (${await cardButtons()})`);
 await screenshot(join(tmpdir(), "online-copy-tab-manual.png"));
 await click("#project-settings-panel .status-action button", "Back up now");
 check(await waitFor(`${statusActions}.some((b) => b.textContent.trim() === 'Backing up…')`), "Back up now reads Backing up… while it runs");
-check(await evalJs(`window.__sync.calls.length === 4 && window.__sync.calls[3].push === undefined`), "Back up now is the full pass");
+check(await evalJs(`window.__sync.calls.length === 2 && window.__sync.calls[1].push === undefined`), "Back up now is the full pass");
 await evalJs(`window.__sync.release(); true`);
 check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Back up now'`), "and it is ready again");
 await closeDialog();
 check(await waitFor(`!document.querySelector('#project-settings-panel')`), "Book setup closed");
 
-// Narrow: the status line gives way (ellipsis, truly cut at 260px) and everything stays on the bar.
+// Narrow: under 820px the "Saved here" clause moves into the tooltip, the online clause gives way
+// (ellipsis) and everything stays on the bar.
 for (const width of [700, 260]) {
   await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
   await sleep(800);
   const narrow = await evalJs(`(() => {
     const bar = document.querySelector('.status-bar').getBoundingClientRect();
-    const btn = ${syncBtn};
+    const btn = document.querySelector('.status-bar button.labelled') ?? document.querySelector('.status-bar button[aria-label="Settings"]');
+    const control = document.querySelector('.status-bar .status-control');
     const text = document.querySelector('.status-bar .status-text');
+    const here = control.querySelector('.here');
     const rects = [...document.querySelectorAll('.status-bar button')].map((b) => b.getBoundingClientRect());
     return {
       spill: rects.some((r) => r.right > bar.right + 1 || r.left < bar.left - 1),
-      syncShown: btn.getClientRects().length > 0,
-      latestShown: (${latestBtn}).getClientRects().length > 0,
+      hereHidden: !here || here.getClientRects().length === 0,
+      tooltipHasHere: control.title.startsWith('Saved here.'),
       ellipsis: getComputedStyle(text).textOverflow === 'ellipsis' && getComputedStyle(text).overflow === 'hidden',
-      cut: text.scrollWidth > text.clientWidth,
-      syncBeforeSettings: btn.getBoundingClientRect().right <= document.querySelector('.status-bar button[aria-label="Settings"]').getBoundingClientRect().left,
+      updateBeforeSettings: control.getBoundingClientRect().right <= document.querySelector('.status-bar button[aria-label="Settings"]').getBoundingClientRect().left,
     };
   })()`);
-  check(!narrow.spill && narrow.syncShown && narrow.latestShown && narrow.ellipsis && narrow.syncBeforeSettings && (width > 260 || narrow.cut), `at ${width}px it still fits (${JSON.stringify(narrow)})`);
+  check(!narrow.spill && narrow.hereHidden && narrow.tooltipHasHere && narrow.ellipsis && narrow.updateBeforeSettings, `at ${width}px it still fits, with "Saved here" in the tooltip (${JSON.stringify(narrow)})`);
   if (width === 260) await screenshot(join(tmpdir(), "online-copy-bar-narrow.png"));
 }
 await send("Emulation.clearDeviceMetricsOverride");

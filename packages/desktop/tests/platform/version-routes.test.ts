@@ -130,6 +130,16 @@ describe("POST /api/vcs/online-versions", () => {
     expect(await res.json()).toEqual({ entries: [], reason: "offline" });
     expect((seen as { projectDir: string }).projectDir).toBe("/abs/project");
     expect((seen as { tokenStore: unknown }).tokenStore).toBe(services.remote.tokenStore);
+    // Shares the revision list's online check when it is this recent.
+    expect((seen as { maxAgeMs: number }).maxAgeMs).toBe(20_000);
+  });
+
+  test("maxAgeMs: 0 asks for a real check", async () => {
+    openProject();
+    let seen: { maxAgeMs: number } | null = null;
+    fakeLib({ listOnlineVersions: async (o: { maxAgeMs: number }) => ((seen = o), { entries: [] }) });
+    await onlineVersions({ request: request({ projectDir: "/abs/project", maxAgeMs: 0 }) } as never);
+    expect(seen!.maxAgeMs).toBe(0);
   });
 });
 

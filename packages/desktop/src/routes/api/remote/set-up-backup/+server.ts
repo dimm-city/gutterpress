@@ -1,6 +1,8 @@
 import { error } from '@sveltejs/kit';
 import { handleRemoteErrors } from '../../../../../electron/server-bridge/friendly-errors';
 import { gitIdentityArgs } from '#lib/server/settings.ts';
+import { beginBackupProgress, clearBackupProgress, setBackupProgress } from '../../_lib/backup-progress';
+import { forgetRepositoryPages } from '../../_lib/repo-pages';
 import { defineRoute, getHostServices, loadLib, requireProjectDir } from '../../_lib/route';
 import type { BackupTarget } from '#lib/platform/shared-types.ts';
 import type { RequestHandler } from './$types';
@@ -30,12 +32,21 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; target: Ba
     handleRemoteErrors('remote:setUpBackup', async () => {
       const lib = await loadLib();
       const identity = await gitIdentityArgs();
-      return lib.setUpOnlineBackup({
-        projectDir: body.projectDir,
-        target: body.target,
-        tokenStore: getHostServices().remote.tokenStore,
-        authorName: identity.authorName,
-        authorEmail: identity.authorEmail,
-      });
+      const token = beginBackupProgress(body.projectDir);
+      try {
+        const result = await lib.setUpOnlineBackup({
+          projectDir: body.projectDir,
+          target: body.target,
+          tokenStore: getHostServices().remote.tokenStore,
+          authorName: identity.authorName,
+          authorEmail: identity.authorEmail,
+          onProgress: (step) => setBackupProgress(body.projectDir, token, step),
+        });
+        // A new online copy may have been created: the cached repository list is out of date.
+        forgetRepositoryPages();
+        return result;
+      } finally {
+        clearBackupProgress(body.projectDir, token);
+      }
     }),
 });

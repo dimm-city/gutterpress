@@ -336,7 +336,7 @@
               {/if}
             {/each}
           </ul>
-          <p class="online-note">They come in with <strong>Get latest</strong>, or the next time this book backs up.</p>
+          <p class="online-note">They come in with <strong>Get changes</strong>, or the next time this book backs up.</p>
         </section>
       {/if}
       {#if loading && entries.length === 0}

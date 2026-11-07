@@ -25,7 +25,7 @@ export function agoFull(ms: number, now: number): string {
 const relativeTime = agoFull;
 
 export type CardTone = "ok" | "warn" | "pending" | "plain";
-export type CardIcon = "circle-check" | "triangle-alert" | "refresh-cw" | "cloud-upload" | "cloud-download" | "cloud-off" | "cloud" | "laptop" | "history" | "info" | "key";
+export type CardIcon = "circle-check" | "triangle-alert" | "refresh-cw" | "cloud-upload" | "cloud-download" | "cloud-off" | "cloud" | "laptop" | "history" | "info" | "key-round";
 /** What the one primary button does; the section maps each to its own handler. */
 export type CardAction =
   | "turn-on-versions"
@@ -102,7 +102,7 @@ export function backupCard(i: CardInput): CardView {
       };
     case "connect-github":
     case "connect-server":
-      return { icon: "key", tone: "warn", title: "Sign in to back up", detail: `This book's online copy is at ${i.where}. Sign in so Gutterpress can keep it up to date. Your work is safe on this computer.`, action: "sign-in" };
+      return { icon: "key-round", tone: "warn", title: "Sign in to back up", detail: `This book's online copy is at ${i.where}. Sign in so Gutterpress can keep it up to date. Your work is safe on this computer.`, action: "sign-in" };
     case "own-tools":
       return { icon: "info", tone: "plain", title: "Backed up with your own tool", detail: "This book's online copy uses an address Gutterpress can't back up to. Keep using your usual tool for it.", action: null };
     case "ready":
@@ -118,7 +118,7 @@ export function backupCard(i: CardInput): CardView {
   }
   if (state === "auth") {
     return {
-      icon: "key",
+      icon: "key-round",
       tone: "warn",
       title: "Your saved sign-in no longer works",
       detail: `${i.bookName ? `The online copy of "${i.bookName}"` : `The online copy at ${i.where}`} no longer accepts it. Sign in again to keep backing up. Your work is safe on this computer.`,

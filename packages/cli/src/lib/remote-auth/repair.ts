@@ -17,10 +17,11 @@ import git from "isomorphic-git";
 import { cp, mkdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
 
-import { withRepoLock } from "../source-provider.ts";
+import { BEFORE_REPAIR_REF_PREFIX, readRevisionRefs, withRepoLock } from "../source-provider.ts";
 import { cloneRepository } from "./clone.ts";
 import { errorLogData, resolveLogger } from "./operation-log.ts";
-import { syncProject } from "./sync.ts";
+import { refreshRemoteCopies, syncProject } from "./sync.ts";
+import type { HostCredential, TokenStore } from "./token-store.ts";
 import type { SyncOutcome, SyncProjectOptions } from "./sync-types.ts";
 import { repoDirFor, resolveTransport } from "./transport.ts";
 
@@ -47,6 +48,68 @@ export interface RepairOnlineBackupResult {
   movedGitTo: string;
   /** Files that existed online but not on this computer, restored from the download. */
   restoredFiles: string[];
+}
+
+/** What a repair would set aside: work that exists only on this computer. */
+export interface RepairPreview {
+  /** Revisions kept only on this computer, by name. */
+  revisions: string[];
+  /** Versions (saved points) found only on this computer, across every revision. */
+  versions: number;
+  /** Saved copies of the book kept by an earlier recovery (set aside with the old history, so no longer listed in the app; counted in `versions`). */
+  repairCopies?: number;
+  /** True when this computer's history could not be read, so the counts may be short. */
+  unreadable?: boolean;
+}
+
+/** Longest history walk per revision when counting what is only here. */
+const PREVIEW_DEPTH = 2000;
+
+/**
+ * Before the author confirms a repair: what would it set aside? A repair moves
+ * the whole old history (`.git`) into a backup folder OUTSIDE the book and
+ * starts from the online one, so any revision, and any version of a revision,
+ * the online copy lacks is what would be left out of the book. It is kept in
+ * that folder (`movedGitTo` in the repair result) to look at, but it does NOT
+ * appear under "Saved copies after a repair" and can't be brought back from
+ * inside the app; the same goes for earlier before-repair copies, which travel
+ * with the old history. Reads refs and history on this computer only (the
+ * online side is as it was last checked); no network, nothing written.
+ */
+export async function previewRepair(
+  projectDir: string,
+  options: { tokenStore?: TokenStore; credential?: HostCredential; httpClient?: RepairOnlineBackupOptions["httpClient"] } = {},
+): Promise<RepairPreview> {
+  const dir = await repoDirFor(projectDir);
+  // Bring what is known of the online copy up to date when that is cheap (a
+  // recent check is reused; any failure leaves the refs as they were).
+  if (options.tokenStore || options.credential) {
+    await refreshRemoteCopies({ projectDir, ...options, maxAgeMs: 60_000 }).catch(() => null);
+  }
+  try {
+    const { local, online } = await readRevisionRefs(dir);
+    const walk = async (tip: string) =>
+      (await git.log({ fs, dir, ref: tip, depth: PREVIEW_DEPTH })).map((c) => c.oid);
+    const onlineSet = new Set<string>();
+    for (const tip of online.values()) for (const oid of await walk(tip)) onlineSet.add(oid);
+    const onlyHere = new Set<string>();
+    for (const tip of local.values()) {
+      for (const oid of await walk(tip)) if (!onlineSet.has(oid)) onlyHere.add(oid);
+    }
+    // Copies an earlier recovery kept (refs/gutterpress/before-repair-*) live in the old history too.
+    const copies = (await git.listRefs({ fs, dir, filepath: "refs/gutterpress" }).catch(() => [] as string[])).filter(
+      (r) => `refs/gutterpress/${r}`.startsWith(BEFORE_REPAIR_REF_PREFIX),
+    );
+    for (const r of copies) {
+      const tip = await git.resolveRef({ fs, dir, ref: `refs/gutterpress/${r}` }).catch(() => null);
+      if (tip) for (const oid of await walk(tip)) if (!onlineSet.has(oid)) onlyHere.add(oid);
+    }
+    const revisions = [...local.keys()].filter((name) => !online.has(name)).sort((a, b) => a.localeCompare(b));
+    return { revisions, versions: onlyHere.size, ...(copies.length ? { repairCopies: copies.length } : {}) };
+  } catch (e) {
+    resolveLogger(undefined, "repair").warn("preview", "could not read this computer's history", errorLogData(e));
+    return { revisions: [], versions: 0, unreadable: true };
+  }
 }
 
 /** Move a directory, falling back to copy + delete across devices (EXDEV). */
