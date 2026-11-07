@@ -260,12 +260,22 @@ function bottomPins(root: HTMLElement): HTMLElement[] {
   );
 }
 
-/** True when nothing but other pins / whitespace follows `pin` inside `root`. */
+/**
+ * True when nothing but other pins, engine furniture and whitespace follows
+ * `pin` inside `root`: out-of-flow boxes (abspos pins, the `.gp-pin-furniture`
+ * layer `setPinFurniture` appends to a pin root) and `gp-anchor` probes take
+ * no space, so they do not count as content after the pin.
+ */
 function endsRoot(pin: HTMLElement, root: HTMLElement): boolean {
   for (let el: Element | null = pin; el && el !== root; el = el.parentElement) {
     for (let n: Node | null = el.nextSibling; n; n = n.nextSibling) {
       if (n.nodeType === 3 && !(n.textContent ?? "").trim()) continue;
-      if (n.nodeType === 1 && (n as Element).matches(".gp-pin")) continue;
+      if (n.nodeType === 1) {
+        const el = n as Element;
+        if (el.matches(".gp-pin, gp-anchor, script, style")) continue;
+        const cs = getComputedStyle(el);
+        if (cs.display === "none" || cs.position === "absolute" || cs.position === "fixed") continue;
+      }
       if (n.nodeType === 1 || n.nodeType === 3) return false;
     }
   }

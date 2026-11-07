@@ -492,8 +492,14 @@
       for (let n = el.nextSibling;n; n = n.nextSibling) {
         if (n.nodeType === 3 && !(n.textContent ?? "").trim())
           continue;
-        if (n.nodeType === 1 && n.matches(".gp-pin"))
-          continue;
+        if (n.nodeType === 1) {
+          const el2 = n;
+          if (el2.matches(".gp-pin, gp-anchor, script, style"))
+            continue;
+          const cs = getComputedStyle(el2);
+          if (cs.display === "none" || cs.position === "absolute" || cs.position === "fixed")
+            continue;
+        }
         if (n.nodeType === 1 || n.nodeType === 3)
           return false;
       }

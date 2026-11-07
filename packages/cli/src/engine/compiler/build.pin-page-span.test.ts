@@ -92,6 +92,23 @@ testIf(
 );
 
 testIf(
+  "a pin at the end of a long root does not warn when the engine appends its furniture layer after it",
+  async () => {
+    // a footer margin box on the freed bottom edge is re-homed into the pin
+    // root as a `.gp-pin-furniture` layer, which follows the pin in the DOM
+    const r = await run(
+      doc(`<div class="page">${lines(22)}<p class="gp-pin gp-bottom gp-flush">FOOTPIN</p></div>`).replace(
+        "</style>",
+        `@page { @bottom-center { content: "FOLIO"; font: 9px monospace; } }</style>`,
+      ),
+    );
+    expect(r.pages).toBe(2);
+    expect(r.findings).toHaveLength(0);
+  },
+  120_000,
+);
+
+testIf(
   "a one-sheet root is unchanged, and a mid-root bottom pin in a long root warns",
   async () => {
     const one = await run(doc(`<div class="page">${lines(3)}${PIN}</div>`));
