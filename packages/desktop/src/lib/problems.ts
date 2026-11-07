@@ -57,6 +57,7 @@ const SOURCE_LABELS: Record<string, string> = {
   "engine.content.overheight": "Taller than the page",
   "engine.image.low-dpi": "Image resolution",
   "engine.pin.margin-box": "Running head on a pinned edge",
+  "engine.pin.page-span": "Bottom pin not at the page foot",
   "engine.page-background.unreferenced": "Page background image not printed",
   "engine.hyphenation.unsupported": "Hyphenation not available",
   // The post-build PDF checks, run on the exported file (#399) — the lib's

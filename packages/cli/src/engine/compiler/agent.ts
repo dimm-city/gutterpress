@@ -240,7 +240,7 @@ export function applyRectoSpacers(ids: string[], pageName: string): number {
 }
 
 export interface ContentWarning {
-  kind: "overheight" | "low-dpi";
+  kind: "overheight" | "low-dpi" | "pin-span";
   what: string;
   detail: string;
 }
@@ -303,6 +303,25 @@ export function auditContent(
         detail:
           `${Math.round(h)}px tall on a ${Math.round(context.height)}px ` +
           `${context.name === "default" ? "default-page" : `${context.name} page`} content box`,
+      });
+    }
+  }
+
+  // A bottom pin is placed against its page root's bottom edge, which is the
+  // page foot only while the root fits one sheet (its `min-height` is one
+  // content box). Taller, and that edge is the end of the text.
+  for (const root of Array.from(document.querySelectorAll<HTMLElement>(".page, .spread"))) {
+    const h = root.getBoundingClientRect().height;
+    const limit = pageContext(root).height;
+    if (h <= limit + 1) continue;
+    for (const pin of Array.from(root.querySelectorAll<HTMLElement>(".gp-pin.gp-bottom"))) {
+      if (pin.offsetParent !== root) continue;
+      const img = pin.matches("img") ? (pin as HTMLImageElement) : pin.querySelector("img");
+      const src = img ? img.getAttribute("src") ?? "" : "";
+      out.push({
+        kind: "pin-span",
+        what: src && !src.startsWith("data:") ? src : img ? "an inline image" : name(pin),
+        detail: String(Math.ceil(h / limit)),
       });
     }
   }

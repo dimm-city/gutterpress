@@ -249,6 +249,7 @@ export type BuildDiagnosticCode =
   | "engine.content.overheight"
   | "engine.image.low-dpi"
   | "engine.pin.margin-box"
+  | "engine.pin.page-span"
   | "engine.page-background.unreferenced"
   | "engine.hyphenation.unsupported";
 
@@ -262,6 +263,7 @@ export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.content.overheight",
   "engine.image.low-dpi",
   "engine.pin.margin-box",
+  "engine.pin.page-span",
   "engine.page-background.unreferenced",
   "engine.hyphenation.unsupported",
 ];
@@ -1251,6 +1253,11 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           diagnose(
             "engine.content.overheight",
             `${w.what} is taller than one page (${w.detail}): print splits it across pages while the on-screen preview clips it, so the two will not agree here.`,
+          );
+        else if (w.kind === "pin-span")
+          diagnose(
+            "engine.pin.page-span",
+            `.gp-pin .gp-bottom on ${w.what} is in an @page block that runs across ${w.detail} pages, so it is placed at the end of the text, not the page foot. Start a new @page before the content it should sit with.`,
           );
         else
           diagnose(

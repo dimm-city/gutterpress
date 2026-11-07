@@ -9,6 +9,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Build warning: a bottom pin in an `@page` block longer than one sheet.** The pin lands
+  at the end of the text, not the page foot; the warning names it and says to start a new
+  `@page` (#519).
+
 - **Desktop: the status bar says when saving is paused by an unfinished revision
   switch.** An amber "Saved here · Saving is paused — see Drafts" opens Book setup →
   Backup & history, and clears once the switch is put back or kept as it is (#516).
