@@ -70,6 +70,8 @@ export interface ProjectClassification {
   books?: ProjectClassificationBook[];
   /** The book last open in `repoRoot`, when the app remembers one. */
   lastActiveBook?: string;
+  /** An interrupted revision switch was put right as the book opened; plain-words message. */
+  repairNotice?: string;
 }
 
 // ── Local version history (#13) ───────────────────────────────────────────────

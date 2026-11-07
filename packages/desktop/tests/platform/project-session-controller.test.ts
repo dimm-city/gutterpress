@@ -28,6 +28,7 @@ type ClassifyResult = {
   capabilities: unknown;
   hasManifest: boolean;
   repoRoot?: string;
+  repairNotice?: string;
   books?: ProjectBookEntry[];
   lastActiveBook?: string;
 };
@@ -441,4 +442,14 @@ test("resolveActiveBookDir: a folder in no book at all still falls back to books
   // to no book (or the bare repo root).
   expect(resolveActiveBookDir("/repo/shared/styles", "/repo", TWO_BOOKS)).toBe("/repo/alpha");
   expect(resolveActiveBookDir("/repo", "/repo", TWO_BOOKS)).toBe("/repo/alpha");
+});
+
+test("a repair notice from the open's classification is kept, and reset clears it", async () => {
+  const { ctrl, classify } = makeHarness();
+  classify.next = { source: {}, capabilities: makeCaps(), hasManifest: true, repairNotice: "put back" } as ClassifyResult;
+  await ctrl.classify("/p");
+  await flush();
+  expect(ctrl.repairNotice).toBe("put back");
+  ctrl.reset();
+  expect(ctrl.repairNotice).toBeNull();
 });

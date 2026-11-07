@@ -172,11 +172,15 @@ export class ProjectSessionController {
     this.projectCapabilities = null;
     this.projectSubPath = "";
     this.projectHasRemote = false;
+    this.repairNotice = null;
     this.repoRoot = null;
     this.books = [];
     this.activeBookDir = null;
     this.activeBookHasManifest = true;
   }
+
+  /** Set when opening the book put an interrupted switch right (message for the author). */
+  repairNotice = $state<string | null>(null);
 
   /**
    * Classify the opened folder (#12) so capability-gated actions (#13/#25) can
@@ -193,6 +197,7 @@ export class ProjectSessionController {
       .then((result) => {
         if (gen !== this.classifyGen) return; // superseded by a newer open
         this.projectCapabilities = result.capabilities;
+        this.repairNotice = result.repairNotice ?? null;
         this.projectSubPath =
           result.source.type === "local-git-folder" ? (result.source.subPath ?? "") : "";
         this.projectHasRemote =

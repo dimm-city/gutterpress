@@ -811,6 +811,8 @@ export interface RevisionList {
   revisions: Revision[];
   /** The refresh from the online copy ran and succeeded; false = the list is what this computer last knew. */
   checkedOnline: boolean;
+  /** A switch the app was interrupted in was put right just now; plain-words message for the author. */
+  repairNotice?: string;
 }
 
 /** A history entry and where it is kept (#408). */

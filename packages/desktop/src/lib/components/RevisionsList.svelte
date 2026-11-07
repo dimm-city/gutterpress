@@ -68,14 +68,19 @@
   const shown = $derived(showAll || find.trim() ? matching : matching.slice(0, FEW));
   const currentName = $derived(list?.current ?? null);
 
+  /** Said once when an interrupted switch was put right on opening this card. */
+  let repairNotice = $state<string | null>(null);
+
   /** The refreshed list, or the last one when the online copy can't be reached. */
   async function load(): Promise<void> {
     try {
       // What this computer knows shows at once; the online check can take a while offline.
       list = await api.vcs.listRevisions(projectDir);
+      repairNotice = list?.repairNotice ?? repairNotice;
       if (!hasOnlineCopy) return;
       checking = true;
       list = (await api.vcs.listRevisions(projectDir, { refresh: true })) ?? list;
+      repairNotice = list?.repairNotice ?? repairNotice;
     } catch {
       // The list stays as it was.
     } finally {
@@ -246,6 +251,7 @@
         </button>
       </div>
     {/if}
+    {#if repairNotice}<p class="section-note" role="status">{repairNotice}</p>{/if}
     {#if hasOnlineCopy && !checking && !list.checkedOnline}
       <p class="section-note">Couldn't check the online copy just now, so revisions made elsewhere may be missing.</p>
     {/if}

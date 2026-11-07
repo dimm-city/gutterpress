@@ -81,6 +81,8 @@ interface ProjectLifecycleProjectSession {
   books: ProjectBookEntry[];
   activeBookDir: string | null;
   activeBookHasManifest: boolean;
+  /** Set when opening put an interrupted revision switch right. */
+  repairNotice?: string | null;
   /** Read after classify() resolves — gates the post-open diagnosis refresh. */
   projectCapabilities: { canSnapshot: boolean } | null;
   reset(): void;
@@ -318,6 +320,8 @@ export class ProjectLifecycleController {
       await d.projectSession.classify(dir);
       if (superseded()) return false;
       const targetDir = d.projectSession.activeBookDir ?? dir;
+      // The book was repaired before anything read it; say so.
+      if (d.projectSession.repairNotice) d.toast()?.show(d.projectSession.repairNotice, "warning", 15000);
       // One quiet notice when the tracked "project" turns out to be a whole
       // repo rather than just the folder the author picked. Once per repo per
       // session — not on every subsequent switch between known books.

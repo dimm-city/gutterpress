@@ -100,6 +100,24 @@ history-start versions "First version":
 | combining with the online copy | "Combined your changes with the online copy's" |
 | keeping both takes of a file that can't be combined | "Kept both takes of the files that can't be combined" |
 
+**Switching revisions is crash-safe.** "Saved before switching revision" holds
+everything; only then does the switch write `.git/gutterpress-switch.json`
+(the version and revision it was on, the one it is moving to, when it began, the
+folders that already existed), and it removes the file last. If the app dies in
+between, `repairInterruptedSwitch` (`source-provider.ts`) runs when the book is
+opened (`app/classify-project`, before the editor reads a file or a build
+starts) and, as a backstop, before any save, backup or restore. It first keeps a
+copy of the tree as it stands on `refs/gutterpress/before-repair-<time>` (inside the git folder, not in the version history; the notice says how to recover it), then
+puts the book back to the saved version, and removes only files whose bytes
+equal the target's (or that were written since the move began) and folders the
+move made; anything else is left and listed. A journal that cannot be read
+rolls back to HEAD and deletes nothing. The author sees a warning toast when the
+book opens, and the same text in Book setup → Revisions. The wording follows the
+journal's kind: "Switching revisions was interrupted" or "Restoring a version
+was interrupted". The editor is not read-only while a switch runs; the side ref
+covers edits made then. Tests: `packages/cli/src/lib/switch-crash-recovery.test.ts`,
+`packages/desktop/tests/platform/app-classify-repair.test.ts`.
+
 ---
 
 ## Vision Statement
