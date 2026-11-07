@@ -160,6 +160,46 @@ describe("repairOnlineBackup", () => {
     }
   });
 
+  test("a current draft that exists only on this computer: repair takes the online default branch", async () => {
+    const h = await setup();
+    try {
+      const mainBefore = await git.resolveRef({ fs, dir: h.serverDir, ref: "main" });
+      await git.branch({ fs, dir: h.projectDir, ref: "Second-edition", checkout: true });
+      await writeFile(path.join(h.projectDir, "edition.md"), "# Edition\n");
+      await git.add({ fs, dir: h.projectDir, filepath: "edition.md" });
+      await git.commit({ fs, dir: h.projectDir, author: AUTHOR, message: "edition" });
+
+      const result = await repairOnlineBackup({ projectDir: h.projectDir, backupDir: h.backupDir });
+      expect(["synced", "up-to-date"]).toContain(result.outcome.status);
+      // The old history went aside; the book stays on the draft's name, whose files stay…
+      expect(fs.existsSync(path.join(h.backupDir, "git"))).toBe(true);
+      expect(await git.currentBranch({ fs, dir: h.projectDir })).toBe("Second-edition");
+      // …main is left alone online, and the draft is now online.
+      expect(await git.resolveRef({ fs, dir: h.serverDir, ref: "main" })).toBe(mainBefore);
+      const [head] = await git.log({ fs, dir: h.projectDir, depth: 1 });
+      expect(await git.resolveRef({ fs, dir: h.serverDir, ref: "Second-edition" })).toBe(head!.oid);
+      expect(await readFile(path.join(h.projectDir, "edition.md"), "utf8")).toBe("# Edition\n");
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("a failed repair leaves an existing backup folder and its other contents intact", async () => {
+    const h = await setup();
+    try {
+      fs.mkdirSync(h.backupDir, { recursive: true });
+      fs.writeFileSync(path.join(h.backupDir, "unrelated.txt"), "keep me");
+      await h.server.close();
+      await expect(repairOnlineBackup({ projectDir: h.projectDir, backupDir: h.backupDir })).rejects.toThrow();
+      expect(fs.readFileSync(path.join(h.backupDir, "unrelated.txt"), "utf8")).toBe("keep me");
+      expect(fs.existsSync(path.join(h.backupDir, "fresh-clone"))).toBe(false);
+    } finally {
+      await rm(h.serverDir, { recursive: true, force: true }).catch(() => {});
+      await rm(path.dirname(h.projectDir), { recursive: true, force: true }).catch(() => {});
+      await rm(path.dirname(path.dirname(h.backupDir)), { recursive: true, force: true }).catch(() => {});
+    }
+  });
+
   test("a download that fails touches nothing in the book", async () => {
     const h = await setup();
     try {
@@ -169,6 +209,8 @@ describe("repairOnlineBackup", () => {
       await expect(repairOnlineBackup({ projectDir: h.projectDir, backupDir: h.backupDir })).rejects.toThrow();
       expect(fs.statSync(path.join(h.projectDir, ".git")).ino).toBe(before);
       expect(fs.existsSync(path.join(h.backupDir, "git"))).toBe(false);
+      // No empty backup folder is left behind.
+      expect(fs.existsSync(h.backupDir)).toBe(false);
       expect(await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8")).toBe("# One\n\nKept.\n");
     } finally {
       await rm(h.serverDir, { recursive: true, force: true }).catch(() => {});

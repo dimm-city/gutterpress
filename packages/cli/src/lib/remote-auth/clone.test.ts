@@ -204,7 +204,7 @@ test("failed clone removes the partially-created directory; a retry then succeed
     const badCred: HostCredential = { ...CRED, token: "wrong_token" };
     await expect(
       cloneRepository({ url: server.url, dir: dest, credential: badCred }),
-    ).rejects.toThrow(/sign in to github again/i);
+    ).rejects.toThrow(/didn.t accept your sign-in. sign in again in book setup/i);
     expect(fs.existsSync(dest)).toBe(false);
 
     // Retry with the correct credential succeeds into the same path.
@@ -233,7 +233,7 @@ test("failed clone into a pre-existing (empty) folder keeps the user's folder", 
     const badCred: HostCredential = { ...CRED, token: "wrong_token" };
     await expect(
       cloneRepository({ url: server.url, dir: workDir, credential: badCred }),
-    ).rejects.toThrow(/sign in to github again/i);
+    ).rejects.toThrow(/didn.t accept your sign-in. sign in again in book setup/i);
     // The directory existed before the clone — it must NOT be deleted.
     expect(fs.existsSync(workDir)).toBe(true);
   } finally {

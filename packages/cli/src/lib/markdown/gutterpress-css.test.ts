@@ -22,7 +22,11 @@ function selectorClasses(css: string): Set<string> {
 // Real author-facing vocabulary with no CSS rule of its own (see the
 // GP_CLASSES doc comment) — legitimately absent from the CSS text, so
 // excluded from the "every GP_CLASSES entry has a rule" direction below.
-const MARKER_ONLY_NO_CSS_RULE = new Set(["gp-continued"]);
+const MARKER_ONLY_NO_CSS_RULE = new Set([
+  "gp-continued",
+  // two-versions.ts ships its own CSS with the preview rule, not in these blocks.
+  "gp-two-versions", "gp-version", "gp-version-yours", "gp-version-online", "gp-version-text",
+]);
 
 describe("GP_CLASSES agrees with the CSS it describes", () => {
   const fromCss = new Set([

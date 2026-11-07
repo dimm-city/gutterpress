@@ -444,7 +444,10 @@ g[data-mml-node="mtable"] > g > svg { overflow: visible; }
  * structural classes `markers.js`'s `MARKER_CSS` styles (`gp-page-break`,
  * `gp-column-break`), and one class the marker plugin EMITS but that carries
  * no CSS rule of its own — `gp-continued` (a `@continue`d section's marker,
- * for author/theme styling — see markers.js's header).
+ * for author/theme styling — see markers.js's header). The five two-takes
+ * classes (`gp-two-versions`, `gp-version`, `gp-version-yours`,
+ * `gp-version-online`, `gp-version-text`) are likewise listed with no rule
+ * here: two-versions.ts carries its own CSS.
  *
  * This is the vocabulary `gp-pin-scope.js`'s `unknown_gp_class` diagnostic
  * (#226) checks every author-facing class against: any `gp-`-prefixed class
@@ -472,6 +475,8 @@ export const GP_CLASSES: ReadonlySet<string> = new Set([
   "gp-no-break", "gp-break-before",
   // shape wrap
   "gp-shape",
+  // the preview's two-takes conflict block (two-versions.ts carries its own CSS)
+  "gp-two-versions", "gp-version", "gp-version-yours", "gp-version-online", "gp-version-text",
   // pin + edge modifiers + the paper's-edge escape hatch
   "gp-pin", "gp-top", "gp-bottom", "gp-flush",
   // depth ladder

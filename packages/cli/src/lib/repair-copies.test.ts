@@ -109,6 +109,15 @@ describe("#507 builds refuse while a switch is unresolved", () => {
     expect((await unfinishedSwitchMessage(dir))!).not.toContain("refs/");
   });
 
+  test("the unfinished-switch wording is a wire contract: the desktop matches /part-way through switching/ (errors.ts friendlyPdfError)", async () => {
+    const dir = await book();
+    const bad = "0".repeat(40);
+    fs.writeFileSync(journal(dir), JSON.stringify({ kind: "switch", from: bad, to: bad, fromBranch: "main" }));
+    const msg = (await unfinishedSwitchMessage(dir, { cli: true }))!;
+    expect(msg).toMatch(/part-way through switching/);
+    expect((await unfinishedSwitchMessage(dir))!).toMatch(/part-way through switching/);
+  });
+
   test("runBuild on a real book: refuses with an unresolved switch; only the desktop export repairs, then builds", async () => {
     const dir = await book();
     put(dir, "chapter-01.md", "# Hello\n");

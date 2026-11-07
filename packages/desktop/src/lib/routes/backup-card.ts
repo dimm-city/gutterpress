@@ -168,8 +168,10 @@ export function backupCard(i: CardInput): CardView {
 export function repairSetAsideText(setAside: { revisions: string[]; versions: number } | null, savedCopies = 0): string {
   const copies = savedCopies > 0 ? ` The ${savedCopies === 1 ? "saved copy" : `${savedCopies} saved copies`} from earlier repairs go${savedCopies === 1 ? "es" : ""} into the safety folder too.` : "";
   const KEPT = "It stays in a safety folder outside your book. It is not deleted, but it won't show in your book's history.";
+  // The current draft, if only here, keeps its files and name: only its earlier history goes aside.
+  const DRAFT = " If the draft you are on is one of them, its current files stay and are backed up online as that draft; only its earlier history goes to the safety folder.";
   if (!setAside) {
-    return `Anything that exists only on this computer, such as a draft or versions that were never backed up, is set aside too. ${KEPT}${copies}`;
+    return `Anything that exists only on this computer, such as a draft or versions that were never backed up, is set aside too. ${KEPT}${DRAFT}${copies}`;
   }
   const { revisions, versions } = setAside;
   if (revisions.length === 0 && versions === 0) return `Everything on this computer is already online, so nothing would be lost from your history.${copies}`;
@@ -177,5 +179,5 @@ export function repairSetAsideText(setAside: { revisions: string[]; versions: nu
     revisions.length ? `${revisions.length} ${revisions.length === 1 ? "draft" : "drafts"} (${revisions.map((n) => `"${draftName(n)}"`).join(", ")})` : "",
     versions ? `${versions} ${versions === 1 ? "version" : "versions"}` : "",
   ].filter(Boolean);
-  return `This will set aside ${parts.join(" and ")} that ${revisions.length + versions === 1 ? "is" : "are"} only on this computer. ${KEPT}${copies}`;
+  return `This will set aside ${parts.join(" and ")} that ${revisions.length + versions === 1 ? "is" : "are"} only on this computer. ${KEPT}${revisions.length ? DRAFT : ""}${copies}`;
 }
