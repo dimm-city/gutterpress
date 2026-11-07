@@ -18,3 +18,13 @@ export function revisionsShown<T extends { name: string; current: boolean }>(rev
     .filter((r) => r.name.toLowerCase().includes(needle))
     .sort((a, b) => Number(b.current) - Number(a.current));
 }
+
+/**
+ * A draft's name as people read it: the stored name is made usable as a
+ * git name (spaces become hyphens), so it is shown with spaces again, and the
+ * book's first draft ("main") is the "Main draft".
+ */
+export function draftName(name: string): string {
+  if (name === "main" || name === "master") return "Main draft";
+  return name.replace(/-+/g, " ").trim() || name;
+}

@@ -12,7 +12,7 @@
    * The children carry no state — the `api.*` calls live in the controllers
    * under `#lib/routes/*-section-controller.svelte.ts`.
    *
-   * Tabs Book · Look · Extensions · Online copy, and Advanced set apart at the
+   * Tabs Book · Look · Extensions · Backup & history, and Advanced set apart at the
    * right; four controllers (no `$effect`: data loads on mount + after
    * mutations):
    *   1. Book     — title, authors, page size and margins, print checks,
@@ -24,8 +24,8 @@
    *   3. Extensions — the manifest's ordered extension list and the one Add
    *                 area: built-in extras, npm, folders and web addresses
    *                 (`ExtensionsSection`).
-   *   4. Online copy (id `online-copy`) — saved versions, Version history
-   *                 (opens inside the tab), revisions and this book's online
+   *   4. Backup & history (id `online-copy`, once "Online copy") — saved versions, Version history
+   *                 (opens inside the tab), drafts and this book's online
    *                 copy (`ProjectConnectionsSection`, self-loading — no
    *                 controller).
    *   5. Advanced — the one place for developer controls: the manifest file,
@@ -104,21 +104,21 @@
     backup?: LastBackup | null;
     /** Automatic versions keep failing, and why. */
     versionsProblem?: { message: string | null } | null;
-    /** The Online copy tab just turned on version history: re-read the project's classification. */
+    /** The Backup & history tab just turned on version history: re-read the project's classification. */
     onVersionHistoryEnabled?: (projectDir: string) => void;
-    /** The Online copy tab just set up or signed in to the online copy: re-read the project's state. */
+    /** The Backup & history tab just set up or signed in to the online copy: re-read the project's state. */
     onBackupSetUp?: (projectDir: string) => void;
-    /** The Online copy tab just switched to, made or renamed a revision: the book's files changed on disk. */
+    /** The Backup & history tab just switched to, made or renamed a revision: the book's files changed on disk. */
     onProjectFilesChanged?: () => void;
-    /** The Online copy tab's Back up now / Sync now / Try again: the page's full pass. */
+    /** The Backup & history tab's Back up now / Sync now / Try again: the page's full pass. */
     onBackUpNow?: () => Promise<void>;
-    /** The Online copy tab's Get latest: the page's get-latest pass, which sends nothing. */
+    /** The Backup & history tab's Get latest: the page's get-latest pass, which sends nothing. */
     onGetLatest?: () => Promise<void>;
-    /** The Online copy tab's Repair the online copy: the page's repair. */
+    /** The Backup & history tab's Repair the online copy: the page's repair. */
     onRepair?: () => Promise<void>;
-    /** The Online copy tab's Save a version: the page's save; resolves "unchanged" when there was nothing new. */
+    /** The Backup & history tab's Save a version: the page's save; resolves "unchanged" when there was nothing new. */
     onSaveVersion?: () => Promise<"saved" | "unchanged">;
-    /** Online copy › Version history: the parent opens the Version history screen over this one. */
+    /** Backup & history › History: the parent opens the Version history screen over this one. */
     onBrowseVersions?: (id?: string) => void;
     /** Close the book: the Online copy tab's Start over from the online copy ends with it. */
     onCloseBook?: () => Promise<boolean>;
@@ -244,7 +244,7 @@
     { id: "book", label: "Book" },
     { id: "look", label: "Look" },
     { id: "extensions", label: "Extensions" },
-    { id: "online-copy", label: "Online copy" },
+    { id: "online-copy", label: "Backup & history" },
     { id: "advanced", label: "Advanced" },
   ];
   // svelte-ignore state_referenced_locally

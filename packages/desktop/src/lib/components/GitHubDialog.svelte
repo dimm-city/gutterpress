@@ -12,6 +12,7 @@
   import { api } from "#lib/api.ts";
   import { basenameOf } from "#lib/platform/paths.ts";
   import { friendlyHostError } from "#lib/errors.ts";
+  import { peekRepositories, refreshRepositories, clearRepositories } from "#lib/routes/repo-list-cache.ts";
   import type {
     DeviceCodeInfo,
     RemoteRepository,
@@ -31,7 +32,7 @@
     open?: boolean;
     /** Called with the new local project folder once the download finishes. */
     onOpened?: (projectDir: string) => void;
-    /** "Using a different Git host?" — closes this dialog, opens the Accounts page. */
+    /** "Using a different service?" — closes this dialog, opens the Accounts page. */
     onOpenAccounts?: () => void;
     /** Called whenever the dialog closes (any path). Useful for post-close refresh. */
     onClosed?: () => void;
@@ -55,6 +56,8 @@
 
   let repos = $state<RemoteRepository[]>([]);
   let reposLoading = $state(false);
+  /** The list on screen is the last one this session had; a newer one is being read. */
+  let reposRefreshing = $state(false);
   let filter = $state("");
 
   let selectedRepo = $state<RemoteRepository | null>(null);
@@ -143,25 +146,37 @@
    * Fetch the repo list. The host returns it most-recently-pushed first
    * (the API's `sort=pushed`) — render in that order, never re-sort.
    */
-  async function loadRepos() {
+  async function loadRepos(force = false) {
     step = "repos";
-    reposLoading = true;
     error = null;
+    // The last list this session read shows at once; a newer one is read behind it.
+    const cached = force ? null : peekRepositories();
+    if (cached) {
+      repos = cached;
+      reposLoading = false;
+      reposRefreshing = true;
+    } else {
+      reposLoading = true;
+      reposRefreshing = force && repos.length > 0;
+    }
     // Park focus on the dialog while loading so it can't fall to <body>
     // when the previous step's controls unmount.
     await tick();
-    dialogEl?.focus();
+    if (!cached) dialogEl?.focus();
+    else (filterEl ?? dialogEl)?.focus();
     try {
-      repos = await api.remote.listRemoteRepositories() as RemoteRepository[];
+      repos = (await refreshRepositories()) as RemoteRepository[];
     } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
+      // A list already on screen stays; only an empty screen shows the failure.
+      if (repos.length === 0) error = e instanceof Error ? e.message : String(e);
     } finally {
       reposLoading = false;
+      reposRefreshing = false;
     }
     await tick();
     // The search input is the primary action when there is a list; with no
     // repositories the Refresh button is.
-    (repos.length > 0 ? filterEl : (refreshBtn ?? filterEl))?.focus();
+    if (!cached) (repos.length > 0 ? filterEl : (refreshBtn ?? filterEl))?.focus();
   }
 
   /** Hand off to the Accounts page (other Git servers) — shared by the connect + repos steps. */
@@ -279,6 +294,7 @@
     }
     username = null;
     repos = [];
+    clearRepositories();
     step = "connect";
   }
 
@@ -319,7 +335,7 @@
   >
     <header class="dlg-header">
       <h2 id="github-dialog-title">
-        {#if step === "connect" || step === "code"}Connect GitHub{:else if step === "repos"}Choose the online copy{:else if step === "configure"}Open book{:else if step === "books"}Choose a book{:else}Downloading…{/if}
+        {#if step === "connect" || step === "code"}Sign in to GitHub{:else if step === "repos"}Choose the online copy{:else if step === "configure"}Open book{:else if step === "books"}Choose a book{:else}Downloading…{/if}
       </h2>
       <button
         class="dlg-close"
@@ -344,27 +360,27 @@
 
       {#if step === "connect"}
         <p class="hint">
-          Connect your GitHub account to open the books stored there.
-          A browser window will ask you to enter a short code — that's it.
+          Sign in to GitHub to open the books kept there. You need a free GitHub account.
+          A browser window will show a short code to type in, and that's it.
         </p>
         {#if onOpenAccounts}
           <p class="hint subtle">
-            Using a different Git host (Gitea, GitLab, Bitbucket, …)?
+            Using a different service (GitLab, Gitea, Bitbucket…)?
             <button type="button" class="link-btn" onclick={goAccounts}>Open Accounts</button>
-            to sign in to it, then download the book with your usual Git tool and open the folder.
+            to sign in to it, then download the book with your usual tool and open the folder.
           </p>
         {/if}
         <footer class="dlg-actions">
           <button class="dlg-ghost" onclick={close}>Cancel</button>
           <button bind:this={connectBtn} class="dlg-primary app-btn-primary" onclick={connect} disabled={busy}>
-            {busy ? "Contacting GitHub…" : "Connect GitHub"}
+            {busy ? "Contacting GitHub…" : "Sign in to GitHub"}
           </button>
         </footer>
       {:else if step === "code"}
-        <p class="hint">Enter this code on the GitHub page that just opened:</p>
+        <p class="hint">We opened GitHub in your browser. Type this code there, then come back.</p>
         <div class="user-code">{code?.userCode}</div>
         <p class="hint subtle">
-          Waiting for you to approve in the browser…
+          Waiting for you…
           {#if code}
             If the page didn't open, visit
             <button
@@ -384,6 +400,9 @@
             <button type="button" class="link-btn" onclick={disconnect}>Disconnect</button>
           </p>
         {/if}
+        {#if reposRefreshing}
+          <p class="hint subtle" role="status">Updating the list…</p>
+        {/if}
         {#if reposLoading || repos.length > 0}
           <input
             bind:this={filterEl}
@@ -397,7 +416,7 @@
           />
         {/if}
         {#if reposLoading}
-          <p class="hint subtle">Loading your online copies…</p>
+          <p class="hint subtle" role="status">Searching your online copies…</p>
         {:else if repos.length === 0}
           <!-- The OAuth `repo` scope sees every repository the account can
                access, so an empty list means the account truly has none yet. -->
@@ -423,7 +442,7 @@
         {/if}
         {#if onOpenAccounts}
           <p class="hint subtle">
-            Or connect a different Git server in
+            Or use a different service in
             <button type="button" class="link-btn" onclick={goAccounts}>Accounts</button>
           </p>
         {/if}
@@ -432,33 +451,36 @@
           <button
             bind:this={refreshBtn}
             class="dlg-ghost"
-            onclick={() => loadRepos()}
+            onclick={() => loadRepos(true)}
             disabled={reposLoading}
           >Refresh</button>
         </footer>
       {:else if step === "configure" && selectedRepo}
         <p class="hint"><strong>{selectedRepo.fullName}</strong></p>
-        <label class="field">
-          <span>Revision to open</span>
-          <select bind:value={branch}>
-            {#each branches as b (b.name)}
-              <option value={b.name}>
-                {b.name}{b.name === selectedRepo.defaultBranch ? " (recommended)" : ""}
-              </option>
-            {/each}
-          </select>
-        </label>
-        <label class="field">
-          <span>Save it on this computer as</span>
-          <input type="text" bind:value={folderName} spellcheck="false" autocomplete="off" />
-        </label>
+        {#if branches.length > 1}
+          <!-- Only asked when the online copy has more than one draft; otherwise the main one opens. -->
+          <label class="field">
+            <span>Which draft?</span>
+            <select bind:value={branch}>
+              {#each branches as b (b.name)}
+                <option value={b.name}>
+                  {b.name === selectedRepo.defaultBranch ? "Main draft (recommended)" : b.name}
+                </option>
+              {/each}
+            </select>
+          </label>
+        {/if}
         <div class="field">
-          <span>Where to save it</span>
+          <span>Save it in</span>
           <div class="dest-row">
             <span class="dest-path">{destination ?? "Choose a folder…"}</span>
-            <button class="dlg-ghost" onclick={pickDestination}>Browse…</button>
+            <button class="dlg-ghost" onclick={pickDestination}>{destination ? "Change…" : "Choose…"}</button>
           </div>
         </div>
+        <label class="field">
+          <span>Folder name</span>
+          <input type="text" bind:value={folderName} spellcheck="false" autocomplete="off" />
+        </label>
         <footer class="dlg-actions">
           <button class="dlg-ghost" onclick={() => (step = "repos")}>Back</button>
           <button class="dlg-ghost" onclick={close}>Cancel</button>

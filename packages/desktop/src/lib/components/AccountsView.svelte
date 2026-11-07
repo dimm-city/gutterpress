@@ -277,7 +277,7 @@
     </section>
 
     <section class="group" aria-labelledby="accounts-servers">
-      <h2 id="accounts-servers">Other Git servers</h2>
+      <h2 id="accounts-servers">Other services</h2>
       <p class="hint">GitLab, Gitea, Forgejo, Bitbucket, Azure Repos, or any server with an https:// address. Books on it back up with the token saved here.</p>
       {#each groups.servers as server (server.host)}
         {@render line(`server:${server.host}`, server.host, server.username, server.unreadable, "Edit", "Remove this server? Books that back up there stop until you sign in to it again.", () => api.remote.disconnectHost(server.host))}
@@ -295,7 +295,7 @@
           </div>
         {/if}
       {:else}
-        <p class="hint">No Git servers saved.</p>
+        <p class="hint">No other services saved.</p>
       {/each}
       {#if notice?.group === "servers"}<p class="done" role="status">{notice.text}</p>{/if}
       {#if open === "add-server"}
@@ -303,7 +303,7 @@
           <GitServerForm takeFocus onConnected={(r) => afterSave("servers", `Saved ${r.host}.`)} onCancel={closeForm} />
         </div>
       {:else}
-        <button class="app-btn app-btn-ghost self-start" onclick={() => toggleForm("add-server")}>Add a Git server…</button>
+        <button class="app-btn app-btn-ghost self-start" onclick={() => toggleForm("add-server")}>Add another service…</button>
       {/if}
     </section>
 

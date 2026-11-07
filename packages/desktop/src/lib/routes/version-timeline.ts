@@ -188,3 +188,17 @@ export function autoRunSummary(entries: SnapshotEntry[]): string {
   const span = oldest === newest ? newest : `${oldest}–${newest}`;
   return `Versions made automatically · ${span} · ${entries.length} times`;
 }
+
+/**
+ * A version row's title: the author's own note when there is one ("Sent to
+ * printer"), else the plain label ("Automatic version"). The label stays the
+ * subtitle for a noted version, so "Version saved by you— Edit 150" is gone.
+ */
+export function versionTitle(message: string): string {
+  return versionDescription(message) ?? versionLabel(message);
+}
+
+/** The line under a noted version's title; null when the title already is the label. */
+export function versionSubtitle(message: string): string | null {
+  return versionDescription(message) ? versionLabel(message) : null;
+}

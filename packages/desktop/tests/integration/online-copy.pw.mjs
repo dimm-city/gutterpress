@@ -372,10 +372,10 @@ check(bar.controls === 1 && !bar.oldIndicator, `exactly one status control, no s
 check(/^Saved/.test(bar.text), `the control starts with "Saved" (${bar.text})`);
 await screenshot(join(tmpdir(), "online-copy-bar.png"));
 await click(".status-bar .status-control");
-check(await waitFor(`document.querySelector('#project-settings-tab-online-copy')?.getAttribute('aria-selected') === 'true'`), "clicking it opens Book setup on the Online copy tab");
+check(await waitFor(`document.querySelector('#project-settings-tab-online-copy')?.getAttribute('aria-selected') === 'true'`), "clicking it opens Book setup on the Backup & history tab");
 
 // ── 7. the tab: three cards — where the book is kept, Revisions, Version history ─
-check(await waitFor(`!!document.querySelector('#project-settings-panel .revisions .rev-list li.rev') && !!document.querySelector('#project-settings-panel .recent .recent-row')`), "the status, Revisions and Version history cards loaded");
+check(await waitFor(`!!document.querySelector('#project-settings-panel .revisions .rev-list li.rev') && !!document.querySelector('#project-settings-panel .recent .recent-row')`), "the status, Drafts and History cards loaded");
 await sleep(400);
 await screenshot(join(tmpdir(), "online-copy-tab.png"));
 const tab = await evalJs(`(() => {
@@ -394,7 +394,7 @@ const tab = await evalJs(`(() => {
     statusDetail: panel.querySelector('.status-text p')?.textContent.trim(),
     signIn: [...panel.querySelectorAll('.status-body button')].some((b) => /Sign in/.test(b.textContent)),
     revisionsHead: [...panel.querySelectorAll('.revisions .section-head button')].map((b) => b.textContent.trim()),
-    find: !!panel.querySelector('.revisions input[aria-label="Find a revision"]'),
+    find: !!panel.querySelector('.revisions input[aria-label="Find a draft"]'),
     showAll: panel.querySelector('.revisions .section-foot button')?.textContent.trim(),
     note: panel.querySelector('.revisions .section-note')?.textContent.trim(),
     historyHead: [...panel.querySelectorAll('[aria-labelledby="version-history-title"] .section-head button')].map((b) => b.textContent.trim()),
@@ -406,17 +406,17 @@ const tab = await evalJs(`(() => {
 })()`);
 log(`tab: ${JSON.stringify(tab)}`);
 const row = (n) => tab.rows.find((r) => r.name === n) ?? {};
-check(tab.titles.join("|") === "Sign in to back up|Revisions|Version history", `three cards, in order: status, Revisions, Version history (${tab.titles.join(" | ")})`);
-check(/GitHub: ada\/harbor-lights/.test(tab.statusDetail) && tab.signIn, "the status card names the online copy and offers Sign in…");
-check(tab.revisionsHead.join("|") === "New revision", "New revision sits in the Revisions card's header");
-check(tab.find, "more than five revisions offer Find a revision");
-check(tab.rows.map((r) => r.name).join(",") === "main,appendix,editors-pass,late-draft,release-1", `five rows show, the open one first (${tab.rows.map((r) => r.name)})`);
-check(tab.showAll === "Show all 7 revisions" && !tab.innerScroll, "the rest are one click away (Show all), with no box scrolling inside the page");
-check(row("main").current && row("main").badge === "Current" && row("main").where === "Online · not backed up yet" && row("main").buttons.length === 0 && row("main").more, "the open revision: Current, where it is kept, and its menu (no Switch)");
-check(row("editors-pass").where === "Only online" && row("editors-pass").buttons.join("|") === "Switch" && row("editors-pass").more, "an online-only revision: Switch and its menu");
+check(tab.titles.join("|") === "Sign in to back up|History|Drafts", `three cards, in order: status, History, Drafts (${tab.titles.join(" | ")})`);
+check(/GitHub · ada\/harbor-lights/.test(tab.statusDetail) && tab.signIn, "the status card names the online copy and offers Sign in…");
+check(tab.revisionsHead.join("|") === "New draft", "New draft sits in the Drafts card's header");
+check(tab.find, "more than five drafts offer Find a draft");
+check(tab.rows.map((r) => r.name).join(",") === "Main draft,appendix,editors pass,late draft,release 1", `five rows show, the open one first (${tab.rows.map((r) => r.name)})`);
+check(tab.showAll === "Show all 7 drafts" && !tab.innerScroll, "the rest are one click away (Show all), with no box scrolling inside the page");
+check(row("Main draft").current && row("Main draft").badge === "You are here" && row("Main draft").where === "Not backed up yet" && row("Main draft").buttons.length === 0 && row("Main draft").more, "the open revision: Current, where it is kept, and its menu (no Switch)");
+check(row("editors pass").where === "Online only, not on this computer yet" && row("editors pass").buttons.join("|") === "Switch" && row("editors pass").more, "an online-only revision: Switch and its menu");
 check(row("appendix").where === "Only on this computer", "a revision only on this computer says so");
-check(/revisions made elsewhere may be missing/.test(tab.note ?? ""), "an online copy that could not be checked says so, once");
-check(tab.historyHead.join("|") === "Save a version|Browse versions" && tab.recent >= 1 && tab.recent <= 3, `Version history is a short card: the newest versions, Save a version and Browse versions (${tab.historyHead.join("|")}, ${tab.recent} rows)`);
+check(/drafts made elsewhere may be missing/.test(tab.note ?? ""), "an online copy that could not be checked says so, once");
+check(tab.historyHead.join("|") === "Save a version|See all" && tab.recent >= 1 && tab.recent <= 5, `History is a short card: the newest versions, Save a version and See all (${tab.historyHead.join("|")}, ${tab.recent} rows)`);
 check(!tab.trouble, "the backing-up-keeps-failing tools are only there once backing up can work");
 
 /** Open a row's "more" menu and choose an item. */
@@ -433,27 +433,27 @@ const dialogButtons = () => evalJs(`[...document.querySelectorAll('form.rev-dial
 const dialogClick = (label) => click("form.rev-dialog .dlg-actions button", label);
 
 // Every revision can be renamed; every one but the open one can be deleted.
-const openMenu = await menuAction("main", "Rename…");
+const openMenu = await menuAction("Main draft", "Rename…");
 check(openMenu.items === "Rename…", `the open revision's menu: Rename… only (${openMenu.items})`);
 await dialogClick("Cancel");
-const onlineOnlyMenu = await menuAction("editors-pass", "Rename…");
+const onlineOnlyMenu = await menuAction("editors pass", "Rename…");
 check(onlineOnlyMenu.items === "Rename…|Delete…", `an online-only revision's menu: Rename… and Delete… (${onlineOnlyMenu.items})`);
 await dialogClick("Cancel");
 check(await waitFor(`!document.querySelector('form.rev-dialog')`, 3000), "Cancel closes the dialog");
 
 // ── 7b. Find a revision ──────────────────────────────────────────────────────
-await type('.revisions input[aria-label="Find a revision"]', "A");
+await type('.revisions input[aria-label="Find a draft"]', "A");
 await sleep(100);
-check((await names()) === "main,appendix,editors-pass,late-draft,release-1", `the filter ignores case and keeps the open revision first (${await names()})`);
-await type('.revisions input[aria-label="Find a revision"]', "PASS");
+check((await names()) === "Main draft,appendix,editors pass,late draft,release 1", `the filter ignores case and keeps the open revision first (${await names()})`);
+await type('.revisions input[aria-label="Find a draft"]', "PASS");
 await sleep(100);
-check((await names()) === "editors-pass", `matches names anywhere (${await names()})`);
+check((await names()) === "editors pass", `matches names anywhere (${await names()})`);
 await screenshot(join(tmpdir(), "online-copy-filter.png"));
-await type('.revisions input[aria-label="Find a revision"]', "zzz");
+await type('.revisions input[aria-label="Find a draft"]', "zzz");
 await sleep(100);
-check(await evalJs(`document.querySelector('#project-settings-panel .revisions .rev-list')?.textContent.includes('No revisions match.')`), "a filter that matches nothing says so");
-await type('.revisions input[aria-label="Find a revision"]', "");
-await click("#project-settings-panel .revisions .section-foot button", "Show all 7 revisions");
+check(await evalJs(`document.querySelector('#project-settings-panel .revisions .rev-list')?.textContent.includes('No drafts match.')`), "a filter that matches nothing says so");
+await type('.revisions input[aria-label="Find a draft"]', "");
+await click("#project-settings-panel .revisions .section-foot button", "Show all 7 drafts");
 await sleep(100);
 check((await names()).split(",").length === 7, "Show all lists every revision");
 
@@ -462,8 +462,8 @@ check((await names()).split(",").length === 7, "Show all lists every revision");
 await click('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button', "Save a version");
 check(await waitFor(`/Nothing new to save|nothing new/i.test(document.querySelector('#project-settings-panel [aria-labelledby="version-history-title"]')?.textContent ?? '')`, 20000), "Save a version says so when there is nothing new");
 
-await click('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button', "Browse versions");
-check(await waitFor(`!!document.querySelector('.vh .ver')`), "Browse versions opens the Version history screen");
+await click('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button', "See all");
+check(await waitFor(`!!document.querySelector('.vh .ver')`), "See all opens the Version history screen");
 const vh = await evalJs(`(() => {
   const root = document.querySelector('.vh');
   return {
@@ -480,7 +480,7 @@ const vh = await evalJs(`(() => {
 log(`version history: ${JSON.stringify(vh)}`);
 check(vh.title === "Version history" && vh.bookSetupUnder && !vh.inEditorPane, "it is its own screen, over Book setup, not in the editor");
 check(vh.selected === 1 && vh.firstSelected && vh.head, `the newest version is selected and named at the top (${vh.head})`);
-check(vh.actions.join("|") === "Restore this version", "Restore this version sits at the top of the selected version");
+check(vh.actions.join("|") === "Go back to this version", "Go back to this version sits at the top of the selected version");
 check(/^Changed files/.test(vh.tabs[0] ?? "") && vh.tabs[1] === "Pages", `the version shows its Changed files or its Pages (${vh.tabs.join(", ")})`);
 
 // Changed files first: a version opens on what it changed, and nothing renders.
@@ -499,7 +499,7 @@ const online = await evalJs(`(() => {
     atTop: list.firstElementChild === section,
     rows: [...section.querySelectorAll('.online-ver')].map((r) => ({
       title: r.querySelector('.ver-title')?.textContent.trim(),
-      note: r.querySelector('.ver-note')?.textContent.trim() ?? null,
+      sub: r.querySelector('.ver-note')?.textContent.trim() ?? null,
       meta: r.querySelector('.ver-meta')?.textContent.trim(),
       files: [...r.querySelectorAll('.ver-file')].map((f) => f.textContent.trim()),
     })),
@@ -509,14 +509,14 @@ const online = await evalJs(`(() => {
 })()`);
 log(`online list: ${JSON.stringify(online)}`);
 check(online.heading === "Online, not yet on this computer" && online.atTop, "they sit at the top of the list, under Online, not yet on this computer");
-check(online.rows.length === 2 && online.rows[0].note === "Wrote the gamma ending" && /· Grace$/.test(online.rows[0].meta) && /\d/.test(online.rows[0].meta), `each says what it is, when and by whom (${JSON.stringify(online.rows[0])})`);
+check(online.rows.length === 2 && online.rows[0].title === "Wrote the gamma ending" && /· Grace$/.test(online.rows[0].meta) && /\d/.test(online.rows[0].meta), `each says what it is, when and by whom (${JSON.stringify(online.rows[0])})`);
 check(online.rows[0].files.join("|") === "03-gamma.md · 2 paragraphs changed", `and the files it changed (${online.rows[0].files.join(" | ")})`);
 check(online.rows[1].title === "Automatic version" && online.rows[1].files.length === 9 && online.rows[1].files[8] === "and 3 more", `past eight files, "and N more" (${online.rows[1].files.join(" | ")})`);
 check(online.selectable === 0 && online.note === "They come in with Get latest, or the next time this book backs up.", `nothing to select there; Get latest or the next backup brings them in (${online.note})`);
 
 // Every card lists what its version changed, loaded as it comes into view (#484).
 const cardsListed = `[...document.querySelectorAll('.vh button.ver')].filter((b) => b.getClientRects().length).map((b) => ({
-  title: b.querySelector('.ver-note')?.textContent.trim() ?? b.querySelector('.ver-title').textContent.trim(),
+  title: b.querySelector('.ver-title').textContent.trim(),
   files: b.querySelector('.ver-files:not(.pending)') ? [...b.querySelectorAll('.ver-file')].map((f) => f.textContent.trim()) : null,
 }))`;
 check(await waitFor(`${cardsListed}.slice(0, 4).every((c) => c.files)`), "the cards in view list the files their versions changed");
@@ -566,14 +566,14 @@ if (pagesUrl) {
 }
 
 // Restore asks once, at the top.
-await click(".vh .detail-actions button", "Restore this version");
-check(await waitFor(`/saved as a version first/.test(document.querySelector('.vh .detail-actions')?.textContent ?? '')`, 3000), "Restore says your current work is saved as a version first");
-check((await evalJs(`[...document.querySelectorAll('.vh .detail-actions button')].map((b) => b.textContent.trim()).join('|')`)) === "Cancel|Restore", "and asks Cancel or Restore");
+await click(".vh .detail-actions button", "Go back to this version");
+check(await waitFor(`/saved as a version first/.test(document.querySelector('.vh .detail-actions')?.textContent ?? '')`, 3000), "Going back says your current work is saved as a version first");
+check((await evalJs(`[...document.querySelectorAll('.vh .detail-actions button')].map((b) => b.textContent.trim()).join('|')`)) === "Cancel|Go back", "and asks Cancel or Go back");
 await click(".vh .detail-actions button", "Cancel");
 
 // Closing returns to Book setup, where it was opened.
 await click(".vh .vh-close");
-check(await waitFor(`!document.querySelector('.vh') && !!document.querySelector('#project-settings-panel .revisions .rev-list li.rev')`), "closing Version history returns to Online copy");
+check(await waitFor(`!document.querySelector('.vh') && !!document.querySelector('#project-settings-panel .revisions .rev-list li.rev')`), "closing Version history returns to Backup & history");
 
 // A version in the card opens the screen on that version.
 await click("#project-settings-panel .recent .recent-row");
@@ -582,77 +582,77 @@ await press("Escape", "Escape", 27);
 check(await waitFor(`!document.querySelector('.vh') && !!document.querySelector('#project-settings-panel')`), "Escape closes Version history and leaves Book setup open");
 
 // ── 8. New revision (a dialog) ───────────────────────────────────────────────
-await click("#project-settings-panel .revisions .section-head button", "New revision");
-check(await waitFor(`!!document.querySelector('form.rev-dialog input')`, 3000), "New revision opens a dialog with a name field");
+await click("#project-settings-panel .revisions .section-head button", "New draft");
+check(await waitFor(`!!document.querySelector('form.rev-dialog input')`, 3000), "New draft opens a dialog with a name field");
 check(await evalJs(`document.activeElement === document.querySelector('form.rev-dialog input')`), "the name field has focus");
 // Escape cancels the dialog only: Book setup stays open.
 await press("Escape", "Escape", 27);
 check(await waitFor(`!document.querySelector('form.rev-dialog')`, 3000), "Escape cancels the dialog");
 check(await evalJs(`!!document.querySelector('#project-settings-panel .revisions')`), "and leaves Book setup open");
-await click("#project-settings-panel .revisions .section-head button", "New revision");
+await click("#project-settings-panel .revisions .section-head button", "New draft");
 await waitFor(`!!document.querySelector('form.rev-dialog input')`, 3000);
 await type("form.rev-dialog input", "Third edition");
 await sleep(100);
 const newText = await dialogText();
-check(newText.includes('It will be called "Third-edition".'), `the dialog previews the name (${newText})`);
+check(!newText.includes("It will be called"), `the dialog does not talk about hyphens (${newText})`);
 check(newText.includes("starts from your book as it is now") && newText.includes("goes online the next time you back up"), "and says what it does");
 await screenshot(join(tmpdir(), "online-copy-new.png"));
-await dialogClick("Create revision");
-check(await waitFor(`!document.querySelector('form.rev-dialog') && document.querySelector('#project-settings-panel .revisions .rev.current .rev-name')?.textContent.trim() === 'Third-edition'`), "the new revision is created, open, and listed");
+await dialogClick("Create draft");
+check(await waitFor(`!document.querySelector('form.rev-dialog') && document.querySelector('#project-settings-panel .revisions .rev.current .rev-name')?.textContent.trim() === 'Third edition'`), "the new draft is created, open, and listed");
 const created = await evalJs(`window.__revisions.calls.find((c) => c.path === 'create-revision')?.body`);
 check(created?.name === "Third edition", "the typed name went to the host (it normalises it)");
-check((await names()).startsWith("Third-edition,"), "and it moves to the top of the list");
+check((await names()).startsWith("Third edition,"), "and it moves to the top of the list");
 
 // ── 9. Rename… (an online revision, and one only online) ─────────────────────
-await menuAction("main", "Rename…");
+await menuAction("Main draft", "Rename…");
 await type("form.rev-dialog input", "first edition");
 await sleep(100);
-check((await dialogText()).includes('This also renames it in the online copy. Anyone else working on "main" keeps the old name until they switch to the new one.'), "an online rename says it renames online too");
+check((await dialogText()).includes('This also renames it in the online copy. Anyone else working on "Main draft" keeps the old name until they switch to the new one.'), "an online rename says it renames online too");
 await screenshot(join(tmpdir(), "online-copy-rename.png"));
 await dialogClick("Rename");
-check(await waitFor(`!document.querySelector('form.rev-dialog') && [...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'first-edition')`), "the revision is renamed");
-await menuAction("editors-pass", "Rename…");
+check(await waitFor(`!document.querySelector('form.rev-dialog') && [...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'first edition')`), "the draft is renamed");
+await menuAction("editors pass", "Rename…");
 await type("form.rev-dialog input", "editors final");
 await sleep(100);
 check((await dialogText()).includes("It is renamed in the online copy. It isn't on this computer."), "an online-only rename says where it happens");
 await dialogClick("Rename");
-check(await waitFor(`[...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'editors-final')`), "the online-only revision is renamed");
+check(await waitFor(`[...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'editors final')`), "the online-only draft is renamed");
 check(await evalJs(`window.__revisions.calls.some((c) => c.path === 'rename-revision' && c.body.from === 'editors-pass' && c.body.to === 'editors final')`), "the host was asked to rename it");
 
 // ── 10. Delete… (a dialog; a second step when versions would be lost) ─────────
-await menuAction("release-1", "Delete…");
+await menuAction("release 1", "Delete…");
 check((await dialogButtons()) === "Cancel|Delete on this computer only|Delete everywhere", `an online revision offers this computer only, or everywhere (${await dialogButtons()})`);
 await dialogClick("Delete everywhere");
-check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'release-1')`), "deleted everywhere");
+check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'release 1')`), "deleted everywhere");
 check(await evalJs(`window.__revisions.calls.some((c) => c.path === 'delete-revision' && c.body.name === 'release-1' && c.body.everywhere === true)`), "the host was asked to delete it everywhere");
 
-await menuAction("second-edition", "Delete…");
+await menuAction("second edition", "Delete…");
 await dialogClick("Delete");
 check(await waitFor(`/2 versions/.test(document.querySelector('form.rev-dialog .warn')?.textContent ?? '')`), "a revision holding versions found nowhere else asks again, naming how many");
 await screenshot(join(tmpdir(), "online-copy-delete.png"));
 await dialogClick("Delete anyway");
-check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'second-edition')`), "deleted after the second confirmation");
+check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'second edition')`), "deleted after the second confirmation");
 check(await evalJs(`window.__revisions.calls.filter((c) => c.path === 'delete-revision' && c.body.name === 'second-edition').map((c) => !!c.body.discard).join() === 'false,true'`), "the second call carried discard: true");
 
-await menuAction("late-draft", "Delete…");
+await menuAction("late draft", "Delete…");
 check((await dialogText()).includes("It is deleted from the online copy. It isn't on this computer.") && (await dialogButtons()) === "Cancel|Delete", "an online-only revision is deleted from the online copy, in one step");
 await screenshot(join(tmpdir(), "online-copy-delete-online.png"));
 await dialogClick("Delete");
-check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'late-draft')`), "the online-only revision is gone");
+check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'late draft')`), "the online-only revision is gone");
 check(await evalJs(`window.__revisions.calls.some((c) => c.path === 'delete-revision' && c.body.name === 'late-draft' && c.body.everywhere === true && !c.body.discard)`), "the host was asked to delete it from the online copy");
 
-await menuAction("side-project", "Delete…");
+await menuAction("side project", "Delete…");
 await dialogClick("Delete");
 check(await waitFor(`/3 versions/.test(document.querySelector('form.rev-dialog .warn')?.textContent ?? '')`), "an online-only revision holding versions found nowhere else asks again, naming how many");
 await dialogClick("Delete anyway");
-check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'side-project')`), "deleted after the second confirmation");
+check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'side project')`), "deleted after the second confirmation");
 
 // Down to four revisions: no filter, no Show all.
-check(await evalJs(`document.querySelectorAll('#project-settings-panel .revisions .rev-list > li.rev').length === 4 && !document.querySelector('#project-settings-panel .revisions input[aria-label="Find a revision"]') && !document.querySelector('#project-settings-panel .revisions .section-foot')`), "five revisions or fewer: no filter and no Show all");
+check(await evalJs(`document.querySelectorAll('#project-settings-panel .revisions .rev-list > li.rev').length === 4 && !document.querySelector('#project-settings-panel .revisions input[aria-label="Find a draft"]') && !document.querySelector('#project-settings-panel .revisions .section-foot')`), "five revisions or fewer: no filter and no Show all");
 
 // ── 11. Switch ───────────────────────────────────────────────────────────────
-await click('#project-settings-panel button[aria-label="Switch to editors-final"]');
-check(await waitFor(`document.querySelector('#project-settings-panel .revisions .rev.current .rev-name')?.textContent.trim() === 'editors-final'`), "Switch opens an online-only revision");
+await click('#project-settings-panel button[aria-label="Switch to editors final"]');
+check(await waitFor(`document.querySelector('#project-settings-panel .revisions .rev.current .rev-name')?.textContent.trim() === 'editors final'`), "Switch opens an online-only revision");
 
 // ── 12. once backing up can work: the tools for when it keeps failing ────────
 const closeDialog = () => evalJs(`document.querySelector('[role="dialog"]')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
@@ -686,40 +686,32 @@ const failing = await evalJs(`(() => {
   const d = document.querySelector('#project-settings-panel details.trouble');
   return {
     open: d.open,
-    inStatusCard: !!d.closest('.status'),
+    afterHistory: !!d.previousElementSibling?.classList.contains('revisions'),
     summary: d.querySelector('summary').textContent.trim(),
     rows: [...d.querySelectorAll('.tool strong')].map((b) => b.textContent.trim()),
     title: document.querySelector('#project-settings-panel .status-text h3')?.textContent.trim(),
   };
 })()`);
 log(`ready tab: ${JSON.stringify(failing)}`);
-check(!failing.open && failing.inStatusCard && failing.summary === "Backing up keeps failing?", "they sit, collapsed, at the foot of the status card");
-check(failing.rows.join("|") === "Test connection|Sign in again|Repair the online copy|Start over from the online copy", "the four tools, Sign in again right after Test connection");
+check(!failing.open && failing.afterHistory && failing.summary === "Something wrong with the online copy?", "they sit, collapsed, under Drafts");
+check(failing.rows.join("|") === "Check the connection|Sign in again|Repair", "the tools: Check the connection, Sign in again, Repair (Start over is under More…)");
 await evalJs(`document.querySelector('#project-settings-panel details.trouble').open = true; true`);
 await sleep(200);
 await screenshot(join(tmpdir(), "online-copy-failing.png"));
-check(/^Online copy: github\.com\/ada\/harbor-lights$/.test(failing.title), `the status names the online copy without claiming a backup (${failing.title})`);
+check(failing.title === "Your online copy is set up", `the status does not claim a backup it has not heard of (${failing.title})`);
 
 // Automatic backing up is on (the default): Get latest and Back up now are both offered (#485).
 const statusActions = `[...document.querySelectorAll('#project-settings-panel .status-action button')]`;
 const cardButtons = () => evalJs(`${statusActions}.map((b) => b.textContent.trim() + (b.disabled ? ' (disabled)' : '')).join('|')`);
 const cardTitle = () => evalJs(`document.querySelector('#project-settings-panel .status-text h3')?.textContent.trim()`);
-check((await cardButtons()) === "Get latest|Back up now", `with automatic backing up on, the status card offers Get latest and Back up now (${await cardButtons()})`);
-check(await evalJs(`${statusActions}.find((b) => b.textContent.trim() === 'Back up now')?.title === 'Back up now: get the latest changes from the online copy, then back up yours'`), "Back up now says it gets the latest first");
+check((await cardButtons()) === "Back up now", `the status card offers Back up now (${await cardButtons()})`);
 await click("#project-settings-panel .status-action button", "Back up now");
-check(await waitFor(`${statusActions}.map((b) => b.textContent.trim() + (b.disabled ? '*' : '')).join('|') === 'Get latest*|Backing up…*'`), "Back up now reads Backing up… while it runs, and Get latest waits");
+check(await waitFor(`${statusActions}.map((b) => b.textContent.trim() + (b.disabled ? '*' : '')).join('|') === 'Backing up…*'`), "Back up now reads Backing up… while it runs");
 check(await evalJs(`window.__sync.calls.length === 1 && window.__sync.calls[0].push === undefined`), "Back up now ran one full pass, with automatic backing up on");
 await evalJs(`window.__sync.release(); true`);
-check(await waitFor(`/^Backed up · /.test(document.querySelector('#project-settings-panel .status-text h3')?.textContent.trim() ?? '')`), `the card then says Backed up (${await cardTitle()})`);
-check((await cardButtons()) === "Get latest|Back up now", `backed up, it still offers Get latest and Back up now (${await cardButtons()})`);
+check(await waitFor(`/^Your book is safe online/.test(document.querySelector('#project-settings-panel .status-text h3')?.textContent.trim() ?? '')`), `the card then says the book is safe online (${await cardTitle()})`);
+check((await cardButtons()) === "Back up now", `backed up, it still offers Back up now (${await cardButtons()})`);
 await screenshot(join(tmpdir(), "online-copy-tab-auto.png"));
-await click("#project-settings-panel .status-action button", "Get latest");
-check(await waitFor(`${statusActions}.map((b) => b.textContent.trim() + (b.disabled ? '*' : '')).join('|') === 'Getting the latest…*|Back up now*'`), "Get latest reads Getting the latest… while it runs, and Back up now waits");
-check(await evalJs(`window.__sync.calls.length === 2 && window.__sync.calls[1].push === false`), "Get latest asked for the pass that sends nothing (push: false)");
-await evalJs(`window.__sync.release(); true`);
-const upToDate = `[...document.querySelectorAll('.toast .toast-message')].some((t) => t.textContent.trim() === 'Already up to date — nothing new online.')`;
-check(await waitFor(upToDate), "Get latest says when there was nothing new");
-check((await cardButtons()) === "Get latest|Back up now" && /^Backed up · /.test(await cardTitle()), "and the card is ready again, still backed up");
 
 // Save a version, then Escape: the button is disabled while it saves, so the focus a click gave
 // it drops to <body>, outside Book setup. Escape must still close Book setup (#448, #451).
@@ -820,16 +812,13 @@ check(await waitFor(`${latestBtn}?.getAttribute('aria-label') === 'Get latest' &
 
 // Online copy, with automatic backing up off: Get latest beside Sync now (#485).
 await click(".status-bar .status-control");
-check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Get latest|Sync now'`), `with automatic backing up off, the status card offers Get latest and Sync now (${await cardButtons()})`);
+check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Back up now'`), `with automatic backing up off, the status card still offers Back up now (${await cardButtons()})`);
 await screenshot(join(tmpdir(), "online-copy-tab-manual.png"));
-await click("#project-settings-panel .status-action button", "Get latest");
-check(await waitFor(`window.__sync.calls.length === 4 && window.__sync.calls[3].push === false`), "the card's Get latest sends nothing");
+await click("#project-settings-panel .status-action button", "Back up now");
+check(await waitFor(`${statusActions}.some((b) => b.textContent.trim() === 'Backing up…')`), "Back up now reads Backing up… while it runs");
+check(await evalJs(`window.__sync.calls.length === 4 && window.__sync.calls[3].push === undefined`), "Back up now is the full pass");
 await evalJs(`window.__sync.release(); true`);
-await click("#project-settings-panel .status-action button", "Sync now");
-check(await waitFor(`${statusActions}.some((b) => b.textContent.trim() === 'Syncing…')`), "Sync now reads Syncing… while it runs");
-check(await evalJs(`window.__sync.calls.length === 5 && window.__sync.calls[4].push === undefined`), "Sync now is the full pass");
-await evalJs(`window.__sync.release(); true`);
-check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Get latest|Sync now'`), "and both are ready again");
+check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Back up now'`), "and it is ready again");
 await closeDialog();
 check(await waitFor(`!document.querySelector('#project-settings-panel')`), "Book setup closed");
 
@@ -1047,8 +1036,8 @@ await click("#landing-tab-projects");
 check(await waitFor(`[...document.querySelectorAll('.action-card')].some((b) => b.textContent.includes('Open from GitHub'))`), "the Books tab offers Open from GitHub");
 await evalJs(`[...document.querySelectorAll('.action-card')].find((b) => b.textContent.includes('Open from GitHub'))?.click(); true`);
 check(await waitFor(`!!document.querySelector('#github-dialog-title')`), "Open from GitHub opened");
-const hint = await evalJs(`[...document.querySelectorAll('.dialog-body .hint.subtle')].map((p) => p.textContent.replace(/\\s+/g, " ").trim()).find((t) => t.startsWith('Using a different Git host'))`);
-check(/^Using a different Git host \(Gitea, GitLab, Bitbucket, …\)\? Open Accounts to sign in to it/.test(hint ?? ""), `it says where another Git host goes, with a link (${hint})`);
+const hint = await evalJs(`[...document.querySelectorAll('.dialog-body .hint.subtle')].map((p) => p.textContent.replace(/\\s+/g, " ").trim()).find((t) => t.startsWith('Using a different service'))`);
+check(/^Using a different service \(GitLab, Gitea, Bitbucket…\)\? Open Accounts to sign in to it/.test(hint ?? ""), `it says where another service goes, with a link (${hint})`);
 await screenshot(join(tmpdir(), "online-copy-github-dialog.png"));
 await click(".dialog-body .link-btn", "Open Accounts");
 check(await waitFor(`!!document.querySelector('button[aria-label="Close accounts"]') && !document.querySelector('#github-dialog-title')`), "Open Accounts closes Open from GitHub and opens Accounts");
@@ -1059,15 +1048,15 @@ check(await saved((s) => s.gitIdentity.authorName, "Ada Lovelace"), "a name type
 await evalJs(`(${resetIn("accounts-identity")}).click(); true`);
 check(await saved((s) => s.gitIdentity, { authorName: "", authorEmail: "" }), "Reset (Your name and email) clears them");
 check(await evalJs(`document.querySelector('#accounts-name').value === ''`), "and the Name field shows it");
-await click("button", "Add a Git server…");
-check(await waitFor(`!!document.querySelector('.server-form input[placeholder="git.example.com"]')`), "Add a Git server… opens the form");
+await click("button", "Add another service…");
+check(await waitFor(`!!document.querySelector('.server-form input[placeholder="git.example.com"]')`), "Add another service… opens the form");
 const tokenLink = `[...document.querySelectorAll('.server-form button.link')].map((b) => b.textContent.trim())[0]`;
-check((await evalJs(tokenLink)) === "How to make an access token", "with no address, the link is the guide");
+check((await evalJs(tokenLink)) === "Show me how", "with no address, the link is the guide");
 await type('.server-form input[placeholder="git.example.com"]', "gitea.example.com");
-check(await waitFor(`${tokenLink} === 'Create an access token on gitea.example.com'`), "typing a Gitea server links to its own token page");
+check(await waitFor(`${tokenLink} === 'Show me how on gitea.example.com'`), "typing a Gitea server links to its own token page");
 await screenshot(join(tmpdir(), "online-copy-accounts-token-link.png"));
 await type('.server-form input[placeholder="git.example.com"]', "git.example.com");
-check(await waitFor(`${tokenLink} === 'How to make an access token'`), "a server Gutterpress doesn't know goes back to the guide");
+check(await waitFor(`${tokenLink} === 'Show me how'`), "a server Gutterpress doesn't know goes back to the guide");
 await click(".server-form button", "Cancel");
 await click('button[aria-label="Close accounts"]');
 check(await waitFor(`!document.querySelector('button[aria-label="Close accounts"]')`), "Accounts closed, back on the start screen");

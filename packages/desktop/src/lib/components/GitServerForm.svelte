@@ -6,8 +6,10 @@
 
 <script lang="ts">
   /**
-   * GitServerForm — the one "connect a Git server" form: the server's address
-   * (asked, or already known), an optional username and the access token. The
+   * GitServerForm — the one "sign in to another service" form: the service's
+   * address (asked, or already known), the author's account name (optional)
+   * and a password or access key (git calls it an "access token"; the form says
+   * so once and links to how to make one). The
    * server checks them (api.remote.connectGenericHost) before anything is
    * saved, so a wrong token never reaches the store. Book setup → Online copy uses
    * it for the server the book names, with that book's online copy as the check;
@@ -125,24 +127,27 @@
 </script>
 
 <form class="server-form" onsubmit={(e) => { e.preventDefault(); void submit(); }}>
+  {#if knownHost}<h4 class="sign-in-title">Sign in to {hostName}</h4>{/if}
   {#if hint}<p class="hint">{hint}</p>{/if}
   {#if knownHost === undefined}
     <label class="field">
-      <span class="lbl">Server address</span>
+      <span class="lbl">Address of the service</span>
       <input bind:this={addressEl} bind:value={address} oninput={addressTyped} placeholder="git.example.com" autocomplete="off" spellcheck="false" />
     </label>
   {/if}
   <label class="field">
-    <span class="lbl">Username (optional)</span>
-    <input bind:value={username} autocomplete="username" spellcheck="false" />
+    <span class="lbl">Your account name</span>
+    <input bind:value={username} autocomplete="username" spellcheck="false" aria-describedby="gs-name-hint" />
+    <span class="hint" id="gs-name-hint">Leave it empty if your service doesn't ask for one.</span>
   </label>
   <label class="field">
-    <span class="lbl">Access token</span>
+    <span class="lbl">Password or access key</span>
     <!-- "new-password" actually suppresses autofill/save prompts; browsers ignore "off" on password fields. -->
-    <input bind:this={tokenEl} bind:value={token} type="password" autocomplete="new-password" />
+    <input bind:this={tokenEl} bind:value={token} type="password" autocomplete="new-password" aria-describedby="gs-key-hint" />
+    <span class="hint" id="gs-key-hint">Your service may call this an "access token". Many services want one instead of your password.</span>
   </label>
   <button type="button" class="link" onclick={() => void api.shell.openExternal(helpUrl ?? OTHER_SERVER_GUIDE).catch(() => {})}>
-    {helpUrl ? `Create an access token on ${hostName}` : "How to make an access token"} <Icon name="external-link" size={11} />
+    Show me how{helpUrl ? ` on ${hostName}` : ""} <Icon name="external-link" size={11} />
   </button>
   <div class="actions">
     <button type="submit" class="app-btn app-btn-primary" disabled={busy || !host || !token.trim()}>
@@ -156,6 +161,7 @@
 <style>
   .server-form { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
   .field { display: flex; flex-direction: column; gap: 3px; align-self: stretch; max-width: 420px; }
+  .sign-in-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--app-text); }
   .lbl { font-size: 13px; font-weight: 600; color: var(--app-text); }
   input { box-sizing: border-box; width: 100%; padding: 7px 9px; font: inherit; font-size: 13px; }
   .actions { display: flex; gap: 8px; }

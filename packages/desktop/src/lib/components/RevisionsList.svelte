@@ -1,14 +1,20 @@
 <script lang="ts">
   /**
-   * RevisionsList — Book setup → Online copy's Revisions card (#448): separate
+   * RevisionsList — Book setup → Backup & history's Drafts card (#448): separate
    * lines of work in the same book ("Second edition", "Editor's pass") that
    * the author can start, switch, rename and delete, each saying where it is
-   * kept.
+   * kept. (The git word is "revision"; the author's word is "draft", and the
+   * first one is the "Main draft".)
    *
-   *   Online                       — on this computer and in the online copy
-   *   Online · not backed up yet   — this computer has versions the online copy hasn't
+   *   Backed up                    — on this computer and in the online copy
+   *   Not backed up yet            — this computer has versions the online copy hasn't
    *   Only on this computer        — never backed up
    *   Only online                  — in the online copy, not on this computer yet
+   *
+   * Reads come from the shared online-copy snapshot (`online-copy-cache`): the
+   * list shows at once, says "Checking the online copy…" while the online
+   * check runs (the status card above says "Checked 20 s ago"), and never goes online again
+   * because of something done on this computer (switch, rename, make, delete).
    *
    * One row per revision: its name, where it is kept, Switch, and a "more"
    * menu with Rename… (every revision) and Delete… (every one but the open
@@ -24,9 +30,10 @@
   import { onMount, tick } from "svelte";
   import Icon from "#lib/components/Icon.svelte";
   import { api, type RepairCopy, type Revision, type RevisionList } from "#lib/api.ts";
+  import * as onlineCopy from "#lib/routes/online-copy-cache.ts";
   import { dialogBehavior } from "#lib/dialog.ts";
   import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
-  import { revisionNameFrom, revisionsShown } from "#lib/revision-name.ts";
+  import { draftName, revisionNameFrom, revisionsShown } from "#lib/revision-name.ts";
 
   let {
     projectDir,
@@ -73,34 +80,38 @@
   /** Said once when an interrupted switch was put right on opening this card. */
   let repairNotice = $state<string | null>(null);
 
-  /** The refreshed list, or the last one when the online copy can't be reached. */
+  /** The last online check reached the online copy. */
+  let checkedOnline = $state(true);
+
+  function apply(snap: onlineCopy.OnlineCopySnapshot): void {
+    list = snap.revisions ?? list;
+    checking = snap.checking;
+    checkedOnline = snap.checkedOnline;
+    repairNotice = list?.repairNotice ?? repairNotice;
+  }
+
+  /** The shared snapshot shows at once; it refreshes behind itself only when it is over a minute old. */
   async function load(): Promise<void> {
     try {
-      // What this computer knows shows at once; the online check can take a while offline.
-      list = await api.vcs.listRevisions(projectDir);
-      repairNotice = list?.repairNotice ?? repairNotice;
-      if (!hasOnlineCopy) return;
-      checking = true;
-      list = (await api.vcs.listRevisions(projectDir, { refresh: true })) ?? list;
-      repairNotice = list?.repairNotice ?? repairNotice;
+      apply(await onlineCopy.get(projectDir));
     } catch {
       // The list stays as it was.
-    } finally {
-      checking = false;
     }
   }
 
-  /** Reload after something else on the tab (a backup) changed where revisions are kept. */
+  /** Reload after a backup, repair or sign-in changed where drafts are kept: a full online check. */
   export function refresh(): void {
-    void load();
+    void onlineCopy.refresh(projectDir);
   }
 
   onMount(() => {
+    const stop = onlineCopy.subscribe(projectDir, apply);
     void load();
+    return stop;
   });
 
   const whereLabel = (r: Revision): string =>
-    r.where === "online" ? (r.notBackedUp ? "Online · not backed up yet" : "Online") : r.where === "online-only" ? "Only online" : "Only on this computer";
+    r.where === "online" ? (r.notBackedUp ? "Not backed up yet" : "Backed up") : r.where === "online-only" ? "Online only, not on this computer yet" : "Only on this computer";
   const whereIcon = (r: Revision): "cloud" | "cloud-upload" | "laptop" =>
     r.where === "this-computer" ? "laptop" : r.where === "online" && r.notBackedUp ? "cloud-upload" : "cloud";
   const whereTone = (r: Revision): string =>
@@ -114,7 +125,9 @@
     try {
       if ((await action()) === false) return;
       pending = null;
-      await load();
+      // Every action here updated this computer's own records (and the online copy's, when it
+      // touched it), so reading them again needs no new trip online.
+      apply(await onlineCopy.refresh(projectDir, { network: false }));
       onChanged?.();
     } catch (e) {
       error = friendlyHostError(unwrapRouteError(e instanceof Error ? e.message : String(e)));
@@ -152,7 +165,7 @@
         return false;
       } catch (e) {
         // An online-only revision is refused when it changed online after the list was checked: show it as it is now.
-        if (p.revision.where === "online-only") void load();
+        if (p.revision.where === "online-only") void onlineCopy.refresh(projectDir);
         throw e;
       }
     });
@@ -186,16 +199,19 @@
 <svelte:window onpointerdown={closeMenuOutside} />
 
 {#if list}
-  <section class="section-card revisions" aria-labelledby="revisions-title">
+  <section class="section-card revisions" class:checking aria-labelledby="revisions-title">
     <header class="section-head">
       <div>
-        <h3 id="revisions-title">Revisions</h3>
+        <h3 id="revisions-title">Drafts</h3>
         <p class="section-sub">
-          Separate lines of work in this book, like a second edition.{#if currentName}{" "}You're working on <strong>{currentName}</strong>.{/if}
+          Separate lines of work in this book, like a second edition.{#if currentName}{" "}You're working on <strong>{draftName(currentName)}</strong>.{/if}
         </p>
+        {#if hasOnlineCopy && checking}
+          <p class="check-line" role="status"><span class="spin" aria-hidden="true"></span> Checking the online copy…</p>
+        {/if}
       </div>
       <button class="ghost" onclick={() => open({ kind: "new" })} disabled={working || disabled}>
-        <Icon name="plus" size={14} /> New revision
+        <Icon name="plus" size={14} /> New draft
       </button>
     </header>
 
@@ -205,38 +221,38 @@
           class="input find"
           type="search"
           bind:value={find}
-          placeholder="Find a revision"
-          aria-label="Find a revision"
+          placeholder="Find a draft"
+          aria-label="Find a draft"
           spellcheck="false"
           autocomplete="off"
         />
       </div>
     {/if}
 
-    <ul class="rev-list" aria-label="Revisions">
+    <ul class="rev-list" aria-label="Drafts">
       {#each shown as r (r.name)}
         <li class="rev" class:current={r.current}>
           <div class="rev-main">
-            <span class="rev-name">{r.name}</span>
-            {#if r.current}<span class="badge">Current</span>{/if}
+            <span class="rev-name">{draftName(r.name)}</span>
+            {#if r.current}<span class="badge">You are here</span>{/if}
             <span class="rev-where {whereTone(r)}"><Icon name={whereIcon(r)} size={13} /> {whereLabel(r)}</span>
           </div>
           <div class="rev-actions">
             {#if !r.current}
-              <button class="ghost small" aria-label="Switch to {r.name}" onclick={() => void switchTo(r.name)} disabled={working || disabled}>Switch</button>
+              <button class="ghost small" aria-label="Switch to {draftName(r.name)}" onclick={() => void switchTo(r.name)} disabled={working || disabled}>Switch</button>
             {/if}
             <div class="menu-wrap">
               <button
                 class="more"
-                aria-label="More for {r.name}"
+                aria-label="More for {draftName(r.name)}"
                 aria-haspopup="menu"
                 aria-expanded={menuFor === r.name}
                 onclick={(e) => void toggleMenu(r.name, e.currentTarget)}
                 disabled={working || disabled}
               ><Icon name="more-horizontal" size={16} /></button>
               {#if menuFor === r.name}
-                <div class="menu" role="menu" aria-label="{r.name}" tabindex="-1" onkeydown={menuKeydown}>
-                  <button role="menuitem" onclick={() => open({ kind: "rename", revision: r }, r.name)}>Rename…</button>
+                <div class="menu" role="menu" aria-label={draftName(r.name)} tabindex="-1" onkeydown={menuKeydown}>
+                  <button role="menuitem" onclick={() => open({ kind: "rename", revision: r }, draftName(r.name))}>Rename…</button>
                   {#if !r.current}
                     <button role="menuitem" class="danger" onclick={() => open({ kind: "delete", revision: r, everywhere: r.where === "online-only", lost: null })}>Delete…</button>
                   {/if}
@@ -246,23 +262,23 @@
           </div>
         </li>
       {:else}
-        <li class="none">No revisions match.</li>
+        <li class="none">No drafts match.</li>
       {/each}
     </ul>
 
     {#if !find.trim() && matching.length > FEW}
       <div class="section-foot">
         <button class="link" onclick={() => (showAll = !showAll)}>
-          {showAll ? "Show fewer" : `Show all ${matching.length} revisions`}
+          {showAll ? "Show fewer" : `Show all ${matching.length} drafts`}
         </button>
       </div>
     {/if}
     {#if repairNotice}<p class="section-note" role="status">{repairNotice}</p>{/if}
     {#if list.repairCopies?.length}
-      <div class="copies">
+      <div class="copies" id="repair-copies">
         <h4>Saved copies after a repair</h4>
         <p class="section-sub">
-          When a revision change was interrupted, your files were saved here before the book was put back. Older copies are removed on their own once a newer version is saved.
+          When a draft change was interrupted, your files were saved here before the book was put back. Older copies are removed on their own once a newer version is saved.
         </p>
         <ul class="rev-list" aria-label="Saved copies after a repair">
           {#each list.repairCopies as c (c.id)}
@@ -277,8 +293,8 @@
         </ul>
       </div>
     {/if}
-    {#if hasOnlineCopy && !checking && !list.checkedOnline}
-      <p class="section-note">Couldn't check the online copy just now, so revisions made elsewhere may be missing.</p>
+    {#if hasOnlineCopy && !checking && !checkedOnline}
+      <p class="section-note">Couldn't check the online copy just now, so drafts made elsewhere may be missing.</p>
     {/if}
     {#if error && !pending}<p class="section-note error" role="alert">{error}</p>{/if}
   </section>
@@ -299,13 +315,12 @@
     }}
   >
     {#if p.kind === "new"}
-      <header class="dlg-header"><h2 id="rev-dialog-title">New revision</h2></header>
+      <header class="dlg-header"><h2 id="rev-dialog-title">New draft</h2></header>
       <div class="dlg-body">
         <label class="field">
           <span class="lbl">Name</span>
           <input class="input" bind:value={typed} placeholder="Second edition" spellcheck="false" autocomplete="off" disabled={working} />
         </label>
-        {#if kept && kept !== typed}<p class="hint">It will be called "{kept}".</p>{/if}
         <p class="hint">
           It starts from your book as it is now (work not in a version yet is saved as one first), and you switch to it.{hasOnlineCopy ? " It goes online the next time you back up." : ""}
         </p>
@@ -313,18 +328,17 @@
       {#if error}<p class="dlg-error error" role="alert">{error}</p>{/if}
       <footer class="dlg-actions">
         <button type="button" class="dlg-ghost" onclick={cancel} disabled={working}>Cancel</button>
-        <button type="submit" class="dlg-primary app-btn-primary" disabled={working || !kept}>{working ? "Creating…" : "Create revision"}</button>
+        <button type="submit" class="dlg-primary app-btn-primary" disabled={working || !kept}>{working ? "Creating…" : "Create draft"}</button>
       </footer>
     {:else if p.kind === "rename"}
-      <header class="dlg-header"><h2 id="rev-dialog-title">Rename "{p.revision.name}"</h2></header>
+      <header class="dlg-header"><h2 id="rev-dialog-title">Rename "{draftName(p.revision.name)}"</h2></header>
       <div class="dlg-body">
         <label class="field">
           <span class="lbl">New name</span>
           <input class="input" bind:value={typed} spellcheck="false" autocomplete="off" disabled={working} />
         </label>
-        {#if kept && kept !== typed}<p class="hint">It will be called "{kept}".</p>{/if}
         {#if p.revision.where === "online"}
-          <p class="hint">This also renames it in the online copy. Anyone else working on "{p.revision.name}" keeps the old name until they switch to the new one.</p>
+          <p class="hint">This also renames it in the online copy. Anyone else working on "{draftName(p.revision.name)}" keeps the old name until they switch to the new one.</p>
         {:else if p.revision.where === "online-only"}
           <p class="hint">It is renamed in the online copy. It isn't on this computer.</p>
         {/if}
@@ -332,7 +346,7 @@
       {#if error}<p class="dlg-error error" role="alert">{error}</p>{/if}
       <footer class="dlg-actions">
         <button type="button" class="dlg-ghost" onclick={cancel} disabled={working}>Cancel</button>
-        <button type="submit" class="dlg-primary app-btn-primary" disabled={working || !kept || kept === p.revision.name}>{working ? "Renaming…" : "Rename"}</button>
+        <button type="submit" class="dlg-primary app-btn-primary" disabled={working || !kept || kept === p.revision.name || kept === revisionNameFrom(draftName(p.revision.name))}>{working ? "Renaming…" : "Rename"}</button>
       </footer>
     {:else if p.kind === "restore-copy"}
       <header class="dlg-header"><h2 id="rev-dialog-title">Restore files from this copy?</h2></header>
@@ -355,15 +369,15 @@
         <button type="submit" class="dlg-danger" disabled={working}>{working ? "Discarding…" : "Discard"}</button>
       </footer>
     {:else}
-      <header class="dlg-header"><h2 id="rev-dialog-title">Delete "{p.revision.name}"?</h2></header>
+      <header class="dlg-header"><h2 id="rev-dialog-title">Delete "{draftName(p.revision.name)}"?</h2></header>
       <div class="dlg-body">
         {#if p.lost !== null}
           <p class="warn" role="alert">
-            "{p.revision.name}" holds {p.lost} {p.lost === 1 ? "version" : "versions"} that {p.lost === 1 ? "isn't" : "aren't"} in any other
-            revision{p.everywhere ? "" : " or in the online copy"}. Deleting it loses {p.lost === 1 ? "that version" : "them"} for good.
+            "{draftName(p.revision.name)}" holds {p.lost} {p.lost === 1 ? "version" : "versions"} that {p.lost === 1 ? "isn't" : "aren't"} in any other
+            draft{p.everywhere ? "" : " or in the online copy"}. Deleting it loses {p.lost === 1 ? "that version" : "them"} for good.
           </p>
         {:else if p.revision.where === "online"}
-          <p>"{p.revision.name}" is on this computer and in the online copy. Delete it from this computer only, or from the online copy too?</p>
+          <p>"{draftName(p.revision.name)}" is on this computer and in the online copy. Delete it from this computer only, or from the online copy too?</p>
         {:else if p.revision.where === "online-only"}
           <p>It is deleted from the online copy. It isn't on this computer.</p>
         {:else}
@@ -408,7 +422,17 @@
   .rev-where.ok :global(svg) { color: var(--app-success-strong); }
   .rev-where.pending { color: var(--app-warning-text); }
   .rev-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; min-height: 28px; }
-  .copies { padding: 8px 16px 4px; }
+  .check-line { display: flex; align-items: center; gap: 6px; min-height: 18px; margin: 4px 0 0; font-size: 12px; color: var(--app-text-muted); }
+  .spin {
+    width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0;
+    border: 2px solid var(--app-border); border-top-color: var(--app-accent);
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }
+  /* While the online check runs the where-labels are the last known answer: dimmed. */
+  .checking .rev-where { opacity: 0.55; }
+  .copies { padding: 12px 16px 6px; border-top: 1px solid var(--app-border-subtle); background: var(--app-surface-sunken); }
   .copies h4 { margin: 0 0 2px; font-size: 13px; }
   .none { padding: 14px 16px; font-size: 12.5px; color: var(--app-text-muted); }
 

@@ -169,7 +169,7 @@ describe("wiring", () => {
     expect(form).toContain("const helpUrl = $derived(tokenUrl === undefined ? found : tokenUrl);");
     // A known server gets its own page; anything else the guide.
     expect(form).toContain("api.shell.openExternal(helpUrl ?? OTHER_SERVER_GUIDE)");
-    expect(form).toContain("{helpUrl ? `Create an access token on ${hostName}` : \"How to make an access token\"}");
+    expect(form).toContain('Show me how{helpUrl ? ` on ${hostName}` : ""}');
     expect(read("src/lib/api.ts")).toContain("post<string | null>('/api/remote/forge-token-url', { host })");
     // Accounts leaves tokenUrl out, so its forms look the address up.
     const accounts = read("src/lib/components/AccountsView.svelte");
@@ -181,10 +181,10 @@ describe("wiring", () => {
     expect(dialog).toMatch(/function goAccounts\(\) \{\s*open = false;\s*onClosed\?\.\(\);[\s\S]*?onOpenAccounts\?\.\(\);/);
     const body = dialog.slice(dialog.indexOf('<div class="dialog-body">'));
     const connect = body.slice(body.indexOf('{#if step === "connect"}'), body.indexOf('{:else if step === "code"}'));
-    expect(connect).toContain("Using a different Git host (Gitea, GitLab, Bitbucket, …)?");
+    expect(connect).toContain("Using a different service (GitLab, Gitea, Bitbucket…)?");
     expect(connect).toContain('<button type="button" class="link-btn" onclick={goAccounts}>Open Accounts</button>');
     const repos = body.slice(body.indexOf('{:else if step === "repos"}'), body.indexOf('{:else if step === "configure"'));
-    expect(repos).toContain('Or connect a different Git server in');
+    expect(repos).toContain('Or use a different service in');
     expect(repos).toContain("onclick={goAccounts}>Accounts</button>");
     const page = read("src/routes/+page.svelte");
     const mount = page.slice(page.indexOf("<GitHubDialog"));
