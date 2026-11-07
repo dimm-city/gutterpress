@@ -27,6 +27,8 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
         "An earlier revision switch was interrupted and the book could not be put back automatically. " +
         "Saving is paused until it is; your files have not been changed by this check.";
     }
+    // Still unresolved after the repair above: saving is paused (the status bar says so).
+    const unfinishedSwitch = await lib.unfinishedSwitchState(folderPath).catch(() => null);
     const source = await lib.detectProjectSource(folderPath);
     const capabilities = lib.capabilitiesFor(source);
     const hasManifest = lib.hasProjectManifest(folderPath);
@@ -57,6 +59,6 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
       lastActiveBook = recents.find((r) => r.path === repoRoot)?.lastActiveBook;
     }
 
-    return { source, capabilities, hasManifest, repoRoot, books, lastActiveBook, ...(repairNotice ? { repairNotice } : {}) };
+    return { source, capabilities, hasManifest, repoRoot, books, lastActiveBook, ...(repairNotice ? { repairNotice } : {}), ...(unfinishedSwitch ? { unfinishedSwitch: true } : {}) };
   },
 });

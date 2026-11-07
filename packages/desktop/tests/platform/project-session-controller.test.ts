@@ -29,6 +29,7 @@ type ClassifyResult = {
   hasManifest: boolean;
   repoRoot?: string;
   repairNotice?: string;
+  unfinishedSwitch?: boolean;
   books?: ProjectBookEntry[];
   lastActiveBook?: string;
 };
@@ -452,4 +453,18 @@ test("a repair notice from the open's classification is kept, and reset clears i
   expect(ctrl.repairNotice).toBe("put back");
   ctrl.reset();
   expect(ctrl.repairNotice).toBeNull();
+});
+
+test("an unfinished switch from the open's classification pauses saving; a clean open and reset clear it (#516)", async () => {
+  const { ctrl, classify } = makeHarness();
+  classify.next = { source: {}, capabilities: makeCaps(), hasManifest: true, unfinishedSwitch: true } as ClassifyResult;
+  await ctrl.classify("/p");
+  await flush();
+  expect(ctrl.switchUnfinished).toBe(true);
+  ctrl.reset();
+  expect(ctrl.switchUnfinished).toBe(false);
+  classify.next = { source: {}, capabilities: makeCaps(), hasManifest: true } as ClassifyResult;
+  await ctrl.classify("/p");
+  await flush();
+  expect(ctrl.switchUnfinished).toBe(false);
 });

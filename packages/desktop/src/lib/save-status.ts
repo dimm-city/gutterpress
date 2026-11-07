@@ -75,6 +75,8 @@ export interface StatusLineInput {
   autoBackup?: boolean;
   /** The book can back up (an https online copy with a saved sign-in). */
   canSync?: boolean;
+  /** A revision switch is unresolved: saving is paused until it is settled in Drafts. */
+  switchPaused?: boolean;
   /** Clock, for "3 minutes ago". */
   now?: number;
 }
@@ -84,6 +86,7 @@ export type StatusKey =
   | "unsaved"
   | "save-failed"
   | "versions-failing"
+  | "switch-paused"
   | "decide"
   | "offline"
   | "sign-in"
@@ -221,7 +224,7 @@ function isTransient(message: string | undefined): boolean {
 
 /**
  * The one line in the status bar, by precedence:
- * save failed > unsaved > saving > versions failing > decide > (offline | sign-in |
+ * save failed > switch paused > unsaved > saving > versions failing > decide > (offline | sign-in |
  * can't find | paused) > (behind and/or ahead) > backing up > checking > backed up >
  * no online copy > no history. An action in flight (backing up) outranks the
  * "behind/ahead" it is about to fix, so the bar never keeps saying "New changes
@@ -249,6 +252,19 @@ export function statusLine(i: StatusLineInput): StatusLine {
       icon: "circle-x",
       tone: "error",
       primary: { id: "save", label: "Try again" },
+    });
+  }
+  // An unfinished revision switch pauses saving: above every backup state, below a failed save.
+  if (i.switchPaused) {
+    return make({
+      key: "switch-paused",
+      right: "Saving is paused — see Drafts",
+      title: "A revision switch didn't finish, so saving is paused. Click to open Drafts and put the book back or keep the files as they are.",
+      detail: "A revision switch didn't finish, so saving and building are paused. Book setup → Backup & history → Drafts lets you put the book back, or keep the files as they are.",
+      icon: "triangle-alert",
+      tone: "warn",
+      click: "action",
+      clickAction: "open-backup",
     });
   }
   // 2. Autosave off: the author's own Save is the fix.
