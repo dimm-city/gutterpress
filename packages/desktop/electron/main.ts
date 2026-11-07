@@ -68,6 +68,7 @@ import {
 } from "./credential-store";
 import {
   AutoSyncOrchestrator,
+  type LastKnownBackup,
   type SyncStatusPayload,
 } from "./auto-sync/orchestrator";
 import { unsyncedStateFor } from "./auto-sync/unsynced-status";
@@ -450,6 +451,14 @@ const autoSync = new AutoSyncOrchestrator({
   now: Date.now,
   getWatchedDir: () => folderWatch.getWatchedDir(),
   operationLogPath,
+  // The last network answer, kept per book so the next launch can show it at once.
+  readLastKnown: async (dir) => readProjectState((await readPrefs()).projectStates, dir)?.lastBackup as LastKnownBackup | null ?? null,
+  saveLastKnown: (dir, value) => {
+    void updatePrefs((prefs) => ({
+      ...prefs,
+      projectStates: writeProjectState(prefs.projectStates, dir, { lastBackup: value }),
+    })).catch((e) => console.warn("[auto-sync] could not keep the last backup answer:", e));
+  },
 });
 
 /**
@@ -1520,7 +1529,8 @@ const syncSettingsHooksImpl: SyncSettingsHooks = {
   },
   getStatus: async (projectDir) => {
     if (typeof projectDir !== "string" || !projectDir) return null;
-    return lastSyncStatusByDir.get(path.resolve(projectDir)) ?? null;
+    // Nothing kept yet (the renderer asked before the first emit): answer from refs now.
+    return lastSyncStatusByDir.get(path.resolve(projectDir)) ?? (await autoSync.localStatus(projectDir));
   },
 };
 

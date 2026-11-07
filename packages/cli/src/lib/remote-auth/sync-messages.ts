@@ -16,6 +16,9 @@ export const MSG_OFFLINE =
   "Your changes are saved on this computer. Gutterpress couldn't reach the online copy — try again when you're back online.";
 export const MSG_AUTH =
   "The online copy didn't accept the saved sign-in. Sign in again and try again.";
+/** The server answered "no such repository": a typo'd address, a renamed or deleted online copy, or (GitHub hides private repositories from accounts without access) no access. Not a sign-in problem. */
+export const MSG_NOT_FOUND =
+  "Gutterpress can't find this online copy. It may have been renamed or deleted, or your account may not have access to it. Check the address, or sign in again.";
 // No literal scheme tokens ("http://") in this copy: the desktop's Advanced
 // Setup dialog redacts anything matching /https?:\/\/\S+/, which would garble
 // the message. Say "https", never "https://".

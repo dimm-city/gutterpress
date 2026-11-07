@@ -27,11 +27,12 @@ import {
   type RevisionRefs,
 } from "../source-provider.ts";
 import { defaultGitHttp } from "./git-http.ts";
-import { MSG_INSECURE_TRANSPORT } from "./sync-messages.ts";
+import { MSG_INSECURE_TRANSPORT, MSG_NOT_FOUND } from "./sync-messages.ts";
 import type { GitCache, RemoteTransport } from "./sync-types.ts";
 import type { HostCredential, TokenStore } from "./token-store.ts";
 import {
   classifyTransportFailure,
+  forgetOnlineCheck,
   onAuthFor,
   resolveTransport,
   serverTip,
@@ -76,6 +77,8 @@ function onlineFailure(e: unknown, unchanged: string): Error {
         `The online copy didn't accept the saved sign-in, so ${unchanged}. Sign in again and try again.`,
         { cause: e },
       );
+    case "not_found":
+      return new Error(`${MSG_NOT_FOUND} Nothing was changed.`, { cause: e });
     case "insecure_transport":
       return new Error(MSG_INSECURE_TRANSPORT, { cause: e });
     default:
@@ -160,6 +163,8 @@ async function sendRef(
   // The push forgets the tracking ref under a doubled slash, which a ref kept in
   // packed-refs (as other Git tools leave them) never matches: name it properly.
   if (remove) await git.deleteRef({ fs, dir, ref: `refs/remotes/${transport.remote}/${remoteName}` });
+  // The online copy's revisions just changed: the next check must be real.
+  forgetOnlineCheck(dir);
 }
 
 /**

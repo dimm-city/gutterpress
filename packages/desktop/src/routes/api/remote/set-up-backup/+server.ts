@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { handleRemoteErrors } from '../../../../../electron/server-bridge/friendly-errors';
 import { gitIdentityArgs } from '#lib/server/settings.ts';
+import { clearBackupProgress, setBackupProgress } from '../../_lib/backup-progress';
 import { defineRoute, getHostServices, loadLib, requireProjectDir } from '../../_lib/route';
 import type { BackupTarget } from '#lib/platform/shared-types.ts';
 import type { RequestHandler } from './$types';
@@ -30,12 +31,17 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; target: Ba
     handleRemoteErrors('remote:setUpBackup', async () => {
       const lib = await loadLib();
       const identity = await gitIdentityArgs();
-      return lib.setUpOnlineBackup({
-        projectDir: body.projectDir,
-        target: body.target,
-        tokenStore: getHostServices().remote.tokenStore,
-        authorName: identity.authorName,
-        authorEmail: identity.authorEmail,
-      });
+      try {
+        return await lib.setUpOnlineBackup({
+          projectDir: body.projectDir,
+          target: body.target,
+          tokenStore: getHostServices().remote.tokenStore,
+          authorName: identity.authorName,
+          authorEmail: identity.authorEmail,
+          onProgress: (step) => setBackupProgress(body.projectDir, step),
+        });
+      } finally {
+        clearBackupProgress(body.projectDir);
+      }
     }),
 });

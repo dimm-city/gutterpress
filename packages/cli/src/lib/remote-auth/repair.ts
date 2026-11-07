@@ -17,7 +17,7 @@ import git from "isomorphic-git";
 import { cp, mkdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
 
-import { withRepoLock } from "../source-provider.ts";
+import { readRevisionRefs, withRepoLock } from "../source-provider.ts";
 import { cloneRepository } from "./clone.ts";
 import { errorLogData, resolveLogger } from "./operation-log.ts";
 import { syncProject } from "./sync.ts";
@@ -47,6 +47,46 @@ export interface RepairOnlineBackupResult {
   movedGitTo: string;
   /** Files that existed online but not on this computer, restored from the download. */
   restoredFiles: string[];
+}
+
+/** What a repair would set aside: work that exists only on this computer. */
+export interface RepairPreview {
+  /** Revisions kept only on this computer, by name. */
+  revisions: string[];
+  /** Versions (saved points) found only on this computer, across every revision. */
+  versions: number;
+  /** True when this computer's history could not be read, so the counts may be short. */
+  unreadable?: boolean;
+}
+
+/** Longest history walk per revision when counting what is only here. */
+const PREVIEW_DEPTH = 2000;
+
+/**
+ * Before the author confirms a repair: what would it set aside? A repair keeps
+ * the old history in a repair copy but starts from the online one, so any
+ * revision, and any version of a revision, the online copy lacks is what
+ * would be left out. Reads refs and history on this computer only (the online
+ * side is as it was last checked); no network, nothing written.
+ */
+export async function previewRepair(projectDir: string): Promise<RepairPreview> {
+  const dir = await repoDirFor(projectDir);
+  try {
+    const { local, online } = await readRevisionRefs(dir);
+    const walk = async (tip: string) =>
+      (await git.log({ fs, dir, ref: tip, depth: PREVIEW_DEPTH })).map((c) => c.oid);
+    const onlineSet = new Set<string>();
+    for (const tip of online.values()) for (const oid of await walk(tip)) onlineSet.add(oid);
+    const onlyHere = new Set<string>();
+    for (const tip of local.values()) {
+      for (const oid of await walk(tip)) if (!onlineSet.has(oid)) onlyHere.add(oid);
+    }
+    const revisions = [...local.keys()].filter((name) => !online.has(name)).sort((a, b) => a.localeCompare(b));
+    return { revisions, versions: onlyHere.size };
+  } catch (e) {
+    resolveLogger(undefined, "repair").warn("preview", "could not read this computer's history", errorLogData(e));
+    return { revisions: [], versions: 0, unreadable: true };
+  }
 }
 
 /** Move a directory, falling back to copy + delete across devices (EXDEV). */

@@ -42,11 +42,12 @@ type LibModule = typeof import("gutterpress");
 type VersionHistorySettings = NonNullable<Parameters<LibModule["autoSyncDelayMs"]>[0]>;
 
 /**
- * Prompt-pull delay after a project opens — seconds, NOT coupled to the
- * (much longer) snapshot debounce. Exported so the preview-open controller's
- * "local status" re-emit timer uses the same constant.
+ * Prompt-pull delay after a project opens — about a second (the book is
+ * rendered and the immediate local status has been shown by then), NOT
+ * coupled to the (much longer) snapshot debounce. Exported so the
+ * preview-open controller's "local status" re-emit timer uses the same constant.
  */
-export const AUTO_SYNC_OPEN_DELAY_MS = 4_000;
+export const AUTO_SYNC_OPEN_DELAY_MS = 1_000;
 
 type Settings = Awaited<ReturnType<AutoSyncOrchestratorDeps["readSettings"]>>;
 
@@ -99,14 +100,34 @@ export interface SyncStatusPayload {
   message?: string;
   /** Operation log path — present on "error". */
   logFile?: string;
-  /** "versions": the automatic-version safety net failed, not the online backup. */
-  source?: "versions";
+  /** "versions": the automatic-version safety net failed, not the online backup;
+   *  "local" / "network": where an ordinary answer comes from (see below). */
+  source?: "versions" | "local" | "network";
+  /**
+   * Where the answer comes from. "local": derived from refs on this computer
+   * at open (instant; the network pass confirms it). "network": a pass just
+   * finished. (`"versions"` above is the unrelated automatic-version failure.)
+   */
+  /** Versions on this computer the online copy lacks (the "unsent" count). */
+  ahead?: number;
+  /** The online copy, as last heard from, has versions this computer has not got. */
+  behind?: boolean;
+  /** Files that need the author's decision (combined with markers, or kept as a pair). */
+  decide?: number;
   /** True when the completed sync changed files in the local worktree. */
   filesChanged?: boolean;
   /** Files whose text now holds BOTH versions inside git conflict markers. */
   combinedFiles?: string[];
   /** Files kept as a pair: ours at `path`, the online one at `onlinePath`. */
   keptBothFiles?: KeptBothFile[];
+}
+
+/** The last answer a pass gave for a book, kept between launches so the next open can show it at once. */
+export interface LastKnownBackup {
+  state: SyncStatusPayload["state"];
+  /** ISO time the answer was given. */
+  at: string;
+  ahead?: number;
 }
 
 /** External touch-points injected into the orchestrator (all faked in tests). */
@@ -132,6 +153,10 @@ export interface AutoSyncOrchestratorDeps {
   getWatchedDir: () => string | null;
   /** Resolve the operation-log file path for a repo slug (project basename). */
   operationLogPath: (repoSlug: string) => string;
+  /** The last network answer kept for `dir`, if any (read once at open). */
+  readLastKnown?: (dir: string) => Promise<LastKnownBackup | null>;
+  /** Keep the answer a network pass just gave (fire-and-forget; never throws). */
+  saveLastKnown?: (dir: string, value: LastKnownBackup) => void;
 }
 
 export class AutoSyncOrchestrator {
@@ -386,6 +411,7 @@ export class AutoSyncOrchestrator {
 
     // Map outcome → ambient status emit. There is no conflict arm — sync
     // always converges; the converge report rides on the payload.
+    let payload: SyncStatusPayload;
     switch (outcome.status) {
       // "synced" means the online copy has every version this computer has: a
       // pass that sent them, or found nothing to send. A pull-merge-only pass
@@ -395,7 +421,7 @@ export class AutoSyncOrchestrator {
       // one arm is what stops the next field being added to only one of them.
       case "synced":
       case "up-to-date":
-        this.deps.emit({
+        payload = {
           state: outcome.status === "up-to-date" && outcome.pushDeferred ? "unsent" : "synced",
           projectDir: dir,
           lastSyncAt: completedAt,
@@ -406,44 +432,149 @@ export class AutoSyncOrchestrator {
           ...(outcome.keptBothFiles && outcome.keptBothFiles.length > 0
             ? { keptBothFiles: outcome.keptBothFiles }
             : {}),
-        });
+        };
         break;
 
       case "auth":
-        this.deps.emit({
+        payload = {
           state: "auth",
           projectDir: dir,
           lastSyncAt: completedAt,
           ...(outcome.filesChanged ? { filesChanged: true } : {}),
-        });
+        };
+        break;
+
+      // The address answered "not found": say that, not "sign in again". The pill
+      // shows it as an error carrying the plain-language message.
+      case "not-found":
+        payload = {
+          state: "error",
+          logFile,
+          projectDir: dir,
+          lastSyncAt: completedAt,
+          message: outcome.message,
+          ...(outcome.filesChanged ? { filesChanged: true } : {}),
+        };
         break;
 
       case "offline":
-        this.deps.emit({
+        payload = {
           state: "offline",
           projectDir: dir,
           lastSyncAt: completedAt,
           ...(outcome.filesChanged ? { filesChanged: true } : {}),
-        });
+        };
         break;
 
       case "error":
       default:
-        this.deps.emit({
+        payload = {
           state: "error",
           logFile,
           projectDir: dir,
           lastSyncAt: completedAt,
           ...(outcome.message ? { message: outcome.message } : {}),
           ...(outcome.filesChanged ? { filesChanged: true } : {}),
-        });
+        };
         break;
     }
+
+    await this.emitPass(dir, lib, payload);
 
     // Single-flight follow-up: if a trigger fired while we were in-flight, run once.
     if (state.runAgain) {
       state.runAgain = false;
       void this.run(dir);
+    }
+  }
+
+  /**
+   * Emit a finished pass's status with the contract extras (`source: "network"`,
+   * the unsent count, whether the online copy is ahead, how many files need a
+   * decision) and keep the answer for the next launch. The counts come from refs
+   * on disk, so this adds no network time.
+   */
+  private async emitPass(dir: string, lib: LibModule, payload: SyncStatusPayload): Promise<void> {
+    const full: SyncStatusPayload = { ...payload, source: "network" };
+    if (payload.state === "synced" || payload.state === "unsent") {
+      try {
+        const local = await lib.localBackupStatus(dir);
+        if (local) {
+          if (payload.state === "unsent" && local.ahead > 0) full.ahead = local.ahead;
+          if (local.behind) full.behind = true;
+        }
+      } catch {
+        // The counts are a nicety; the state itself stands.
+      }
+    }
+    const decide = (payload.combinedFiles?.length ?? 0) + (payload.keptBothFiles?.length ?? 0);
+    if (decide > 0) full.decide = decide;
+    this.deps.emit(full);
+    if (payload.lastSyncAt) {
+      this.deps.saveLastKnown?.(dir, {
+        state: full.state,
+        at: payload.lastSyncAt,
+        ...(full.ahead ? { ahead: full.ahead } : {}),
+      });
+    }
+  }
+
+  /**
+   * The status a book shows the moment it opens, with no network: from refs on
+   * disk, whether the online copy (as this computer last heard from it) has
+   * every version here. The time shown is that of the last network answer kept
+   * from an earlier launch, so the bar can say "Backed up 2 h ago" while the
+   * pass at ~1 s confirms it. A book the sync engine will not sync (no online
+   * copy, sign-in missing) is left to the preview controller's own emit.
+   */
+  async reportLocal(dir: string): Promise<void> {
+    const payload = await this.localStatus(dir);
+    if (payload) this.deps.emit(payload);
+  }
+
+  /**
+   * The answer `reportLocal` would give, or null when there is none (a book
+   * the sync engine will not sync, another book, a real answer already
+   * exists, or nothing to compare and nothing kept). Also what the host
+   * answers a renderer that asks before the first emit reached it.
+   */
+  async localStatus(dir: string): Promise<SyncStatusPayload | null> {
+    try {
+      const lib = await this.deps.loadLib();
+      const kept = (await this.deps.readLastKnown?.(dir).catch(() => null)) ?? null;
+      // At open the folder watcher may not have started yet (null); only a
+      // different open book rules this one out.
+      const watched = this.deps.getWatchedDir();
+      if (watched !== null && watched !== dir) return null;
+      if (!(await this.syncGate(lib, dir))) return null;
+      // A real answer (a pass, or the unsent report) got here first: it is better.
+      if (this.getState(dir)?.inFlight || this.lastSyncAt.get(dir)) return null;
+      const lastSyncAt = kept?.at ?? null;
+      const local = await lib.localBackupStatus(dir);
+      if (local) {
+        return {
+          state: local.state,
+          projectDir: dir,
+          lastSyncAt,
+          source: "local",
+          ...(local.state === "unsent" && local.ahead > 0 ? { ahead: local.ahead } : {}),
+          ...(local.behind ? { behind: true } : {}),
+        };
+      }
+      if (kept && (kept.state === "synced" || kept.state === "unsent")) {
+        // Nothing to compare (no versions of this revision yet): the kept answer.
+        return {
+          state: kept.state,
+          projectDir: dir,
+          lastSyncAt,
+          source: "local",
+          ...(kept.ahead ? { ahead: kept.ahead } : {}),
+        };
+      }
+      return null;
+    } catch {
+      // The pass at ~1 s answers instead.
+      return null;
     }
   }
 
@@ -539,12 +670,15 @@ export class AutoSyncOrchestrator {
       if (this.deps.getWatchedDir() !== dir || this.getState(dir)?.inFlight) return;
       if (this.cadenceMs(lib, settings) !== null) return;
       if (!(await this.syncGate(lib, dir))) return;
-      const open = (await lib.listRevisions(dir))?.revisions.find((r) => r.current);
-      if (!open) return;
+      const local = await lib.localBackupStatus(dir);
+      if (!local) return;
       this.deps.emit({
-        state: open.where === "online" && !open.notBackedUp ? "synced" : "unsent",
+        state: local.state,
         projectDir: dir,
         lastSyncAt: this.getLastSyncAt(dir),
+        source: "local",
+        ...(local.state === "unsent" && local.ahead > 0 ? { ahead: local.ahead } : {}),
+        ...(local.behind ? { behind: true } : {}),
       });
     } catch {
       // The status simply stays as it was.
@@ -571,6 +705,8 @@ export class AutoSyncOrchestrator {
    * history is unreadable the sync itself reports that plainly.
    */
   scheduleInitialSync(dir: string): void {
+    // The answer from refs on disk goes out at once; the network pass follows.
+    void this.reportLocal(dir);
     this.scheduleDeferredSync(dir, AUTO_SYNC_OPEN_DELAY_MS);
   }
 }

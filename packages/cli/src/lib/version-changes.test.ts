@@ -353,7 +353,7 @@ describe("listOnlineVersions", () => {
   test("lists each version online and not here, newest first, with the files it changed (#484)", async () => {
     const h = await setupClone();
     try {
-      expect(await listOnlineVersions({ projectDir: h.projectDir })).toEqual({ entries: [] });
+      expect(await listOnlineVersions({ projectDir: h.projectDir })).toMatchObject({ entries: [] });
       const ten = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`notes-${i}.md`, `Note ${i}\n`]));
       const notes = await serverCommit(h.serverDir, ten, "Automatic version");
       const reworded = await serverCommit(
@@ -391,7 +391,7 @@ describe("listOnlineVersions", () => {
     try {
       await serverCommit(h.serverDir, { "chapter-02.md": "# Two\n" }, "Added chapter two");
       await h.server.close();
-      expect(await listOnlineVersions({ projectDir: h.projectDir })).toEqual({ entries: [], reason: "offline" });
+      expect(await listOnlineVersions({ projectDir: h.projectDir })).toMatchObject({ entries: [], reason: "offline" });
     } finally {
       await h.cleanup().catch(() => {});
     }

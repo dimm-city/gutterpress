@@ -14,6 +14,9 @@ import {
 import { makeHostServices } from "../support/host-services-fake";
 import { setLibForTests, type LibModule } from "../../src/routes/api/_lib/route";
 import { POST as setUpBackup } from "../../src/routes/api/remote/set-up-backup/+server";
+import { POST as setUpBackupProgress } from "../../src/routes/api/remote/set-up-backup-progress/+server";
+import { POST as repairPreview } from "../../src/routes/api/remote/repair-preview/+server";
+import { POST as listRepositories } from "../../src/routes/api/remote/list-repositories/+server";
 
 function request(body?: unknown): Request {
   return new Request("http://local.test", {
@@ -117,5 +120,83 @@ describe("POST /api/remote/set-up-backup", () => {
       request: request({ projectDir: "/abs/project", target: { kind: "create", name: "my-book" } }),
     } as never);
     expect(await res.json()).toEqual(failure);
+  });
+});
+
+
+describe("set-up-backup progress", () => {
+  test("steps are visible to the progress route while the call runs, and gone when it ends", async () => {
+    openProject();
+    let during: unknown = "unset";
+    setLibForTests({
+      setUpOnlineBackup: async (opts: { onProgress: (s: string) => void }) => {
+        opts.onProgress("creating");
+        during = await (
+          await setUpBackupProgress({ request: request({ projectDir: "/abs/project" }) } as never)
+        ).json();
+        opts.onProgress("sending");
+        return { status: "connected", repository: { fullName: "me/my-book" } };
+      },
+    } as unknown as Partial<LibModule>);
+    await setUpBackup({
+      request: request({ projectDir: "/abs/project", target: { kind: "create", name: "my-book" } }),
+    } as never);
+    expect(during).toMatchObject({ progress: { step: "creating", label: "Creating the online copy…" } });
+    const after = await (await setUpBackupProgress({ request: request({ projectDir: "/abs/project" }) } as never)).json();
+    expect(after).toEqual({ progress: null });
+  });
+});
+
+describe("POST /api/remote/repair-preview", () => {
+  test("says what a repair would set aside, from the lib", async () => {
+    openProject();
+    setLibForTests({
+      previewRepair: async () => ({ revisions: ["Second-edition"], versions: 3 }),
+    } as unknown as Partial<LibModule>);
+    const res = await repairPreview({ request: request({ projectDir: "/abs/project" }) } as never);
+    expect(await res.json()).toEqual({ setAside: { revisions: ["Second-edition"], versions: 3 } });
+  });
+
+  test("403 outside the open book", async () => {
+    openProject();
+    const { status } = await caught(repairPreview({ request: request({ projectDir: "/elsewhere" }) } as never));
+    expect(status).toBe(403);
+  });
+});
+
+describe("POST /api/remote/list-repositories", () => {
+  test("without a page it lists everything, as before", async () => {
+    registerHostServices(
+      makeHostServices({
+        remote: { tokenStore: { get: async () => ({ token: "ghp_all_test_token_5678" }) }, GITHUB_HOST: "github.com" } as never,
+      }),
+    );
+    setLibForTests({
+      listGitHubRepositories: async () => [{ fullName: "a/b" }],
+    } as unknown as Partial<LibModule>);
+    const res = await listRepositories({ request: request({}) } as never);
+    expect(await res.json()).toEqual([{ fullName: "a/b" }]);
+  });
+
+  test("a page is returned on its own, and cached briefly unless refreshed", async () => {
+    registerHostServices(
+      makeHostServices({
+        remote: { tokenStore: { get: async () => ({ token: "ghp_cache_test_token_1234" }) }, GITHUB_HOST: "github.com" } as never,
+      }),
+    );
+    const asked: number[] = [];
+    setLibForTests({
+      listGitHubRepositoriesPage: async (_c: unknown, page: number) => {
+        asked.push(page);
+        return { repos: [{ fullName: `page/${page}` }], page, hasMore: page < 2 };
+      },
+    } as unknown as Partial<LibModule>);
+    const ask = async (body: unknown) => (await listRepositories({ request: request(body) } as never)).json();
+    expect(await ask({ page: 1 })).toEqual({ repos: [{ fullName: "page/1" }], page: 1, hasMore: true });
+    await ask({ page: 1 });
+    expect(asked).toEqual([1]);
+    await ask({ page: 1, refresh: true });
+    await ask({ page: 2 });
+    expect(asked).toEqual([1, 1, 2]);
   });
 });

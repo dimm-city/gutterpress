@@ -27,6 +27,7 @@ import {
 import type { OperationLogger } from "./operation-log.ts";
 import {
   MSG_AUTH,
+  MSG_NOT_FOUND,
   MSG_INSECURE_TRANSPORT,
   MSG_NO_BRANCH,
   MSG_NO_REMOTE,
@@ -168,6 +169,56 @@ export async function resolveTransport(
   };
 }
 
+// ── Freshness of the last online check ───────────────────────────────────────
+//
+// One all-branch fetch tells the revision list AND the online versions what is
+// online, so the second caller within a short window reads the refs the first
+// one wrote instead of paying another round trip. Process-local and keyed by
+// the repository directory; a mutation (backup, rename/delete a revision,
+// repair) forgets it so the next check is real.
+
+interface OnlineCheck {
+  at: number;
+  /** A check still running: concurrent callers share it. */
+  pending?: Promise<unknown>;
+}
+const onlineChecks = new Map<string, OnlineCheck>();
+
+/** Epoch ms of the last successful online check of `dir`, or null. */
+export function lastOnlineCheckAt(dir: string): number | null {
+  const at = onlineChecks.get(dir)?.at;
+  return at ? at : null;
+}
+
+/** True when `dir` was checked online successfully within `maxAgeMs`. */
+export function onlineCheckIsFresh(dir: string, maxAgeMs: number, now = Date.now()): boolean {
+  const at = lastOnlineCheckAt(dir);
+  return at !== null && maxAgeMs > 0 && now - at <= maxAgeMs;
+}
+
+export function noteOnlineCheck(dir: string, now = Date.now()): void {
+  onlineChecks.set(dir, { at: now });
+}
+
+/** Something changed online (or may have): the next check must go to the server. */
+export function forgetOnlineCheck(dir: string): void {
+  onlineChecks.delete(dir);
+}
+
+/** Share one in-flight check per directory. */
+export async function shareOnlineCheck<T>(dir: string, run: () => Promise<T>): Promise<T> {
+  const running = onlineChecks.get(dir)?.pending as Promise<T> | undefined;
+  if (running) return running;
+  const entry: OnlineCheck = { at: onlineChecks.get(dir)?.at ?? 0 };
+  const p = run().finally(() => {
+    const cur = onlineChecks.get(dir);
+    if (cur) delete cur.pending;
+  });
+  entry.pending = p;
+  onlineChecks.set(dir, entry);
+  return p;
+}
+
 /**
  * Decode a thrown transport error into the outcome it maps to, or null when it
  * is not a transport failure at all. The single source of truth for transport
@@ -176,14 +227,15 @@ export async function resolveTransport(
  */
 export function classifyTransportFailure(
   e: unknown,
-): "auth_required" | "network_unavailable" | "insecure_transport" | null {
+): "auth_required" | "not_found" | "network_unavailable" | "insecure_transport" | null {
   // FIRST: the withheld-cleartext-credential error. It must never fall through
   // to the auth arm — "reconnect" can't fix an http:// address.
   if (isInsecureTransportError(e)) return "insecure_transport";
   const err = e as { code?: string; data?: { statusCode?: number; prettyDetails?: string }; message?: string };
   if (err?.code === "HttpError") {
     const status = err.data?.statusCode;
-    if (status === 401 || status === 403 || status === 404) return "auth_required";
+    if (status === 404) return "not_found";
+    if (status === 401 || status === 403) return "auth_required";
   }
   // For a server-side push rejection (GitPushError), the useful detail is in
   // `data.prettyDetails` (the per-ref report-status text), so fold it into the
@@ -192,12 +244,14 @@ export function classifyTransportFailure(
   // non-fast-forward (which is handled separately by isPushRejected).
   const msg = `${err?.message ?? String(e)} ${err?.data?.prettyDetails ?? ""}`;
   if (
-    /\b401\b|\b403\b|\b404\b|unauthorized|authentication|not authorized|permission denied|forbidden|access denied|not allowed to push|pre-receive hook declined|hook declined/i.test(
+    /\b401\b|\b403\b|unauthorized|authentication|not authorized|permission denied|forbidden|access denied|not allowed to push|pre-receive hook declined|hook declined/i.test(
       msg,
     )
   ) {
     return "auth_required";
   }
+  // "Not found" is its own problem (wrong or gone address), not a rejected sign-in.
+  if (/\b404\b|repository not found/i.test(msg)) return "not_found";
   if (
     /ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|network|fetch failed|couldn't reach|socket hang ?up/i.test(
       msg,
@@ -219,10 +273,11 @@ export function classifyTransportFailure(
 export function failureOutcome(
   e: unknown,
   snapshotId?: string,
-): { status: "auth" | "offline" | "error"; message: string; snapshotId?: string } {
+): { status: "auth" | "not-found" | "offline" | "error"; message: string; snapshotId?: string } {
   const kind = classifyTransportFailure(e);
   const base = snapshotId ? { snapshotId } : {};
   if (kind === "auth_required") return { status: "auth", message: MSG_AUTH, ...base };
+  if (kind === "not_found") return { status: "not-found", message: MSG_NOT_FOUND, ...base };
   if (kind === "network_unavailable") return { status: "offline", message: MSG_OFFLINE, ...base };
   if (kind === "insecure_transport") {
     return { status: "error", message: MSG_INSECURE_TRANSPORT, ...base };
@@ -389,8 +444,8 @@ export async function fetchRemoteTip(
     // repository (GitHub masks private repos as "not found" for unauthorized
     // tokens) — treating it as "empty remote" made pull report "already the
     // latest" while the user was provably behind (rc.12 field bug). Re-throw
-    // as an auth-class failure so check/pull/push surface "reconnect" loudly
-    // instead of lying.
+    // as a 404 HttpError so check/pull/push say "can't find this online copy"
+    // (never "empty"), which sync-messages words without blaming the sign-in.
     const code = (e as { code?: string })?.code;
     if (code === "NoRefspecError") return null;
     // The online copy has other revisions but not this one: it was started on
@@ -402,12 +457,14 @@ export async function fetchRemoteTip(
       code === "NotFoundError" ||
       (e as { data?: { statusCode?: number } })?.data?.statusCode === 404
     ) {
-      const err = new Error(
-        "The online copy couldn't be reached with the saved sign-in. Sign in again and try again.",
-        { cause: e },
-      ) as Error & { code: string; data: { statusCode: number } };
+      // Surface it as the 404 it is: the sync messages say "can't find this
+      // online copy" (with a way forward), not "sign in again".
+      const err = new Error(MSG_NOT_FOUND, { cause: e }) as Error & {
+        code: string;
+        data: { statusCode: number };
+      };
       err.code = "HttpError";
-      err.data = { statusCode: 401 };
+      err.data = { statusCode: 404 };
       throw err;
     }
     throw e;

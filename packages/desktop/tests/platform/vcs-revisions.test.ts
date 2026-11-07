@@ -57,7 +57,12 @@ function openProject(overrides: Parameters<typeof makeHostServices>[0] = {}): Ho
 }
 
 function fakeLib(lib: Record<string, unknown>): void {
-  setLibForTests({ repairInterruptedSwitch: async () => null, takeSwitchRepairNotice: async () => null, ...lib } as Partial<LibModule>);
+  setLibForTests({
+    repairInterruptedSwitch: async () => null,
+    takeSwitchRepairNotice: async () => null,
+    lastOnlineCheck: async () => null,
+    ...lib,
+  } as Partial<LibModule>);
 }
 
 afterEach(() => {
@@ -85,7 +90,7 @@ describe("POST /api/vcs/list-revisions", () => {
       },
     });
     const res = await listRevisions({ request: request({ projectDir: DIR }) } as never);
-    expect(await res.json()).toEqual({ ...revisions, checkedOnline: false });
+    expect(await res.json()).toEqual({ ...revisions, checkedAt: null, checkedOnline: false });
     expect(calls).toEqual([`list(${DIR})`]);
   });
 
@@ -104,19 +109,19 @@ describe("POST /api/vcs/list-revisions", () => {
       },
     });
     const res = await listRevisions({ request: request({ projectDir: DIR }) } as never);
-    expect(await res.json()).toEqual({ ...revisions, checkedOnline: false, repairNotice: "put back" });
+    expect(await res.json()).toEqual({ ...revisions, checkedAt: null, checkedOnline: false, repairNotice: "put back" });
     expect(order).toEqual(["repair", "list"]);
   });
 
   test("refresh: true checks the online copy first, with the host's sign-ins, and reports it worked", async () => {
     const order: string[] = [];
-    let refreshArgs: { projectDir: string; tokenStore: unknown } | undefined;
+    let refreshArgs: { projectDir: string; tokenStore: unknown; maxAgeMs: number } | undefined;
     openProject();
     fakeLib({
-      refreshRemoteCopies: async (args: { projectDir: string; tokenStore: unknown }) => {
+      refreshRemoteCopies: async (args: { projectDir: string; tokenStore: unknown; maxAgeMs: number }) => {
         order.push("refresh");
         refreshArgs = args;
-        return { refreshed: true };
+        return { refreshed: true, checkedAt: "2026-11-07T10:00:00.000Z" };
       },
       listRevisions: async () => {
         order.push("list");
@@ -124,19 +129,41 @@ describe("POST /api/vcs/list-revisions", () => {
       },
     });
     const res = await listRevisions({ request: request({ projectDir: DIR, refresh: true }) } as never);
-    expect(await res.json()).toEqual({ ...revisions, checkedOnline: true });
+    expect(await res.json()).toEqual({ ...revisions, checkedAt: "2026-11-07T10:00:00.000Z", checkedOnline: true });
     expect(order).toEqual(["refresh", "list"]);
-    expect(refreshArgs).toEqual({ projectDir: DIR, tokenStore });
+    // A check this recent is reused (the versions list shares it).
+    expect(refreshArgs).toEqual({ projectDir: DIR, tokenStore, maxAgeMs: 20_000 });
+  });
+
+  test("maxAgeMs is the caller's to choose: 0 forces a real check", async () => {
+    let seen: number | undefined;
+    openProject();
+    fakeLib({
+      refreshRemoteCopies: async (args: { maxAgeMs: number }) => {
+        seen = args.maxAgeMs;
+        return { refreshed: true, checkedAt: null };
+      },
+      listRevisions: async () => revisions,
+    });
+    await listRevisions({ request: request({ projectDir: DIR, refresh: true, maxAgeMs: 0 }) } as never);
+    expect(seen).toBe(0);
+  });
+
+  test("without refresh, checkedAt is when the online copy was last asked", async () => {
+    openProject();
+    fakeLib({ lastOnlineCheck: async () => "2026-11-07T09:59:00.000Z", listRevisions: async () => revisions });
+    const res = await listRevisions({ request: request({ projectDir: DIR }) } as never);
+    expect(await res.json()).toMatchObject({ checkedAt: "2026-11-07T09:59:00.000Z", checkedOnline: false });
   });
 
   test("a refresh that could not reach the online copy still lists, as last known", async () => {
     openProject();
     fakeLib({
-      refreshRemoteCopies: async () => ({ refreshed: false, reason: "offline" }),
+      refreshRemoteCopies: async () => ({ refreshed: false, reason: "offline", checkedAt: null }),
       listRevisions: async () => revisions,
     });
     const res = await listRevisions({ request: request({ projectDir: DIR, refresh: true }) } as never);
-    expect(await res.json()).toEqual({ ...revisions, checkedOnline: false });
+    expect(await res.json()).toEqual({ ...revisions, checkedAt: null, checkedOnline: false, reason: "offline" });
   });
 
   test("passes null straight through (a plain folder has no revisions)", async () => {

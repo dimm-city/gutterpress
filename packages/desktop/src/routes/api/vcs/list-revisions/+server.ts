@@ -10,12 +10,19 @@ import type { RequestHandler } from './$types';
  * worked. Only remote-tracking refs are written, so it is safe with unsaved
  * work open.
  */
-export const POST: RequestHandler = defineRoute<{ projectDir: string; refresh: boolean }>({
+/** An online check this recent is reused (the versions list shares it); `maxAgeMs: 0` forces a real one. */
+const ONLINE_CHECK_FRESH_MS = 20_000;
+
+export const POST: RequestHandler = defineRoute<{ projectDir: string; refresh: boolean; maxAgeMs: number }>({
   validate: async (raw) => {
-    const body = raw as { projectDir?: string; refresh?: unknown };
+    const body = raw as { projectDir?: string; refresh?: unknown; maxAgeMs?: unknown };
     return {
       projectDir: await requireProjectDir(body.projectDir, 'vcs/list-revisions'),
       refresh: body.refresh === true,
+      maxAgeMs:
+        typeof body.maxAgeMs === 'number' && Number.isFinite(body.maxAgeMs) && body.maxAgeMs >= 0
+          ? Math.min(body.maxAgeMs, 10 * 60_000)
+          : ONLINE_CHECK_FRESH_MS,
     };
   },
   call: async ({ body }) => {
@@ -24,11 +31,33 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; refresh: b
     // tells the author, once.
     await lib.repairInterruptedSwitch(body.projectDir);
     const repairNotice = await lib.takeSwitchRepairNotice(body.projectDir);
-    const checkedOnline = body.refresh
-      ? (await lib.refreshRemoteCopies({ projectDir: body.projectDir, tokenStore: getHostServices().remote.tokenStore })).refreshed
-      : false;
+    // `checkedAt`: when the online copy was last asked (ISO; null if never this session).
+    // `checkedOnline`: whether THIS call's check worked.
+    let checkedOnline = false;
+    let checkedAt: string | null;
+    let reason: string | undefined;
+    if (body.refresh) {
+      const checked = await lib.refreshRemoteCopies({
+        projectDir: body.projectDir,
+        tokenStore: getHostServices().remote.tokenStore,
+        maxAgeMs: body.maxAgeMs,
+      });
+      checkedOnline = checked.refreshed;
+      checkedAt = checked.checkedAt;
+      reason = checked.reason;
+    } else {
+      checkedAt = await lib.lastOnlineCheck(body.projectDir);
+    }
     const list = await lib.listRevisions(body.projectDir);
-    return list && { ...list, checkedOnline, ...(repairNotice ? { repairNotice } : {}) };
+    return (
+      list && {
+        ...list,
+        checkedAt,
+        checkedOnline,
+        ...(reason ? { reason } : {}),
+        ...(repairNotice ? { repairNotice } : {}),
+      }
+    );
   },
   onError: (e) => friendlyVcsError(e, 'vcs/list-revisions'),
 });

@@ -23,6 +23,11 @@ export interface ProjectState {
   currentPage?: number;
   /** Split-pane size ratio (0..1). */
   splitPaneRatio?: number;
+  /**
+   * The last answer a backup pass gave for this book, kept so the next launch
+   * can show it at once (host-written; the renderer never sets it).
+   */
+  lastBackup?: { state: string; at: string; ahead?: number };
 }
 
 /** The per-project state map: `{ [folderPath]: ProjectState }`. */
