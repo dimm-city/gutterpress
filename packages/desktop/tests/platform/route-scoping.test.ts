@@ -41,6 +41,8 @@ import { createPickedFilesService } from "../../electron/server-bridge/picked-fi
 import { makeHostServices } from "../support/host-services-fake";
 
 import { POST as vcsSaveSnapshot } from "../../src/routes/api/vcs/save-snapshot/+server";
+import { POST as vcsRestoreRepairCopy } from "../../src/routes/api/vcs/restore-repair-copy/+server";
+import { POST as vcsDiscardRepairCopy } from "../../src/routes/api/vcs/discard-repair-copy/+server";
 import { POST as vcsRestoreSnapshot } from "../../src/routes/api/vcs/restore-snapshot/+server";
 import { POST as vcsListSnapshotsPage } from "../../src/routes/api/vcs/list-snapshots-page/+server";
 import { POST as vcsUnversionedChanges } from "../../src/routes/api/vcs/unversioned-changes/+server";
@@ -96,6 +98,8 @@ const HEX40_A = "a".repeat(40);
 const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) => unknown }> = [
   { name: "vcs/save-snapshot", handler: vcsSaveSnapshot as RouteHandler, body: (d) => ({ projectDir: d, message: "snap" }) },
   { name: "vcs/restore-snapshot", handler: vcsRestoreSnapshot as RouteHandler, body: (d) => ({ projectDir: d, id: HEX40_A }) },
+  { name: "vcs/restore-repair-copy", handler: vcsRestoreRepairCopy as RouteHandler, body: (d) => ({ projectDir: d, id: "20261107010203004" }) },
+  { name: "vcs/discard-repair-copy", handler: vcsDiscardRepairCopy as RouteHandler, body: (d) => ({ projectDir: d, id: "20261107010203004" }) },
   { name: "vcs/list-snapshots-page", handler: vcsListSnapshotsPage as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "vcs/unversioned-changes", handler: vcsUnversionedChanges as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "vcs/enable-version-history", handler: vcsEnableVersionHistory as RouteHandler, body: (d) => ({ projectDir: d }) },

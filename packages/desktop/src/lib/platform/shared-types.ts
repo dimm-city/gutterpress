@@ -805,10 +805,19 @@ export interface Revision {
   notBackedUp: boolean;
 }
 
+/** Files kept just before an interrupted-switch repair overwrote them (mirrors the lib's `RepairCopy`, #508). */
+export interface RepairCopy {
+  id: string;
+  /** When the copy was taken (ms). */
+  savedAt: number;
+}
+
 /** The book's revisions (mirrors the lib's `RevisionList`) plus whether the online copy was checked just now. */
 export interface RevisionList {
   current: string | null;
   revisions: Revision[];
+  /** Copies of the files kept before a repair, newest first. */
+  repairCopies?: RepairCopy[];
   /** The refresh from the online copy ran and succeeded; false = the list is what this computer last knew. */
   checkedOnline: boolean;
   /** A switch the app was interrupted in was put right just now; plain-words message for the author. */

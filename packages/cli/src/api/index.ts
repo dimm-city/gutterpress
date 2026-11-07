@@ -286,6 +286,10 @@ export {
   switchBranch,
   repairInterruptedSwitch,
   takeSwitchRepairNotice,
+  unfinishedSwitchMessage,
+  listRepairCopies,
+  restoreRepairCopy,
+  discardRepairCopy,
   SWITCH_BRANCH_SNAPSHOT_MESSAGE,
 } from "../lib/source-provider.ts";
 
@@ -295,6 +299,7 @@ export type {
   UnversionedChanges,
   Revision,
   RevisionList,
+  RepairCopy,
   CreateRevisionOptions,
   SwitchBranchOptions,
   SwitchBranchResult,

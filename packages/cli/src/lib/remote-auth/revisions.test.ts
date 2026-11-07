@@ -123,6 +123,7 @@ describe("listRevisions with an online copy", () => {
           { name: "Only-here", current: false, where: "this-computer", notBackedUp: false },
           { name: "Second-edition", current: true, where: "online", notBackedUp: true },
         ],
+        repairCopies: [],
       });
     } finally {
       await h.cleanup().catch(() => {});

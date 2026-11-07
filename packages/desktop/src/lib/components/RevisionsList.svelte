@@ -23,7 +23,7 @@
    */
   import { onMount, tick } from "svelte";
   import Icon from "#lib/components/Icon.svelte";
-  import { api, type Revision, type RevisionList } from "#lib/api.ts";
+  import { api, type RepairCopy, type Revision, type RevisionList } from "#lib/api.ts";
   import { dialogBehavior } from "#lib/dialog.ts";
   import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
   import { revisionNameFrom, revisionsShown } from "#lib/revision-name.ts";
@@ -53,7 +53,9 @@
   type Pending =
     | { kind: "new" }
     | { kind: "rename"; revision: Revision }
-    | { kind: "delete"; revision: Revision; everywhere: boolean; lost: number | null };
+    | { kind: "delete"; revision: Revision; everywhere: boolean; lost: number | null }
+    | { kind: "restore-copy"; copy: RepairCopy }
+    | { kind: "discard-copy"; copy: RepairCopy };
   let pending = $state<Pending | null>(null);
   let typed = $state("");
   /** The row whose "more" menu is open. */
@@ -134,6 +136,10 @@
 
   const switchTo = (name: string) => run(() => api.vcs.switchBranch(projectDir, name));
   const create = () => run(() => api.vcs.createRevision(projectDir, typed));
+  const restoreCopy = (id: string) => run(() => api.vcs.restoreRepairCopy(projectDir, id));
+  const discardCopy = (id: string) => run(() => api.vcs.discardRepairCopy(projectDir, id));
+  const copyWhen = (c: RepairCopy): string =>
+    new Date(c.savedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
   const rename = (from: string) => run(() => api.vcs.renameRevision(projectDir, from, typed));
 
   /** Delete; a revision holding versions found nowhere else comes back with how many, and asks again. */
@@ -252,6 +258,25 @@
       </div>
     {/if}
     {#if repairNotice}<p class="section-note" role="status">{repairNotice}</p>{/if}
+    {#if list.repairCopies?.length}
+      <div class="copies">
+        <h4>Saved copies after a repair</h4>
+        <p class="section-sub">
+          When a revision change was interrupted, your files were saved here before the book was put back. Older copies are removed on their own once a newer version is saved.
+        </p>
+        <ul class="rev-list" aria-label="Saved copies after a repair">
+          {#each list.repairCopies as c (c.id)}
+            <li class="rev">
+              <div class="rev-main"><span class="rev-name">Copy from {copyWhen(c)}</span></div>
+              <div class="rev-actions">
+                <button class="ghost small" onclick={() => open({ kind: "restore-copy", copy: c })} disabled={working || disabled}>Restore files from this copy</button>
+                <button class="ghost small" onclick={() => open({ kind: "discard-copy", copy: c })} disabled={working || disabled}>Discard</button>
+              </div>
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
     {#if hasOnlineCopy && !checking && !list.checkedOnline}
       <p class="section-note">Couldn't check the online copy just now, so revisions made elsewhere may be missing.</p>
     {/if}
@@ -264,11 +289,13 @@
   <div class="dlg-backdrop" role="presentation" onclick={cancel}></div>
   <form
     class="dlg-shell rev-dialog"
-    use:dialogBehavior={{ onClose: cancel, labelledBy: "rev-dialog-title", initialFocus: p.kind === "delete" ? ".dlg-actions .dlg-ghost" : "input" }}
+    use:dialogBehavior={{ onClose: cancel, labelledBy: "rev-dialog-title", initialFocus: p.kind === "delete" || p.kind === "restore-copy" || p.kind === "discard-copy" ? ".dlg-actions .dlg-ghost" : "input" }}
     onsubmit={(e) => {
       e.preventDefault();
       if (p.kind === "new") void create();
       else if (p.kind === "rename") void rename(p.revision.name);
+      else if (p.kind === "restore-copy") void restoreCopy(p.copy.id);
+      else if (p.kind === "discard-copy") void discardCopy(p.copy.id);
     }}
   >
     {#if p.kind === "new"}
@@ -306,6 +333,26 @@
       <footer class="dlg-actions">
         <button type="button" class="dlg-ghost" onclick={cancel} disabled={working}>Cancel</button>
         <button type="submit" class="dlg-primary app-btn-primary" disabled={working || !kept || kept === p.revision.name}>{working ? "Renaming…" : "Rename"}</button>
+      </footer>
+    {:else if p.kind === "restore-copy"}
+      <header class="dlg-header"><h2 id="rev-dialog-title">Restore files from this copy?</h2></header>
+      <div class="dlg-body">
+        <p>Your book's files go back to how they were in the copy from {copyWhen(p.copy)}. Anything you have changed since is saved as a version first, so nothing is lost.</p>
+      </div>
+      {#if error}<p class="dlg-error error" role="alert">{error}</p>{/if}
+      <footer class="dlg-actions">
+        <button type="button" class="dlg-ghost" onclick={cancel} disabled={working}>Cancel</button>
+        <button type="submit" class="dlg-primary app-btn-primary" disabled={working}>{working ? "Restoring…" : "Restore files"}</button>
+      </footer>
+    {:else if p.kind === "discard-copy"}
+      <header class="dlg-header"><h2 id="rev-dialog-title">Discard this copy?</h2></header>
+      <div class="dlg-body">
+        <p>The copy from {copyWhen(p.copy)} is deleted for good. Your book and its versions are not changed.</p>
+      </div>
+      {#if error}<p class="dlg-error error" role="alert">{error}</p>{/if}
+      <footer class="dlg-actions">
+        <button type="button" class="dlg-ghost" onclick={cancel} disabled={working}>Keep it</button>
+        <button type="submit" class="dlg-danger" disabled={working}>{working ? "Discarding…" : "Discard"}</button>
       </footer>
     {:else}
       <header class="dlg-header"><h2 id="rev-dialog-title">Delete "{p.revision.name}"?</h2></header>
@@ -361,6 +408,8 @@
   .rev-where.ok :global(svg) { color: var(--app-success-strong); }
   .rev-where.pending { color: var(--app-warning-text); }
   .rev-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; min-height: 28px; }
+  .copies { padding: 8px 16px 4px; }
+  .copies h4 { margin: 0 0 2px; font-size: 13px; }
   .none { padding: 14px 16px; font-size: 12.5px; color: var(--app-text-muted); }
 
   .menu-wrap { position: relative; }

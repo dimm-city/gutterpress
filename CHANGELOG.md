@@ -41,6 +41,17 @@ This project follows [Semantic Versioning](https://semver.org/).
   closing, and building or exporting still save at once. The preview
   already folds saves that land during a rebuild into one follow-up rebuild.
 
+- **A book part-way through a revision switch could still be built (#507).**
+  When a repair could not put the book back, the files were a mix of two
+  revisions and a build of them could make a PDF that looked fine. Builds
+  (the `build` command, `preview` and the desktop export) now stop with a
+  plain message that points to the repair notice and names the saved copy.
+- **Copies kept before a switch repair piled up and could not be reached
+  (#508).** Book setup → Revisions now lists them, with "Restore files from
+  this copy" (the same safe restore as a version) and "Discard". At most five
+  are kept and none past 30 days, and one is never removed while it is newer
+  than the last saved version. They live only in the book's git folder: a
+  backup sends the revision it names, never `refs/gutterpress/*`.
 - **A `--out` build rendered unstyled, wrong-size pages under a snap Chromium,
   with no warning (#501).** The staged `book.html`, stylesheets and fonts went
   to the OS temp dir, which a snap's private `/tmp` hides from the browser.

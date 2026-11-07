@@ -1044,6 +1044,12 @@ class PdfOutput implements OutputStrategy {
 export async function runBuild(
   opts: BuildRunnerOptions
 ): Promise<BuildRunnerResult> {
+  // A book part-way through a revision switch holds files from two revisions;
+  // building it could produce a PDF that looks fine (#507). Desktop export,
+  // `build` and `preview` all come through here.
+  const unfinished = await (await import("./source-provider.ts")).unfinishedSwitchMessage(opts.inputDir);
+  if (unfinished) throw new UsageError(unfinished);
+
   const ctx = await resolveBuildContext(opts);
 
   log.info(`Build (${ctx.format}): ${ctx.inputDir} -> ${ctx.outDir}`);

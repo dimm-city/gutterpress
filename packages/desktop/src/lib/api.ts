@@ -69,6 +69,7 @@ export type {
   CompareRow,
   Revision,
   RevisionList,
+  RepairCopy,
   RemoteConnection,
   RemoteRepository,
   BackupTarget,
@@ -101,6 +102,7 @@ import type {
   CompareRow,
   Revision,
   RevisionList,
+  RepairCopy,
   RemoteConnection,
   RemoteRepository,
   BackupTarget,
@@ -793,6 +795,12 @@ export const api = {
      *  `refresh` checks the online copy first (best-effort; see `checkedOnline`). */
     listRevisions: (projectDir: string, options?: { refresh?: boolean }) =>
       post<RevisionList | null>('/api/vcs/list-revisions', { projectDir, ...options }),
+    /** Put the files from a kept repair copy back (#508), through the safe restore. */
+    restoreRepairCopy: (projectDir: string, id: string) =>
+      post<{ restoredId: string; backupId?: string }>('/api/vcs/restore-repair-copy', { projectDir, id }),
+    /** Delete a kept repair copy (#508). */
+    discardRepairCopy: (projectDir: string, id: string) =>
+      post<{ discarded: true }>('/api/vcs/discard-repair-copy', { projectDir, id }),
     /** Start a new revision from what is open now and switch to it (#448). */
     createRevision: (projectDir: string, name: string) =>
       post<{ current: string }>('/api/vcs/create-revision', { projectDir, name }),

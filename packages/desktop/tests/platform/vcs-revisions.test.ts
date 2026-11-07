@@ -23,6 +23,8 @@ import { setLibForTests, type LibModule } from "../../src/routes/api/_lib/route"
 import { POST as listRevisions } from "../../src/routes/api/vcs/list-revisions/+server";
 import { POST as createRevision } from "../../src/routes/api/vcs/create-revision/+server";
 import { POST as renameRevision } from "../../src/routes/api/vcs/rename-revision/+server";
+import { POST as restoreRepairCopy } from "../../src/routes/api/vcs/restore-repair-copy/+server";
+import { POST as discardRepairCopy } from "../../src/routes/api/vcs/discard-repair-copy/+server";
 import { POST as deleteRevision } from "../../src/routes/api/vcs/delete-revision/+server";
 
 const DIR = "/abs/project";
@@ -350,5 +352,32 @@ describe("what the author and the logs can see", () => {
     expect(logged.length).toBeGreaterThan(0);
     expect(logged.join("\n")).not.toContain("ghp_secret");
     expect(logged.join("\n")).toContain("//(redacted)@github.com");
+  });
+});
+
+describe("repair copies (#508)", () => {
+  test("list-revisions passes the lib's repair copies through", async () => {
+    openProject();
+    const copies = [{ id: "20261107000000001", savedAt: 1 }];
+    fakeLib({ listRevisions: async () => ({ ...revisions, repairCopies: copies }) });
+    const res = await listRevisions({ request: request({ projectDir: DIR }) } as never);
+    expect((await res.json()).repairCopies).toEqual(copies);
+  });
+
+  test("restore and discard refuse anything but a copy id (400), and hand the lib exactly the id", async () => {
+    const calls: string[] = [];
+    openProject();
+    fakeLib({
+      restoreRepairCopy: async (o: { id: string }) => (calls.push(`restore ${o.id}`), { restoredId: "x" }),
+      discardRepairCopy: async (_dir: string, id: string) => void calls.push(`discard ${id}`),
+    });
+    for (const id of [undefined, "", "../heads/main", "abc", 5]) {
+      expect((await caught(restoreRepairCopy({ request: request({ projectDir: DIR, id }) } as never))).status).toBe(400);
+      expect((await caught(discardRepairCopy({ request: request({ projectDir: DIR, id }) } as never))).status).toBe(400);
+    }
+    await restoreRepairCopy({ request: request({ projectDir: DIR, id: "20261107000000001" }) } as never);
+    const res = await discardRepairCopy({ request: request({ projectDir: DIR, id: "20261107000000001" }) } as never);
+    expect(await res.json()).toEqual({ discarded: true });
+    expect(calls).toEqual(["restore 20261107000000001", "discard 20261107000000001"]);
   });
 });
