@@ -42,10 +42,10 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; target: Ba
           authorEmail: identity.authorEmail,
           onProgress: (step) => setBackupProgress(body.projectDir, token, step),
         });
-        // A new online copy may have been created: the cached repository list is out of date.
-        forgetRepositoryPages();
         return result;
       } finally {
+        // A new online copy may have been created even if sending it failed: the cached list is out of date.
+        forgetRepositoryPages();
         clearBackupProgress(body.projectDir, token);
       }
     }),

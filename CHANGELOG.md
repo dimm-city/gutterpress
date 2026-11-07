@@ -9,6 +9,14 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Desktop: host follow-ups for the backup status.** A finished backup no
+  longer walks the whole book to count unsent versions, and a status read never
+  repairs a half-done switch. Setting up a backup keeps each call's progress
+  until its own call ends, and the repository list is refreshed even if sending
+  the book failed. `remote/default-clone-parent` reports where "Open from online"
+  should put a book (the documents folder plus Gutterpress) without creating it.
+  The switch messages now say "Book setup → Backup & history → Drafts".
+
 - **Desktop: the backup status is known the moment a book opens.** The status
   comes from what this computer already knows (no network) and the last
   answer is kept between launches, so the bar says "Backed up" or "Not backed

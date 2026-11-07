@@ -74,7 +74,9 @@ const PREVIEW_DEPTH = 2000;
  * appear under "Saved copies after a repair" and can't be brought back from
  * inside the app; the same goes for earlier before-repair copies, which travel
  * with the old history. Reads refs and history on this computer only (the
- * online side is as it was last checked); no network, nothing written.
+ * online side is as of a refresh made first when the caller can sign in, which
+ * updates remote-tracking refs only: it fetches, but changes no version, file or
+ * local revision).
  */
 export async function previewRepair(
   projectDir: string,

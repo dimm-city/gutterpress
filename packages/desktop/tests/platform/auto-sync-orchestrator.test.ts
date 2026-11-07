@@ -33,6 +33,8 @@ interface Harness {
   emitted: SyncStatusPayload[];
   /** Every answer handed to `saveLastKnown`. */
   saved: Array<[string, { state: string; at: string; ahead?: number }]>;
+  /** The options every `localBackupStatus` call got. */
+  localStatusCalls: Array<{ countUnversioned?: boolean } | undefined>;
   /** Every projectDir passed to lib.syncProject, in call order. */
   syncCalls: string[];
   /** Full args of every lib.syncProject call, in order. */
@@ -75,6 +77,7 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
   const syncCalls: string[] = [];
   const syncArgs: unknown[] = [];
   const saved: Array<[string, { state: string; at: string; ahead?: number }]> = [];
+  const localStatusCalls: Array<{ countUnversioned?: boolean } | undefined> = [];
   let clock = 1_700_000_000_000;
 
   const lib = {
@@ -115,7 +118,8 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
           },
     unfinishedSwitchState: async () => opts.unfinishedSwitch ?? null,
     // The refs-only answer, derived from the same fake open revision.
-    localBackupStatus: async () => {
+    localBackupStatus: async (_dir: string, options?: { countUnversioned?: boolean }) => {
+      localStatusCalls.push(options);
       const open = opts.openRevision;
       if (!open) return null;
       if (open.where === "online" && !open.notBackedUp) return { state: "synced", ahead: 0, behind: false };
@@ -146,6 +150,7 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
     orch: new AutoSyncOrchestrator(deps),
     emitted,
     saved,
+    localStatusCalls,
     syncCalls,
     syncArgs,
       setClock: (ms) => {
@@ -826,3 +831,10 @@ test("a 'not found' on GitHub says so in a field, and offers signing in", async 
   await h.orch.run(DIR);
   expect(h.emitted.at(-1)).toMatchObject({ state: "error", reason: "not-found", host: "github", canSignIn: true });
 });
+
+test("a finished pass asks for ahead/behind without the unversioned walk", async () => {
+  const h = makeHarness({ openRevision: { where: "online", notBackedUp: true }, syncProject: () => ({ status: "up-to-date", pushDeferred: true }) });
+  await h.orch.run(DIR);
+  expect(h.localStatusCalls).toEqual([{ countUnversioned: false }]);
+});
+
