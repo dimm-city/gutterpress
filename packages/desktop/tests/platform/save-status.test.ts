@@ -103,6 +103,11 @@ describe("statusLine: where it stands with the online copy", () => {
     expect(text({ ...online, gettingLatest: true })).toBe("Saved here · Getting changes…");
   });
 
+  test("in manual mode the Update button stays while a pass runs (the bar shows it disabled)", () => {
+    expect(statusLine(input({ ...online, canSync: true, autoBackup: false, backingUp: true })).button).toEqual({ label: "Update", action: "update" });
+    expect(statusLine(input({ ...online, canSync: true, autoBackup: true, backingUp: true })).button).toBeUndefined();
+  });
+
   test("backing up outranks the ahead/behind it is about to fix", () => {
     expect(key({ ...online, backingUp: true, sync: "synced", updatesAvailable: true, extra: { ahead: 2 } })).toBe("backing-up");
   });

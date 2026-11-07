@@ -359,6 +359,8 @@ export function statusLine(i: StatusLineInput): StatusLine {
       detail: "Gutterpress is talking to the online copy. Your work is safe on this computer.",
       icon: "refresh-cw",
       tone: "pending",
+      // With nothing automatic, the button stays (disabled, "Updating…") so it does not vanish under the author's click.
+      ...(manual ? { button: { label: "Update", action: "update" } as const } : {}),
     });
   }
   if (hasOnline) {
