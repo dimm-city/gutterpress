@@ -91,6 +91,19 @@ This project follows [Semantic Versioning](https://semver.org/).
   follow the trim.
 - **`--icc` is not required for `--format pdfx`**: the help no longer says so.
 
+### Security
+
+- **The dependency audit is clear except for three build-time packages.**
+  The CLI moves to `glob` 14 and `rimraf` 6.1.4 (GHSA-3g3m-2fjr-6pw4), and the
+  lockfile holds `joi` 18.3.2 and `follow-redirects` 1.16.2 (GHSA-4528-x5fx-h6hg,
+  GHSA-mrwp-f3q8-3g9p; reached only through the desktop's development-only
+  `wait-on`). Still ignored in `security-audit.yml`, with the reason: `glob` 13
+  in `htmlhint` 1.9.2 and `minimatch` 9/10 in `@typescript-eslint`,
+  `electron-builder` and `@electron/universal` (GHSA-g3hv-75wg-m249), none of
+  which has a release that takes the fix; `deepmerge` (low) has none either.
+  The CLI calls glob only on the book's own folder, never with an `AbortSignal`,
+  and minimatch patterns come from the author's own manifest.
+
 ## [0.11.23] - 2026-10-31
 
 ### Added

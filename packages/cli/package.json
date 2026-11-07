@@ -64,7 +64,7 @@
     "citty": "^0.2.0",
     "diff3": "0.0.3",
     "fflate": "0.8.3",
-    "glob": "^13.0.0",
+    "glob": "^14.0.4",
     "htmlhint": "^1.9.2",
     "ignore": "^5.3.2",
     "isomorphic-git": "^1.38.4",
@@ -95,7 +95,7 @@
     "@types/semver": "^7.7.1",
     "@types/ws": "^8.5.13",
     "playwright": "^1.60.0",
-    "rimraf": "^6.0.0",
+    "rimraf": "^6.1.4",
     "typescript": "^5"
   }
 }
