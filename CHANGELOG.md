@@ -201,16 +201,20 @@ This project follows [Semantic Versioning](https://semver.org/).
   well pulls the trim in further instead of replacing it, and the crop marks
   follow the trim.
 - **`--icc` is not required for `--format pdfx`**: the help no longer says so.
-- **Pre-beta polish.** Exporting while the book is part-way through switching
-  drafts now says so, and points to Book setup → Backup & history → Drafts,
-  instead of "PDF export failed". A saved sign-in the online copy rejects is
-  reported as signed out, not "Offline", by the passive online check, the
-  copies refresh and the version lists. Repair no longer fails when the
-  current draft exists only on this computer: it takes the online main draft,
-  and that draft goes aside with the rest; a failed download no longer leaves
-  an empty safety folder, and its message no longer names GitHub or says to
-  retry. A passage with two takes no longer adds five "unknown class" layout
-  warnings to its error in the preview.
+- **Pre-beta polish (#515).** Exporting while the book is part-way through
+  switching drafts now says so, and points to Book setup → Backup & history →
+  Drafts, instead of "PDF export failed"; this holds in the desktop app, where
+  the error reaches the window as plain text. A saved sign-in the online copy
+  rejects is reported as signed out, not "Offline", by the passive "is there
+  anything new online" check and anything else that checks the online tip.
+  Repair no longer fails when the current draft exists only on this computer:
+  it downloads the online main draft, sets the draft's earlier history aside
+  in the safety folder, keeps its current files, and backs them up online as
+  that draft (main is left alone and you stay on the draft). A failed repair
+  no longer leaves an empty safety folder, never removes anything else in
+  that folder, and its message no longer names GitHub for other hosts or says
+  to retry. A passage with two takes no longer adds five "unknown class"
+  layout warnings to its error in the preview.
 
 ### Security
 

@@ -180,9 +180,17 @@ test("friendlyPdfError stops telling desktop authors to pass allowShrink", () =>
 });
 
 test("friendlyPdfError explains an export refused during an unfinished draft switch", () => {
-  const err = Object.assign(new Error("anything the engine said"), { code: "UNFINISHED_SWITCH" });
+  // The real IPC-wrapped, code-less form (Electron flattens the error to its message).
+  const err = new Error(
+    "Error invoking remote method 'api:build': Error: This book is part-way through switching revisions, so its files may be a mix of two revisions and it can't be built or saved yet.",
+  );
   const shown = friendlyPdfError(err);
   expect(shown).toContain("part-way through switching drafts");
   expect(shown).toContain("Backup & history → Drafts");
   expect(shown).not.toContain("System tools");
+});
+
+test("friendlyPdfError still honours the UNFINISHED_SWITCH code when it survives", () => {
+  const err = Object.assign(new Error("anything the engine said"), { code: "UNFINISHED_SWITCH" });
+  expect(friendlyPdfError(err)).toContain("part-way through switching drafts");
 });

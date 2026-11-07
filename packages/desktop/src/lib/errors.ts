@@ -174,7 +174,10 @@ export function friendlyPdfError(e: unknown): string {
   if (code === "EXPORT_CANCELED") {
     return "";
   }
-  if (code === "UNFINISHED_SWITCH") {
+  // Electron flattens a rejected ipcMain.handle error to its message (code lost),
+  // so also match the engine's stable wording (source-provider unfinishedSwitchMessage;
+  // pinned by repair-copies.test.ts).
+  if (code === "UNFINISHED_SWITCH" || /part-way through switching/.test(msg)) {
     return "Gutterpress can't export while the book is part-way through switching drafts. Go to Book setup → Backup & history → Drafts to put it right.";
   }
   if (isMissingManifestError(msg)) {

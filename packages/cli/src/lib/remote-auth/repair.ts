@@ -14,7 +14,7 @@
  */
 import { gitFs as fs } from "../git-fs.ts";
 import git from "isomorphic-git";
-import { cp, mkdir, rename, rm } from "node:fs/promises";
+import { cp, mkdir, rename, rm, rmdir } from "node:fs/promises";
 import path from "node:path";
 
 import { BEFORE_REPAIR_REF_PREFIX, readRevisionRefs, withRepoLock } from "../source-provider.ts";
@@ -135,6 +135,8 @@ export async function repairOnlineBackup(
   const oldGit = path.join(dir, ".git");
   const movedGitTo = path.join(options.backupDir, "git");
   const freshDir = path.join(options.backupDir, "fresh-clone");
+  // Remember whether the folder was already there: a failed repair removes only what this call made.
+  const backupDirExisted = fs.existsSync(options.backupDir);
 
   const { restoredFiles, credential } = await withRepoLock(dir, async () => {
     // Needs only `.git/config` (the online address), which survives most damage.
@@ -146,10 +148,15 @@ export async function repairOnlineBackup(
       branch = undefined; // unreadable HEAD: take the online default branch
     }
     // A draft that exists only on this computer can't be downloaded: take the
-    // online default branch instead (the draft goes aside with the old history).
+    // online default branch instead (the draft's history goes aside with the old
+    // history); after the swap the book is put back on a local branch of that name.
+    let onlyHereDraft: string | undefined;
     if (branch) {
       const online = await serverTip(transport, branch, options.httpClient ?? defaultGitHttp).catch(() => branch);
-      if (!online) branch = undefined;
+      if (!online) {
+        onlyHereDraft = branch;
+        branch = undefined;
+      }
     }
     logger.info("download", "starting", { remote: transport.remote, branch: branch ?? "default" });
     const fresh = await cloneRepository({
@@ -175,6 +182,17 @@ export async function repairOnlineBackup(
     }
     await rm(freshDir, { recursive: true, force: true });
 
+    // The draft that was only here stays the current draft, at the fresh tip: the
+    // files on top then close-sync as that draft (published online) and the online
+    // default branch is left alone.
+    if (onlyHereDraft) {
+      try {
+        await git.branch({ fs, dir, ref: onlyHereDraft, checkout: true });
+      } catch (e) {
+        logger.warn("swap", "could not keep the current draft's name", errorLogData(e));
+      }
+    }
+
     // Edit-beats-delete: files only the online copy has come back; every file
     // here stays as it is. The swap is done, so a restore that fails (a name
     // this OS can't write) is logged and the backup still runs.
@@ -194,8 +212,12 @@ export async function repairOnlineBackup(
     return { restoredFiles: missing, credential: transport.credential };
   }).catch(async (e) => {
     logger.error("repair", "repair failed", errorLogData(e));
-    // A failed download leaves an empty <backupDir>; the folder is only worth keeping if the old history moved into it.
-    if (!fs.existsSync(movedGitTo)) await rm(options.backupDir, { recursive: true, force: true }).catch(() => {});
+    // Remove only what this call made: the fresh download, then the (empty) folder
+    // itself if it wasn't there before. Never recursive on the folder: it may hold other things.
+    if (!fs.existsSync(movedGitTo)) {
+      await rm(freshDir, { recursive: true, force: true }).catch(() => {});
+      if (!backupDirExisted) await rmdir(options.backupDir).catch(() => {});
+    }
     throw e;
   });
 

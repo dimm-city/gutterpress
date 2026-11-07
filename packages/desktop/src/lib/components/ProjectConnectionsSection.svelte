@@ -681,7 +681,7 @@
   <div class="dlg-shell repair-dialog" use:dialogBehavior={{ onClose: () => (repairAsk = false), labelledBy: "repair-title", initialFocus: ".dlg-ghost" }}>
     <header class="dlg-header"><h2 id="repair-title">Repair backups?</h2></header>
     <div class="dlg-body">
-      <p>Repair sets this book's version history aside, downloads a fresh copy from the online copy, then puts your current files back on top. Your current files don't change. Then a version is saved and backed up.</p>
+      <p>Repair sets this book's version history aside, downloads a fresh copy from the online copy, then puts your current files back on top. Your current files don't change, and you stay on the same draft. Then a version is saved and backed up. A draft that was only on this computer keeps its files and is backed up online under its own name.</p>
       <p class:checking-aside={setAsideLoading}>{setAsideLoading ? "Checking what is only on this computer…" : setAsideText}</p>
     </div>
     <footer class="dlg-actions">
