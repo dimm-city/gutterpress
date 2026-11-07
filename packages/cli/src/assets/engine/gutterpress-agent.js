@@ -40,22 +40,22 @@
   // src/engine/compiler/agent.ts
   var exports_agent = {};
   __export(exports_agent, {
-    xrefSites: () => xrefSites,
-    targetTexts: () => targetTexts,
-    stringSources: () => stringSources,
-    setPinGeometry: () => setPinGeometry,
-    setPinFurniture: () => setPinFurniture,
-    setGenerated: () => setGenerated,
-    printArea: () => printArea,
-    pinRoots: () => pinRoots,
-    instrument: () => instrument,
-    forcedBreakSites: () => forcedBreakSites,
-    fillLeaders: () => fillLeaders,
-    counterResetSites: () => counterResetSites,
-    collectCss: () => collectCss,
-    auditContent: () => auditContent,
+    addCss: () => addCss,
     applyRectoSpacers: () => applyRectoSpacers,
-    addCss: () => addCss
+    auditContent: () => auditContent,
+    collectCss: () => collectCss,
+    counterResetSites: () => counterResetSites,
+    fillLeaders: () => fillLeaders,
+    forcedBreakSites: () => forcedBreakSites,
+    instrument: () => instrument,
+    pinRoots: () => pinRoots,
+    printArea: () => printArea,
+    setGenerated: () => setGenerated,
+    setPinFurniture: () => setPinFurniture,
+    setPinGeometry: () => setPinGeometry,
+    stringSources: () => stringSources,
+    targetTexts: () => targetTexts,
+    xrefSites: () => xrefSites
   });
 
   // src/engine/shared/synthesis.ts
@@ -498,6 +498,23 @@
           kind: "overheight",
           what: name(el),
           detail: `${Math.round(h)}px tall on a ${Math.round(context.height)}px ` + `${context.name === "default" ? "default-page" : `${context.name} page`} content box`
+        });
+      }
+    }
+    for (const root of Array.from(document.querySelectorAll(".page, .spread"))) {
+      const h = root.getBoundingClientRect().height;
+      const limit = pageContext(root).height;
+      if (h <= limit + 1)
+        continue;
+      for (const pin of Array.from(root.querySelectorAll(".gp-pin.gp-bottom"))) {
+        if (pin.offsetParent !== root)
+          continue;
+        const img = pin.matches("img") ? pin : pin.querySelector("img");
+        const src = img ? img.getAttribute("src") ?? "" : "";
+        out.push({
+          kind: "pin-span",
+          what: src && !src.startsWith("data:") ? src : img ? "an inline image" : name(pin),
+          detail: String(Math.ceil(h / limit))
         });
       }
     }
