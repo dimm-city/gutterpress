@@ -391,7 +391,9 @@
     if (!projectDir || !backup) return;
     const seen = backup as { lastSyncAt: string | null; message?: string; seenAt?: number };
     // Counted per distinct status (its time and message), so reopening the tab never adds one.
-    if (onlineCopy.noteBackupResult(projectDir, backup.state, `${seen.lastSyncAt}|${seen.seenAt ?? ""}|${seen.message ?? ""}`) >= 2) troubleOpen = true;
+    const n = onlineCopy.noteBackupResult(projectDir, backup.state, `${seen.lastSyncAt}|${seen.seenAt ?? ""}|${seen.message ?? ""}`);
+    // Only while the latest word is itself a failure (being offline, or a good backup, leaves the drawer as the author had it).
+    if (n >= 2 && (backup.state === "error" || backup.state === "auth" || (backup.state as string) === "not-found")) troubleOpen = true;
   });
 
   async function testConnection() {
@@ -505,7 +507,7 @@
         <span class="status-icon"><Icon name={card.icon} size={18} /></span>
         <div class="status-text">
           <h3 id="online-status-title">{card.title}</h3>
-          <p>{card.detail}{#if card.showChecked && checkedAt !== null && !checking} <span class="checked">Checked {checkedAgo(checkedAt, now)}.</span>{/if}</p>
+          <p>{card.detail}{#if card.showChecked && checkedAt !== null && !checking} {" "}<span class="checked">Checked {checkedAgo(checkedAt, now)}.</span>{/if}</p>
           {#if card.note}<p class="note">{card.note}</p>{/if}
         </div>
         <div class="status-action">
@@ -618,7 +620,7 @@
                 {#if testResult}
                   <p class="result" class:failed={!testOk} role="status"><Icon name={testOk ? "circle-check" : "triangle-alert"} size={14} /> {testResult}</p>
                 {/if}
-                <p class="hint">Checks that Gutterpress can reach the online copy and that your sign-in works. Nothing is changed or uploaded.{#if backup?.state === "offline"} A network setting (a proxy or a firewall) can look like being offline.{/if}</p>
+                <p class="hint">Checks that Gutterpress can reach the online copy and that your sign-in works. Nothing is changed or uploaded.{#if backup?.state === "offline"}{" "}A network setting (a proxy or a firewall) can look like being offline.{/if}</p>
               </div>
               <button class="ghost small" onclick={() => void testConnection()} disabled={busy || testing}>{testing ? "Checking…" : "Check the connection"}</button>
             </div>
