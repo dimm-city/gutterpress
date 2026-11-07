@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import {
   listGitHubRepositories,
+  listGitHubRepositoriesPage,
   listGitHubBranches,
   listRepoBooks,
 } from "./github-repos";
@@ -221,4 +222,22 @@ test("flags repositories that could be an empty backup target (size 0, writable,
   const fetchImpl = (async () => jsonResponse(body)) as unknown as typeof fetch;
   const repos = await listGitHubRepositories(CRED, { fetchImpl });
   expect(repos.filter((r) => r.maybeEmpty).map((r) => r.name)).toEqual(["fresh"]);
+});
+
+
+test("one page at a time: the first page needs one request, and says whether more follow", async () => {
+  const full = Array.from({ length: 100 }, (_, i) => repoBody(`book-${i}`));
+  const requested: string[] = [];
+  const fetchImpl = (async (url: string | URL | Request) => {
+    requested.push(String(url));
+    const page = new URL(String(url)).searchParams.get("page");
+    return jsonResponse(page === "1" ? full : [repoBody("last")]);
+  }) as unknown as typeof fetch;
+  const first = await listGitHubRepositoriesPage(CRED, 1, { fetchImpl });
+  expect(requested.length).toBe(1);
+  expect(first.repos.length).toBe(100);
+  expect(first.hasMore).toBe(true);
+  const second = await listGitHubRepositoriesPage(CRED, 2, { fetchImpl });
+  expect(second).toMatchObject({ page: 2, hasMore: false });
+  expect(second.repos[0]!.fullName).toBe("octocat/last");
 });

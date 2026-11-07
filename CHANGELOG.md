@@ -9,6 +9,36 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Desktop: the backup status is known the moment a book opens.** The status
+  comes from what this computer already knows (no network) and the last
+  answer is kept between launches, so the bar says "Backed up" or "Not backed
+  up yet" within about a third of a second instead of after 4 to 5 seconds
+  (the status payload gains `source`, `ahead`, `behind` and `decide`). The first
+  online check now starts about a second after opening, not four.
+- **Desktop: one online check serves the revision list and the online
+  versions**, and one made in the last 20 seconds is reused (`list-revisions`
+  returns `checkedAt`; both routes take `maxAgeMs`, `0` forces a real check),
+  so opening Version history after the revisions card costs no second round
+  trip. A backup or a change to the online revisions starts the next check
+  fresh.
+- **Desktop: "can't find the online copy" is no longer reported as a sign-in
+  problem.** A 404 from the online copy now gives a `not-found` outcome and
+  says so ("Gutterpress can't find this online copy. It may have been renamed
+  or deleted, or your account may not have access to it."), instead of asking
+  for the sign-in again. On GitHub it says "Gutterpress can't find this online
+  copy on GitHub…" and the status carries `reason: "not-found"`, `host: "github"`
+  and `canSignIn`. A status worked out from what this computer knows also counts
+  work edited outside the app as not backed up yet.
+- **Desktop: a repair preview** (`remote/repair-preview`) lists the revisions
+  and counts the versions that exist only on this computer and would be set
+  aside by "Repair the online copy".
+- **Desktop: the repo picker can load a page at a time.** `list-repositories`
+  accepts `page` and returns the first 100 at once with `hasMore`, from a short
+  cache; the old call without `page` still returns everything.
+- **Desktop: setting up a backup reports its step** (`set-up-backup-progress`:
+  checking the account, creating or checking the online copy, sending the
+  book) for the screen to show while the call runs.
+
 - **`pdfx.blackText: k-only-neutral`.** Grey text at 24pt and under (channels
   within 0.04 of each other) also prints on the black plate alone, at about
   its tone; a coloured ink keeps its colour. `pdf.print.black-text` names it.

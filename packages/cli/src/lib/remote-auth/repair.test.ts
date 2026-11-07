@@ -19,7 +19,7 @@ import path from "node:path";
 import git from "isomorphic-git";
 
 import { cloneRepository } from "./clone.ts";
-import { REPAIR_SNAPSHOT_MESSAGE, repairOnlineBackup } from "./repair.ts";
+import { previewRepair, REPAIR_SNAPSHOT_MESSAGE, repairOnlineBackup } from "./repair.ts";
 import { MSG_HISTORY_UNREADABLE } from "./sync-messages.ts";
 import { syncProject } from "./sync.ts";
 import { createFixtureRepo, startGitServer, tempDir } from "./test-support/git-http-server.ts";
@@ -173,6 +173,54 @@ describe("repairOnlineBackup", () => {
     } finally {
       await rm(h.serverDir, { recursive: true, force: true }).catch(() => {});
       await rm(path.dirname(h.projectDir), { recursive: true, force: true }).catch(() => {});
+    }
+  });
+});
+
+
+describe("previewRepair", () => {
+  test("a book that matches the online copy has nothing to set aside", async () => {
+    const h = await setup();
+    try {
+      expect(await previewRepair(h.projectDir)).toEqual({ revisions: [], versions: 0 });
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("names the revisions and counts the versions found only on this computer", async () => {
+    const h = await setup();
+    try {
+      // Two versions on main that were never sent, and a revision that exists only here.
+      for (const n of [1, 2]) {
+        await writeFile(path.join(h.projectDir, `local-${n}.md`), `# ${n}\n`);
+        await git.add({ fs, dir: h.projectDir, filepath: `local-${n}.md` });
+        await git.commit({ fs, dir: h.projectDir, author: AUTHOR, message: `local ${n}` });
+      }
+      await git.branch({ fs, dir: h.projectDir, ref: "Second-edition", checkout: true });
+      await writeFile(path.join(h.projectDir, "edition.md"), "# Edition\n");
+      await git.add({ fs, dir: h.projectDir, filepath: "edition.md" });
+      await git.commit({ fs, dir: h.projectDir, author: AUTHOR, message: "edition" });
+
+      // main's two + the edition's one (the edition also holds main's two: counted once).
+      expect(await previewRepair(h.projectDir)).toEqual({ revisions: ["Second-edition"], versions: 3 });
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("copies an earlier recovery kept are set aside too, and counted", async () => {
+    const h = await setup();
+    try {
+      await writeFile(path.join(h.projectDir, "kept.md"), "# kept\n");
+      await git.add({ fs, dir: h.projectDir, filepath: "kept.md" });
+      const oid = await git.commit({ fs, dir: h.projectDir, author: AUTHOR, message: "kept copy", ref: "refs/gutterpress/before-repair-20261107000000001" });
+      expect(oid).toBeString();
+      const preview = await previewRepair(h.projectDir);
+      expect(preview.repairCopies).toBe(1);
+      expect(preview.versions).toBeGreaterThanOrEqual(1);
+    } finally {
+      await h.cleanup();
     }
   });
 });

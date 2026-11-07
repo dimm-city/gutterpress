@@ -72,7 +72,12 @@ export interface SetUpOnlineBackupOptions {
   httpClient?: SyncProjectOptions["httpClient"];
   /** Operation log (passed to `syncProject`). */
   logFile?: SyncProjectOptions["logFile"];
+  /** Told as setting up moves through its steps, so the screen can say what is happening. */
+  onProgress?: (step: BackupSetupStep) => void;
 }
+
+/** The steps of setting up a backup, in order (`creating` only when a new online copy is made). */
+export type BackupSetupStep = "checking" | "creating" | "choosing" | "sending";
 
 export type BackupSetupFailureReason =
   | "not-connected"
@@ -265,12 +270,15 @@ async function run(options: SetUpOnlineBackupOptions): Promise<BackupSetupResult
 
   const { target } = options;
   let repo: RepoJson;
+  options.onProgress?.("checking");
   if (target.kind === "create") {
     const name = target.name.trim();
     if (!name) throw new BackupFailure("invalid-name", MSG.noName);
     if (!isValidRepositoryName(name)) throw new BackupFailure("invalid-name", MSG.badName);
+    options.onProgress?.("creating");
     repo = await createRepository(fetchImpl, credential.token, name, target.private ?? true);
   } else {
+    options.onProgress?.("choosing");
     repo = await loadEmptyRepository(fetchImpl, credential, target.owner, target.name);
   }
   const repository = toRemoteRepository(repo);
@@ -281,6 +289,7 @@ async function run(options: SetUpOnlineBackupOptions): Promise<BackupSetupResult
   await withRepoLock(dir, () =>
     git.addRemote({ fs, dir, remote: "origin", url: repo.clone_url }),
   );
+  options.onProgress?.("sending");
   const sync = await syncProject({
     projectDir: options.projectDir,
     credential,
@@ -297,6 +306,7 @@ async function run(options: SetUpOnlineBackupOptions): Promise<BackupSetupResult
   await withRepoLock(dir, () => git.deleteRemote({ fs, dir, remote: "origin" })).catch(() => {});
   if (sync.status === "auth") throw new BackupFailure("auth", sync.message, repository);
   if (sync.status === "offline") throw new BackupFailure("offline", sync.message, repository);
+  if (sync.status === "not-found") throw new BackupFailure("not-found", sync.message, repository);
   throw new BackupFailure("push-failed", sync.message || MSG.pushFailed, repository);
 }
 

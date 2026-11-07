@@ -23,6 +23,11 @@ export interface ProjectState {
   currentPage?: number;
   /** Split-pane size ratio (0..1). */
   splitPaneRatio?: number;
+  /**
+   * The last answer a backup pass gave for this book, kept so the next launch
+   * can show it at once (host-written; the renderer never sets it).
+   */
+  lastBackup?: { state: string; at: string; ahead?: number };
 }
 
 /** The per-project state map: `{ [folderPath]: ProjectState }`. */
@@ -48,6 +53,18 @@ export function readProjectState(
   if (!states || typeof states !== "object") return null;
   const entry = states[projectDir];
   return entry && typeof entry === "object" ? entry : null;
+}
+
+/** Remove one field from a project's bucket (a patch cannot: `undefined` is ignored). */
+export function clearProjectStateField(
+  states: ProjectStateMap | undefined,
+  projectDir: string,
+  key: keyof ProjectState,
+): ProjectStateMap {
+  const current = readProjectState(states, projectDir);
+  if (!current || !(key in current)) return states ?? {};
+  const { [key]: _removed, ...rest } = current;
+  return { ...(states ?? {}), [projectDir]: rest };
 }
 
 /**

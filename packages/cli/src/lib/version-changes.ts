@@ -29,9 +29,9 @@ import postcss from "postcss";
 import { gitFs as fs } from "./git-fs.ts";
 import { detectProjectSource, syncRemoteFor } from "./project-source.ts";
 import { gitScopeFor, nextInHistory, startHistoryWalk, type SnapshotEntry } from "./source-provider.ts";
-import { currentBranchOrThrow, onAuthFor, repoDirFor, resolveTransport } from "./remote-auth/transport.ts";
+import { currentBranchOrThrow, repoDirFor, resolveTransport } from "./remote-auth/transport.ts";
 import { defaultGitHttp } from "./remote-auth/git-http.ts";
-import { MSG_NO_REMOTE, MSG_SSH_REMOTE } from "./remote-auth/sync-messages.ts";
+import { refreshRemoteCopies } from "./remote-auth/sync.ts";
 import type { HostCredential, TokenStore } from "./remote-auth/token-store.ts";
 import { alignRows, countChanged, diffSequences, textLines, type CompareRow } from "./text-diff.ts";
 
@@ -337,18 +337,36 @@ export async function commitsAhead(
 }
 
 /**
- * What is online that this computer has not got: fetch the book's branch
- * (remote-tracking ref only — no merge, no checkout, safe on a dirty tree)
- * and describe the commits this computer has not got, each with the files it
- * changed. Quiet on every failure, reporting why, like `checkRemoteUpdates`.
+ * What is online that this computer has not got: check the online copy (the
+ * same all-branch fetch the revision list makes, shared with it inside
+ * `maxAgeMs` — so opening Version history right after the revisions card costs
+ * no second round trip), then describe the commits this computer has not got,
+ * each with the files it changed. Writes remote-tracking refs only — no merge,
+ * no checkout, safe on a dirty tree. Quiet on every failure, reporting why,
+ * like `checkRemoteUpdates`.
  */
 export async function listOnlineVersions(options: {
   projectDir: string;
   credential?: HostCredential;
   tokenStore?: TokenStore;
   httpClient?: typeof defaultGitHttp;
-}): Promise<{ entries: OnlineVersionEntry[]; reason?: "no-remote" | "auth" | "offline" }> {
-  const http = options.httpClient ?? defaultGitHttp;
+  /** Reuse an online check made within this many ms (default 0: always ask). */
+  maxAgeMs?: number;
+}): Promise<{
+  entries: OnlineVersionEntry[];
+  reason?: "no-remote" | "auth" | "not-found" | "offline";
+  checkedAt?: string | null;
+}> {
+  const checked = await refreshRemoteCopies({
+    projectDir: options.projectDir,
+    ...(options.credential ? { credential: options.credential } : {}),
+    ...(options.tokenStore ? { tokenStore: options.tokenStore } : {}),
+    ...(options.httpClient ? { httpClient: options.httpClient } : {}),
+    ...(options.maxAgeMs ? { maxAgeMs: options.maxAgeMs } : {}),
+  });
+  if (!checked.refreshed) {
+    return { entries: [], ...(checked.reason ? { reason: checked.reason } : {}), checkedAt: checked.checkedAt };
+  }
   try {
     const dir = await repoDirFor(options.projectDir);
     const transport = await resolveTransport(dir, {
@@ -357,34 +375,17 @@ export async function listOnlineVersions(options: {
     });
     const branch = await currentBranchOrThrow(dir);
     const cache = {};
-    await git.fetch({
-      fs,
-      http,
-      dir,
-      cache,
-      remote: transport.remote,
-      ref: branch,
-      singleBranch: true,
-      tags: false,
-      ...onAuthFor(transport.credential),
-      // One shot: never loop on a rejected credential.
-      ...(transport.credential ? { onAuthFailure: () => ({ cancel: true }) } : {}),
-    });
     const tip = await resolveOrNull(dir, `refs/remotes/${transport.remote}/${branch}`);
     const local = await resolveOrNull(dir, branch);
-    if (!tip || !local) return { entries: [] };
+    if (!tip || !local) return { entries: [], checkedAt: checked.checkedAt };
     const entries: OnlineVersionEntry[] = [];
     for (const entry of await commitsAhead(dir, tip, local, cache)) {
       const { files, more } = await changesOf(dir, cache, entry.id);
       entries.push({ ...entry, backedUp: true, changes: files, moreChanges: more });
     }
-    return { entries };
-  } catch (e) {
-    const message = (e as { message?: string })?.message ?? "";
-    if (message === MSG_NO_REMOTE || message === MSG_SSH_REMOTE) return { entries: [], reason: "no-remote" };
-    const status = (e as { data?: { statusCode?: number } })?.data?.statusCode;
-    if (status === 401 || status === 403 || status === 404) return { entries: [], reason: "auth" };
-    return { entries: [], reason: "offline" };
+    return { entries, checkedAt: checked.checkedAt };
+  } catch {
+    return { entries: [], reason: "offline", checkedAt: checked.checkedAt };
   }
 }
 

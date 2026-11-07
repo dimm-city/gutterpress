@@ -386,6 +386,7 @@ export type {
 
 export {
   listGitHubRepositories,
+  listGitHubRepositoriesPage,
   listGitHubBranches,
   listRepoBooks,
 } from "../lib/remote-auth/github-repos.ts";
@@ -405,6 +406,7 @@ export type {
   BackupTarget,
   BackupSetupResult,
   BackupSetupFailureReason,
+  BackupSetupStep,
   SetUpOnlineBackupOptions,
 } from "../lib/remote-auth/online-backup.ts";
 
@@ -459,6 +461,9 @@ export type {
 export {
   syncProject,
   refreshRemoteCopies,
+  lastOnlineCheck,
+  forgetOnlineCheckFor,
+  localBackupStatus,
   checkRemoteUpdates,
   SYNC_SNAPSHOT_MESSAGE,
 } from "../lib/remote-auth/sync.ts";
@@ -466,7 +471,9 @@ export { renameRevision, deleteRevision } from "../lib/remote-auth/revisions.ts"
 export type { RenameRevisionOptions, DeleteRevisionOptions } from "../lib/remote-auth/revisions.ts";
 export {
   repairOnlineBackup,
+  previewRepair,
   REPAIR_SNAPSHOT_MESSAGE,
+  type RepairPreview,
   type RepairOnlineBackupOptions,
   type RepairOnlineBackupResult,
 } from "../lib/remote-auth/repair.ts";

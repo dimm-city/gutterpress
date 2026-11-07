@@ -253,7 +253,7 @@ export class SyncController {
     // The host knows the online copy has moved on (or has not): keep the Update button's cue in step.
     if (typeof extra.behind === "boolean") this.updatesAvailable = extra.behind;
     // A finished pass makes a version first, so it also proves the automatic versions work again.
-    if (status.state === "synced" || status.state === "unsent") this.versionsProblemOf = null;
+    if ((status.state === "synced" || status.state === "unsent") && status.source !== "local") this.versionsProblemOf = null;
   }
 
   /** The stream has no replay: read what the host kept for a book that just opened, unless a live event beat it. */
