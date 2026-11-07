@@ -36,8 +36,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **Autosave waits for you to stop typing.** It used to write 500 ms after the
   last keystroke, so a short pause mid-sentence saved the file and rebuilt the
   preview before the edit was finished. It now writes after 2 seconds with no
-  typing, and at most 12 seconds into unbroken typing. Switching away
-  from the editor or hiding the window, switching files, Save (Ctrl/Cmd+S),
+  typing, and at most 12 seconds into unbroken typing. Leaving the window
+  or hiding it, switching files, Save (Ctrl/Cmd+S),
   closing, and building or exporting still save at once. The preview
   already folds saves that land during a rebuild into one follow-up rebuild.
 

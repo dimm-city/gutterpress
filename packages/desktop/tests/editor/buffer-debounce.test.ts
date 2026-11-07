@@ -131,3 +131,45 @@ test("edit during an autosave write reschedules a trailing save of the newest te
   expect(disk()).toBe("ab");
   expect(buffer.phase).toBe("clean");
 });
+
+test("autosave toggled off then on with a run pending: no stale max-wait save on the first keystroke", async () => {
+  let on = true;
+  const { buffer, writes } = await open("orig", undefined, { autoSave: () => on });
+  buffer.edit("a");
+  advance(1500);
+  on = false;
+  buffer.edit("ab"); // clears the timer and the run anchor
+  advance(20_000);
+  on = true;
+  buffer.edit("abc");
+  advance(1999);
+  await settle();
+  expect(writes).toEqual([]);
+  advance(1);
+  await settle();
+  expect(writes).toEqual(["abc"]);
+});
+
+test("flushOnFocusLoss gates: autosave off, external change, error phase, clean buffer", async () => {
+  const { buffer, writes } = await open();
+  // clean: nothing to do
+  await buffer.flushOnFocusLoss(true);
+  expect(writes).toEqual([]);
+  buffer.edit("x");
+  // autosave off
+  await buffer.flushOnFocusLoss(false);
+  expect(writes).toEqual([]);
+  // external-change banner up
+  buffer.externalChange = { diskContent: "other", diskMtimeMs: 9 };
+  await buffer.flushOnFocusLoss(true);
+  expect(writes).toEqual([]);
+  buffer.externalChange = null;
+  // error phase
+  (buffer as unknown as { setPhase(p: string): void }).setPhase("error");
+  await buffer.flushOnFocusLoss(true);
+  expect(writes).toEqual([]);
+  // all clear: saves now
+  (buffer as unknown as { setPhase(p: string): void }).setPhase("dirty");
+  await buffer.flushOnFocusLoss(true);
+  expect(writes).toEqual(["x"]);
+});

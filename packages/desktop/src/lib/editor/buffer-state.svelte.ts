@@ -211,7 +211,10 @@ export class EditorBuffer {
     this.saveTimer = null;
     // Autosave off: the edit waits for an explicit flush() — Save, Ctrl+S,
     // or Save in the prompt shown on leaving the file.
-    if (this.opts.autoSave?.() === false) return;
+    if (this.opts.autoSave?.() === false) {
+      this.pendingSince = null;
+      return;
+    }
     const now = Date.now();
     this.pendingSince ??= now;
     const delay = this.opts.saveDelayMs ?? DEFAULT_SAVE_DELAY_MS;
@@ -312,6 +315,7 @@ export class EditorBuffer {
 
   /** Force any pending save to run now and await it (close/navigate flush). */
   async flush(): Promise<void> {
+    this.pendingSince = null;
     if (this.recoveryTimer) {
       clearTimeout(this.recoveryTimer);
       this.recoveryTimer = null;
@@ -330,6 +334,19 @@ export class EditorBuffer {
         throw new Error("The file changed on disk before the edit could be saved.");
       }
     }
+  }
+
+  /**
+   * Flush for a focus-loss signal (window blur / hidden). Skips when autosave
+   * is off (edits wait for an explicit save), while the external-change banner
+   * is up (a save with the stale baseline would re-raise it right after the
+   * author picks Reload / Keep mine), and in the error phase (a persistent
+   * failure would re-toast on every signal). Never throws.
+   */
+  async flushOnFocusLoss(autoSaveOn: boolean): Promise<void> {
+    if (!autoSaveOn || !this.hasPendingSave) return;
+    if (this.externalChange || this.phase === "error") return;
+    await this.flush().catch(() => {});
   }
 
   /**

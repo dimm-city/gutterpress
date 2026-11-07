@@ -1344,11 +1344,11 @@
     editorFiles.reset();
   }
 
-  /** Blur / window hidden: save a pending edit now (autosave on only; with it
-   *  off, edits wait for an explicit save). Errors surface via onError. */
+  /** The window lost focus or was hidden: save a pending edit now. The gates
+   *  (autosave on, no external-change banner, not in an error state) live in
+   *  {@link EditorBuffer.flushOnFocusLoss}. */
   async function flushIfAutosaving(): Promise<void> {
-    if (!buffer?.hasPendingSave || !settings.current.versionHistory.autoSave) return;
-    await buffer.flush().catch(() => {});
+    await buffer?.flushOnFocusLoss(settings.current.versionHistory.autoSave);
   }
 
   async function flushEditorBuffer(
@@ -2495,10 +2495,16 @@
       if (document.visibilityState === "hidden") void flushIfAutosaving();
     }
 
+    function onWindowBlur() {
+      void flushIfAutosaving();
+    }
+
     window.addEventListener("keydown", onKeydown);
+    window.addEventListener("blur", onWindowBlur);
     document.addEventListener("visibilitychange", onHidden);
     return () => {
       window.removeEventListener("keydown", onKeydown);
+      window.removeEventListener("blur", onWindowBlur);
       document.removeEventListener("visibilitychange", onHidden);
     };
   });
@@ -3200,7 +3206,6 @@
               content={editorContent}
               onChange={onEditorChange}
               onSave={() => void handleForceSave()}
-              onBlur={() => void flushIfAutosaving()}
               onAnchorLine={(line, origin) =>
                 editorSync.onEditorAnchorLine(line, origin, editorChapter)}
               components={projectComponents}
