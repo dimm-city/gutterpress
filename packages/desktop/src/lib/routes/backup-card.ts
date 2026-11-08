@@ -86,7 +86,7 @@ export function backupCard(i: CardInput): CardView {
       return {
         icon: "laptop",
         tone: "plain",
-        title: "Not online yet yet",
+        title: "Not online yet",
         detail: "Your book is saved on this computer only. If this computer is lost or broken, so is your book. An online copy on GitHub keeps it safe, free.",
         action: "set-up-backup",
       };

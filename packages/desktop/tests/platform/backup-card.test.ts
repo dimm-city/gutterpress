@@ -10,7 +10,7 @@ const synced = (extra = {}) => ({ state: "synced", lastSyncAt: new Date(NOW - 3 
 describe("backupCard", () => {
   test("plain folder and no online copy", () => {
     expect(card({ situation: "no-versions" })).toMatchObject({ title: "Version history is off", action: "turn-on-versions" });
-    expect(card({ situation: "local-only" })).toMatchObject({ title: "Not online yet yet", action: "set-up-backup" });
+    expect(card({ situation: "local-only" })).toMatchObject({ title: "Not online yet", action: "set-up-backup" });
   });
   test("checking, with the last known time when there is one", () => {
     expect(card({ backup: null, checking: true })).toMatchObject({ title: "Checking your online copy…", action: null });

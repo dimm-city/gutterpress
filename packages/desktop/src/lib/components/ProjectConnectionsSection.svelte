@@ -581,7 +581,7 @@
 
     {#if showWaiting && projectDir}
       <!-- 1b. What is waiting on each side, and the one button for each. -->
-      <WaitingChanges {projectDir} refreshKey={waitingKey} {busy} {running} {checking} onSend={backUpNow} onGet={getLatest} />
+      <WaitingChanges {projectDir} refreshKey={waitingKey} {busy} {running} {checking} draftOnlyHere={drafts?.currentBackedUp === false} onSend={backUpNow} onGet={getLatest} />
     {/if}
 
     {#if situation !== "no-versions" && projectDir}

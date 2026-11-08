@@ -24,6 +24,7 @@
     busy = false,
     running = null,
     checking = false,
+    draftOnlyHere = false,
     onSend,
     onGet,
   }: {
@@ -34,6 +35,8 @@
     running?: "back-up" | "get-latest" | "repair" | "start-over" | null;
     /** The online copy is being checked right now. */
     checking?: boolean;
+    /** The open draft has never been sent online, so everything on it is waiting even though its versions carry no online mark. */
+    draftOnlyHere?: boolean;
     onSend: () => void;
     onGet: () => void;
   } = $props();
@@ -131,7 +134,7 @@
   });
 
   const count = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
-  const waitingHere = $derived(localTotal + (unsaved && unsaved > 0 ? 1 : 0));
+  const waitingHere = $derived(localTotal + (unsaved && unsaved > 0 ? 1 : 0) + (draftOnlyHere ? 1 : 0));
 </script>
 
 {#snippet rows(list: WaitingChange[], showAuthor: boolean)}
@@ -164,7 +167,7 @@
         <span class="wc-count">{waitingHere}</span>
       </div>
       {#if localTotal === 0 && !(unsaved && unsaved > 0)}
-        <p class="wc-empty">Nothing waiting. Everything saved here is online.</p>
+        <p class="wc-empty">{draftOnlyHere ? "This draft isn't online yet." : "Nothing waiting. Everything saved here is online."}</p>
       {:else}
         {#if unsaved && unsaved > 0}
           <p class="wc-extra">{count(unsaved, "file", "files")} edited since your last saved version.</p>
