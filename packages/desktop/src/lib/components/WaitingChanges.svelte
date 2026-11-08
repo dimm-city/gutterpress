@@ -151,7 +151,7 @@
 <section class="wc section-card" aria-labelledby="waiting-title">
   <header class="section-head">
     <div>
-      <h3 id="waiting-title">Waiting to travel</h3>
+      <h3 id="waiting-title">Changes waiting</h3>
       <p class="section-sub">What is different between this computer and the online copy.</p>
     </div>
   </header>
@@ -172,9 +172,11 @@
         {@render rows(local, false)}
         {#if localTotal > local.length}<p class="wc-extra">and {localTotal - local.length} older {localTotal - local.length === 1 ? "change" : "changes"}.</p>{/if}
       {/if}
-      <button class="app-btn-primary" onclick={onSend} disabled={busy || waitingHere === 0}>
-        {running === "back-up" ? "Sending…" : "Send now"}
-      </button>
+      {#if waitingHere > 0 || running === "back-up"}
+        <button class="app-btn-primary wc-send" onclick={onSend} disabled={busy}>
+          {running === "back-up" ? "Sending…" : "Send now"}
+        </button>
+      {/if}
     </div>
 
     <div class="wc-side" aria-labelledby="wc-online">
@@ -194,9 +196,11 @@
         {@render rows(incoming, true)}
         {#if incomingTotal > incoming.length}<p class="wc-extra">and {incomingTotal - incoming.length} more.</p>{/if}
       {/if}
-      <button class="app-btn-primary" onclick={onGet} disabled={busy || !incoming?.length}>
-        {running === "get-latest" ? "Getting them…" : "Get them now"}
-      </button>
+      {#if incoming?.length || running === "get-latest"}
+        <button class="app-btn-primary wc-get" onclick={onGet} disabled={busy}>
+          {running === "get-latest" ? "Getting them…" : "Get them now"}
+        </button>
+      {/if}
     </div>
   </div>
 </section>

@@ -518,6 +518,8 @@
   }
 
   const when = (ms: number): string => new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  /** The Changes waiting section is shown, so its Send now is the only one on screen. */
+  const showWaiting = $derived(situation === "ready" && !!projectDir);
   const needsSignIn = $derived(
     card?.action === "sign-in" || (signInOpen && !!card),
   );
@@ -540,7 +542,7 @@
           {#if card.note}<p class="note">{card.note}</p>{/if}
         </div>
         <div class="status-action">
-          {#if card.action && card.action !== "sign-in" && (card.action !== "review-decisions" || onReviewDecisions)}
+          {#if card.action && card.action !== "sign-in" && !(card.action === "back-up" && showWaiting) && (card.action !== "review-decisions" || onReviewDecisions)}
             <button class="app-btn-primary" onclick={() => runAction(card.action)} disabled={busy}>
               {busyLabel(card.action) ?? LABELS[card.action]}
             </button>
@@ -577,7 +579,7 @@
       {#if actionError}<p class="status-note error" role="alert" bind:this={errorEl} tabindex="-1">{actionError}</p>{/if}
     </section>
 
-    {#if situation === "ready" && projectDir}
+    {#if showWaiting && projectDir}
       <!-- 1b. What is waiting on each side, and the one button for each. -->
       <WaitingChanges {projectDir} refreshKey={waitingKey} {busy} {running} {checking} onSend={backUpNow} onGet={getLatest} />
     {/if}

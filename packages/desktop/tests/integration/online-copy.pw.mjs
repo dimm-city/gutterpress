@@ -683,6 +683,8 @@ await evalJs(`(() => {
     const path = new URL(typeof input === "string" ? input : input.url, location.href).pathname;
     if (path === "/api/remote/diagnose-project") window.__sync.diagnosed++;
     if (path === "/api/remote/check-updates") return Promise.resolve(json({ available: window.__sync.updatesOnline }));
+    // One edited file not in a version yet: something on this computer is waiting, so the Changes waiting section offers Send now.
+    if (path === "/api/vcs/unversioned-changes") return Promise.resolve(json({ changedFiles: 1, stale: false }));
     if (path === "/api/remote/sync") {
       const body = JSON.parse(init.body);
       window.__sync.calls.push(body);
@@ -714,11 +716,11 @@ await screenshot(join(tmpdir(), "online-copy-failing.png"));
 check(failing.title === "Your online copy is set up", `the status does not claim a backup it has not heard of (${failing.title})`);
 
 // Automatic backing up is on (the default): Get latest and Back up now are both offered (#485).
-const statusActions = `[...document.querySelectorAll('#project-settings-panel .status-action button')]`;
+const statusActions = `[...document.querySelectorAll('#project-settings-panel .status-action button, #project-settings-panel .wc-send')]`;
 const cardButtons = () => evalJs(`${statusActions}.map((b) => b.textContent.trim() + (b.disabled ? ' (disabled)' : '')).join('|')`);
 const cardTitle = () => evalJs(`document.querySelector('#project-settings-panel .status-text h3')?.textContent.trim()`);
-check((await cardButtons()) === "Send now", `the status card offers Send now (${await cardButtons()})`);
-await click("#project-settings-panel .status-action button", "Send now");
+check((await cardButtons()) === "Send now", `Changes waiting offers the one Send now (${await cardButtons()})`);
+await click("#project-settings-panel .wc-send", "Send now");
 check(await waitFor(`${statusActions}.map((b) => b.textContent.trim() + (b.disabled ? '*' : '')).join('|') === 'Sending…*'`), "Send now reads Sending… while it runs");
 check(await evalJs(`window.__sync.calls.length === 1 && window.__sync.calls[0].push === undefined`), "Send now ran one full pass, with automatic sending on");
 // The open draft was only online-side before the pass; the pass makes it backed up everywhere.
@@ -806,7 +808,7 @@ check(await waitFor(`!(${prompt}) && !(${updateBtn}) && /^Saved here · (?!New c
 await openTabFromBar();
 check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Send now'`), `with automatic sending off, the status card still offers Send now (${await cardButtons()})`);
 await screenshot(join(tmpdir(), "online-copy-tab-manual.png"));
-await click("#project-settings-panel .status-action button", "Send now");
+await click("#project-settings-panel .wc-send", "Send now");
 check(await waitFor(`${statusActions}.some((b) => b.textContent.trim() === 'Sending…')`), "Send now reads Sending… while it runs");
 check(await evalJs(`window.__sync.calls.length === 2 && window.__sync.calls[1].push === undefined`), "Send now is the full pass");
 await evalJs(`window.__sync.release(); true`);
