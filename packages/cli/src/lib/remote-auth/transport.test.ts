@@ -41,6 +41,7 @@ import {
   startGitServer,
   tempDir,
 } from "./test-support/git-http-server.ts";
+import { MSG_NOT_FOUND } from "./sync-messages.ts";
 import type { HostCredential } from "./token-store.ts";
 import type { RemoteTransport } from "./sync-types.ts";
 
@@ -346,12 +347,22 @@ describe("classifyTransportFailure", () => {
     expect(isInsecureTransportError(new InsecureTransportError())).toBe(true);
   });
 
-  test("HttpError 401/403/404 → auth_required", () => {
-    for (const statusCode of [401, 403, 404]) {
+  test("HttpError 401/403 → auth_required", () => {
+    for (const statusCode of [401, 403]) {
       expect(classifyTransportFailure({ code: "HttpError", data: { statusCode } })).toBe(
         "auth_required",
       );
     }
+  });
+
+  test("HttpError 404 → not_found, never a sign-in problem", () => {
+    expect(classifyTransportFailure({ code: "HttpError", data: { statusCode: 404 } })).toBe("not_found");
+    expect(classifyTransportFailure(new Error("HTTP Error: 404 Not Found"))).toBe("not_found");
+    expect(failureOutcome({ code: "HttpError", data: { statusCode: 404 } })).toEqual({
+      status: "not-found",
+      message: MSG_NOT_FOUND,
+    });
+    expect(failureOutcome({ code: "HttpError", data: { statusCode: 401 } }).status).toBe("auth");
   });
 
   test("permission/hook wording → auth_required (never a pull-first)", () => {

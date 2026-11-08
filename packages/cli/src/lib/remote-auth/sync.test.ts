@@ -28,6 +28,9 @@ import {
   isPushRejected,
   checkRemoteUpdates,
   isUnrelatedHistories,
+  forgetOnlineCheckFor,
+  lastOnlineCheck,
+  localBackupStatus,
   refreshRemoteCopies,
   syncProject,
   SYNC_SNAPSHOT_MESSAGE,
@@ -35,7 +38,8 @@ import {
 import { listRevisions, providerFor } from "../source-provider.ts";
 import { detectProjectSource } from "../project-source.ts";
 import { mergeWithMarkers } from "./converge-merge.ts";
-import { MSG_HISTORY_UNREADABLE } from "./sync-messages.ts";
+import { listOnlineVersions } from "../version-changes.ts";
+import { MSG_HISTORY_UNREADABLE, MSG_NOT_FOUND, MSG_NOT_FOUND_GITHUB } from "./sync-messages.ts";
 import type { HostCredential } from "./token-store.ts";
 import {
   createFixtureRepo,
@@ -1815,7 +1819,7 @@ describe("refreshRemoteCopies", () => {
       await git.branch({ fs, dir: h.serverDir, ref: "private-copy", object: tip });
       // No credential passed: exactly the 401 a private repo returns.
       const result = await refreshRemoteCopies({ projectDir: h.projectDir });
-      expect(result).toEqual({ refreshed: false, reason: "auth" });
+      expect(result).toEqual({ refreshed: false, reason: "auth", checkedAt: null });
       // The list still shows what is on disk rather than erroring out.
       expect((await listRevisions(h.projectDir))!.revisions.map((r) => r.name)).toContain("main");
     } finally {
@@ -1831,6 +1835,7 @@ describe("refreshRemoteCopies", () => {
       expect(await refreshRemoteCopies({ projectDir: dir })).toEqual({
         refreshed: false,
         reason: "no-remote",
+        checkedAt: null,
       });
       expect((await listRevisions(dir))!.revisions.map((r) => r.name)).toContain("main");
     } finally {
@@ -1887,6 +1892,16 @@ describe("checkRemoteUpdates", () => {
     try {
       expect(await checkRemoteUpdates({ projectDir: h.projectDir })).toEqual({ available: false, reason: "auth" });
       expect(await checkRemoteUpdates({ projectDir: h.projectDir, credential: h.credential! })).toEqual({ available: false });
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("a rejected saved sign-in reports 'auth', not 'offline' (checkRemoteUpdates)", async () => {
+    const h = await setupClone({ requireAuth: { username: "u", password: "p" } });
+    try {
+      const wrong = { host: "127.0.0.1", kind: "token" as const, token: "nope", username: "u", createdAt: Date.now() };
+      expect(await checkRemoteUpdates({ projectDir: h.projectDir, credential: wrong })).toEqual({ available: false, reason: "auth" });
     } finally {
       await h.cleanup();
     }
@@ -2032,3 +2047,284 @@ describe("sync diagnostics", () => {
     } finally { await h.cleanup(); }
   });
 });
+
+
+describe("one online check serves the revision list and the online versions", () => {
+  /** An http client that counts the requests it sends. */
+  const counting = () => {
+    const counter = { requests: 0 };
+    const client: typeof httpNode = {
+      request: (args) => {
+        counter.requests++;
+        return httpNode.request(args);
+      },
+    };
+    return { counter, client };
+  };
+
+  test("a check within maxAgeMs reads the refs the last one wrote, with no network", async () => {
+    const h = await setupClone();
+    try {
+      const { counter, client } = counting();
+      const first = await refreshRemoteCopies({ projectDir: h.projectDir, httpClient: client });
+      expect(first.refreshed).toBe(true);
+      expect(first.checkedAt).toBeString();
+      const afterFirst = counter.requests;
+      expect(afterFirst).toBeGreaterThan(0);
+
+      const second = await refreshRemoteCopies({ projectDir: h.projectDir, httpClient: client, maxAgeMs: 60_000 });
+      expect(second).toEqual({ refreshed: true, checkedAt: first.checkedAt });
+      expect(counter.requests).toBe(afterFirst);
+
+      // No window (the default) always asks the server.
+      await refreshRemoteCopies({ projectDir: h.projectDir, httpClient: client });
+      expect(counter.requests).toBeGreaterThan(afterFirst);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("concurrent checks share one fetch", async () => {
+    const h = await setupClone();
+    try {
+      const solo = counting();
+      await refreshRemoteCopies({ projectDir: h.projectDir, httpClient: solo.client });
+      const both = counting();
+      await Promise.all([
+        refreshRemoteCopies({ projectDir: h.projectDir, httpClient: both.client }),
+        refreshRemoteCopies({ projectDir: h.projectDir, httpClient: both.client }),
+      ]);
+      expect(both.counter.requests).toBe(solo.counter.requests);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("listOnlineVersions after the revision list's check costs no second round trip", async () => {
+    const h = await setupClone();
+    try {
+      const { counter, client } = counting();
+      await refreshRemoteCopies({ projectDir: h.projectDir, httpClient: client, maxAgeMs: 60_000 });
+      const afterRevisions = counter.requests;
+      const sha = await serverCommit(h.serverDir, { "chapter-09.md": "# Nine\n" }, "Added chapter nine");
+      // Fresh: answers from the refs already fetched (which predate the new commit).
+      const cached = await listOnlineVersions({ projectDir: h.projectDir, httpClient: client, maxAgeMs: 60_000 });
+      expect(counter.requests).toBe(afterRevisions);
+      expect(cached.entries).toEqual([]);
+      // Forcing a real check sees it.
+      const real = await listOnlineVersions({ projectDir: h.projectDir, httpClient: client });
+      expect(real.entries.map((e) => e.id)).toEqual([sha]);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("a backup forgets the freshness, so the next check is real", async () => {
+    const h = await setupClone();
+    try {
+      const { counter, client } = counting();
+      await refreshRemoteCopies({ projectDir: h.projectDir, httpClient: client, maxAgeMs: 60_000 });
+      await syncProject({ projectDir: h.projectDir, httpClient: client });
+      const before = counter.requests;
+      await refreshRemoteCopies({ projectDir: h.projectDir, httpClient: client, maxAgeMs: 60_000 });
+      expect(counter.requests).toBeGreaterThan(before);
+    } finally {
+      await h.cleanup();
+    }
+  });
+});
+
+describe("an online copy that can't be found is not a sign-in failure", () => {
+  async function pointAtMissing(h: Harness) {
+    const missing = await startGitServer(h.serverDir, { notFound: true });
+    await git.setConfig({ fs, dir: h.projectDir, path: "remote.origin.url", value: missing.url });
+    return missing;
+  }
+
+  test("syncProject says not-found (404), where 401 still says auth", async () => {
+    const h = await setupClone();
+    const missing = await pointAtMissing(h);
+    try {
+      const outcome = await syncProject({ projectDir: h.projectDir });
+      expect(outcome.status).toBe("not-found");
+      expect(outcome.message).toBe(MSG_NOT_FOUND);
+    } finally {
+      await missing.close();
+      await h.cleanup();
+    }
+  });
+
+  test("the online checks give reason 'not-found'", async () => {
+    const h = await setupClone();
+    const missing = await pointAtMissing(h);
+    try {
+      expect(await refreshRemoteCopies({ projectDir: h.projectDir })).toMatchObject({
+        refreshed: false,
+        reason: "not-found",
+      });
+      expect(await checkRemoteUpdates({ projectDir: h.projectDir })).toEqual({
+        available: false,
+        reason: "not-found",
+      });
+      expect(await listOnlineVersions({ projectDir: h.projectDir })).toMatchObject({
+        entries: [],
+        reason: "not-found",
+      });
+    } finally {
+      await missing.close();
+      await h.cleanup();
+    }
+  });
+});
+
+describe("localBackupStatus", () => {
+  test("synced, unsent with a count, and behind — from refs alone", async () => {
+    const h = await setupClone();
+    try {
+      expect(await localBackupStatus(h.projectDir)).toEqual({ state: "synced", ahead: 0, behind: false });
+
+      // Two versions on this computer the online copy lacks.
+      for (const n of [1, 2]) {
+        await writeFile(path.join(h.projectDir, `local-${n}.md`), `# ${n}\n`);
+        await git.add({ fs, dir: h.projectDir, filepath: `local-${n}.md` });
+        await git.commit({ fs, dir: h.projectDir, author: { name: "A", email: "a@example.com" }, message: `local ${n}` });
+      }
+      expect(await localBackupStatus(h.projectDir)).toEqual({ state: "unsent", ahead: 2, behind: false });
+
+      // The online copy moves on and this computer hears about it: ahead AND behind.
+      await serverCommit(h.serverDir, { "online.md": "x\n" }, "online");
+      await refreshRemoteCopies({ projectDir: h.projectDir });
+      expect(await localBackupStatus(h.projectDir)).toEqual({ state: "unsent", ahead: 2, behind: true });
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("a book with no online copy of its revision is all unsent", async () => {
+    const dir = await tempDir("gutterpress-localstatus-");
+    try {
+      await createFixtureRepo(dir);
+      expect(await localBackupStatus(dir)).toEqual({ state: "unsent", ahead: 0, behind: false });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+
+describe("the online check freshness is not fooled by a change that lands mid-fetch", () => {
+  test("a fetch in flight across a backup does not mark its refs fresh", async () => {
+    const h = await setupClone();
+    try {
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      let requests = 0;
+      const gated: typeof httpNode = {
+        request: async (args) => {
+          requests++;
+          if (requests === 1) await gate;
+          return httpNode.request(args);
+        },
+      };
+      const inFlight = refreshRemoteCopies({ projectDir: h.projectDir, httpClient: gated });
+      await new Promise((r) => setTimeout(r, 50));
+      // A backup (or any change online) lands while the fetch waits.
+      await forgetOnlineCheckFor(h.projectDir);
+      release();
+      expect((await inFlight).refreshed).toBe(true);
+      const before = requests;
+      // Not fresh: it must go to the server rather than trust refs written across the change.
+      await refreshRemoteCopies({ projectDir: h.projectDir, httpClient: gated, maxAgeMs: 60_000 });
+      expect(requests).toBeGreaterThan(before);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("a backup keeps the time of the last check and only drops its freshness", async () => {
+    const h = await setupClone();
+    try {
+      const first = await refreshRemoteCopies({ projectDir: h.projectDir });
+      expect(first.checkedAt).toBeString();
+      await syncProject({ projectDir: h.projectDir });
+      const after = await lastOnlineCheck(h.projectDir);
+      expect(after).toBeString();
+      expect(Date.parse(after!)).toBeGreaterThanOrEqual(Date.parse(first.checkedAt!));
+      // And the next check is real, not served from before the backup.
+      const { requests, client } = (() => {
+        const c = { requests: 0 };
+        return { requests: c, client: { request: (a: never) => (c.requests++, httpNode.request(a)) } as typeof httpNode };
+      })();
+      await refreshRemoteCopies({ projectDir: h.projectDir, httpClient: client, maxAgeMs: 60_000 });
+      expect(requests.requests).toBeGreaterThan(0);
+    } finally {
+      await h.cleanup();
+    }
+  });
+});
+
+describe("a 404 on github.com", () => {
+  test("is worded for GitHub, still starts with the plain text, and carries host: github", async () => {
+    const h = await setupClone();
+    try {
+      await git.setConfig({ fs, dir: h.projectDir, path: "remote.origin.url", value: "https://github.com/ada/gone.git" });
+      const notFound: typeof httpNode = {
+        request: async ({ url, method }) => ({
+          url,
+          method: method ?? "GET",
+          statusCode: 404,
+          statusMessage: "Not Found",
+          headers: {},
+          body: (async function* () {})(),
+        }),
+      };
+      const outcome = await syncProject({ projectDir: h.projectDir, httpClient: notFound });
+      expect(outcome).toMatchObject({ status: "not-found", host: "github", message: MSG_NOT_FOUND_GITHUB });
+      expect(MSG_NOT_FOUND_GITHUB).toMatch(/^Gutterpress can't find this online copy on GitHub\./);
+    } finally {
+      await h.cleanup();
+    }
+  });
+});
+
+describe("localBackupStatus and work that is not in a version yet", () => {
+  test("a file changed outside the app makes it unsent, not backed up", async () => {
+    const h = await setupClone();
+    try {
+      expect(await localBackupStatus(h.projectDir)).toMatchObject({ state: "synced" });
+      await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nEdited elsewhere.\n");
+      expect(await localBackupStatus(h.projectDir)).toMatchObject({ state: "unsent", ahead: 0, unversioned: 1 });
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("none on a detached HEAD", async () => {
+    const h = await setupClone();
+    try {
+      const head = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
+      await git.checkout({ fs, dir: h.projectDir, ref: head });
+      expect(await localBackupStatus(h.projectDir)).toBeNull();
+    } finally {
+      await h.cleanup();
+    }
+  });
+});
+
+describe("localBackupStatus without the unversioned walk", () => {
+  test("countUnversioned: false answers from refs only, ignoring files not in a version", async () => {
+    const h = await setupClone();
+    try {
+      await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nEdited elsewhere.\n");
+      expect(await localBackupStatus(h.projectDir, { countUnversioned: false })).toEqual({
+        state: "synced",
+        ahead: 0,
+        behind: false,
+      });
+      expect(await localBackupStatus(h.projectDir)).toMatchObject({ state: "unsent", unversioned: 1 });
+    } finally {
+      await h.cleanup();
+    }
+  });
+});
+

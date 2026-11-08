@@ -172,11 +172,22 @@ export class ProjectSessionController {
     this.projectCapabilities = null;
     this.projectSubPath = "";
     this.projectHasRemote = false;
+    this.repairNotice = null;
+    this.switchUnfinished = false;
     this.repoRoot = null;
     this.books = [];
     this.activeBookDir = null;
     this.activeBookHasManifest = true;
   }
+
+  /** Set when opening the book put an interrupted switch right (message for the author). */
+  repairNotice = $state<string | null>(null);
+
+  /**
+   * A revision switch is still unresolved, so saving is paused (#516). Set from the classify result and
+   * from the shared drafts snapshot (`unfinishedSwitch`); cleared when Drafts settles it or another book opens.
+   */
+  switchUnfinished = $state(false);
 
   /**
    * Classify the opened folder (#12) so capability-gated actions (#13/#25) can
@@ -193,6 +204,8 @@ export class ProjectSessionController {
       .then((result) => {
         if (gen !== this.classifyGen) return; // superseded by a newer open
         this.projectCapabilities = result.capabilities;
+        this.repairNotice = result.repairNotice ?? null;
+        this.switchUnfinished = result.unfinishedSwitch === true;
         this.projectSubPath =
           result.source.type === "local-git-folder" ? (result.source.subPath ?? "") : "";
         this.projectHasRemote =

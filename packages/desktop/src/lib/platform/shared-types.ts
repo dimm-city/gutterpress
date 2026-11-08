@@ -328,6 +328,8 @@ export type DeepPartialSettings = DeepPartial<AppSettings>;
 export interface ProjectState {
   currentPage?: number;
   splitPaneRatio?: number;
+  /** The last answer a backup pass gave for this book (host-written), shown at once on the next launch. */
+  lastBackup?: { state: string; at: string; ahead?: number };
 }
 
 // ── Desktop preferences ────────────────────────────────────────────────────
@@ -600,6 +602,9 @@ export type SyncOutcome =
       pushDeferred?: true;
     }
   | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
+  // The online copy's address answered "not found" (404): a typo'd, renamed or
+  // deleted online copy, or one this account can't see. Not a sign-in failure.
+  | { status: "not-found"; message: string; host?: "github"; snapshotId?: string; filesChanged?: boolean }
   | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "error"; message: string; snapshotId?: string; filesChanged?: boolean };
 
@@ -805,12 +810,39 @@ export interface Revision {
   notBackedUp: boolean;
 }
 
+/** Files kept just before an interrupted-switch repair overwrote them (mirrors the lib's `RepairCopy`, #508). */
+export interface RepairCopy {
+  id: string;
+  /** When the copy was taken (ms). */
+  savedAt: number;
+  /** Every file the author changed is already in the open revision's history. */
+  saved: boolean;
+  /** The revision the book was on when the copy was taken. */
+  revision?: string;
+}
+
+/** A switch that could not be put right (mirrors the lib's `UnfinishedSwitch`). */
+export interface UnfinishedSwitch {
+  message: string;
+  copy?: string;
+}
+
 /** The book's revisions (mirrors the lib's `RevisionList`) plus whether the online copy was checked just now. */
 export interface RevisionList {
   current: string | null;
   revisions: Revision[];
+  /** Copies of the files kept before a repair, newest first. */
+  repairCopies?: RepairCopy[];
+  /** A switch is still unresolved: the card says so and offers a way out. */
+  unfinishedSwitch?: UnfinishedSwitch;
   /** The refresh from the online copy ran and succeeded; false = the list is what this computer last knew. */
   checkedOnline: boolean;
+  /** When the online copy was last asked successfully this session (ISO), or null when it has not been. */
+  checkedAt?: string | null;
+  /** Why this call's online check did not work (only with `refresh`). */
+  reason?: "no-remote" | "auth" | "not-found" | "offline";
+  /** A switch the app was interrupted in was put right just now; plain-words message for the author. */
+  repairNotice?: string;
 }
 
 /** A history entry and where it is kept (#408). */

@@ -22,12 +22,22 @@ export interface ExternalChange {
   exists?: false;
 }
 
+/** Idle time after the last keystroke before autosave writes (ms). */
+export const DEFAULT_SAVE_DELAY_MS = 2000;
+/** Cap on how long unbroken typing can defer an autosave (ms). */
+export const DEFAULT_SAVE_MAX_WAIT_MS = 12_000;
+
 export interface EditorBufferOptions {
   /** The platform adapter (Electron). */
   platform: Platform;
-  /** Disk-save debounce (ms). Defaults to 500 (the responsive edit→preview
-   *  loop) — not a user setting (#274); a test-only override. */
+  /** Disk-save debounce (ms): a trailing delay that restarts on every edit, so
+   *  the save (and the preview rebuild its file write triggers) waits for a
+   *  pause in typing. Defaults to {@link DEFAULT_SAVE_DELAY_MS} — not a user
+   *  setting (#274); a test-only override. */
   saveDelayMs?: number;
+  /** Longest an edit may wait for the debounce to settle (ms), so continuous
+   *  typing still saves. Defaults to {@link DEFAULT_SAVE_MAX_WAIT_MS}. */
+  saveMaxWaitMs?: number;
   /** Whether an edit saves itself after `saveDelayMs` (Settings → Saving,
    *  "Save changes automatically"). Read each time a save would be scheduled,
    *  so a change applies from the next edit. When it returns false, edits
@@ -94,6 +104,8 @@ export class EditorBuffer {
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private recoveryTimer: ReturnType<typeof setTimeout> | null = null;
   private saveInFlight: Promise<void> | null = null;
+  /** When the current run of unsaved edits began; anchors the max-wait cap. */
+  private pendingSince: number | null = null;
   private lastPendingSave = false;
   // Monotonic generation counter for concurrent load() suppression. Only the
   // most recent load's result is applied; earlier stale reads are discarded.
@@ -199,13 +211,22 @@ export class EditorBuffer {
     this.saveTimer = null;
     // Autosave off: the edit waits for an explicit flush() — Save, Ctrl+S,
     // or Save in the prompt shown on leaving the file.
-    if (this.opts.autoSave?.() === false) return;
+    if (this.opts.autoSave?.() === false) {
+      this.pendingSince = null;
+      return;
+    }
+    const now = Date.now();
+    this.pendingSince ??= now;
+    const delay = this.opts.saveDelayMs ?? DEFAULT_SAVE_DELAY_MS;
+    const maxWait = this.opts.saveMaxWaitMs ?? DEFAULT_SAVE_MAX_WAIT_MS;
+    const wait = Math.max(0, Math.min(delay, this.pendingSince + maxWait - now));
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
+      this.pendingSince = null;
       // Debounced saves report through onError; explicit flush() callers need
       // the rejection, but a timer has no caller to receive it.
       void this.doSave().catch(() => {});
-    }, this.opts.saveDelayMs ?? 500);
+    }, wait);
   }
 
   private scheduleRecovery(): void {
@@ -294,6 +315,7 @@ export class EditorBuffer {
 
   /** Force any pending save to run now and await it (close/navigate flush). */
   async flush(): Promise<void> {
+    this.pendingSince = null;
     if (this.recoveryTimer) {
       clearTimeout(this.recoveryTimer);
       this.recoveryTimer = null;
@@ -306,11 +328,25 @@ export class EditorBuffer {
         clearTimeout(this.saveTimer);
         this.saveTimer = null;
       }
+      this.pendingSince = null;
       await this.doSave();
       if (this.externalChange) {
         throw new Error("The file changed on disk before the edit could be saved.");
       }
     }
+  }
+
+  /**
+   * Flush for a focus-loss signal (window blur / hidden). Skips when autosave
+   * is off (edits wait for an explicit save), while the external-change banner
+   * is up (a save with the stale baseline would re-raise it right after the
+   * author picks Reload / Keep mine), and in the error phase (a persistent
+   * failure would re-toast on every signal). Never throws.
+   */
+  async flushOnFocusLoss(autoSaveOn: boolean): Promise<void> {
+    if (!autoSaveOn || !this.hasPendingSave) return;
+    if (this.externalChange || this.phase === "error") return;
+    await this.flush().catch(() => {});
   }
 
   /**
@@ -469,6 +505,7 @@ export class EditorBuffer {
   }
 
   private cancelTimers(): void {
+    this.pendingSince = null;
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;

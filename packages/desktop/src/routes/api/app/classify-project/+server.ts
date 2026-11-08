@@ -15,6 +15,20 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   call: async ({ body }) => {
     const folderPath = body.projectDir;
     const lib = await loadLib();
+    // Opening a book is the first thing that touches it: a switch the app died
+    // in the middle of is put right BEFORE the editor reads a file or a build
+    // starts. Best-effort for the open itself; the notice is shown once.
+    let repairNotice: string | null = null;
+    try {
+      await lib.repairInterruptedSwitch(folderPath);
+      repairNotice = await lib.takeSwitchRepairNotice(folderPath);
+    } catch {
+      repairNotice =
+        "An earlier revision switch was interrupted and the book could not be put back automatically. " +
+        "Saving is paused until it is; your files have not been changed by this check.";
+    }
+    // Still unresolved after the repair above: saving is paused (the status bar says so).
+    const unfinishedSwitch = await lib.unfinishedSwitchState(folderPath).catch(() => null);
     const source = await lib.detectProjectSource(folderPath);
     const capabilities = lib.capabilitiesFor(source);
     const hasManifest = lib.hasProjectManifest(folderPath);
@@ -45,6 +59,6 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
       lastActiveBook = recents.find((r) => r.path === repoRoot)?.lastActiveBook;
     }
 
-    return { source, capabilities, hasManifest, repoRoot, books, lastActiveBook };
+    return { source, capabilities, hasManifest, repoRoot, books, lastActiveBook, ...(repairNotice ? { repairNotice } : {}), ...(unfinishedSwitch ? { unfinishedSwitch: true } : {}) };
   },
 });

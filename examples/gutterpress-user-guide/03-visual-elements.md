@@ -377,7 +377,9 @@ To calculate pixel dimensions: **print width (inches) × DPI = pixel width**. An
 
 ### Color space
 
-Use **RGB** color space. Ghostscript handles CMYK conversion automatically during the PDF/X pipeline --- you do not need to pre-convert images to CMYK.
+Use **RGB** color space, saved as **sRGB**. Ghostscript handles CMYK conversion automatically during the PDF/X pipeline --- you do not need to pre-convert images to CMYK. It reads every image as sRGB, so an AdobeRGB or ProPhoto picture shifts.
+
+The conversion targets DriveThruRPG's printing condition, CGATS21_CRPC1, which reproduces a small range of colours: saturated colours such as a neon magenta or an indigo print noticeably duller. To see it before you print, open the `-pdfx.pdf` file in Acrobat's **Output Preview** with the simulation profile set to `profiles/CGATS21_CRPC1.icc`. A printer on coated paper needs its own profile in `pdfx.icc`.
 
 ### Pre-sizing images
 

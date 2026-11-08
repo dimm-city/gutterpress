@@ -1339,6 +1339,7 @@ test("listRevisions: with no online copy every revision is only on this computer
         { name: "main", current: true, where: "this-computer", notBackedUp: false },
         { name: "Second-edition", current: false, where: "this-computer", notBackedUp: false },
       ],
+      repairCopies: [],
     });
   } finally {
     await rm(dir, { recursive: true, force: true });

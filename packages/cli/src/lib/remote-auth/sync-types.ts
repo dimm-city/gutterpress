@@ -67,6 +67,8 @@ export type SyncOutcome =
       pushDeferred?: true;
     }
   | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
+  // The online copy's address answered "not found" (404), which is not a sign-in failure.
+  | { status: "not-found"; message: string; host?: "github"; snapshotId?: string; filesChanged?: boolean }
   | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "error"; message: string; snapshotId?: string; filesChanged?: boolean };
 

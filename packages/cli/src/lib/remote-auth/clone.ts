@@ -103,7 +103,7 @@ async function assertCloneTarget(dir: string): Promise<void> {
 }
 
 /** Map raw transport failures to author-friendly messages (never the token). */
-function friendlyCloneError(e: unknown): Error {
+function friendlyCloneError(e: unknown, url: string): Error {
   // FIRST: the typed withheld-credential error from onAuthFor — an https-vs-
   // http problem no retry can fix, so it must never fall through to the
   // generic "try again" arm. (No literal scheme tokens in the copy: the
@@ -116,8 +116,16 @@ function friendlyCloneError(e: unknown): Error {
   }
   const msg = e instanceof Error ? e.message : String(e);
   if (/401|403|auth|credential/i.test(msg)) {
+    let onGitHub = false;
+    try {
+      onGitHub = new URL(url).hostname.toLowerCase() === "github.com";
+    } catch {
+      /* not a URL: host-neutral wording */
+    }
     return new Error(
-      "GitHub didn't accept the saved sign-in for this book. Sign in to GitHub again and try again.",
+      onGitHub
+        ? "GitHub didn't accept the saved sign-in for this book. Sign in to GitHub again and try again."
+        : "The online copy didn't accept your sign-in. Sign in again in Book setup → Online.",
       { cause: e },
     );
   }
@@ -134,7 +142,7 @@ function friendlyCloneError(e: unknown): Error {
     return e;
   }
   return new Error(
-    "The book couldn't be downloaded from GitHub. Please try again.",
+    "The book couldn't be downloaded from the online copy. Check its address and your sign-in in Book setup → Online.",
     { cause: e },
   );
 }
@@ -208,7 +216,7 @@ export async function cloneRepository(
           : {}),
       });
     } catch (e) {
-      const friendly = friendlyCloneError(e);
+      const friendly = friendlyCloneError(e, options.url);
       if (!dirExistedBefore) {
         // We created the directory — remove the partial download so a retry
         // starts clean and the user isn't left with a half-written .git.

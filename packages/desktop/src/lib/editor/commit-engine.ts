@@ -284,7 +284,7 @@ export class CommitEngine {
     this.gen++;
 
     // ── Step 5 — flush immediately. A discrete committed action must not sit
-    // behind the autosave debounce (EditorBuffer's fixed 500ms default; the
+    // behind the autosave debounce (EditorBuffer's idle-delay default; the
     // delay is not a user setting — see docs/ux-design-contract.md §3).
     try {
       await buf.flush();

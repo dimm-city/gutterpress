@@ -28,7 +28,7 @@ type PdfxFingerprintConfig = {
   iccPath: string | null;
   stripAnnotations: boolean | null;
   /** How near-black text was separated (#331); null when no PDF/X pass ran. Provenance only. */
-  blackText?: "icc" | "k-only" | null;
+  blackText?: "icc" | "k-only" | "k-only-neutral" | null;
   /**
    * How pages with transparency were handled (#385): `pdfx.transparency`,
    * `pdfx.flattenPages` and `pdfx.rasterDpi`. null when no PDF/X pass ran

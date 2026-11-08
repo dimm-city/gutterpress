@@ -79,6 +79,8 @@ import type {
   CompareRow,
   Revision,
   RevisionList,
+  RepairCopy,
+  UnfinishedSwitch,
   RestoreVersionResult,
   PreviewStartResult,
   BuildResult,
@@ -139,6 +141,8 @@ export type {
   CompareRow,
   Revision,
   RevisionList,
+  RepairCopy,
+  UnfinishedSwitch,
   RestoreVersionResult,
   PreviewStartResult,
   BuildResult,
@@ -287,8 +291,22 @@ export interface SyncStatus {
    * Which part of the product this status is about. Absent = the online
    * backup. "versions" = the automatic-version safety net failed (it reuses
    * this channel with state "error"), which must NOT read as a backup failure.
+   * "local" = an answer derived from refs on this computer at open (instant;
+   * the network pass confirms it); "network" = a pass just finished.
    */
-  source?: "versions";
+  source?: "versions" | "local" | "network";
+  /** With state "error": the online copy's address answered "not found" (404). Prefer this to matching `message`. */
+  reason?: "not-found";
+  /** With `reason: "not-found"`: the online copy is on GitHub. */
+  host?: "github";
+  /** With `reason: "not-found"` on GitHub: offering "Sign in again" can help. */
+  canSignIn?: boolean;
+  /** Versions on this computer the online copy lacks (with state "unsent"). Optional: absent = unknown. */
+  ahead?: number;
+  /** The online copy, as last heard from, holds versions this computer has not got. */
+  behind?: boolean;
+  /** Files needing the author's decision (combined with markers, or kept as a pair). */
+  decide?: number;
   /** True when the completed sync changed files in the local worktree. */
   filesChanged?: boolean;
   /**

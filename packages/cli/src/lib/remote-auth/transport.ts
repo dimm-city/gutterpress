@@ -27,6 +27,7 @@ import {
 import type { OperationLogger } from "./operation-log.ts";
 import {
   MSG_AUTH,
+  MSG_NOT_FOUND,
   MSG_INSECURE_TRANSPORT,
   MSG_NO_BRANCH,
   MSG_NO_REMOTE,
@@ -168,6 +169,88 @@ export async function resolveTransport(
   };
 }
 
+// ── Freshness of the last online check ───────────────────────────────────────
+//
+// One all-branch fetch tells the revision list AND the online versions what is
+// online, so the second caller within a short window reads the refs the first
+// one wrote instead of paying another round trip. Process-local and keyed by
+// the repository directory. A mutation (backup, rename/delete a revision,
+// repair) bumps the directory's generation: a fetch that started before it
+// can no longer mark its (possibly stale) refs fresh, and nobody joins it.
+// The time of the last good check is kept either way — only freshness is lost.
+
+interface OnlineCheck {
+  /** Epoch ms of the last good check (kept across mutations); 0 = never. */
+  at: number;
+  /** The refs are known to match the server as of `at` (lost on a mutation). */
+  fresh: boolean;
+  /** Bumped by every mutation. */
+  gen: number;
+  /** A check still running: concurrent callers (of the same generation) share it. */
+  pending?: { promise: Promise<unknown>; gen: number };
+}
+const onlineChecks = new Map<string, OnlineCheck>();
+
+function checkOf(dir: string): OnlineCheck {
+  let c = onlineChecks.get(dir);
+  if (!c) {
+    c = { at: 0, fresh: false, gen: 0 };
+    onlineChecks.set(dir, c);
+  }
+  return c;
+}
+
+/** Epoch ms of the last successful online check of `dir`, or null. */
+export function lastOnlineCheckAt(dir: string): number | null {
+  const at = onlineChecks.get(dir)?.at;
+  return at ? at : null;
+}
+
+/** True when `dir`'s refs were checked against the server within `maxAgeMs` and nothing has changed since. */
+export function onlineCheckIsFresh(dir: string, maxAgeMs: number, now = Date.now()): boolean {
+  const c = onlineChecks.get(dir);
+  return Boolean(c && c.fresh && c.at && maxAgeMs > 0 && now - c.at <= maxAgeMs);
+}
+
+/** The generation a check starts in; hand it back to {@link noteOnlineCheck}. */
+export function onlineCheckGeneration(dir: string): number {
+  return checkOf(dir).gen;
+}
+
+/** A check that started in `gen` succeeded. Only marks the refs fresh when nothing changed meanwhile. */
+export function noteOnlineCheck(dir: string, gen: number, now = Date.now()): void {
+  const c = checkOf(dir);
+  if (c.gen !== gen) return;
+  c.at = now;
+  c.fresh = true;
+}
+
+/** The server was reached and agreed (a backup finished): update the time, not the freshness of other refs. */
+export function touchOnlineCheckTime(dir: string, now = Date.now()): void {
+  checkOf(dir).at = now;
+}
+
+/** Something changed online (or may have): the next check must go to the server. The last-checked time stays. */
+export function forgetOnlineCheck(dir: string): void {
+  const c = checkOf(dir);
+  c.gen++;
+  c.fresh = false;
+  delete c.pending;
+}
+
+/** Share one in-flight check per directory and generation. */
+export async function shareOnlineCheck<T>(dir: string, run: () => Promise<T>): Promise<T> {
+  const c = checkOf(dir);
+  if (c.pending && c.pending.gen === c.gen) return c.pending.promise as Promise<T>;
+  const mine = { promise: undefined as unknown as Promise<unknown>, gen: c.gen };
+  const p = run().finally(() => {
+    if (checkOf(dir).pending === mine) delete checkOf(dir).pending;
+  });
+  mine.promise = p;
+  c.pending = mine;
+  return p;
+}
+
 /**
  * Decode a thrown transport error into the outcome it maps to, or null when it
  * is not a transport failure at all. The single source of truth for transport
@@ -176,14 +259,15 @@ export async function resolveTransport(
  */
 export function classifyTransportFailure(
   e: unknown,
-): "auth_required" | "network_unavailable" | "insecure_transport" | null {
+): "auth_required" | "not_found" | "network_unavailable" | "insecure_transport" | null {
   // FIRST: the withheld-cleartext-credential error. It must never fall through
   // to the auth arm — "reconnect" can't fix an http:// address.
   if (isInsecureTransportError(e)) return "insecure_transport";
   const err = e as { code?: string; data?: { statusCode?: number; prettyDetails?: string }; message?: string };
   if (err?.code === "HttpError") {
     const status = err.data?.statusCode;
-    if (status === 401 || status === 403 || status === 404) return "auth_required";
+    if (status === 404) return "not_found";
+    if (status === 401 || status === 403) return "auth_required";
   }
   // For a server-side push rejection (GitPushError), the useful detail is in
   // `data.prettyDetails` (the per-ref report-status text), so fold it into the
@@ -192,12 +276,14 @@ export function classifyTransportFailure(
   // non-fast-forward (which is handled separately by isPushRejected).
   const msg = `${err?.message ?? String(e)} ${err?.data?.prettyDetails ?? ""}`;
   if (
-    /\b401\b|\b403\b|\b404\b|unauthorized|authentication|not authorized|permission denied|forbidden|access denied|not allowed to push|pre-receive hook declined|hook declined/i.test(
+    /\b401\b|\b403\b|unauthorized|authentication|not authorized|permission denied|forbidden|access denied|not allowed to push|pre-receive hook declined|hook declined/i.test(
       msg,
     )
   ) {
     return "auth_required";
   }
+  // "Not found" is its own problem (wrong or gone address), not a rejected sign-in.
+  if (/\b404\b|repository not found/i.test(msg)) return "not_found";
   if (
     /ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|network|fetch failed|couldn't reach|socket hang ?up/i.test(
       msg,
@@ -219,10 +305,11 @@ export function classifyTransportFailure(
 export function failureOutcome(
   e: unknown,
   snapshotId?: string,
-): { status: "auth" | "offline" | "error"; message: string; snapshotId?: string } {
+): { status: "auth" | "not-found" | "offline" | "error"; message: string; snapshotId?: string } {
   const kind = classifyTransportFailure(e);
   const base = snapshotId ? { snapshotId } : {};
   if (kind === "auth_required") return { status: "auth", message: MSG_AUTH, ...base };
+  if (kind === "not_found") return { status: "not-found", message: MSG_NOT_FOUND, ...base };
   if (kind === "network_unavailable") return { status: "offline", message: MSG_OFFLINE, ...base };
   if (kind === "insecure_transport") {
     return { status: "error", message: MSG_INSECURE_TRANSPORT, ...base };
@@ -389,8 +476,8 @@ export async function fetchRemoteTip(
     // repository (GitHub masks private repos as "not found" for unauthorized
     // tokens) — treating it as "empty remote" made pull report "already the
     // latest" while the user was provably behind (rc.12 field bug). Re-throw
-    // as an auth-class failure so check/pull/push surface "reconnect" loudly
-    // instead of lying.
+    // as a 404 HttpError so check/pull/push say "can't find this online copy"
+    // (never "empty"), which sync-messages words without blaming the sign-in.
     const code = (e as { code?: string })?.code;
     if (code === "NoRefspecError") return null;
     // The online copy has other revisions but not this one: it was started on
@@ -402,12 +489,14 @@ export async function fetchRemoteTip(
       code === "NotFoundError" ||
       (e as { data?: { statusCode?: number } })?.data?.statusCode === 404
     ) {
-      const err = new Error(
-        "The online copy couldn't be reached with the saved sign-in. Sign in again and try again.",
-        { cause: e },
-      ) as Error & { code: string; data: { statusCode: number } };
+      // Surface it as the 404 it is: the sync messages say "can't find this
+      // online copy" (with a way forward), not "sign in again".
+      const err = new Error(MSG_NOT_FOUND, { cause: e }) as Error & {
+        code: string;
+        data: { statusCode: number };
+      };
       err.code = "HttpError";
-      err.data = { statusCode: 401 };
+      err.data = { statusCode: 404 };
       throw err;
     }
     throw e;
@@ -424,14 +513,38 @@ export async function serverTip(
   branch: string,
   http: typeof httpNode,
 ): Promise<string | undefined> {
-  const refs = await git.listServerRefs({
-    http,
-    url: transport.url,
-    prefix: `refs/heads/${branch}`,
-    ...onAuthFor(transport.credential),
-    // One shot: never loop on a rejected credential.
-    ...(transport.credential ? { onAuthFailure: () => ({ cancel: true }) } : {}),
-  });
+  let authRejected = false;
+  let refs: Awaited<ReturnType<typeof git.listServerRefs>>;
+  try {
+    refs = await git.listServerRefs({
+      http,
+      url: transport.url,
+      prefix: `refs/heads/${branch}`,
+      ...onAuthFor(transport.credential),
+      // One shot: never loop on a rejected credential.
+      ...(transport.credential
+        ? {
+            onAuthFailure: () => {
+              authRejected = true;
+              return { cancel: true };
+            },
+          }
+        : {}),
+    });
+  } catch (e) {
+    // Cancelling the retry makes isomorphic-git throw UserCanceledError with
+    // no status code. Say what happened: the server rejected the sign-in.
+    if (authRejected) {
+      const err = new Error("The online copy rejected the saved sign-in.", { cause: e }) as Error & {
+        code: string;
+        data: { statusCode: number };
+      };
+      err.code = "HttpError";
+      err.data = { statusCode: 401 };
+      throw err;
+    }
+    throw e;
+  }
   return refs.find((r) => r.ref === `refs/heads/${branch}`)?.oid;
 }
 

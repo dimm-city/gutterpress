@@ -419,6 +419,7 @@ test("local-status: emitted immediately for a remote-less local-git-folder, log 
     state: "local",
     projectDir: "/book",
     lastSyncAt: null,
+    source: "local",
     logFile: "/logs/book.log",
   });
 

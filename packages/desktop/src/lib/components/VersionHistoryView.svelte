@@ -33,7 +33,8 @@
   import { friendlyHostError } from "#lib/errors.ts";
   import type { PreviewClient } from "#lib/preview-client.ts";
   import { VersionChangesController } from "#lib/routes/version-changes-controller.svelte.ts";
-  import { autoRunSummary, collapseAutomaticRuns, groupVersionsByDay, versionDescription, versionLabel } from "#lib/routes/version-timeline.ts";
+  import { autoRunSummary, collapseAutomaticRuns, groupVersionsByDay, versionSubtitle, versionTitle } from "#lib/routes/version-timeline.ts";
+  import * as onlineCopy from "#lib/routes/online-copy-cache.ts";
 
   let {
     projectDir,
@@ -84,6 +85,8 @@
   let confirming = $state(false);
   let restoring = $state(false);
   let restoreError = $state<string | null>(null);
+  /** What a finished restore says: which version we went back to, and that the work from before was kept. */
+  let restored = $state<string | null>(null);
 
   const when = (ms: number): string => {
     try { return new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }); } catch { return ""; }
@@ -95,11 +98,13 @@
   async function loadHistory(): Promise<void> {
     loading = true;
     try {
-      const page = await changesOf.listFirst(api.vcs.listSnapshotsPage(projectDir));
+      // Online started reading this page when it opened, so it is usually already here.
+      const page = await changesOf.listFirst(onlineCopy.takeVersionsPage(projectDir) ?? api.vcs.listSnapshotsPage(projectDir));
       entries = page.entries;
       hasMore = page.hasMore;
       const keep = selected && entries.find((e) => e.id === selected!.id);
-      void select(keep ?? entries.find((e) => e.id === initialId) ?? entries[0] ?? null);
+      // Nothing is chosen for the author: a version opens only when asked for (or kept from before, or clicked in Online).
+      void select(keep ?? entries.find((e) => e.id === initialId) ?? null);
     } catch (e) {
       error = friendlyHostError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -216,8 +221,14 @@
     restoring = true;
     restoreError = null;
     try {
-      await api.vcs.restoreSnapshot(projectDir, selected.id);
+      const target = selected;
+      const result = await api.vcs.restoreSnapshot(projectDir, target.id);
       confirming = false;
+      onlineCopy.dropVersionsPage(projectDir);
+      restored =
+        // True with or without `backupId`: work not yet in a version was saved as one first, and everything else already was.
+        `Went back to "${versionTitle(target.message)}" (${when(target.timestamp)}). Your earlier work is saved as a version, so you can come back to it.`;
+      void result;
       onRestored?.();
       await loadHistory();
     } catch (e) {
@@ -260,11 +271,11 @@
   </span>
 {/snippet}
 
-<!-- A version in the online copy only: shown with what it changed; it comes in with the next backup. -->
+<!-- A version in the online copy only: shown with what it changed; it comes in with the next send. -->
 {#snippet onlineRow(entry: OnlineVersionEntry)}
   <li class="online-ver">
-    <span class="ver-title">{versionLabel(entry.message)}</span>
-    {#if versionDescription(entry.message)}<span class="ver-note">{versionDescription(entry.message)}</span>{/if}
+    <span class="ver-title">{versionTitle(entry.message)}</span>
+    {#if versionSubtitle(entry.message)}<span class="ver-note">{versionSubtitle(entry.message)}</span>{/if}
     <span class="ver-meta">{when(entry.timestamp)}{entry.author ? ` · ${entry.author}` : ""}</span>
     {@render changedFiles(entry.changes, entry.moreChanges)}
   </li>
@@ -277,10 +288,10 @@
       class="ver"
       class:selected={selected?.id === entry.id}
       aria-current={selected?.id === entry.id ? "true" : undefined}
-      onclick={() => void select(entry)}
+      onclick={() => { restored = null; void select(entry); }}
     >
-      <span class="ver-title">{versionLabel(entry.message)}</span>
-      {#if versionDescription(entry.message)}<span class="ver-note">{versionDescription(entry.message)}</span>{/if}
+      <span class="ver-title">{versionTitle(entry.message)}</span>
+      {#if versionSubtitle(entry.message)}<span class="ver-note">{versionSubtitle(entry.message)}</span>{/if}
       <span class="ver-meta">
         {time(entry.timestamp)}{entry.author ? ` · ${entry.author}` : ""}
         {#if entry.backedUp === false}<span class="dot local" title="Only on this computer"></span>{/if}
@@ -325,7 +336,7 @@
               {/if}
             {/each}
           </ul>
-          <p class="online-note">They come in with <strong>Get latest</strong>, or the next time this book backs up.</p>
+          <p class="online-note">They come in with <strong>Get changes</strong>, or the next time this book sends changes.</p>
         </section>
       {/if}
       {#if loading && entries.length === 0}
@@ -365,31 +376,41 @@
     <div class="vh-detail">
       {#if view === "log"}
         <div class="detail-head">
-          <div><h2>Technical details</h2><p class="muted">The log of this book's recent backing up.</p></div>
+          <div><h2>Technical details</h2><p class="muted">The log of this book's recent sending online.</p></div>
           <button class="ghost" onclick={() => (view = "files")}>Back to the version</button>
         </div>
         <pre class="log">{logContent ?? "Loading…"}</pre>
       {:else if selected}
         <div class="detail-head">
           <div class="detail-title">
-            <h2>{versionLabel(selected.message)}{#if versionDescription(selected.message)}<span class="note"> — {versionDescription(selected.message)}</span>{/if}</h2>
+            <h2>{versionTitle(selected.message)}</h2>
+            {#if versionSubtitle(selected.message)}<p class="muted sub">{versionSubtitle(selected.message)}</p>{/if}
             <p class="muted">
               {when(selected.timestamp)}{selected.author ? ` · ${selected.author}` : ""}
-              {#if selected.backedUp === true}<span class="badge">Backed up</span>{/if}
+              {#if selected.backedUp === true}<span class="badge">Online</span>{/if}
               {#if selected.backedUp === false}<span class="badge local">Only on this computer</span>{/if}
             </p>
           </div>
           <div class="detail-actions">
-            {#if confirming}
-              <span class="confirm">Your current work is saved as a version first.</span>
-              <button class="ghost" onclick={() => (confirming = false)} disabled={restoring}>Cancel</button>
-              <button class="app-btn-primary" onclick={() => void restore()} disabled={restoring}>{restoring ? "Restoring…" : "Restore"}</button>
-            {:else}
-              <button class="app-btn-primary" onclick={() => (confirming = true)}>Restore this version</button>
+            {#if !confirming}
+              <button class="app-btn-primary" onclick={() => (confirming = true)}>Go back to this version</button>
             {/if}
           </div>
         </div>
+        {#if confirming}
+          <div class="confirm-band" role="group" aria-label="Go back to this version?">
+            <span>Your files go back to how they were then. Your current work is saved as a version first.</span>
+            <button class="ghost" onclick={() => (confirming = false)} disabled={restoring}>Cancel</button>
+            <button class="app-btn-primary" onclick={() => void restore()} disabled={restoring}>{restoring ? "Going back…" : "Go back to this version"}</button>
+          </div>
+        {/if}
         {#if restoreError}<p class="error" role="alert">{restoreError}</p>{/if}
+        {#if restored}
+          <p class="restored" role="status">
+            <Icon name="circle-check" size={15} /> <span>{restored}</span>
+            <button class="link" onclick={() => (restored = null)} aria-label="Dismiss">Dismiss</button>
+          </p>
+        {/if}
 
         <div class="tabs" role="tablist" aria-label="Show">
           <button role="tab" aria-selected={view === "files"} class:active={view === "files"} onclick={() => (view = "files")}>
@@ -414,7 +435,7 @@
           <div class="compare">
             <VersionCompareView
               path={compare.path}
-              versionLabel={`${versionLabel(selected.message)} · ${when(selected.timestamp)}`}
+              versionLabel={`${versionTitle(selected.message)} · ${when(selected.timestamp)}`}
               rows={compare.rows}
               binary={compare.binary}
               onBack={() => (compare = null)}
@@ -504,10 +525,21 @@
     padding: 14px 20px; background: var(--app-surface); border-bottom: 1px solid var(--app-border-subtle);
   }
   .detail-head h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--app-text); overflow-wrap: anywhere; }
-  .detail-head .note { font-weight: 400; color: var(--app-text-secondary); }
   .detail-head .muted { margin: 3px 0 0; }
   .detail-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-  .confirm { font-size: 12.5px; color: var(--app-text-secondary); }
+  .confirm-band {
+    display: flex; align-items: center; gap: 10px; margin: 0 20px 8px; padding: 9px 12px; border-radius: 6px;
+    font-size: 13px; color: var(--app-info-text); background: var(--app-info-bg);
+  }
+  .confirm-band span { flex: 1; }
+  .sub { margin: 2px 0 0; }
+  .restored {
+    display: flex; align-items: center; gap: 8px; margin: 0 20px 8px; padding: 9px 12px;
+    border-radius: 6px; font-size: 13px; color: var(--app-success-text); background: var(--app-success-bg);
+  }
+  .restored span { flex: 1; }
+  .restored :global(svg) { flex-shrink: 0; color: var(--app-success-strong); }
+  .restored .link { padding: 0; border: 0; background: none; color: inherit; font-size: 12px; text-decoration: underline; }
   .tabs { display: flex; gap: 2px; padding: 0 20px; background: var(--app-surface); border-bottom: 1px solid var(--app-border); }
   .tabs button {
     padding: 9px 12px; border: 0; border-bottom: 2px solid transparent; background: none;

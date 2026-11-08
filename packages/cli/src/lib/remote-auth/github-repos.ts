@@ -98,31 +98,45 @@ export async function listGitHubRepositories(
   credential: HostCredential,
   options: GitHubApiOptions = {},
 ): Promise<RemoteRepository[]> {
-  const fetchImpl = options.fetchImpl ?? fetch;
   const repos: RemoteRepository[] = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const res = await apiGet(
-      fetchImpl,
-      `${API_BASE}/user/repos?per_page=${PER_PAGE}&page=${page}&sort=pushed&affiliation=owner,collaborator,organization_member`,
-      credential.token,
-    );
-    const body = (await res.json()) as UserReposPage;
-    for (const r of body) {
-      repos.push({
-        owner: r.owner.login,
-        name: r.name,
-        fullName: r.full_name,
-        private: r.private,
-        defaultBranch: r.default_branch,
-        htmlUrl: r.html_url,
-        ...(r.size === 0 && !r.archived && r.permissions?.push !== false
-          ? { maybeEmpty: true }
-          : {}),
-      });
-    }
-    if (body.length < PER_PAGE) break;
+    const result = await listGitHubRepositoriesPage(credential, page, options);
+    repos.push(...result.repos);
+    if (!result.hasMore) break;
   }
   return repos;
+}
+
+/**
+ * One page (up to 100) of the same list, in the same order, so a picker can
+ * show the first page at once and ask for the rest while the author looks.
+ * `hasMore` is true when a further page may exist (and the page cap has not
+ * been reached).
+ */
+export async function listGitHubRepositoriesPage(
+  credential: HostCredential,
+  page: number,
+  options: GitHubApiOptions = {},
+): Promise<{ repos: RemoteRepository[]; page: number; hasMore: boolean }> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const res = await apiGet(
+    fetchImpl,
+    `${API_BASE}/user/repos?per_page=${PER_PAGE}&page=${page}&sort=pushed&affiliation=owner,collaborator,organization_member`,
+    credential.token,
+  );
+  const body = (await res.json()) as UserReposPage;
+  const repos = body.map(
+    (r): RemoteRepository => ({
+      owner: r.owner.login,
+      name: r.name,
+      fullName: r.full_name,
+      private: r.private,
+      defaultBranch: r.default_branch,
+      htmlUrl: r.html_url,
+      ...(r.size === 0 && !r.archived && r.permissions?.push !== false ? { maybeEmpty: true } : {}),
+    }),
+  );
+  return { repos, page, hasMore: body.length >= PER_PAGE && page < MAX_PAGES };
 }
 
 /** One Gutterpress book found inside a repository. */

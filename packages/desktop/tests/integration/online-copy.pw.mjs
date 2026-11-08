@@ -50,14 +50,15 @@
  *      which drops focus to <body>; Escape pressed then still closes Book setup
  *      (the original #448 bug, fixed by dialogBehavior in #451).
  *   6. For a book that can back up (closing Accounts makes the app look at its
- *      online copy again, stubbed as ready) the status bar shows no Get latest
- *      or Sync while automatic backing up is on, and Get latest then Sync after
- *      the status control once it is off. Sync runs a full pass and reads
- *      "Syncing…" while it runs; Get latest runs the pass with `push: false`
- *      and reads "Getting…". New changes online raise a toast whose action is
- *      Get latest (#485); Get latest reads "New online" and Sync keeps its cue.
- *      Online copy then offers Get latest and Sync now. The bar still fits,
- *      with the status line ellipsized, at 700px and (cut short) at 260px.
+ *      online copy again, stubbed as ready) the status bar shows no Update
+ *      button while it is backed up with automatic backing up on, and one
+ *      Update button after the status control once it is off (it replaced Get
+ *      latest and Sync). Update runs a full pass and reads "Updating…" while it
+ *      runs. New changes online raise a toast whose action is Get the changes
+ *      (a pass with `push: false`), the bar reads "New changes online", and
+ *      both clear once the changes are in. Online copy then offers Get latest
+ *      and Sync now. The bar still fits, with "Saved here" moved into the
+ *      tooltip and the online clause ellipsized, at 700px and 260px.
  *   7. The Settings, Accounts and Open from GitHub controls 0.11.22 had are
  *      back (#481). Settings is How you use Gutterpress, Appearance, Preview,
  *      Editor, Saving and Accounts, with a Reset on each group of settings.
@@ -71,7 +72,7 @@
  *      email has its Reset and typing a Gitea server's address links to that
  *      server's own token page (an unknown one, to the guide). Troubleshooting
  *      is pictured as it is.
- *   8. A Reader sees no status control, Get latest, Sync or new-changes toast,
+ *   8. A Reader sees no status control, Update button or new-changes toast,
  *      even in that state.
  *
  * Screenshots: <os tmpdir>/online-copy-{bar,bar-auto,bar-sync,bar-get-latest,
@@ -361,21 +362,29 @@ await evalJs(`(() => {
   return true;
 })()`);
 
+// Open Book setup on Online copy from the status bar: a state with something to fix goes
+// straight there (sign-in); the rest open the popover, whose "Online…" link goes there.
+async function openTabFromBar() {
+  await click(".status-bar .status-control");
+  await sleep(250);
+  if (await evalJs(`!!document.querySelector('.status-popover')`)) await click(".status-popover .link");
+}
+
 // ── 6. one status control, which opens Book setup on Online copy ─────────────
 check(await waitFor(`!!document.querySelector('.status-bar .status-control')`), "the status bar has a status control");
 const bar = await evalJs(`(() => ({
   controls: document.querySelectorAll('.status-bar .status-control').length,
-  text: document.querySelector('.status-bar .status-control .status-text')?.textContent.trim(),
+  text: document.querySelector('.status-bar .status-control')?.innerText.replace(/\\s+/g, ' ').trim(),
   oldIndicator: !!document.querySelector('.status-bar .save-indicator, .status-bar .sync-pill'),
 }))()`);
 check(bar.controls === 1 && !bar.oldIndicator, `exactly one status control, no save indicator or sync pill (${JSON.stringify(bar)})`);
-check(/^Saved/.test(bar.text), `the control starts with "Saved" (${bar.text})`);
+check(/^Saved here/.test(bar.text), `the control starts with "Saved here" (${bar.text})`);
 await screenshot(join(tmpdir(), "online-copy-bar.png"));
-await click(".status-bar .status-control");
-check(await waitFor(`document.querySelector('#project-settings-tab-online-copy')?.getAttribute('aria-selected') === 'true'`), "clicking it opens Book setup on the Online copy tab");
+await openTabFromBar();
+check(await waitFor(`document.querySelector('#project-settings-tab-online-copy')?.getAttribute('aria-selected') === 'true'`), "clicking it (or its popover's Online link) opens Book setup on the Online tab");
 
 // ── 7. the tab: three cards — where the book is kept, Revisions, Version history ─
-check(await waitFor(`!!document.querySelector('#project-settings-panel .revisions .rev-list li.rev') && !!document.querySelector('#project-settings-panel .recent .recent-row')`), "the status, Revisions and Version history cards loaded");
+check(await waitFor(`!!document.querySelector('#project-settings-panel .revisions .rev-list li.rev') && !!document.querySelector('#project-settings-panel .recent .recent-row')`), "the status, Drafts and History cards loaded");
 await sleep(400);
 await screenshot(join(tmpdir(), "online-copy-tab.png"));
 const tab = await evalJs(`(() => {
@@ -394,7 +403,7 @@ const tab = await evalJs(`(() => {
     statusDetail: panel.querySelector('.status-text p')?.textContent.trim(),
     signIn: [...panel.querySelectorAll('.status-body button')].some((b) => /Sign in/.test(b.textContent)),
     revisionsHead: [...panel.querySelectorAll('.revisions .section-head button')].map((b) => b.textContent.trim()),
-    find: !!panel.querySelector('.revisions input[aria-label="Find a revision"]'),
+    find: !!panel.querySelector('.revisions input[aria-label="Find a draft"]'),
     showAll: panel.querySelector('.revisions .section-foot button')?.textContent.trim(),
     note: panel.querySelector('.revisions .section-note')?.textContent.trim(),
     historyHead: [...panel.querySelectorAll('[aria-labelledby="version-history-title"] .section-head button')].map((b) => b.textContent.trim()),
@@ -406,18 +415,18 @@ const tab = await evalJs(`(() => {
 })()`);
 log(`tab: ${JSON.stringify(tab)}`);
 const row = (n) => tab.rows.find((r) => r.name === n) ?? {};
-check(tab.titles.join("|") === "Sign in to back up|Revisions|Version history", `three cards, in order: status, Revisions, Version history (${tab.titles.join(" | ")})`);
-check(/GitHub: ada\/harbor-lights/.test(tab.statusDetail) && tab.signIn, "the status card names the online copy and offers Sign in…");
-check(tab.revisionsHead.join("|") === "New revision", "New revision sits in the Revisions card's header");
-check(tab.find, "more than five revisions offer Find a revision");
-check(tab.rows.map((r) => r.name).join(",") === "main,appendix,editors-pass,late-draft,release-1", `five rows show, the open one first (${tab.rows.map((r) => r.name)})`);
-check(tab.showAll === "Show all 7 revisions" && !tab.innerScroll, "the rest are one click away (Show all), with no box scrolling inside the page");
-check(row("main").current && row("main").badge === "Current" && row("main").where === "Online · not backed up yet" && row("main").buttons.length === 0 && row("main").more, "the open revision: Current, where it is kept, and its menu (no Switch)");
-check(row("editors-pass").where === "Only online" && row("editors-pass").buttons.join("|") === "Switch" && row("editors-pass").more, "an online-only revision: Switch and its menu");
+check(tab.titles.join("|") === "Sign in to send|Saved versions|Drafts", `three cards, in order: status, Saved versions, Drafts (${tab.titles.join(" | ")})`);
+check(/GitHub · ada\/harbor-lights/.test(tab.statusDetail) && tab.signIn, "the status card names the online copy and offers Sign in…");
+check(tab.revisionsHead.join("|") === "New draft", "New draft sits in the Drafts card's header");
+check(tab.find, "more than five drafts offer Find a draft");
+check(tab.rows.map((r) => r.name).join(",") === "Main draft,appendix,editors pass,late draft,release 1", `five rows show, the open one first (${tab.rows.map((r) => r.name)})`);
+check(tab.showAll === "Show all 7 drafts" && !tab.innerScroll, "the rest are one click away (Show all), with no box scrolling inside the page");
+check(row("Main draft").current && row("Main draft").badge === "You are here" && row("Main draft").where === "Not online yet" && row("Main draft").buttons.length === 0 && row("Main draft").more, "the open revision: Current, where it is kept, and its menu (no Switch)");
+check(row("editors pass").where === "Online only, not on this computer yet" && row("editors pass").buttons.join("|") === "Switch" && row("editors pass").more, "an online-only revision: Switch and its menu");
 check(row("appendix").where === "Only on this computer", "a revision only on this computer says so");
-check(/revisions made elsewhere may be missing/.test(tab.note ?? ""), "an online copy that could not be checked says so, once");
-check(tab.historyHead.join("|") === "Save a version|Browse versions" && tab.recent >= 1 && tab.recent <= 3, `Version history is a short card: the newest versions, Save a version and Browse versions (${tab.historyHead.join("|")}, ${tab.recent} rows)`);
-check(!tab.trouble, "the backing-up-keeps-failing tools are only there once backing up can work");
+check(/drafts made elsewhere may be missing/.test(tab.note ?? ""), "an online copy that could not be checked says so, once");
+check(tab.historyHead.join("|") === "Save a version|See all" && tab.recent >= 1 && tab.recent <= 5, `History is a short card: the newest versions, Save a version and See all (${tab.historyHead.join("|")}, ${tab.recent} rows)`);
+check(!tab.trouble, "the backing-up-keeps-failing tools are only there once sending can work");
 
 /** Open a row's "more" menu and choose an item. */
 const menuAction = async (name, label) => {
@@ -433,27 +442,27 @@ const dialogButtons = () => evalJs(`[...document.querySelectorAll('form.rev-dial
 const dialogClick = (label) => click("form.rev-dialog .dlg-actions button", label);
 
 // Every revision can be renamed; every one but the open one can be deleted.
-const openMenu = await menuAction("main", "Rename…");
+const openMenu = await menuAction("Main draft", "Rename…");
 check(openMenu.items === "Rename…", `the open revision's menu: Rename… only (${openMenu.items})`);
 await dialogClick("Cancel");
-const onlineOnlyMenu = await menuAction("editors-pass", "Rename…");
+const onlineOnlyMenu = await menuAction("editors pass", "Rename…");
 check(onlineOnlyMenu.items === "Rename…|Delete…", `an online-only revision's menu: Rename… and Delete… (${onlineOnlyMenu.items})`);
 await dialogClick("Cancel");
 check(await waitFor(`!document.querySelector('form.rev-dialog')`, 3000), "Cancel closes the dialog");
 
 // ── 7b. Find a revision ──────────────────────────────────────────────────────
-await type('.revisions input[aria-label="Find a revision"]', "A");
+await type('.revisions input[aria-label="Find a draft"]', "A");
 await sleep(100);
-check((await names()) === "main,appendix,editors-pass,late-draft,release-1", `the filter ignores case and keeps the open revision first (${await names()})`);
-await type('.revisions input[aria-label="Find a revision"]', "PASS");
+check((await names()) === "Main draft,appendix,editors pass,late draft,release 1", `the filter ignores case and keeps the open revision first (${await names()})`);
+await type('.revisions input[aria-label="Find a draft"]', "PASS");
 await sleep(100);
-check((await names()) === "editors-pass", `matches names anywhere (${await names()})`);
+check((await names()) === "editors pass", `matches names anywhere (${await names()})`);
 await screenshot(join(tmpdir(), "online-copy-filter.png"));
-await type('.revisions input[aria-label="Find a revision"]', "zzz");
+await type('.revisions input[aria-label="Find a draft"]', "zzz");
 await sleep(100);
-check(await evalJs(`document.querySelector('#project-settings-panel .revisions .rev-list')?.textContent.includes('No revisions match.')`), "a filter that matches nothing says so");
-await type('.revisions input[aria-label="Find a revision"]', "");
-await click("#project-settings-panel .revisions .section-foot button", "Show all 7 revisions");
+check(await evalJs(`document.querySelector('#project-settings-panel .revisions .rev-list')?.textContent.includes('No drafts match.')`), "a filter that matches nothing says so");
+await type('.revisions input[aria-label="Find a draft"]', "");
+await click("#project-settings-panel .revisions .section-foot button", "Show all 7 drafts");
 await sleep(100);
 check((await names()).split(",").length === 7, "Show all lists every revision");
 
@@ -462,8 +471,12 @@ check((await names()).split(",").length === 7, "Show all lists every revision");
 await click('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button', "Save a version");
 check(await waitFor(`/Nothing new to save|nothing new/i.test(document.querySelector('#project-settings-panel [aria-labelledby="version-history-title"]')?.textContent ?? '')`, 20000), "Save a version says so when there is nothing new");
 
-await click('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button', "Browse versions");
-check(await waitFor(`!!document.querySelector('.vh .ver')`), "Browse versions opens the Version history screen");
+await click('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button', "See all");
+check(await waitFor(`!!document.querySelector('.vh .ver')`), "See all opens the Version history screen");
+// Nothing is chosen for the author, and no Go back button shows until a version is.
+check(await evalJs(`document.querySelectorAll('.vh .ver.selected').length === 0 && document.querySelectorAll('.vh .detail-actions button').length === 0`), "no version is pre-selected, and Go back waits for one");
+await evalJs(`document.querySelector('.vh .ver').click(); true`);
+check(await waitFor(`document.querySelectorAll('.vh .ver.selected').length === 1 && !!document.querySelector('.vh .detail-actions button')`), "choosing a version selects it and offers Go back to this version");
 const vh = await evalJs(`(() => {
   const root = document.querySelector('.vh');
   return {
@@ -480,7 +493,7 @@ const vh = await evalJs(`(() => {
 log(`version history: ${JSON.stringify(vh)}`);
 check(vh.title === "Version history" && vh.bookSetupUnder && !vh.inEditorPane, "it is its own screen, over Book setup, not in the editor");
 check(vh.selected === 1 && vh.firstSelected && vh.head, `the newest version is selected and named at the top (${vh.head})`);
-check(vh.actions.join("|") === "Restore this version", "Restore this version sits at the top of the selected version");
+check(vh.actions.join("|") === "Go back to this version", "Go back to this version sits at the top of the selected version");
 check(/^Changed files/.test(vh.tabs[0] ?? "") && vh.tabs[1] === "Pages", `the version shows its Changed files or its Pages (${vh.tabs.join(", ")})`);
 
 // Changed files first: a version opens on what it changed, and nothing renders.
@@ -499,7 +512,7 @@ const online = await evalJs(`(() => {
     atTop: list.firstElementChild === section,
     rows: [...section.querySelectorAll('.online-ver')].map((r) => ({
       title: r.querySelector('.ver-title')?.textContent.trim(),
-      note: r.querySelector('.ver-note')?.textContent.trim() ?? null,
+      sub: r.querySelector('.ver-note')?.textContent.trim() ?? null,
       meta: r.querySelector('.ver-meta')?.textContent.trim(),
       files: [...r.querySelectorAll('.ver-file')].map((f) => f.textContent.trim()),
     })),
@@ -509,14 +522,14 @@ const online = await evalJs(`(() => {
 })()`);
 log(`online list: ${JSON.stringify(online)}`);
 check(online.heading === "Online, not yet on this computer" && online.atTop, "they sit at the top of the list, under Online, not yet on this computer");
-check(online.rows.length === 2 && online.rows[0].note === "Wrote the gamma ending" && /· Grace$/.test(online.rows[0].meta) && /\d/.test(online.rows[0].meta), `each says what it is, when and by whom (${JSON.stringify(online.rows[0])})`);
+check(online.rows.length === 2 && online.rows[0].title === "Wrote the gamma ending" && /· Grace$/.test(online.rows[0].meta) && /\d/.test(online.rows[0].meta), `each says what it is, when and by whom (${JSON.stringify(online.rows[0])})`);
 check(online.rows[0].files.join("|") === "03-gamma.md · 2 paragraphs changed", `and the files it changed (${online.rows[0].files.join(" | ")})`);
 check(online.rows[1].title === "Automatic version" && online.rows[1].files.length === 9 && online.rows[1].files[8] === "and 3 more", `past eight files, "and N more" (${online.rows[1].files.join(" | ")})`);
-check(online.selectable === 0 && online.note === "They come in with Get latest, or the next time this book backs up.", `nothing to select there; Get latest or the next backup brings them in (${online.note})`);
+check(online.selectable === 0 && online.note === "They come in with Get changes, or the next time this book sends changes.", `nothing to select there; Get changes or the next send brings them in (${online.note})`);
 
 // Every card lists what its version changed, loaded as it comes into view (#484).
 const cardsListed = `[...document.querySelectorAll('.vh button.ver')].filter((b) => b.getClientRects().length).map((b) => ({
-  title: b.querySelector('.ver-note')?.textContent.trim() ?? b.querySelector('.ver-title').textContent.trim(),
+  title: b.querySelector('.ver-title').textContent.trim(),
   files: b.querySelector('.ver-files:not(.pending)') ? [...b.querySelectorAll('.ver-file')].map((f) => f.textContent.trim()) : null,
 }))`;
 check(await waitFor(`${cardsListed}.slice(0, 4).every((c) => c.files)`), "the cards in view list the files their versions changed");
@@ -566,14 +579,14 @@ if (pagesUrl) {
 }
 
 // Restore asks once, at the top.
-await click(".vh .detail-actions button", "Restore this version");
-check(await waitFor(`/saved as a version first/.test(document.querySelector('.vh .detail-actions')?.textContent ?? '')`, 3000), "Restore says your current work is saved as a version first");
-check((await evalJs(`[...document.querySelectorAll('.vh .detail-actions button')].map((b) => b.textContent.trim()).join('|')`)) === "Cancel|Restore", "and asks Cancel or Restore");
-await click(".vh .detail-actions button", "Cancel");
+await click(".vh .detail-actions button", "Go back to this version");
+check(await waitFor(`/saved as a version first/.test(document.querySelector('.vh .confirm-band')?.textContent ?? '')`, 3000), "Going back says your current work is saved as a version first");
+check((await evalJs(`[...document.querySelectorAll('.vh .confirm-band button')].map((b) => b.textContent.trim()).join('|')`)) === "Cancel|Go back to this version", "and asks Cancel or Go back to this version");
+await click(".vh .confirm-band button", "Cancel");
 
 // Closing returns to Book setup, where it was opened.
 await click(".vh .vh-close");
-check(await waitFor(`!document.querySelector('.vh') && !!document.querySelector('#project-settings-panel .revisions .rev-list li.rev')`), "closing Version history returns to Online copy");
+check(await waitFor(`!document.querySelector('.vh') && !!document.querySelector('#project-settings-panel .revisions .rev-list li.rev')`), "closing Version history returns to Online");
 
 // A version in the card opens the screen on that version.
 await click("#project-settings-panel .recent .recent-row");
@@ -582,77 +595,77 @@ await press("Escape", "Escape", 27);
 check(await waitFor(`!document.querySelector('.vh') && !!document.querySelector('#project-settings-panel')`), "Escape closes Version history and leaves Book setup open");
 
 // ── 8. New revision (a dialog) ───────────────────────────────────────────────
-await click("#project-settings-panel .revisions .section-head button", "New revision");
-check(await waitFor(`!!document.querySelector('form.rev-dialog input')`, 3000), "New revision opens a dialog with a name field");
+await click("#project-settings-panel .revisions .section-head button", "New draft");
+check(await waitFor(`!!document.querySelector('form.rev-dialog input')`, 3000), "New draft opens a dialog with a name field");
 check(await evalJs(`document.activeElement === document.querySelector('form.rev-dialog input')`), "the name field has focus");
 // Escape cancels the dialog only: Book setup stays open.
 await press("Escape", "Escape", 27);
 check(await waitFor(`!document.querySelector('form.rev-dialog')`, 3000), "Escape cancels the dialog");
 check(await evalJs(`!!document.querySelector('#project-settings-panel .revisions')`), "and leaves Book setup open");
-await click("#project-settings-panel .revisions .section-head button", "New revision");
+await click("#project-settings-panel .revisions .section-head button", "New draft");
 await waitFor(`!!document.querySelector('form.rev-dialog input')`, 3000);
 await type("form.rev-dialog input", "Third edition");
 await sleep(100);
 const newText = await dialogText();
-check(newText.includes('It will be called "Third-edition".'), `the dialog previews the name (${newText})`);
-check(newText.includes("starts from your book as it is now") && newText.includes("goes online the next time you back up"), "and says what it does");
+check(!newText.includes("It will be called"), `the dialog does not talk about hyphens (${newText})`);
+check(newText.includes("starts from your book as it is now") && newText.includes("goes online the next time you send"), "and says what it does");
 await screenshot(join(tmpdir(), "online-copy-new.png"));
-await dialogClick("Create revision");
-check(await waitFor(`!document.querySelector('form.rev-dialog') && document.querySelector('#project-settings-panel .revisions .rev.current .rev-name')?.textContent.trim() === 'Third-edition'`), "the new revision is created, open, and listed");
+await dialogClick("Create draft");
+check(await waitFor(`!document.querySelector('form.rev-dialog') && document.querySelector('#project-settings-panel .revisions .rev.current .rev-name')?.textContent.trim() === 'Third edition'`), "the new draft is created, open, and listed");
 const created = await evalJs(`window.__revisions.calls.find((c) => c.path === 'create-revision')?.body`);
 check(created?.name === "Third edition", "the typed name went to the host (it normalises it)");
-check((await names()).startsWith("Third-edition,"), "and it moves to the top of the list");
+check((await names()).startsWith("Third edition,"), "and it moves to the top of the list");
 
 // ── 9. Rename… (an online revision, and one only online) ─────────────────────
-await menuAction("main", "Rename…");
+await menuAction("Main draft", "Rename…");
 await type("form.rev-dialog input", "first edition");
 await sleep(100);
-check((await dialogText()).includes('This also renames it in the online copy. Anyone else working on "main" keeps the old name until they switch to the new one.'), "an online rename says it renames online too");
+check((await dialogText()).includes('This also renames it in the online copy. Anyone else working on "Main draft" keeps the old name until they switch to the new one.'), "an online rename says it renames online too");
 await screenshot(join(tmpdir(), "online-copy-rename.png"));
 await dialogClick("Rename");
-check(await waitFor(`!document.querySelector('form.rev-dialog') && [...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'first-edition')`), "the revision is renamed");
-await menuAction("editors-pass", "Rename…");
+check(await waitFor(`!document.querySelector('form.rev-dialog') && [...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'first edition')`), "the draft is renamed");
+await menuAction("editors pass", "Rename…");
 await type("form.rev-dialog input", "editors final");
 await sleep(100);
 check((await dialogText()).includes("It is renamed in the online copy. It isn't on this computer."), "an online-only rename says where it happens");
 await dialogClick("Rename");
-check(await waitFor(`[...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'editors-final')`), "the online-only revision is renamed");
+check(await waitFor(`[...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'editors final')`), "the online-only draft is renamed");
 check(await evalJs(`window.__revisions.calls.some((c) => c.path === 'rename-revision' && c.body.from === 'editors-pass' && c.body.to === 'editors final')`), "the host was asked to rename it");
 
 // ── 10. Delete… (a dialog; a second step when versions would be lost) ─────────
-await menuAction("release-1", "Delete…");
+await menuAction("release 1", "Delete…");
 check((await dialogButtons()) === "Cancel|Delete on this computer only|Delete everywhere", `an online revision offers this computer only, or everywhere (${await dialogButtons()})`);
 await dialogClick("Delete everywhere");
-check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'release-1')`), "deleted everywhere");
+check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'release 1')`), "deleted everywhere");
 check(await evalJs(`window.__revisions.calls.some((c) => c.path === 'delete-revision' && c.body.name === 'release-1' && c.body.everywhere === true)`), "the host was asked to delete it everywhere");
 
-await menuAction("second-edition", "Delete…");
+await menuAction("second edition", "Delete…");
 await dialogClick("Delete");
 check(await waitFor(`/2 versions/.test(document.querySelector('form.rev-dialog .warn')?.textContent ?? '')`), "a revision holding versions found nowhere else asks again, naming how many");
 await screenshot(join(tmpdir(), "online-copy-delete.png"));
 await dialogClick("Delete anyway");
-check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'second-edition')`), "deleted after the second confirmation");
+check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'second edition')`), "deleted after the second confirmation");
 check(await evalJs(`window.__revisions.calls.filter((c) => c.path === 'delete-revision' && c.body.name === 'second-edition').map((c) => !!c.body.discard).join() === 'false,true'`), "the second call carried discard: true");
 
-await menuAction("late-draft", "Delete…");
+await menuAction("late draft", "Delete…");
 check((await dialogText()).includes("It is deleted from the online copy. It isn't on this computer.") && (await dialogButtons()) === "Cancel|Delete", "an online-only revision is deleted from the online copy, in one step");
 await screenshot(join(tmpdir(), "online-copy-delete-online.png"));
 await dialogClick("Delete");
-check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'late-draft')`), "the online-only revision is gone");
+check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'late draft')`), "the online-only revision is gone");
 check(await evalJs(`window.__revisions.calls.some((c) => c.path === 'delete-revision' && c.body.name === 'late-draft' && c.body.everywhere === true && !c.body.discard)`), "the host was asked to delete it from the online copy");
 
-await menuAction("side-project", "Delete…");
+await menuAction("side project", "Delete…");
 await dialogClick("Delete");
 check(await waitFor(`/3 versions/.test(document.querySelector('form.rev-dialog .warn')?.textContent ?? '')`), "an online-only revision holding versions found nowhere else asks again, naming how many");
 await dialogClick("Delete anyway");
-check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'side-project')`), "deleted after the second confirmation");
+check(await waitFor(`![...document.querySelectorAll('#project-settings-panel .rev-name')].some((e) => e.textContent.trim() === 'side project')`), "deleted after the second confirmation");
 
 // Down to four revisions: no filter, no Show all.
-check(await evalJs(`document.querySelectorAll('#project-settings-panel .revisions .rev-list > li.rev').length === 4 && !document.querySelector('#project-settings-panel .revisions input[aria-label="Find a revision"]') && !document.querySelector('#project-settings-panel .revisions .section-foot')`), "five revisions or fewer: no filter and no Show all");
+check(await evalJs(`document.querySelectorAll('#project-settings-panel .revisions .rev-list > li.rev').length === 4 && !document.querySelector('#project-settings-panel .revisions input[aria-label="Find a draft"]') && !document.querySelector('#project-settings-panel .revisions .section-foot')`), "five revisions or fewer: no filter and no Show all");
 
 // ── 11. Switch ───────────────────────────────────────────────────────────────
-await click('#project-settings-panel button[aria-label="Switch to editors-final"]');
-check(await waitFor(`document.querySelector('#project-settings-panel .revisions .rev.current .rev-name')?.textContent.trim() === 'editors-final'`), "Switch opens an online-only revision");
+await click('#project-settings-panel button[aria-label="Switch to editors final"]');
+check(await waitFor(`document.querySelector('#project-settings-panel .revisions .rev.current .rev-name')?.textContent.trim() === 'editors final'`), "Switch opens an online-only revision");
 
 // ── 12. once backing up can work: the tools for when it keeps failing ────────
 const closeDialog = () => evalJs(`document.querySelector('[role="dialog"]')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
@@ -665,11 +678,13 @@ await evalJs(`window.__diagnoseReady = true; true`);
 await evalJs(`(() => {
   const real = window.fetch.bind(window);
   const json = (v) => new Response(JSON.stringify(v), { status: 200, headers: { "content-type": "application/json" } });
-  window.__sync = { calls: [], release: null, updatesOnline: false, diagnosed: 0 };
+  window.__sync = { calls: [], release: null, updatesOnline: false, diagnosed: 0, unsaved: 1 };
   window.fetch = (input, init) => {
     const path = new URL(typeof input === "string" ? input : input.url, location.href).pathname;
     if (path === "/api/remote/diagnose-project") window.__sync.diagnosed++;
     if (path === "/api/remote/check-updates") return Promise.resolve(json({ available: window.__sync.updatesOnline }));
+    // One edited file not in a version yet: something on this computer is waiting, so the Changes waiting section offers Send now.
+    if (path === "/api/vcs/unversioned-changes") return Promise.resolve(json({ changedFiles: window.__sync.unsaved, stale: false }));
     if (path === "/api/remote/sync") {
       const body = JSON.parse(init.body);
       window.__sync.calls.push(body);
@@ -680,50 +695,44 @@ await evalJs(`(() => {
   };
   return true;
 })()`);
-await click(".status-bar .status-control");
-check(await waitFor(`!!document.querySelector('#project-settings-panel details.trouble')`), "the backing-up-keeps-failing tools are there once backing up can work");
+await openTabFromBar();
+check(await waitFor(`!!document.querySelector('#project-settings-panel details.trouble')`), "the backing-up-keeps-failing tools are there once sending can work");
 const failing = await evalJs(`(() => {
   const d = document.querySelector('#project-settings-panel details.trouble');
   return {
     open: d.open,
-    inStatusCard: !!d.closest('.status'),
+    afterHistory: !!d.previousElementSibling?.classList.contains('revisions'),
     summary: d.querySelector('summary').textContent.trim(),
     rows: [...d.querySelectorAll('.tool strong')].map((b) => b.textContent.trim()),
     title: document.querySelector('#project-settings-panel .status-text h3')?.textContent.trim(),
   };
 })()`);
 log(`ready tab: ${JSON.stringify(failing)}`);
-check(!failing.open && failing.inStatusCard && failing.summary === "Backing up keeps failing?", "they sit, collapsed, at the foot of the status card");
-check(failing.rows.join("|") === "Test connection|Sign in again|Repair the online copy|Start over from the online copy", "the four tools, Sign in again right after Test connection");
+check(!failing.open && failing.afterHistory && failing.summary === "Something wrong with the online copy?", "they sit, collapsed, under Drafts");
+check(failing.rows.join("|") === "Check the connection|Sign in again|Repair", "the tools: Check the connection, Sign in again, Repair (Start over is under More…)");
 await evalJs(`document.querySelector('#project-settings-panel details.trouble').open = true; true`);
 await sleep(200);
 await screenshot(join(tmpdir(), "online-copy-failing.png"));
-check(/^Online copy: github\.com\/ada\/harbor-lights$/.test(failing.title), `the status names the online copy without claiming a backup (${failing.title})`);
+check(failing.title === "Your online copy is set up", `the status does not claim a backup it has not heard of (${failing.title})`);
 
 // Automatic backing up is on (the default): Get latest and Back up now are both offered (#485).
-const statusActions = `[...document.querySelectorAll('#project-settings-panel .status-action button')]`;
+const statusActions = `[...document.querySelectorAll('#project-settings-panel .status-action button, #project-settings-panel .wc-send')]`;
 const cardButtons = () => evalJs(`${statusActions}.map((b) => b.textContent.trim() + (b.disabled ? ' (disabled)' : '')).join('|')`);
 const cardTitle = () => evalJs(`document.querySelector('#project-settings-panel .status-text h3')?.textContent.trim()`);
-check((await cardButtons()) === "Get latest|Back up now", `with automatic backing up on, the status card offers Get latest and Back up now (${await cardButtons()})`);
-check(await evalJs(`${statusActions}.find((b) => b.textContent.trim() === 'Back up now')?.title === 'Back up now: get the latest changes from the online copy, then back up yours'`), "Back up now says it gets the latest first");
-await click("#project-settings-panel .status-action button", "Back up now");
-check(await waitFor(`${statusActions}.map((b) => b.textContent.trim() + (b.disabled ? '*' : '')).join('|') === 'Get latest*|Backing up…*'`), "Back up now reads Backing up… while it runs, and Get latest waits");
-check(await evalJs(`window.__sync.calls.length === 1 && window.__sync.calls[0].push === undefined`), "Back up now ran one full pass, with automatic backing up on");
-await evalJs(`window.__sync.release(); true`);
-check(await waitFor(`/^Backed up · /.test(document.querySelector('#project-settings-panel .status-text h3')?.textContent.trim() ?? '')`), `the card then says Backed up (${await cardTitle()})`);
-check((await cardButtons()) === "Get latest|Back up now", `backed up, it still offers Get latest and Back up now (${await cardButtons()})`);
+check((await cardButtons()) === "Send now", `Changes waiting offers the one Send now (${await cardButtons()})`);
+await click("#project-settings-panel .wc-send", "Send now");
+check(await waitFor(`${statusActions}.map((b) => b.textContent.trim() + (b.disabled ? '*' : '')).join('|') === 'Sending…*'`), "Send now reads Sending… while it runs");
+check(await evalJs(`window.__sync.calls.length === 1 && window.__sync.calls[0].push === undefined`), "Send now ran one full pass, with automatic sending on");
+// The open draft was only online-side before the pass; the pass makes it backed up everywhere.
+await evalJs(`window.__revisions.revisions.forEach((r) => { if (r.current) { r.where = 'online'; r.notBackedUp = false; } }); window.__sync.release(); true`);
+check(await waitFor(`/^Your book is safe online/.test(document.querySelector('#project-settings-panel .status-text h3')?.textContent.trim() ?? '')`), `the card then says the book is safe online (${await cardTitle()})`);
+check((await cardButtons()) === "Send now", `online, it still offers Send now (${await cardButtons()})`);
 await screenshot(join(tmpdir(), "online-copy-tab-auto.png"));
-await click("#project-settings-panel .status-action button", "Get latest");
-check(await waitFor(`${statusActions}.map((b) => b.textContent.trim() + (b.disabled ? '*' : '')).join('|') === 'Getting the latest…*|Back up now*'`), "Get latest reads Getting the latest… while it runs, and Back up now waits");
-check(await evalJs(`window.__sync.calls.length === 2 && window.__sync.calls[1].push === false`), "Get latest asked for the pass that sends nothing (push: false)");
-await evalJs(`window.__sync.release(); true`);
-const upToDate = `[...document.querySelectorAll('.toast .toast-message')].some((t) => t.textContent.trim() === 'Already up to date — nothing new online.')`;
-check(await waitFor(upToDate), "Get latest says when there was nothing new");
-check((await cardButtons()) === "Get latest|Back up now" && /^Backed up · /.test(await cardTitle()), "and the card is ready again, still backed up");
 
 // Save a version, then Escape: the button is disabled while it saves, so the focus a click gave
 // it drops to <body>, outside Book setup. Escape must still close Book setup (#448, #451).
 const saveVersionBtn = `[...document.querySelectorAll('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button')].find((b) => b.textContent.trim() === 'Save a version')`;
+await evalJs(`window.__sync.unsaved = 0; true`); // nothing edited since the last version: Save a version has nothing new
 check(await mouseClick(saveVersionBtn), "Save a version, clicked");
 check(await waitFor(`/Nothing new to save/.test(document.querySelector('#project-settings-panel [aria-labelledby="version-history-title"]')?.textContent ?? '') && !!(${saveVersionBtn}) && !(${saveVersionBtn}).disabled`, 20000), "Save a version finished (nothing new) and is ready again");
 const focusAfterSave = await evalJs(`document.activeElement === document.body ? "body" : document.activeElement?.closest('#project-settings-panel') ? "in Book setup" : String(document.activeElement?.tagName)`);
@@ -731,10 +740,11 @@ log(`focus after Save a version: ${focusAfterSave}`);
 await press("Escape", "Escape", 27);
 check(await waitFor(`!document.querySelector('#project-settings-panel')`, 3000), `Escape after Save a version closes Book setup (focus was ${focusAfterSave})`);
 
-// ── 12b. automatic backing up off: Get latest and Sync beside the status control ─
+// ── 12b. automatic backing up off: the one Update button beside the status control ─
 // The passes and the update check are still stubbed (step 12). Closing Accounts makes
 // the app look at the online copy again (stubbed as ready), so the book can back up;
-// Get latest and Sync show only once Settings turns automatic backing up off.
+// the Update button shows only once Settings turns automatic backing up off (it replaced
+// Get latest and Sync).
 await evalJs(`window.__sync.calls = []; window.__sync.diagnosed = 0; true`);
 const openSettings = async () => {
   await click('.status-bar button[aria-label="Settings"]');
@@ -751,107 +761,84 @@ await click('button[aria-label="Close accounts"]');
 check(await waitFor(`window.__sync.diagnosed > 0`), "closing Accounts made the app look at the online copy again");
 await closeSettings();
 await sleep(500);
-const syncBtn = `[...document.querySelectorAll('.status-bar button')].find((b) => /^Sync/.test(b.textContent.trim()))`;
-const latestBtn = `[...document.querySelectorAll('.status-bar button')].find((b) => /^Get latest/.test(b.getAttribute('aria-label') ?? ''))`;
-check(!(await evalJs(`!!(${syncBtn}) || !!(${latestBtn})`)), "a book that can back up shows no Get latest or Sync in the bar while automatic backing up is on");
+const updateBtn = `document.querySelector('.status-bar button.labelled')`;
+check(!(await evalJs(`!!(${updateBtn})`)), "a book that is online with automatic sending on shows no Update button");
 await screenshot(join(tmpdir(), "online-copy-bar-auto.png"));
 await openSettings();
 await evalJs(`(() => { const sw = document.querySelector('#settings-autosync'); sw.checked = false; sw.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
 await closeSettings();
-check(await waitFor(`!!(${syncBtn}) && !!(${latestBtn})`), "the status bar offers Get latest and Sync once automatic backing up is off");
+await sleep(500);
+check(!(await evalJs(`!!(${updateBtn})`)), "online, even with automatic sending off, the bar shows no button: nothing to get or send");
+
+// Changes online: the toast, the bar line and the one button all name the same action.
+await evalJs(`window.__sync.updatesOnline = true; window.dispatchEvent(new Event('focus')); true`);
+const prompt = `[...document.querySelectorAll('.toast')].find((t) => t.querySelector('.toast-message')?.textContent.trim() === 'New changes are online for this book.')`;
+check(await waitFor(`!!(${prompt}) && !!(${updateBtn})`), "new changes online raise the toast and the bar's button");
 const shape = await evalJs(`(() => {
   const bar = document.querySelector('.status-bar');
-  const btn = ${syncBtn};
-  const latest = ${latestBtn};
+  const btn = ${updateBtn};
   const left = (el) => el.getBoundingClientRect().left;
   return {
     text: btn.textContent.trim(),
     title: btn.title,
     hasIcon: !!btn.querySelector('svg'),
     disabled: btn.disabled,
-    latest: { label: latest.getAttribute('aria-label'), title: latest.title, text: latest.textContent.trim(), hasIcon: !!latest.querySelector('svg'), disabled: latest.disabled },
-    order: [left(bar.querySelector('button[aria-label^="Books"]')), left(bar.querySelector('.status-control')), left(latest), left(btn), left(bar.querySelector('button[aria-label="Settings"]'))],
+    bar: document.querySelector('.status-bar .status-control').innerText.replace(/\\s+/g, ' ').trim(),
+    toast: (${prompt}).querySelector('.toast-message').textContent.trim(),
+    action: (${prompt}).querySelector('.toast-action')?.textContent.trim(),
+    order: [left(bar.querySelector('button[aria-label^="Books"]')), left(bar.querySelector('.status-control')), left(btn), left(bar.querySelector('button[aria-label="Settings"]'))],
     labels: [...bar.querySelectorAll('button')].map((b) => b.getAttribute('aria-label') ?? b.textContent.trim()),
   };
 })()`);
-log(`bar with Get latest and Sync: ${JSON.stringify(shape)}`);
-check(shape.text === "Sync" && shape.hasIcon && !shape.disabled, "Sync is an icon and the word Sync");
-check(shape.title === "Sync: get the latest changes from the online copy, then back up yours", `its tooltip says what it does (${shape.title})`);
-check(shape.latest.label === "Get latest" && shape.latest.hasIcon && shape.latest.text === "" && !shape.latest.disabled, `Get latest is an arrow, as in 0.11.22 (${JSON.stringify(shape.latest)})`);
-check(shape.latest.title === "Get latest: bring in changes from the online copy without sending yours", `its tooltip says it sends nothing (${shape.latest.title})`);
-check(shape.order.every((x, i) => i === 0 || x > shape.order[i - 1]), `the bar reads Books, status, Get latest, Sync, then settings (${shape.order.map(Math.round)})`);
-check(!shape.labels.some((l) => /Back up now/.test(l)), `Back up now stays in Online copy, not the bar (${shape.labels.join(", ")})`);
-await screenshot(join(tmpdir(), "online-copy-bar-sync.png"));
-
-await click(".status-bar button", "Sync");
-check(await waitFor(`${syncBtn}?.textContent.trim() === 'Syncing…' && ${syncBtn}.disabled && ${latestBtn}.disabled`), "while it runs Sync reads Syncing…, and both wait");
-check(await evalJs(`window.__sync.calls.length === 1 && window.__sync.calls[0].push === undefined`), "Sync ran one full pass (no get-only flag)");
-await evalJs(`window.__sync.release(); true`);
-check(await waitFor(`${syncBtn}?.textContent.trim() === 'Sync' && !${syncBtn}.disabled && !${latestBtn}.disabled`), "it is back to Sync when the pass ends");
-
-await click('.status-bar button[aria-label="Get latest"]');
-check(await waitFor(`${latestBtn}?.textContent.trim() === 'Getting…' && ${latestBtn}.disabled && ${syncBtn}.disabled`), "while it runs Get latest reads Getting…, and both wait");
-check(await evalJs(`window.__sync.calls.length === 2 && window.__sync.calls[1].push === false`), "Get latest asked for the pass that sends nothing (push: false)");
-await screenshot(join(tmpdir(), "online-copy-bar-get-latest.png"));
-await evalJs(`window.__sync.release(); true`);
-check(await waitFor(`${latestBtn}?.textContent.trim() === '' && !${latestBtn}.disabled && !${syncBtn}.disabled`), "it is back to an arrow when the pass ends");
-
-await evalJs(`window.__sync.updatesOnline = true; window.dispatchEvent(new Event('focus')); true`);
-const prompt = `[...document.querySelectorAll('.toast')].find((t) => t.querySelector('.toast-message')?.textContent.trim() === 'New changes are online for this book.')`;
-check(await waitFor(`!!(${prompt})`), "new changes online raise the toast");
-const cue = await evalJs(`(() => ({
-  toast: (${prompt}).querySelector('.toast-message').textContent.trim(),
-  action: (${prompt}).querySelector('.toast-action')?.textContent.trim(),
-  label: (${syncBtn}).getAttribute('aria-label'),
-  title: (${syncBtn}).title,
-  latest: (${latestBtn}).getAttribute('aria-label'),
-  latestText: (${latestBtn}).textContent.trim(),
-}))()`);
-check(cue.toast === "New changes are online for this book." && cue.action === "Get latest", `the toast offers Get latest (${cue.action})`);
-check(cue.latest === "Get latest — new changes are online" && cue.latestText === "New online", `Get latest names them: New online (${cue.latest}, ${cue.latestText})`);
-check(cue.label === "Sync — new changes are online" && /^Sync — new changes are online/.test(cue.title), `Sync keeps its cue (${cue.label})`);
+log(`bar with its button: ${JSON.stringify(shape)}`);
+check(shape.text === "Get changes" && shape.hasIcon && !shape.disabled, "the button is an icon and the words Get changes");
+check(shape.action === "Get changes", `the toast names the same action (${shape.action})`);
+check(shape.bar === "Saved here · New changes online", `the bar says so (${shape.bar})`);
+check(shape.title === "Get the changes from the online copy. Your own changes stay as they are.", `its tooltip says what it does (${shape.title})`);
+check(shape.order.every((x, i) => i === 0 || x > shape.order[i - 1]), `the bar reads Books, status, button, then settings (${shape.order.map(Math.round)})`);
+check(!shape.labels.some((l) => /Update|Get latest|^Sync/.test(l)), `no Update, Get latest or Sync in the bar (${shape.labels.join(", ")})`);
 await sleep(600); // let the toast finish fading in
 await screenshot(join(tmpdir(), "online-copy-bar-sync-updates.png"));
-await click(".toast-action", "Get latest");
-check(await waitFor(`${latestBtn}?.textContent.trim() === 'Getting…'`), "the toast's Get latest runs the pass that sends nothing");
-check(await evalJs(`window.__sync.calls.length === 3 && window.__sync.calls[2].push === false`), "it asked for push: false");
+await click(".status-bar button.labelled");
+check(await waitFor(`${updateBtn}?.textContent.trim() === 'Updating…' && ${updateBtn}.disabled`), "while it runs the button reads Updating…, and waits");
+check(await evalJs(`window.__sync.calls.length === 1 && window.__sync.calls[0].push === false`), "Get changes asked for the pass that sends nothing (push: false)");
 await evalJs(`window.__sync.release(); true`);
-check(await waitFor(`${latestBtn}?.getAttribute('aria-label') === 'Get latest' && ${syncBtn}?.textContent.trim() === 'Sync' && !${syncBtn}.getAttribute('aria-label')`), "the cue clears once the changes are in");
+check(await waitFor(`!(${prompt}) && !(${updateBtn}) && /^Saved here · (?!New changes)/.test(document.querySelector('.status-bar .status-control').innerText.replace(/\\s+/g, ' ').trim())`), "the cue, the button and the stale toast clear once the changes are in");
 
 // Online copy, with automatic backing up off: Get latest beside Sync now (#485).
-await click(".status-bar .status-control");
-check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Get latest|Sync now'`), `with automatic backing up off, the status card offers Get latest and Sync now (${await cardButtons()})`);
+await evalJs(`window.__sync.unsaved = 1; true`);
+await openTabFromBar();
+check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Send now'`), `with automatic sending off, the status card still offers Send now (${await cardButtons()})`);
 await screenshot(join(tmpdir(), "online-copy-tab-manual.png"));
-await click("#project-settings-panel .status-action button", "Get latest");
-check(await waitFor(`window.__sync.calls.length === 4 && window.__sync.calls[3].push === false`), "the card's Get latest sends nothing");
+await click("#project-settings-panel .wc-send", "Send now");
+check(await waitFor(`${statusActions}.some((b) => b.textContent.trim() === 'Sending…')`), "Send now reads Sending… while it runs");
+check(await evalJs(`window.__sync.calls.length === 2 && window.__sync.calls[1].push === undefined`), "Send now is the full pass");
 await evalJs(`window.__sync.release(); true`);
-await click("#project-settings-panel .status-action button", "Sync now");
-check(await waitFor(`${statusActions}.some((b) => b.textContent.trim() === 'Syncing…')`), "Sync now reads Syncing… while it runs");
-check(await evalJs(`window.__sync.calls.length === 5 && window.__sync.calls[4].push === undefined`), "Sync now is the full pass");
-await evalJs(`window.__sync.release(); true`);
-check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Get latest|Sync now'`), "and both are ready again");
+check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Send now'`), "and it is ready again");
 await closeDialog();
 check(await waitFor(`!document.querySelector('#project-settings-panel')`), "Book setup closed");
 
-// Narrow: the status line gives way (ellipsis, truly cut at 260px) and everything stays on the bar.
+// Narrow: under 820px the "Saved here" clause moves into the tooltip, the online clause gives way
+// (ellipsis) and everything stays on the bar.
 for (const width of [700, 260]) {
   await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
   await sleep(800);
   const narrow = await evalJs(`(() => {
     const bar = document.querySelector('.status-bar').getBoundingClientRect();
-    const btn = ${syncBtn};
+    const btn = document.querySelector('.status-bar button.labelled') ?? document.querySelector('.status-bar button[aria-label="Settings"]');
+    const control = document.querySelector('.status-bar .status-control');
     const text = document.querySelector('.status-bar .status-text');
+    const here = control.querySelector('.here');
     const rects = [...document.querySelectorAll('.status-bar button')].map((b) => b.getBoundingClientRect());
     return {
       spill: rects.some((r) => r.right > bar.right + 1 || r.left < bar.left - 1),
-      syncShown: btn.getClientRects().length > 0,
-      latestShown: (${latestBtn}).getClientRects().length > 0,
+      hereHidden: !here || here.getClientRects().length === 0,
+      tooltipHasHere: control.title.startsWith('Saved here.'),
       ellipsis: getComputedStyle(text).textOverflow === 'ellipsis' && getComputedStyle(text).overflow === 'hidden',
-      cut: text.scrollWidth > text.clientWidth,
-      syncBeforeSettings: btn.getBoundingClientRect().right <= document.querySelector('.status-bar button[aria-label="Settings"]').getBoundingClientRect().left,
+      updateBeforeSettings: control.getBoundingClientRect().right <= document.querySelector('.status-bar button[aria-label="Settings"]').getBoundingClientRect().left,
     };
   })()`);
-  check(!narrow.spill && narrow.syncShown && narrow.latestShown && narrow.ellipsis && narrow.syncBeforeSettings && (width > 260 || narrow.cut), `at ${width}px it still fits (${JSON.stringify(narrow)})`);
+  check(!narrow.spill && narrow.hereHidden && narrow.tooltipHasHere && narrow.ellipsis && narrow.updateBeforeSettings, `at ${width}px it still fits, with "Saved here" in the tooltip (${JSON.stringify(narrow)})`);
   if (width === 260) await screenshot(join(tmpdir(), "online-copy-bar-narrow.png"));
 }
 await send("Emulation.clearDeviceMetricsOverride");
@@ -1022,7 +1009,7 @@ await evalJs(`(${resetIn("settings-editor")}).click(); true`);
 check(await saved((s) => s.editor.highlightProblems, true), "Reset (Editor) turns it back on");
 // Saving's Reset turns automatic backing up back on (12b turned it off); the Reader check below wants it off again.
 await evalJs(`(${resetIn("settings-saving")}).click(); true`);
-check(await saved((s) => s.versionHistory.autoSync, true), "Reset (Saving) puts Back up online automatically back on");
+check(await saved((s) => s.versionHistory.autoSync, true), "Reset (Saving) puts Send changes online automatically back on");
 check(await evalJs(`document.querySelector('#settings-autosync').checked`), "and the switch shows it");
 await evalJs(`(() => { const sw = document.querySelector('#settings-autosync'); sw.checked = false; sw.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
 check(await saved((s) => s.versionHistory.autoSync, false), "(and off again, for the Reader check)");
@@ -1047,8 +1034,8 @@ await click("#landing-tab-projects");
 check(await waitFor(`[...document.querySelectorAll('.action-card')].some((b) => b.textContent.includes('Open from GitHub'))`), "the Books tab offers Open from GitHub");
 await evalJs(`[...document.querySelectorAll('.action-card')].find((b) => b.textContent.includes('Open from GitHub'))?.click(); true`);
 check(await waitFor(`!!document.querySelector('#github-dialog-title')`), "Open from GitHub opened");
-const hint = await evalJs(`[...document.querySelectorAll('.dialog-body .hint.subtle')].map((p) => p.textContent.replace(/\\s+/g, " ").trim()).find((t) => t.startsWith('Using a different Git host'))`);
-check(/^Using a different Git host \(Gitea, GitLab, Bitbucket, …\)\? Open Accounts to sign in to it/.test(hint ?? ""), `it says where another Git host goes, with a link (${hint})`);
+const hint = await evalJs(`[...document.querySelectorAll('.dialog-body .hint.subtle')].map((p) => p.textContent.replace(/\\s+/g, " ").trim()).find((t) => t.startsWith('Using a different service'))`);
+check(/^Using a different service \(GitLab, Gitea, Bitbucket…\)\? Open Accounts to sign in to it/.test(hint ?? ""), `it says where another service goes, with a link (${hint})`);
 await screenshot(join(tmpdir(), "online-copy-github-dialog.png"));
 await click(".dialog-body .link-btn", "Open Accounts");
 check(await waitFor(`!!document.querySelector('button[aria-label="Close accounts"]') && !document.querySelector('#github-dialog-title')`), "Open Accounts closes Open from GitHub and opens Accounts");
@@ -1059,15 +1046,15 @@ check(await saved((s) => s.gitIdentity.authorName, "Ada Lovelace"), "a name type
 await evalJs(`(${resetIn("accounts-identity")}).click(); true`);
 check(await saved((s) => s.gitIdentity, { authorName: "", authorEmail: "" }), "Reset (Your name and email) clears them");
 check(await evalJs(`document.querySelector('#accounts-name').value === ''`), "and the Name field shows it");
-await click("button", "Add a Git server…");
-check(await waitFor(`!!document.querySelector('.server-form input[placeholder="git.example.com"]')`), "Add a Git server… opens the form");
+await click("button", "Add another service…");
+check(await waitFor(`!!document.querySelector('.server-form input[placeholder="git.example.com"]')`), "Add another service… opens the form");
 const tokenLink = `[...document.querySelectorAll('.server-form button.link')].map((b) => b.textContent.trim())[0]`;
-check((await evalJs(tokenLink)) === "How to make an access token", "with no address, the link is the guide");
+check((await evalJs(tokenLink)) === "Show me how", "with no address, the link is the guide");
 await type('.server-form input[placeholder="git.example.com"]', "gitea.example.com");
-check(await waitFor(`${tokenLink} === 'Create an access token on gitea.example.com'`), "typing a Gitea server links to its own token page");
+check(await waitFor(`${tokenLink} === 'Show me how on gitea.example.com'`), "typing a Gitea server links to its own token page");
 await screenshot(join(tmpdir(), "online-copy-accounts-token-link.png"));
 await type('.server-form input[placeholder="git.example.com"]', "git.example.com");
-check(await waitFor(`${tokenLink} === 'How to make an access token'`), "a server Gutterpress doesn't know goes back to the guide");
+check(await waitFor(`${tokenLink} === 'Show me how'`), "a server Gutterpress doesn't know goes back to the guide");
 await click(".server-form button", "Cancel");
 await click('button[aria-label="Close accounts"]');
 check(await waitFor(`!document.querySelector('button[aria-label="Close accounts"]')`), "Accounts closed, back on the start screen");
@@ -1085,7 +1072,7 @@ await closeDialog();
 check(await waitFor(`!document.querySelector('input[name="settings-role"]')`), "Settings closed");
 check(await waitFor(`!document.querySelector('.status-bar .status-control')`), "a Reader has no status control");
 const readerBar = await evalJs(`[...document.querySelectorAll('.status-bar button')].map((b) => b.getAttribute('aria-label') ?? b.textContent.trim())`);
-check(!readerBar.some((l) => /Sync|Get latest|Back up now/.test(l)), `a Reader has no Get latest, Sync or Back up now, even with automatic backing up off (${readerBar.join(", ")})`);
+check(!readerBar.some((l) => /Sync|Get latest|Send now/.test(l)), `a Reader has no Get latest, Sync or Send now, even with automatic sending off (${readerBar.join(", ")})`);
 // New changes online again: a Reader is never asked (they get the latest on their own).
 const checksBefore = await evalJs(`window.__sync.calls.length`);
 await evalJs(`window.__sync.updatesOnline = true; window.dispatchEvent(new Event('focus')); true`);
@@ -1094,6 +1081,6 @@ check(!(await evalJs(`!!(${prompt})`)), "a Reader hears no new-changes toast");
 check((await evalJs(`window.__sync.calls.length`)) === checksBefore, "and nothing ran a pass for them from the page");
 await screenshot(join(tmpdir(), "online-copy-reader.png"));
 
-log("PASS: one status control, the Online copy tab, Version history inside it, revisions (find, new, rename, delete, switch), Get latest and Back up now beside Sync, the Settings, Accounts and Open from GitHub controls of 0.11.22, and the Reader's bare status bar all verified");
+log("PASS: one status control, the Online copy tab, Version history inside it, revisions (find, new, rename, delete, switch), Get latest and Send now beside Sync, the Settings, Accounts and Open from GitHub controls of 0.11.22, and the Reader's bare status bar all verified");
 cleanup();
 process.exit(0);

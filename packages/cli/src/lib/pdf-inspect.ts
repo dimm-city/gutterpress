@@ -17,8 +17,9 @@
  *   - Structural integrity (`isLoadable`) is a "does it parse" gate, not a deep
  *     `qpdf --check` of xref/stream-length integrity.
  *   - Image DPI requires decoding the image to read its pixel dimensions and is
- *     therefore best-effort; bleed-box reads fall back to a raw-byte scan because
- *     pdfjs exposes no TrimBox/BleedBox accessor.
+ *     therefore best-effort; bleed boxes are read with pdf-lib
+ *     (engine/shared/pdf-inspect.ts) because pdfjs exposes no TrimBox/BleedBox
+ *     accessor.
  *
  * Loaded documents are cached per path (invalidated on size/mtime change) so a
  * single validation run parses a large PDF once across all checks.
@@ -60,8 +61,20 @@ const docCache = new Map<string, CacheEntry>();
  */
 export const DOC_CACHE_MAX = 8;
 
+/**
+ * Release a document: its worker transport and every decoded page, font and
+ * image. Through the loading task, which both PDF.js lines have: PDF.js 6
+ * (unpdf 1.8 and newer) dropped `PDFDocumentProxy.destroy()`, and that
+ * TypeError made the preserve-text inspections below fall back to flattening
+ * every transparent page whole (#499). The parity gate (scripts/) reads PDFs
+ * the same way and releases them through this too.
+ */
+export function releasePdf(doc: PDFDocumentProxy): Promise<void> {
+  return doc.loadingTask.destroy();
+}
+
 function destroyEntry(entry: CacheEntry): void {
-  entry.doc.then((d) => d.destroy()).catch(() => {});
+  entry.doc.then(releasePdf).catch(() => {});
 }
 
 /**
@@ -637,7 +650,7 @@ export async function unsplittableTextReasons(
       if (!showsText && !reasons.has(i)) reasons.set(i, "no-text");
     }
   } finally {
-    await doc.destroy();
+    await releasePdf(doc);
   }
   return reasons;
 }
@@ -739,7 +752,7 @@ export async function pagesWithVisibleShadingPaints(
       if (found) out.push(i);
     }
   } finally {
-    await doc.destroy();
+    await releasePdf(doc);
   }
   return out;
 }

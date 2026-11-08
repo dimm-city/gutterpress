@@ -465,6 +465,13 @@ export class ExportController {
           (err as Error & { code?: string }).code = "BUILD_ERROR";
           throw err;
         }
+        // Book is part-way through a draft switch: keep the stable code so the
+        // renderer can say why in plain words (friendlyPdfError).
+        if ((e as { code?: string } | null)?.code === "UNFINISHED_SWITCH") {
+          const err = new Error(e instanceof Error ? e.message : String(e));
+          (err as Error & { code?: string }).code = "UNFINISHED_SWITCH";
+          throw err;
+        }
         // Generic spawn ENOENT: wrap with a friendlier message identifying
         // the missing tool. (Preflight should have caught this earlier, but
         // some downstream tools — e.g. when a tool exists but errors out —

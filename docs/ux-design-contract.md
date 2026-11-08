@@ -100,6 +100,24 @@ history-start versions "First version":
 | combining with the online copy | "Combined your changes with the online copy's" |
 | keeping both takes of a file that can't be combined | "Kept both takes of the files that can't be combined" |
 
+**Switching revisions is crash-safe.** "Saved before switching revision" holds
+everything; only then does the switch write `.git/gutterpress-switch.json`
+(the version and revision it was on, the one it is moving to, when it began, the
+folders that already existed), and it removes the file last. If the app dies in
+between, `repairInterruptedSwitch` (`source-provider.ts`) runs when the book is
+opened (`app/classify-project`, before the editor reads a file or a build
+starts) and, as a backstop, before any save, backup or restore. It first keeps a
+copy of the tree as it stands on `refs/gutterpress/before-repair-<time>` (inside the git folder, not in the version history; the notice says how to recover it), then
+puts the book back to the saved version, and removes only files whose bytes
+equal the target's (or that were written since the move began) and folders the
+move made; anything else is left and listed. A journal that cannot be read
+rolls back to HEAD and deletes nothing. The author sees a warning toast when the
+book opens, and the same text in Book setup → Revisions. The wording follows the
+journal's kind: "Switching revisions was interrupted" or "Restoring a version
+was interrupted". The editor is not read-only while a switch runs; the side ref
+covers edits made then. Tests: `packages/cli/src/lib/switch-crash-recovery.test.ts`,
+`packages/desktop/tests/platform/app-classify-repair.test.ts`.
+
 ---
 
 ## Vision Statement
@@ -505,7 +523,7 @@ buttons.
 ### 3. Saving, versions and revisions
 
 - **Auto-save is SHIPPED and works as follows** (do not respecify): a FIXED
-  debounced disk save 500ms after the last edit (`EditorBuffer`) and an
+  debounced disk save 2s after the last edit (12s at most into unbroken typing) (`EditorBuffer`) and an
   ALWAYS-ON crash-recovery draft 1000ms after the last edit, plus explicit
   `Cmd/Ctrl+S` / toolbar Save. Neither delay is a user setting (#274), but
   auto-save itself is an on/off switch, default on: Settings → Saving, "Save
@@ -518,22 +536,31 @@ buttons.
   Cancel — the one modal in the saving flow, and only when auto-save is
   off. The status control itself stays subtle (no modal) — see
   Anti-Patterns.
-- **One status control, Authors only, is SHIPPED** (#448): the status bar's one
-  line combines saving and the online copy — "Saving…", "Saved on this
-  computer", "Saved · Backed up", "Saved · Backing up…", "Saved · Offline —
-  backs up when you're back", "Saved · Sign in to back up", "Saved · Backing up
-  paused", "Saved · Not backed up yet", "Couldn't save", "Versions need
-  attention" — with a shape (check, cloud, warning, error) carrying the tone, not
-  colour alone. Clicking it opens Book setup → Online copy, the one place for
-  versions, version history, revisions and the online copy. It sits on the
-  left, after the book switcher. With automatic backing up off, **Get latest**
-  (receives, sends nothing) and **Sync** (gets the latest, then backs up) sit
-  beside it, and "New changes are online for this book." stays a toast with
-  Get latest. Online copy offers **Back up now** (with automatic backing up off
-  it reads **Sync now**; after a failure, **Try again**) and **Get latest**
-  whenever the book can back up, whatever the setting (#485). A Reader sees
-  none of it: no control, no buttons, no online toasts (a Reader gets the
-  latest changes automatically).
+- **One status control, Authors only** (#448, reshaped in 0.11.24): the status
+  bar's one control reads as two clauses, this computer and then the online
+  copy — "Saved here · Backed up 3 mins ago" (the time follows the clock, one
+  tick a minute, and is never announced). The states, by precedence: "Couldn't
+  save · see why", "Unsaved changes", "Saving…", "Versions need attention",
+  "N passages to decide", then the online copy (Offline, Sign in to back up,
+  Can't find the online copy, Backup paused), "New changes online", "Online has
+  changes · you have changes", "N changes not backed up", Backing up…,
+  "Checking online…" (never a bare "Saved" while the online copy's state is
+  unknown), Backed up, "Not backed up online", "No version history". A shape
+  (check, cloud, warning, error) carries the tone, not colour alone. A click does the
+  one thing that fixes the state: "Unsaved changes" saves, "to decide" opens
+  the Problems list, "Sign in to back up" opens the sign-in; every other state
+  opens a small popover (one sentence, one primary action, and **Backup &
+  history…**). Tooltips say what the state means and what a click does. One
+  **Update** button replaces Get latest and Sync: it shows when there is
+  something to get (**Update**) or only to send (**Back up**), and always with
+  automatic backing up off. Under 820px the "Saved here" clause moves into the
+  tooltip. "New changes are online for this book." stays a toast with **Get the
+  changes**, replaced by the next outcome and dismissed once a pass succeeds;
+  one outcome toast per action. Online copy offers **Back up now** (with
+  automatic backing up off it reads **Sync now**; after a failure, **Try
+  again**) and **Get latest** whenever the book can back up, whatever the
+  setting (#485). A Reader sees none of it: no control, no buttons, no online
+  toasts (a Reader gets the latest changes automatically).
 - **Revisions are SHIPPED in Book setup → Online copy** (#448, which replaced
   #273's switcher in Settings → Saving): the list names each revision, marks
   the one the author is working on, and says where each is kept (Online; Online
@@ -1278,7 +1305,7 @@ scope to the 2 priority personas (Maya, Kai).
 | Publish failure (user-caused, preflight-caught) | ≤5% | provider e2e tests + GitHub-issue reports |
 | Publish failure (app-caused) | ≤1% | same |
 | PDF export crash | 0 in the e2e suite (fleet rate is aspirational — no telemetry) | CI gate |
-| Data loss | none beyond the last auto-save debounce (500ms) + recovery snapshot (1s) — crash recovery must restore to within 1s of the last edit | recovery test suite |
+| Data loss | none beyond the last auto-save debounce (2s idle, 12s max) + recovery snapshot (1s) — crash recovery must restore to within 1s of the last edit | recovery test suite |
 
 ### Performance gates
 
@@ -1504,7 +1531,7 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 | Hiding features behind unlock gates | Contradicts escape-hatch principle; regresses shipped UI | Soft emphasis: Advanced badge, never hidden (§4) |
 | Opening help in an external browser tab | Breaks flow; offline failure | In-app help: the start screen's Help tab (`HelpContent`) |
 | Print-tool "modes" (pointer/text/frame tools) | Wrong mental model | Markdown-first; properties in inspector |
-| Requiring save before preview | Breaks the live loop | Shipped: 500ms debounced save + live preview (default; turning auto-save off is the author's opt-in to preview-on-save) |
+| Requiring save before preview | Breaks the live loop | Shipped: 2s idle-debounced save (12s max) + live preview (default; turning auto-save off is the author's opt-in to preview-on-save) |
 | Raw engine / `@page` errors shown to authors | Opaque, frightening | Plain-language Problems entries (shipped, §10) |
 | Raw rule IDs / linter jargon as primary text | Writer-first product | Plain-language labels, codes demoted (shipped, §10) |
 | Reintroducing stylelint or any bundler-hostile dep for editor lint | Breaks `bun build --compile` (docs/architecture-rules.md §3) | Extend `printsafe.ts` |

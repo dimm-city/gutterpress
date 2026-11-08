@@ -39,7 +39,7 @@ const check: Check = {
       results.push({
         checkId: check.id,
         severity: "error",
-        message: "Spot color (Separation) found (not allowed).",
+        message: "Spot color (Separation) found (DriveThruRPG accepts process CMYK only; PDF/X-1a itself permits spot colors).",
         file: ctx.pdfPath,
       });
     }
@@ -47,7 +47,7 @@ const check: Check = {
       results.push({
         checkId: check.id,
         severity: "error",
-        message: "Spot color (DeviceN) found (not allowed).",
+        message: "Spot color (DeviceN) found (DriveThruRPG accepts process CMYK only; PDF/X-1a itself permits spot colors).",
         file: ctx.pdfPath,
       });
     }

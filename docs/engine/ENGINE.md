@@ -537,8 +537,15 @@ FOGRA39L profile (`s12`, 25 checks):
   ±0 pt on every page — and `pdftotext` output is byte-identical.
 - 47 RGB fill operators → 0 `/DeviceRGB`, 34 CMYK operators. Fonts stay
   embedded; no transparency.
-- Failure modes are loud: a missing or malformed ICC makes gs throw, and no
-  output file is written. There is no silent non-conformant PDF.
+- A missing or malformed ICC makes gs throw, and no output file is written.
+  Not every failure is that loud: a profile pdfwrite ignores for vector colour
+  (every Ghostscript before 10.03.0, Artifex bug 707350; measured on 10.02.1)
+  or an OutputIntent naming the wrong printing condition still writes a file.
+  So the build logs the profile it separates through and warns on a
+  Ghostscript older than 10.03.0, derives `/OutputConditionIdentifier`
+  from the profile's description, `pdf.print.pdfx-markers` checks the pair in
+  the finished file, and `ghostscript.integration.test.ts` pins CRPC1's
+  separation of `#000`.
 - **`/Link` annotations are rejected under `-dPDFX`**, so `qpdf`'s
   annotation-stripping stage is a hard requirement for any document with
   cross-references.

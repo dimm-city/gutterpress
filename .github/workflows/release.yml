@@ -28,7 +28,10 @@ jobs:
   # ── 1. Gate ────────────────────────────────────────────────────────────────
   test:
     name: Test
-    runs-on: ubuntu-24.04
+    # Ubuntu 26.04, as ci.yml's Checks job: its ghostscript package (10.06.0)
+    # honours the PDF/X output profile, which the suite asserts; 24.04's
+    # (10.02.1) does not.
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -57,6 +60,9 @@ jobs:
       - name: Install PDF tools from cache
         if: steps.ci.outputs.passed != 'true'
         uses: ./.github/actions/pdf-tools
+      - name: Require Ghostscript 10.03 or newer
+        if: steps.ci.outputs.passed != 'true'
+        run: dpkg --compare-versions "$(gs --version)" ge 10.03
       - uses: ./.github/actions/bun
         if: steps.ci.outputs.passed != 'true'
       - name: Install dependencies

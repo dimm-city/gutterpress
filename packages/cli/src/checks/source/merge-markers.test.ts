@@ -13,6 +13,7 @@ import { makeCtx } from "../../test-helpers/testkit";
 import { mergeWithMarkers } from "../../lib/remote-auth/converge-merge";
 
 import "./merge-markers";
+import "./layout-markers";
 
 /** Write `files` into a fresh project dir and run the check over it. */
 async function runOn(files: Record<string, string>) {
@@ -131,5 +132,29 @@ describe("source.sync.merge-markers", () => {
     expect(
       await runOn({ "chapter-01.md": "# One\n\ntext\n", "styles/main.css": "h1{}\n" }),
     ).toEqual([]);
+  });
+
+  test("the preview's own two-takes classes never raise layout warnings: 1 block = 1 error, 2 blocks = 2", async () => {
+    const block = (n: number) => `<<<<<<< your version\nmine ${n}\n=======\ntheirs ${n}\n>>>>>>> online version\n`;
+    const both = async (md: string) => {
+      const dir = await mkdtemp(join(tmpdir(), "gutterpress-merge-layout-"));
+      try {
+        const f = join(dir, "ch1.md");
+        await writeFile(f, md);
+        const ctx = makeCtx({ inputDir: dir, markdownFiles: [f] });
+        return [
+          ...(await getCheckById("source.sync.merge-markers")!.run(ctx)),
+          ...(await getCheckById("source.markdown.layout-markers")!.run(ctx)),
+        ];
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    };
+    const one = await both(`Before.\n${block(1)}After.\n`);
+    expect(one.filter((r) => r.severity === "error")).toHaveLength(1);
+    expect(one.filter((r) => r.severity === "warning")).toHaveLength(0);
+    const two = await both(`Before.\n${block(1)}Mid.\n${block(2)}After.\n`);
+    expect(two.filter((r) => r.severity === "error")).toHaveLength(2);
+    expect(two.filter((r) => r.severity === "warning")).toHaveLength(0);
   });
 });

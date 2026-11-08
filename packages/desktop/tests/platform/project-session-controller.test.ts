@@ -28,6 +28,8 @@ type ClassifyResult = {
   capabilities: unknown;
   hasManifest: boolean;
   repoRoot?: string;
+  repairNotice?: string;
+  unfinishedSwitch?: boolean;
   books?: ProjectBookEntry[];
   lastActiveBook?: string;
 };
@@ -441,4 +443,28 @@ test("resolveActiveBookDir: a folder in no book at all still falls back to books
   // to no book (or the bare repo root).
   expect(resolveActiveBookDir("/repo/shared/styles", "/repo", TWO_BOOKS)).toBe("/repo/alpha");
   expect(resolveActiveBookDir("/repo", "/repo", TWO_BOOKS)).toBe("/repo/alpha");
+});
+
+test("a repair notice from the open's classification is kept, and reset clears it", async () => {
+  const { ctrl, classify } = makeHarness();
+  classify.next = { source: {}, capabilities: makeCaps(), hasManifest: true, repairNotice: "put back" } as ClassifyResult;
+  await ctrl.classify("/p");
+  await flush();
+  expect(ctrl.repairNotice).toBe("put back");
+  ctrl.reset();
+  expect(ctrl.repairNotice).toBeNull();
+});
+
+test("an unfinished switch from the open's classification pauses saving; a clean open and reset clear it (#516)", async () => {
+  const { ctrl, classify } = makeHarness();
+  classify.next = { source: {}, capabilities: makeCaps(), hasManifest: true, unfinishedSwitch: true } as ClassifyResult;
+  await ctrl.classify("/p");
+  await flush();
+  expect(ctrl.switchUnfinished).toBe(true);
+  ctrl.reset();
+  expect(ctrl.switchUnfinished).toBe(false);
+  classify.next = { source: {}, capabilities: makeCaps(), hasManifest: true } as ClassifyResult;
+  await ctrl.classify("/p");
+  await flush();
+  expect(ctrl.switchUnfinished).toBe(false);
 });

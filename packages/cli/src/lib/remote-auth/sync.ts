@@ -44,13 +44,14 @@ import { randomUUID } from "node:crypto";
 import pkg from "../../../package.json" with { type: "json" };
 import { defaultGitHttp } from "./git-http.ts";
 
-import { resolveGitAuthor, withRepoLock } from "../source-provider.ts";
+import { countUnversionedChanges, isContained, readRevisionRefs, resolveGitAuthor, withRepoLock } from "../source-provider.ts";
 import { errorLogData, type LogData, resolveLogger } from "./operation-log.ts";
 import { convergeMerge } from "./converge-merge.ts";
 import {
   MSG_BUSY,
   SYNC_LATE_EDIT_MESSAGE,
   MSG_NO_REMOTE,
+  MSG_NOT_FOUND_GITHUB,
   MSG_SSH_REMOTE,
   MSG_SYNCED,
   MSG_SYNCED_MERGED,
@@ -63,7 +64,14 @@ import {
   currentBranchOrThrow,
   failureOutcome,
   fetchRemoteTip,
+  forgetOnlineCheck,
+  lastOnlineCheckAt,
+  noteOnlineCheck,
+  onlineCheckGeneration,
+  touchOnlineCheckTime,
   onAuthFor,
+  onlineCheckIsFresh,
+  shareOnlineCheck,
   repoDirFor,
   resolveTransport,
   serverTip,
@@ -232,7 +240,20 @@ export async function syncProject(
     stage = next;
     logger.info(stage, "starting", data);
   };
-  const finish = (outcome: SyncOutcome): SyncOutcome => {
+  // The pass moved refs online and here: the next online check must be real.
+  let syncedDir: string | undefined;
+  let remoteHost: string | undefined;
+  const finish = (found: SyncOutcome): SyncOutcome => {
+    // On GitHub a 404 usually means Gutterpress has no access to that repository.
+    const outcome: SyncOutcome =
+      found.status === "not-found" && remoteHost === "github.com"
+        ? { ...found, message: MSG_NOT_FOUND_GITHUB, host: "github" }
+        : found;
+    if (syncedDir) {
+      forgetOnlineCheck(syncedDir);
+      // The server was reached and agreed: that is a check, though not of every revision.
+      if (outcome.status === "synced" || outcome.status === "up-to-date") touchOnlineCheckTime(syncedDir);
+    }
     logger.info("result", "sync complete", {
       status: outcome.status, stage, push, elapsedMs: Math.round(performance.now() - started),
       snapshot: outcome.snapshotId ?? "none", filesChanged: outcome.filesChanged ?? false,
@@ -243,6 +264,9 @@ export async function syncProject(
   const run = async (): Promise<SyncOutcome> => {
     step("repo");
     const dir = await repoDirFor(options.projectDir);
+    syncedDir = dir;
+    // A fetch already in flight must not mark its refs fresh across this pass.
+    forgetOnlineCheck(dir);
     step("lock");
     return withRepoLock(dir, async (): Promise<SyncOutcome> => {
       // One object cache for this sync only — released with it.
@@ -273,6 +297,7 @@ export async function syncProject(
         const branch = await currentBranchOrThrow(dir);
         step("transport");
         const transport = await resolveTransport(dir, options);
+        remoteHost = transport.host.toLowerCase();
         if (transport.credential) {
           secrets.push(transport.credential.token);
           const username = transport.credential.kind === "github-oauth"
@@ -510,15 +535,120 @@ export async function syncProject(
  * is indistinguishable from a broken one, which is the bug this whole
  * function exists to fix.
  */
+/** Longest history walk when counting versions this computer has that the online copy lacks. */
+const AHEAD_DEPTH = 1000;
+
+/**
+ * Where the open revision stands against the online copy, from refs on disk
+ * alone (no network; no ref, version or file is written; it does walk the
+ * book's files to see what is not in a version yet, unless `countUnversioned`
+ * is false): `synced` when the online copy, as last
+ * heard from, has every version here; `unsent` when this computer has versions
+ * it lacks (`ahead` of them, capped by the walk depth); `behind` when the last
+ * heard-from online tip holds versions this computer has not got. `null` for a
+ * book with no history or no online copy of this revision to compare with
+ * (never backed up counts as `unsent`: everything here is unsent).
+ */
+export async function localBackupStatus(
+  projectDir: string,
+  options: { countUnversioned?: boolean } = {},
+): Promise<{ state: "synced" | "unsent"; ahead: number; behind: boolean; unversioned?: number } | null> {
+  const dir = await repoDirFor(projectDir);
+  const { current, local, online } = await readRevisionRefs(dir);
+  if (!current) return null;
+  const here = local.get(current);
+  if (!here) return null;
+  // Work saved to disk but not yet in a version (edited outside the app, or the
+  // app stopped before its automatic version) is not backed up either.
+  // (`countUnversioned: false` skips the tree walk when only ahead/behind are
+  // wanted. The walk never repairs a half-done switch: a status read writes nothing there.)
+  const pending =
+    options.countUnversioned === false
+      ? null
+      : await countUnversionedChanges(projectDir, { repair: false }).catch(() => null);
+  const unversioned = pending ? pending.changedFiles + (pending.stale ? 1 : 0) : 0;
+  const unsaved = unversioned > 0 ? { unversioned } : {};
+  const there = online.get(current);
+  if (!there) return { state: "unsent", ahead: 0, behind: false, ...unsaved };
+  if (here === there) return { state: unversioned > 0 ? "unsent" : "synced", ahead: 0, behind: false, ...unsaved };
+  const cache: GitCache = {};
+  const hereHasThere = await isContained(dir, there, here, cache);
+  const thereHasHere = await isContained(dir, here, there, cache);
+  let ahead = 0;
+  if (!thereHasHere) {
+    const known = new Set(
+      (await git.log({ fs, dir, ref: there, depth: AHEAD_DEPTH, cache }).catch(() => [])).map((c) => c.oid),
+    );
+    const mine = await git.log({ fs, dir, ref: here, depth: AHEAD_DEPTH, cache }).catch(() => []);
+    ahead = mine.filter((c) => !known.has(c.oid)).length;
+  }
+  return {
+    state: thereHasHere && unversioned === 0 ? "synced" : "unsent",
+    ahead,
+    behind: !hereHasThere,
+    ...unsaved,
+  };
+}
+
+/** The book's online copy changed hands (sign-in changed, disconnected, new address): drop what was known about it. */
+export async function forgetOnlineCheckFor(projectDir: string): Promise<void> {
+  try {
+    forgetOnlineCheck(await repoDirFor(projectDir));
+  } catch {
+    // Nothing to forget.
+  }
+}
+
+/** When this session last checked the book's online copy successfully (ISO), or null. */
+export async function lastOnlineCheck(projectDir: string): Promise<string | null> {
+  try {
+    return isoOrNull(lastOnlineCheckAt(await repoDirFor(projectDir)));
+  } catch {
+    return null;
+  }
+}
+
+export type OnlineCheckResult = {
+  refreshed: boolean;
+  reason?: "no-remote" | "auth" | "not-found" | "offline";
+  /** ISO time of the online check this answer rests on (the last good one), or null when there has been none. */
+  checkedAt: string | null;
+};
+
+const isoOrNull = (ms: number | null): string | null => (ms === null ? null : new Date(ms).toISOString());
+
+/**
+ * `maxAgeMs`: when the book was checked online successfully within that many
+ * ms, answer from the refs that check wrote (`refreshed: true`, no network).
+ * Default 0 = always ask the server. Concurrent calls share one fetch.
+ */
 export async function refreshRemoteCopies(options: {
   projectDir: string;
   credential?: HostCredential;
   tokenStore?: TokenStore;
   httpClient?: typeof defaultGitHttp;
-}): Promise<{ refreshed: boolean; reason?: "no-remote" | "auth" | "offline" }> {
+  maxAgeMs?: number;
+}): Promise<OnlineCheckResult> {
   const http = options.httpClient ?? defaultGitHttp;
+  let dir = options.projectDir;
   try {
-    const dir = await repoDirFor(options.projectDir);
+    dir = await repoDirFor(options.projectDir);
+    if (onlineCheckIsFresh(dir, options.maxAgeMs ?? 0)) {
+      return { refreshed: true, checkedAt: isoOrNull(lastOnlineCheckAt(dir)) };
+    }
+    return await shareOnlineCheck(dir, () => fetchAllBranches(dir, options, http));
+  } catch (e) {
+    return onlineCheckFailure(e, isoOrNull(lastOnlineCheckAt(dir)));
+  }
+}
+
+async function fetchAllBranches(
+  dir: string,
+  options: { credential?: HostCredential; tokenStore?: TokenStore },
+  http: typeof defaultGitHttp,
+): Promise<OnlineCheckResult> {
+  const generation = onlineCheckGeneration(dir);
+  try {
     const transport = await resolveTransport(dir, {
       ...(options.credential ? { credential: options.credential } : {}),
       ...(options.tokenStore ? { tokenStore: options.tokenStore } : {}),
@@ -533,23 +663,30 @@ export async function refreshRemoteCopies(options: {
       tags: false,
       ...onAuthFor(transport.credential),
     });
-    return { refreshed: true };
+    noteOnlineCheck(dir, generation);
+    return { refreshed: true, checkedAt: isoOrNull(lastOnlineCheckAt(dir)) };
   } catch (e) {
-    // Every failure mode here is non-fatal: no remote configured, an SSH
-    // remote, no saved credential, a private repo, or simply being offline.
-    // The caller lists whatever is on disk either way — but it is told which,
-    // so it can say "couldn't check online" instead of quietly showing a
-    // short list that looks like the whole truth.
-    const message = (e as { message?: string })?.message ?? "";
-    if (message === MSG_NO_REMOTE || message === MSG_SSH_REMOTE) {
-      return { refreshed: false, reason: "no-remote" };
-    }
-    const status = (e as { data?: { statusCode?: number } })?.data?.statusCode;
-    if (status === 401 || status === 403 || status === 404) {
-      return { refreshed: false, reason: "auth" };
-    }
-    return { refreshed: false, reason: "offline" };
+    return onlineCheckFailure(e, isoOrNull(lastOnlineCheckAt(dir)));
   }
+}
+
+/**
+ * Every failure mode of an online check is non-fatal: no remote configured, an
+ * SSH remote, no saved credential, a private repo, or simply being offline.
+ * The caller lists whatever is on disk either way — but it is told which, so
+ * it can say "couldn't check online" instead of quietly showing a short list
+ * that looks like the whole truth. "Not found" (404) is its own reason: the
+ * address is wrong or gone, which signing in again will not fix.
+ */
+export function onlineCheckFailure(e: unknown, checkedAt: string | null): OnlineCheckResult {
+  const message = (e as { message?: string })?.message ?? "";
+  if (message === MSG_NO_REMOTE || message === MSG_SSH_REMOTE) {
+    return { refreshed: false, reason: "no-remote", checkedAt };
+  }
+  const status = (e as { data?: { statusCode?: number } })?.data?.statusCode;
+  if (status === 404) return { refreshed: false, reason: "not-found", checkedAt };
+  if (status === 401 || status === 403) return { refreshed: false, reason: "auth", checkedAt };
+  return { refreshed: false, reason: "offline", checkedAt };
 }
 
 /**
@@ -569,7 +706,7 @@ export async function checkRemoteUpdates(options: {
   credential?: HostCredential;
   tokenStore?: TokenStore;
   httpClient?: typeof defaultGitHttp;
-}): Promise<{ available: boolean; reason?: "no-remote" | "auth" | "offline" }> {
+}): Promise<{ available: boolean; reason?: "no-remote" | "auth" | "not-found" | "offline" }> {
   const http = options.httpClient ?? defaultGitHttp;
   try {
     const dir = await repoDirFor(options.projectDir);
@@ -596,9 +733,8 @@ export async function checkRemoteUpdates(options: {
       return { available: false, reason: "no-remote" };
     }
     const status = (e as { data?: { statusCode?: number } })?.data?.statusCode;
-    if (status === 401 || status === 403 || status === 404) {
-      return { available: false, reason: "auth" };
-    }
+    if (status === 404) return { available: false, reason: "not-found" };
+    if (status === 401 || status === 403) return { available: false, reason: "auth" };
     return { available: false, reason: "offline" };
   }
 }

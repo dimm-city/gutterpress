@@ -5,6 +5,245 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.24] - 2026-11-07
+
+### Added
+
+- **A bottom pin in an `@page` block longer than one sheet now sits at the foot of its
+  last sheet.** The page root gets a min-height of whole sheets (less the existing 1px
+  cushion, so no sheet is added) in both the PDF and the preview, instead of the pin
+  landing under the last line of text. The `engine.pin.page-span` build warning now fires
+  only for a bottom pin that is not the last thing in its block, because it moves to the
+  last sheet rather than staying where it was written (#519).
+
+- **Desktop: the status bar says when saving is paused by an unfinished revision
+  switch.** An amber "Saved here · Saving is paused — see Drafts" opens Book setup →
+  Backup & history, and clears once the switch is put back or kept as it is (#516).
+
+- **Desktop: host follow-ups for the backup status.** A finished backup no
+  longer walks the whole book to count unsent versions, and a status read never
+  repairs a half-done switch. Setting up a backup keeps each call's progress
+  until its own call ends, and the repository list is refreshed even if sending
+  the book failed. `remote/default-clone-parent` reports where "Open from online"
+  should put a book (the documents folder plus Gutterpress) without creating it.
+  The switch messages now say "Book setup → Backup & history → Drafts".
+
+- **Desktop: the backup status is known the moment a book opens.** The status
+  comes from what this computer already knows (no network) and the last
+  answer is kept between launches, so the bar says "Backed up" or "Not backed
+  up yet" within about a third of a second instead of after 4 to 5 seconds
+  (the status payload gains `source`, `ahead`, `behind` and `decide`). The first
+  online check now starts about a second after opening, not four.
+- **Desktop: one online check serves the revision list and the online
+  versions**, and one made in the last 20 seconds is reused (`list-revisions`
+  returns `checkedAt`; both routes take `maxAgeMs`, `0` forces a real check),
+  so opening Version history after the revisions card costs no second round
+  trip. A backup or a change to the online revisions starts the next check
+  fresh.
+- **Desktop: "can't find the online copy" is no longer reported as a sign-in
+  problem.** A 404 from the online copy now gives a `not-found` outcome and
+  says so ("Gutterpress can't find this online copy. It may have been renamed
+  or deleted, or your account may not have access to it."), instead of asking
+  for the sign-in again. On GitHub it says "Gutterpress can't find this online
+  copy on GitHub…" and the status carries `reason: "not-found"`, `host: "github"`
+  and `canSignIn`. A status worked out from what this computer knows also counts
+  work edited outside the app as not backed up yet.
+- **Desktop: a repair preview** (`remote/repair-preview`) lists the revisions
+  and counts the versions that exist only on this computer and would be set
+  aside by "Repair the online copy".
+- **Desktop: the repo picker can load a page at a time.** `list-repositories`
+  accepts `page` and returns the first 100 at once with `hasMore`, from a short
+  cache; the old call without `page` still returns everything.
+- **Desktop: setting up a backup reports its step** (`set-up-backup-progress`:
+  checking the account, creating or checking the online copy, sending the
+  book) for the screen to show while the call runs.
+
+- **`pdfx.blackText: k-only-neutral`.** Grey text at 24pt and under (channels
+  within 0.04 of each other) also prints on the black plate alone, at about
+  its tone; a coloured ink keeps its colour. `pdf.print.black-text` names it.
+
+### Changed
+
+- **The desktop app's Book setup "Backup & history" tab is now "Online".** It keeps the
+  last lists on screen when reopened (no more blank flash), says "send" and "online" instead
+  of "back up", and adds "On this computer, not online yet" / "Online, not on this computer
+  yet" lists, each with a Send now / Get them now button.
+- **The status bar says where the book stands, and its click fixes it.** One
+  line in two clauses, "Saved here · Backed up 3 mins ago", with 17 states in a
+  fixed order. It says "Checking online…" instead of a bare "Saved" until the
+  online copy answers. "Unsaved changes" saves; two takes open the list to
+  decide; a lost sign-in opens the sign-in; everything else opens a small
+  popover with one sentence and one action. Tooltips now say what the state
+  means. The time updates every minute; screen readers hear state changes, not
+  the clock. One **Update** button replaces Get latest and Sync. Under 820px the
+  line shortens to its online clause. A failed save names the reason.
+- **Fewer, quieter notices.** A newer outcome toast replaces the last instead of
+  stacking, "New changes are online" goes away once an update succeeds, a
+  repair or a combining backup says it once, and "Reloaded from disk" no longer
+  follows a backup or update.
+- **Save a version… asks for an optional name** ("Sent to printer"), and says
+  "Nothing new to save" without asking when nothing changed.
+- **`pdf.print.bleed` is on for `dtrpg`.** It reads every page's boxes and asks
+  for the bleed on the top, bottom and outside edge, not on both sides: between
+  the TrimBox and the BleedBox, allowing the page-size tolerance, and a page
+  with no TrimBox counts as short. The `dtrpg` publish target turns it on over
+  a `book` preset.
+- **The PDF/X build warns on a Ghostscript older than 10.03.0.** Before that
+  release pdfwrite ignored the output profile and separated every colour
+  through Ghostscript's default CMYK profile (Artifex bug 707350, fixed
+  2023-11-30): Ubuntu 24.04's 10.02.1 gives `#000` at C72 M68 Y67 K88 = 295%
+  (measured; Debian 12's 10.0.0 predates the fix), over DriveThruRPG's 240%,
+  with CRPC1 still named as the OutputIntent; 10.05 and 10.06 honour it
+  (measured). The build also logs
+  the profile and warns on an output profile it does not know. CI runs on
+  Ubuntu 26.04 and the Docker image on Debian 13, whose Ghostscript packages
+  (10.06.0, 10.05) are new enough.
+
+- **Book setup → Online copy is now Backup & history, and answers "is my work
+  safe?" first.** A status card (version history off, not backed up yet,
+  checking, safe, changes not backed up, new changes online, sign in again,
+  can't reach, can't find) with its one button; History (the author's note is
+  the version's title); Drafts (the old Revisions, shown as typed, the first
+  one as "Main draft"); and the repair tools under "Something wrong with the
+  online copy?", which opens by itself only after two backups in a row fail
+  for a reason other than being offline. "Back up online…" is a three-step
+  wizard, sign-in forms use plain words, Open from GitHub asks "Which draft?"
+  only when there is more than one, and Go back to a version now says what
+  it did. Repair names what it would set aside when the host can say.
+- **The tab opens at once.** One shared snapshot per book is shown straight
+  away and refreshed in the background only when over a minute old, the
+  online check says "Checking the online copy…" and the card says how long
+  ago it was checked, local actions (switch, rename, new draft) no longer go
+  online again, Version history's first page is read as the tab opens, and
+  the GitHub picker shows the last list at once.
+
+### Fixed
+
+- **A book part-way through a revision switch could still be built (#507).**
+  When a repair could not put the book back, the files were a mix of two
+  revisions and a build of them could make a PDF that looked fine. The `build`
+  command, the desktop export and `preview --format pdf` now stop with a plain
+  message (the desktop export tries the repair first; a command-line run never
+  repairs, since it cannot lock out a running app). The HTML preview server is not guarded. Book setup →
+  Backup & history → Drafts shows the unfinished switch even when the repair
+  keeps failing, with "Put the book back" and "Keep the files as they are".
+- **Copies kept before a switch repair piled up and could not be reached
+  (#508).** Book setup → Backup & history → Drafts now lists them, with "Restore files from
+  this copy" and "Discard". Restoring puts back only the files you changed
+  (not the other revision's), saves them as a version, and settles any
+  unfinished switch first. A copy whose files are not yet in a version is
+  never removed on its own, and Discard asks again for it; copies already in
+  a version are kept to the newest five and 30 days. They live only in the
+  book's git folder: a backup sends the revision it names, never
+  `refs/gutterpress/*`.
+- **Autosave waits for you to stop typing.** It used to write 500 ms after the
+  last keystroke, so a short pause mid-sentence saved the file and rebuilt the
+  preview before the edit was finished. It now writes after 2 seconds with no
+  typing, and at most 12 seconds into unbroken typing. Leaving the window
+  or hiding it, switching files, Save (Ctrl/Cmd+S),
+  closing, and building or exporting still save at once. The preview
+  already folds saves that land during a rebuild into one follow-up rebuild.
+- **A `--out` build rendered unstyled, wrong-size pages under a snap Chromium,
+  with no warning (#501).** The staged `book.html`, stylesheets and fonts went
+  to the OS temp dir, which a snap's private `/tmp` hides from the browser.
+  The build now recognises a snap browser (by the path, its real path or
+  Ubuntu's `chromium-browser` shim) and stages in that snap's own data folder,
+  `~/snap/<name>/common/`, never in the book; if the scratch dir is still
+  unreadable it warns that the pages will render unstyled. A build killed
+  mid-way can leave a `gutterpress-build-*` folder there, outside the book.
+  Flatpak browsers are not detected. The desktop app uses its own browser
+  and is unaffected. `CHROMIUM_PATH` is now read when a browser is looked
+  up, not once at start-up.
+- **A revision switch the app dies in the middle of is put right.** Switching
+  revisions (and restoring a version) now records what it is doing in
+  `.git/gutterpress-switch.json` once your work is saved, and removes it when
+  the move is done. If the app is killed part-way (an out-of-memory kill left a
+  book half on one revision and half on another), the next time the book is
+  opened, before the editor reads any file, the book is put back to the saved
+  version and a message says so. Before that, a copy of the files as they
+  stand is saved inside the book's git folder as
+  `refs/gutterpress/before-repair-<time>` (not in the version history) and
+  named in the message with how to recover it, so nothing written after the
+  crash is lost. Only files the half-done move wrote are removed, and only folders it
+  made; anything that may be yours is left and listed. A checkout that fails
+  for any reason is undone the same way, an unreadable record is handled the
+  same way (back to the saved version, nothing deleted), and an automatic
+  version is never taken of a half-switched book. The editor is not locked
+  while a switch runs. (#502)
+- **`pdfx.transparency: preserve-text` flattened every transparent page whole
+  for a book built with the CLI installed from npm.** `unpdf` resolved to 1.8
+  or newer there (PDF.js 6), whose document proxy has no `destroy()`: the text
+  inspection threw, the build warned "could not inspect this PDF's text" and
+  rasterised the text with the artwork. Documents are now released through
+  the loading task, which PDF.js 5 and 6 both have, and the lockfile tracks
+  the `unpdf` the range resolves to (1.9.1), so the test suite runs what
+  consumers install. (#499)
+- **A PDF/X build's post-build validation said the manifest had no `preset`**
+  when the CLI ran from outside the book folder without `--manifest`: the
+  checks looked for a manifest in the working directory, found none, and
+  validated an empty manifest's defaults. They validate the manifest the
+  build loaded. (#496)
+- **A PDF/X file named Chromium's user-agent string as its `/Creator`.**
+  Ghostscript keeps the input's document information over the PDF/X
+  definition file's, so the Creator the build meant to write never reached
+  the file. The build stamps `gutterpress` on the PDF before converting, as
+  it does for a plain PDF; `/Producer` stays Ghostscript's. (#497)
+- **The ink-coverage check did not measure total ink coverage.** Ghostscript's
+  `inkcov` device reports the share of the page each ink touches, not how much
+  ink it lays down, so a page of 72% cyan read as 100% and a 400% patch on a
+  tenth of a page read as 40%. Each page is now rendered to CMYK (72 DPI) and
+  its heaviest spot is measured. A page Ghostscript does not render makes the
+  file "not measured" instead of a shorter book, and a file with no
+  OutputIntent is reported as not PDF/X instead of measured through the wrong
+  profiles.
+- **`maxTac` never limited a PDF/X build's ink.** The undercolour-removal step
+  that was meant to had no effect under ICC conversion and is removed. The
+  output profile sets the ink limit (CGATS21_CRPC1: about 240%); `maxTac` is
+  the check's threshold.
+- **The PDF/X OutputIntent named the wrong printing condition.** It names
+  `CGATS21-2-CRPC1` for the shipped profile (x1a wrote `CGATS TR001`, SWOP's
+  condition; x3 the file name), and `pdf.print.pdfx-markers` reports a missing
+  identifier and, for a profile Gutterpress knows, one that does not match the
+  embedded profile.
+- **A title with an unbalanced parenthesis broke the PDF/X build**, and an
+  accented title was read as the wrong characters: the PDF/X definition file
+  wrote them into PostScript literals as they were. Its strings are now
+  escaped, or written as UTF-16 when they are not ASCII, and the profile path
+  likewise.
+- **A `dtrpg` PDF declared the whole sheet as its trim.** Each page's TrimBox
+  is the sheet less the bleed on the top, bottom and outside edge, mirrored on
+  left and right pages; BleedBox is the sheet. A CSS `@page { bleed }` set as
+  well pulls the trim in further instead of replacing it, and the crop marks
+  follow the trim.
+- **`--icc` is not required for `--format pdfx`**: the help no longer says so.
+- **Pre-beta polish (#515).** Exporting while the book is part-way through
+  switching drafts now says so, and points to Book setup → Backup & history →
+  Drafts, instead of "PDF export failed"; this holds in the desktop app, where
+  the error reaches the window as plain text. A saved sign-in the online copy
+  rejects is reported as signed out, not "Offline", by the passive "is there
+  anything new online" check and anything else that checks the online tip.
+  Repair no longer fails when the current draft exists only on this computer:
+  it downloads the online main draft, sets the draft's earlier history aside
+  in the safety folder, keeps its current files, and backs them up online as
+  that draft (main is left alone and you stay on the draft). A failed repair
+  no longer leaves an empty safety folder, never removes anything else in
+  that folder, and its message no longer names GitHub for other hosts or says
+  to retry. A passage with two takes no longer adds five "unknown class"
+  layout warnings to its error in the preview.
+
+### Security
+
+- **The dependency audit is clear except for three build-time packages (#494).**
+  The CLI moves to `glob` 14 and `rimraf` 6.1.4 (GHSA-3g3m-2fjr-6pw4), and the
+  lockfile holds `joi` 18.3.2 and `follow-redirects` 1.16.2 (GHSA-4528-x5fx-h6hg,
+  GHSA-mrwp-f3q8-3g9p; reached only through the desktop's development-only
+  `wait-on`). Still ignored in `security-audit.yml`, with the reason: `glob` 13
+  in `htmlhint` 1.9.2 and `minimatch` 9/10 in `@typescript-eslint`,
+  `electron-builder` and `@electron/universal` (GHSA-g3hv-75wg-m249), none of
+  which has a release that takes the fix; `deepmerge` (low) has none either.
+  The CLI calls glob only on the book's own folder, never with an `AbortSignal`,
+  and minimatch patterns come from the author's own manifest.
+
 ## [0.11.23] - 2026-10-31
 
 ### Added

@@ -73,8 +73,9 @@ export const DTRPG_PRESET: VendorPreset = {
     icc: "profiles/CGATS21_CRPC1.icc",
     // CONVENTION: interactive annotations have no place in a PDF/X print file.
     stripAnnotations: true,
-    // CONVENTION (#331): near-black text on the black plate alone, so small
-    // type is not registered across four plates. Not a DriveThru rule.
+    // SPEC ("Black Text Density"): black text at 24pt or below prints 0/0/0/100,
+    // on the black plate alone (#331, #336). `k-only-neutral` also moves grey
+    // text there; a book opts in.
     blackText: "k-only",
     // CONVENTION (#385): the safe default. Books opt in to `preserve-text`.
     transparency: "flatten-page",
@@ -95,8 +96,8 @@ export const DTRPG_PRESET: VendorPreset = {
     tolerance: 0.5, // CONVENTION: slack for rounding in the PDF boxes
     // SPEC: 0.125in = 9pt, ALREADY INSIDE width/height above on the top,
     // bottom and outer edges only. Declared so the preview's margin & bleed
-    // overlay, `pdf.print.safe-margins` and pinned art can find the trim; the
-    // page itself is unchanged (CSS `bleed` is symmetric and would grow the
+    // overlay, `pdf.print.safe-margins`, pinned art and the PDF's per-page
+    // TrimBox can find the trim; the page itself is unchanged (CSS `bleed` is symmetric and would grow the
     // page and add binding-edge bleed, which the SPEC rules out).
     bleed: 9,
     // SPEC: 0.5in = 36pt, DriveThru's TEXT rule: text stays at least 0.5in
@@ -132,17 +133,17 @@ export const DTRPG_PRESET: VendorPreset = {
     "pdf.print.embedded-fonts": "error",
     // SPEC: text at least 0.5in inside the trim on every edge (`page.safe`).
     "pdf.print.safe-margins": "error",
-    // Stays off on purpose: `pdf.print.bleed` compares MediaBox with TrimBox
-    // and expects the bleed OUTSIDE the trim on every side. Here the bleed is
-    // inside the sheet on three edges and TrimBox == MediaBox, so the check
-    // would warn on every correct DriveThruRPG file.
-    "pdf.print.bleed": "off",
     // Not printer rules: a book switches them on in `checks:`.
     "pdf.nav.bookmarks": "off",
     "pdf.nav.toc-links": "off",
     "asset.font.license": "off",
     // On (no entry): `pdf.print.transparency` and `asset.image.alpha-channel`
-    // (DERIVED: PDF/X-1a forbids transparency, which an alpha channel needs).
+    // (DERIVED: PDF/X-1a forbids transparency, which an alpha channel needs),
+    // and `pdf.print.bleed` (SPEC: 0.125in on the top, bottom and outside
+    // edge, measured between each page's TrimBox and BleedBox; the build
+    // writes the TrimBox from `page.bleed` above and any CSS bleed, with no
+    // inset at the binding edge. The `dtrpg` target turns the check on over a
+    // `book` preset).
   },
   validate: {
     assets: {
@@ -182,6 +183,12 @@ export const DTRPG_PRESET: VendorPreset = {
  *   structure, which only applies to a PDF/X build (`--format pdfx`) — and
  *   the transparency and alpha-channel checks: PDF/X forbids both; a plain
  *   PDF/HTML book has no such restriction.
+ * - `pdfx.icc`: a `--format pdfx` build still separates through CGATS21_CRPC1.
+ *   The output profile sets the gamut AND the ink limit (`ink.maxTac` is only
+ *   a check threshold), and CRPC1 is DriveThruRPG's small-gamut newsprint
+ *   condition (CGATS 21-2 CRPC1), so saturated colours shift. A coated-stock
+ *   vendor needs its own profile in `pdfx.icc` (GRACoL2013 CRPC6 and ECI ISO
+ *   Coated v2 are redistributable).
  */
 export const BOOK_PRESET: VendorPreset = {
   id: "book",

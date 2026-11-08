@@ -144,7 +144,7 @@ The manifest is a short YAML file: title, authors, a BCP 47 `language` (which se
 | Total ink `ink.maxTac` | 240% (+0.5 tolerance) | SPEC; CONVENTION for the tolerance |
 | PDF/X flavour and profile | X-1a, CGATS21_CRPC1.icc | SPEC |
 | Signature | 4 pages, last page blank | SPEC: a multiple of the signature ending blank, or one short |
-| Small black text | K only | CONVENTION: single plate for text at 24 pt and under |
+| Small black text | K only | SPEC: single plate for text at 24 pt and under |
 | Minimum image resolution | 300 dpi | CONVENTION: the specification states none |
 | Transparency | flattened | DERIVED from PDF/X-1a |
 
@@ -267,7 +267,7 @@ for bleed $b$, art safe $a$ and gutter $g$ in points, converted to pixels by $96
 
 ### 4.9 Post-processing and the PDF/X hand-off
 
-The compiler's output is Chromium's PDF at final media size, edited in place with pdf-lib: `MediaBox`, `BleedBox` and `TrimBox` from the geometry of Section 6.5, crop marks drawn in the slug when requested, blank pages appended by the signature rule of Section 6.6, and document metadata embedded. pdf-lib is told not to stamp itself as producer, since it edits boxes and did not produce the document. The hand-off to print vendors then runs Ghostscript's PDF/X output [[3]] with the preset's ICC profile. The record's round-trip measurement, Ghostscript 10.06 converting a Chromium PDF to PDF/X-1a with a FOGRA39 profile, found page boxes preserved to the point, text extraction byte-identical, 47 RGB fill operators converted to 34 CMYK operators with no `/DeviceRGB` remaining, fonts still embedded and no transparency; a missing or malformed ICC profile makes Ghostscript fail loudly, so there is no silent non-conformant output. Because Ghostscript rejects `/Link` annotations under PDF/X, qpdf [[4]] strips them first. Two further conventions serve print rather than the standard: near-black text at 24 pt and under is moved to the black plate alone, so small type does not depend on four-plate registration, and live transparency is flattened per page by default, with an opt-in that keeps text live and rasterizes only the artwork that needs it.
+The compiler's output is Chromium's PDF at final media size, edited in place with pdf-lib: `MediaBox`, `BleedBox` and `TrimBox` from the geometry of Section 6.5 (the CSS bleed, or the manifest's in-sheet bleed mirrored per page), crop marks drawn in the slug when requested, blank pages appended by the signature rule of Section 6.6, and document metadata embedded. pdf-lib is told not to stamp itself as producer, since it edits boxes and did not produce the document. The hand-off to print vendors then runs Ghostscript's PDF/X output [[3]] with the preset's ICC profile. The record's round-trip measurement, Ghostscript 10.06 converting a Chromium PDF to PDF/X-1a with a FOGRA39 profile, found page boxes preserved to the point, text extraction byte-identical, 47 RGB fill operators converted to 34 CMYK operators with no `/DeviceRGB` remaining, fonts still embedded and no transparency; a missing or malformed ICC profile makes Ghostscript fail loudly. A profile Ghostscript silently ignored, or an OutputIntent naming the wrong printing condition, would not, so the build logs the profile it separates through, derives `/OutputConditionIdentifier` from the profile's description (`CGATS21-2-CRPC1` for the shipped one), a check compares the two in the finished file, and an integration test pins the profile's separation of black. Because Ghostscript rejects `/Link` annotations under PDF/X, qpdf [[4]] strips them first. Two further rules serve print rather than the standard: near-black text at 24 pt and under is moved to the black plate alone, as DriveThruRPG's specification requires, so small type does not depend on four-plate registration, and live transparency is flattened per page by default, with an opt-in that keeps text live and rasterizes only the artwork that needs it.
 
 ## 5 Preview-to-print parity
 
@@ -409,7 +409,14 @@ $$
 \tag{13}
 $$
 
-For the in-sheet bleed of Section 6.1 the trim box equals the media box, and the bleed check that compares them is switched off by the preset, because it would warn on every correct file.
+For the in-sheet bleed of Section 6.1 there is no CSS bleed or slug ($b = \varsigma = 0$) and the sheet already contains the manifest's bleed $b_s$ on the top, bottom and outer edge. Post-processing then writes, for page $p$ (page 1 is a recto),
+
+$$
+\text{TrimBox}_p = \begin{cases} [0,\ b_s,\ W_m - b_s,\ H_m - b_s] & p \text{ odd} \\ [b_s,\ b_s,\ W_m,\ H_m - b_s] & p \text{ even}, \end{cases}
+\qquad \text{BleedBox} = \text{MediaBox},
+$$
+
+with no inset at the binding edge. A CSS bleed or slug, when there is one, grew the sheet on every side, and the trim is then pulled in by $b + \varsigma$ on every side and by $b_s$ on the three edges besides. The bleed check reads each page's TrimBox against its BleedBox and asks for at least $b_s - \tau$ on the top, bottom and outer edge, with $\tau$ the validator's 0.5 pt rounding allowance; both models meet it.
 
 ### 6.6 Signature padding
 
@@ -431,17 +438,17 @@ The `blank` mode pads to a multiple of the signature and, when that would add no
 
 ### 6.7 Ink coverage
 
-Total area coverage is measured per page with Ghostscript's `inkcov` device, which reports the mean coverage of each process ink as a fraction. With $C_p, M_p, Y_p, K_p$ in percent,
+Total area coverage is a per-pixel quantity. Ghostscript rasterises each page to CMYK at 72 DPI, and with $C(x), M(x), Y(x), K(x)$ the ink of pixel $x$ in percent,
 
 $$
 \begin{gathered}
-\mathrm{TAC}_p = C_p + M_p + Y_p + K_p, \\[0.4ex]
+\mathrm{TAC}_p = \max_{x \in p} \bigl( C(x) + M(x) + Y(x) + K(x) \bigr), \\[0.4ex]
 \text{flag page } p \iff \mathrm{TAC}_p > \mathrm{TAC}_{\max} + \tau_{\text{ink}},
 \end{gathered}
 \tag{15}
 $$
 
-with $\mathrm{TAC}_{\max} = 240$ and $\tau_{\text{ink}} = 0.5$ for DriveThruRPG and $\mathrm{TAC}_{\max} = 400$, the physical ceiling of four inks, for the neutral book preset so that the check never fires without a real vendor limit. A Ghostscript failure is reported as "not measured", never as a pass: the record notes a release of Ghostscript that printed nothing without an output target, which an earlier version of the check had read as zero pages and therefore no problems.
+with $\mathrm{TAC}_{\max} = 240$ and $\tau_{\text{ink}} = 0.5$ for DriveThruRPG and $\mathrm{TAC}_{\max} = 400$, the physical ceiling of four inks, for the neutral book preset so that the check never fires without a real vendor limit. A Ghostscript failure is reported as "not measured", never as a pass: the record notes a release of Ghostscript that printed nothing without an output target, which an earlier version of the check had read as zero pages and therefore no problems. That version also summed the `inkcov` device's per-ink figures, which are the share of the page each ink touches rather than the ink it lays down: a 400% patch on a tenth of a page measured 40% and passed, and a page of 72% cyan read as 100%. The conversion itself holds no ink limit: the output profile does, CGATS21_CRPC1 at about 240%, and $\mathrm{TAC}_{\max}$ is only the check's threshold.
 
 ### 6.8 Effective image resolution
 

@@ -35,6 +35,7 @@
    *
    * PWA-clean (§8): api.* routes and getPlatform() only.
    */
+  import { clearRepositories } from "#lib/routes/repo-list-cache.ts";
   import { onMount, tick } from "svelte";
   import AppView from "#lib/components/AppView.svelte";
   import GitHubConnect from "#lib/components/GitHubConnect.svelte";
@@ -184,7 +185,7 @@
   async function reconnected() {
     await load();
     testOk = true;
-    testResult = `Signed in to GitHub${github?.username ? ` as @${github.username}` : ""}. Books back up with the new sign-in.`;
+    testResult = `Signed in to GitHub${github?.username ? ` as @${github.username}` : ""}. Books send changes with the new sign-in.`;
     await keepFocus();
   }
 </script>
@@ -258,7 +259,7 @@
       {#if github?.connected}
         <div class="acct">
           <span class="acct-detail">{github.username ? `Connected as @${github.username}` : "Connected"}</span>
-          {@render removable("github.com", "Disconnect GitHub? Books stop backing up until you sign in again.", "Disconnect", () => api.remote.disconnectGitHub())}
+          {@render removable("github.com", "Disconnect GitHub? Books stop sending until you sign in again.", "Disconnect", () => { clearRepositories(); return api.remote.disconnectGitHub(); })}
         </div>
         {#if removeError?.id === "github.com"}<p class="error" role="alert">{removeError.text}</p>{/if}
         <div class="acct-more">
@@ -277,10 +278,10 @@
     </section>
 
     <section class="group" aria-labelledby="accounts-servers">
-      <h2 id="accounts-servers">Other Git servers</h2>
-      <p class="hint">GitLab, Gitea, Forgejo, Bitbucket, Azure Repos, or any server with an https:// address. Books on it back up with the token saved here.</p>
+      <h2 id="accounts-servers">Other services</h2>
+      <p class="hint">GitLab, Gitea, Forgejo, Bitbucket, Azure Repos, or any server with an https:// address. Books on it send changes with the token saved here.</p>
       {#each groups.servers as server (server.host)}
-        {@render line(`server:${server.host}`, server.host, server.username, server.unreadable, "Edit", "Remove this server? Books that back up there stop until you sign in to it again.", () => api.remote.disconnectHost(server.host))}
+        {@render line(`server:${server.host}`, server.host, server.username, server.unreadable, "Edit", "Remove this server? Books that send changes there stop until you sign in to it again.", () => api.remote.disconnectHost(server.host))}
         {#if open === `server:${server.host}`}
           <div class="form edit" use:keepInView>
             <GitServerForm
@@ -295,7 +296,7 @@
           </div>
         {/if}
       {:else}
-        <p class="hint">No Git servers saved.</p>
+        <p class="hint">No other services saved.</p>
       {/each}
       {#if notice?.group === "servers"}<p class="done" role="status">{notice.text}</p>{/if}
       {#if open === "add-server"}
@@ -303,7 +304,7 @@
           <GitServerForm takeFocus onConnected={(r) => afterSave("servers", `Saved ${r.host}.`)} onCancel={closeForm} />
         </div>
       {:else}
-        <button class="app-btn app-btn-ghost self-start" onclick={() => toggleForm("add-server")}>Add a Git server…</button>
+        <button class="app-btn app-btn-ghost self-start" onclick={() => toggleForm("add-server")}>Add another service…</button>
       {/if}
     </section>
 

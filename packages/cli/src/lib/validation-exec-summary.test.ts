@@ -53,4 +53,13 @@ describe("buildPdfSummaryLines reads structured fields, not message text", () =>
   test("no PDF-check results produce no summary lines", () => {
     expect(buildPdfSummaryLines([])).toEqual([]);
   });
+
+  test("an ink-coverage result that is not a measurement reads as not measured, never as within limits", () => {
+    for (const code of ["ink-coverage-unmeasured", "ink-coverage-not-pdfx"]) {
+      const lines = buildPdfSummaryLines([
+        { checkId: "pdf.print.ink-coverage", severity: "warning", message: "x", code },
+      ]);
+      expect(lines).toEqual(["Max TAC: not measured"]);
+    }
+  });
 });

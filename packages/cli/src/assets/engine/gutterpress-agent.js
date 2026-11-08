@@ -40,22 +40,23 @@
   // src/engine/compiler/agent.ts
   var exports_agent = {};
   __export(exports_agent, {
-    xrefSites: () => xrefSites,
-    targetTexts: () => targetTexts,
-    stringSources: () => stringSources,
-    setPinGeometry: () => setPinGeometry,
-    setPinFurniture: () => setPinFurniture,
-    setGenerated: () => setGenerated,
-    printArea: () => printArea,
-    pinRoots: () => pinRoots,
-    instrument: () => instrument,
-    forcedBreakSites: () => forcedBreakSites,
-    fillLeaders: () => fillLeaders,
-    counterResetSites: () => counterResetSites,
-    collectCss: () => collectCss,
-    auditContent: () => auditContent,
+    addCss: () => addCss,
     applyRectoSpacers: () => applyRectoSpacers,
-    addCss: () => addCss
+    auditContent: () => auditContent,
+    collectCss: () => collectCss,
+    counterResetSites: () => counterResetSites,
+    extendPageRoots: () => extendPageRoots,
+    fillLeaders: () => fillLeaders,
+    forcedBreakSites: () => forcedBreakSites,
+    instrument: () => instrument,
+    pinRoots: () => pinRoots,
+    printArea: () => printArea,
+    setGenerated: () => setGenerated,
+    setPinFurniture: () => setPinFurniture,
+    setPinGeometry: () => setPinGeometry,
+    stringSources: () => stringSources,
+    targetTexts: () => targetTexts,
+    xrefSites: () => xrefSites
   });
 
   // src/engine/shared/synthesis.ts
@@ -324,6 +325,14 @@
     };
   }
 
+  // src/engine/shared/page-root-span.ts
+  function spanningMinHeight(height, content, offset = 0) {
+    if (!(content > 0) || height <= content + 1)
+      return null;
+    const sheets = Math.ceil((height + offset) / content);
+    return sheets * content - offset - 1;
+  }
+
   // src/engine/shared/print-area.ts
   function printAreaFromMeta(doc) {
     const raw = doc.querySelector('meta[name="gp-print-area"]')?.getAttribute("content");
@@ -475,21 +484,63 @@
     }
     return inserted;
   }
+  function bottomPins(root) {
+    return Array.from(root.querySelectorAll(".gp-pin.gp-bottom")).filter((pin) => pin.offsetParent === root);
+  }
+  function endsRoot(pin, root) {
+    for (let el = pin;el && el !== root; el = el.parentElement) {
+      for (let n = el.nextSibling;n; n = n.nextSibling) {
+        if (n.nodeType === 3 && !(n.textContent ?? "").trim())
+          continue;
+        if (n.nodeType === 1) {
+          const el2 = n;
+          if (el2.matches(".gp-pin, gp-anchor, script, style"))
+            continue;
+          const cs = getComputedStyle(el2);
+          if (cs.display === "none" || cs.position === "absolute" || cs.position === "fixed")
+            continue;
+        }
+        if (n.nodeType === 1 || n.nodeType === 3)
+          return false;
+      }
+    }
+    return true;
+  }
+  function extendPageRoots(contentHeights) {
+    let n = 0;
+    for (const root of Array.from(document.querySelectorAll(".page, .spread"))) {
+      if (root.dataset.gpSpanMin) {
+        root.style.minHeight = root.dataset.gpSpanMin === "-" ? "" : root.dataset.gpSpanMin;
+        delete root.dataset.gpSpanMin;
+      }
+      if (!bottomPins(root).length)
+        continue;
+      const h = root.getBoundingClientRect().height;
+      const min = spanningMinHeight(h, pageContextOf(root, contentHeights).height);
+      if (min == null)
+        continue;
+      root.dataset.gpSpanMin = root.style.minHeight || "-";
+      root.style.minHeight = `${min}px`;
+      n++;
+    }
+    return n;
+  }
+  function pageContextOf(el, contentHeights) {
+    for (let node = el;node; node = node.parentElement) {
+      const pageName = getComputedStyle(node).getPropertyValue("page").trim();
+      if (pageName && pageName !== "auto") {
+        return {
+          name: pageName,
+          height: contentHeights.named[pageName] ?? contentHeights.default
+        };
+      }
+    }
+    return { name: "default", height: contentHeights.default };
+  }
   function auditContent(contentHeights, dpiFloor) {
     const out = [];
     const name = (el) => el.tagName.toLowerCase() + (el.id ? `#${el.id}` : "") + (el.className && typeof el.className === "string" ? `.${el.className.split(/\s+/)[0]}` : "");
-    const pageContext = (el) => {
-      for (let node = el;node; node = node.parentElement) {
-        const pageName = getComputedStyle(node).getPropertyValue("page").trim();
-        if (pageName && pageName !== "auto") {
-          return {
-            name: pageName,
-            height: contentHeights.named[pageName] ?? contentHeights.default
-          };
-        }
-      }
-      return { name: "default", height: contentHeights.default };
-    };
+    const pageContext = (el) => pageContextOf(el, contentHeights);
     for (const el of Array.from(document.querySelectorAll("figure,img,table,pre,svg,div"))) {
       const h = el.getBoundingClientRect().height;
       const context = pageContext(el);
@@ -498,6 +549,23 @@
           kind: "overheight",
           what: name(el),
           detail: `${Math.round(h)}px tall on a ${Math.round(context.height)}px ` + `${context.name === "default" ? "default-page" : `${context.name} page`} content box`
+        });
+      }
+    }
+    for (const root of Array.from(document.querySelectorAll(".page, .spread"))) {
+      const h = root.getBoundingClientRect().height;
+      const limit = pageContext(root).height;
+      if (h <= limit + 1)
+        continue;
+      for (const pin of bottomPins(root)) {
+        if (endsRoot(pin, root))
+          continue;
+        const img = pin.matches("img") ? pin : pin.querySelector("img");
+        const src = img ? img.getAttribute("src") ?? "" : "";
+        out.push({
+          kind: "pin-span",
+          what: src && !src.startsWith("data:") ? src : img ? "an inline image" : name(pin),
+          detail: String(Math.ceil(h / limit))
         });
       }
     }
@@ -682,6 +750,7 @@
   }
   var api = {
     auditContent,
+    extendPageRoots,
     collectCss,
     forcedBreakSites,
     counterResetSites,

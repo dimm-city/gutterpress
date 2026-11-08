@@ -6,16 +6,18 @@ import {
   PDFArray,
   PDFDict,
   PDFDocument,
+  PDFHexString,
   PDFName,
   PDFNumber,
   PDFStream,
+  PDFString,
   cmyk,
   rgb,
 } from "pdf-lib";
 import { execCapture } from "./exec";
 import { getAssetPath } from "./embedded-assets";
-import { convertToPdfxCmyk, resolveGhostscript } from "./ghostscript";
-import { getPerPageInkCoverage, parseInkCov } from "./pdf-parse";
+import { convertToPdfxCmyk, resolveGhostscript, stampCreator } from "./ghostscript";
+import { getPerPageInkCoverage } from "./pdf-parse";
 
 const ghostscript = await resolveGhostscript();
 const testWithGhostscript = ghostscript ? test : test.skip;
@@ -44,6 +46,10 @@ testWithGhostscript(
         color: rgb(1, 0, 0),
         borderWidth: 0,
       });
+      // The build's three-edge trim (no inset at a recto's binding edge) must
+      // survive the conversion. pdf-lib's setTrimBox takes x, y, width and
+      // height, so this writes the array [0 9 135 135].
+      page.setTrimBox(0, 9, 135, 126);
       await writeFile(inputPdf, await source.save());
 
       await convertToPdfxCmyk(inputPdf, outputPdf, {
@@ -74,29 +80,31 @@ testWithGhostscript(
       expect(
         outputProfile.dict.lookup(PDFName.of("N"), PDFNumber).asNumber()
       ).toBe(4);
+      // CGATS 21-2 CRPC1's registry name, not SWOP's (`CGATS TR 001`).
+      const identifier = outputIntent.lookup(PDFName.of("OutputConditionIdentifier"));
+      expect(
+        identifier instanceof PDFString || identifier instanceof PDFHexString
+          ? identifier.decodeText()
+          : String(identifier)
+      ).toBe("CGATS21-2-CRPC1");
+      const trim = converted.getPage(0).node.lookup(PDFName.of("TrimBox"), PDFArray);
+      expect(trim.asArray().map((n) => (n as PDFNumber).asNumber())).toEqual([0, 9, 135, 135]);
 
       const versionResult = await execCapture(ghostscript!, ["--version"]);
       const version = (versionResult.stdout || versionResult.stderr)
         .trim()
         .split(/\r?\n/)[0];
-      const inkResult = await execCapture(ghostscript!, [
-        "-q",
-        "-dBATCH",
-        "-dNOPAUSE",
-        "-sDEVICE=inkcov",
-        "-sOutputFile=-",
-        outputPdf,
-      ]);
-      const coverage = parseInkCov(`${inkResult.stdout}\n${inkResult.stderr}`);
-      expect(coverage).toHaveLength(1);
-      const [red] = coverage;
-      expect(red!.c).toBeLessThan(0.25);
-      expect(red!.m).toBeGreaterThan(0.7);
-      expect(red!.y).toBeGreaterThan(0.7);
-      expect(red!.k).toBeLessThan(0.25);
+      const coverage = await getPerPageInkCoverage(outputPdf);
+      if (!coverage.ok) throw new Error(coverage.error);
+      expect(coverage.pages).toHaveLength(1);
+      const [red] = coverage.pages;
+      expect(red!.c).toBeLessThan(25);
+      expect(red!.m).toBeGreaterThan(70);
+      expect(red!.y).toBeGreaterThan(70);
+      expect(red!.k).toBeLessThan(25);
 
       console.info(
-        `[ghostscript.integration.test] Ghostscript ${version}; RGB red -> C=${red!.c.toFixed(5)} M=${red!.m.toFixed(5)} Y=${red!.y.toFixed(5)} K=${red!.k.toFixed(5)}`
+        `[ghostscript.integration.test] Ghostscript ${version}; RGB red -> C=${red!.c.toFixed(1)} M=${red!.m.toFixed(1)} Y=${red!.y.toFixed(1)} K=${red!.k.toFixed(1)}`
       );
     } finally {
       await rm(stage, { recursive: true, force: true });
@@ -106,20 +114,93 @@ testWithGhostscript(
 );
 
 testWithGhostscript(
-  "real Ghostscript measures per-page ink coverage, so a 400% page is seen (#419)",
+  "the conversion separates through CGATS21_CRPC1, not Ghostscript's default CMYK profile",
+  async () => {
+    const stage = await mkdtemp(join(tmpdir(), "gutterpress-gs-crpc1-integration-"));
+    try {
+      const inputPdf = join(stage, "rgb-black.pdf");
+      const outputPdf = join(stage, "cmyk-black.pdf");
+      const source = await PDFDocument.create();
+      source
+        .addPage([144, 144])
+        .drawRectangle({ x: 0, y: 0, width: 144, height: 144, color: rgb(0, 0, 0), borderWidth: 0 });
+      await writeFile(inputPdf, await source.save());
+
+      await convertToPdfxCmyk(inputPdf, outputPdf, {
+        iccPath: await getAssetPath("profiles/CGATS21_CRPC1.icc"),
+        pdfx: "x1a",
+        stagingDir: stage,
+      });
+
+      // CRPC1 separates #000 to about C47 M42 Y40 K100 = 229%; Ghostscript's
+      // default_cmyk.icc gives about C72 M68 Y67 K88 = 295%. A profile that is
+      // silently ignored fails here: Ghostscript 10.02.1 (Ubuntu 24.04's
+      // package) does, measured; 10.03.0 and newer honour it (10.05.0 and
+      // 10.06.0 measured). CI runs on Ubuntu 26.04, whose package is 10.06.0.
+      const coverage = await getPerPageInkCoverage(outputPdf);
+      if (!coverage.ok) throw new Error(coverage.error);
+      const [black] = coverage.pages;
+      console.info(
+        `[ghostscript.integration.test] RGB #000 -> C=${black!.c.toFixed(1)} M=${black!.m.toFixed(1)} Y=${black!.y.toFixed(1)} K=${black!.k.toFixed(1)} = ${black!.tac.toFixed(1)}%`
+      );
+      expect(black!.k).toBeGreaterThan(99);
+      expect(black!.c).toBeGreaterThanOrEqual(45);
+      expect(black!.c).toBeLessThanOrEqual(52);
+      expect(black!.tac).toBeLessThanOrEqual(245);
+    } finally {
+      await rm(stage, { recursive: true, force: true });
+    }
+  },
+  60_000
+);
+
+testWithGhostscript(
+  "the PDF/X file's Creator is the one stamped on the input, which pdfwrite keeps (#497)",
+  async () => {
+    const stage = await mkdtemp(join(tmpdir(), "gutterpress-gs-creator-integration-"));
+    try {
+      const inputPdf = join(stage, "creator.pdf");
+      const outputPdf = join(stage, "creator-pdfx.pdf");
+      // pdf-lib names itself as Creator, as Chromium names its user agent: an
+      // Info entry pdfwrite carries into the output over the definition file's
+      // DOCINFO pdfmark. The build therefore stamps the raw PDF first.
+      const source = await PDFDocument.create();
+      source.addPage([144, 144]);
+      await writeFile(inputPdf, await source.save());
+      await stampCreator(inputPdf);
+
+      await convertToPdfxCmyk(inputPdf, outputPdf, {
+        iccPath: await getAssetPath("profiles/CGATS21_CRPC1.icc"),
+        pdfx: "x1a",
+        stagingDir: stage,
+      });
+
+      // Read as stored: pdf-lib would otherwise name itself as Producer on load.
+      const converted = await PDFDocument.load(await readFile(outputPdf), { updateMetadata: false });
+      expect(converted.getCreator()).toBe("gutterpress");
+      expect(converted.getProducer()).toMatch(/Ghostscript/);
+    } finally {
+      await rm(stage, { recursive: true, force: true });
+    }
+  },
+  60_000
+);
+
+testWithGhostscript(
+  "real Ghostscript measures each page's heaviest spot, so a small 400% patch is seen (#419)",
   async () => {
     const stage = await mkdtemp(join(tmpdir(), "gutterpress-gs-inkcov-integration-"));
     try {
-      // Page 1 blank, page 2 solid 100/100/100/100 CMYK: 0% and 400% TAC.
-      // Under Ghostscript 10 the production call used to come back with no
-      // pages at all (the inkcov device refuses to run without an output
-      // target), so every book passed the ink-coverage check unmeasured.
+      // Page 1 blank; page 2 white with a 100/100/100/100 CMYK patch on a
+      // sixteenth of its area: 0% and 400% TAC. The inkcov device the check
+      // used to run reports the share of the page each ink touches, so page 2
+      // read as 4 x 6.25% = 25%.
       const pdf = join(stage, "two-pages.pdf");
       const source = await PDFDocument.create();
       source.addPage([144, 144]);
       source
         .addPage([144, 144])
-        .drawRectangle({ x: 0, y: 0, width: 144, height: 144, color: cmyk(1, 1, 1, 1), borderWidth: 0 });
+        .drawRectangle({ x: 0, y: 0, width: 36, height: 36, color: cmyk(1, 1, 1, 1), borderWidth: 0 });
       await writeFile(pdf, await source.save());
 
       const result = await getPerPageInkCoverage(pdf);

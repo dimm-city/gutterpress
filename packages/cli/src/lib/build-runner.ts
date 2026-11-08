@@ -29,6 +29,7 @@ import { BuildError } from "./build-error";
 import type { BuildDiagnostic } from "../engine/compiler/build.ts";
 import type { Browser as EngineBrowser, Session as EngineSession } from "../engine/shared/cdp.ts";
 import { UsageError } from "./cli-args";
+import { chooseScratchParent, snapNameOf, snapUnreadableWarning, resolveChromiumExecutable } from "./chromium";
 import { preflightBuildTools, computeGates, type Gates } from "./build-preflight";
 import { shipViewerHtml, createStageRoot, stageBookAssets } from "./build-staging";
 
@@ -196,6 +197,14 @@ export interface BuildContext {
   renderDir: string;
   outDir: string;
   manifestDir: string;
+  /**
+   * The manifest file the build loaded. Both validation gates validate this
+   * file, so they resolve the config the build did — not, as the post-build
+   * gate did with no `--manifest`, whatever a scan of the working directory
+   * finds, which is no manifest at all when the CLI runs from outside the
+   * book (#496).
+   */
+  manifestPath: string;
   config: ReturnType<typeof resolveConfig>;
   gates: Gates;
   /**
@@ -233,6 +242,13 @@ export interface BuildContext {
 
 function layoutWarningKey(file: string, line: number | undefined, message: string): string {
   return `${path.resolve(file)}\0${line ?? 0}\0${message}`;
+}
+
+/** The snap a build's system browser is, if any (#501). */
+async function snapBrowserName(format: string): Promise<string | undefined> {
+  if (format === "html") return undefined;
+  const exe = await resolveChromiumExecutable();
+  return exe === undefined ? undefined : snapNameOf(exe);
 }
 
 /**
@@ -299,14 +315,19 @@ export async function resolveBuildContext(
   // For our own `dist/`, the work dir is a sibling of the destination so the
   // publish is a same-filesystem atomic rename. For a caller-supplied target we
   // must not create scratch directories in someone else's folder, so it goes to
-  // the OS temp dir and the publish is a copy.
+  // the OS temp dir and the publish is a copy. A snap browser cannot read the
+  // OS temp dir (it has a private /tmp), so for it the scratch moves into
+  // the snap's own data folder (#501), never the book. The desktop's own browser
+  // (`engineBrowser`) is not confined.
+  const snapName = opts.engineBrowser ? undefined : await snapBrowserName(format);
+  const workName = `gutterpress-build-${randomBytes(6).toString("hex")}`;
   const workDir =
     target.kind === "project"
       ? path.join(
           path.dirname(target.dir),
           `.${path.basename(target.dir)}-build-${randomBytes(6).toString("hex")}`
         )
-      : path.join(os.tmpdir(), `gutterpress-build-${randomBytes(6).toString("hex")}`);
+      : path.join(chooseScratchParent({ snapName }), workName);
 
   return {
     opts,
@@ -318,6 +339,7 @@ export async function resolveBuildContext(
     workDir,
     target,
     manifestDir,
+    manifestPath,
     config,
     gates,
     prevalidatedLayoutWarningKeys: new Set(),
@@ -389,7 +411,7 @@ export async function loadBuildPlugins(ctx: BuildContext): Promise<LoadedPlugins
  * loader — this function changes NOTHING about that case.
  */
 async function runQualityGates(ctx: BuildContext): Promise<void> {
-  const { gates, opts, renderDir } = ctx;
+  const { gates, renderDir, manifestPath } = ctx;
 
   const pluginStylePaths = gates.preValidate
     ? (await loadBuildPlugins(ctx)).pluginStylePaths
@@ -401,7 +423,7 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
       {
         input: renderDir,
         phase: "pre-build",
-        manifest: opts.manifestPath,
+        manifest: manifestPath,
         pluginStylePaths,
         skipStylelint: gates.skipStylelint,
       },
@@ -760,9 +782,9 @@ class HtmlOutput implements OutputStrategy {
 
 /**
  * `--format pdf` / `--format pdfx` — stage the rendered book, render it to PDF
- * via the Gutterpress engine's native Chromium pagination, then for plain pdf
- * stamp /Creator and for pdfx resolve the ICC, optionally strip annotations, and
- * convert to CMYK PDF/X. Runs post-build validation for pdfx, then finalizes.
+ * via the Gutterpress engine's native Chromium pagination, stamp /Creator, then
+ * for pdfx resolve the ICC, optionally strip annotations, and convert to CMYK
+ * PDF/X. Runs post-build validation for pdfx, then finalizes.
  * The staging scratch dir is removed in a finally so it never leaks.
  */
 class PdfOutput implements OutputStrategy {
@@ -772,7 +794,7 @@ class PdfOutput implements OutputStrategy {
     browser: EngineBrowser | undefined
   ): Promise<BuildRunnerResult> {
     if (!browser) throw new BuildError("PDF build reached the render stage without a browser");
-    const { workDir, outDir, inputDir, config, opts, format, manifestDir, gates } = ctx;
+    const { workDir, outDir, inputDir, config, opts, format, manifestDir, manifestPath, gates } = ctx;
 
     const pdfxMode: PdfxFlavor | undefined =
       format === "pdfx" ? (opts.pdfxFlavor ?? config.pdfx.flavor) : undefined;
@@ -815,18 +837,19 @@ class PdfOutput implements OutputStrategy {
       );
       for (const d of engineDiagnostics) log.warn(d.message);
 
-      if (!pdfxMode) {
-        // stampCreator writes /Creator (Gutterpress) into the PDF's Info dict using
-        // pdf-lib (in-process, no system tool). The information is cosmetic — if it
-        // fails for any reason, keep the raw Chromium output as the final PDF rather
-        // than failing the build. `rawPdf` equals the final `pdfFile` when !pdfxMode.
-        try {
-          await stampCreator(rawPdf);
-        } catch (err) {
-          log.warn(
-            `Skipping /Creator stamp: ${err instanceof Error ? err.message : String(err)}`
-          );
-        }
+      // stampCreator writes /Creator (gutterpress) into the PDF's Info dict using
+      // pdf-lib (in-process, no system tool). For pdfx it runs on the raw PDF
+      // before the conversion: Ghostscript's pdfwrite keeps the input's Info
+      // entries over its own DOCINFO pdfmark, so this is also what the PDF/X
+      // file carries (#497). The information is cosmetic — if it fails for any
+      // reason, keep the raw Chromium output rather than failing the build.
+      // `rawPdf` equals the final `pdfFile` when !pdfxMode.
+      try {
+        await stampCreator(rawPdf);
+      } catch (err) {
+        log.warn(
+          `Skipping /Creator stamp: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
 
       let effectiveIccPath: string | null = null;
@@ -938,9 +961,10 @@ class PdfOutput implements OutputStrategy {
           await stripAnnotations(rawPdf, stage);
         }
 
-        if (config.pdfx.blackText === "k-only") {
-          log.info("Rewriting near-black text to K-only gray");
-          await fsp.writeFile(rawPdf, await blackTextToGray(await fsp.readFile(rawPdf)));
+        if (config.pdfx.blackText === "k-only" || config.pdfx.blackText === "k-only-neutral") {
+          const neutral = config.pdfx.blackText === "k-only-neutral";
+          log.info(`Rewriting ${neutral ? "grey" : "near-black"} text to K-only gray`);
+          await fsp.writeFile(rawPdf, await blackTextToGray(await fsp.readFile(rawPdf), neutral));
         }
 
         log.info(`Converting to CMYK PDF/X (${pdfxMode})`);
@@ -948,21 +972,21 @@ class PdfOutput implements OutputStrategy {
           iccPath: effectiveIccPath,
           pdfx: pdfxMode,
           title: config.title,
-          maxTac: config.ink.maxTac,
           stagingDir: stage,
           rasterDpi: config.pdfx.rasterDpi,
         });
       }
 
 
-      // Post-build validation (pdfx only)
+      // Post-build validation (pdfx only), against the manifest this build
+      // loaded (#496).
       if (gates.postValidate) {
         log.info("Post-build validation");
         const result = await executeAndReport(
           {
             pdf: pdfFile,
             phase: "post-build",
-            manifest: opts.manifestPath,
+            manifest: manifestPath,
           },
           "text"
         );
@@ -1020,9 +1044,35 @@ class PdfOutput implements OutputStrategy {
 export async function runBuild(
   opts: BuildRunnerOptions
 ): Promise<BuildRunnerResult> {
+  // A book part-way through a revision switch holds files from two revisions;
+  // building it could produce a PDF that looks fine (#507). Covers the `build`
+  // command, the desktop export and `preview --format pdf`; the HTML preview
+  // server does not build through here and is not guarded. The desktop export
+  // (which injects `engineBrowser`) first tries the repair, in the same process
+  // as the app's own repair lock. A plain CLI run never repairs: the repo lock
+  // is in-process only, so it could not keep a running app from being rolled
+  // back underneath it. It refuses, with the saved copy named.
+  const sp = await import("./source-provider.ts");
+  if (opts.engineBrowser) await sp.repairInterruptedSwitch(opts.inputDir).catch(() => undefined);
+  const unfinished = await sp.unfinishedSwitchMessage(opts.inputDir, { cli: !opts.engineBrowser });
+  if (unfinished) {
+    const err = new UsageError(unfinished);
+    (err as UsageError & { code?: string }).code = "UNFINISHED_SWITCH";
+    throw err;
+  }
+
   const ctx = await resolveBuildContext(opts);
 
   log.info(`Build (${ctx.format}): ${ctx.inputDir} -> ${ctx.outDir}`);
+
+  // A snap browser reads only non-hidden files under the home directory. The
+  // scratch dir is chosen to be readable; if it still is not (our own `dist/`
+  // beside a book outside home), say so rather than print an unstyled book.
+  const snapWarning = snapUnreadableWarning(
+    ctx.workDir,
+    opts.engineBrowser ? undefined : await snapBrowserName(ctx.format)
+  );
+  if (snapWarning) log.warn(snapWarning);
 
   // Pre-flight tool check.
   //

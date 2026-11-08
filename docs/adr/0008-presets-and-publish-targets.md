@@ -11,7 +11,7 @@ Novels, manuals, and other long-form books are the secondary audience.
 Until now one manifest key — `preset:` — bundled two unrelated decisions:
 
 1. **How the book is designed**: page/trim geometry (`page.width`/`height`).
-2. **Where the book will be published**: ink limits (TAC), PDF/X
+2. **Where the book will be published**: the ink limit (TAC) it is checked against, PDF/X
    requirements, and which validation checks are errors.
 
 That fusion breaks exactly where the primary audience lives. A digest-sized
@@ -79,7 +79,7 @@ book renders — only what the validator demands of the output. Ids today:
   is combined. Zero targets = today's single-run behavior.
 - `itch` is a *digital-readiness* policy: structure and embedded-fonts
   checks stay errors; PDF/X markers/metadata, CMYK-only color spaces, and
-  the TAC cap do not apply.
+  the TAC check do not apply.
 
 ### Creation requires a preset — and records the targets
 

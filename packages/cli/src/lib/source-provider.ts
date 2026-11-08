@@ -757,6 +757,8 @@ export async function snapshotWorkingTreeUnlocked(
   // caller supplied its own, in which case we use that so its index view
   // stays coherent past our commit (see SnapshotOptions.cache).
   const cache: GitCache = options.cache ?? {};
+  // Never save a half-switched tree as a version: put it right first.
+  await repairInterruptedSwitchUnlocked(dir);
   // Crash-window marker: staging (git.add/remove) and git.commit are two
   // separate writes. A crash between them leaves the index matching the
   // workdir with NO commit — and because the changes walk compares
@@ -816,6 +818,8 @@ export async function snapshotWorkingTreeUnlocked(
     author,
   });
   fs.rmSync(stagingMarker, { force: true });
+  // A newer saved version may free old repair copies (#508).
+  await pruneRepairCopiesUnlocked(dir).catch(() => undefined);
   // Canonical timestamp comes from the committed object itself (matching
   // what listHistory reads back), not the wall clock at return time.
   const [head] = await git.log({ fs, dir, cache, depth: 1 });
@@ -859,9 +863,13 @@ export interface UnversionedChanges {
  * A book inside a larger repo (`subPath`) is counted on its own folder only.
  * Queued behind the repo lock so it never reads the index mid-snapshot;
  * otherwise a lock-free walk that reads no history.
+ *
+ * By default a half-done switch is put right first (opening a book lands
+ * here), which WRITES. A status read passes `repair: false` so it never does.
  */
 export async function countUnversionedChanges(
   projectDir: string,
+  options: { repair?: boolean } = {},
 ): Promise<UnversionedChanges | null> {
   const source = await detectProjectSource(projectDir);
   if (source.type !== "local-git-folder") return null;
@@ -870,6 +878,8 @@ export async function countUnversionedChanges(
   // The vendored npm trees (the current folder and the one older books used).
   const appWritten = [EXTENSIONS_DIR, LEGACY_PLUGINS_DIR].map((d) => `${bookPrefix}${d}/${VENDORED_NPM_DIR}/`);
   return withRepoLock(dir, async () => {
+    // Opening a book lands here: a half-done switch is put right before it is counted.
+    if (options.repair !== false) await repairInterruptedSwitchUnlocked(dir);
     const { adds, removes } = await listWorkdirChanges(dir);
     const mine = new Set(
       [...adds, ...removes].filter((f) => f.startsWith(bookPrefix) && !appWritten.some((p) => f.startsWith(p))),
@@ -903,6 +913,578 @@ export function gitDirFor(projectDir: string): string {
 /** Marker written before staging and removed after commit; presence means a prior snapshot may have died after staging. */
 export function snapshotStagingMarkerPath(projectDir: string): string {
   return path.join(gitDirFor(projectDir), SNAPSHOT_STAGING_MARKER);
+}
+
+// ── Interrupted switch journal ───────────────────────────────────────────────
+//
+// A revision switch (and a restore) rewrites the working tree in several steps
+// that git cannot make atomic. The journal says one is under way; it lives in
+// the git directory, is written by rename (never torn) after the safety
+// version holds everything, and is removed only once the tree is settled. If
+// it is still there at the next look, the app died mid-way, and
+// {@link repairInterruptedSwitch} puts the book back to the saved version.
+// Before it overwrites anything, the repair keeps a copy of the tree as it is
+// then on a side ref (nothing written after the journal can be lost), and it
+// deletes only what it can show the half-done move itself wrote.
+
+const SWITCH_JOURNAL = "gutterpress-switch.json";
+const SWITCH_NOTICE = "gutterpress-switch-notice.json";
+/** Side refs holding a copy of the tree taken just before a repair overwrote it. */
+export const BEFORE_REPAIR_REF_PREFIX = "refs/gutterpress/before-repair-";
+
+interface SwitchJournal {
+  kind: "switch" | "restore";
+  /** The version the book was on (it holds everything: saved before the journal). */
+  from: string;
+  /** The revision the book was on, when it was on one. */
+  fromBranch?: string;
+  /** The version being moved to. */
+  to: string;
+  /** The revision being moved to (a switch only). */
+  branch?: string;
+  /** When the move began (ms). */
+  startedAt?: number;
+  /** Ref of the copy of the tree a repair kept for this switch (so a retry reuses it). */
+  keptCopy?: string;
+  /** Folders that held the target's new files before the move, so they are not the move's to remove. */
+  preexistingDirs?: string[];
+}
+
+const switchJournalPath = (dir: string): string => path.join(gitDirFor(dir), SWITCH_JOURNAL);
+const switchNoticePath = (dir: string): string => path.join(gitDirFor(dir), SWITCH_NOTICE);
+
+function writeAtomically(file: string, text: string, durable = false): void {
+  const tmp = `${file}.${process.pid}.tmp`;
+  const fd = fs.openSync(tmp, "w");
+  try {
+    fs.writeSync(fd, text);
+    if (durable) fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.renameSync(tmp, file);
+  if (durable) {
+    try {
+      const d = fs.openSync(path.dirname(file), "r");
+      fs.fsyncSync(d);
+      fs.closeSync(d);
+    } catch {
+      // directories cannot be synced everywhere; the rename is atomic regardless
+    }
+  }
+}
+
+/** Files the target version has and the saved one does not. */
+async function targetOnlyFiles(dir: string, from: string, to: string, cache: GitCache): Promise<string[]> {
+  const found: string[] = [];
+  await git
+    .walk({
+      fs,
+      dir,
+      cache,
+      trees: [git.TREE({ ref: from }), git.TREE({ ref: to })],
+      map: async (filepath, [a, b]) => {
+        if (filepath === "." || a || !b) return;
+        if ((await b.type()) === "blob") found.push(filepath);
+      },
+    })
+    .catch(() => undefined); // target version unreadable: nothing to sweep
+  return found;
+}
+
+const ancestorsOf = (file: string): string[] => {
+  const out: string[] = [];
+  for (let d = path.posix.dirname(file); d !== "." && d !== "/"; d = path.posix.dirname(d)) out.push(d);
+  return out;
+};
+
+async function beginSwitchJournal(dir: string, journal: Pick<SwitchJournal, "kind" | "to" | "branch">): Promise<void> {
+  const from = await git.resolveRef({ fs, dir, ref: "HEAD" }).catch(() => undefined);
+  if (!from) return; // no version to go back to
+  const fromBranch = (await git.currentBranch({ fs, dir }).catch(() => undefined)) || undefined;
+  const preexisting = new Set<string>();
+  for (const f of await targetOnlyFiles(dir, from, journal.to, {})) {
+    for (const d of ancestorsOf(f)) if (fs.existsSync(path.join(dir, d))) preexisting.add(d);
+  }
+  const full: SwitchJournal = {
+    ...journal,
+    from,
+    fromBranch,
+    startedAt: Date.now(),
+    preexistingDirs: [...preexisting],
+  };
+  writeAtomically(switchJournalPath(dir), JSON.stringify(full), true);
+}
+
+const endSwitchJournal = (dir: string): void => fs.rmSync(switchJournalPath(dir), { force: true });
+
+/** Remove `file`'s parent folders while they are empty and were not there before the move. */
+function pruneNewEmptyDirs(dir: string, file: string, keep: Set<string>): void {
+  for (const d of ancestorsOf(file)) {
+    if (keep.has(d)) return;
+    try {
+      fs.rmdirSync(path.join(dir, d)); // throws unless empty
+    } catch {
+      return;
+    }
+  }
+}
+
+/**
+ * Keep a copy of the whole tree (tracked and untracked, not ignored) as a commit
+ * on a side ref, so a forced rollback can never lose what was written after the
+ * journal. Returns the ref, or `undefined` when the tree already equals `from`.
+ */
+async function keepTreeBeforeRepair(
+  dir: string,
+  from: string,
+  to: string,
+  fromBranch: string | undefined,
+  cache: GitCache,
+  prior?: string,
+): Promise<string | undefined> {
+  const ref = `${BEFORE_REPAIR_REF_PREFIX}${new Date().toISOString().replace(/[^0-9]/g, "")}`;
+  const changes = await listWorkdirChanges(dir, cache);
+  await stageChanges(dir, changes, cache);
+  const author = await resolveGitAuthor(dir);
+  const id = await git.commit({
+    fs,
+    dir,
+    cache,
+    ref,
+    // `from` is the saved version; `to` lets a later restore tell the author's
+    // files from the ones the half-done move wrote.
+    parent: to === from ? [from] : [from, to],
+    message: `Kept before repairing an interrupted switch${fromBranch ? `\n\nRevision: ${fromBranch}` : ""}`,
+    author,
+  });
+  const [kept, saved] = await Promise.all([
+    git.readCommit({ fs, dir, cache, oid: id }),
+    git.readCommit({ fs, dir, cache, oid: from }),
+  ]);
+  if (kept.commit.tree === saved.commit.tree) {
+    await git.deleteRef({ fs, dir, ref });
+    return undefined;
+  }
+  // A retry of the same repair: the tree is what the earlier try already kept.
+  if (prior) {
+    const earlier = await git
+      .resolveRef({ fs, dir, ref: prior })
+      .then((oid) => git.readCommit({ fs, dir, cache, oid }))
+      .catch(() => undefined);
+    if (earlier && earlier.commit.tree === kept.commit.tree) {
+      await git.deleteRef({ fs, dir, ref });
+      return prior;
+    }
+  }
+  // Staging was only to take the copy: put every staged path back to what the
+  // saved version has, so the index never claims an edit is already saved (a
+  // forced checkout does that too, but "keep files as they are" does not run one).
+  for (const f of [...changes.adds, ...changes.removes]) {
+    await git.resetIndex({ fs, dir, cache, filepath: f });
+  }
+  return ref;
+}
+
+/**
+ * Finish an interrupted switch or restore (caller holds the repo lock): a
+ * switch whose revision is already open is simply done; anything else is rolled
+ * back, by forcing the saved version over the tree and removing the files and
+ * folders the half-done move created. Returns the message for the author, or
+ * `null` when nothing was pending. The message is also kept for
+ * {@link takeSwitchRepairNotice}.
+ */
+export async function repairInterruptedSwitchUnlocked(dir: string): Promise<string | null> {
+  if (!fs.existsSync(switchJournalPath(dir))) return null;
+  let journal: SwitchJournal | undefined;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(switchJournalPath(dir), "utf8"));
+    if (typeof parsed?.from === "string" && typeof parsed?.to === "string") journal = parsed;
+  } catch {
+    // handled below
+  }
+  const cache: GitCache = {};
+  const unreadable = !journal;
+  if (!journal) {
+    // Unreadable: the book was clean at HEAD when a move began, so HEAD is the
+    // version to go back to. Nothing is deleted without knowing what the move wrote.
+    const head = await git.resolveRef({ fs, dir, ref: "HEAD" });
+    journal = {
+      kind: "switch",
+      from: head,
+      to: head,
+      fromBranch: (await git.currentBranch({ fs, dir }).catch(() => undefined)) || undefined,
+    };
+  }
+  const what = journal.kind === "restore" ? "Restoring a version" : "Switching revisions";
+  const open = await git.currentBranch({ fs, dir }).catch(() => undefined);
+  let message: string;
+  if (!unreadable && journal.kind === "switch" && journal.branch && open === journal.branch) {
+    message = `Switching to "${journal.branch}" was interrupted after it had finished, so nothing needed fixing.`;
+  } else {
+    const kept = await keepTreeBeforeRepair(dir, journal.from, journal.to, journal.fromBranch, cache, journal.keptCopy);
+    if (kept && !unreadable && kept !== journal.keptCopy) {
+      // Written before the checkout, so a checkout that fails still leaves the journal naming its copy.
+      journal.keptCopy = kept;
+      writeAtomically(switchJournalPath(dir), JSON.stringify(journal), true);
+    }
+    await git.checkout({ fs, dir, cache, ref: journal.fromBranch ?? journal.from, force: true });
+    const left: string[] = [];
+    if (!unreadable) {
+      const keep = new Set(journal.preexistingDirs ?? []);
+      for (const f of await targetOnlyFiles(dir, journal.from, journal.to, cache)) {
+        const abs = path.join(dir, f);
+        let st: ReturnType<typeof fs.lstatSync> | undefined;
+        try {
+          st = fs.lstatSync(abs);
+        } catch {
+          // never written
+        }
+        if (st) {
+          // Delete only what the half-done move wrote: the target's own bytes,
+          // or a file touched since it began. Anything else is the author's.
+          let mine = false;
+          if (st.isFile()) {
+            const sameBytes = await git
+              .hashBlob({ object: fs.readFileSync(abs) })
+              .then(async ({ oid }) => {
+                const b = await git.readBlob({ fs, dir, cache, oid: journal!.to, filepath: f }).catch(() => undefined);
+                return b?.oid === oid;
+              });
+            mine = sameBytes || st.mtimeMs >= (journal.startedAt ?? Infinity);
+          }
+          if (mine) fs.rmSync(abs, { force: true });
+          else left.push(f);
+        }
+        pruneNewEmptyDirs(dir, f, keep);
+      }
+    }
+    message =
+      `${what} was interrupted (the app closed part-way), so the book was put back ` +
+      `exactly as it was before${journal.fromBranch ? `, on "${journal.fromBranch}"` : ""}. ` +
+      "Nothing you wrote before then was lost; do it again when you're ready.";
+    if (unreadable) message += " The record of the interrupted change could not be read, so any leftover files from it were kept.";
+    if (kept) {
+      message +=
+        " A copy of the files as they were before this repair was kept. Book setup → Online → Drafts lists it, " +
+        "where you can put back the files you changed or discard it.";
+    }
+    if (left.length) {
+      message += ` These files were left alone because they may be yours: ${left.slice(0, 10).join(", ")}${left.length > 10 ? ` and ${left.length - 10} more` : ""}.`;
+    }
+  }
+  writeAtomically(switchNoticePath(dir), JSON.stringify({ message }));
+  endSwitchJournal(dir);
+  return message;
+}
+
+/** Repair an interrupted switch or restore, queued behind the repo lock. */
+export async function repairInterruptedSwitch(projectDir: string): Promise<string | null> {
+  const source = await detectProjectSource(projectDir);
+  if (source.type !== "local-git-folder") return null;
+  const dir = gitScopeFor(source);
+  if (!fs.existsSync(switchJournalPath(dir))) return null;
+  return withRepoLock(dir, () => repairInterruptedSwitchUnlocked(dir));
+}
+
+/** The message left by a repair, once: read it, then clear it. */
+export async function takeSwitchRepairNotice(projectDir: string): Promise<string | null> {
+  const source = await detectProjectSource(projectDir);
+  if (source.type !== "local-git-folder") return null;
+  const file = switchNoticePath(gitScopeFor(source));
+  try {
+    const { message } = JSON.parse(fs.readFileSync(file, "utf8"));
+    fs.rmSync(file, { force: true });
+    return typeof message === "string" ? message : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A switch the app could not finish putting right, for the author to settle. */
+export interface UnfinishedSwitch {
+  /** Plain words: what is wrong and where to go. */
+  message: string;
+  /** Id of the copy of the files kept for this switch, when there is one. */
+  copy?: string;
+}
+
+function readJournalFile(dir: string): SwitchJournal | undefined {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(switchJournalPath(dir), "utf8"));
+    return typeof parsed?.from === "string" && typeof parsed?.to === "string" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The switch still unresolved in this book (its journal is there), or `null`.
+ * A build of that tree would run on files from two revisions mixed together and
+ * could still make a PDF that looks fine, so builds stop (#507).
+ */
+export async function unfinishedSwitchState(projectDir: string): Promise<UnfinishedSwitch | null> {
+  const source = await detectProjectSource(projectDir);
+  if (source.type !== "local-git-folder") return null;
+  const dir = gitScopeFor(source);
+  if (!fs.existsSync(switchJournalPath(dir))) return null;
+  const kept = readJournalFile(dir)?.keptCopy;
+  const copy =
+    kept && kept.startsWith(BEFORE_REPAIR_REF_PREFIX) && (await git.resolveRef({ fs, dir, ref: kept }).catch(() => null))
+      ? kept.slice(BEFORE_REPAIR_REF_PREFIX.length)
+      : undefined;
+  return {
+    message:
+      "This book is part-way through switching revisions, so its files may be a mix of two revisions and " +
+      "it can't be built or saved yet. In Gutterpress, Book setup → Online → Drafts says how to put it right.",
+    ...(copy ? { copy } : {}),
+  };
+}
+
+/**
+ * What a build refuses with while a switch is unresolved, or `null`. `cli` adds
+ * the saved copy's ref for someone working from the command line; the app never
+ * shows it.
+ */
+export async function unfinishedSwitchMessage(projectDir: string, options: { cli?: boolean } = {}): Promise<string | null> {
+  const state = await unfinishedSwitchState(projectDir);
+  if (!state) return null;
+  return options.cli && state.copy
+    ? `${state.message} Your files were kept as "${BEFORE_REPAIR_REF_PREFIX}${state.copy}" (git checkout ${BEFORE_REPAIR_REF_PREFIX}${state.copy} -- .).`
+    : state.message;
+}
+
+/**
+ * "Keep files as they are": the author accepts the book as the half-done move
+ * left it. A copy is kept first (unless this switch already has one), then the
+ * journal is cleared so the book can be built and saved again. A later save
+ * records the files as they stand.
+ */
+export async function keepUnfinishedSwitchAsIs(projectDir: string): Promise<void> {
+  const source = await detectProjectSource(projectDir);
+  if (source.type !== "local-git-folder") return;
+  const dir = gitScopeFor(source);
+  await withRepoLock(dir, async () => {
+    if (!fs.existsSync(switchJournalPath(dir))) return;
+    const journal = readJournalFile(dir);
+    const head = await git.resolveRef({ fs, dir, ref: "HEAD" });
+    await keepTreeBeforeRepair(
+      dir,
+      journal?.from ?? head,
+      journal?.to ?? head,
+      journal?.fromBranch,
+      {},
+      journal?.keptCopy,
+    );
+    endSwitchJournal(dir);
+  });
+}
+
+// ── Repair copies (#508) ─────────────────────────────────────────────────────
+//
+// Each repair that overwrites files first keeps them on refs/gutterpress/
+// before-repair-<time>: a commit on the version the book was on (`from`) and,
+// as a second parent, the revision being moved to. The files the author changed
+// are the ones that differ from both; the rest is the half-done move. Copies
+// live only in the book's git folder: a push names the revision it sends (never
+// a wildcard), so they never go online, and the revision list reads refs/heads
+// only. A copy is "saved" once those files are in the recent history of the open
+// revision; only saved copies are ever pruned, and the author can restore files
+// from one or discard it.
+
+/** A kept copy of the files from just before a repair. */
+export interface RepairCopy {
+  /** The time stamp in the ref's name; what the restore and discard calls take. */
+  id: string;
+  /** When the copy was taken (ms). */
+  savedAt: number;
+  /** The files the author changed are all in the open revision's history already. */
+  saved: boolean;
+  /** The revision the book was on when the copy was taken. */
+  revision?: string;
+}
+
+/** Most saved repair copies kept, and the age after which an older saved one may be dropped. */
+export const REPAIR_COPY_KEEP = 5;
+export const REPAIR_COPY_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+/** How many recent versions of the open revision count as "in history". */
+const REPAIR_COPY_HISTORY_DEPTH = 50;
+
+/** Message recorded on the version made when files are put back from a copy. */
+export const RESTORED_COPY_MESSAGE = "Restored files from a saved copy";
+
+interface RepairCopyRef extends Omit<RepairCopy, "saved"> {
+  ref: string;
+  oid: string;
+  parents: string[];
+}
+
+/** Repair copies, newest first. */
+async function readRepairCopies(dir: string): Promise<RepairCopyRef[]> {
+  const names = await git.listRefs({ fs, dir, filepath: "refs/gutterpress" }).catch(() => [] as string[]);
+  const prefix = BEFORE_REPAIR_REF_PREFIX.slice("refs/gutterpress/".length);
+  const found = await Promise.all(
+    names
+      .filter((n) => n.startsWith(prefix))
+      .map(async (n): Promise<RepairCopyRef | null> => {
+        const ref = `refs/gutterpress/${n}`;
+        try {
+          const oid = await git.resolveRef({ fs, dir, ref });
+          const { commit } = await git.readCommit({ fs, dir, oid });
+          const revision = /^Revision: (.+)$/m.exec(commit.message)?.[1];
+          return {
+            id: n.slice(prefix.length),
+            ref,
+            oid,
+            parents: commit.parent,
+            savedAt: commit.committer.timestamp * 1000,
+            ...(revision ? { revision } : {}),
+          };
+        } catch {
+          return null; // a ref whose commit is gone: nothing to show
+        }
+      }),
+  );
+  return found.filter((c): c is RepairCopyRef => c !== null).sort((a, b) => b.savedAt - a.savedAt);
+}
+
+/** The files in a copy that are the author's: not as the saved version had them and not as the move wrote them. */
+async function changedInCopy(dir: string, copy: RepairCopyRef): Promise<Array<{ path: string; oid: string; mode: number }>> {
+  const from = copy.parents[0];
+  if (!from) return [];
+  const to = copy.parents[1] ?? from;
+  const found: Array<{ path: string; oid: string; mode: number }> = [];
+  await git.walk({
+    fs,
+    dir,
+    cache: {},
+    trees: [git.TREE({ ref: copy.oid }), git.TREE({ ref: from }), git.TREE({ ref: to })],
+    map: async (filepath, [c, f, t]) => {
+      if (filepath === "." || !c || (await c.type()) !== "blob") return;
+      const oid = await c.oid();
+      if (oid === (await f?.oid()) || oid === (await t?.oid())) return;
+      if ((await c.mode()) === 0o120000) return; // a symlink is not brought back
+      found.push({ path: filepath, oid, mode: await c.mode() });
+    },
+  });
+  return found;
+}
+
+/** Every changed file is in a recent version of the open revision with exactly these bytes. */
+async function filesAreInHistory(dir: string, files: Array<{ path: string; oid: string }>): Promise<boolean> {
+  if (!files.length) return true;
+  const log = await git.log({ fs, dir, depth: REPAIR_COPY_HISTORY_DEPTH }).catch(() => []);
+  for (const f of files) {
+    let found = false;
+    for (const entry of log) {
+      const blob = await git.readBlob({ fs, dir, oid: entry.oid, filepath: f.path }).catch(() => undefined);
+      if (blob?.oid === f.oid) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
+  }
+  return true;
+}
+
+/**
+ * Drop old repair copies (caller holds the repo lock). Only a copy whose files
+ * are already in the history is ever dropped, and then only beyond the newest
+ * few or past the age limit. One holding files saved nowhere else stays.
+ */
+export async function pruneRepairCopiesUnlocked(dir: string, now = Date.now()): Promise<void> {
+  const copies = await readRepairCopies(dir);
+  const saved: RepairCopyRef[] = [];
+  for (const c of copies) if (await filesAreInHistory(dir, await changedInCopy(dir, c))) saved.push(c);
+  for (const [i, c] of saved.entries()) {
+    if (i >= REPAIR_COPY_KEEP || now - c.savedAt > REPAIR_COPY_MAX_AGE_MS) await git.deleteRef({ fs, dir, ref: c.ref });
+  }
+}
+
+/** The book's repair copies, newest first (empty for a plain folder). A read: nothing is pruned here. */
+export async function listRepairCopies(projectDir: string): Promise<RepairCopy[]> {
+  const source = await detectProjectSource(projectDir);
+  if (source.type !== "local-git-folder") return [];
+  const dir = gitScopeFor(source);
+  return Promise.all(
+    (await readRepairCopies(dir)).map(async ({ id, savedAt, revision, ...c }) => ({
+      id,
+      savedAt,
+      saved: await filesAreInHistory(dir, await changedInCopy(dir, { id, savedAt, revision, ...c })),
+      ...(revision ? { revision } : {}),
+    })),
+  );
+}
+
+const REPAIR_COPY_ID = /^\d{8,20}$/;
+
+async function repairCopyFor(projectDir: string, id: string) {
+  const source = await detectProjectSource(projectDir);
+  if (source.type !== "local-git-folder") throw new Error(NO_VERSION_HISTORY);
+  const dir = gitScopeFor(source);
+  const copy = REPAIR_COPY_ID.test(id) ? (await readRepairCopies(dir)).find((c) => c.id === id) : undefined;
+  if (!copy) throw new Error("That saved copy is no longer there.");
+  return { source, dir, copy };
+}
+
+/**
+ * Put back the files the author changed that a repair kept (not the half-done
+ * move's files), then save them as a version, so they are in the history and
+ * the index agrees with the files. Work not yet saved is saved first. The
+ * copy stays until it is discarded or pruned.
+ */
+export async function restoreRepairCopy(
+  options: Omit<RestoreVersionOptions, "id"> & { id: string },
+): Promise<RestoreVersionResult & { files: number }> {
+  const { projectDir, authorName, authorEmail } = options;
+  const { source, dir, copy } = await repairCopyFor(projectDir, options.id);
+  const provider = new LocalGitSourceProvider(source);
+  return withRepoLock(dir, async () => {
+    await repairInterruptedSwitchUnlocked(dir).catch(() => undefined);
+    if (fs.existsSync(switchJournalPath(dir))) {
+      throw new Error(
+        "This book is still part-way through switching revisions. Put that right first (Book setup → Online → Drafts), then restore from the copy.",
+      );
+    }
+    const files = await changedInCopy(dir, copy);
+    if (!files.length) throw new Error("That copy holds no files you changed, so there is nothing to put back.");
+    const save = async (message: string): Promise<string | undefined> => {
+      try {
+        return (await provider.snapshotUnlocked({ projectDir, message, authorName, authorEmail })).id;
+      } catch (e) {
+        if (isNoChangesError(e)) return undefined;
+        throw e;
+      }
+    };
+    const backupId = (await hasPendingChanges(dir)) ? await save(RESTORE_BACKUP_MESSAGE) : undefined;
+    for (const f of files) {
+      const abs = path.join(dir, f.path);
+      if (path.relative(dir, abs).startsWith("..")) continue;
+      const { blob } = await git.readBlob({ fs, dir, oid: f.oid });
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, blob);
+      if (f.mode & 0o111) fs.chmodSync(abs, 0o755); // keep the executable bit
+    }
+    const restoredId = (await save(RESTORED_COPY_MESSAGE)) ?? (await git.resolveRef({ fs, dir, ref: "HEAD" }));
+    return { restoredId, backupId, files: files.length };
+  });
+}
+
+/**
+ * Delete a repair copy. One whose files are saved nowhere else is refused
+ * unless `unsaved` says the author chose to lose them.
+ */
+export async function discardRepairCopy(projectDir: string, id: string, options: { unsaved?: boolean } = {}): Promise<void> {
+  const { dir, copy } = await repairCopyFor(projectDir, id);
+  await withRepoLock(dir, async () => {
+    if (!options.unsaved && !(await filesAreInHistory(dir, await changedInCopy(dir, copy)))) {
+      throw new Error(
+        "That copy holds files that aren't saved anywhere else. Put them back first, or choose to discard them anyway.",
+      );
+    }
+    await git.deleteRef({ fs, dir, ref: copy.ref });
+  });
 }
 
 // ── Safe restore (#13) ────────────────────────────────────────────────────────
@@ -980,8 +1562,11 @@ export async function restoreVersionWithBackup(
       backupId = backup.id;
     }
     try {
+      await beginSwitchJournal(repoDir, { kind: "restore", to: id });
       await provider.restoreUnlocked({ projectDir, id });
+      endSwitchJournal(repoDir);
     } catch (cause) {
+      await repairInterruptedSwitchUnlocked(repoDir).catch(() => undefined);
       // The restore itself failed AFTER any safety snapshot was committed.
       // Tell the author their work is safe — the backup is already in their
       // version history — and keep the underlying failure on `cause`.
@@ -1000,7 +1585,7 @@ export async function restoreVersionWithBackup(
 // ── Revisions (#273, #448) ───────────────────────────────────────────────────
 //
 // A book can hold several revisions of itself (git branches): separate lines of
-// work such as "Second edition". Book setup → Online copy lists them, says where
+// work such as "Second edition". Book setup → Online lists them, says where
 // each is kept, and starts, switches, renames and deletes them. A revision counts
 // whether or not it exists on this computer yet: one that so far lives only in
 // the online copy is switched to by creating the local branch from it, which is
@@ -1028,6 +1613,8 @@ export interface Revision {
 export interface RevisionList {
   current: string | null;
   revisions: Revision[];
+  /** Copies of the files kept just before a repair overwrote them (#508), newest first. */
+  repairCopies: RepairCopy[];
 }
 
 /** Inputs for {@link switchBranch}. */
@@ -1145,7 +1732,7 @@ export async function listRevisions(dir: string): Promise<RevisionList | null> {
       };
     }),
   );
-  return { current, revisions };
+  return { current, revisions, repairCopies: await listRepairCopies(dir) };
 }
 
 /** A revision name as the author typed it, made usable: trimmed, spaces become hyphens. */
@@ -1349,6 +1936,9 @@ export async function switchBranch(
     // local branch. `remote` is passed explicitly so a remote that isn't
     // named "origin" works too — checkout would otherwise assume origin.
     const { oid: toOid, remote } = await resolveRevision(repoDir, branch);
+    // Everything is saved above, so the tree is clean here: the journal lets a
+    // crash from this point on be undone (repairInterruptedSwitch).
+    await beginSwitchJournal(repoDir, { kind: "switch", to: toOid, branch });
     try {
       await git.checkout({
         fs,
@@ -1360,14 +1950,20 @@ export async function switchBranch(
       });
     } catch (e) {
       if (isCheckoutConflictError(e)) {
+        // Refused before any file moved: nothing to undo, and a forced
+        // rollback would overwrite the very file that changed.
+        endSwitchJournal(repoDir);
         throw new Error(
           "Couldn't switch revisions — some files changed on disk right as the switch " +
             "started. Try again.",
           { cause: e },
         );
       }
+      // Failed part-way (disk full, unreadable file...): put the book back.
+      await repairInterruptedSwitchUnlocked(repoDir).catch(() => undefined);
       throw e;
     }
+    endSwitchJournal(repoDir);
     const changedPaths =
       fromOid && fromOid !== toOid
         ? await diffCommitPaths(repoDir, fromOid, toOid, cache)

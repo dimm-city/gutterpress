@@ -1,17 +1,34 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { getPerPageInkCoverage } from "../../lib/pdf-parse";
+import { finding } from "../policy";
+import { getPerPageInkCoverage, hasOutputIntent } from "../../lib/pdf-parse";
 
 const check: Check = {
   id: "pdf.print.ink-coverage",
   name: "Ink Coverage (TAC)",
   description:
-    "Checks total area coverage (TAC) against maximum ink limits",
+    "Checks each page's total area coverage (TAC: C+M+Y+K at its heaviest spot, rasterised at 72 DPI) against the ink limit",
   category: "pdf",
   phase: "post-build",
   requiredTools: ["gs"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
+    // A file with no OutputIntent has not been separated for a press; its RGB
+    // would be measured through Ghostscript's default profiles, which is not
+    // what a printer receives. (Unreadable: let the measurement report that.)
+    if (!(await hasOutputIntent(ctx.pdfPath).catch(() => true))) {
+      return [
+        finding(check.id, {
+          severity: "info",
+          message: "Ink coverage is measured on PDF/X files only",
+          file: ctx.pdfPath,
+          detail:
+            "This PDF has no OutputIntent, so its colour has not been separated for a press and its ink " +
+            "cannot be measured. Build with `--format pdfx` and validate the `-pdfx.pdf` file.",
+          code: "ink-coverage-not-pdfx",
+        }),
+      ];
+    }
     const inkResult = await getPerPageInkCoverage(ctx.pdfPath);
     if (!inkResult.ok) {
       // Finding #51: a gs failure (crash, corrupt PDF, missing binary, a
@@ -24,7 +41,7 @@ const check: Check = {
           severity: "warning",
           message: "Ink coverage could not be measured",
           file: ctx.pdfPath,
-          detail: `Ghostscript inkcov failed, so total ink coverage (TAC) was not checked: ${inkResult.error}`,
+          detail: `Ghostscript could not render the PDF to CMYK, so total ink coverage (TAC) was not checked: ${inkResult.error}`,
           code: "ink-coverage-unmeasured",
           data: { error: inkResult.error },
         },
@@ -49,7 +66,7 @@ const check: Check = {
         .slice(0, 5)
         .map(
           (page) =>
-            `  Page ${page.page}: C:${page.c.toFixed(1)}% M:${page.m.toFixed(1)}% Y:${page.y.toFixed(1)}% K:${page.k.toFixed(1)}% = ${page.tac.toFixed(1)}% TAC`
+            `  Page ${page.page}, heaviest spot: C:${page.c.toFixed(1)}% M:${page.m.toFixed(1)}% Y:${page.y.toFixed(1)}% K:${page.k.toFixed(1)}% = ${page.tac.toFixed(1)}% TAC`
         ),
     ];
     if (offending.length > 5) {

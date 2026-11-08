@@ -23,6 +23,9 @@ import { setLibForTests, type LibModule } from "../../src/routes/api/_lib/route"
 import { POST as listRevisions } from "../../src/routes/api/vcs/list-revisions/+server";
 import { POST as createRevision } from "../../src/routes/api/vcs/create-revision/+server";
 import { POST as renameRevision } from "../../src/routes/api/vcs/rename-revision/+server";
+import { POST as restoreRepairCopy } from "../../src/routes/api/vcs/restore-repair-copy/+server";
+import { POST as discardRepairCopy } from "../../src/routes/api/vcs/discard-repair-copy/+server";
+import { POST as keepUnfinishedSwitch } from "../../src/routes/api/vcs/keep-unfinished-switch/+server";
 import { POST as deleteRevision } from "../../src/routes/api/vcs/delete-revision/+server";
 
 const DIR = "/abs/project";
@@ -57,7 +60,13 @@ function openProject(overrides: Parameters<typeof makeHostServices>[0] = {}): Ho
 }
 
 function fakeLib(lib: Record<string, unknown>): void {
-  setLibForTests(lib as Partial<LibModule>);
+  setLibForTests({
+    repairInterruptedSwitch: async () => null,
+    takeSwitchRepairNotice: async () => null,
+    unfinishedSwitchState: async () => null,
+    lastOnlineCheck: async () => null,
+    ...lib,
+  } as Partial<LibModule>);
 }
 
 afterEach(() => {
@@ -85,19 +94,38 @@ describe("POST /api/vcs/list-revisions", () => {
       },
     });
     const res = await listRevisions({ request: request({ projectDir: DIR }) } as never);
-    expect(await res.json()).toEqual({ ...revisions, checkedOnline: false });
+    expect(await res.json()).toEqual({ ...revisions, checkedAt: null, checkedOnline: false });
     expect(calls).toEqual([`list(${DIR})`]);
+  });
+
+  test("repairs an interrupted switch first and passes its message on once", async () => {
+    const order: string[] = [];
+    openProject();
+    fakeLib({
+      repairInterruptedSwitch: async () => {
+        order.push("repair");
+        return "put back";
+      },
+      takeSwitchRepairNotice: async () => "put back",
+      listRevisions: async () => {
+        order.push("list");
+        return revisions;
+      },
+    });
+    const res = await listRevisions({ request: request({ projectDir: DIR }) } as never);
+    expect(await res.json()).toEqual({ ...revisions, checkedAt: null, checkedOnline: false, repairNotice: "put back" });
+    expect(order).toEqual(["repair", "list"]);
   });
 
   test("refresh: true checks the online copy first, with the host's sign-ins, and reports it worked", async () => {
     const order: string[] = [];
-    let refreshArgs: { projectDir: string; tokenStore: unknown } | undefined;
+    let refreshArgs: { projectDir: string; tokenStore: unknown; maxAgeMs: number } | undefined;
     openProject();
     fakeLib({
-      refreshRemoteCopies: async (args: { projectDir: string; tokenStore: unknown }) => {
+      refreshRemoteCopies: async (args: { projectDir: string; tokenStore: unknown; maxAgeMs: number }) => {
         order.push("refresh");
         refreshArgs = args;
-        return { refreshed: true };
+        return { refreshed: true, checkedAt: "2026-11-07T10:00:00.000Z" };
       },
       listRevisions: async () => {
         order.push("list");
@@ -105,19 +133,41 @@ describe("POST /api/vcs/list-revisions", () => {
       },
     });
     const res = await listRevisions({ request: request({ projectDir: DIR, refresh: true }) } as never);
-    expect(await res.json()).toEqual({ ...revisions, checkedOnline: true });
+    expect(await res.json()).toEqual({ ...revisions, checkedAt: "2026-11-07T10:00:00.000Z", checkedOnline: true });
     expect(order).toEqual(["refresh", "list"]);
-    expect(refreshArgs).toEqual({ projectDir: DIR, tokenStore });
+    // A check this recent is reused (the versions list shares it).
+    expect(refreshArgs).toEqual({ projectDir: DIR, tokenStore, maxAgeMs: 20_000 });
+  });
+
+  test("maxAgeMs is the caller's to choose: 0 forces a real check", async () => {
+    let seen: number | undefined;
+    openProject();
+    fakeLib({
+      refreshRemoteCopies: async (args: { maxAgeMs: number }) => {
+        seen = args.maxAgeMs;
+        return { refreshed: true, checkedAt: null };
+      },
+      listRevisions: async () => revisions,
+    });
+    await listRevisions({ request: request({ projectDir: DIR, refresh: true, maxAgeMs: 0 }) } as never);
+    expect(seen).toBe(0);
+  });
+
+  test("without refresh, checkedAt is when the online copy was last asked", async () => {
+    openProject();
+    fakeLib({ lastOnlineCheck: async () => "2026-11-07T09:59:00.000Z", listRevisions: async () => revisions });
+    const res = await listRevisions({ request: request({ projectDir: DIR }) } as never);
+    expect(await res.json()).toMatchObject({ checkedAt: "2026-11-07T09:59:00.000Z", checkedOnline: false });
   });
 
   test("a refresh that could not reach the online copy still lists, as last known", async () => {
     openProject();
     fakeLib({
-      refreshRemoteCopies: async () => ({ refreshed: false, reason: "offline" }),
+      refreshRemoteCopies: async () => ({ refreshed: false, reason: "offline", checkedAt: null }),
       listRevisions: async () => revisions,
     });
     const res = await listRevisions({ request: request({ projectDir: DIR, refresh: true }) } as never);
-    expect(await res.json()).toEqual({ ...revisions, checkedOnline: false });
+    expect(await res.json()).toEqual({ ...revisions, checkedAt: null, checkedOnline: false, reason: "offline" });
   });
 
   test("passes null straight through (a plain folder has no revisions)", async () => {
@@ -331,5 +381,80 @@ describe("what the author and the logs can see", () => {
     expect(logged.length).toBeGreaterThan(0);
     expect(logged.join("\n")).not.toContain("ghp_secret");
     expect(logged.join("\n")).toContain("//(redacted)@github.com");
+  });
+});
+
+describe("repair copies (#508)", () => {
+  test("list-revisions passes the lib's repair copies through", async () => {
+    openProject();
+    const copies = [{ id: "20261107000000001", savedAt: 1, saved: true }];
+    fakeLib({ listRevisions: async () => ({ ...revisions, repairCopies: copies }) });
+    const res = await listRevisions({ request: request({ projectDir: DIR }) } as never);
+    expect((await res.json()).repairCopies).toEqual(copies);
+  });
+
+  test("restore and discard refuse anything but a copy id (400), and hand the lib exactly the id", async () => {
+    const calls: string[] = [];
+    openProject();
+    fakeLib({
+      restoreRepairCopy: async (o: { id: string }) => (calls.push(`restore ${o.id}`), { restoredId: "x" }),
+      discardRepairCopy: async (_dir: string, id: string, o: { unsaved: boolean }) => void calls.push(`discard ${id} unsaved=${o.unsaved}`),
+    });
+    for (const id of [undefined, "", "../heads/main", "abc", 5]) {
+      expect((await caught(restoreRepairCopy({ request: request({ projectDir: DIR, id }) } as never))).status).toBe(400);
+      expect((await caught(discardRepairCopy({ request: request({ projectDir: DIR, id, confirm: true }) } as never))).status).toBe(400);
+    }
+    await restoreRepairCopy({ request: request({ projectDir: DIR, id: "20261107000000001" }) } as never);
+    // Discard says so explicitly: no confirm, no delete.
+    expect((await caught(discardRepairCopy({ request: request({ projectDir: DIR, id: "20261107000000001" }) } as never))).status).toBe(400);
+    const res = await discardRepairCopy({ request: request({ projectDir: DIR, id: "20261107000000001", confirm: true }) } as never);
+    expect(await res.json()).toEqual({ discarded: true });
+    await discardRepairCopy({ request: request({ projectDir: DIR, id: "20261107000000001", confirm: true, discardUnsaved: true }) } as never);
+    expect(calls).toEqual(["restore 20261107000000001", "discard 20261107000000001 unsaved=false", "discard 20261107000000001 unsaved=true"]);
+  });
+});
+
+describe("an unresolved switch (#507)", () => {
+  test("list-revisions survives a repair that keeps failing and reports the unfinished switch", async () => {
+    openProject();
+    const unfinishedSwitch = { message: "part-way", copy: "20261107000000001" };
+    fakeLib({
+      repairInterruptedSwitch: async () => {
+        throw new Error("cannot check out");
+      },
+      unfinishedSwitchState: async () => unfinishedSwitch,
+      listRevisions: async () => ({ ...revisions, repairCopies: [] }),
+    });
+    const body = await (await listRevisions({ request: request({ projectDir: DIR }) } as never)).json();
+    expect(body.unfinishedSwitch).toEqual(unfinishedSwitch);
+    expect(body.revisions.length).toBe(1);
+  });
+
+  test("with a refresh, a failing repair still returns the list with unfinishedSwitch and the online-check fields", async () => {
+    openProject();
+    const unfinishedSwitch = { message: "part-way", copy: "20261107000000001" };
+    fakeLib({
+      repairInterruptedSwitch: async () => {
+        throw new Error("cannot check out");
+      },
+      takeSwitchRepairNotice: async () => {
+        throw new Error("no notice");
+      },
+      unfinishedSwitchState: async () => unfinishedSwitch,
+      refreshRemoteCopies: async () => ({ refreshed: true, checkedAt: "2026-11-07T10:00:00.000Z" }),
+      listRevisions: async () => ({ ...revisions, repairCopies: [] }),
+    });
+    const body = await (await listRevisions({ request: request({ projectDir: DIR, refresh: true }) } as never)).json();
+    expect(body).toMatchObject({ unfinishedSwitch, checkedOnline: true, checkedAt: "2026-11-07T10:00:00.000Z" });
+    expect(body.repairCopies).toEqual([]);
+  });
+
+  test("keep-unfinished-switch hands the lib the folder", async () => {
+    const calls: string[] = [];
+    openProject();
+    fakeLib({ keepUnfinishedSwitchAsIs: async (dir: string) => void calls.push(dir) });
+    const res = await keepUnfinishedSwitch({ request: request({ projectDir: DIR }) } as never);
+    expect(await res.json()).toEqual({ kept: true });
+    expect(calls).toEqual([DIR]);
   });
 });

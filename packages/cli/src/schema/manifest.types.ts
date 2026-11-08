@@ -22,7 +22,7 @@ export type CheckLevelInput = "off" | "on" | "info" | "warn" | "warning" | "erro
  */
 export interface CheckEntry {
   level?: CheckLevelInput;
-  /** `pdf.print.ink-coverage`: the total ink limit in percent (and what a PDF/X build holds the ink to). */
+  /** `pdf.print.ink-coverage`: the total ink limit in percent the check measures against. The PDF/X conversion does not enforce it: the output profile sets the ink limit. */
   maxTac?: number;
   /** `pdf.print.ink-coverage`: how far over `maxTac` a page may measure before it is reported. */
   tacTolerance?: number;
@@ -30,7 +30,7 @@ export interface CheckEntry {
   tolerance?: number;
   /** `pdf.print.image-resolution`: the lowest DPI a placed image may print at; 0 = no floor. */
   minImageResolution?: number;
-  /** `pdf.print.bleed`: the bleed (pt) each side must have. */
+  /** `pdf.print.bleed`: the bleed (pt) the top, bottom and outside edge must have. */
   bleedSize?: number;
   /** `asset.image.file-size`: the largest image file in bytes; 0 = no limit. */
   maxImageSize?: number;
@@ -208,8 +208,11 @@ export interface GutterpressManifest {
     flavor?: "x1a" | "x3";
     icc?: string;
     stripAnnotations?: boolean;
-    /** `k-only` prints near-black text on the black plate alone (#331). */
-    blackText?: "icc" | "k-only";
+    /**
+     * `k-only` prints near-black text on the black plate alone (#331);
+     * `k-only-neutral` also prints other grey text there, at about its tone.
+     */
+    blackText?: "icc" | "k-only" | "k-only-neutral";
     /**
      * A page that uses transparency, which PDF/X cannot hold (#385).
      * `flatten-page` (default): Ghostscript rasterizes the whole page, text
@@ -369,7 +372,7 @@ export interface ResolvedConfig {
     flavor: "x1a" | "x3";
     icc: string;
     stripAnnotations: boolean;
-    blackText: "icc" | "k-only";
+    blackText: "icc" | "k-only" | "k-only-neutral";
     transparency: "flatten-page" | "preserve-text";
     flattenPages: number[];
     rasterDpi?: number;
