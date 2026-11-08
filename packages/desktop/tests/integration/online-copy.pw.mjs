@@ -678,13 +678,13 @@ await evalJs(`window.__diagnoseReady = true; true`);
 await evalJs(`(() => {
   const real = window.fetch.bind(window);
   const json = (v) => new Response(JSON.stringify(v), { status: 200, headers: { "content-type": "application/json" } });
-  window.__sync = { calls: [], release: null, updatesOnline: false, diagnosed: 0 };
+  window.__sync = { calls: [], release: null, updatesOnline: false, diagnosed: 0, unsaved: 1 };
   window.fetch = (input, init) => {
     const path = new URL(typeof input === "string" ? input : input.url, location.href).pathname;
     if (path === "/api/remote/diagnose-project") window.__sync.diagnosed++;
     if (path === "/api/remote/check-updates") return Promise.resolve(json({ available: window.__sync.updatesOnline }));
     // One edited file not in a version yet: something on this computer is waiting, so the Changes waiting section offers Send now.
-    if (path === "/api/vcs/unversioned-changes") return Promise.resolve(json({ changedFiles: 1, stale: false }));
+    if (path === "/api/vcs/unversioned-changes") return Promise.resolve(json({ changedFiles: window.__sync.unsaved, stale: false }));
     if (path === "/api/remote/sync") {
       const body = JSON.parse(init.body);
       window.__sync.calls.push(body);
@@ -732,6 +732,7 @@ await screenshot(join(tmpdir(), "online-copy-tab-auto.png"));
 // Save a version, then Escape: the button is disabled while it saves, so the focus a click gave
 // it drops to <body>, outside Book setup. Escape must still close Book setup (#448, #451).
 const saveVersionBtn = `[...document.querySelectorAll('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button')].find((b) => b.textContent.trim() === 'Save a version')`;
+await evalJs(`window.__sync.unsaved = 0; true`); // nothing edited since the last version: Save a version has nothing new
 check(await mouseClick(saveVersionBtn), "Save a version, clicked");
 check(await waitFor(`/Nothing new to save/.test(document.querySelector('#project-settings-panel [aria-labelledby="version-history-title"]')?.textContent ?? '') && !!(${saveVersionBtn}) && !(${saveVersionBtn}).disabled`, 20000), "Save a version finished (nothing new) and is ready again");
 const focusAfterSave = await evalJs(`document.activeElement === document.body ? "body" : document.activeElement?.closest('#project-settings-panel') ? "in Book setup" : String(document.activeElement?.tagName)`);
@@ -805,6 +806,7 @@ await evalJs(`window.__sync.release(); true`);
 check(await waitFor(`!(${prompt}) && !(${updateBtn}) && /^Saved here · (?!New changes)/.test(document.querySelector('.status-bar .status-control').innerText.replace(/\\s+/g, ' ').trim())`), "the cue, the button and the stale toast clear once the changes are in");
 
 // Online copy, with automatic backing up off: Get latest beside Sync now (#485).
+await evalJs(`window.__sync.unsaved = 1; true`);
 await openTabFromBar();
 check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Send now'`), `with automatic sending off, the status card still offers Send now (${await cardButtons()})`);
 await screenshot(join(tmpdir(), "online-copy-tab-manual.png"));
