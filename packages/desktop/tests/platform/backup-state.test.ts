@@ -46,8 +46,8 @@ describe("readyView: never claims a backup without evidence", () => {
 
   test("nothing known: names the online copy, with no check mark", () => {
     const on = readyView(copy, null, true, now);
-    expect(on).toEqual({ headline: `Online copy: ${copy}`, detail: "Gutterpress backs it up while you work.", ok: false, action: "back-up" });
-    expect(on.headline).not.toMatch(/backed up/i);
+    expect(on).toEqual({ headline: `Online copy: ${copy}`, detail: "Gutterpress sends it online while you work.", ok: false, action: "back-up" });
+    expect(on.headline).not.toMatch(/saved online/i);
     for (const state of ["idle", "connect", "local"] as const) {
       expect(readyView(copy, { state, lastSyncAt: null }, true, now).headline).toBe(`Online copy: ${copy}`);
     }
@@ -55,22 +55,22 @@ describe("readyView: never claims a backup without evidence", () => {
 
   test("automatic backup off: says so and offers Sync now", () => {
     const off = readyView(copy, null, false, now);
-    expect(off.detail).toBe("Backing up automatically is off, so this book gets the latest changes and backs up yours only when you ask.");
+    expect(off.detail).toBe("Sending automatically is off, so this book gets the latest changes and sends yours only when you ask.");
     expect(off.action).toBe("back-up");
   });
 
   test("a finished backup is named with its time", () => {
     const v = readyView(copy, { state: "synced", lastSyncAt: "2026-10-28T11:58:00Z" }, true, now);
-    expect(v).toMatchObject({ headline: "Backed up · 2 mins ago", ok: true, action: "back-up" });
+    expect(v).toMatchObject({ headline: "Saved online · 2 mins ago", ok: true, action: "back-up" });
     // The address is shown once, by the card; the detail does not repeat it.
     expect(v.detail).not.toContain(copy);
     // "synced" with no time is not evidence.
     expect(readyView(copy, { state: "synced", lastSyncAt: null }, true, now).ok).toBe(false);
   });
 
-  test("a pass that left work unsent says so, and offers to back it up now", () => {
+  test("a pass that left work unsent says so, and offers to send it now", () => {
     expect(readyView(copy, { state: "unsent", lastSyncAt: "2026-10-28T11:58:00Z" }, false, now)).toMatchObject({
-      headline: "Not backed up yet",
+      headline: "Not online yet",
       ok: false,
       action: "back-up",
     });
@@ -84,27 +84,27 @@ describe("readyView: never claims a backup without evidence", () => {
     });
     expect(readyView(copy, { state: "auth", lastSyncAt: null }, true, now).action).toBe("sign-in");
     const err = readyView(copy, { state: "error", lastSyncAt: null, message: "The server said no." }, false, now);
-    expect(err).toMatchObject({ headline: `Couldn't back up to ${copy}.`, detail: "The server said no.", ok: false, action: "try-again" });
+    expect(err).toMatchObject({ headline: `Couldn't send to ${copy}.`, detail: "The server said no.", ok: false, action: "try-again" });
   });
 
   test("a backup in progress offers nothing to click", () => {
-    expect(readyView(copy, { state: "syncing", lastSyncAt: null }, false, now)).toMatchObject({ headline: `Backing up to ${copy}…`, action: null });
+    expect(readyView(copy, { state: "syncing", lastSyncAt: null }, false, now)).toMatchObject({ headline: `Sending to ${copy}…`, action: null });
   });
 });
 
 // 0.11.22 offered Back up now (and Get latest beside it) whenever the book could back
 // up, with automatic backing up on or off; 0.11.23's betas offered nothing with it on.
-describe("readyView: Back up now whenever the book can back up (#485)", () => {
+describe("readyView: Send now whenever the book can send (#485)", () => {
   const now = Date.parse("2026-10-28T12:00:00Z");
   const copy = "github.com/ada/harbor-lights";
   const at = (state: LastBackup["state"] | null, autoSync: boolean) =>
     readyView(copy, state ? { state, lastSyncAt: "2026-10-28T11:58:00Z" } : null, autoSync, now).action;
 
-  test("automatic backing up on: Back up now when idle, backed up or not backed up yet", () => {
+  test("automatic sending on: Send now when idle, online or not online yet", () => {
     for (const state of [null, "idle", "synced", "unsent"] as const) expect(at(state, true)).toBe("back-up");
   });
 
-  test("automatic backing up off: the same pass (Online copy names it Sync now)", () => {
+  test("automatic sending off: the same pass (Online copy names it Sync now)", () => {
     for (const state of [null, "idle", "synced", "unsent"] as const) expect(at(state, false)).toBe("back-up");
   });
 

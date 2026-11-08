@@ -10,7 +10,7 @@ const synced = (extra = {}) => ({ state: "synced", lastSyncAt: new Date(NOW - 3 
 describe("backupCard", () => {
   test("plain folder and no online copy", () => {
     expect(card({ situation: "no-versions" })).toMatchObject({ title: "Version history is off", action: "turn-on-versions" });
-    expect(card({ situation: "local-only" })).toMatchObject({ title: "Not backed up online yet", action: "set-up-backup" });
+    expect(card({ situation: "local-only" })).toMatchObject({ title: "Not online yet yet", action: "set-up-backup" });
   });
   test("checking, with the last known time when there is one", () => {
     expect(card({ backup: null, checking: true })).toMatchObject({ title: "Checking your online copy…", action: null });
@@ -25,12 +25,12 @@ describe("backupCard", () => {
   test("safe names the place once and the time", () => {
     const c = card({ backup: synced() });
     expect(c).toMatchObject({ title: "Your book is safe online", tone: "ok", action: "back-up" });
-    expect(c.detail).toBe("Last backed up 3 minutes ago to GitHub · ada/harbor. Gutterpress backs up as you work.");
+    expect(c.detail).toBe("Last sent 3 minutes ago to GitHub · ada/harbor. Gutterpress sends your changes as you work.");
     expect(c.detail.match(/ada\/harbor/g)?.length).toBe(1);
   });
   test("ahead, behind, both", () => {
-    expect(card({ backup: synced({ ahead: 3 }) })).toMatchObject({ title: "3 changes aren't backed up yet", action: "back-up" });
-    expect(card({ backup: synced({ ahead: 1 }) }).title).toBe("1 change isn't backed up yet");
+    expect(card({ backup: synced({ ahead: 3 }) })).toMatchObject({ title: "3 changes aren't online yet", action: "back-up" });
+    expect(card({ backup: synced({ ahead: 1 }) }).title).toBe("1 change isn't online yet");
     expect(card({ backup: synced({ behind: true }) })).toMatchObject({ title: "New changes are online", action: "get-changes" });
     expect(card({ backup: synced({ behind: true, ahead: 2 }) })).toMatchObject({ title: "Changes here and online", action: "update" });
   });
@@ -41,11 +41,11 @@ describe("backupCard", () => {
     expect(card({ backup: { state: "offline", lastSyncAt: null } })).toMatchObject({ title: "You're offline", action: "try-again" });
     expect(card({ backup: { state: "auth", lastSyncAt: null } })).toMatchObject({ title: "Your saved sign-in no longer works", action: "sign-in" });
     expect(card({ backup: { state: "not-found", lastSyncAt: null } })).toMatchObject({ title: "Can't find the online copy", action: "check-address", secondary: "sign-in" });
-    expect(card({ backup: { state: "error", lastSyncAt: null, message: "Disk is full." } })).toMatchObject({ title: "Backup paused", action: "try-again" });
+    expect(card({ backup: { state: "error", lastSyncAt: null, message: "Disk is full." } })).toMatchObject({ title: "Sending paused", action: "try-again" });
   });
   test("sign-in never shows a token word", () => {
     const c = card({ situation: "connect-server", where: "git.example.com" });
-    expect(c.title).toBe("Sign in to back up");
+    expect(c.title).toBe("Sign in to send");
     expect(JSON.stringify(c)).not.toMatch(/token/i);
   });
 });
@@ -53,7 +53,7 @@ describe("backupCard", () => {
 describe("drafts and reassurance", () => {
   test("a book is only safe when the open draft is online; others only here get a muted note", () => {
     const c = card({ backup: synced(), drafts: { currentBackedUp: false, othersOnlyHere: 0 } });
-    expect(c).toMatchObject({ title: "This draft isn't backed up yet", tone: "warn", action: "back-up" });
+    expect(c).toMatchObject({ title: "This draft isn't online yet", tone: "warn", action: "back-up" });
     const s = card({ backup: synced(), drafts: { currentBackedUp: true, othersOnlyHere: 1 } });
     expect(s).toMatchObject({ title: "Your book is safe online", tone: "ok" });
     expect(s.note).toBe("1 other draft is only on this computer.");
@@ -75,7 +75,7 @@ describe("drafts and reassurance", () => {
     ]) expect(c.detail).toContain("safe on this computer");
   });
   test("a technical paused message becomes a plain sentence", () => {
-    expect(card({ backup: { state: "error", lastSyncAt: null, message: "ENOENT: /x/y/z at a.js:1:2" } }).detail).toBe("Gutterpress couldn't back up just now. Your work is safe on this computer.");
+    expect(card({ backup: { state: "error", lastSyncAt: null, message: "ENOENT: /x/y/z at a.js:1:2" } }).detail).toBe("Gutterpress couldn't send just now. Your work is safe on this computer.");
   });
 });
 

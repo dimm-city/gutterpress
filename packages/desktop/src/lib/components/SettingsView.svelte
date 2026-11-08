@@ -193,7 +193,7 @@
     {@render toggle("settings-autosave", "Save changes automatically", `When off, press ${isMac ? "⌘S" : "Ctrl+S"} to save.`, s.versionHistory.autoSave, (on) => settings.set({ versionHistory: { autoSave: on } }))}
     {@render toggle("settings-versions", "Keep version history", "So you can go back to an earlier version of a book.", s.versionHistory.autoSnapshot, (on) => settings.set({ versionHistory: { autoSnapshot: on } }))}
     <!-- Backing up sends the versions, so it needs them on. -->
-    {@render toggle("settings-autosync", "Back up online automatically", s.versionHistory.autoSnapshot ? "For books with an online copy." : "Turn on Keep version history first.", s.versionHistory.autoSync, setAutoSync, !s.versionHistory.autoSnapshot)}
+    {@render toggle("settings-autosync", "Send changes online automatically", s.versionHistory.autoSnapshot ? "For books with an online copy." : "Turn on Keep version history first.", s.versionHistory.autoSync, setAutoSync, !s.versionHistory.autoSnapshot)}
   </section>
 
   <section class="group" aria-labelledby="settings-accounts">

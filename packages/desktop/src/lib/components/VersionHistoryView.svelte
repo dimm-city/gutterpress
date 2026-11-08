@@ -98,12 +98,12 @@
   async function loadHistory(): Promise<void> {
     loading = true;
     try {
-      // Backup & history started reading this page when it opened, so it is usually already here.
+      // Online started reading this page when it opened, so it is usually already here.
       const page = await changesOf.listFirst(onlineCopy.takeVersionsPage(projectDir) ?? api.vcs.listSnapshotsPage(projectDir));
       entries = page.entries;
       hasMore = page.hasMore;
       const keep = selected && entries.find((e) => e.id === selected!.id);
-      // Nothing is chosen for the author: a version opens only when asked for (or kept from before, or clicked in Backup & history).
+      // Nothing is chosen for the author: a version opens only when asked for (or kept from before, or clicked in Online).
       void select(keep ?? entries.find((e) => e.id === initialId) ?? null);
     } catch (e) {
       error = friendlyHostError(e instanceof Error ? e.message : String(e));
@@ -271,7 +271,7 @@
   </span>
 {/snippet}
 
-<!-- A version in the online copy only: shown with what it changed; it comes in with the next backup. -->
+<!-- A version in the online copy only: shown with what it changed; it comes in with the next send. -->
 {#snippet onlineRow(entry: OnlineVersionEntry)}
   <li class="online-ver">
     <span class="ver-title">{versionTitle(entry.message)}</span>
@@ -336,7 +336,7 @@
               {/if}
             {/each}
           </ul>
-          <p class="online-note">They come in with <strong>Get changes</strong>, or the next time this book backs up.</p>
+          <p class="online-note">They come in with <strong>Get changes</strong>, or the next time this book sends changes.</p>
         </section>
       {/if}
       {#if loading && entries.length === 0}
@@ -376,7 +376,7 @@
     <div class="vh-detail">
       {#if view === "log"}
         <div class="detail-head">
-          <div><h2>Technical details</h2><p class="muted">The log of this book's recent backing up.</p></div>
+          <div><h2>Technical details</h2><p class="muted">The log of this book's recent sending online.</p></div>
           <button class="ghost" onclick={() => (view = "files")}>Back to the version</button>
         </div>
         <pre class="log">{logContent ?? "Loading…"}</pre>
@@ -387,7 +387,7 @@
             {#if versionSubtitle(selected.message)}<p class="muted sub">{versionSubtitle(selected.message)}</p>{/if}
             <p class="muted">
               {when(selected.timestamp)}{selected.author ? ` · ${selected.author}` : ""}
-              {#if selected.backedUp === true}<span class="badge">Backed up</span>{/if}
+              {#if selected.backedUp === true}<span class="badge">Online</span>{/if}
               {#if selected.backedUp === false}<span class="badge local">Only on this computer</span>{/if}
             </p>
           </div>

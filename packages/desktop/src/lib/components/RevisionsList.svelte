@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * RevisionsList — Book setup → Backup & history's Drafts card (#448): separate
+   * RevisionsList — Book setup → Online's Drafts card (#448): separate
    * lines of work in the same book ("Second edition", "Editor's pass") that
    * the author can start, switch, rename and delete, each saying where it is
    * kept. (The git word is "revision"; the author's word is "draft", and the
@@ -117,7 +117,7 @@
   });
 
   const whereLabel = (r: Revision): string =>
-    r.where === "online" ? (r.notBackedUp ? "Not backed up yet" : "Backed up") : r.where === "online-only" ? "Online only, not on this computer yet" : "Only on this computer";
+    r.where === "online" ? (r.notBackedUp ? "Not online yet" : "Online") : r.where === "online-only" ? "Online only, not on this computer yet" : "Only on this computer";
   const whereIcon = (r: Revision): "cloud" | "cloud-upload" | "laptop" =>
     r.where === "this-computer" ? "laptop" : r.where === "online" && r.notBackedUp ? "cloud-upload" : "cloud";
   const whereTone = (r: Revision): string =>
@@ -357,7 +357,7 @@
         </label>
         {#if kept && kept !== typed.trim()}<p class="hint quiet">It is stored as "{kept}".</p>{/if}
         <p class="hint">
-          It starts from your book as it is now (work not in a version yet is saved as one first), and you switch to it.{hasOnlineCopy ? " It goes online the next time you back up." : ""}
+          It starts from your book as it is now (work not in a version yet is saved as one first), and you switch to it.{hasOnlineCopy ? " It goes online the next time you send." : ""}
         </p>
       </div>
       {#if error}<p class="dlg-error error" role="alert">{error}</p>{/if}

@@ -125,7 +125,7 @@ function friendlyCloneError(e: unknown, url: string): Error {
     return new Error(
       onGitHub
         ? "GitHub didn't accept the saved sign-in for this book. Sign in to GitHub again and try again."
-        : "The online copy didn't accept your sign-in. Sign in again in Book setup → Backup & history.",
+        : "The online copy didn't accept your sign-in. Sign in again in Book setup → Online.",
       { cause: e },
     );
   }
@@ -142,7 +142,7 @@ function friendlyCloneError(e: unknown, url: string): Error {
     return e;
   }
   return new Error(
-    "The book couldn't be downloaded from the online copy. Check its address and your sign-in in Book setup → Backup & history.",
+    "The book couldn't be downloaded from the online copy. Check its address and your sign-in in Book setup → Online.",
     { cause: e },
   );
 }

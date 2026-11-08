@@ -136,7 +136,7 @@ test("up-to-date without changes -> info toast only", async () => {
   const h = make();
   h.sync.next = { status: "up-to-date", message: "" };
   await h.ctrl.handleForceSync();
-  expect(h.toast.info.calls).toEqual([["Already up to date — nothing new to back up."]]);
+  expect(h.toast.info.calls).toEqual([["Already up to date — nothing new to send."]]);
   expect(h.onSyncCompleted.calls).toEqual([]);
 });
 
@@ -152,7 +152,7 @@ test("auth -> error toast; onFilesChanged only when filesChanged", async () => {
   noChange.sync.next = { status: "auth", message: "" };
   await noChange.ctrl.handleForceSync();
   expect(noChange.toast.error.calls).toEqual([
-    ["Not signed in to the online copy. Sign in to keep backing up."],
+    ["Not signed in to the online copy. Sign in to keep sending changes."],
   ]);
   expect(noChange.onFilesChanged.calls.length).toBe(0);
 
@@ -192,7 +192,7 @@ test("error with no message -> the fixed reassuring fallback", async () => {
   h.sync.next = { status: "error", message: "" };
   await h.ctrl.handleForceSync();
   expect(h.toast.error.calls).toEqual([
-    ["Couldn't finish backing up. Your work is saved on this computer — we'll try again later."],
+    ["Couldn't finish sending. Your work is saved on this computer — we'll try again later."],
   ]);
 });
 
@@ -208,7 +208,7 @@ test("rejection -> reassuring toast (no raw message); clears forceSyncing", asyn
   });
   await ctrl.handleForceSync();
   expect(toast.error.calls).toEqual([
-    ["Couldn't finish backing up. Your work is saved on this computer — we'll try again later."],
+    ["Couldn't finish sending. Your work is saved on this computer — we'll try again later."],
   ]);
   expect(ctrl.forceSyncing).toBe(false);
 });
@@ -338,7 +338,7 @@ test("a manual backup publishes its outcome for the status control (state + fini
   expect(h.ctrl.lastManual!.state).toBe("error");
 });
 
-test("with automatic backing up off, a failure never promises an automatic retry", async () => {
+test("with automatic sending off, a failure never promises an automatic retry", async () => {
   const toast = makeToast();
   const ctrl = new SyncController({
     syncChanges: () => Promise.reject(new Error("net down")),
@@ -351,7 +351,7 @@ test("with automatic backing up off, a failure never promises an automatic retry
   });
   await ctrl.handleForceSync();
   expect(toast.error.calls).toEqual([
-    ["Couldn't finish backing up. Your work is saved on this computer — try again when you're ready."],
+    ["Couldn't finish sending. Your work is saved on this computer — try again when you're ready."],
   ]);
   expect(ctrl.lastManual!.state).toBe("error");
 });
@@ -449,7 +449,7 @@ function makeManual(opts: { auto?: boolean; reader?: boolean; available?: boolea
   return { ctrl, toast: toast as typeof toast & { show: typeof show }, onFilesChanged, onSyncCompleted, checks, syncs, pulls, state };
 }
 
-test("checkForUpdates: automatic backing up off -> one sticky prompt with a Get latest action (#485)", async () => {
+test("checkForUpdates: automatic sending off -> one sticky prompt with a Get latest action (#485)", async () => {
   const m = makeManual();
   await m.ctrl.refreshSyncDiag("/proj");
   await m.ctrl.checkForUpdates();
@@ -481,7 +481,7 @@ test("the prompt's Get latest receives the changes and sends nothing (#485)", as
   expect(m.ctrl.updatesAvailable).toBe(false);
   expect(m.ctrl.gettingLatest).toBe(false);
   expect(m.onFilesChanged.calls).toHaveLength(1);
-  expect(m.onSyncCompleted.calls).toEqual([]); // never "Backed up — …"
+  expect(m.onSyncCompleted.calls).toEqual([]); // never "Online — …"
   // One outcome toast, keyed so the next one replaces it.
   expect(m.toast.show.calls[1]).toEqual(["Got the changes from the online copy.", "success", undefined, undefined, "sync-outcome"]);
 });
@@ -531,7 +531,7 @@ test("handleGetLatest: overlapping passages are named, as after any pass", async
 test("handleGetLatest: not signed in or offline -> says so in the product's words", async () => {
   const auth = makeManual({ showless: true, latest: { status: "auth", message: "raw" } });
   await auth.ctrl.handleGetLatest();
-  expect(auth.toast.error.calls).toEqual([["Not signed in to the online copy. Sign in to keep backing up."]]);
+  expect(auth.toast.error.calls).toEqual([["Not signed in to the online copy. Sign in to keep sending changes."]]);
   const offline = makeManual({ showless: true, latest: { status: "offline", message: "raw" } });
   await offline.ctrl.handleGetLatest();
   expect(offline.toast.info.calls).toEqual([["Couldn't reach the online copy. Check your internet connection, or try again later."]]);
@@ -557,7 +557,7 @@ test("Get latest and Sync never run at once", async () => {
 
 // ── Back up now (#485): the full pass, with automatic backing up on too ─────
 
-test("Back up now with automatic backing up on: one full pass, and the status says Backed up", async () => {
+test("Send now with automatic sending on: one full pass, and the status says Online", async () => {
   const m = makeManual({ auto: true, sync: { status: "synced", message: "", mergedRemoteChanges: false } });
   await m.ctrl.refreshSyncDiag("/proj");
   await m.ctrl.handleForceSync();
@@ -568,7 +568,7 @@ test("Back up now with automatic backing up on: one full pass, and the status sa
   expect(m.ctrl.forceSyncing).toBe(false);
 });
 
-test("checkForUpdates: automatic backing up on never checks (it gets changes on its own)", async () => {
+test("checkForUpdates: automatic sending on never checks (it gets changes on its own)", async () => {
   const m = makeManual({ auto: true });
   await m.ctrl.refreshSyncDiag("/proj");
   await m.ctrl.checkForUpdates();
@@ -781,7 +781,7 @@ test("a pass that finds the online copy gone is recorded as not-found", async ()
   expect(m.ctrl.backup).toMatchObject({ state: "not-found" });
 });
 
-test("a host 'syncing' right after an instant local 'synced' does not flash 'Backing up…'", () => {
+test("a host 'syncing' right after an instant local 'synced' does not flash 'Sending…'", () => {
   const h = make();
   h.ctrl.applyStatus({ state: "synced", projectDir: "/proj", lastSyncAt: null, source: "local" } as unknown as SyncStatus);
   h.ctrl.applyStatus({ state: "syncing", projectDir: "/proj", lastSyncAt: null } as SyncStatus);

@@ -64,7 +64,7 @@ describe("the screens that were reshaped use the product's words", () => {
 describe("Update, Get the changes and Back up now", () => {
   test("the status bar has one Update button (it replaced Get latest and Sync), with tooltips that say what it does", () => {
     const bar = read("lib/components/StatusBar.svelte");
-    for (const text of ['"Updating…"', '"Get the changes from the online copy. Your own changes stay as they are."', '"Back up your changes to the online copy."', '"Get the latest changes from the online copy, then back up yours."']) {
+    for (const text of ['"Updating…"', '"Get the changes from the online copy. Your own changes stay as they are."', '"Send your changes to the online copy."', '"Get the latest changes from the online copy, then send yours."']) {
       expect(bar).toContain(text);
     }
     expect(bar).not.toContain('"Sync"');
@@ -81,22 +81,22 @@ describe("Update, Get the changes and Back up now", () => {
     expect(read("lib/routes/sync-controller.svelte.ts")).toContain('{ label: "Get changes", onClick: () => void this.handleGetLatest() }');
   });
 
-  test("Back up now is in the Backup & history tab, and Help describes the one Update button", () => {
+  test("Send now is in the Online tab, and Help describes the one Update button", () => {
     const tab = read("lib/components/ProjectConnectionsSection.svelte");
-    expect(tab).toContain('"Back up now"');
+    expect(tab).toContain('"Send now"');
     expect(tab).toContain('update: "Update"');
     const help = markup("lib/components/HelpContent.svelte");
-    expect(help).toContain("<em>Back up now</em>");
+    expect(help).toContain("<em>Send now</em>");
     expect(help).toContain("<em>Get changes</em>");
     expect(help).toContain("<em>Update</em>");
     expect(help).not.toContain("Get latest");
   });
 });
 
-describe("Book setup → Backup & history", () => {
-  test("the tab is Backup & history, id online-copy; nothing links to the old Backup tab", () => {
+describe("Book setup → Online", () => {
+  test("the tab is Online, id online-copy; nothing links to the old Backup tab", () => {
     const view = read("lib/components/ProjectSettingsView.svelte");
-    expect(view).toContain('{ id: "online-copy", label: "Backup & history" }');
+    expect(view).toContain('{ id: "online-copy", label: "Online" }');
     expect(view).not.toMatch(/id: "backup"|label: "Backup"/);
     expect(read("routes/+page.svelte")).toContain('"online-copy"');
     expect(read("routes/+page.svelte")).not.toMatch(/"backup"/);
@@ -130,7 +130,7 @@ describe("Book setup → Backup & history", () => {
   test("each situation's action is worded as the design says", () => {
     // The button labels live in the script (LABELS), the drawer's in the markup.
     const tab = read("lib/components/ProjectConnectionsSection.svelte");
-    for (const text of ["Turn on version history", "Back up online…", "Back up now", "Get changes", "Update", "Try again", "Save a version", "Repair…", "Start over…", "Check the connection", "Sign in again"]) {
+    for (const text of ["Turn on version history", "Back up online…", "Send now", "Get changes", "Update", "Try again", "Save a version", "Repair…", "Start over…", "Check the connection", "Sign in again"]) {
       expect(tab).toContain(text);
     }
   });
@@ -181,9 +181,9 @@ describe("Book setup → Backup & history", () => {
 describe("Version history", () => {
   const view = markup("lib/components/VersionHistoryView.svelte");
 
-  test("a short card on Backup & history: the newest versions, Save a version and See all", () => {
+  test("a short card on Online: the newest versions, Save a version and See all", () => {
     const tab = markup("lib/components/ProjectConnectionsSection.svelte");
-    expect(tab).toContain('<h3 id="version-history-title">History</h3>');
+    expect(tab).toContain('<h3 id="version-history-title">Saved versions</h3>');
     expect(tab.indexOf("Save a version")).toBeLessThan(tab.indexOf("See all"));
   });
 
@@ -199,7 +199,7 @@ describe("Version history", () => {
 
   test("versions online and not here yet are listed under their own heading, and say when they come in (#484)", () => {
     expect(view).toContain("Online, not yet on this computer</h2>");
-    expect(view).toContain("They come in with <strong>Get changes</strong>, or the next time this book backs up.");
+    expect(view).toContain("They come in with <strong>Get changes</strong>, or the next time this book sends changes.");
   });
 
   test("each card names what its version changed, in 0.11.22's words (#484)", () => {
@@ -222,6 +222,6 @@ describe("Settings and Help", () => {
     expect(help).not.toMatch(/lists each file|Where your work is kept|Edits saved/i);
     expect(help).toContain("marks the overlapping passage as two takes");
     expect(help).toContain("online copy");
-    expect(help).toContain("Backup &amp; history");
+    expect(help).toContain("Online");
   });
 });

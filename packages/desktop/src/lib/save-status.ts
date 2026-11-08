@@ -151,7 +151,7 @@ export interface StatusLine {
   /** A second, quieter popover action. */
   secondary?: StatusAction;
   /** The bar's own button, only when there is something to get or send (or a pass is running). */
-  button?: { label: "Get changes" | "Back up now" | "Update"; action: "update" | "back-up" | "get-changes" };
+  button?: { label: "Get changes" | "Send now" | "Update"; action: "update" | "back-up" | "get-changes" };
 }
 
 const HERE = "Saved here";
@@ -260,7 +260,7 @@ export function statusLine(i: StatusLineInput): StatusLine {
       key: "switch-paused",
       right: "Saving is paused — see Drafts",
       title: "A revision switch didn't finish, so saving is paused. Click to open Drafts and put the book back or keep the files as they are.",
-      detail: "A revision switch didn't finish, so saving and building are paused. Book setup → Backup & history → Drafts lets you put the book back, or keep the files as they are.",
+      detail: "A revision switch didn't finish, so saving and building are paused. Book setup → Online → Drafts lets you put the book back, or keep the files as they are.",
       icon: "triangle-alert",
       tone: "warn",
       click: "action",
@@ -327,17 +327,17 @@ export function statusLine(i: StatusLineInput): StatusLine {
   const ahead = (b?.ahead ?? 0) > 0 || st === "unsent";
   const hasOnline = i.hasRemote || (st !== null && st !== "local");
   const manual = i.autoBackup === false && !!i.canSync;
-  const sinceBackup = lastKnown === null ? "" : `Last backed up ${ago(lastKnown, now)}.`;
+  const sinceBackup = lastKnown === null ? "" : `Last sent ${ago(lastKnown, now)}.`;
 
   if (hasOnline && !inFlight) {
     // 13-16. Something is stopping the online copy.
     if (st === "offline") {
       return make({
         key: "offline",
-        right: "Offline — will back up when you're back",
+        right: "Offline — will send when you're back",
         headline: "You're offline",
-        title: `${SAFE} It will back up online when you're connected again. Click for options.`,
-        detail: `${SAFE} It will back up online when you're connected again.`,
+        title: `${SAFE} It will send online when you're connected again. Click for options.`,
+        detail: `${SAFE} It will send online when you're connected again.`,
         icon: "cloud-off",
         tone: "plain",
         primary: { id: "try-again", label: "Try again" },
@@ -346,9 +346,9 @@ export function statusLine(i: StatusLineInput): StatusLine {
     if (st === "auth" || st === "connect" || (st === null && i.remoteNeeds === "sign-in")) {
       return make({
         key: "sign-in",
-        right: "Sign in to back up",
+        right: "Sign in to send",
         title: "The online copy needs you to sign in. Click to sign in.",
-        detail: "The online copy needs you to sign in before it can back up. " + SAFE,
+        detail: "The online copy needs you to sign in before it can send. " + SAFE,
         icon: "key-round",
         tone: "warn",
         click: "action",
@@ -373,14 +373,14 @@ export function statusLine(i: StatusLineInput): StatusLine {
       const transient = isTransient(b?.message);
       return make({
         key: "paused",
-        right: "Backup paused",
-        title: b?.message || "Backing up is paused. Click to see why.",
+        right: "Sending paused",
+        title: b?.message || "Sending is paused. Click to see why.",
         // A dropped connection says nothing the author can act on; anything else shows the host's own words.
-        detail: transient ? `Backup stopped for now. ${SAFE}` : `${b?.message || "Backing up is paused."} ${SAFE}`,
+        detail: transient ? `Sending stopped for now. ${SAFE}` : `${b?.message || "Sending is paused."} ${SAFE}`,
         icon: "triangle-alert",
         tone: "warn",
-        primary: transient ? { id: "try-again", label: "Try again" } : { id: "open-backup", label: "Open backup & history" },
-        ...(transient ? { secondary: { id: "open-backup", label: "Open backup & history" } as const } : {}),
+        primary: transient ? { id: "try-again", label: "Try again" } : { id: "open-backup", label: "Open online storage" },
+        ...(transient ? { secondary: { id: "open-backup", label: "Open online storage" } as const } : {}),
       });
     }
     // 9-11. Out of step with the online copy.
@@ -389,8 +389,8 @@ export function statusLine(i: StatusLineInput): StatusLine {
         key: "behind-ahead",
         right: "Changes here and online",
         headline: "New changes online and on this computer",
-        title: "Both this computer and the online copy have changes the other lacks. Click to update: get theirs, then back up yours.",
-        detail: "Update brings in the online changes, then backs up yours. If the same passage changed in both places, you'll choose which to keep.",
+        title: "Both this computer and the online copy have changes the other lacks. Click to update: get theirs, then send yours.",
+        detail: "Update brings in the online changes, then sends yours. If the same passage changed in both places, you'll choose which to keep.",
         icon: "cloud",
         tone: "plain",
         primary: { id: "update", label: "Update" },
@@ -411,17 +411,17 @@ export function statusLine(i: StatusLineInput): StatusLine {
     }
     if (ahead) {
       const n = b?.ahead ?? 0;
-      const right = n > 0 ? `${plural(n, "change", "changes")} not backed up` : "Not backed up yet";
+      const right = n > 0 ? `${plural(n, "change", "changes")} not online yet` : "Not online yet";
       return make({
         key: "ahead",
         right,
         headline: right,
-        title: `${n > 0 ? `${plural(n, "change is", "changes are")}` : "Your latest changes are"} saved on this computer but not in the online copy yet. Click to back up now.`,
-        detail: "These changes are saved on this computer. Backing up sends them to the online copy.",
+        title: `${n > 0 ? `${plural(n, "change is", "changes are")}` : "Your latest changes are"} saved on this computer but not in the online copy yet. Click to send now.`,
+        detail: "These changes are saved on this computer. They are sent to the online copy when you send.",
         icon: "cloud-upload",
         tone: "warn",
-        primary: { id: "back-up", label: "Back up now" },
-        button: { label: "Back up now", action: "back-up" },
+        primary: { id: "back-up", label: "Send now" },
+        button: { label: "Send now", action: "back-up" },
       });
     }
   }
@@ -429,7 +429,7 @@ export function statusLine(i: StatusLineInput): StatusLine {
   if (inFlight) {
     return make({
       key: "backing-up",
-      right: i.gettingLatest && !i.backingUp && st !== "syncing" ? "Getting changes…" : "Backing up…",
+      right: i.gettingLatest && !i.backingUp && st !== "syncing" ? "Getting changes…" : "Sending…",
       title: "Gutterpress is talking to the online copy. Your work is safe on this computer. Click for details.",
       detail: "Gutterpress is talking to the online copy. Your work is safe on this computer.",
       icon: "refresh-cw",
@@ -445,10 +445,10 @@ export function statusLine(i: StatusLineInput): StatusLine {
         key: "own-tools",
         right: "Online copy managed outside Gutterpress",
         headline: "Managed outside Gutterpress",
-        title: "This book's online copy is managed outside Gutterpress, so Gutterpress doesn't back it up or check it. Click for details.",
+        title: "This book's online copy is managed outside Gutterpress, so Gutterpress doesn't send it or check it. Click for details.",
         icon: "cloud",
         tone: "plain",
-        primary: { id: "open-backup", label: "Open backup & history" },
+        primary: { id: "open-backup", label: "Open online storage" },
       });
     }
     // 6. No real answer yet: say so, never a bare "Saved".
@@ -467,14 +467,14 @@ export function statusLine(i: StatusLineInput): StatusLine {
       const when = lastKnown === null ? "" : ` ${ago(lastKnown, now)}`;
       return make({
         key: "backed-up",
-        right: `Backed up${when}`,
-        headline: `Backed up${when}`,
-        announce: `${HERE} · Backed up`,
-        title: `Your latest work is in the online copy${lastKnown === null ? "" : ` (last backed up ${ago(lastKnown, now)})`}.${b?.local ? " Checking online in the background." : ""} Click for details.`,
+        right: `Saved online${when}`,
+        headline: `Saved online${when}`,
+        announce: `${HERE} · Saved online`,
+        title: `Your latest work is in the online copy${lastKnown === null ? "" : ` (last sent ${ago(lastKnown, now)})`}.${b?.local ? " Checking online in the background." : ""} Click for details.`,
         detail: "Your latest work is in the online copy.",
         icon: "circle-check",
         tone: "ok",
-        primary: { id: "back-up", label: "Back up now" },
+        primary: { id: "back-up", label: "Send now" },
         primaryQuiet: true,
       });
     }
@@ -486,7 +486,7 @@ export function statusLine(i: StatusLineInput): StatusLine {
       detail: "There is nothing new in the online copy.",
       icon: "circle-check",
       tone: "ok",
-      primary: { id: "back-up", label: "Back up now" },
+      primary: { id: "back-up", label: "Send now" },
       primaryQuiet: true,
     });
   }
@@ -506,12 +506,12 @@ export function statusLine(i: StatusLineInput): StatusLine {
   if (st === "local" || i.classified === true) {
     return make({
       key: "no-online",
-      right: "Not backed up online",
-      title: "Your book is saved on this computer only. Click to back it up online.",
+      right: "Not online yet",
+      title: "Your book is saved on this computer only. Click to send it online.",
       detail: "Your book is saved on this computer only. If this computer is lost or broken, so is your book.",
       icon: "laptop",
       tone: "plain",
-      primary: { id: "open-backup", label: "Back up this book online…" },
+      primary: { id: "open-backup", label: "Put this book online…" },
     });
   }
   // Not classified yet: claim nothing beyond what was written.

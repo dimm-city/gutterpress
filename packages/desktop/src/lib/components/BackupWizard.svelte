@@ -147,7 +147,7 @@
     } catch (e) {
       error = friendlyHostError(unwrapRouteError(e instanceof Error ? e.message : String(e)));
       if (!closedEarly) step = "name";
-      else onFailed?.(error ?? "Backing up didn't finish. Your work is safe on this computer.");
+      else onFailed?.(error ?? "Sending online didn't finish. Your work is safe on this computer.");
     } finally {
       clearTimeout(slowTimer);
       clearInterval(poll);
@@ -184,7 +184,7 @@
       {:else if step === "signin"}Sign in to GitHub
       {:else if step === "name"}Name your online copy
       {:else if step === "sending"}Sending your book…
-      {:else}Your book is backed up{/if}
+      {:else}Your book is online{/if}
     </h2>
     {#if step !== "sending"}
       <button class="dlg-close" onclick={close} aria-label="Close" title="Close (Esc)"><Icon name="x" size={16} /></button>
@@ -213,8 +213,8 @@
       </p>
     {:else if step === "other"}
       <p>Most people choose GitHub. It's free and takes a minute to set up.</p>
-      <p class="hint">Gutterpress can back up to other services too, but the online copy has to be set up there first and then connected to this book with the tool that service gives you.</p>
-      <button class="link" onclick={() => open(OTHER_SERVER_GUIDE)}>How to back up there <Icon name="external-link" size={11} /></button>
+      <p class="hint">Gutterpress can send to other services too, but the online copy has to be set up there first and then connected to this book with the tool that service gives you.</p>
+      <button class="link" onclick={() => open(OTHER_SERVER_GUIDE)}>How to send there <Icon name="external-link" size={11} /></button>
     {:else if step === "signin"}
       {#if error}<p class="error" role="alert">{error}</p>{/if}
       <GitHubConnect primary autoStart label="Sign in to GitHub" onConnected={signedIn} />
@@ -261,7 +261,7 @@
       <p class="hint">You can keep working. This window can stay open.</p>
       {#if slow}<p class="hint" role="status">Taking longer than usual. Your work is safe.</p>{/if}
     {:else}
-      <p class="done" role="status"><Icon name="circle-check" size={18} /> Done. Your book is backed up. Gutterpress will keep it up to date.</p>
+      <p class="done" role="status"><Icon name="circle-check" size={18} /> Done. Your book is online. Gutterpress will keep it up to date.</p>
       {#if sentTo}<p class="hint">Kept at {sentTo.fullName} on GitHub{sentTo.private ? " (private)" : ""}.</p>{/if}
     {/if}
   </div>
@@ -275,7 +275,7 @@
     {:else if step === "name"}
       <button class="dlg-ghost" onclick={() => (step = github?.connected ? "where" : "signin")}>Back</button>
       <button class="dlg-primary app-btn-primary" onclick={() => void send()} disabled={useExisting ? !chosenRepo : !repoName.trim()}>
-        {error ? "Try again" : "Back up my book"}
+        {error ? "Try again" : "Put my book online"}
       </button>
     {:else if step === "done"}
       <button class="dlg-primary app-btn-primary" onclick={onClose}>Close</button>

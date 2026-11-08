@@ -391,12 +391,12 @@ describe("status reads never repair a half-done switch", () => {
     expect(read(dir, "ch1.md")).toBe("one");
   });
 
-  test("the plain-words messages point at Book setup → Backup & history → Drafts", async () => {
+  test("the plain-words messages point at Book setup → Online → Drafts", async () => {
     const dir = await book();
     await crashedState(dir);
     halfSwitched(dir);
     const state = await (await import("./source-provider.ts")).unfinishedSwitchState(dir);
-    expect(state?.message).toContain("Book setup → Backup & history → Drafts");
+    expect(state?.message).toContain("Book setup → Online → Drafts");
     expect(state?.message).not.toContain("Revisions");
   });
 });

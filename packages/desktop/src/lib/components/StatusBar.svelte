@@ -90,7 +90,7 @@
     updatesAvailable = false,
     /** Save now (the click on "Unsaved changes", and Try again after a failed save). */
     onSave = undefined as (() => void | Promise<void>) | undefined,
-    /** Open Book setup on Backup & history. */
+    /** Open Book setup on Online. */
     onOpenBackup = undefined as (() => void) | undefined,
     /** Open the Problems list on the two-takes entries. */
     onOpenProblems = undefined as (() => void) | undefined,
@@ -235,8 +235,8 @@
     line.button?.action === "get-changes"
       ? "Get the changes from the online copy. Your own changes stay as they are."
       : line.button?.action === "back-up"
-        ? "Back up your changes to the online copy."
-        : "Get the latest changes from the online copy, then back up yours.",
+        ? "Send your changes to the online copy."
+        : "Get the latest changes from the online copy, then send yours.",
   );
 
   // Book switcher: only when the open repo actually has more than one book.
