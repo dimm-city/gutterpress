@@ -86,24 +86,24 @@ export interface ReadyView {
  */
 export function readyView(copy: string, last: LastBackup | null, autoSync: boolean, now: number): ReadyView {
   const ongoing = autoSync
-    ? "Gutterpress backs it up while you work."
-    : "Backing up automatically is off, so this book gets the latest changes and backs up yours only when you ask.";
+    ? "Gutterpress sends it online while you work."
+    : "Sending automatically is off, so this book gets the latest changes and sends yours only when you ask.";
   switch (last?.state) {
     case "syncing":
-      return { headline: `Backing up to ${copy}…`, detail: ongoing, ok: false, action: null };
+      return { headline: `Sending to ${copy}…`, detail: ongoing, ok: false, action: null };
     case "synced": {
       const at = Date.parse(last.lastSyncAt ?? "");
       if (Number.isNaN(at)) break;
-      return { headline: `Backed up · ${relativeTime(at, now)}`, detail: ongoing, ok: true, action: "back-up" };
+      return { headline: `Saved online · ${relativeTime(at, now)}`, detail: ongoing, ok: true, action: "back-up" };
     }
     case "unsent":
-      return { headline: "Not backed up yet", detail: ongoing, ok: false, action: "back-up" };
+      return { headline: "Not online yet", detail: ongoing, ok: false, action: "back-up" };
     case "offline":
       return { headline: `Couldn't reach ${copy}.`, detail: "Check your internet connection, or try again later. Your work is saved on this computer.", ok: false, action: "try-again" };
     case "auth":
-      return { headline: `Couldn't back up to ${copy}: it didn't accept the saved sign-in.`, detail: "Sign in again to keep backing up.", ok: false, action: "sign-in" };
+      return { headline: `Couldn't send to ${copy}: it didn't accept the saved sign-in.`, detail: "Sign in again to keep sending changes.", ok: false, action: "sign-in" };
     case "error":
-      return { headline: `Couldn't back up to ${copy}.`, detail: last.message || "Your work is saved on this computer.", ok: false, action: "try-again" };
+      return { headline: `Couldn't send to ${copy}.`, detail: last.message || "Your work is saved on this computer.", ok: false, action: "try-again" };
   }
   return { headline: `Online copy: ${copy}`, detail: ongoing, ok: false, action: "back-up" };
 }

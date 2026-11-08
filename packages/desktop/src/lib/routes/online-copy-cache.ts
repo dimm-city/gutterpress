@@ -1,7 +1,7 @@
 /**
  * One shared online-copy snapshot per book (UX review §2.3 item 2).
  *
- * Book setup → Backup & history, its Drafts list and the Version history
+ * Book setup → Online, its Drafts list and the Version history
  * screen all need the same few facts about a book: what its online copy is
  * (`diagnoseProjectRemote`), its drafts (`listRevisions`, which can check the
  * online copy over the network) and, one click away, the first page of its
@@ -210,7 +210,7 @@ export function createOnlineCopyCache(reads: OnlineCopyReads, now: () => number 
     dropVersionsPage: (dir: string): void => void versionPages.delete(dir),
 
     /**
-     * Note a backup result so Backup & history can open its repair tools after
+     * Note a backup result so Online can open its repair tools after
      * two failures in a row that are not just being offline. Returns the count.
      */
     noteBackupResult(dir: string, state: string | undefined, key?: string): number {

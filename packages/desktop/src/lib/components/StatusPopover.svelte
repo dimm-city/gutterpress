@@ -2,7 +2,7 @@
   /**
    * StatusPopover — the status control's small panel: a short headline, one
    * sentence about the state, its one primary action, and a way into Book
-   * setup → Backup & history.
+   * setup → Online.
    *
    * It follows BookSwitcher's pattern (an absolutely-positioned panel that opens
    * upward out of the bar) and adds what a panel with a button needs: Escape
@@ -92,7 +92,7 @@
       <button type="button" class="link" onclick={() => onAction(line.secondary!.id)}>{line.secondary.label}</button>
     {/if}
     {#if showBackupLink}
-      <button type="button" class="link" onclick={() => onAction("open-backup")}>Backup &amp; history…</button>
+      <button type="button" class="link" onclick={() => onAction("open-backup")}>Online…</button>
     {/if}
   </div>
 </div>

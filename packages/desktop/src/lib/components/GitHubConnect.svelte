@@ -2,7 +2,7 @@
   /**
    * GitHubConnect — the one "Connect GitHub…" control (Accounts, where a
    * connected account's is "Sign in again…", the backup wizard and Book setup →
-   * Backup & history). It runs GitHub's device flow in place: the browser
+   * Online). It runs GitHub's device flow in place: the browser
    * opens, the code to type there is shown big ("We opened GitHub in your
    * browser. Type this code there, then come back.") with Copy code, Open
    * GitHub again (for a page closed by mistake) and Cancel, and

@@ -185,7 +185,7 @@
   async function reconnected() {
     await load();
     testOk = true;
-    testResult = `Signed in to GitHub${github?.username ? ` as @${github.username}` : ""}. Books back up with the new sign-in.`;
+    testResult = `Signed in to GitHub${github?.username ? ` as @${github.username}` : ""}. Books send changes with the new sign-in.`;
     await keepFocus();
   }
 </script>
@@ -259,7 +259,7 @@
       {#if github?.connected}
         <div class="acct">
           <span class="acct-detail">{github.username ? `Connected as @${github.username}` : "Connected"}</span>
-          {@render removable("github.com", "Disconnect GitHub? Books stop backing up until you sign in again.", "Disconnect", () => { clearRepositories(); return api.remote.disconnectGitHub(); })}
+          {@render removable("github.com", "Disconnect GitHub? Books stop sending until you sign in again.", "Disconnect", () => { clearRepositories(); return api.remote.disconnectGitHub(); })}
         </div>
         {#if removeError?.id === "github.com"}<p class="error" role="alert">{removeError.text}</p>{/if}
         <div class="acct-more">
@@ -279,9 +279,9 @@
 
     <section class="group" aria-labelledby="accounts-servers">
       <h2 id="accounts-servers">Other services</h2>
-      <p class="hint">GitLab, Gitea, Forgejo, Bitbucket, Azure Repos, or any server with an https:// address. Books on it back up with the token saved here.</p>
+      <p class="hint">GitLab, Gitea, Forgejo, Bitbucket, Azure Repos, or any server with an https:// address. Books on it send changes with the token saved here.</p>
       {#each groups.servers as server (server.host)}
-        {@render line(`server:${server.host}`, server.host, server.username, server.unreadable, "Edit", "Remove this server? Books that back up there stop until you sign in to it again.", () => api.remote.disconnectHost(server.host))}
+        {@render line(`server:${server.host}`, server.host, server.username, server.unreadable, "Edit", "Remove this server? Books that send changes there stop until you sign in to it again.", () => api.remote.disconnectHost(server.host))}
         {#if open === `server:${server.host}`}
           <div class="form edit" use:keepInView>
             <GitServerForm

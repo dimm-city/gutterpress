@@ -64,6 +64,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The desktop app's Book setup "Backup & history" tab is now "Online".** It keeps the
+  last lists on screen when reopened (no more blank flash), says "send" and "online" instead
+  of "back up", and adds "On this computer, not online yet" / "Online, not on this computer
+  yet" lists, each with a Send now / Get them now button.
 - **The status bar says where the book stands, and its click fixes it.** One
   line in two clauses, "Saved here · Backed up 3 mins ago", with 17 states in a
   fixed order. It says "Checking online…" instead of a bare "Saved" until the

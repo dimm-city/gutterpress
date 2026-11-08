@@ -60,7 +60,7 @@ describe("each card's changed files", () => {
   });
 
   test("opening the screen and Show older versions list versions only (#461), ahead of any card", () => {
-    // The first page is the one Backup & history started reading when it opened, when it did.
+    // The first page is the one Online started reading when it opened, when it did.
     expect(fn("loadHistory")).toContain("await changesOf.listFirst(onlineCopy.takeVersionsPage(projectDir) ?? api.vcs.listSnapshotsPage(projectDir))");
     expect(fn("loadOlder")).toContain("await changesOf.listFirst(api.vcs.listSnapshotsPage(projectDir");
     for (const name of ["loadHistory", "loadOlder"]) expect(fn(name)).not.toMatch(/versionChanges|changesOf\.(load|show)/);

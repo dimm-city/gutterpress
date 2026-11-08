@@ -145,7 +145,7 @@ export function keptBothMessage(files: KeptBothFile[]): string {
   return `${shown}${more} changed in two places — nothing is lost: your file stayed put and the online copy's file is saved beside it.`;
 }
 
-const NOT_SIGNED_IN = "Not signed in to the online copy. Sign in to keep backing up.";
+const NOT_SIGNED_IN = "Not signed in to the online copy. Sign in to keep sending changes.";
 const OFFLINE = "Couldn't reach the online copy. Check your internet connection, or try again later.";
 
 export class SyncController {
@@ -438,7 +438,7 @@ export class SyncController {
     const retry = (this.deps.autoBackup?.() ?? true)
       ? "we'll try again later."
       : "try again when you're ready.";
-    const failed = `Couldn't finish backing up. Your work is saved on this computer — ${retry}`;
+    const failed = `Couldn't finish sending. Your work is saved on this computer — ${retry}`;
     try {
       const outcome = await this.deps.syncChanges(dir);
       if (this.deps.currentDir() !== dir) return; // Project switched mid-sync.
@@ -456,7 +456,7 @@ export class SyncController {
         this.applyConvergeReport(outcome.combinedFiles, outcome.keptBothFiles);
       } else if (outcome.status === "up-to-date") {
         if (outcome.filesChanged) this.completed(false, true, converged);
-        else this.notify("info", "Already up to date — nothing new to back up.");
+        else this.notify("info", "Already up to date — nothing new to send.");
         if (converged) this.applyConvergeReport(outcome.combinedFiles, outcome.keptBothFiles);
       } else if (outcome.status === "auth") {
         if (outcome.filesChanged) this.filesChanged();
@@ -520,7 +520,7 @@ export class SyncController {
         "success",
         n > 0
           ? `Online copy repaired, and ${n} file${n === 1 ? "" : "s"} only the online copy had ${n === 1 ? "is" : "are"} back.`
-          : "Online copy repaired. Your book is backed up.",
+          : "Online copy repaired. Your book is online.",
       );
       // The repair's own toast above is the one message: no second "Backed up".
       this.completed(true, n > 0 || outcome.filesChanged === true, true);

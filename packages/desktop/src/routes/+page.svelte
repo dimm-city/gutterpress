@@ -932,8 +932,8 @@
       // The same key as every other sync outcome: one message per action.
       toast?.show(
         mergedRemoteChanges
-          ? "Backed up — changes from the online copy were combined in, so the preview will refresh."
-          : "Backed up — your changes are in the online copy.",
+          ? "Sent — changes from the online copy were combined in, so the preview will refresh."
+          : "Sent — your changes are in the online copy.",
         "success",
         undefined,
         undefined,

@@ -186,7 +186,7 @@ test("friendlyPdfError explains an export refused during an unfinished draft swi
   );
   const shown = friendlyPdfError(err);
   expect(shown).toContain("part-way through switching drafts");
-  expect(shown).toContain("Backup & history → Drafts");
+  expect(shown).toContain("Online → Drafts");
   expect(shown).not.toContain("System tools");
 });
 

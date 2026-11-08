@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * ProjectConnectionsSection — Book setup → Backup & history (it was "Online
+   * ProjectConnectionsSection — Book setup → Online (it was "Online
    * copy"): three parts and a drawer, built for two questions — "Is my work
    * safe?" and "Can I go back / try another draft?":
    *
@@ -43,6 +43,8 @@
   import GitServerForm from "#lib/components/GitServerForm.svelte";
   import Icon from "#lib/components/Icon.svelte";
   import RevisionsList from "#lib/components/RevisionsList.svelte";
+  import WaitingChanges from "#lib/components/WaitingChanges.svelte";
+  import * as view from "#lib/routes/online-view-cache.ts";
   import type { ToastController } from "#lib/components/Toast.svelte";
   import type { LastBackup } from "#lib/backup-state.ts";
   import type { ProjectRemoteDiagnosis, RemoteAccessResult } from "#lib/platform/contract.ts";
@@ -101,11 +103,16 @@
   const settings = useSettings();
 
   // The shared snapshot: what the book's online copy is, whether it is being checked, and when it was.
-  let loading = $state(true);
-  let diag = $state<ProjectRemoteDiagnosis | null>(null);
-  let checking = $state(false);
-  let checkedAt = $state<number | null>(null);
-  let revisions = $state<import("#lib/platform/contract.ts").RevisionList | null>(null);
+  // Reopening the tab paints from the last snapshot at once; the refresh behind it swaps in new data quietly.
+  const seen = projectDir ? onlineCopy.peek(projectDir) : undefined;
+  const seenView = projectDir ? view.peek(projectDir) : undefined;
+  let loading = $state(!seen);
+  let diag = $state<ProjectRemoteDiagnosis | null>(seen?.diag ?? null);
+  let checking = $state(seen?.checking ?? false);
+  let checkedAt = $state<number | null>(seen?.checkedAt ?? null);
+  let revisions = $state<import("#lib/platform/contract.ts").RevisionList | null>(seen?.revisions ?? null);
+  /** Bumped after anything that can change what is waiting; WaitingChanges re-reads behind itself. */
+  let waitingKey = $state(0);
   let now = $state(Date.now());
   const situation = $derived(diag ? backupState(diag) : null);
   /** What the last action changed ("Signed in to git.example.com."). */
@@ -153,13 +160,13 @@
   );
 
   // This computer: the newest version and what has changed since.
-  let facts = $state<{ lastVersionAt: number | null; changedFiles: number | null; stale: boolean } | null>(null);
+  let facts = $state<{ lastVersionAt: number | null; changedFiles: number | null; stale: boolean } | null>(seenView?.facts ?? null);
   let nothingNew = $state(false);
   let savingVersion = $state(false);
   let revisionsEl = $state<{ refresh: () => void }>();
 
   /** The newest versions, for the History card. */
-  let recent = $state<VersionEntry[]>([]);
+  let recent = $state<VersionEntry[]>(seenView?.recent ?? []);
 
   /** A backup finished, or a version was restored: the newest versions may have changed. */
   export function refreshHistory() {
@@ -168,6 +175,7 @@
     if (projectDir) {
       void onlineCopy.refresh(projectDir, { network: false });
       void loadFacts(projectDir);
+      waitingKey++;
     }
   }
 
@@ -235,9 +243,10 @@
       const [page, pending] = await Promise.all([api.vcs.listSnapshotsPage(dir, { limit: 5 }), api.vcs.unversionedChanges(dir)]);
       recent = page.entries;
       facts = { lastVersionAt: page.entries[0]?.timestamp ?? null, changedFiles: pending.changedFiles, stale: pending.stale };
+      view.update(dir, { recent, facts });
       if ((pending.changedFiles ?? 0) > 0) nothingNew = false;
     } catch {
-      facts = null;
+      // Keep what is showing (the line says nothing rather than guessing).
     }
   }
 
@@ -315,6 +324,7 @@
       onlineCopy.dropVersionsPage(dir);
       void onlineCopy.refresh(dir, { fresh: true });
       void loadFacts(dir);
+      waitingKey++;
       return null;
     });
   const backUpNow = () => pass("back-up", onBackUpNow);
@@ -328,6 +338,7 @@
       nothingNew = (await onSaveVersion()) === "unchanged";
       onlineCopy.dropVersionsPage(projectDir);
       await loadFacts(projectDir);
+      waitingKey++;
     } catch {
       // The page shows the failure toast.
     } finally {
@@ -347,8 +358,8 @@
   // ── The primary button ─────────────────────────────────────────────────────
   const LABELS: Record<Exclude<CardAction, null>, string> = {
     "turn-on-versions": "Turn on version history",
-    "set-up-backup": "Back up online…",
-    "back-up": "Back up now",
+    "set-up-backup": "Put this book online…",
+    "back-up": "Send now",
     "get-changes": "Get changes",
     update: "Update",
     "try-again": "Try again",
@@ -358,7 +369,7 @@
   };
   const busyLabel = (a: CardAction): string | null =>
     a === "turn-on-versions" && busy ? "Turning on…"
-    : a === "back-up" || a === "update" || a === "try-again" ? (running === "back-up" ? "Backing up…" : null)
+    : a === "back-up" || a === "update" || a === "try-again" ? (running === "back-up" ? "Sending…" : null)
     : a === "get-changes" && running === "get-latest" ? "Getting changes…"
     : null;
 
@@ -488,7 +499,7 @@
     let failure: string | null = null;
     try {
       const r = await api.remote.scorchedEarth(dir);
-      message = `Started over from the online copy, with your files put back on top. A safety folder with everything as it was is kept at ${r.backupDir}. Open the book and back up to save the result.`;
+      message = `Started over from the online copy, with your files put back on top. A safety folder with everything as it was is kept at ${r.backupDir}. Open the book and send to save the result.`;
     } catch (e) {
       failure = `${unwrapRouteError(e instanceof Error ? e.message : String(e))} See Troubleshooting > Logs for details.`;
     }
@@ -507,6 +518,8 @@
   }
 
   const when = (ms: number): string => new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  /** The Changes waiting section is shown, so its Send now is the only one on screen. */
+  const showWaiting = $derived(situation === "ready" && !!projectDir);
   const needsSignIn = $derived(
     card?.action === "sign-in" || (signInOpen && !!card),
   );
@@ -516,7 +529,7 @@
   {#if loading}
     <p class="hint">Checking this book's online copy…</p>
   {:else if !diag || !card || !situation}
-    <p class="hint">Couldn't read this book's backup status. <button class="ghost small" onclick={load}>Try again</button></p>
+    <p class="hint">Couldn't read this book's online status. <button class="ghost small" onclick={load}>Try again</button></p>
   {:else}
     <!-- 1. Is my work safe? One sentence and its one next step. -->
     <section class="section-card status {card.tone}" aria-labelledby="online-status-title">
@@ -529,7 +542,7 @@
           {#if card.note}<p class="note">{card.note}</p>{/if}
         </div>
         <div class="status-action">
-          {#if card.action && card.action !== "sign-in" && (card.action !== "review-decisions" || onReviewDecisions)}
+          {#if card.action && card.action !== "sign-in" && !(card.action === "back-up" && showWaiting) && (card.action !== "review-decisions" || onReviewDecisions)}
             <button class="app-btn-primary" onclick={() => runAction(card.action)} disabled={busy}>
               {busyLabel(card.action) ?? LABELS[card.action]}
             </button>
@@ -555,9 +568,9 @@
       {:else if situation === "own-tools"}
         <div class="status-body">
           {#if diag.remoteProtocol === "ssh"}
-            <p class="hint">Keep backing up with your usual tool, or ask whoever set up the online copy for its web address (it starts with https://) and Gutterpress can back it up for you.</p>
+            <p class="hint">Keep sending with your usual tool, or ask whoever set up the online copy for its web address (it starts with https://) and Gutterpress can send it for you.</p>
           {:else}
-            <p class="hint">This book's online copy is at {diag.remoteUrl}. Gutterpress backs up only to web addresses that start with https://.</p>
+            <p class="hint">This book's online copy is at {diag.remoteUrl}. Gutterpress sends only to web addresses that start with https://.</p>
           {/if}
         </div>
       {/if}
@@ -566,12 +579,17 @@
       {#if actionError}<p class="status-note error" role="alert" bind:this={errorEl} tabindex="-1">{actionError}</p>{/if}
     </section>
 
+    {#if showWaiting && projectDir}
+      <!-- 1b. What is waiting on each side, and the one button for each. -->
+      <WaitingChanges {projectDir} refreshKey={waitingKey} {busy} {running} {checking} draftOnlyHere={drafts?.currentBackedUp === false} onSend={backUpNow} onGet={getLatest} />
+    {/if}
+
     {#if situation !== "no-versions" && projectDir}
       <!-- 2. History: where you have been, and the way back. -->
       <section class="section-card" aria-labelledby="version-history-title">
         <header class="section-head">
           <div>
-            <h3 id="version-history-title">History</h3>
+            <h3 id="version-history-title">Saved versions</h3>
             {#if facts}<p class="section-sub">{versionsLine({ ...facts, now: Date.now() })}</p>{/if}
           </div>
           <div class="head-actions">
@@ -604,7 +622,7 @@
                   <span class="recent-title">{versionTitle(v.message)}</span>
                   <span class="recent-sub">{whenShort(v.timestamp, now)} · {agoFull(v.timestamp, now)}</span>
                 </span>
-                {#if v.backedUp === true}<span class="where ok"><Icon name="circle-check" size={13} /> Backed up</span>{/if}
+                {#if v.backedUp === true}<span class="where ok"><Icon name="circle-check" size={13} /> Online</span>{/if}
                 {#if v.backedUp === false}<span class="where"><Icon name="laptop" size={13} /> Only on this computer</span>{/if}
                 <Icon name="chevron-right" size={14} />
               </button>
@@ -618,7 +636,7 @@
           {#if situation === "ready"}
             <label class="auto">
               <input type="checkbox" checked={autoBackup} onchange={(e) => setAutoBackup(e.currentTarget.checked)} />
-              Back up automatically
+              Send changes automatically
             </label>
           {/if}
         </div>
@@ -649,7 +667,7 @@
               </div>
             {/if}
             <div class="tool">
-              <div><strong>Repair</strong><p class="hint">Fixes backups that keep failing. Gutterpress sets this book's version history aside, downloads a fresh copy from the online copy, then puts your current files back on top. Your current files don't change.</p></div>
+              <div><strong>Repair</strong><p class="hint">Fixes sending that keeps failing. Gutterpress sets this book's version history aside, downloads a fresh copy from the online copy, then puts your current files back on top. Your current files don't change.</p></div>
               <button class="ghost small" onclick={() => void askRepair()} disabled={busy}>{running === "repair" ? "Repairing…" : "Repair…"}</button>
             </div>
             {#if !moreOpen}
@@ -679,9 +697,9 @@
 {#if repairAsk}
   <div class="dlg-backdrop" role="presentation" onclick={() => (repairAsk = false)}></div>
   <div class="dlg-shell repair-dialog" use:dialogBehavior={{ onClose: () => (repairAsk = false), labelledBy: "repair-title", initialFocus: ".dlg-ghost" }}>
-    <header class="dlg-header"><h2 id="repair-title">Repair backups?</h2></header>
+    <header class="dlg-header"><h2 id="repair-title">Repair the online copy?</h2></header>
     <div class="dlg-body">
-      <p>Repair sets this book's version history aside, downloads a fresh copy from the online copy, then puts your current files back on top. Your current files don't change, and you stay on the same draft. Then a version is saved and backed up. A draft that was only on this computer keeps its files and is backed up online under its own name.</p>
+      <p>Repair sets this book's version history aside, downloads a fresh copy from the online copy, then puts your current files back on top. Your current files don't change, and you stay on the same draft. Then a version is saved and sent online. A draft that was only on this computer keeps its files and is sent online under its own name.</p>
       <p class:checking-aside={setAsideLoading}>{setAsideLoading ? "Checking what is only on this computer…" : setAsideText}</p>
     </div>
     <footer class="dlg-actions">
