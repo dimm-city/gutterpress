@@ -864,12 +864,8 @@ export interface OnlineVersionEntry extends VersionEntry {
   moreChanges: number;
 }
 
-/** One row of the side-by-side file compare: a line on each side, or a gap. */
-export interface CompareRow {
-  then: string | null;
-  now: string | null;
-  changed: boolean;
-}
+/** What a file comparison is against: the version before it (default), or the book as it is now. */
+export type CompareBase = "previous" | "current";
 
 /** One bounded page of version history (mirrors the lib's HistoryPage). */
 export interface SnapshotPage {

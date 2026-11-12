@@ -124,6 +124,15 @@
   --app-info-border: #aecbe8;
   --app-info-text: #1f5fa8;
 
+  /* File compare (Version history): a line added or removed, the words that
+     changed inside it, and the gutter mark beside it. */
+  --app-diff-added-bg: #e6ffec;
+  --app-diff-added-word: #abf2bc;
+  --app-diff-added-mark: #1a7f37;
+  --app-diff-removed-bg: #ffebe9;
+  --app-diff-removed-word: #ffcecb;
+  --app-diff-removed-mark: #cf222e;
+
   /* Misc accents */
   /* WCAG AA (≥4.5:1) verified on ALL light surfaces:
      #1a5fb4 → 6.29:1 #ffffff, 5.72:1 #f4f4f5, 5.33:1 #ececef (sunken) */
@@ -232,6 +241,13 @@
   --app-info-bg: #1a2a3a;
   --app-info-border: #2d4a6a;
   --app-info-text: #93c5fd;
+
+  --app-diff-added-bg: rgba(46, 160, 67, 0.15);
+  --app-diff-added-word: rgba(46, 160, 67, 0.45);
+  --app-diff-added-mark: #3fb950;
+  --app-diff-removed-bg: rgba(248, 81, 73, 0.12);
+  --app-diff-removed-word: rgba(248, 81, 73, 0.45);
+  --app-diff-removed-mark: #f85149;
 
   /* Misc accents */
   /* WCAG AA (≥4.5:1) verified on ALL dark surfaces:

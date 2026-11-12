@@ -574,11 +574,21 @@ buttons.
   Version history card lists the newest versions with **Save a version** and
   **Browse versions**, which (or a listed version) opens the screen over Book
   setup — the versions on the left grouped by day, the selected one on the
-  right with its **Changed files** (a text file opens line by line) or, only
-  when asked for, its **Pages** rendered as they were, and **Restore this
-  version** at the top. Selecting a version never renders it: selecting
-  another returns to its Changed files. × or Esc returns to Book setup. It
-  never takes over the editor pane.
+  right with its **Changed files** or, only when asked for, its **Pages**
+  rendered as they were, and **Restore this version** at the top. Selecting a
+  version never renders it: selecting another returns to its Changed files.
+  × or Esc returns to Book setup. It never takes over the editor pane.
+  A changed text file opens to **What this version changed** (the file before
+  the version beside the file in it — the comparison the list's "3 paragraphs
+  changed" counts; "Before" / "After · this version"), or, when asked,
+  **Compared with your book now** ("This version" / "Your book now"). It is
+  shown **Inline** (the default, remembered for the session) or **Side by
+  side**, in the editor's syntax colours with line numbers, the changed words
+  marked inside each changed line, and unchanged text collapsed to a few
+  lines around each change. It opens at the first change; "Change 2 of 5"
+  with previous/next (Alt+↑ / Alt+↓) steps through the rest. One toolbar
+  holds **‹ Changed files**, the file name, both choices and the count.
+  A picture says it has no text to compare.
   As in 0.11.22 (#484), every version card lists the files its version
   changed ("chapter-02.md · 3 paragraphs changed", "and N more" past eight,
   "No changes"), loaded as the card scrolls into view, never a whole page up

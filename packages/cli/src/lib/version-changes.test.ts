@@ -3,8 +3,8 @@
  * isomorphic-git: what a version changed, whether each is backed up,
  * which commits an online tip has that the local tip lacks, what is in the
  * online copy (over the in-process git server) and what each of those
- * versions changed, the aligned compare rows, and a version's files written
- * out for the preview.
+ * versions changed, a file's two texts for the compare view, and a
+ * version's files written out for the preview.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import fs from "node:fs";
@@ -399,28 +399,33 @@ describe("listOnlineVersions", () => {
 });
 
 describe("compareVersionFile", () => {
-  test("aligns the version's text with the file as it is now and marks changed lines", async () => {
-    const result = await compareVersionFile(dir, c1, "chapter-01.md");
-    expect(result.binary).toBe(false);
-    if (result.binary) return;
-    expect(result.rows).toEqual([
-      { then: "# One", now: "# One", changed: false },
-      { then: "", now: "", changed: false },
-      { then: "First paragraph.", now: "First paragraph.", changed: false },
-      { then: "", now: "", changed: false },
-      { then: "Second paragraph.", now: "Second paragraph, reworded.", changed: true },
-    ]);
+  const ONE = "# One\n\nFirst paragraph.\n\nSecond paragraph.\n";
+  const ONE_REWORDED = "# One\n\nFirst paragraph.\n\nSecond paragraph, reworded.\n";
+
+  test("by default, what the version changed: its first parent's text beside its own", async () => {
+    expect(await compareVersionFile(dir, c2, "chapter-01.md")).toEqual({ binary: false, before: ONE, after: ONE_REWORDED });
   });
 
-  test("a file the version had and the folder no longer has: an empty Now column", async () => {
-    const result = await compareVersionFile(dir, c2, "notes.md");
-    expect(result).toEqual({ binary: false, rows: [{ then: "# Notes", now: null, changed: true }] });
+  test("the first version compares with an empty file", async () => {
+    expect(await compareVersionFile(dir, c1, "chapter-01.md", "previous")).toEqual({ binary: false, before: "", after: ONE });
   });
 
-  test("a picture is binary; a path outside the book is refused", async () => {
-    expect(await compareVersionFile(dir, c1, "art/cover.png")).toEqual({ binary: true });
+  test("a file the version added has an empty before; one it removed, an empty after", async () => {
+    expect(await compareVersionFile(dir, c2, "notes.md")).toEqual({ binary: false, before: "", after: "# Notes\n" });
+    expect(await compareVersionFile(dir, c3, "notes.md")).toEqual({ binary: false, before: "# Notes\n", after: "" });
+  });
+
+  test("base current: the version's text beside the file as it is on disk now", async () => {
+    expect(await compareVersionFile(dir, c1, "chapter-01.md", "current")).toEqual({ binary: false, before: ONE, after: ONE_REWORDED });
+    // Removed from the folder since: an empty after.
+    expect(await compareVersionFile(dir, c2, "notes.md", "current")).toEqual({ binary: false, before: "# Notes\n", after: "" });
+  });
+
+  test("a picture is binary on either base; a path outside the book is refused", async () => {
+    expect(await compareVersionFile(dir, c2, "art/cover.png")).toEqual({ binary: true });
+    expect(await compareVersionFile(dir, c1, "art/cover.png", "current")).toEqual({ binary: true });
     await expect(compareVersionFile(dir, c1, "../etc/passwd")).rejects.toThrow("inside the book");
-    await expect(compareVersionFile(dir, c1, "/etc/passwd")).rejects.toThrow("inside the book");
+    await expect(compareVersionFile(dir, c1, "/etc/passwd", "current")).rejects.toThrow("inside the book");
   });
 });
 

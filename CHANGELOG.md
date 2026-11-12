@@ -5,6 +5,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Desktop: Version history shows exactly what a version changed in a file.** Opening a
+  changed file now compares it with the version before, so it matches the "3 paragraphs
+  changed" on the card; **Compared with your book now** shows the version beside the book
+  as it is today. Changed words are marked inside each line, unchanged text is folded
+  away, and "Change 2 of 5" with previous/next (Alt+↑ / Alt+↓) steps through the changes.
+  Choose **Inline** or **Side by side**; the editor's colours and line numbers are kept.
+
 ### Removed
 
 - **Editing text in the preview.** Double-clicking a block, and the right-click
