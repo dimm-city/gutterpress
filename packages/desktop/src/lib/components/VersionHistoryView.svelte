@@ -3,7 +3,7 @@
    * VersionHistoryView — the book's Version history as a screen of its own
    * (#448), the way word processors show it: the versions down the left,
    * grouped by day, and the selected one on the right — the files it changed
-   * (a text file opens line by line beside the book as it is now) or, when
+   * (a text file opens to what the version changed in it) or, when
    * the author asks (Pages), its pages, rendered read-only. Selecting a
    * version never renders it: rendering one writes out all its files and
    * starts a preview, too slow to do for every click. Restore this version
@@ -28,7 +28,7 @@
   import Icon from "#lib/components/Icon.svelte";
   import PreviewFrame from "#lib/components/PreviewFrame.svelte";
   import VersionCompareView from "#lib/components/VersionCompareView.svelte";
-  import { api, type CompareRow, type OnlineVersionEntry, type VersionEntry, type VersionFileChange } from "#lib/api.ts";
+  import { api, type OnlineVersionEntry, type VersionEntry, type VersionFileChange } from "#lib/api.ts";
   import { dialogBehavior } from "#lib/dialog.ts";
   import { friendlyHostError } from "#lib/errors.ts";
   import type { PreviewClient } from "#lib/preview-client.ts";
@@ -78,8 +78,8 @@
   let pagesFor = $state<string | null>(null);
   let pagesUrl = $state<string | null>(null);
   let pagesError = $state<string | null>(null);
-  let compare = $state<{ path: string; rows: CompareRow[]; binary: boolean } | null>(null);
-  let comparing = $state<string | null>(null);
+  /** The changed file open in the compare view. */
+  let compare = $state<string | null>(null);
   let logContent = $state<string | null>(null);
 
   let confirming = $state(false);
@@ -199,21 +199,6 @@
     pagesUrl = null;
     pagesError = null;
     void api.vcs.closeVersionPreview().catch(() => {});
-  }
-
-  async function openFile(change: VersionFileChange): Promise<void> {
-    if (!selected || comparing) return;
-    const id = selected.id;
-    comparing = change.path;
-    try {
-      const result = await api.vcs.compareFile(projectDir, id, change.path);
-      // Another version selected meanwhile: this file belongs to the old one.
-      if (selected?.id === id) compare = { path: change.path, rows: result.binary ? [] : result.rows, binary: result.binary };
-    } catch (e) {
-      error = friendlyHostError(e instanceof Error ? e.message : String(e));
-    } finally {
-      comparing = null;
-    }
   }
 
   async function restore(): Promise<void> {
@@ -432,15 +417,7 @@
             {/if}
           </div>
         {:else if compare}
-          <div class="compare">
-            <VersionCompareView
-              path={compare.path}
-              versionLabel={`${versionTitle(selected.message)} · ${when(selected.timestamp)}`}
-              rows={compare.rows}
-              binary={compare.binary}
-              onBack={() => (compare = null)}
-            />
-          </div>
+          <VersionCompareView {projectDir} id={selected.id} path={compare} onBack={() => (compare = null)} />
         {:else if changesError}
           <p class="error pad" role="alert">Couldn't show this version. {changesError}</p>
         {:else if changes}
@@ -448,7 +425,7 @@
             {#each changes.files as change (change.path)}
               <li>
                 {#if change.text}
-                  <button class="file" onclick={() => void openFile(change)} disabled={!!comparing}>
+                  <button class="file" onclick={() => (compare = change.path)}>
                     <span class="file-path">{change.path}</span><span class="file-hint">{change.hint}</span>
                   </button>
                 {:else}
@@ -549,7 +526,6 @@
   .tabs button:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: -2px; }
   .pages { flex: 1; min-height: 0; display: flex; background: var(--app-surface-sunken); }
   .pages :global(iframe) { flex: 1; width: 100%; height: 100%; border: 0; }
-  .compare { flex: 1; min-height: 0; overflow: auto; padding: 16px 20px; }
   .files { list-style: none; margin: 0; padding: 8px 0; overflow-y: auto; }
   .file {
     display: flex; align-items: baseline; gap: 10px; width: 100%; padding: 8px 20px;

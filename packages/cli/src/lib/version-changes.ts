@@ -15,10 +15,10 @@
  *      branch (refs only move; nothing is merged or checked out) and the
  *      commits the fetched tip has that the local tip does not, each with
  *      the files it changed.
- *   3. A version's files: one text file at that version beside the file as
- *      it is now, lines aligned and changed lines marked (the compare view);
- *      or the whole tree written to a folder for the preview to render
- *      read-only.
+ *   3. A version's files: one text file's two texts for the compare view —
+ *      before and after the version, or the version beside the book as it
+ *      is now; or the whole tree written to a folder for the preview to
+ *      render read-only.
  *
  * Shared by the desktop's vcs routes. Nothing here writes to the project.
  */
@@ -33,9 +33,7 @@ import { currentBranchOrThrow, repoDirFor, resolveTransport } from "./remote-aut
 import { defaultGitHttp } from "./remote-auth/git-http.ts";
 import { refreshRemoteCopies } from "./remote-auth/sync.ts";
 import type { HostCredential, TokenStore } from "./remote-auth/token-store.ts";
-import { alignRows, countChanged, diffSequences, textLines, type CompareRow } from "./text-diff.ts";
-
-export type { CompareRow };
+import { countChanged, diffSequences, textLines } from "./text-diff.ts";
 
 export interface VersionFileChange {
   /** Repo-relative path, forward slashes. */
@@ -395,35 +393,57 @@ function assertRepoRelative(filepath: string): void {
   }
 }
 
+/** What a file comparison is against: the version before it, or the book as it is now. */
+export type CompareBase = "previous" | "current";
+
+/** The file at commit `oid`, or null where that version has no such file. */
+async function blobOrNull(dir: string, oid: string, filepath: string): Promise<Uint8Array | null> {
+  try {
+    return (await git.readBlob({ fs, dir, oid, filepath })).blob;
+  } catch (e) {
+    if ((e as { code?: string })?.code !== "NotFoundError") throw e;
+    return null;
+  }
+}
+
 /**
- * One file at version `id` beside the same file as it is on disk now, as
- * aligned rows for the compare view. `binary` when either side is not text.
- * A side that does not exist (the file was added since, or removed) is an
- * empty column.
+ * One file's two texts for the compare view, which diffs them itself.
+ * `base: "previous"` (the default) is what version `id` changed: the file in
+ * its first parent beside the file at `id` — the comparison the version's
+ * changed-files list counts. `"current"` is the file at `id` beside the file
+ * as it is on disk now. A side with no such file (added, removed, or the
+ * first version) is empty. `binary` when either side is not text.
  */
 export async function compareVersionFile(
   projectDir: string,
   id: string,
   filepath: string,
-): Promise<{ binary: true } | { binary: false; rows: CompareRow[] }> {
+  base: CompareBase = "previous",
+): Promise<{ binary: true } | { binary: false; before: string; after: string }> {
   assertRepoRelative(filepath);
   const dir = await repoDirFor(projectDir);
-  let thenBytes: Uint8Array | null = null;
-  try {
-    thenBytes = (await git.readBlob({ fs, dir, oid: id, filepath })).blob;
-  } catch (e) {
-    if ((e as { code?: string })?.code !== "NotFoundError") throw e;
+  const atVersion = await blobOrNull(dir, id, filepath);
+  let beforeBytes: Uint8Array | null;
+  let afterBytes: Uint8Array | null;
+  if (base === "current") {
+    beforeBytes = atVersion;
+    afterBytes = null;
+    try {
+      afterBytes = new Uint8Array(await readFile(path.join(dir, filepath)));
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException)?.code !== "ENOENT") throw e;
+    }
+  } else {
+    const parent = (await git.readCommit({ fs, dir, oid: id })).commit.parent[0];
+    beforeBytes = parent ? await blobOrNull(dir, parent, filepath) : null;
+    afterBytes = atVersion;
   }
-  let nowBytes: Uint8Array | null = null;
-  try {
-    nowBytes = new Uint8Array(await readFile(path.join(dir, filepath)));
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException)?.code !== "ENOENT") throw e;
-  }
-  if ((thenBytes && looksBinary(thenBytes)) || (nowBytes && looksBinary(nowBytes))) return { binary: true };
-  const then = thenBytes ? decoder.decode(thenBytes) : "";
-  const now = nowBytes ? decoder.decode(nowBytes) : "";
-  return { binary: false, rows: alignRows(diffSequences(textLines(then), textLines(now))) };
+  if ((beforeBytes && looksBinary(beforeBytes)) || (afterBytes && looksBinary(afterBytes))) return { binary: true };
+  return {
+    binary: false,
+    before: beforeBytes ? decoder.decode(beforeBytes) : "",
+    after: afterBytes ? decoder.decode(afterBytes) : "",
+  };
 }
 
 /**

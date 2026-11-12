@@ -1,13 +1,13 @@
 /**
  * text-diff.ts — a small two-way sequence diff for the Versions view.
  *
- * Two readers: the what-changed hint on a version card ("3 paragraphs
- * changed") and the side-by-side file compare (lines aligned, changed ones
- * marked). Myers' O(ND) algorithm over any array, with a budget: when two
- * texts have almost nothing in common the edit script is as long as both
- * texts and the trace would grow with its square, so past the budget the
- * result is "everything after the common ends changed" — honest for the
- * hint, readable in the compare view, and bounded in memory. Pure, no I/O.
+ * Its reader is the what-changed hint on a version card ("3 paragraphs
+ * changed"); the file compare view diffs in the app with @codemirror/merge.
+ * Myers' O(ND) algorithm over any array, with a budget: when two texts have
+ * almost nothing in common the edit script is as long as both texts and the
+ * trace would grow with its square, so past the budget the result is
+ * "everything after the common ends changed" — honest for the hint and
+ * bounded in memory. Pure, no I/O.
  */
 
 export type DiffOp<T> =
@@ -121,41 +121,6 @@ export function countChanged<T>(ops: readonly DiffOp<T>[]): number {
   }
   flush();
   return total;
-}
-
-/** One row of the side-by-side compare: a line on each side, or a gap. */
-export interface CompareRow {
-  then: string | null;
-  now: string | null;
-  changed: boolean;
-}
-
-/**
- * Lay a line diff out as two aligned columns: equal lines share a row;
- * within a changed run the removed and added lines pair up in order and
- * the longer side's extra lines face a gap.
- */
-export function alignRows(ops: readonly DiffOp<string>[]): CompareRow[] {
-  const rows: CompareRow[] = [];
-  let deletes: string[] = [];
-  let inserts: string[] = [];
-  const flush = () => {
-    const count = Math.max(deletes.length, inserts.length);
-    for (let i = 0; i < count; i++) {
-      rows.push({ then: deletes[i] ?? null, now: inserts[i] ?? null, changed: true });
-    }
-    deletes = [];
-    inserts = [];
-  };
-  for (const op of ops) {
-    if (op.kind === "equal") {
-      flush();
-      rows.push({ then: op.a, now: op.b, changed: false });
-    } else if (op.kind === "delete") deletes.push(op.a);
-    else inserts.push(op.b);
-  }
-  flush();
-  return rows;
 }
 
 /** Split into lines for diffing; a CR before the break is not content. */

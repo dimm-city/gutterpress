@@ -66,7 +66,7 @@ export type {
   OnlineVersionEntry,
   VersionChanges,
   VersionFileChange,
-  CompareRow,
+  CompareBase,
   Revision,
   RevisionList,
   RepairCopy,
@@ -100,7 +100,7 @@ import type {
   VersionEntry,
   OnlineVersionEntry,
   VersionChanges,
-  CompareRow,
+  CompareBase,
   Revision,
   RevisionList,
   RepairCopy,
@@ -778,9 +778,9 @@ export const api = {
     /** The files one version changed, each with a plain hint; `more` beyond the ones listed (#408). */
     versionChanges: (projectDir: string, id: string) =>
       post<VersionChanges>('/api/vcs/version-changes', { projectDir, id }),
-    /** One text file at a version beside the file as it is now, as aligned rows (#408). */
-    compareFile: (projectDir: string, id: string, path: string) =>
-      post<{ binary: true } | { binary: false; rows: CompareRow[] }>('/api/vcs/compare-file', { projectDir, id, path }),
+    /** One text file's two texts: before and after the version (`previous`, the default), or the version beside the book now (`current`) (#408). */
+    compareFile: (projectDir: string, id: string, path: string, base: CompareBase = 'previous') =>
+      post<{ binary: true } | { binary: false; before: string; after: string }>('/api/vcs/compare-file', { projectDir, id, path, base }),
     /** Render a version read-only; the URL for its frame, or null when a later open or close replaced it first (#408). */
     openVersionPreview: (projectDir: string, id: string) =>
       post<{ url: string } | null>('/api/vcs/open-version-preview', { projectDir, id }),
