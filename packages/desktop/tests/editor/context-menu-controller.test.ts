@@ -17,7 +17,7 @@ import type { ClassCatalogEntry } from "#lib/api.ts";
 (globalThis as unknown as { $state?: <T>(value: T) => T }).$state ??= (value) => value;
 
 /**
- * context-menu-controller.svelte.ts (inline-editing plan §4.1-4.5) — the
+ * context-menu-controller.svelte.ts — the
  * full open/dismiss matrix, keyboard open, the in-flight-render guard, and
  * `kind: "none"` being ignored. Menu-item PARAMETER resolution (image/link
  * token matching, degrade cases) is covered directly in

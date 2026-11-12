@@ -455,7 +455,7 @@ describe("source_range: data-source-line regression (must NOT change)", () => {
     // monkeypatch keyed on token.map/level — our rule only ever ADDS
     // token.attrs (data-source-range) and never touches token.map, so this
     // comparison is expected to hold by construction; this test locks that
-    // guarantee in as a regression net, per plan §2.5.
+    // guarantee in as a regression net, per ADR 0009.
     const mdBefore = new MarkdownIt({ html: true, linkify: true, typographer: true });
     mdBefore.use(markdownItAttrs);
     mdBefore.use(markdownItFootnote);

@@ -1035,10 +1035,10 @@
      * of its own (this repo bans `$effect`). */
     switchFile: (path: string | null, content: string) => void;
     /** Whether the live document is this file
-     * (inline-editing plan §4.7 Step 4 — commit-engine.ts). */
+     * (commit-engine.ts). */
     hasFile: (path: string) => boolean;
     /** Apply a `[from, to)` character-range edit to one file as a single
-     * undoable transaction (inline-editing plan §4.7 Step 4 — commit-engine.ts).
+     * undoable transaction (commit-engine.ts).
      * Offsets are into THAT FILE, not into the document. */
     applyRangeEditIn: (path: string, from: number, to: number, insert: string) => void;
     /** The document text and the caret's 0-based line (Block properties, Alt+Enter). */
@@ -1464,7 +1464,7 @@
   // change won't clobber a per-project ratio applied at project-open, and the
   // controller's own persist writes this same value back (idempotent).
   const splitRatioSink = settingsChangeGuard<number>((r) => zoomView.restoreSplitRatio(r));
-  // Context menu (inline-editing plan §4.5): imperative teardown on toggle —
+  // Context menu: imperative teardown on toggle —
   // if the author flips the setting off while the menu happens to be open,
   // close it immediately rather than leaving a now-disabled affordance on
   // screen until the next dismissal event.
@@ -2259,9 +2259,8 @@
   }
 
   // ----------------------------------------------------------------
-  // Preview right-click / Shift+F10 context menu (inline-editing plan
-  // §4.1-4.5). Subscribes to the preview client via its OWN client.on()
-  // listener — separate from previewEvents' switch below (PR 0 already owns
+  // Preview right-click / Shift+F10 context menu. Subscribes to the preview
+  // client via its OWN client.on() listener — separate from previewEvents' switch below (PR 0 already owns
   // the elementActivated case there).
   // ----------------------------------------------------------------
   const contextMenu = new ContextMenuController({
@@ -2353,7 +2352,7 @@
   /**
    * Esc pressed inside the preview. The preview is a cross-origin iframe, so
    * its keystrokes never reach this window; preview-bridge.js forwards an Esc
-   * nothing in the book consumed (in-place block editing keeps its own).
+   * nothing in the book consumed.
    * Same rule as the window's Esc: leave Focus only if nothing else owns it.
    */
   function onPreviewEscape(e: PreviewEvent): void {

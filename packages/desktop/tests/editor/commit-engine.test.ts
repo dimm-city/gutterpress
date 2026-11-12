@@ -7,7 +7,7 @@ import {
 } from "../../src/lib/editor/commit-engine";
 
 /**
- * commit-engine.ts (inline-editing plan §4.7) — every GATE-0 branch, Steps
+ * commit-engine.ts — every GATE-0 branch, Steps
  * 1-5, and the §4.9 dirty-buffer misalignment repro, driven with injected
  * fakes (the established pattern from editor-preview-sync-controller.test.ts).
  */

@@ -313,7 +313,7 @@ export function applyTable(view: EditorView, cols: number): void {
  * set). Position/size inputs are canonicalized through the option tables,
  * so a caller still holding a removed legacy name ("full-bleed") writes the
  * live gp-* class, never a dead one. Separate from `applyImage` below
- * (inline-editing plan §4.4) so the context menu's image actions can share
+ * so the context menu's image actions can share
  * the exact same suffix rule — though for EXISTING tokens they go through
  * image-classes' tokenize → set-facet → serialize instead, which preserves
  * attrs this builder doesn't know about.

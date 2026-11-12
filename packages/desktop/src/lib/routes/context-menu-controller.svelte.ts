@@ -1,7 +1,6 @@
 /**
  * ContextMenuController — single owner of the preview right-click/`Shift+F10`
- * context menu's open/position/target state (inline-editing plan §4.1–4.5,
- * PR 3).
+ * context menu's open/position/target state.
  *
  * `.svelte.ts` suffix is deliberate: menu open/position/items are `$state`
  * consumed by `ContextMenu.svelte`, matching `page-nav-controller.svelte.ts` /
@@ -183,11 +182,10 @@ export class ContextMenuController {
 
   private rawX = 0;
   private rawY = 0;
-  private target: ContextTarget | null = null;
   private requestId = 0;
   // Set for a short window right after open(), across the SAME event-loop
   // discipline as EditorToolbar.svelte's outside-click popover handling —
-  // reused here defensively (plan §4.2) even though the menu's OPENING
+  // reused here defensively even though the menu's OPENING
   // interaction happens inside a different document (the preview iframe) and
   // so cannot itself bubble into this SPA's own outside-mousedown listener.
   private justOpened = false;
@@ -208,8 +206,8 @@ export class ContextMenuController {
         break;
       case "renderingComplete":
         // Content changed under the menu (or a build just finished) — the
-        // generation bump closes the clean-but-DOM-stale commit window
-        // (plan §4.9); the menu itself is now anchored to stale geometry.
+        // generation bump closes the clean-but-DOM-stale commit window;
+        // the menu itself is now anchored to stale geometry.
         this.deps.commitEngine.noteRenderingComplete();
         this.close();
         break;
@@ -255,7 +253,6 @@ export class ContextMenuController {
     if (requestId !== this.requestId || this.deps.rendering()) return;
     if (items.length === 0) return;
 
-    this.target = target;
     this.items = items;
     this.rawX = detail.x ?? 0;
     this.rawY = detail.y ?? 0;
@@ -291,7 +288,6 @@ export class ContextMenuController {
   private reset(): void {
     this.open = false;
     this.items = [];
-    this.target = null;
   }
 
   async runItem(item: ContextMenuItem): Promise<void> {
@@ -299,7 +295,7 @@ export class ContextMenuController {
     await item.run();
   }
 
-  // ── Positioning (plan §4.2) ────────────────────────────────────────────────
+  // ── Positioning ────────────────────────────────────────────────
 
   private computePosition(
     px: number,
@@ -324,7 +320,7 @@ export class ContextMenuController {
     return { x, y };
   }
 
-  // ── Menu-item resolution (plan §4.3–4.4) ───────────────────────────────────
+  // ── Menu-item resolution ───────────────────────────────────
 
   private async readChapterSource(chapter: string): Promise<string | null> {
     const dir = this.deps.currentDir();
@@ -410,11 +406,11 @@ export class ContextMenuController {
     }
     if (outcome.flushed) this.deps.toastSuccess("Updated.");
     // When !outcome.flushed, buffer.flush() detected an external change and
-    // the buffer's OWN conflict banner is already showing (plan §4.7 Step 5)
+    // the buffer's OWN conflict banner is already showing
     // — nothing further to say here.
   }
 
-  // ── Image (plan §4.3–4.4) ───────────────────────────────────────────────────
+  // ── Image ───────────────────────────────────────────────────
 
   private imageItems(target: ContextTarget, blockSlice: string | null, gen: number): ContextMenuItem[] {
     const chapter = target.chapter!;
@@ -425,7 +421,7 @@ export class ContextMenuController {
     }
     const match = findImageToken(blockSlice, image);
     if (!match && !image.source) {
-      // Raw HTML <img> — no markdown token to address (plan §2.6).
+      // Raw HTML <img> — no markdown token to address.
       return [this.goToSourceItem(target)];
     }
     const disabledReason = match ? undefined : "Couldn't locate this image in the source.";
@@ -530,7 +526,7 @@ export class ContextMenuController {
     return items;
   }
 
-  // ── Link (plan §4.3–4.4) ────────────────────────────────────────────────────
+  // ── Link ────────────────────────────────────────────────────
 
   private linkItems(target: ContextTarget, blockSlice: string | null, gen: number): ContextMenuItem[] {
     const chapter = target.chapter!;
@@ -579,7 +575,7 @@ export class ContextMenuController {
     return items;
   }
 
-  // ── Marker (plan §4.3–4.4) ──────────────────────────────────────────────────
+  // ── Marker ──────────────────────────────────────────────────
 
   /** The shared "Edit marker…" flow: prompt with the marker's raw source line
    *  and commit the edited line. Used by both the primary marker target and
@@ -720,7 +716,7 @@ export class ContextMenuController {
     return items;
   }
 
-  // ── Block (plan §4.3) ───────────────────────────────────────────────────────
+  // ── Block ───────────────────────────────────────────────────────
 
   private blockItems(
     target: ContextTarget,
@@ -739,8 +735,7 @@ export class ContextMenuController {
         enabled: true,
         run: async () => {
           // A zero-width insert AT the block's own start line — `expected`
-          // is trivially "" and the target block's text is never touched
-          // (mirrors the §5.5 boundary-insert rule the overlay will reuse).
+          // is trivially "" and the target block's text is never touched.
           await this.commit(chapter, [range[0], range[0]], "", "@page-break\n\n", gen);
         },
       },
