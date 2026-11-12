@@ -7,6 +7,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Desktop: the Online tab says at a glance whether your work is safe.** The top card now
+  states it ("7 versions aren't online yet · 2 new from Grace", or "Everything is online"),
+  says where the book is kept and when it was last checked, and holds the **Send changes
+  automatically** switch and one **Back up now** button, with **Get latest** beside it when
+  there is something to get. **Waiting** lists what is going up and coming down, with real
+  file names; click a row to see that version in Version history. **Saved versions** sums up
+  today's automatic versions and shows your named ones, beside **Drafts**, which now says
+  when each draft was last saved. A draft switch that didn't finish, or copies kept after a
+  repair, now show as a banner at the top of the tab.
 - **Desktop: Version history shows exactly what a version changed in a file.** Opening a
   changed file now compares it with the version before, so it matches the "3 paragraphs
   changed" on the card; **Compared with your book now** shows the version beside the book

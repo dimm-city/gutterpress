@@ -807,6 +807,8 @@ export interface Revision {
   current: boolean;
   where: "online" | "this-computer" | "online-only";
   notBackedUp: boolean;
+  /** When its newest version was saved (ms), when the host could read it. */
+  savedAt?: number;
 }
 
 /** Files kept just before an interrupted-switch repair overwrote them (mirrors the lib's `RepairCopy`, #508). */

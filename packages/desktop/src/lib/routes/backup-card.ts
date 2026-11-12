@@ -45,6 +45,12 @@ export interface CardInput {
   bookName?: string;
   /** Where the drafts are kept: whether the open one is online, and how many others are only on this computer. */
   drafts?: { currentBackedUp: boolean; othersOnlyHere: number };
+  /**
+   * What is waiting, once read (the tab's Waiting card lists the same): versions here not online yet
+   * (`upAtLeast`: the first page of history holds no older online one, so there may be more), whether
+   * edits are saved but not in a version yet, and versions online not here yet (`from`: their one author).
+   */
+  waiting?: { up: number; upAtLeast?: boolean; edits?: boolean; down: number; from?: string };
 }
 
 export interface CardView {
@@ -57,7 +63,7 @@ export interface CardView {
   secondary?: CardAction;
   /** A muted line under the detail ("1 other draft is only on this computer."). */
   note?: string;
-  /** The detail ends with when the online copy was last checked (safe, ahead and behind). */
+  /** The book is set up and its online copy answers: the card shows where it is kept, when it was last checked, and the automatic switch. */
   showChecked?: boolean;
 }
 
@@ -78,7 +84,28 @@ export function checkedAgo(at: number, now: number): string {
   return agoFull(at, now);
 }
 
+/**
+ * The title for a book whose online copy answers: the counts the Waiting card lists
+ * ("7 versions aren't online yet · 2 new from Grace"), or "Everything is online".
+ * Without counts yet the state's own title stays.
+ */
+function withCounts(view: CardView, w: CardInput["waiting"]): CardView {
+  if (!w) return view;
+  const parts: string[] = [];
+  if (w.up > 0) parts.push(w.upAtLeast ? `${w.up}+ versions aren't online yet` : `${plural(w.up, "version isn't", "versions aren't")} online yet`);
+  else if (w.edits) parts.push("Your latest edits aren't online yet");
+  if (w.down > 0) parts.push(w.from ? `${w.down} new from ${w.from}` : `${plural(w.down, "new version", "new versions")} online`);
+  if (parts.length === 0) return view.tone === "ok" ? { ...view, title: "Everything is online" } : view;
+  const sending = w.up > 0 || w.edits === true;
+  return { ...view, title: parts.join(" · "), tone: sending ? "warn" : "pending", icon: sending ? "cloud-upload" : "cloud-download" };
+}
+
 export function backupCard(i: CardInput): CardView {
+  const view = situationCard(i);
+  return view.showChecked ? withCounts(view, i.waiting) : view;
+}
+
+function situationCard(i: CardInput): CardView {
   switch (i.situation) {
     case "no-versions":
       return { icon: "history", tone: "plain", title: "Version history is off", detail: "Turn it on to keep earlier versions on this computer, so you can go back. Nothing is uploaded.", action: "turn-on-versions" };
@@ -130,7 +157,7 @@ export function backupCard(i: CardInput): CardView {
   const ahead = b?.ahead ?? 0;
   const behind = b?.behind === true;
   if (behind && ahead > 0) {
-    return { icon: "cloud", tone: "pending", title: "Changes here and online", detail: "Gutterpress will combine them. If the same passage changed in both places, you will choose which to keep.", action: "update" };
+    return { icon: "cloud", tone: "pending", title: "Changes here and online", detail: "Gutterpress will combine them. If the same passage changed in both places, you will choose which to keep.", action: "update", showChecked: true };
   }
   if (behind) {
     return { icon: "cloud-download", tone: "pending", title: "New changes are online", detail: "Someone (or another computer) changed this book. Your own changes stay as they are.", action: "get-changes", showChecked: true };
@@ -148,16 +175,16 @@ export function backupCard(i: CardInput): CardView {
   }
   if (!b || (state !== "synced" && state !== "up-to-date" && state !== "unsent")) {
     // Nothing heard yet (the host reports once its first pass has run), or only that nothing has run: say what is known, offer the one action.
-    return { icon: "cloud", tone: "plain", title: "Your online copy is set up", detail: `Kept at ${i.where}. ${i.autoBackup ? "Gutterpress sends your changes as you work." : "Sending automatically is off."}`, action: "back-up" };
+    return { icon: "cloud", tone: "plain", title: "Your online copy is set up", detail: "", action: "back-up", showChecked: true };
   }
   if (state === "unsent") {
-    return { icon: "cloud-upload", tone: "warn", title: "Not online yet", detail: i.autoBackup ? "Your latest work is saved here and Gutterpress will send it soon." : "Your latest work is saved here. Send it when you're ready.", action: "back-up" };
+    return { icon: "cloud-upload", tone: "warn", title: "Not online yet", detail: i.autoBackup ? "Your latest work is saved here and Gutterpress will send it soon." : "Your latest work is saved here. Send it when you're ready.", action: "back-up", showChecked: true };
   }
   if (i.drafts && !i.drafts.currentBackedUp) {
-    return { icon: "cloud-upload", tone: "warn", title: "This draft isn't online yet", detail: "Your work is saved on this computer. Send now to keep it safe online.", action: "back-up" };
+    // Never "Everything is online" while the open draft itself isn't: no count would say so.
+    return { icon: "cloud-upload", tone: "warn", title: "This draft isn't online yet", detail: "Your work is saved on this computer. Back it up to keep it safe online.", action: "back-up" };
   }
-  const when = known ? `Last sent ${relativeTime(at, i.now)} to ${i.where}.` : `Kept at ${i.where}.`;
-  return { icon: "circle-check", tone: "ok", title: "Your book is safe online", detail: i.autoBackup ? `${when} Gutterpress sends your changes as you work.` : `${when} Sending automatically is off.`, action: "back-up", showChecked: true, ...(i.drafts?.othersOnlyHere ? { note: `${plural(i.drafts.othersOnlyHere, "other draft is", "other drafts are")} only on this computer.` } : {}) };
+  return { icon: "circle-check", tone: "ok", title: "Your book is safe online", detail: known ? `Last sent ${relativeTime(at, i.now)}.` : "", action: "back-up", showChecked: true, ...(i.drafts?.othersOnlyHere ? { note: `${plural(i.drafts.othersOnlyHere, "other draft is", "other drafts are")} only on this computer.` } : {}) };
 }
 
 /**

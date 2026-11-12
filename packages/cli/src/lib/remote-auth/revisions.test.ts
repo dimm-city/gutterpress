@@ -118,10 +118,10 @@ describe("listRevisions with an online copy", () => {
       expect(await listRevisions(h.projectDir)).toEqual({
         current: "Second-edition",
         revisions: [
-          { name: "Made-elsewhere", current: false, where: "online-only", notBackedUp: false },
-          { name: "main", current: false, where: "online", notBackedUp: false },
-          { name: "Only-here", current: false, where: "this-computer", notBackedUp: false },
-          { name: "Second-edition", current: true, where: "online", notBackedUp: true },
+          { name: "Made-elsewhere", current: false, where: "online-only", notBackedUp: false, savedAt: expect.any(Number) },
+          { name: "main", current: false, where: "online", notBackedUp: false, savedAt: expect.any(Number) },
+          { name: "Only-here", current: false, where: "this-computer", notBackedUp: false, savedAt: expect.any(Number) },
+          { name: "Second-edition", current: true, where: "online", notBackedUp: true, savedAt: expect.any(Number) },
         ],
         repairCopies: [],
       });
