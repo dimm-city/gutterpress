@@ -22,11 +22,10 @@ describe("backupCard", () => {
     expect(c.title).toBe("Checking your online copy…");
     expect(c.detail).toContain("2 hours ago");
   });
-  test("safe names the place once and the time", () => {
+  test("safe says when it was last sent; where it is kept is the card's own line", () => {
     const c = card({ backup: synced() });
-    expect(c).toMatchObject({ title: "Your book is safe online", tone: "ok", action: "back-up" });
-    expect(c.detail).toBe("Last sent 3 minutes ago to GitHub · ada/harbor. Gutterpress sends your changes as you work.");
-    expect(c.detail.match(/ada\/harbor/g)?.length).toBe(1);
+    expect(c).toMatchObject({ title: "Your book is safe online", tone: "ok", action: "back-up", showChecked: true });
+    expect(c.detail).toBe("Last sent 3 minutes ago.");
   });
   test("ahead, behind, both", () => {
     expect(card({ backup: synced({ ahead: 3 }) })).toMatchObject({ title: "3 changes aren't online yet", action: "back-up" });
@@ -59,11 +58,13 @@ describe("drafts and reassurance", () => {
     expect(s.note).toBe("1 other draft is only on this computer.");
     expect(card({ backup: synced(), drafts: { currentBackedUp: true, othersOnlyHere: 2 } }).note).toBe("2 other drafts are only on this computer.");
   });
-  test("the checked time shows only for safe, ahead and behind", () => {
-    expect(card({ backup: synced() }).showChecked).toBe(true);
-    expect(card({ backup: synced({ ahead: 1 }) }).showChecked).toBe(true);
-    expect(card({ backup: synced({ behind: true }) }).showChecked).toBe(true);
-    expect(card({ backup: { state: "offline", lastSyncAt: null } }).showChecked).toBeUndefined();
+  test("where it is kept and the checked time show while the online copy answers, never on a problem card", () => {
+    for (const b of [synced(), synced({ ahead: 1 }), synced({ behind: true }), synced({ behind: true, ahead: 1 }), { state: "unsent", lastSyncAt: null }, null]) {
+      expect(card({ backup: b }).showChecked).toBe(true);
+    }
+    for (const b of [{ state: "offline", lastSyncAt: null }, { state: "auth", lastSyncAt: null }, { state: "error", lastSyncAt: null }, { state: "syncing", lastSyncAt: null }, synced({ decide: 1 })]) {
+      expect(card({ backup: b }).showChecked).toBeUndefined();
+    }
   });
   test("warning cards tell the author their work is safe", () => {
     for (const c of [
@@ -112,5 +113,29 @@ describe("repairSetAsideText", () => {
   });
   test("one version reads in the singular", () => {
     expect(repairSetAsideText({ revisions: [], versions: 1 })).toContain("1 version that is only");
+  });
+});
+
+describe("the counts the Waiting card lists", () => {
+  test("versions going up and coming down are the title, with who sent them when it is one person", () => {
+    expect(card({ backup: synced(), waiting: { up: 7, down: 2, from: "Grace" } })).toMatchObject({ title: "7 versions aren't online yet · 2 new from Grace", tone: "warn", icon: "cloud-upload", action: "back-up" });
+    expect(card({ backup: synced(), waiting: { up: 1, down: 0 } }).title).toBe("1 version isn't online yet");
+    expect(card({ backup: synced({ behind: true }), waiting: { up: 0, down: 2 } })).toMatchObject({ title: "2 new versions online", tone: "pending", action: "get-changes" });
+    expect(card({ backup: synced(), waiting: { up: 100, upAtLeast: true, down: 0 } }).title).toBe("100+ versions aren't online yet");
+  });
+  test("edits not in a version yet are not counted as versions, but are not 'everything'", () => {
+    expect(card({ backup: synced(), waiting: { up: 0, edits: true, down: 0 } }).title).toBe("Your latest edits aren't online yet");
+    expect(card({ backup: synced(), waiting: { up: 3, edits: true, down: 0 } }).title).toBe("3 versions aren't online yet");
+  });
+  test("nothing waiting on a safe book is 'Everything is online'; other states keep their own title", () => {
+    expect(card({ backup: synced(), waiting: { up: 0, down: 0 } })).toMatchObject({ title: "Everything is online", tone: "ok" });
+    expect(card({ backup: null, waiting: { up: 0, down: 0 } }).title).toBe("Your online copy is set up");
+    expect(card({ backup: synced({ ahead: 2 }), waiting: { up: 0, down: 0 } }).title).toBe("2 changes aren't online yet");
+  });
+  test("a problem outranks the counts", () => {
+    expect(card({ backup: { state: "offline", lastSyncAt: null }, waiting: { up: 4, down: 1 } }).title).toBe("You're offline");
+    expect(card({ backup: { state: "auth", lastSyncAt: null }, waiting: { up: 4, down: 1 } }).title).toBe("Your saved sign-in no longer works");
+    expect(card({ backup: synced({ decide: 1 }), waiting: { up: 4, down: 1 } }).title).toBe("1 passage needs your decision");
+    expect(card({ backup: synced(), drafts: { currentBackedUp: false, othersOnlyHere: 0 }, waiting: { up: 0, down: 0 } }).title).toBe("This draft isn't online yet");
   });
 });

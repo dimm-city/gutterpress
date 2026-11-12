@@ -1,42 +1,47 @@
 <script lang="ts">
   /**
    * ProjectConnectionsSection — Book setup → Online (it was "Online
-   * copy"): three parts and a drawer, built for two questions — "Is my work
-   * safe?" and "Can I go back / try another draft?":
+   * copy"), built for two questions — "Is my work safe?" and "Can I go back /
+   * try another draft?":
    *
-   *   1. Status card — one title, one line and at most one primary button, from
-   *      the table in `backupCard` (routes/backup-card.ts): version history off,
-   *      not backed up online yet (Back up online… opens BackupWizard), checking,
-   *      safe, ahead, behind, both, decide, offline, sign-in lost, can't find,
-   *      paused. A sign-in step sits under it when one is needed; "Checking the
-   *      online copy…" / "Checked 20 s ago" says how fresh it is.
-   *   2. History — the newest versions (the author's own note is the title),
-   *      Save a version, See all (the Version history screen over this one,
-   *      `onBrowseVersions`).
-   *   3. Drafts (RevisionsList) — separate lines of work, plus any saved copies
-   *      kept after a repair (#508).
-   *   4. "Something wrong with the online copy?" — Check the connection, Repair
+   *   0. A banner from Drafts (RevisionsList), first, when a switch didn't
+   *      finish or a repair kept saved copies.
+   *   1. Status card — the one statement of whether the work is safe: the
+   *      counts ("7 versions aren't online yet · 2 new from Grace" / "Everything
+   *      is online") or the situation's title from `backupCard`
+   *      (routes/backup-card.ts: version history off, not online yet, sign in,
+   *      checking, offline, paused, can't find…), where the book is kept and
+   *      when it was last checked, the "Send changes automatically" switch, ONE
+   *      primary button (Back up now, or the situation's own) and a quiet Get latest when there is something
+   *      to get. A sign-in step sits under it when one is needed.
+   *   2. Waiting (WaitingChanges) — Going up / Coming down, each row opening
+   *      Version history on its version; hidden when nothing is waiting.
+   *   3. Saved versions — Save a version…, today's automatic versions in one
+   *      line, the newest named versions, See all versions (the Version history
+   *      screen over this one, `onBrowseVersions`). Beside it from ~1100 px:
+   *   4. Drafts (RevisionsList) — separate lines of work.
+   *   5. "Something wrong with the online copy?" — Check the connection, Repair
    *      (a confirm that names what would be set aside) and, under More…, Start
    *      over. It opens by itself only after two backups in a row failed for a
-   *      reason other than being offline, and is left out while offline (Try
-   *      again is the whole answer).
+   *      reason other than being offline.
    *
    * What it reads comes from the shared online-copy snapshot
-   * (`online-copy-cache`): the tab renders at once from the last one, refreshes
-   * behind itself only when it is over a minute old, and the first page of
-   * Version history is fetched as the tab opens.
+   * (`online-copy-cache`) and one shared first page of Version history
+   * (`versionsPage`), which the status counts, Waiting and Saved versions all
+   * use; a version's changed files are looked up once (they never change). The
+   * tab paints at once from what it last read (`online-view-cache`).
    *
    * PWA-clean (§8): api.* routes only.
    */
   import { onMount, tick } from "svelte";
-  import { api, type VersionEntry } from "#lib/api.ts";
+  import { api, type OnlineVersionEntry, type VersionChanges, type VersionEntry } from "#lib/api.ts";
   import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
   import { cancelInlineConfirm, dialogBehavior, requestInlineConfirm, type InlineConfirmState } from "#lib/dialog.ts";
   import { useSettings } from "#lib/settings.svelte.ts";
   import { backupState, onlineCopyName } from "#lib/backup-state.ts";
   import { NOTHING_NEW_NOTICE, versionsLine } from "#lib/save-status.ts";
-  import { versionTitle, whenShort } from "#lib/routes/version-timeline.ts";
-  import { agoFull, backupCard, checkedAgo, repairSetAsideText, type CardAction } from "#lib/routes/backup-card.ts";
+  import { savedSummary, versionTitle, waitingRows, whenRange, whenShort } from "#lib/routes/version-timeline.ts";
+  import { backupCard, checkedAgo, repairSetAsideText, type CardAction } from "#lib/routes/backup-card.ts";
   import * as onlineCopy from "#lib/routes/online-copy-cache.ts";
   import BackupWizard from "#lib/components/BackupWizard.svelte";
   import GitHubConnect from "#lib/components/GitHubConnect.svelte";
@@ -111,8 +116,6 @@
   let checking = $state(seen?.checking ?? false);
   let checkedAt = $state<number | null>(seen?.checkedAt ?? null);
   let revisions = $state<import("#lib/platform/contract.ts").RevisionList | null>(seen?.revisions ?? null);
-  /** Bumped after anything that can change what is waiting; WaitingChanges re-reads behind itself. */
-  let waitingKey = $state(0);
   let now = $state(Date.now());
   const situation = $derived(diag ? backupState(diag) : null);
   /** What the last action changed ("Signed in to git.example.com."). */
@@ -153,20 +156,50 @@
     };
   });
 
-  const card = $derived(
-    situation
-      ? backupCard({ situation, backup: decide > 0 ? { ...(backup ?? { state: "idle" as const, lastSyncAt: null }), decide } : backup, checking, where, github: onGitHub, autoBackup, now, bookName, drafts })
-      : null,
-  );
-
-  // This computer: the newest version and what has changed since.
+  // This computer: the first page of versions (shared with Version history), what the newest
+  // waiting ones changed, and the edits not in a version yet. Online: the versions not here yet.
+  let page = $state<{ entries: VersionEntry[]; hasMore: boolean } | null>(seenView?.page ?? null);
+  let changes = $state<Record<string, VersionChanges>>(seenView?.changes ?? {});
   let facts = $state<{ lastVersionAt: number | null; changedFiles: number | null; stale: boolean } | null>(seenView?.facts ?? null);
+  let incoming = $state<OnlineVersionEntry[] | null>(seenView?.incoming ?? null);
+  let incomingReason = $state<string | undefined>(seenView?.incomingReason);
+  let incomingAt = $state<number | null>(seenView?.incomingAt ?? null);
   let nothingNew = $state(false);
   let savingVersion = $state(false);
-  let revisionsEl = $state<{ refresh: () => void }>();
 
-  /** The newest versions, for the History card. */
-  let recent = $state<VersionEntry[]>(seenView?.recent ?? []);
+  /** Versions on this computer not online yet (newest first, from the first page). */
+  const goingUp = $derived(page?.entries.filter((e) => e.backedUp === false) ?? []);
+  /** The whole first page is waiting and there is more: the count is a floor. */
+  const upAtLeast = $derived(!!page?.hasMore && goingUp.length > 0 && goingUp.length === page.entries.length);
+  const upRows = $derived(waitingRows(goingUp, (e) => changes[e.id]));
+  const downRows = $derived(incoming && waitingRows(incoming, (e) => ({ files: e.changes, more: e.moreChanges })));
+  /** The open draft has never been sent online, so all of it goes up (its versions may carry no online mark). */
+  const draftOnlyHere = $derived(revisions?.revisions.find((r) => r.current)?.where === "this-computer");
+  const edits = $derived(facts?.changedFiles ?? 0);
+  /** Who made the versions coming down, when it is one person. */
+  const downFrom = $derived.by(() => {
+    const authors = new Set((incoming ?? []).map((e) => e.author));
+    const [only] = authors;
+    return authors.size === 1 && only ? only : undefined;
+  });
+  const summary = $derived(page && savedSummary(page, now));
+
+  const card = $derived(
+    situation
+      ? backupCard({
+          situation,
+          backup: decide > 0 ? { ...(backup ?? { state: "idle" as const, lastSyncAt: null }), decide } : backup,
+          checking,
+          where,
+          github: onGitHub,
+          autoBackup,
+          now,
+          bookName,
+          drafts,
+          ...(page ? { waiting: { up: goingUp.length, upAtLeast, edits: edits > 0, down: incoming?.length ?? 0, from: downFrom } } : {}),
+        })
+      : null,
+  );
 
   /** A backup finished, or a version was restored: the newest versions may have changed. */
   export function refreshHistory() {
@@ -174,8 +207,8 @@
     // A backup (automatic, from the status bar, or from here) may have sent drafts online or brought versions in.
     if (projectDir) {
       void onlineCopy.refresh(projectDir, { network: false });
-      void loadFacts(projectDir);
-      waitingKey++;
+      void loadVersions(projectDir);
+      void loadIncoming(projectDir);
     }
   }
 
@@ -184,6 +217,8 @@
     checking = snap.checking;
     checkedAt = snap.checkedAt;
     revisions = snap.revisions;
+    // A snapshot can change the situation behind what is showing (a sign-in elsewhere made the book ready).
+    if (projectDir && situation && situation !== readFor) loadAll(projectDir);
   }
 
   onMount(() => {
@@ -212,8 +247,15 @@
     } finally {
       loading = false;
     }
-    // The first page of Version history (read once, also for "See all"), so it opens at once.
-    if (situation && situation !== "no-versions") void loadFacts(projectDir);
+  }
+
+  /** The situation the versions (and what is online) were last read for: `apply` reads them again when it changes. */
+  let readFor: typeof situation = null;
+  /** The first page of Version history (read once, also for "See all", so it opens at once) and, with an online copy that answers, what is online. */
+  function loadAll(dir: string) {
+    readFor = situation;
+    if (situation && situation !== "no-versions") void loadVersions(dir);
+    if (situation === "ready") void loadIncoming(dir);
   }
 
   /** After an action that changed where the book is kept: forget the snapshot and read it all again. */
@@ -221,6 +263,8 @@
     if (!projectDir) return;
     onlineCopy.invalidate(projectDir);
     loading = !diag;
+    // Read everything again once the new snapshot lands (`apply`).
+    readFor = null;
     try {
       apply(await onlineCopy.refresh(projectDir, { fresh: true }));
     } catch {
@@ -228,24 +272,58 @@
     } finally {
       loading = false;
     }
-    if (situation && situation !== "no-versions") void loadFacts(projectDir);
   }
 
-  /** Best-effort: the line says nothing rather than guessing when the lookup fails. */
-  async function loadFacts(dir: string) {
+  /** Best-effort: what is showing stays, rather than a guess, when a read fails. */
+  async function loadVersions(dir: string) {
     try {
-      // The newest versions show as soon as they are read; counting edited files can take longer.
+      // The versions show as soon as they are read; counting edited files can take longer.
       const unsaved = api.vcs.unversionedChanges(dir);
       unsaved.catch(() => {});
-      const page = await onlineCopy.versionsPage(dir);
-      recent = page.entries.slice(0, 5);
-      view.update(dir, { recent });
+      page = await onlineCopy.versionsPage(dir);
+      view.update(dir, { page });
+      void lookUpChanges(dir);
       const pending = await unsaved;
       facts = { lastVersionAt: page.entries[0]?.timestamp ?? null, changedFiles: pending.changedFiles, stale: pending.stale };
       view.update(dir, { facts });
       if ((pending.changedFiles ?? 0) > 0) nothingNew = false;
     } catch {
-      // Keep what is showing (the line says nothing rather than guessing).
+      // Keep what is showing.
+    }
+  }
+
+  /** Waiting rows read at most this many; a version is looked up once, ever (what it changed never changes). */
+  const ROWS_LOOKED_UP = 5;
+  const PER_ROW = 2;
+  /** What the versions in the first Going up rows changed: the newest one or two of each row. */
+  async function lookUpChanges(dir: string) {
+    const ids: string[] = [];
+    let i = 0;
+    for (const row of upRows.slice(0, ROWS_LOOKED_UP)) {
+      ids.push(...goingUp.slice(i, i + Math.min(row.count, PER_ROW)).map((e) => e.id));
+      i += row.count;
+    }
+    const todo = ids.filter((id) => !changes[id]);
+    if (!todo.length) return;
+    const found = await Promise.all(todo.map((id) => api.vcs.versionChanges(dir, id).then((c) => [id, c] as const, () => null)));
+    changes = { ...changes, ...Object.fromEntries(found.filter((f) => f !== null)) };
+    view.update(dir, { changes });
+  }
+
+  /** The versions online that are not on this computer yet. */
+  async function loadIncoming(dir: string) {
+    try {
+      const r = await api.vcs.onlineVersions(dir);
+      incomingReason = r.reason;
+      if (r.reason) {
+        view.update(dir, { incomingReason: r.reason });
+        return;
+      }
+      incoming = r.entries;
+      incomingAt = r.checkedAt ? Date.parse(r.checkedAt) || Date.now() : Date.now();
+      view.update(dir, { incoming, incomingReason: undefined, incomingAt });
+    } catch {
+      // Keep what is showing.
     }
   }
 
@@ -322,8 +400,8 @@
       // A pass can bring in versions, send a new draft online and make a version: read it all again.
       onlineCopy.dropVersionsPage(dir);
       void onlineCopy.refresh(dir, { fresh: true });
-      void loadFacts(dir);
-      waitingKey++;
+      void loadVersions(dir);
+      void loadIncoming(dir);
       return null;
     });
   const backUpNow = () => pass("back-up", onBackUpNow);
@@ -336,8 +414,7 @@
     try {
       nothingNew = (await onSaveVersion()) === "unchanged";
       onlineCopy.dropVersionsPage(projectDir);
-      await loadFacts(projectDir);
-      waitingKey++;
+      await loadVersions(projectDir);
     } catch {
       // The page shows the failure toast.
     } finally {
@@ -350,17 +427,19 @@
     onProjectFilesChanged?.();
     if (projectDir) {
       onlineCopy.dropVersionsPage(projectDir);
-      void loadFacts(projectDir);
+      void loadVersions(projectDir);
     }
   }
 
   // ── The primary button ─────────────────────────────────────────────────────
+  // The full pass is Back up now, with sending automatically on or off; Get latest sends nothing
+  // (docs/ux-design-contract.md, Vocabulary).
   const LABELS: Record<Exclude<CardAction, null>, string> = {
     "turn-on-versions": "Turn on version history",
     "set-up-backup": "Put this book online…",
-    "back-up": "Send now",
-    "get-changes": "Get changes",
-    update: "Update",
+    "back-up": "Back up now",
+    "get-changes": "Get latest",
+    update: "Back up now",
     "try-again": "Try again",
     "sign-in": "Sign in",
     "review-decisions": "Choose…",
@@ -368,9 +447,11 @@
   };
   const busyLabel = (a: CardAction): string | null =>
     a === "turn-on-versions" && busy ? "Turning on…"
-    : a === "back-up" || a === "update" || a === "try-again" ? (running === "back-up" ? "Sending…" : null)
-    : a === "get-changes" && running === "get-latest" ? "Getting changes…"
+    : a === "back-up" || a === "update" || a === "try-again" ? (running === "back-up" ? "Backing up…" : null)
+    : a === "get-changes" && running === "get-latest" ? "Getting the latest…"
     : null;
+  /** Get latest beside the full pass: only when there is something to get and it isn't already the one button. */
+  const offerGetLatest = $derived(situation === "ready" && !!onGetLatest && (!!incoming?.length || running === "get-latest") && card?.action !== "get-changes");
 
   function runAction(a: CardAction) {
     switch (a) {
@@ -516,9 +597,8 @@
     else if (message) notify?.success(message);
   }
 
-  const when = (ms: number): string => new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-  /** The Changes waiting section is shown, so its Send now is the only one on screen. */
-  const showWaiting = $derived(situation === "ready" && !!projectDir);
+  /** Waiting shows only when something is: versions either way, edits not in a version yet, or a draft not online. */
+  const showWaiting = $derived(situation === "ready" && (goingUp.length > 0 || !!downRows?.length || edits > 0 || draftOnlyHere));
   const needsSignIn = $derived(
     card?.action === "sign-in" || (signInOpen && !!card),
   );
@@ -526,22 +606,35 @@
 
 <div class="online-copy" bind:this={sectionEl} tabindex="-1">
   {#if loading}
-    <p class="hint">Checking this book's online copy…</p>
+    <p class="hint span">Checking this book's online copy…</p>
   {:else if !diag || !card || !situation}
-    <p class="hint">Couldn't read this book's online status. <button class="ghost small" onclick={load}>Try again</button></p>
+    <p class="hint span">Couldn't read this book's online status. <button class="ghost small" onclick={load}>Try again</button></p>
   {:else}
-    <!-- 1. Is my work safe? One sentence and its one next step. -->
-    <section class="section-card status {card.tone}" aria-labelledby="online-status-title">
+    <!-- 1. Is my work safe? One statement, where it is kept, and its one next step. -->
+    <section class="section-card status {card.tone} span" aria-labelledby="online-status-title">
       <div class="status-row">
-        <span class="status-icon"><Icon name={card.icon} size={18} /></span>
+        <span class="status-icon"><Icon name={card.icon} size={20} /></span>
         <div class="status-text">
           <h3 id="online-status-title">{card.title}</h3>
-          <p>{card.detail}</p>
-          {#if card.showChecked && checkedAt !== null && !checking}<p class="checked">Checked {checkedAgo(checkedAt, now)}.</p>{/if}
+          {#if card.detail}<p>{card.detail}</p>{/if}
+          {#if situation === "ready"}
+            <div class="status-meta">
+              {#if card.showChecked && where}
+                <span>{where}{#if checking}{" · "}<span class="spin" aria-hidden="true"></span> checking now…{:else if checkedAt !== null}{" · "}checked {checkedAgo(checkedAt, now)}{/if}</span>
+              {/if}
+              <label class="auto">
+                <input type="checkbox" role="switch" checked={autoBackup} onchange={(e) => setAutoBackup(e.currentTarget.checked)} />
+                Send changes automatically
+              </label>
+            </div>
+          {/if}
           {#if card.note}<p class="note">{card.note}</p>{/if}
         </div>
         <div class="status-action">
-          {#if card.action && card.action !== "sign-in" && !(card.action === "back-up" && showWaiting) && (card.action !== "review-decisions" || onReviewDecisions)}
+          {#if offerGetLatest}
+            <button class="quiet" onclick={() => void getLatest()} disabled={busy}>{running === "get-latest" ? "Getting the latest…" : "Get latest"}</button>
+          {/if}
+          {#if card.action && card.action !== "sign-in" && (card.action !== "review-decisions" || onReviewDecisions)}
             <button class="app-btn-primary" onclick={() => runAction(card.action)} disabled={busy}>
               {busyLabel(card.action) ?? LABELS[card.action]}
             </button>
@@ -551,10 +644,6 @@
           {/if}
         </div>
       </div>
-
-      {#if situation === "ready" && checking}
-        <p class="check-line" role="status"><span class="spin" aria-hidden="true"></span> Checking the online copy…</p>
-      {/if}
 
       {#if needsSignIn && situation !== "own-tools"}
         <div class="status-body">
@@ -578,33 +667,37 @@
       {#if actionError}<p class="status-note error" role="alert" bind:this={errorEl} tabindex="-1">{actionError}</p>{/if}
     </section>
 
-    {#if showWaiting && projectDir}
-      <!-- 1b. What is waiting on each side, and the one button for each. -->
-      <WaitingChanges {projectDir} refreshKey={waitingKey} unsaved={facts?.changedFiles ?? null} {busy} {running} {checking} draftOnlyHere={drafts?.currentBackedUp === false} onSend={backUpNow} onGet={getLatest} />
+    {#if showWaiting}
+      <!-- 2. What is waiting on each side; each row opens Version history on its version. -->
+      <div class="span">
+        <WaitingChanges
+          up={upRows}
+          upCount={goingUp.length}
+          {upAtLeast}
+          edits={edits || null}
+          {draftOnlyHere}
+          down={downRows}
+          downCount={incoming?.length ?? 0}
+          reason={incomingReason}
+          {incomingAt}
+          {checking}
+          {now}
+          onOpen={onBrowseVersions}
+        />
+      </div>
     {/if}
 
     {#if situation !== "no-versions" && projectDir}
-      <!-- 2. History: where you have been, and the way back. -->
-      <section class="section-card" aria-labelledby="version-history-title">
+      <!-- 3. Saved versions: save one now, and the way back. -->
+      <section class="section-card saved" aria-labelledby="version-history-title">
         <header class="section-head">
           <div>
             <h3 id="version-history-title">Saved versions</h3>
-            {#if facts}<p class="section-sub">{versionsLine({ ...facts, now: Date.now() })}</p>{/if}
+            {#if facts}<p class="section-sub">{versionsLine({ ...facts, now })}</p>{/if}
           </div>
-          <div class="head-actions">
-            <button class="ghost" onclick={() => void saveVersion()} disabled={busy || savingVersion || !onSaveVersion}>
-              <Icon name="save" size={14} /> {savingVersion ? "Saving…" : "Save a version"}
-            </button>
-            <button
-              class="ghost"
-              onclick={() => onBrowseVersions?.()}
-              onpointerenter={() => projectDir && void onlineCopy.versionsPage(projectDir)}
-              onfocus={() => projectDir && void onlineCopy.versionsPage(projectDir)}
-              disabled={!onBrowseVersions}
-            >
-              <Icon name="history" size={14} /> See all
-            </button>
-          </div>
+          <button class="app-btn-primary" onclick={() => void saveVersion()} disabled={busy || savingVersion || !onSaveVersion}>
+            {savingVersion ? "Saving…" : "Save a version…"}
+          </button>
         </header>
         {#if versionsProblem}
           <p class="section-note warn">
@@ -613,40 +706,55 @@
           </p>
         {/if}
         {#if nothingNew}<p class="section-note" role="status">{NOTHING_NEW_NOTICE}</p>{/if}
-        <ul class="recent" aria-label="Newest versions">
-          {#each recent as v (v.id)}
-            <li>
-              <button class="recent-row" onclick={() => onBrowseVersions?.(v.id)} disabled={!onBrowseVersions}>
-                <span class="recent-main">
-                  <span class="recent-title">{versionTitle(v.message)}</span>
-                  <span class="recent-sub">{whenShort(v.timestamp, now)} · {agoFull(v.timestamp, now)}</span>
-                </span>
-                {#if v.backedUp === true}<span class="where ok"><Icon name="circle-check" size={13} /> Online</span>{/if}
-                {#if v.backedUp === false}<span class="where"><Icon name="laptop" size={13} /> Only on this computer</span>{/if}
-                <Icon name="chevron-right" size={14} />
-              </button>
-            </li>
-          {:else}
-            <li class="section-note">No versions yet.</li>
-          {/each}
-        </ul>
+        {#if summary}
+          <ul class="saved-list" aria-label="Saved versions">
+            {#if summary.today}
+              <li>
+                <button class="saved-row" onclick={() => onBrowseVersions?.()} disabled={!onBrowseVersions}>
+                  <span class="saved-title">Today · {summary.today.count}{summary.today.atLeast ? "+" : ""} automatic {summary.today.count === 1 && !summary.today.atLeast ? "version" : "versions"}</span>
+                  <span class="saved-when">{whenRange(summary.today.from, summary.today.to, now)}</span>
+                </button>
+              </li>
+            {/if}
+            {#each summary.named as v (v.id)}
+              <li>
+                <button class="saved-row" onclick={() => onBrowseVersions?.(v.id)} disabled={!onBrowseVersions}>
+                  <span class="saved-title"><span class="star"><Icon name="star" size={12} /></span>{versionTitle(v.message)}</span>
+                  <span class="saved-when">{whenShort(v.timestamp, now)}</span>
+                </button>
+              </li>
+            {/each}
+            {#if !summary.today && !summary.named.length && page?.entries[0]}
+              {@const v = page.entries[0]}
+              <li>
+                <button class="saved-row" onclick={() => onBrowseVersions?.(v.id)} disabled={!onBrowseVersions}>
+                  <span class="saved-title">{versionTitle(v.message)}</span>
+                  <span class="saved-when">{whenShort(v.timestamp, now)}</span>
+                </button>
+              </li>
+            {/if}
+            {#if !page?.entries.length}<li class="section-note">No versions yet.</li>{/if}
+          </ul>
+        {/if}
         <div class="section-foot">
-          <button class="ghost small" onclick={() => onBrowseVersions?.()} disabled={!onBrowseVersions}>Go back to one of these…</button>
-          {#if situation === "ready"}
-            <label class="auto">
-              <input type="checkbox" checked={autoBackup} onchange={(e) => setAutoBackup(e.currentTarget.checked)} />
-              Send changes automatically
-            </label>
-          {/if}
+          <button
+            class="ghost"
+            onclick={() => onBrowseVersions?.()}
+            onpointerenter={() => projectDir && void onlineCopy.versionsPage(projectDir)}
+            onfocus={() => projectDir && void onlineCopy.versionsPage(projectDir)}
+            disabled={!onBrowseVersions}
+          >
+            See all versions <Icon name="chevron-right" size={14} />
+          </button>
         </div>
       </section>
 
-      <!-- 3. Drafts: other lines of work, and (after a repair) the saved copies. -->
-      <RevisionsList bind:this={revisionsEl} {projectDir} hasOnlineCopy={!!diag.remoteUrl} disabled={busy} onChanged={draftsChanged} />
+      <!-- 4. Drafts: other lines of work (its repair banner places itself first). -->
+      <RevisionsList {projectDir} hasOnlineCopy={!!diag.remoteUrl} disabled={busy} onChanged={draftsChanged} />
 
-      <!-- 4. The tools, out of the way. -->
+      <!-- 5. The tools, out of the way. -->
       {#if situation === "ready"}
-        <details class="trouble section-card" bind:open={troubleOpen}>
+        <details class="trouble section-card span" bind:open={troubleOpen}>
           <summary><Icon name="chevron-right" size={13} /> Something wrong with the online copy?</summary>
           <div class="tools">
             <div class="tool">
@@ -689,6 +797,7 @@
   {/if}
 </div>
 
+
 {#if wizardOpen && projectDir}
   <BackupWizard {projectDir} onClose={() => (wizardOpen = false)} onDone={wizardDone} onFailed={wizardFailed} />
 {/if}
@@ -712,59 +821,67 @@
   @import "../styles/config-section-shared.css";
   @import "../styles/dialog-shell.css";
 
-  .online-copy { display: flex; flex-direction: column; gap: 16px; max-width: 820px; }
+  /* One column; from ~1100 px Saved versions and Drafts sit side by side, everything else spans. */
+  .online-copy { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 14px; }
+  .span, .online-copy > :global(.drafts-banner) { grid-column: 1 / -1; }
+  /* Side by side, each card keeps its own height. */
+  .online-copy > :global(.section-card) { align-self: start; }
+  /* Drafts' repair banner is the first thing on the tab. */
+  .online-copy > :global(.drafts-banner) { order: -1; }
+  @media (min-width: 1100px) { .online-copy { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
   /* Focus lands on these after an action; they are not controls. */
   .online-copy, .done, .error { outline: none; }
 
-  .status-row { display: flex; align-items: center; gap: 14px; padding: 16px; }
+  .section-card.status { border-left: 4px solid var(--app-border); }
+  .section-card.status.ok { border-left-color: var(--app-success-strong); }
+  .section-card.status.warn { border-left-color: var(--app-warning-border); }
+  .section-card.status.pending { border-left-color: var(--app-info-text); }
+  .status-row { display: flex; align-items: center; gap: 16px; padding: 18px 20px; }
   .status-icon {
     display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
-    width: 36px; height: 36px; border-radius: 50%;
+    width: 44px; height: 44px; border-radius: 50%;
     background: var(--app-surface-sunken); color: var(--app-text-muted);
   }
   .status.ok .status-icon { background: var(--app-success-bg); color: var(--app-success-strong); }
   .status.warn .status-icon { background: var(--app-warning-bg); color: var(--app-warning-text); }
   .status.pending .status-icon { background: var(--app-info-bg); color: var(--app-info-text); }
-  .status-text { flex: 1; min-width: 0; }
-  .status-text h3 { margin: 0; font-size: 15px; font-weight: 600; color: var(--app-text); overflow-wrap: anywhere; }
-  .status-text p { margin: 3px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--app-text-muted); overflow-wrap: anywhere; }
-  .status-action { flex-shrink: 0; display: flex; gap: 6px; }
+  .status-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .status-text h3 { margin: 0; font-size: 16px; font-weight: 600; color: var(--app-text); overflow-wrap: anywhere; }
+  .status-text p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--app-text-secondary); overflow-wrap: anywhere; }
+  .status-text .note { font-size: 12px; color: var(--app-text-muted); }
+  .status-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; font-size: 13px; color: var(--app-text-secondary); }
+  .status-meta > span { display: inline-flex; align-items: center; gap: 5px; overflow-wrap: anywhere; }
+  .status-action { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
+  /* Get latest: a quiet text button beside the one primary. */
+  .status-action .quiet { border-color: transparent; background: none; color: var(--app-link); }
+  .status-action .quiet:hover:not(:disabled) { color: var(--app-link-hover); background: var(--app-surface-hover); }
   .status-body {
     display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
-    padding: 0 16px 16px 66px;
+    padding: 0 20px 18px 80px;
   }
-  .status-note { margin: 0; padding: 0 16px 14px 66px; font-size: 13px; }
+  .status-note { margin: 0; padding: 0 20px 16px 80px; font-size: 13px; }
   .done { color: var(--app-success-text); }
-  .check { display: flex; gap: 6px; align-items: center; font-size: 13px; }
-  .head-actions { display: flex; gap: 6px; flex-shrink: 0; }
-  .recent { list-style: none; margin: 0; padding: 0; }
-  .recent li + li { border-top: 1px solid var(--app-border-subtle); }
-  .recent-row {
-    display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 12px 9px 16px;
-    border: 0; border-radius: 0; background: none; color: var(--app-text-muted); text-align: left;
+  @media (max-width: 720px) {
+    .status-row { flex-wrap: wrap; }
+    .status-action { width: 100%; justify-content: flex-end; }
+    .status-body, .status-note { padding-left: 20px; }
   }
-  .recent-row:hover:not(:disabled) { background: var(--app-surface-hover); }
-  .recent-title { font-size: 13px; font-weight: 600; color: var(--app-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .trouble { overflow: hidden; }
-  .trouble summary {
-    padding: 10px 16px; cursor: pointer; font-size: 12.5px; color: var(--app-text-muted);
+  /* The switch is Settings' (SettingsView.svelte), at the size of a line of text here. */
+  .auto { display: inline-flex; align-items: center; gap: 6px; }
+  .auto input[role="switch"] {
+    appearance: none; flex-shrink: 0; position: relative; width: 30px; height: 18px; margin: 0;
+    border: 1px solid var(--app-text-muted); border-radius: 9px; background: transparent; cursor: pointer;
   }
-  .trouble summary:hover { color: var(--app-text); }
-  .tools { display: flex; flex-direction: column; }
-  .tool {
-    display: flex; align-items: center; justify-content: space-between; gap: 16px;
-    padding: 10px 16px; border-top: 1px solid var(--app-border-subtle);
+  .auto input[role="switch"]::before {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 10px; height: 10px;
+    border-radius: 50%; background: var(--app-text-muted); transition: transform 0.15s;
   }
-  .tool strong { font-size: 13px; font-weight: 600; color: var(--app-text); }
-  .tool .hint { margin-top: 2px; }
-  .tool button { flex-shrink: 0; }
-  .result { margin: 0; font-size: 12px; color: var(--app-text-secondary); overflow-wrap: anywhere; }
-  .result.failed { color: var(--app-error-text); }
-  .tool .danger { color: var(--app-error-text); border-color: var(--app-error-text); }
-  .warn { color: var(--app-warning-text); }
-  .check-line { display: flex; align-items: center; gap: 6px; margin: 0; padding: 0 16px 12px 66px; font-size: 12px; color: var(--app-text-muted); }
-  .check-line:empty { display: none; }
+  .auto input[role="switch"]:checked { background: var(--app-focus-ring); border-color: var(--app-focus-ring); }
+  .auto input[role="switch"]:checked::before { top: 1px; left: 1px; width: 14px; height: 14px; background: var(--app-text-on-accent); transform: translateX(12px); }
+  .auto input[role="switch"]:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { .auto input[role="switch"]::before { transition: none; } }
+
   .spin {
     width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0;
     border: 2px solid var(--app-border); border-top-color: var(--app-accent);
@@ -772,25 +889,50 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }
-  .auto { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 12.5px; color: var(--app-text-secondary); }
-  .auto input { margin: 0; }
-  .section-foot { display: flex; align-items: center; gap: 12px; }
-  .status-text .checked, .status-text .note { margin: 4px 0 0; font-size: 12px; color: var(--app-text-muted); }
-  .trouble summary { color: var(--app-text-secondary); display: flex; align-items: center; gap: 6px; }
+
+  /* Saved versions: today's automatic versions, then the named ones, each a soft row. */
+  .section-card.saved .section-head { border-bottom: 0; }
+  .saved-list { list-style: none; margin: 0; padding: 0 16px 14px; display: flex; flex-direction: column; gap: 6px; }
+  .saved-row {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 10px; width: 100%;
+    padding: 8px 12px; border: 1px solid var(--app-border-subtle); border-radius: 8px;
+    background: var(--app-bg); color: var(--app-text); text-align: left;
+  }
+  .saved-row:hover:not(:disabled) { background: var(--app-surface-hover); }
+  .saved-title { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
+  .saved-when { flex-shrink: 0; font-size: 12px; color: var(--app-text-muted); font-variant-numeric: tabular-nums; }
+  .star { display: inline-flex; color: var(--app-warning-text); }
+  .star :global(svg) { fill: currentColor; }
+  .saved-list .section-note { padding: 0; }
+  .warn { color: var(--app-warning-text); }
+
+  .trouble { overflow: hidden; }
+  .trouble summary {
+    display: flex; align-items: center; gap: 6px;
+    padding: 12px 20px; cursor: pointer; font-size: 13px; color: var(--app-text-secondary);
+  }
+  .trouble summary:hover { color: var(--app-text); }
   .trouble[open] summary :global(svg) { transform: rotate(90deg); }
-  .result { display: flex; align-items: center; gap: 6px; padding: 4px 0 0; }
+  .tools { display: flex; flex-direction: column; }
+  .tool {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 10px 20px; border-top: 1px solid var(--app-border-subtle);
+  }
+  .tool.more { justify-content: flex-start; }
+  .tool strong { font-size: 13px; font-weight: 600; color: var(--app-text); }
+  .tool .hint { margin-top: 2px; }
+  .tool button { flex-shrink: 0; }
+  .tool .danger { color: var(--app-error-text); border-color: var(--app-error-text); }
+  .result { display: flex; align-items: center; gap: 6px; margin: 0; padding: 4px 0 0; font-size: 12px; color: var(--app-text-secondary); overflow-wrap: anywhere; }
+  .result.failed { color: var(--app-error-text); }
   .result :global(svg) { color: var(--app-success-strong); flex-shrink: 0; }
   .result.failed :global(svg) { color: var(--app-error-text); }
+
+  .repair-dialog { width: min(480px, 92vw); }
   .repair-dialog .dlg-actions { padding-top: 12px; }
   .repair-dialog :global(.dlg-ghost:focus-visible) { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
-  .recent-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-  .recent-sub { font-size: 12px; color: var(--app-text-muted); }
-  .where { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; font-size: 12px; color: var(--app-text-muted); }
-  .where.ok :global(svg) { color: var(--app-success-strong); }
-  .repair-dialog { width: min(480px, 92vw); }
   .repair-dialog .dlg-body { display: flex; flex-direction: column; gap: 10px; padding: 16px 18px 6px; font-size: 13px; line-height: 1.5; color: var(--app-text-secondary); }
   .repair-dialog .dlg-body p { margin: 0; }
-  .tool.more { justify-content: flex-start; }
   .link {
     padding: 0;
     border: 0;

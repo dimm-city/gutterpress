@@ -327,3 +327,109 @@ export function whenShort(ms: number, now: number): string {
   if (day(ms) === day(now - 86_400_000)) return `Yesterday, ${time}`;
   return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, ${time}`;
 }
+
+// ── Book setup → Online: what is waiting, and the Saved versions summary ─────
+
+/** "4:46 PM" today, "4:37 PM–4:52 PM" for a run today, "Yesterday, 4:46 PM", "Nov 5, 4:37 PM–4:52 PM". */
+export function whenRange(from: number, to: number, now: number): string {
+  const end = whenShort(to, now).replace(/^Today, /, "");
+  if (new Date(from).toDateString() !== new Date(to).toDateString()) return end;
+  const clock = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return clock(from) === clock(to) ? end : end.replace(clock(to), `${clock(from)}–${clock(to)}`);
+}
+
+/** What one version changed, as the Waiting rows need it (VersionChanges, or an online version's own list). */
+export interface ChangedFiles {
+  files: { path: string; hint?: string }[];
+  more: number;
+}
+
+/** One row of the Waiting card: a version, or a run of automatic versions by one author. */
+export interface WaitingRow {
+  /** The newest version in the row: the row opens Version history on it. */
+  id: string;
+  /** How many versions the row stands for. */
+  count: number;
+  /** "New opening paragraph", "Automatic version", "3 automatic versions". */
+  title: string;
+  /** The author named it (shown with a star). */
+  named: boolean;
+  author?: string;
+  from: number;
+  to: number;
+  /** File names as written ("chapters/ch19.md"), a few; `hint` when the row is one version of one file. */
+  files: string[];
+  hint?: string;
+  /** Changed files beyond those named. */
+  more: number;
+  /** Some of the row's versions were not looked at, so there may be more files. */
+  partial: boolean;
+}
+
+const ROW_FILES = 3;
+
+/**
+ * Fold newest-first versions into Waiting rows: consecutive automatic versions by
+ * the same author become one row ("3 automatic versions", their time range and
+ * the files they touched); anything else is a row of its own. `changes` gives
+ * what a version changed, when it was looked at.
+ */
+export function waitingRows<T extends SnapshotEntry>(entries: T[], changes: (e: T) => ChangedFiles | undefined): WaitingRow[] {
+  const auto = (e: T) => versionKind(e.message) === "automatic";
+  const groups: T[][] = [];
+  for (const e of entries) {
+    const last = groups[groups.length - 1];
+    if (last && auto(e) && auto(last[0]!) && last[0]!.author === e.author) last.push(e);
+    else groups.push([e]);
+  }
+  return groups.map((g) => {
+    const newest = g[0]!;
+    const hints = new Map<string, string | undefined>();
+    let more = 0;
+    let partial = false;
+    for (const e of g) {
+      const c = changes(e);
+      if (!c) partial = true;
+      else {
+        more += c.more;
+        for (const f of c.files) if (!hints.has(f.path)) hints.set(f.path, f.hint);
+      }
+    }
+    const paths = [...hints.keys()];
+    const hint = g.length === 1 && paths.length === 1 && more === 0 ? hints.get(paths[0]!) : undefined;
+    return {
+      id: newest.id,
+      count: g.length,
+      title: auto(newest) ? (g.length === 1 ? "Automatic version" : `${g.length} automatic versions`) : versionTitle(newest.message),
+      named: versionDescription(newest.message) !== null,
+      ...(newest.author ? { author: newest.author } : {}),
+      from: g[g.length - 1]!.timestamp,
+      to: newest.timestamp,
+      files: paths.slice(0, ROW_FILES),
+      ...(hint ? { hint } : {}),
+      more: more + Math.max(0, paths.length - ROW_FILES),
+      partial,
+    };
+  });
+}
+
+/** The Saved versions card: today's automatic versions in one line, then the newest named ones. */
+export interface SavedSummary {
+  /** Today's automatic versions; `atLeast`: the page ends before today does, so there are more. */
+  today: { count: number; atLeast: boolean; from: number; to: number } | null;
+  /** The newest versions the author named, newest first. */
+  named: SnapshotEntry[];
+}
+
+export function savedSummary(page: { entries: SnapshotEntry[]; hasMore: boolean }, now: number, namedMax = 3): SavedSummary {
+  const today = new Date(now).toDateString();
+  const isToday = (e: SnapshotEntry) => new Date(e.timestamp).toDateString() === today;
+  const autos = page.entries.filter((e) => isToday(e) && versionKind(e.message) === "automatic");
+  const oldest = page.entries[page.entries.length - 1];
+  return {
+    today: autos.length
+      ? { count: autos.length, atLeast: page.hasMore && !!oldest && isToday(oldest), from: autos[autos.length - 1]!.timestamp, to: autos[0]!.timestamp }
+      : null,
+    named: page.entries.filter((e) => versionDescription(e.message) !== null).slice(0, namedMax),
+  };
+}

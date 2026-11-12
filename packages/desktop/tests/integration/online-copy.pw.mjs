@@ -42,10 +42,13 @@
  *   5. Once backing up can work (the diagnosis is stubbed as ready), "If
  *      backing up keeps failing" holds Test connection, Sign in again, Repair
  *      the online copy and Start over from the online copy, collapsed. With
- *      automatic backing up ON the status card offers Get latest and Back up
- *      now (#485; the passes are stubbed in the page): Back up now runs one
- *      full pass and, backed up, is still offered; Get latest runs the pass
- *      with `push: false` and sends nothing. Save a
+ *      automatic backing up ON the status card says what is waiting (an edit
+ *      not in a version yet, two versions from Grace), and offers Back up now
+ *      with a quiet Get latest beside it (#485; the passes are stubbed in the
+ *      page); the Waiting card lists Grace's versions with their file names as
+ *      written. Get latest runs the pass with `push: false` and sends nothing;
+ *      Back up now runs one full pass and, once everything is online, is still
+ *      offered. Save a
  *      version, clicked like a person does, disables itself while it saves,
  *      which drops focus to <body>; Escape pressed then still closes Book setup
  *      (the original #448 bug, fixed by dialogBehavior in #451).
@@ -56,8 +59,8 @@
  *      latest and Sync). Update runs a full pass and reads "Updating…" while it
  *      runs. New changes online raise a toast whose action is Get the changes
  *      (a pass with `push: false`), the bar reads "New changes online", and
- *      both clear once the changes are in. Online copy then offers Get latest
- *      and Sync now. The bar still fits, with "Saved here" moved into the
+ *      both clear once the changes are in. Online then still offers Back up
+ *      now. The bar still fits, with "Saved here" moved into the
  *      tooltip and the online clause ellipsized, at 700px and 260px.
  *   7. The Settings, Accounts and Open from GitHub controls 0.11.22 had are
  *      back (#481). Settings is How you use Gutterpress, Appearance, Preview,
@@ -384,7 +387,7 @@ await openTabFromBar();
 check(await waitFor(`document.querySelector('#project-settings-tab-online-copy')?.getAttribute('aria-selected') === 'true'`), "clicking it (or its popover's Online link) opens Book setup on the Online tab");
 
 // ── 7. the tab: three cards — where the book is kept, Revisions, Version history ─
-check(await waitFor(`!!document.querySelector('#project-settings-panel .revisions .rev-list li.rev') && !!document.querySelector('#project-settings-panel .recent .recent-row')`), "the status, Drafts and History cards loaded");
+check(await waitFor(`!!document.querySelector('#project-settings-panel .revisions .rev-list li.rev') && !!document.querySelector('#project-settings-panel .saved-list .saved-row')`), "the status, Saved versions and Drafts cards loaded");
 await sleep(400);
 await screenshot(join(tmpdir(), "online-copy-tab.png"));
 const tab = await evalJs(`(() => {
@@ -407,7 +410,9 @@ const tab = await evalJs(`(() => {
     showAll: panel.querySelector('.revisions .section-foot button')?.textContent.trim(),
     note: panel.querySelector('.revisions .section-note')?.textContent.trim(),
     historyHead: [...panel.querySelectorAll('[aria-labelledby="version-history-title"] .section-head button')].map((b) => b.textContent.trim()),
-    recent: panel.querySelectorAll('.recent .recent-row').length,
+    historyFoot: [...panel.querySelectorAll('[aria-labelledby="version-history-title"] .section-foot button')].map((b) => b.textContent.trim()),
+    saved: [...panel.querySelectorAll('.saved-list .saved-row')].map((b) => b.textContent.replace(/\\s+/g, ' ').trim()),
+    drafts: [...panel.querySelectorAll('.revisions .rev-list > li.rev .rev-meta')].map((m) => m.textContent.replace(/\\s+/g, ' ').trim()),
     trouble: !!panel.querySelector('details.trouble'),
     innerScroll: (() => { const l = panel.querySelector('.revisions .rev-list'); return l.scrollHeight > l.clientHeight + 1; })(),
     rows,
@@ -425,7 +430,9 @@ check(row("Main draft").current && row("Main draft").badge === "You are here" &&
 check(row("editors pass").where === "Online only, not on this computer yet" && row("editors pass").buttons.join("|") === "Switch" && row("editors pass").more, "an online-only revision: Switch and its menu");
 check(row("appendix").where === "Only on this computer", "a revision only on this computer says so");
 check(/drafts made elsewhere may be missing/.test(tab.note ?? ""), "an online copy that could not be checked says so, once");
-check(tab.historyHead.join("|") === "Save a version|See all" && tab.recent >= 1 && tab.recent <= 5, `History is a short card: the newest versions, Save a version and See all (${tab.historyHead.join("|")}, ${tab.recent} rows)`);
+check(tab.historyHead.join("|") === "Save a version…" && tab.historyFoot.join("|") === "See all versions", `Saved versions: Save a version… is its action, See all versions its foot (${tab.historyHead.join("|")} / ${tab.historyFoot.join("|")})`);
+check(tab.saved.length === 3 && tab.saved.every((t) => !/^Automatic version/.test(t)) && /^Tightened the opening Today, /.test(tab.saved[0]), `it lists the newest named versions, not a run of look-alike rows (${tab.saved.join(" | ")})`);
+check(!/Go back to one of these/.test(await evalJs(`document.querySelector('#project-settings-panel').textContent`)), "no 'Go back to one of these…' (it only opened Version history)");
 check(!tab.trouble, "the backing-up-keeps-failing tools are only there once sending can work");
 
 /** Open a row's "more" menu and choose an item. */
@@ -468,11 +475,11 @@ check((await names()).split(",").length === 7, "Show all lists every revision");
 
 // ── 7c. Version history: a screen of its own, over Book setup ────────────────
 // Save a version, from the card's header (the book has nothing new, which is said calmly).
-await click('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button', "Save a version");
+await click('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button', "Save a version…");
 check(await waitFor(`/Nothing new to save|nothing new/i.test(document.querySelector('#project-settings-panel [aria-labelledby="version-history-title"]')?.textContent ?? '')`, 20000), "Save a version says so when there is nothing new");
 
-await click('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button', "See all");
-check(await waitFor(`!!document.querySelector('.vh .ver')`), "See all opens the Version history screen");
+await click('#project-settings-panel [aria-labelledby="version-history-title"] .section-foot button', "See all versions");
+check(await waitFor(`!!document.querySelector('.vh .ver')`), "See all versions opens the Version history screen");
 // Nothing is chosen for the author, and no Go back button shows until a version is.
 check(await evalJs(`document.querySelectorAll('.vh .ver.selected').length === 0 && document.querySelectorAll('.vh .detail-actions button').length === 0`), "no version is pre-selected, and Go back waits for one");
 await evalJs(`document.querySelector('.vh .ver').click(); true`);
@@ -553,7 +560,7 @@ await evalJs(`document.querySelector('.vh .vh-list').scrollTop = 0; true`);
 await sleep(300);
 // A text file opens line by line, and back.
 await click(".vh .files button.file");
-check(await waitFor(`!!document.querySelector('.vh .compare-view .columns')`), "a changed text file opens line by line");
+check(await waitFor(`!!document.querySelector('.vh .compare-view .cm-editor')`), "a changed text file opens its comparison");
 await screenshot(join(tmpdir(), "online-copy-compare.png"));
 await click(".vh .compare-view .back");
 check(await waitFor(`!!document.querySelector('.vh .files')`), "and goes back to the list");
@@ -589,7 +596,7 @@ await click(".vh .vh-close");
 check(await waitFor(`!document.querySelector('.vh') && !!document.querySelector('#project-settings-panel .revisions .rev-list li.rev')`), "closing Version history returns to Online");
 
 // A version in the card opens the screen on that version.
-await click("#project-settings-panel .recent .recent-row");
+await click("#project-settings-panel .saved-list .saved-row");
 check(await waitFor(`!!document.querySelector('.vh .ver.selected')`), "a version in the card opens the screen on it");
 await press("Escape", "Escape", 27);
 check(await waitFor(`!document.querySelector('.vh') && !!document.querySelector('#project-settings-panel')`), "Escape closes Version history and leaves Book setup open");
@@ -683,7 +690,7 @@ await evalJs(`(() => {
     const path = new URL(typeof input === "string" ? input : input.url, location.href).pathname;
     if (path === "/api/remote/diagnose-project") window.__sync.diagnosed++;
     if (path === "/api/remote/check-updates") return Promise.resolve(json({ available: window.__sync.updatesOnline }));
-    // One edited file not in a version yet: something on this computer is waiting, so the Changes waiting section offers Send now.
+    // One edited file not in a version yet: something on this computer is waiting.
     if (path === "/api/vcs/unversioned-changes") return Promise.resolve(json({ changedFiles: window.__sync.unsaved, stale: false }));
     if (path === "/api/remote/sync") {
       const body = JSON.parse(init.body);
@@ -713,25 +720,53 @@ check(failing.rows.join("|") === "Check the connection|Sign in again|Repair", "t
 await evalJs(`document.querySelector('#project-settings-panel details.trouble').open = true; true`);
 await sleep(200);
 await screenshot(join(tmpdir(), "online-copy-failing.png"));
-check(failing.title === "Your online copy is set up", `the status does not claim a backup it has not heard of (${failing.title})`);
+check(!/safe|Everything is online/.test(failing.title ?? ""), `the status does not claim a backup it has not heard of (${failing.title})`);
 
-// Automatic backing up is on (the default): Get latest and Back up now are both offered (#485).
-const statusActions = `[...document.querySelectorAll('#project-settings-panel .status-action button, #project-settings-panel .wc-send')]`;
+// Automatic backing up is on (the default): the status card says what is waiting, with
+// Back up now and, as there is something to get, a quiet Get latest beside it (#485).
+const statusActions = `[...document.querySelectorAll('#project-settings-panel .status-action button')]`;
 const cardButtons = () => evalJs(`${statusActions}.map((b) => b.textContent.trim() + (b.disabled ? ' (disabled)' : '')).join('|')`);
 const cardTitle = () => evalJs(`document.querySelector('#project-settings-panel .status-text h3')?.textContent.trim()`);
-check((await cardButtons()) === "Send now", `Changes waiting offers the one Send now (${await cardButtons()})`);
-await click("#project-settings-panel .wc-send", "Send now");
-check(await waitFor(`${statusActions}.map((b) => b.textContent.trim() + (b.disabled ? '*' : '')).join('|') === 'Sending…*'`), "Send now reads Sending… while it runs");
-check(await evalJs(`window.__sync.calls.length === 1 && window.__sync.calls[0].push === undefined`), "Send now ran one full pass, with automatic sending on");
-// The open draft was only online-side before the pass; the pass makes it backed up everywhere.
-await evalJs(`window.__revisions.revisions.forEach((r) => { if (r.current) { r.where = 'online'; r.notBackedUp = false; } }); window.__sync.release(); true`);
-check(await waitFor(`/^Your book is safe online/.test(document.querySelector('#project-settings-panel .status-text h3')?.textContent.trim() ?? '')`), `the card then says the book is safe online (${await cardTitle()})`);
-check((await cardButtons()) === "Send now", `online, it still offers Send now (${await cardButtons()})`);
+check(await waitFor(`document.querySelector('#project-settings-panel .status-text h3')?.textContent.trim() === "Your latest edits aren't online yet · 2 new from Grace"`), `the status card is the counts: an edit to send, two versions from Grace (${await cardTitle()})`);
+check((await cardButtons()) === "Get latest|Back up now", `one primary, Back up now, with Get latest beside it (${await cardButtons()})`);
+check(await evalJs(`!!document.querySelector('#project-settings-panel .status-meta input[role="switch"]:checked') && /GitHub · ada\\/harbor-lights/.test(document.querySelector('#project-settings-panel .status-meta').textContent)`), "the card says where the book is kept and carries the Send changes automatically switch");
+const waitingCard = await evalJs(`(() => {
+  const p = document.querySelector('#project-settings-panel .wc');
+  return p && {
+    counts: [...p.querySelectorAll('.wc-count')].map((c) => c.textContent.trim()).join('|'),
+    notes: [...p.querySelectorAll('.wc-note')].map((n) => n.textContent.trim()),
+    down: [...p.querySelectorAll('.wc-list[aria-label="Coming down"] .wc-row')].map((r) => ({
+      title: r.querySelector('.wc-title').textContent.trim(), when: r.querySelector('.wc-when').textContent.trim(), files: r.querySelector('.wc-files')?.textContent.trim(),
+    })),
+  };
+})()`);
+log(`waiting: ${JSON.stringify(waitingCard)}`);
+check(waitingCard?.counts === "0|2", `Waiting counts only the versions it lists (${waitingCard?.counts})`);
+check(waitingCard.notes.some((n) => /^Also 1 file edited since the last version/.test(n)), "the edit not in a version yet is said, not counted");
+check(waitingCard.down[0]?.title === "Wrote the gamma ending" && /^Grace · /.test(waitingCard.down[0].when) && waitingCard.down[0].files === "03-gamma.md · 2 paragraphs changed", `a version from Grace: its name, author and time, its file as written (${JSON.stringify(waitingCard.down[0])})`);
+check(waitingCard.down[1]?.title === "Automatic version" && waitingCard.down[1].files === "art/plate-1.png, art/plate-2.png, art/plate-3.png and 8 more", `an automatic version is named so, with a few files and the rest counted (${waitingCard.down[1]?.files})`);
 await screenshot(join(tmpdir(), "online-copy-tab-auto.png"));
+await click("#project-settings-panel .wc-row");
+check(await waitFor(`!!document.querySelector('.vh')`), "a Waiting row opens Version history");
+await press("Escape", "Escape", 27);
+check(await waitFor(`!document.querySelector('.vh') && !!document.querySelector('#project-settings-panel .status-action')`), "and Escape comes back to Online");
+await click("#project-settings-panel .status-action button", "Get latest");
+check(await waitFor(`${statusActions}.map((b) => b.textContent.trim() + (b.disabled ? '*' : '')).join('|') === 'Getting the latest…*|Back up now*'`), `Get latest reads Getting the latest… while it runs (${await cardButtons()})`);
+check(await evalJs(`window.__sync.calls.length === 1 && window.__sync.calls[0].push === false`), "Get latest asked for the pass that sends nothing (push: false)");
+// Grace's versions are in now.
+await evalJs(`window.__online = { entries: [] }; window.__sync.release(); true`);
+check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Back up now'`), `with nothing left to get, Back up now is the one button (${await cardButtons()})`);
+await click("#project-settings-panel .status-action button", "Back up now");
+check(await waitFor(`${statusActions}.map((b) => b.textContent.trim() + (b.disabled ? '*' : '')).join('|') === 'Backing up…*'`), "Back up now reads Backing up… while it runs");
+check(await evalJs(`window.__sync.calls.length === 2 && window.__sync.calls[1].push === undefined`), "Back up now ran one full pass, with automatic sending on");
+// The open draft was only online-side before the pass; the pass makes it backed up everywhere, edit included.
+await evalJs(`window.__revisions.revisions.forEach((r) => { if (r.current) { r.where = 'online'; r.notBackedUp = false; } }); window.__sync.unsaved = 0; window.__sync.release(); true`);
+check(await waitFor(`document.querySelector('#project-settings-panel .status-text h3')?.textContent.trim() === 'Everything is online' && !document.querySelector('#project-settings-panel .wc')`), `the card then says everything is online, and Waiting goes (${await cardTitle()})`);
+check((await cardButtons()) === "Back up now", `online, it still offers Back up now (${await cardButtons()})`);
 
 // Save a version, then Escape: the button is disabled while it saves, so the focus a click gave
 // it drops to <body>, outside Book setup. Escape must still close Book setup (#448, #451).
-const saveVersionBtn = `[...document.querySelectorAll('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button')].find((b) => b.textContent.trim() === 'Save a version')`;
+const saveVersionBtn = `[...document.querySelectorAll('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button')].find((b) => b.textContent.trim() === 'Save a version…')`;
 await evalJs(`window.__sync.unsaved = 0; true`); // nothing edited since the last version: Save a version has nothing new
 check(await mouseClick(saveVersionBtn), "Save a version, clicked");
 check(await waitFor(`/Nothing new to save/.test(document.querySelector('#project-settings-panel [aria-labelledby="version-history-title"]')?.textContent ?? '') && !!(${saveVersionBtn}) && !(${saveVersionBtn}).disabled`, 20000), "Save a version finished (nothing new) and is ready again");
@@ -805,16 +840,17 @@ check(await evalJs(`window.__sync.calls.length === 1 && window.__sync.calls[0].p
 await evalJs(`window.__sync.release(); true`);
 check(await waitFor(`!(${prompt}) && !(${updateBtn}) && /^Saved here · (?!New changes)/.test(document.querySelector('.status-bar .status-control').innerText.replace(/\\s+/g, ' ').trim())`), "the cue, the button and the stale toast clear once the changes are in");
 
-// Online copy, with automatic backing up off: Get latest beside Sync now (#485).
+// Online, with automatic backing up off: the same Back up now (#485), and the switch says off.
 await evalJs(`window.__sync.unsaved = 1; true`);
 await openTabFromBar();
-check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Send now'`), `with automatic sending off, the status card still offers Send now (${await cardButtons()})`);
+check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Back up now'`), `with automatic sending off, the status card still offers Back up now (${await cardButtons()})`);
+check(await evalJs(`!!document.querySelector('#project-settings-panel .status-meta input[role="switch"]:not(:checked)')`), "the card's switch shows sending automatically is off");
 await screenshot(join(tmpdir(), "online-copy-tab-manual.png"));
-await click("#project-settings-panel .wc-send", "Send now");
-check(await waitFor(`${statusActions}.some((b) => b.textContent.trim() === 'Sending…')`), "Send now reads Sending… while it runs");
-check(await evalJs(`window.__sync.calls.length === 2 && window.__sync.calls[1].push === undefined`), "Send now is the full pass");
+await click("#project-settings-panel .status-action button", "Back up now");
+check(await waitFor(`${statusActions}.some((b) => b.textContent.trim() === 'Backing up…')`), "Back up now reads Backing up… while it runs");
+check(await evalJs(`window.__sync.calls.length === 2 && window.__sync.calls[1].push === undefined`), "Back up now is the full pass");
 await evalJs(`window.__sync.release(); true`);
-check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Send now'`), "and it is ready again");
+check(await waitFor(`${statusActions}.map((b) => b.textContent.trim()).join('|') === 'Back up now'`), "and it is ready again");
 await closeDialog();
 check(await waitFor(`!document.querySelector('#project-settings-panel')`), "Book setup closed");
 
@@ -1072,7 +1108,7 @@ await closeDialog();
 check(await waitFor(`!document.querySelector('input[name="settings-role"]')`), "Settings closed");
 check(await waitFor(`!document.querySelector('.status-bar .status-control')`), "a Reader has no status control");
 const readerBar = await evalJs(`[...document.querySelectorAll('.status-bar button')].map((b) => b.getAttribute('aria-label') ?? b.textContent.trim())`);
-check(!readerBar.some((l) => /Sync|Get latest|Send now/.test(l)), `a Reader has no Get latest, Sync or Send now, even with automatic sending off (${readerBar.join(", ")})`);
+check(!readerBar.some((l) => /Sync|Get latest|Send now|Back up now/.test(l)), `a Reader has no Get latest, Sync, Send now or Back up now, even with automatic sending off (${readerBar.join(", ")})`);
 // New changes online again: a Reader is never asked (they get the latest on their own).
 const checksBefore = await evalJs(`window.__sync.calls.length`);
 await evalJs(`window.__sync.updatesOnline = true; window.dispatchEvent(new Event('focus')); true`);
@@ -1081,6 +1117,6 @@ check(!(await evalJs(`!!(${prompt})`)), "a Reader hears no new-changes toast");
 check((await evalJs(`window.__sync.calls.length`)) === checksBefore, "and nothing ran a pass for them from the page");
 await screenshot(join(tmpdir(), "online-copy-reader.png"));
 
-log("PASS: one status control, the Online copy tab, Version history inside it, revisions (find, new, rename, delete, switch), Get latest and Send now beside Sync, the Settings, Accounts and Open from GitHub controls of 0.11.22, and the Reader's bare status bar all verified");
+log("PASS: one status control, the Online copy tab, Version history inside it, revisions (find, new, rename, delete, switch), Back up now and Get latest, the Settings, Accounts and Open from GitHub controls of 0.11.22, and the Reader's bare status bar all verified");
 cleanup();
 process.exit(0);

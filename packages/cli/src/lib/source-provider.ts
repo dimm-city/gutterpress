@@ -1610,6 +1610,8 @@ export interface Revision {
   where: "online" | "this-computer" | "online-only";
   /** `where === "online"` and this computer has versions the online copy lacks (refs only, no network). */
   notBackedUp: boolean;
+  /** When its newest version was saved (ms; this computer's tip, else the online copy's), when it can be read. */
+  savedAt?: number;
 }
 
 /** The book's revisions, sorted by name, and which one is open (`null` on a detached/unborn HEAD). */
@@ -1727,11 +1729,16 @@ export async function listRevisions(dir: string): Promise<RevisionList | null> {
     names.map(async (name): Promise<Revision> => {
       const here = local.get(name);
       const there = online.get(name);
+      // One commit read per revision (its tip), through the shared cache: when it was last saved.
+      const tip = await git
+        .readCommit({ fs, dir: repoDir, cache, oid: (here ?? there)! })
+        .catch(() => null);
       return {
         name,
         current: name === current,
         where: here && there ? "online" : here ? "this-computer" : "online-only",
         notBackedUp: Boolean(here && there && !(await isContained(repoDir, here, there, cache))),
+        ...(tip ? { savedAt: tip.commit.committer.timestamp * 1000 } : {}),
       };
     }),
   );
