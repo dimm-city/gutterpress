@@ -52,7 +52,6 @@
   import { EditorPreviewSyncController } from "#lib/routes/editor-preview-sync-controller.ts";
   import { ContextMenuController } from "#lib/routes/context-menu-controller.svelte.ts";
   import ContextMenu from "#lib/components/ContextMenu.svelte";
-  import { InlineEditController } from "#lib/routes/inline-edit-controller.svelte.ts";
   import TextPromptDialog from "#lib/components/TextPromptDialog.svelte";
   import ImagePropertiesDialog from "#lib/components/ImagePropertiesDialog.svelte";
   import type { ImagePropertiesValue } from "#lib/editor/image-classes.ts";
@@ -1036,10 +1035,10 @@
      * of its own (this repo bans `$effect`). */
     switchFile: (path: string | null, content: string) => void;
     /** Whether the live document is this file
-     * (inline-editing plan §4.7 Step 4 — commit-engine.ts). */
+     * (commit-engine.ts). */
     hasFile: (path: string) => boolean;
     /** Apply a `[from, to)` character-range edit to one file as a single
-     * undoable transaction (inline-editing plan §4.7 Step 4 — commit-engine.ts).
+     * undoable transaction (commit-engine.ts).
      * Offsets are into THAT FILE, not into the document. */
     applyRangeEditIn: (path: string, from: number, to: number, insert: string) => void;
     /** The document text and the caret's 0-based line (Block properties, Alt+Enter). */
@@ -1055,7 +1054,6 @@
   function openSnippetPicker() {
     if (!lifecycle.currentDir) return;
     contextMenu.close();
-    void inlineEdit.endActive(true); // opening a dialog commits the in-flow edit
     snippetPickerRef?.show();
   }
 
@@ -1466,7 +1464,7 @@
   // change won't clobber a per-project ratio applied at project-open, and the
   // controller's own persist writes this same value back (idempotent).
   const splitRatioSink = settingsChangeGuard<number>((r) => zoomView.restoreSplitRatio(r));
-  // Context menu (inline-editing plan §4.5): imperative teardown on toggle —
+  // Context menu: imperative teardown on toggle —
   // if the author flips the setting off while the menu happens to be open,
   // close it immediately rather than leaving a now-disabled affordance on
   // screen until the next dismissal event.
@@ -2133,8 +2131,8 @@
   });
 
   // ----------------------------------------------------------------
-  // Commit engine — the single write path for context-menu AND in-flow
-  // block-edit mutations (docs/inline-editing-plan.md §3). Pure logic + injected
+  // Commit engine — the single write path for context-menu mutations
+  // (ADR 0009 decision 3). Pure logic + injected
   // seams; never writes a file itself (buffer.edit/flush + applyRangeEdit do
   // that, exactly like every other write path in the app).
   // ----------------------------------------------------------------
@@ -2261,29 +2259,8 @@
   }
 
   // ----------------------------------------------------------------
-  // In-flow block editing (docs/inline-editing-plan.md §3.3, protocol v8).
-  // Two entry points, both landing here: the "Edit this block" context-menu
-  // item (below) and double-click in the preview (which arrives as the
-  // blockEditRequested event on the controller's own subscription).
-  //
-  // No geometry deps: the editing surface is the block's own element inside
-  // the book iframe, so there is no panel to position over it.
-  // ----------------------------------------------------------------
-  const inlineEdit = new InlineEditController({
-    client: () => client,
-    currentDir: () => lifecycle.currentDir,
-    openContent: (path) => (buffer?.filePath === path ? buffer.content : null),
-    readFile: (path) => getPlatform().readFile(path),
-    commitEngine,
-    focusPreview: () => previewFrameRef?.getIframe()?.focus(),
-    toastError: (message) => toast?.error(message),
-    toastInfo: (message) => toast?.info?.(message),
-  });
-
-  // ----------------------------------------------------------------
-  // Preview right-click / Shift+F10 context menu (inline-editing plan
-  // §4.1-4.5). Subscribes to the preview client via its OWN client.on()
-  // listener — separate from previewEvents' switch below (PR 0 already owns
+  // Preview right-click / Shift+F10 context menu. Subscribes to the preview
+  // client via its OWN client.on() listener — separate from previewEvents' switch below (PR 0 already owns
   // the elementActivated case there).
   // ----------------------------------------------------------------
   const contextMenu = new ContextMenuController({
@@ -2313,7 +2290,6 @@
     copyToClipboard,
     toastSuccess: (message) => toast?.success(message),
     toastError: (message) => toast?.error(message),
-    openInlineEdit: (chapter, range, caret) => void inlineEdit.show({ chapter, range, caret }),
   });
 
   // ----------------------------------------------------------------
@@ -2376,7 +2352,7 @@
   /**
    * Esc pressed inside the preview. The preview is a cross-origin iframe, so
    * its keystrokes never reach this window; preview-bridge.js forwards an Esc
-   * nothing in the book consumed (in-place block editing keeps its own).
+   * nothing in the book consumed.
    * Same rule as the window's Esc: leave Focus only if nothing else owns it.
    */
   function onPreviewEscape(e: PreviewEvent): void {
@@ -2395,7 +2371,6 @@
     c.setExpectedOrigin(lifecycle.previewUrl);
     previewEvents.subscribe(c);
     contextMenu.subscribe(c);
-    inlineEdit.subscribe(c);
     c.on(onPreviewEscape);
   }
 
@@ -3190,8 +3165,8 @@
       onInsertImage={(payload) => insertImageIntoChapter(payload)}
       onProjectChosen={(path) => void openProjectPath(path)}
       onOpenUrl={openUrl}
-      onOpenBook={() => { contextMenu.close(); void inlineEdit.endActive(true); openBookOpen = true; }}
-      onNewProject={() => { contextMenu.close(); void inlineEdit.endActive(true); newProjectWizardRef?.show(); }}
+      onOpenBook={() => { contextMenu.close(); openBookOpen = true; }}
+      onNewProject={() => { contextMenu.close(); newProjectWizardRef?.show(); }}
       onPanelStateChange={persistLeftPanelPrefs}
     />
 

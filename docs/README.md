@@ -164,7 +164,6 @@ docs/
 ├── sync-diagnostics.md                    # Diagnosing a failed backup
 ├── remaining-work.md                      # Engine/tooling work tracker (living)
 ├── ux-design-contract.md                  # Desktop app UX contract
-├── inline-editing-plan.md                 # Inline editing design as built (ADR 0009)
 ├── adr/                                   # Architecture decision records
 ├── engine/                                # Engine design rules and internals
 └── fixtures/                              # Public parity/regression fixture books

@@ -214,15 +214,6 @@ export function spliceToken(text: string, start: number, end: number, insert: st
   return text.slice(0, start) + insert + text.slice(end);
 }
 
-function escapeLabel(value: string): string {
-  let escaped = "";
-  for (const char of value) {
-    if (char === "\\" || char === "[" || char === "]") escaped += "\\";
-    escaped += char;
-  }
-  return escaped;
-}
-
 function escapePlainAlt(value: string): string {
   const punctuation = `!"#$%&'()*+,-./:;<=>?@[\\]^_\`{|}~`;
   let escaped = "";
@@ -249,10 +240,6 @@ function serializeDestination(value: string): string {
     escaped += char;
   }
   return `<${escaped}>`;
-}
-
-export function makeLinkToken(label: string, href: string): string {
-  return `[${escapeLabel(label)}](${serializeDestination(href)})`;
 }
 
 export function rewriteImageToken(

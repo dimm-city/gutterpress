@@ -1,7 +1,6 @@
 /**
  * ContextMenuController — single owner of the preview right-click/`Shift+F10`
- * context menu's open/position/target state (inline-editing plan §4.1–4.5,
- * PR 3).
+ * context menu's open/position/target state.
  *
  * `.svelte.ts` suffix is deliberate: menu open/position/items are `$state`
  * consumed by `ContextMenu.svelte`, matching `page-nav-controller.svelte.ts` /
@@ -27,7 +26,6 @@ import { buildLineStarts, charRange } from "#lib/editor/source-range.ts";
 import {
   findImageToken,
   findImageWrapper,
-  makeLinkToken,
   rewriteImageToken,
   rewriteLinkToken,
   resolveLinkToken,
@@ -69,13 +67,6 @@ import {
   type BlockPropertiesValue,
 } from "#lib/editor/block-properties.ts";
 import type { ClassCatalogEntry } from "#lib/api.ts";
-import {
-  locateSelectionInSource,
-  touchesStructuralSyntax,
-  hasSameDelimiter,
-  wrapDelimiter,
-  type FormatKind,
-} from "#lib/editor/selection-search.ts";
 
 /** Minimal preview-client surface the controller drives. */
 export interface ContextMenuClient {
@@ -140,14 +131,6 @@ export interface ContextMenuDeps {
   copyToClipboard: (text: string) => Promise<void>;
   toastSuccess: (message: string) => void;
   toastError: (message: string) => void;
-  /**
-   * Start editing this block in place (`inline-edit-controller.svelte.ts`) —
-   * the "Edit this block" item's destination. Closing the menu itself is this
-   * controller's job, not the editor's. `caret` is where to seat the caret: the
-   * menu passes its own request point, so the caret lands where the author
-   * right-clicked rather than at the end of the block.
-   */
-  openInlineEdit: (chapter: string, range: SourceRange, caret: { x: number; y: number }) => void;
 }
 
 export interface ContextMenuItem {
@@ -199,11 +182,10 @@ export class ContextMenuController {
 
   private rawX = 0;
   private rawY = 0;
-  private target: ContextTarget | null = null;
   private requestId = 0;
   // Set for a short window right after open(), across the SAME event-loop
   // discipline as EditorToolbar.svelte's outside-click popover handling —
-  // reused here defensively (plan §4.2) even though the menu's OPENING
+  // reused here defensively even though the menu's OPENING
   // interaction happens inside a different document (the preview iframe) and
   // so cannot itself bubble into this SPA's own outside-mousedown listener.
   private justOpened = false;
@@ -224,8 +206,8 @@ export class ContextMenuController {
         break;
       case "renderingComplete":
         // Content changed under the menu (or a build just finished) — the
-        // generation bump closes the clean-but-DOM-stale commit window
-        // (plan §4.9); the menu itself is now anchored to stale geometry.
+        // generation bump closes the clean-but-DOM-stale commit window;
+        // the menu itself is now anchored to stale geometry.
         this.deps.commitEngine.noteRenderingComplete();
         this.close();
         break;
@@ -266,13 +248,11 @@ export class ContextMenuController {
     const pageMarker =
       (detail as { pageMarker?: PageMarkerTarget | null }).pageMarker ?? null;
 
-    const anchor = { x: detail.x ?? 0, y: detail.y ?? 0 };
-    const items = await this.buildItems(target, anchor, pageMarker);
+    const items = await this.buildItems(target, pageMarker);
     // A render/navigation could have raced the async item-build above.
     if (requestId !== this.requestId || this.deps.rendering()) return;
     if (items.length === 0) return;
 
-    this.target = target;
     this.items = items;
     this.rawX = detail.x ?? 0;
     this.rawY = detail.y ?? 0;
@@ -308,7 +288,6 @@ export class ContextMenuController {
   private reset(): void {
     this.open = false;
     this.items = [];
-    this.target = null;
   }
 
   async runItem(item: ContextMenuItem): Promise<void> {
@@ -316,7 +295,7 @@ export class ContextMenuController {
     await item.run();
   }
 
-  // ── Positioning (plan §4.2) ────────────────────────────────────────────────
+  // ── Positioning ────────────────────────────────────────────────
 
   private computePosition(
     px: number,
@@ -341,7 +320,7 @@ export class ContextMenuController {
     return { x, y };
   }
 
-  // ── Menu-item resolution (plan §4.3–4.4) ───────────────────────────────────
+  // ── Menu-item resolution ───────────────────────────────────
 
   private async readChapterSource(chapter: string): Promise<string | null> {
     const dir = this.deps.currentDir();
@@ -368,13 +347,9 @@ export class ContextMenuController {
 
   private async buildItems(
     target: ContextTarget,
-    anchor: { x: number; y: number },
     pageMarker: PageMarkerTarget | null,
   ): Promise<ContextMenuItem[]> {
-    if (target.kind === "selection") {
-      if (target.selection?.withinSingleBlock) return this.singleBlockSelectionItems(target);
-      return this.crossBlockSelectionItems(target);
-    }
+    if (target.kind === "selection") return this.selectionItems(target);
     if (!target.chapter || !isSafeChapterId(target.chapter) || !target.range) return [];
     const gen = this.deps.commitEngine.generation;
     const source = await this.readChapterSource(target.chapter);
@@ -388,27 +363,15 @@ export class ContextMenuController {
       case "marker":
         return this.markerItems(target, gen, pageMarker, blockSlice);
       case "block":
-        return this.blockItems(target, gen, anchor, pageMarker);
+        return this.blockItems(target, gen, pageMarker);
       default:
         return [];
     }
   }
 
-  private goToSourceItem(
-    target: ContextTarget,
-    /**
-     * Overrides `target.chapter`/`target.range` (the RIGHT-CLICK POINT's
-     * resolved block) with an explicit chapter/range. Used by the selection-
-     * formatting row (plan §4.6): a selection's anchor block
-     * (`selection.chapter`/`selection.range`) is the block actually being
-     * formatted and can, in principle, differ from the point the
-     * context-menu event fired at. "Go to source" must jump to the block
-     * being formatted, not wherever the pointer happened to land.
-     */
-    override?: { chapter: string; range: SourceRange },
-  ): ContextMenuItem {
-    const chapter = override?.chapter ?? target.chapter;
-    const range = override?.range ?? target.range;
+  private goToSourceItem(target: ContextTarget): ContextMenuItem {
+    const chapter = target.chapter;
+    const range = target.range;
     const enabled = !!chapter && isSafeChapterId(chapter) && !!range;
     return {
       id: "go-to-source",
@@ -443,11 +406,11 @@ export class ContextMenuController {
     }
     if (outcome.flushed) this.deps.toastSuccess("Updated.");
     // When !outcome.flushed, buffer.flush() detected an external change and
-    // the buffer's OWN conflict banner is already showing (plan §4.7 Step 5)
+    // the buffer's OWN conflict banner is already showing
     // — nothing further to say here.
   }
 
-  // ── Image (plan §4.3–4.4) ───────────────────────────────────────────────────
+  // ── Image ───────────────────────────────────────────────────
 
   private imageItems(target: ContextTarget, blockSlice: string | null, gen: number): ContextMenuItem[] {
     const chapter = target.chapter!;
@@ -458,7 +421,7 @@ export class ContextMenuController {
     }
     const match = findImageToken(blockSlice, image);
     if (!match && !image.source) {
-      // Raw HTML <img> — no markdown token to address (plan §2.6).
+      // Raw HTML <img> — no markdown token to address.
       return [this.goToSourceItem(target)];
     }
     const disabledReason = match ? undefined : "Couldn't locate this image in the source.";
@@ -563,7 +526,7 @@ export class ContextMenuController {
     return items;
   }
 
-  // ── Link (plan §4.3–4.4) ────────────────────────────────────────────────────
+  // ── Link ────────────────────────────────────────────────────
 
   private linkItems(target: ContextTarget, blockSlice: string | null, gen: number): ContextMenuItem[] {
     const chapter = target.chapter!;
@@ -612,7 +575,7 @@ export class ContextMenuController {
     return items;
   }
 
-  // ── Marker (plan §4.3–4.4) ──────────────────────────────────────────────────
+  // ── Marker ──────────────────────────────────────────────────
 
   /** The shared "Edit marker…" flow: prompt with the marker's raw source line
    *  and commit the edited line. Used by both the primary marker target and
@@ -753,12 +716,11 @@ export class ContextMenuController {
     return items;
   }
 
-  // ── Block (plan §4.3) ───────────────────────────────────────────────────────
+  // ── Block ───────────────────────────────────────────────────────
 
   private blockItems(
     target: ContextTarget,
     gen: number,
-    anchor: { x: number; y: number },
     pageMarker: PageMarkerTarget | null,
   ): ContextMenuItem[] {
     const chapter = target.chapter!;
@@ -768,22 +730,12 @@ export class ContextMenuController {
     // (see block-break-before/after's own comment).
     const items: ContextMenuItem[] = [
       {
-        id: "block-edit",
-        label: "Edit this block",
-        enabled: true,
-        run: () => {
-          this.deps.openInlineEdit(chapter, range, anchor);
-          this.close();
-        },
-      },
-      {
         id: "block-break-before",
         label: "Insert page break before",
         enabled: true,
         run: async () => {
           // A zero-width insert AT the block's own start line — `expected`
-          // is trivially "" and the target block's text is never touched
-          // (mirrors the §5.5 boundary-insert rule the overlay will reuse).
+          // is trivially "" and the target block's text is never touched.
           await this.commit(chapter, [range[0], range[0]], "", "@page-break\n\n", gen);
         },
       },
@@ -801,122 +753,9 @@ export class ContextMenuController {
     return items;
   }
 
-  // ── Selection formatting (plan §4.3, §4.6 — PR 4) ───────────────────────────
+  // ── Selection ─────────────────────────────────────────────────────────────
 
-  private static readonly AMBIGUOUS_REASON =
-    "Couldn't locate this text uniquely in the source — open the editor";
-  private static readonly STRUCTURE_REASON =
-    "This selection includes code or link syntax — edit it in the editor.";
-  private static readonly FORMAT_KINDS: ReadonlyArray<{
-    id: string;
-    label: string;
-    kind: FormatKind;
-  }> = [
-    { id: "format-bold", label: "Bold", kind: "bold" },
-    { id: "format-italic", label: "Italic", kind: "italic" },
-    { id: "format-strike", label: "Strikethrough", kind: "strike" },
-    { id: "format-code", label: "Inline code", kind: "code" },
-  ];
-
-  /**
-   * A single-block selection's formatting row (plan §4.6). The preview gives
-   * us `selection.text` — RENDERED text — which must be located inside the
-   * block's raw markdown source before it can be wrapped; see
-   * `#lib/editor/selection-search.ts` for the whitespace/typographer/
-   * delimiter matching this delegates to. Every disabled path here (no
-   * match, structural syntax, same-delimiter nesting) degrades to "Go to
-   * source" only — never a guessed edit (plan §1 principle 3).
-   *
-   * Uses `selection.chapter`/`selection.range` (the selection's OWN anchor
-   * block), never `target.chapter`/`target.range` (the right-click POINT's
-   * resolved block, which for a selection is populated from `pointEl` and
-   * is not guaranteed to be the same block — see `preview-interface.js`'s
-   * `buildContextTarget`).
-   */
-  private async singleBlockSelectionItems(target: ContextTarget): Promise<ContextMenuItem[]> {
-    const sel = target.selection;
-    if (!sel || !sel.chapter || !sel.range) {
-      return [this.goToSourceItem(target)];
-    }
-    const chapter = sel.chapter;
-    const range = sel.range;
-    const editItem = this.goToSourceItem(target, { chapter, range });
-
-    const gen = this.deps.commitEngine.generation;
-    const source = await this.readChapterSource(chapter);
-    const blockSlice = source != null ? this.sliceRange(source, range) : null;
-    if (blockSlice == null) {
-      return [this.goToSourceItem(target, { chapter, range })];
-    }
-
-    const match = locateSelectionInSource(blockSlice, sel.text);
-    if (!match) {
-      return [
-        ...ContextMenuController.FORMAT_KINDS.map(({ id, label }) => this.disabledFormatItem(id, label)),
-        this.disabledFormatItem("format-link", "Make link…"),
-        editItem,
-      ];
-    }
-
-    const matchedText = match.matchedText;
-    const structureBlocked = touchesStructuralSyntax(blockSlice, match.start, match.end);
-
-    const items: ContextMenuItem[] = ContextMenuController.FORMAT_KINDS.map(({ id, label, kind }) => {
-      const nested = !structureBlocked && hasSameDelimiter(matchedText, kind);
-      const disabledReason = structureBlocked
-        ? ContextMenuController.STRUCTURE_REASON
-        : nested
-          ? `This selection already contains ${label.toLowerCase()} formatting.`
-          : undefined;
-      return {
-        id,
-        label,
-        enabled: !disabledReason,
-        disabledReason,
-        run: async () => {
-          const replacement = spliceToken(blockSlice, match.start, match.end, wrapDelimiter(matchedText, kind));
-          await this.commit(chapter, range, blockSlice, replacement, gen);
-        },
-      };
-    });
-
-    items.push({
-      id: "format-link",
-      label: "Make link…",
-      enabled: !structureBlocked,
-      disabledReason: structureBlocked ? ContextMenuController.STRUCTURE_REASON : undefined,
-      run: async () => {
-        const url = await this.deps.promptText({
-          title: "Make link",
-          label: "Web address",
-          initialValue: "https://",
-        });
-        if (!url) return;
-        const replacement = spliceToken(
-          blockSlice,
-          match.start,
-          match.end,
-          makeLinkToken(matchedText, url),
-        );
-        await this.commit(chapter, range, blockSlice, replacement, gen);
-      },
-    });
-
-    items.push(editItem);
-    return items;
-  }
-
-  private disabledFormatItem(id: string, label: string): ContextMenuItem {
-    return {
-      id,
-      label,
-      enabled: false,
-      disabledReason: ContextMenuController.AMBIGUOUS_REASON,
-      run: () => {},
-    };
-  }
-
-  private crossBlockSelectionItems(target: ContextTarget): ContextMenuItem[] {
+  private selectionItems(target: ContextTarget): ContextMenuItem[] {
     const text = target.selection?.text ?? "";
     const items: ContextMenuItem[] = [
       {

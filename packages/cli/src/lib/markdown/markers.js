@@ -2222,7 +2222,7 @@ export default function plugin(md, pluginOptions = {}) {
   // (which runs BEFORE render — see source-range.ts). A rule that named its
   // attributes one by one is what let `@page-break #id` lose its id, and what
   // would drop any attribute added later. data-source-range keeps the break
-  // targetable by the context menu's "marker" kind (plan §3.1's kind
+  // targetable by the context menu's "marker" kind (ADR 0009's kind
   // precedence explicitly includes "layout wrapper/break").
   const renderBreak = (tokens, idx, options, env, self) =>
     `<div${self.renderAttrs(tokens[idx])}></div>\n`;

@@ -209,8 +209,7 @@ export interface AppSettings {
     splitRatio: number;
     /**
      * Right-click (or Shift+F10) context menu over the paginated preview
-     * (inline-editing plan §4.5; Settings → Preview, "Right-click menu in the
-     * preview"). Default true — an explicit-invocation affordance, not seamless
+     * (Settings → Preview, "Right-click menu in the preview"). Default true — an explicit-invocation affordance, not seamless
      * WYSIWYG, so the UX contract's opt-in rule for the latter does not apply
      * here. Off: the menu never opens, from the mouse or the keyboard.
      */

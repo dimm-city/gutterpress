@@ -77,7 +77,7 @@
   window.addEventListener('elementActivated', function (e) {
     post({ type: 'gutterpress:event', name: 'elementActivated', detail: e.detail });
   });
-  // docs/inline-editing-plan.md §3.1/§3.2 (protocol v4): right-click / keyboard
+  // ADR 0009 (protocol v4): right-click / keyboard
   // context-menu target request.
   window.addEventListener('contextMenuRequested', function (e) {
     post({ type: 'gutterpress:event', name: 'contextMenuRequested', detail: e.detail });
@@ -87,26 +87,11 @@
   window.addEventListener('overlayChanged', function (e) {
     post({ type: 'gutterpress:event', name: 'overlayChanged', detail: e.detail });
   });
-  // In-flow block editing (protocol v8). `Requested` is the double-click entry
-  // point — the SPA answers it with a beginBlockEdit command. `Finished`
-  // carries the edited text back for an end the AUTHOR initiated inside the
-  // book (Escape / Cmd+Enter / blur), which the SPA cannot observe. `State`
-  // fires on every open and close, including SPA-initiated ones, and is what
-  // preview-shell.js holds hot-reload swaps on.
-  window.addEventListener('blockEditRequested', function (e) {
-    post({ type: 'gutterpress:event', name: 'blockEditRequested', detail: e.detail });
-  });
-  window.addEventListener('blockEditFinished', function (e) {
-    post({ type: 'gutterpress:event', name: 'blockEditFinished', detail: e.detail });
-  });
-  window.addEventListener('blockEditStateChanged', function (e) {
-    post({ type: 'gutterpress:event', name: 'blockEditStateChanged', detail: e.detail });
-  });
 
   // Esc pressed inside the book. Keystrokes in this cross-origin document
   // never reach the app, so an Esc nothing here consumed is forwarded (the app
-  // uses it to leave Focus). Bubble phase on window, so in-book handlers that
-  // own Esc — in-place block editing stops it at the document — run first.
+  // uses it to leave Focus). Bubble phase on window, so an in-book handler
+  // that owns Esc runs first.
   window.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape' || e.defaultPrevented) return;
     post({ type: 'gutterpress:event', name: 'escapePressed', detail: {} });

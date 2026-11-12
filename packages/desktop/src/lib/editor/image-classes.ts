@@ -1,7 +1,6 @@
 /**
  * image-classes — the single source of truth for the author-facing image
- * class vocabulary the desktop UI reads and writes (inline-editing plan
- * §4.4's "one attrs-suffix rule" widened to the whole class list).
+ * class vocabulary the desktop UI reads and writes.
  *
  * The vocabulary itself is core's: `GUTTERPRESS_CSS` in
  * `packages/cli/src/lib/markdown/gutterpress-css.ts` ships the rules;

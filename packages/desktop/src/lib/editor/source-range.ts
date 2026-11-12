@@ -1,5 +1,5 @@
 /**
- * Line→offset resolution for `data-source-range` (inline-editing plan §2.3).
+ * Line→offset resolution for `data-source-range`.
  *
  * PWA-clean (CLAUDE.md §8): zero `node:*` / `fs` / `path` / `url`
  * imports, zero runtime imports from `gutterpress`. This is a pure, unit-
@@ -7,7 +7,7 @@
  * against `buffer.content` at the moment it needs character offsets (menu
  * open, overlay open, commit) — never at render time, because line indices
  * (not char offsets) are what stays stable across LF/CRLF/lone-CR line
- * endings; see docs/inline-editing-plan.md §1 principle 4 / §2.6.
+ * endings; see ADR 0009.
  */
 
 /**
@@ -45,7 +45,7 @@ export function buildLineStarts(text: string): number[] {
  *
  * THROWS — does not clamp — on a malformed range: non-finite endpoints,
  * negative `from`, or `to < from`. A malformed range must abort the calling
- * action ("fail safe, not fail wrong" — plan §1 principle 3), never silently
+ * action ("fail safe, not fail wrong"), never silently
  * "work" against the wrong slice of text.
  */
 export function charRange(

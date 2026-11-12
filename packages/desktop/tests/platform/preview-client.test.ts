@@ -168,7 +168,7 @@ describe("PreviewClient postMessage origin/source validation (M31)", () => {
 });
 
 /**
- * Bridge protocol v4 (docs/inline-editing-plan.md §3.4): getContextTargetAt()
+ * Bridge protocol v4 (ADR 0009): getContextTargetAt()
  * command wrapper + the contextMenuRequested event round-trip through
  * PreviewClient, following the M31 origin/source-gated pattern above.
  */
@@ -237,7 +237,7 @@ describe("PreviewClient context-menu bridge (protocol v4)", () => {
       rect: { top: 10, left: 20, width: 30, height: 40 },
       image: null,
       link: null,
-      selection: { text: "Hello", withinSingleBlock: true, range: [2, 3], chapter: "a.md" },
+      selection: { text: "Hello" },
       x: 100,
       y: 200,
       via: "mouse",
