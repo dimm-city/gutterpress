@@ -38,7 +38,7 @@ contract and those documents conflict, the architecture documents win.**
 | Rule | Source | UX consequence |
 |---|---|---|
 | Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls, host fs primitives) | `docs/architecture-rules.md` §8 | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
-| Preview bridge protocol | `docs/inline-editing-plan.md` | Sync scroll, page navigation, outline, any preview overlay or overflow probe must go through the bridge. |
+| Preview bridge protocol | `docs/adr/0009-inline-editing-source-ranges.md` | Sync scroll, page navigation, outline, any preview overlay or overflow probe must go through the bridge. |
 | Plugins are plain markdown-it plugins; no plugin API; loader never auto-installs | `docs/architecture-rules.md` §5 | Constrains §9 (Extensions) below. |
 | PDF rendering = Electron `printToPDF` (desktop) / a system Chromium driven over raw CDP (CLI); pure-JS tooling posture | `docs/architecture-rules.md` §1/§3 | Preflight/export UX; "export" not "download". |
 | Git/GitHub operations are Node-native pure JS | `docs/architecture-rules.md` §7 | Project source / sync / provider-auth UX. |
@@ -392,16 +392,14 @@ Proposed refinements:
 - Avoid: forcing permanent single-pane mode; auto-hiding scrollbars that
   cause layout shift.
 
-### 1b. Inline editing in the preview
+### 1b. Actions on the preview
 
 **Status: SHIPPED** (0.10.0 — tracked by **#135** Tier 0 and **#136** Tier 1;
-implementation plan `docs/inline-editing-plan.md`, rationale
-`docs/adr/0009-inline-editing-source-ranges.md`).
+rationale `docs/adr/0009-inline-editing-source-ranges.md`).
 
-The paginated preview is an editing surface, not only a viewer. This does
-**not** supersede the opt-in WYSIWYG rule above: these are explicit,
-user-invoked actions on a specific target, not a seamless typing surface.
-The source pane remains the default editing model.
+The paginated preview offers explicit, user-invoked actions on a specific
+target. It is not a typing surface: text is written in the source pane, and
+nothing typed or selected in the preview is turned back into markdown.
 
 Shipped behavior:
 
@@ -410,9 +408,9 @@ Shipped behavior:
   not mutation.
 - **Context menu** on right-click, with items matched to the target:
   image (alt text, width, position, replace, reveal in Media panel), link
-  (edit, copy target), selected text (bold, italic, strikethrough, inline
-  code, make link), block (edit this block, insert page break
-  before/after, go to source), and `@marker` (edit marker, go to source).
+  (edit, copy target), selected text (copy, go to source), block (insert
+  page break before/after, go to source), and `@marker` (edit marker, go to
+  source).
   The block and `@marker` menus carry one further item, **"Edit page
   marker…"**, placed last before "Go to source": it edits the marker line
   of the `.page`/`.spread`/`.chapter` enclosing the point, and is offered
@@ -425,10 +423,6 @@ Shipped behavior:
   Gated by the `preview.contextMenu` setting (Settings → Preview, "Right-click
   menu in the preview"), default on; off, neither a right-click nor
   `Shift+F10` opens it.
-- **Block overlay.** "Edit this block" opens that block's **markdown
-  source** in place over the preview; commit on `Ctrl/Cmd+Enter` or blur,
-  cancel on `Escape`.
-
 Rules (normative):
 
 - **Keyboard parity is required, not optional.** `Shift+F10` / the menu key

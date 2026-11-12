@@ -1,5 +1,5 @@
 /**
- * Acceptance tests for the `source_range` primitive (docs/inline-editing-plan.md
+ * Acceptance tests for the `source_range` primitive (ADR 0009
  * §2.5). Renders through `createMarkdownRenderer()` — the FULL pipeline
  * (markdown-it-attrs, footnote, deflist, source-map, the marker plugin, then
  * `source_range` registered last) — exactly what `renderer.ts` ships, so

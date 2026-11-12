@@ -5,6 +5,16 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+
+- **Editing text in the preview.** Double-clicking a block, and the right-click
+  menu's "Edit this block", no longer turn the block into a text box; a
+  double-click selects a word again. The menu's Bold, Italic, Strikethrough,
+  Inline code and Make link items for selected text are gone too — a selection
+  offers Copy and Go to source. Text is written in the editor pane. The rest of
+  the right-click menu (image properties, links, markers, block properties,
+  page breaks) is unchanged.
+
 ## [0.11.24] - 2026-11-07
 
 ### Added

@@ -52,7 +52,6 @@
   import { EditorPreviewSyncController } from "#lib/routes/editor-preview-sync-controller.ts";
   import { ContextMenuController } from "#lib/routes/context-menu-controller.svelte.ts";
   import ContextMenu from "#lib/components/ContextMenu.svelte";
-  import { InlineEditController } from "#lib/routes/inline-edit-controller.svelte.ts";
   import TextPromptDialog from "#lib/components/TextPromptDialog.svelte";
   import ImagePropertiesDialog from "#lib/components/ImagePropertiesDialog.svelte";
   import type { ImagePropertiesValue } from "#lib/editor/image-classes.ts";
@@ -1055,7 +1054,6 @@
   function openSnippetPicker() {
     if (!lifecycle.currentDir) return;
     contextMenu.close();
-    void inlineEdit.endActive(true); // opening a dialog commits the in-flow edit
     snippetPickerRef?.show();
   }
 
@@ -2133,8 +2131,8 @@
   });
 
   // ----------------------------------------------------------------
-  // Commit engine — the single write path for context-menu AND in-flow
-  // block-edit mutations (docs/inline-editing-plan.md §3). Pure logic + injected
+  // Commit engine — the single write path for context-menu mutations
+  // (ADR 0009 decision 3). Pure logic + injected
   // seams; never writes a file itself (buffer.edit/flush + applyRangeEdit do
   // that, exactly like every other write path in the app).
   // ----------------------------------------------------------------
@@ -2261,26 +2259,6 @@
   }
 
   // ----------------------------------------------------------------
-  // In-flow block editing (docs/inline-editing-plan.md §3.3, protocol v8).
-  // Two entry points, both landing here: the "Edit this block" context-menu
-  // item (below) and double-click in the preview (which arrives as the
-  // blockEditRequested event on the controller's own subscription).
-  //
-  // No geometry deps: the editing surface is the block's own element inside
-  // the book iframe, so there is no panel to position over it.
-  // ----------------------------------------------------------------
-  const inlineEdit = new InlineEditController({
-    client: () => client,
-    currentDir: () => lifecycle.currentDir,
-    openContent: (path) => (buffer?.filePath === path ? buffer.content : null),
-    readFile: (path) => getPlatform().readFile(path),
-    commitEngine,
-    focusPreview: () => previewFrameRef?.getIframe()?.focus(),
-    toastError: (message) => toast?.error(message),
-    toastInfo: (message) => toast?.info?.(message),
-  });
-
-  // ----------------------------------------------------------------
   // Preview right-click / Shift+F10 context menu (inline-editing plan
   // §4.1-4.5). Subscribes to the preview client via its OWN client.on()
   // listener — separate from previewEvents' switch below (PR 0 already owns
@@ -2313,7 +2291,6 @@
     copyToClipboard,
     toastSuccess: (message) => toast?.success(message),
     toastError: (message) => toast?.error(message),
-    openInlineEdit: (chapter, range, caret) => void inlineEdit.show({ chapter, range, caret }),
   });
 
   // ----------------------------------------------------------------
@@ -2395,7 +2372,6 @@
     c.setExpectedOrigin(lifecycle.previewUrl);
     previewEvents.subscribe(c);
     contextMenu.subscribe(c);
-    inlineEdit.subscribe(c);
     c.on(onPreviewEscape);
   }
 
@@ -3190,8 +3166,8 @@
       onInsertImage={(payload) => insertImageIntoChapter(payload)}
       onProjectChosen={(path) => void openProjectPath(path)}
       onOpenUrl={openUrl}
-      onOpenBook={() => { contextMenu.close(); void inlineEdit.endActive(true); openBookOpen = true; }}
-      onNewProject={() => { contextMenu.close(); void inlineEdit.endActive(true); newProjectWizardRef?.show(); }}
+      onOpenBook={() => { contextMenu.close(); openBookOpen = true; }}
+      onNewProject={() => { contextMenu.close(); newProjectWizardRef?.show(); }}
       onPanelStateChange={persistLeftPanelPrefs}
     />
 

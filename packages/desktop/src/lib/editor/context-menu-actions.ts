@@ -251,10 +251,6 @@ function serializeDestination(value: string): string {
   return `<${escaped}>`;
 }
 
-export function makeLinkToken(label: string, href: string): string {
-  return `[${escapeLabel(label)}](${serializeDestination(href)})`;
-}
-
 export function rewriteImageToken(
   image: ImageTokenMatch,
   changes: { alt?: string; src?: string; attrsRaw?: string },

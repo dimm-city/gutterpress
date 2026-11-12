@@ -7,7 +7,7 @@
  * against `buffer.content` at the moment it needs character offsets (menu
  * open, overlay open, commit) — never at render time, because line indices
  * (not char offsets) are what stays stable across LF/CRLF/lone-CR line
- * endings; see docs/inline-editing-plan.md §1 principle 4 / §2.6.
+ * endings; see ADR 0009.
  */
 
 /**

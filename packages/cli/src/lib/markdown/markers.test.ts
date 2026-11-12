@@ -53,7 +53,7 @@ function renderPaged(
 /**
  * Parse (not render) markdown through a bare MarkdownIt + marker plugin
  * instance, for tests that inspect `token.meta` directly (source-line
- * threading — §2.1 of docs/inline-editing-plan.md) rather than rendered HTML.
+ * threading — ADR 0009 decision 2) rather than rendered HTML.
  */
 function parsePaged(
   src: string,
