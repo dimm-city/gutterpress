@@ -13,6 +13,14 @@ This project follows [Semantic Versioning](https://semver.org/).
   as it is today. Changed words are marked inside each line, unchanged text is folded
   away, and "Change 2 of 5" with previous/next (Alt+↑ / Alt+↓) steps through the changes.
   Choose **Inline** or **Side by side**; the editor's colours and line numbers are kept.
+- **Desktop: Version history opens on your newest version, already showing what changed.**
+  Automatic saves are grouped into editing sessions that name the files you worked on,
+  and the versions you saved stand out with a star. Find a version by its note or by a
+  file ("ch07"), or show only Named or Not online yet. A version's changed files are
+  chips you can switch between (←/→); ↑/↓ move through the list. Versions from someone
+  else that aren't on this computer yet are one line with **Get them**. **Restore the
+  whole book to this version…** now says what it restores, and asks without moving the
+  page. In a narrow window the list becomes a drawer.
 
 ### Removed
 

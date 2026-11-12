@@ -573,31 +573,55 @@ buttons.
 - **Version history is SHIPPED as a screen of its own** (#448): Online copy's
   Version history card lists the newest versions with **Save a version** and
   **Browse versions**, which (or a listed version) opens the screen over Book
-  setup — the versions on the left grouped by day, the selected one on the
-  right with its **Changed files** or, only when asked for, its **Pages**
-  rendered as they were, and **Restore this version** at the top. Selecting a
-  version never renders it: selecting another returns to its Changed files.
-  × or Esc returns to Book setup. It never takes over the editor pane.
+  setup. × or Esc returns to Book setup. It never takes over the editor pane.
+  It opens on a version — the one clicked, else the newest — with its first
+  changed text file already compared; there is no empty "choose a version"
+  pane.
+  **The list** (left) is grouped by day. Within a day, consecutive automatic
+  versions fold into an editing session ("Editing · 14 automatic saves", the
+  time span, and the files it touched, filled in as they load); a pause of an
+  hour starts a new session. Opening a session lists its versions one line
+  each ("ch19.md · 3 paragraphs  4:52 PM"). Versions the author saved stand
+  out with a star, their title, time and files. A row names an author only
+  when it is not the book's usual one, and marks a version that is only on
+  this computer with a labelled "not online yet". What each version changed
+  loads as its row scrolls into view, never a whole page up front, so the
+  list and **Show older versions** stay as quick as #461 made them; a row
+  keeps its files line while they load, so it never grows. First paint is
+  skeleton rows. A search box ("Find a version or a file") matches a
+  version's title or note and the files it changed (a version's files match
+  once they have loaded; a search asks for every listed version's), and
+  **All · Named · Not online yet (N)** narrow the list. ↑/↓ and Home/End move
+  the selection (a closed session opens on the version the move reaches),
+  ←/→ switch files; a key hint sits at the list's foot. With an online copy,
+  the versions in it that are not on this computer yet are one banner row
+  ("2 versions from Grace aren't on this computer yet · **Get them**"); Get
+  them runs the same get-latest pass as the Online tab. Opened, the banner
+  lists them; one can be selected to see its changed files, compared only
+  when this computer already has it, and never restored.
+  **The selected version** (right): its title, date and author, where it is
+  kept (Online / Only on this computer), and its changed files as chips
+  ("ch19.md 3 paragraphs", "plate-4.png replaced"); the chosen chip's
+  comparison opens in place, and selecting another version keeps that file
+  open when the version changed it too. **Changes | Pages**: Pages renders
+  the version read-only, only when asked for. **Restore the whole book to
+  this version…** is a secondary button; it asks once, in a box over the
+  page (the layout never moves), and saves the current work as a version
+  first. There is no restore of a single file: the only safe single-file
+  write path is the open editor's buffer, which this screen does not reach.
+  Errors show where the author acted: a failed comparison or list says so in
+  that place, with Try again. Below 1000 px the list is a drawer (**Versions**
+  in the header) and the comparison opens Inline.
   A changed text file opens to **What this version changed** (the file before
-  the version beside the file in it — the comparison the list's "3 paragraphs
-  changed" counts; "Before" / "After · this version"), or, when asked,
+  the version beside the file in it — the comparison the chips' "3
+  paragraphs" counts; "Before" / "After · this version"), or, when asked,
   **Compared with your book now** ("This version" / "Your book now"). It is
   shown **Inline** (the default, remembered for the session) or **Side by
   side**, in the editor's syntax colours with line numbers, the changed words
   marked inside each changed line, and unchanged text collapsed to a few
   lines around each change. It opens at the first change; "Change 2 of 5"
   with previous/next (Alt+↑ / Alt+↓) steps through the rest. One toolbar
-  holds **‹ Changed files**, the file name, both choices and the count.
-  A picture says it has no text to compare.
-  As in 0.11.22 (#484), every version card lists the files its version
-  changed ("chapter-02.md · 3 paragraphs changed", "and N more" past eight,
-  "No changes"), loaded as the card scrolls into view, never a whole page up
-  front, so the list and **Show older versions** stay as quick as #461 made
-  them, and a card already seen selects instantly. With an online copy, the
-  versions in it that are not on this computer yet are listed above the
-  rest, under **Online, not yet on this computer**, each with its name, time,
-  author and changed files ("They come in with **Get latest**, or the next
-  time this book backs up."); they are shown, not selected or restored.
+  holds both choices and the count. A picture says it has no text to compare.
   Author-facing vocabulary says "revision", never "branch"; "copy" means only
   the online copy. The editor/file tree/preview show the new revision the same
   way they pick up any other external change.

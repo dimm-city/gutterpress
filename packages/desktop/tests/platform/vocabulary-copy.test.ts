@@ -187,25 +187,25 @@ describe("Version history", () => {
     expect(tab.indexOf("Save a version")).toBeLessThan(tab.indexOf("See all"));
   });
 
-  test("the screen: versions on the left, the selected one's Pages or Changed files, Go back to this version at its top", () => {
+  test("the screen: versions on the left, the selected one's Changes or Pages, a restore that says it is the whole book", () => {
     expect(view).toContain("Version history</h1>");
-    expect(view).toContain("Go back to this version");
-    expect(read("lib/components/VersionHistoryView.svelte")).toContain("Went back to");
+    expect(view).toContain("Restore the whole book to this version…");
+    expect(read("lib/components/VersionHistoryView.svelte")).toContain("Restored the whole book to");
+    expect(view).toContain(">Changes</button>");
     expect(view).toContain(">Pages</button>");
-    expect(view).toContain("Changed files");
     expect(view).toContain("Your current work is saved as a version first.");
     expect(view).toContain("Only on this computer");
+    expect(view).not.toContain("Go back to this version");
   });
 
-  test("versions online and not here yet are listed under their own heading, and say when they come in (#484)", () => {
-    expect(view).toContain("Online, not yet on this computer</h2>");
-    expect(view).toContain("They come in with <strong>Get changes</strong>, or the next time this book sends changes.");
+  test("versions online and not here yet: one banner, and Get them", () => {
+    expect(view).toContain(">{getting ? \"Getting…\" : \"Get them\"}</button>");
+    expect(view).toContain('aria-label="Online, not yet on this computer"');
   });
 
-  test("each card names what its version changed, in 0.11.22's words (#484)", () => {
-    expect(view).toContain("No changes");
-    expect(view).toContain("and {more} more");
-    expect(view).toMatch(/\{change\.path\}<\/span> · \{change\.hint\}/);
+  test("the search says what it looks through", () => {
+    expect(view).toContain('placeholder="Find a version or a file — e.g. ch07"');
+    expect(view).toContain("Older versions match once they are listed.");
   });
 });
 
