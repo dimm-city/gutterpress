@@ -27,6 +27,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import git, { type ReadCommitResult, type WalkerEntry } from "isomorphic-git";
 import postcss from "postcss";
 import { gitFs as fs } from "./git-fs.ts";
+import { gitReadCache } from "./git-read-cache.ts";
 import { detectProjectSource, syncRemoteFor } from "./project-source.ts";
 import { gitScopeFor, nextInHistory, startHistoryWalk, type SnapshotEntry } from "./source-provider.ts";
 import { currentBranchOrThrow, repoDirFor, resolveTransport } from "./remote-auth/transport.ts";
@@ -125,11 +126,30 @@ export function changeHint(filepath: string, before: string, after: string): str
  * {@link VERSION_CHANGES_SHOWN}.
  */
 export async function listVersionChanges(projectDir: string, oid: string): Promise<VersionChanges> {
-  return changesOf(await repoDirFor(projectDir), {}, oid);
+  const dir = await repoDirFor(projectDir);
+  return changesOf(dir, await gitReadCache(dir), oid);
 }
+
+/** How many versions' changes {@link changesOf} remembers. */
+const CHANGES_REMEMBERED = 500;
+/**
+ * Versions' changes already worked out, by commit id. A commit id names the
+ * version's tree and its parent, so its changes never change; the oldest is
+ * forgotten first.
+ */
+const changesById = new Map<string, VersionChanges>();
 
 /** {@link listVersionChanges} in repository `dir`, sharing `cache` with the caller's other reads. */
 async function changesOf(dir: string, cache: object, oid: string): Promise<VersionChanges> {
+  const known = changesById.get(oid);
+  if (known) return known;
+  const changes = await workOutChanges(dir, cache, oid);
+  changesById.set(oid, changes);
+  if (changesById.size > CHANGES_REMEMBERED) changesById.delete(changesById.keys().next().value!);
+  return changes;
+}
+
+async function workOutChanges(dir: string, cache: object, oid: string): Promise<VersionChanges> {
   const parent = (await git.readCommit({ fs, dir, cache, oid })).commit.parent[0] ?? null;
   const found: VersionFileChange[] = [];
   await git.walk({
@@ -217,7 +237,7 @@ export async function describeVersions(projectDir: string, entries: SnapshotEntr
   const dir = await repoDirFor(projectDir);
   const tip = await trackingTip(dir);
   if (!tip) return entries.map((entry) => ({ ...entry, backedUp: null }));
-  const cache = {};
+  const cache = await gitReadCache(dir);
   const shallow = await readFile(path.join(dir, ".git", "shallow"), "utf8").catch(() => "");
   /** The tip and every parent of a commit walked so far. */
   const reached = new Set([tip]);
@@ -372,7 +392,7 @@ export async function listOnlineVersions(options: {
       ...(options.tokenStore ? { tokenStore: options.tokenStore } : {}),
     });
     const branch = await currentBranchOrThrow(dir);
-    const cache = {};
+    const cache = await gitReadCache(dir);
     const tip = await resolveOrNull(dir, `refs/remotes/${transport.remote}/${branch}`);
     const local = await resolveOrNull(dir, branch);
     if (!tip || !local) return { entries: [], checkedAt: checked.checkedAt };
@@ -399,7 +419,7 @@ export type CompareBase = "previous" | "current";
 /** The file at commit `oid`, or null where that version has no such file. */
 async function blobOrNull(dir: string, oid: string, filepath: string): Promise<Uint8Array | null> {
   try {
-    return (await git.readBlob({ fs, dir, oid, filepath })).blob;
+    return (await git.readBlob({ fs, dir, cache: await gitReadCache(dir), oid, filepath })).blob;
   } catch (e) {
     if ((e as { code?: string })?.code !== "NotFoundError") throw e;
     return null;
@@ -434,7 +454,7 @@ export async function compareVersionFile(
       if ((e as NodeJS.ErrnoException)?.code !== "ENOENT") throw e;
     }
   } else {
-    const parent = (await git.readCommit({ fs, dir, oid: id })).commit.parent[0];
+    const parent = (await git.readCommit({ fs, dir, cache: await gitReadCache(dir), oid: id })).commit.parent[0];
     beforeBytes = parent ? await blobOrNull(dir, parent, filepath) : null;
     afterBytes = atVersion;
   }
@@ -463,7 +483,7 @@ export async function exportVersionTree(
   await git.walk({
     fs,
     dir,
-    cache: {},
+    cache: await gitReadCache(dir),
     trees: [git.TREE({ ref: id })],
     map: async (filepath: string, entries: Array<WalkerEntry | null>) => {
       if (filepath === ".") return true;

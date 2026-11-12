@@ -118,6 +118,25 @@ describe("listVersionChanges", () => {
   });
 });
 
+describe("listVersionChanges remembers each version's changes", () => {
+  test("a version asked for again is answered without reading the repository", async () => {
+    const own = await mkdtemp(path.join(tmpdir(), "gutterpress-versions-memo-"));
+    try {
+      await git.init({ fs, dir: own, defaultBranch: "main" });
+      await writeFile(path.join(own, "a.md"), "# A\n");
+      await git.add({ fs, dir: own, filepath: "a.md" });
+      const oid = await git.commit({ fs, dir: own, message: "One", author });
+      const first = await listVersionChanges(own, oid);
+      expect(first.files.map((f) => f.path)).toEqual(["a.md"]);
+      // With every object gone only a remembered answer can come back.
+      await rm(path.join(own, ".git", "objects"), { recursive: true, force: true });
+      expect(await listVersionChanges(own, oid)).toEqual(first);
+    } finally {
+      await rm(own, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("describeVersions", () => {
   const entries = () => [
     { id: c3, message: "Automatic snapshot", timestamp: 3 },

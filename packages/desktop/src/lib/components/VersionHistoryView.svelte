@@ -146,7 +146,8 @@
 
   /** What is in the online copy and not on this computer yet. Quiet when it can't tell. */
   async function loadOnline(): Promise<void> {
-    online = (await api.vcs.onlineVersions(projectDir).catch(() => null))?.entries ?? [];
+    // The Online tab checked a moment ago, as a rule: its check is reused rather than asked again.
+    online = (await api.vcs.onlineVersions(projectDir, { maxAgeMs: onlineCopy.FRESH_MS }).catch(() => null))?.entries ?? [];
   }
 
   /** Cards report coming into and leaving the list's view; their changes load while they are in it. */

@@ -13,6 +13,14 @@ This project follows [Semantic Versioning](https://semver.org/).
   as it is today. Changed words are marked inside each line, unchanged text is folded
   away, and "Change 2 of 5" with previous/next (Alt+↑ / Alt+↓) steps through the changes.
   Choose **Inline** or **Side by side**; the editor's colours and line numbers are kept.
+- **Desktop: Version history and the Online tab are fast on books with many pictures.**
+  Reads of a book's history now share what was already loaded from it for up to a
+  minute, and each version's changed files are worked out once. On a 300-version book
+  with a 234 MB history, Version history lists in about 0.04 s (was 1.5 s), switching
+  versions takes milliseconds (was up to 1 s) and opening a file comparison about
+  0.07 s (was 2.7 s). The Online tab reads the history and the unsaved changes once
+  instead of two or three times, Version history reuses the tab's online check, and
+  the tab shows the newest versions in about 2 s (was 5.5 s).
 
 ### Removed
 
