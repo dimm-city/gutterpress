@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { backupCard, checkedAgo, type CardInput } from "../../src/lib/routes/backup-card";
-import { versionSubtitle, versionTitle } from "../../src/lib/routes/version-timeline";
+import { versionTitle } from "../../src/lib/routes/version-timeline";
 
 const NOW = Date.parse("2026-11-07T12:00:00Z");
 const base: CardInput = { situation: "ready", backup: null, checking: false, where: "GitHub · ada/harbor", github: true, autoBackup: true, now: NOW };
@@ -88,11 +88,9 @@ describe("checkedAgo", () => {
 });
 
 describe("version row copy", () => {
-  test("the author's note is the title, the label the subtitle", () => {
+  test("the author's note is the title, else the plain label", () => {
     expect(versionTitle("Sent to printer")).toBe("Sent to printer");
-    expect(versionSubtitle("Sent to printer")).toBeNull();
     expect(versionTitle("Automatic version")).toBe("Automatic version");
-    expect(versionSubtitle("Automatic version")).toBeNull();
     expect(versionTitle("Saved a version")).toBe("Version saved by you");
   });
 });

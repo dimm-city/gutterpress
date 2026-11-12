@@ -9,7 +9,7 @@
   /**
    * VersionCompareView — one text file of a version, compared (#408). By
    * default it shows what the version changed: the file before it beside
-   * the file in it, the comparison the Changed files list counts. "Compared
+   * the file in it, the comparison the file chips count. "Compared
    * with your book now" shows the version beside the file as it is now.
    * The host sends the two texts (`api.vcs.compareFile`); the diff itself
    * is @codemirror/merge (#lib/editor/version-diff.ts), Inline or Side by
@@ -26,18 +26,17 @@
     projectDir,
     id,
     path,
-    onBack,
   }: {
     projectDir: string;
     /** The version. */
     id: string;
-    /** The file, repo-relative, as the version's Changed files listed it. */
+    /** The file, repo-relative, as the version's changed files listed it. */
     path: string;
-    onBack: () => void;
   } = $props();
 
   let base = $state<CompareBase>("previous");
-  let mode = $state<DiffMode>(lastMode);
+  // A narrow window has no room for two columns: it opens Inline.
+  let mode = $state<DiffMode>(window.matchMedia("(max-width: 999px)").matches ? "inline" : lastMode);
   let texts = $state<{ binary: true } | { binary: false; before: string; after: string } | null>(null);
   let failed = $state<string | null>(null);
   let count = $state(0);
@@ -108,8 +107,6 @@
 
 <div class="compare-view">
   <div class="bar" role="toolbar" aria-label="Compare this file">
-    <button class="back" onclick={onBack}><Icon name="chevron-left" size={14} /> Changed files</button>
-    <h2 title={path}>{path}</h2>
     <div class="seg" role="group" aria-label="Compare">
       <button class:active={base === "previous"} aria-pressed={base === "previous"} onclick={() => void load("previous")}>What this version changed</button>
       <button class:active={base === "current"} aria-pressed={base === "current"} onclick={() => void load("current")}>Compared with your book now</button>
@@ -128,7 +125,10 @@
   </div>
 
   {#if failed}
-    <p class="note error" role="alert">Couldn't compare this file. {failed}</p>
+    <p class="note error" role="alert">
+      Couldn't compare this file. {failed}
+      <button class="retry" onclick={() => void load(base)}>Try again</button>
+    </p>
   {:else if texts?.binary}
     <p class="note">This file is a picture or another kind of file that has no text to compare.</p>
   {:else if same}
@@ -151,19 +151,15 @@
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
     padding: 8px 20px; background: var(--app-surface); border-bottom: 1px solid var(--app-border);
   }
-  h2 { flex: 1 1 120px; min-width: 0; margin: 0; font-size: 13px; font-weight: 600; color: var(--app-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   button { font: inherit; font-size: 12.5px; cursor: pointer; }
   button:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
-  .back {
-    display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; padding: 4px 8px 4px 4px;
-    border: 1px solid var(--app-border); border-radius: 5px; background: transparent; color: var(--app-text-secondary);
-  }
-  .back:hover { background: var(--app-control-hover-bg); color: var(--app-text); }
+  .retry { margin-left: 8px; padding: 3px 10px; border: 1px solid var(--app-border); border-radius: 5px; background: var(--app-surface); color: var(--app-text); }
+  .retry:hover { background: var(--app-control-hover-bg); }
   .seg { display: inline-flex; flex: 0 0 auto; padding: 2px; border: 1px solid var(--app-control-border); border-radius: 6px; background: var(--app-control-bg); }
   .seg button { padding: 3px 9px; border: 0; border-radius: 4px; background: transparent; color: var(--app-text-muted); }
   .seg button:not(.active):hover { background: var(--app-control-hover-bg); color: var(--app-text); }
   .seg button.active { background: var(--app-accent-subtle); color: var(--app-text); font-weight: 600; }
-  .nav { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+  .nav { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; margin-left: auto; }
   .count { min-width: 92px; margin-right: 4px; font-size: 12.5px; text-align: right; color: var(--app-text-secondary); font-variant-numeric: tabular-nums; }
   .icon { display: inline-flex; padding: 4px; border: 1px solid var(--app-border); border-radius: 5px; background: transparent; color: var(--app-text-secondary); }
   .icon:hover:not(:disabled) { background: var(--app-control-hover-bg); color: var(--app-text); }

@@ -3562,6 +3562,7 @@
     initialId={versionsFor.id}
     onClose={() => (versionsFor = null)}
     onRestored={() => { onSnapshotRestored(); settingsViewRef?.refreshHistory(); }}
+    onGetLatest={() => syncController.handleGetLatest()}
   />
 {/if}
 {#if settingsOpen}

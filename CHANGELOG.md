@@ -21,6 +21,14 @@ This project follows [Semantic Versioning](https://semver.org/).
   0.07 s (was 2.7 s). The Online tab reads the history and the unsaved changes once
   instead of two or three times, Version history reuses the tab's online check, and
   the tab shows the newest versions in about 2 s (was 5.5 s).
+- **Desktop: Version history opens on your newest version, already showing what changed.**
+  Automatic saves are grouped into editing sessions that name the files you worked on,
+  and the versions you saved stand out with a star. Find a version by its note or by a
+  file ("ch07"), or show only Named or Not online yet. A version's changed files are
+  chips you can switch between (←/→); ↑/↓ move through the list. Versions from someone
+  else that aren't on this computer yet are one line with **Get them**. **Restore the
+  whole book to this version…** now says what it restores, and asks without moving the
+  page. In a narrow window the list becomes a drawer.
 
 ### Removed
 
