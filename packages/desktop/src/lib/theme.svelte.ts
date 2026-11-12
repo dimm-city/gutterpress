@@ -37,8 +37,6 @@ const state = $state<{
   initialized: false,
 });
 
-let unsubscribeOs: (() => void) | null = null;
-
 function resolve(mode: ThemeMode, osDark: boolean): ResolvedTheme {
   if (mode === "light") return "light";
   if (mode === "dark") return "dark";
@@ -85,7 +83,7 @@ export function initTheme(): void {
       apply();
     });
 
-  unsubscribeOs = platform.onNativeThemeUpdated((s) => {
+  platform.onNativeThemeUpdated((s) => {
     state.osDark = s.shouldUseDarkColors;
     apply();
   });

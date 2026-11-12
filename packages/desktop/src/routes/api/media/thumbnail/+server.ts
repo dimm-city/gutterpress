@@ -1,6 +1,5 @@
 import { error } from '@sveltejs/kit';
 import { readFile, stat } from 'node:fs/promises';
-import path from 'node:path';
 import { defineRoute, getHostServices, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
