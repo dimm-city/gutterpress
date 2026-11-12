@@ -17,6 +17,7 @@ function fakes(opts: { d?: unknown; delay?: number } = {}) {
       } else calls.local++;
       return list(current);
     },
+    firstVersionsPage: async () => ({ entries: [], hasMore: false }),
   };
   return { reads, calls, setCurrent: (c: string) => (current = c) };
 }
@@ -45,6 +46,16 @@ describe("online-copy cache", () => {
     await c.get("/b");
     await new Promise((r) => setTimeout(r, 5));
     expect(f.calls.online).toBe(2);
+    // The drafts behind a snapshot already showing are read once, with the check, not first locally too.
+    expect(f.calls.local).toBe(1);
+    // A book with no online copy has only this computer's answer, so it is read again.
+    const g = fakes({ d: plain });
+    const c2 = createOnlineCopyCache(g.reads, () => t);
+    await c2.refresh("/b");
+    t += FRESH_MS + 1;
+    await c2.get("/b");
+    await new Promise((r) => setTimeout(r, 5));
+    expect(g.calls.local).toBe(2);
   });
 
   test("publishes the local answer with checking before the online check lands", async () => {
@@ -112,12 +123,12 @@ describe("online-copy cache", () => {
     expect(s.checking).toBe(false);
   });
 
-  test("version history first page is prefetched once and taken once", async () => {
+  test("version history first page is read once for everything that asks, and taken once", async () => {
     let n = 0;
     const reads: OnlineCopyReads = { ...fakes().reads, firstVersionsPage: async () => (n++, { entries: [], hasMore: false }) };
     const c = createOnlineCopyCache(reads);
-    c.prefetchVersions("/b");
-    c.prefetchVersions("/b");
+    const [a, b] = await Promise.all([c.versionsPage("/b"), c.versionsPage("/b")]);
+    expect(a).toBe(b);
     expect(n).toBe(1);
     expect(await c.takeVersionsPage("/b")).toEqual({ entries: [], hasMore: false });
     expect(c.takeVersionsPage("/b")).toBeUndefined();
@@ -163,11 +174,11 @@ describe("online-copy cache: after an action", () => {
     let t = 1000, n = 0;
     const reads: OnlineCopyReads = { ...fakes().reads, firstVersionsPage: async () => (n++, { entries: [], hasMore: false }) };
     const c = createOnlineCopyCache(reads, () => t);
-    c.prefetchVersions("/b");
+    void c.versionsPage("/b");
     t += 6000;
     expect(c.takeVersionsPage("/b")).toBeUndefined();
-    c.prefetchVersions("/b");
-    c.prefetchVersions("/b");
+    void c.versionsPage("/b");
+    void c.versionsPage("/b");
     expect(n).toBe(2);
   });
 

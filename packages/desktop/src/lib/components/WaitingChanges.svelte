@@ -12,6 +12,7 @@
    */
   import { onMount } from "svelte";
   import { api } from "#lib/api.ts";
+  import * as onlineCopy from "#lib/routes/online-copy-cache.ts";
   import Icon from "#lib/components/Icon.svelte";
   import { agoFull } from "#lib/routes/backup-card.ts";
   import { versionTitle, versionKind, whenShort } from "#lib/routes/version-timeline.ts";
@@ -25,6 +26,7 @@
     running = null,
     checking = false,
     draftOnlyHere = false,
+    unsaved = null,
     onSend,
     onGet,
   }: {
@@ -37,6 +39,8 @@
     checking?: boolean;
     /** The open draft has never been sent online, so everything on it is waiting even though its versions carry no online mark. */
     draftOnlyHere?: boolean;
+    /** Files edited since the last saved version (the parent reads it); null = not known. */
+    unsaved?: number | null;
     onSend: () => void;
     onGet: () => void;
   } = $props();
@@ -51,7 +55,6 @@
   let incoming = $state<WaitingChange[] | null>(have?.incoming ?? null);
   let reason = $state<string | undefined>(have?.incomingReason);
   let incomingAt = $state<number | null>(have?.incomingAt ?? null);
-  let unsaved = $state<number | null>(have?.facts?.changedFiles ?? null);
   let now = $state(Date.now());
 
   const note = (message: string): string | null => (versionKind(message) === "manual" ? versionTitle(message) : null);
@@ -79,8 +82,9 @@
     // Both sides read behind what is already showing; each lands on its own.
     const mine = (async () => {
       try {
-        const page = await api.vcs.listSnapshotsPage(dir, { limit: 40 });
-        const waiting = page.entries.filter((e) => e.backedUp === false);
+        // The page Online reads anyway; the newest 40 are looked at, as before.
+        const page = await onlineCopy.versionsPage(dir);
+        const waiting = page.entries.slice(0, 40).filter((e) => e.backedUp === false);
         localTotal = waiting.length;
         const list = await withFiles(waiting);
         local = list;
@@ -114,12 +118,6 @@
       }
     })();
     await Promise.all([mine, theirs]);
-    try {
-      const p = await api.vcs.unversionedChanges(dir);
-      unsaved = p.changedFiles;
-    } catch {
-      // Keep what is showing.
-    }
   }
   let incomingTotal = $state(have?.incoming?.length ?? 0);
 

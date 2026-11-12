@@ -212,11 +212,8 @@
     } finally {
       loading = false;
     }
-    if (situation && situation !== "no-versions") {
-      void loadFacts(projectDir);
-      // The first page of Version history, so "See all" opens at once.
-      onlineCopy.prefetchVersions(projectDir);
-    }
+    // The first page of Version history (read once, also for "See all"), so it opens at once.
+    if (situation && situation !== "no-versions") void loadFacts(projectDir);
   }
 
   /** After an action that changed where the book is kept: forget the snapshot and read it all again. */
@@ -231,19 +228,21 @@
     } finally {
       loading = false;
     }
-    if (situation && situation !== "no-versions") {
-      void loadFacts(projectDir);
-      onlineCopy.prefetchVersions(projectDir);
-    }
+    if (situation && situation !== "no-versions") void loadFacts(projectDir);
   }
 
   /** Best-effort: the line says nothing rather than guessing when the lookup fails. */
   async function loadFacts(dir: string) {
     try {
-      const [page, pending] = await Promise.all([api.vcs.listSnapshotsPage(dir, { limit: 5 }), api.vcs.unversionedChanges(dir)]);
-      recent = page.entries;
+      // The newest versions show as soon as they are read; counting edited files can take longer.
+      const unsaved = api.vcs.unversionedChanges(dir);
+      unsaved.catch(() => {});
+      const page = await onlineCopy.versionsPage(dir);
+      recent = page.entries.slice(0, 5);
+      view.update(dir, { recent });
+      const pending = await unsaved;
       facts = { lastVersionAt: page.entries[0]?.timestamp ?? null, changedFiles: pending.changedFiles, stale: pending.stale };
-      view.update(dir, { recent, facts });
+      view.update(dir, { facts });
       if ((pending.changedFiles ?? 0) > 0) nothingNew = false;
     } catch {
       // Keep what is showing (the line says nothing rather than guessing).
@@ -581,7 +580,7 @@
 
     {#if showWaiting && projectDir}
       <!-- 1b. What is waiting on each side, and the one button for each. -->
-      <WaitingChanges {projectDir} refreshKey={waitingKey} {busy} {running} {checking} draftOnlyHere={drafts?.currentBackedUp === false} onSend={backUpNow} onGet={getLatest} />
+      <WaitingChanges {projectDir} refreshKey={waitingKey} unsaved={facts?.changedFiles ?? null} {busy} {running} {checking} draftOnlyHere={drafts?.currentBackedUp === false} onSend={backUpNow} onGet={getLatest} />
     {/if}
 
     {#if situation !== "no-versions" && projectDir}
@@ -599,8 +598,8 @@
             <button
               class="ghost"
               onclick={() => onBrowseVersions?.()}
-              onpointerenter={() => projectDir && onlineCopy.prefetchVersions(projectDir)}
-              onfocus={() => projectDir && onlineCopy.prefetchVersions(projectDir)}
+              onpointerenter={() => projectDir && void onlineCopy.versionsPage(projectDir)}
+              onfocus={() => projectDir && void onlineCopy.versionsPage(projectDir)}
               disabled={!onBrowseVersions}
             >
               <Icon name="history" size={14} /> See all

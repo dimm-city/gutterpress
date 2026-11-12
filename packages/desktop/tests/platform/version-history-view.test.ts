@@ -104,6 +104,6 @@ describe("versions online and not on this computer yet", () => {
 
   test("checked once the version list is shown, so it never holds the list up", () => {
     expect(script).toContain("void loadHistory().then(() => (hasRemote ? loadOnline() : undefined));");
-    expect(fn("loadOnline")).toContain("api.vcs.onlineVersions(projectDir)");
+    expect(fn("loadOnline")).toContain("api.vcs.onlineVersions(projectDir, { maxAgeMs: onlineCopy.FRESH_MS })");
   });
 });
