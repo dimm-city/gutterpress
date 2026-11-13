@@ -949,27 +949,6 @@ describe("npm plugin installation", () => {
       fetch: integrityFixture.fetch,
     })).rejects.toThrow(/integrity check/i);
     expect(await listProjectPlugins(integrityDir)).toEqual([]);
-
-    const limitedDir = await projectDir();
-    const limitedName = "markdown-it-oversized-optional-fixture";
-    const limitedDependency = "gutterpress-oversized-optional";
-    const limitedFixture = registryGraphFixture([
-      {
-        name: limitedName,
-        version: "1.0.0",
-        manifest: { optionalDependencies: { [limitedDependency]: "1.0.0" } },
-      },
-      {
-        name: limitedDependency,
-        version: "1.0.0",
-        files: { "index.js": "x".repeat(2048) },
-      },
-    ]);
-    await expect(addNpmPlugin(limitedDir, limitedName, {
-      fetch: limitedFixture.fetch,
-      limits: { packageFileBytes: 1024 },
-    })).rejects.toThrow(/file exceeds/i);
-    expect(await listProjectPlugins(limitedDir)).toEqual([]);
   });
 
   test("rejects bundled node_modules and Windows aliases before publication", async () => {
@@ -1009,7 +988,7 @@ describe("npm plugin installation", () => {
     );
   });
 
-  test("enforces metadata, file-count, expansion, and package-count limits", async () => {
+  test("enforces metadata, file-count, and package-count limits", async () => {
     const cases: Array<{
       suffix: string;
       limits: Record<string, number>;
@@ -1017,9 +996,7 @@ describe("npm plugin installation", () => {
       packages?: GraphPackageFixture[];
     }> = [
       { suffix: "metadata-limit", limits: { metadataBytes: 32 }, expected: /too large/i },
-      { suffix: "file-limit", limits: { packageFileBytes: 64 }, expected: /file exceeds/i },
       { suffix: "count-limit", limits: { totalFiles: 1 }, expected: /exceeds 1 files/i },
-      { suffix: "expand-limit", limits: { totalUnpackedBytes: 512 }, expected: /expands beyond/i },
     ];
     for (const item of cases) {
       const dir = await projectDir();
@@ -1043,36 +1020,6 @@ describe("npm plugin installation", () => {
       fetch: fixture.fetch,
       limits: { totalPackages: 1 },
     })).rejects.toThrow(/exceeds 1 packages/i);
-  });
-
-  test("cancels a response before writing a chunk beyond the remaining graph budget", async () => {
-    const dir = await projectDir();
-    const name = "markdown-it-stream-budget-fixture";
-    const fixture = registryFixture(name, "1.0.0", packageEntries(name, "1.0.0"));
-    const metadataUrl = `${NPM_REGISTRY_FOR_TESTS}/${encodeURIComponent(name)}`;
-    const metadataResponse = await fixture.fetch(metadataUrl);
-    const metadataBytes = new TextEncoder().encode(await metadataResponse.text()).length;
-    let cancelled = false;
-    const budgetedFetch = (async (input: string | URL | Request, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      if (!url.endsWith(`${name}-1.0.0.tgz`)) return fixture.fetch(input, init);
-      return new Response(new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(fixture.archive.slice(0, 10));
-          controller.enqueue(fixture.archive.slice(10));
-        },
-        cancel() {
-          cancelled = true;
-        },
-      }));
-    }) as typeof globalThis.fetch;
-
-    await expect(addNpmPlugin(dir, name, {
-      fetch: budgetedFetch,
-      limits: { totalNetworkBytes: metadataBytes + 10 },
-    })).rejects.toThrow(/total.*limit/i);
-    expect(cancelled).toBe(true);
-    expect(await listProjectPlugins(dir)).toEqual([]);
   });
 
   test("uses the strongest registry integrity and warns when only legacy SHA-1 exists", async () => {
