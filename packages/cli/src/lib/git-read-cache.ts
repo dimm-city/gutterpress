@@ -31,18 +31,26 @@ interface Shared {
   cache: Record<string, unknown>;
   /** The pack files the cache was made with. */
   packs: string;
+  /** When it was last read (ms). */
+  lastRead: number;
+  /** Frees the cache of a repository left alone; reads also check `lastRead`. */
   timer: ReturnType<typeof setTimeout>;
 }
 
 const shared = new Map<string, Shared>();
 
-/** The shared object cache for reads in repository `dir`. */
-export async function gitReadCache(dir: string): Promise<Record<string, unknown>> {
+/**
+ * The shared object cache for reads in repository `dir`. `now` is the time of
+ * this read; it is a parameter so the idle rule can be tested without faking
+ * the global clock.
+ */
+export async function gitReadCache(dir: string, now = Date.now()): Promise<Record<string, unknown>> {
   const key = path.resolve(dir);
   const names = await readdir(path.join(key, ".git", "objects", "pack")).catch(() => [] as string[]);
   const packs = names.filter((n) => n.endsWith(".pack")).sort().join("\n");
   const have = shared.get(key);
-  if (have?.packs === packs) {
+  if (have?.packs === packs && now - have.lastRead < IDLE_MS) {
+    have.lastRead = now;
     have.timer.refresh();
     return have.cache;
   }
@@ -50,7 +58,7 @@ export async function gitReadCache(dir: string): Promise<Record<string, unknown>
   const timer = setTimeout(() => shared.delete(key), IDLE_MS);
   // A cache waiting to be dropped never keeps the process alive.
   timer.unref?.();
-  const next = { cache: {}, packs, timer };
+  const next = { cache: {}, packs, lastRead: now, timer };
   shared.set(key, next);
   return next.cache;
 }
