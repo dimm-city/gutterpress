@@ -3,7 +3,7 @@
  * afresh when the pack files change and dropped once the repository has gone
  * IDLE_MS without a read.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, jest, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -20,10 +20,6 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await rm(dir, { recursive: true, force: true });
-});
-
-afterEach(() => {
-  jest.useRealTimers();
 });
 
 describe("gitReadCache", () => {
@@ -50,15 +46,13 @@ describe("gitReadCache", () => {
   });
 
   test("dropped once the repository goes IDLE_MS without a read; each read keeps it", async () => {
-    jest.useFakeTimers();
-    // A cache made under the fake clock.
+    // Times are passed in rather than faked: fake timers around the real file
+    // reads below timed out in CI under the full suite.
     await writeFile(path.join(packDir(), "pack-c.pack"), "");
-    const kept = await gitReadCache(dir);
-    jest.advanceTimersByTime(IDLE_MS - 1_000);
-    expect(await gitReadCache(dir)).toBe(kept);
-    jest.advanceTimersByTime(IDLE_MS - 1_000);
-    expect(await gitReadCache(dir)).toBe(kept);
-    jest.advanceTimersByTime(IDLE_MS + 1);
-    expect(await gitReadCache(dir)).not.toBe(kept);
+    const t = Date.now();
+    const kept = await gitReadCache(dir, t);
+    expect(await gitReadCache(dir, t + IDLE_MS - 1_000)).toBe(kept);
+    expect(await gitReadCache(dir, t + 2 * (IDLE_MS - 1_000))).toBe(kept);
+    expect(await gitReadCache(dir, t + 2 * (IDLE_MS - 1_000) + IDLE_MS + 1)).not.toBe(kept);
   });
 });
