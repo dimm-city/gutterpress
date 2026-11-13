@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.25] - 2026-11-13
+
 ### Added
 
 - **Desktop: a draft shows the Main draft's new work, and brings it in when you ask (#524).**
