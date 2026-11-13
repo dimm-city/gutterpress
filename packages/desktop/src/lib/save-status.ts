@@ -11,7 +11,7 @@
  * Pure: no DOM, no host imports, no clock reads (callers pass `now`). Never
  * claims a fact it wasn't given.
  */
-import { agoFull, relativeTime } from "./format";
+import { agoFull } from "./format";
 import type { SyncState } from "./platform/contract";
 
 /** The online copy's last word. `not-found` is the online copy's address leading nowhere (the host's 404 outcome). */

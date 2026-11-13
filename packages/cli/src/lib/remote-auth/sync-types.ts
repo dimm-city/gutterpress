@@ -9,12 +9,13 @@ import type httpNode from "isomorphic-git/http/node";
 import type { HostCredential, TokenStore } from "./token-store.ts";
 
 /**
- * isomorphic-git object cache, scoped to ONE operation (one function call)
- * and released with it. NEVER share these across operations or hold them in
- * module state: reading any object from a packfile makes isomorphic-git load
- * the ENTIRE pack into the cache (measured ~1.3–3.8 GB RSS on a 2 GB repo),
- * so a long-lived shared cache pins that memory for the life of the process —
- * the root cause of the 0.5.0 "sync uses 2 GB" report.
+ * isomorphic-git object cache, scoped to ONE sync operation (one function
+ * call) and released with it. Reading any object from a packfile makes
+ * isomorphic-git load the ENTIRE pack into the cache (measured ~1.3–3.8 GB RSS
+ * on a 2 GB repo), so a cache nothing ever drops pins that memory for the life
+ * of the process — the root cause of the 0.5.0 "sync uses 2 GB" report. The
+ * only cache shared across calls is the history views' read cache, which is
+ * dropped when idle and when the packs change (lib/git-read-cache.ts).
  */
 export type GitCache = Record<string, unknown>;
 
@@ -95,6 +96,13 @@ export interface SyncProjectOptions {
    * and enables the push only every ~15 minutes and on app exit.
    */
   push?: boolean;
+  /**
+   * Also combine the online Main draft into the open draft (#524), once, with
+   * the same converge-merge as the rest of the pass: overlapping passages
+   * become two takes. Ignored on the Main draft itself, and when the online
+   * copy has no Main draft.
+   */
+  bringInMainDraft?: boolean;
   /** Injectable git HTTP transport for tests. */
   httpClient?: typeof httpNode;
   /**

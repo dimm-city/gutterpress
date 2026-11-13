@@ -15,10 +15,10 @@
  *      branch (refs only move; nothing is merged or checked out) and the
  *      commits the fetched tip has that the local tip does not, each with
  *      the files it changed.
- *   3. A version's files: one text file at that version beside the file as
- *      it is now, lines aligned and changed lines marked (the compare view);
- *      or the whole tree written to a folder for the preview to render
- *      read-only.
+ *   3. A version's files: one text file's two texts for the compare view —
+ *      before and after the version, or the version beside the book as it
+ *      is now; or the whole tree written to a folder for the preview to
+ *      render read-only.
  *
  * Shared by the desktop's vcs routes. Nothing here writes to the project.
  */
@@ -27,15 +27,14 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import git, { type ReadCommitResult, type WalkerEntry } from "isomorphic-git";
 import postcss from "postcss";
 import { gitFs as fs } from "./git-fs.ts";
+import { gitReadCache } from "./git-read-cache.ts";
 import { detectProjectSource, syncRemoteFor } from "./project-source.ts";
-import { gitScopeFor, nextInHistory, startHistoryWalk, type SnapshotEntry } from "./source-provider.ts";
+import { DEFAULT_BRANCH, gitScopeFor, nextInHistory, startHistoryWalk, type SnapshotEntry } from "./source-provider.ts";
 import { currentBranchOrThrow, repoDirFor, resolveTransport } from "./remote-auth/transport.ts";
 import { defaultGitHttp } from "./remote-auth/git-http.ts";
 import { refreshRemoteCopies } from "./remote-auth/sync.ts";
 import type { HostCredential, TokenStore } from "./remote-auth/token-store.ts";
-import { alignRows, countChanged, diffSequences, textLines, type CompareRow } from "./text-diff.ts";
-
-export type { CompareRow };
+import { countChanged, diffSequences, textLines } from "./text-diff.ts";
 
 export interface VersionFileChange {
   /** Repo-relative path, forward slashes. */
@@ -64,6 +63,17 @@ export interface OnlineVersionEntry extends VersionEntry {
   changes: VersionFileChange[];
   /** Changed files beyond the ones listed. */
   moreChanges: number;
+}
+
+/**
+ * What the online Main draft has that the open draft has not (#524): how many
+ * versions, who made them, and when the newest was made. Only on a draft other
+ * than the Main draft.
+ */
+export interface MainDraftAhead {
+  count: number;
+  authors: string[];
+  latestAt: number;
 }
 
 /** How many changed files a version card lists before "and N more". */
@@ -127,11 +137,30 @@ export function changeHint(filepath: string, before: string, after: string): str
  * {@link VERSION_CHANGES_SHOWN}.
  */
 export async function listVersionChanges(projectDir: string, oid: string): Promise<VersionChanges> {
-  return changesOf(await repoDirFor(projectDir), {}, oid);
+  const dir = await repoDirFor(projectDir);
+  return changesOf(dir, await gitReadCache(dir), oid);
 }
+
+/** How many versions' changes {@link changesOf} remembers. */
+const CHANGES_REMEMBERED = 500;
+/**
+ * Versions' changes already worked out, by commit id. A commit id names the
+ * version's tree and its parent, so its changes never change; the oldest is
+ * forgotten first.
+ */
+const changesById = new Map<string, VersionChanges>();
 
 /** {@link listVersionChanges} in repository `dir`, sharing `cache` with the caller's other reads. */
 async function changesOf(dir: string, cache: object, oid: string): Promise<VersionChanges> {
+  const known = changesById.get(oid);
+  if (known) return known;
+  const changes = await workOutChanges(dir, cache, oid);
+  changesById.set(oid, changes);
+  if (changesById.size > CHANGES_REMEMBERED) changesById.delete(changesById.keys().next().value!);
+  return changes;
+}
+
+async function workOutChanges(dir: string, cache: object, oid: string): Promise<VersionChanges> {
   const parent = (await git.readCommit({ fs, dir, cache, oid })).commit.parent[0] ?? null;
   const found: VersionFileChange[] = [];
   await git.walk({
@@ -219,7 +248,7 @@ export async function describeVersions(projectDir: string, entries: SnapshotEntr
   const dir = await repoDirFor(projectDir);
   const tip = await trackingTip(dir);
   if (!tip) return entries.map((entry) => ({ ...entry, backedUp: null }));
-  const cache = {};
+  const cache = await gitReadCache(dir);
   const shallow = await readFile(path.join(dir, ".git", "shallow"), "utf8").catch(() => "");
   /** The tip and every parent of a commit walked so far. */
   const reached = new Set([tip]);
@@ -354,6 +383,8 @@ export async function listOnlineVersions(options: {
   maxAgeMs?: number;
 }): Promise<{
   entries: OnlineVersionEntry[];
+  /** On a draft other than the Main draft: what the online Main draft has that this draft has not. */
+  mainDraft?: MainDraftAhead;
   reason?: "no-remote" | "auth" | "not-found" | "offline";
   checkedAt?: string | null;
 }> {
@@ -374,16 +405,27 @@ export async function listOnlineVersions(options: {
       ...(options.tokenStore ? { tokenStore: options.tokenStore } : {}),
     });
     const branch = await currentBranchOrThrow(dir);
-    const cache = {};
+    const cache = await gitReadCache(dir);
     const tip = await resolveOrNull(dir, `refs/remotes/${transport.remote}/${branch}`);
     const local = await resolveOrNull(dir, branch);
-    if (!tip || !local) return { entries: [], checkedAt: checked.checkedAt };
+    if (!local) return { entries: [], checkedAt: checked.checkedAt };
     const entries: OnlineVersionEntry[] = [];
-    for (const entry of await commitsAhead(dir, tip, local, cache)) {
+    for (const entry of tip ? await commitsAhead(dir, tip, local, cache) : []) {
       const { files, more } = await changesOf(dir, cache, entry.id);
       entries.push({ ...entry, backedUp: true, changes: files, moreChanges: more });
     }
-    return { entries, checkedAt: checked.checkedAt };
+    // The same all-branch check brought the online Main draft in, so another
+    // draft can say what it lacks from it without a fetch of its own.
+    const mainTip = branch === DEFAULT_BRANCH ? null : await resolveOrNull(dir, `refs/remotes/${transport.remote}/${DEFAULT_BRANCH}`);
+    const fromMain = mainTip ? await commitsAhead(dir, mainTip, local, cache) : [];
+    const mainDraft: MainDraftAhead | undefined = fromMain.length
+      ? {
+          count: fromMain.length,
+          authors: [...new Set(fromMain.map((e) => e.author).filter((a): a is string => !!a))],
+          latestAt: Math.max(...fromMain.map((e) => e.timestamp)),
+        }
+      : undefined;
+    return { entries, ...(mainDraft ? { mainDraft } : {}), checkedAt: checked.checkedAt };
   } catch {
     return { entries: [], reason: "offline", checkedAt: checked.checkedAt };
   }
@@ -395,35 +437,57 @@ function assertRepoRelative(filepath: string): void {
   }
 }
 
+/** What a file comparison is against: the version before it, or the book as it is now. */
+export type CompareBase = "previous" | "current";
+
+/** The file at commit `oid`, or null where that version has no such file. */
+async function blobOrNull(dir: string, oid: string, filepath: string): Promise<Uint8Array | null> {
+  try {
+    return (await git.readBlob({ fs, dir, cache: await gitReadCache(dir), oid, filepath })).blob;
+  } catch (e) {
+    if ((e as { code?: string })?.code !== "NotFoundError") throw e;
+    return null;
+  }
+}
+
 /**
- * One file at version `id` beside the same file as it is on disk now, as
- * aligned rows for the compare view. `binary` when either side is not text.
- * A side that does not exist (the file was added since, or removed) is an
- * empty column.
+ * One file's two texts for the compare view, which diffs them itself.
+ * `base: "previous"` (the default) is what version `id` changed: the file in
+ * its first parent beside the file at `id` — the comparison the version's
+ * changed-files list counts. `"current"` is the file at `id` beside the file
+ * as it is on disk now. A side with no such file (added, removed, or the
+ * first version) is empty. `binary` when either side is not text.
  */
 export async function compareVersionFile(
   projectDir: string,
   id: string,
   filepath: string,
-): Promise<{ binary: true } | { binary: false; rows: CompareRow[] }> {
+  base: CompareBase = "previous",
+): Promise<{ binary: true } | { binary: false; before: string; after: string }> {
   assertRepoRelative(filepath);
   const dir = await repoDirFor(projectDir);
-  let thenBytes: Uint8Array | null = null;
-  try {
-    thenBytes = (await git.readBlob({ fs, dir, oid: id, filepath })).blob;
-  } catch (e) {
-    if ((e as { code?: string })?.code !== "NotFoundError") throw e;
+  const atVersion = await blobOrNull(dir, id, filepath);
+  let beforeBytes: Uint8Array | null;
+  let afterBytes: Uint8Array | null;
+  if (base === "current") {
+    beforeBytes = atVersion;
+    afterBytes = null;
+    try {
+      afterBytes = new Uint8Array(await readFile(path.join(dir, filepath)));
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException)?.code !== "ENOENT") throw e;
+    }
+  } else {
+    const parent = (await git.readCommit({ fs, dir, cache: await gitReadCache(dir), oid: id })).commit.parent[0];
+    beforeBytes = parent ? await blobOrNull(dir, parent, filepath) : null;
+    afterBytes = atVersion;
   }
-  let nowBytes: Uint8Array | null = null;
-  try {
-    nowBytes = new Uint8Array(await readFile(path.join(dir, filepath)));
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException)?.code !== "ENOENT") throw e;
-  }
-  if ((thenBytes && looksBinary(thenBytes)) || (nowBytes && looksBinary(nowBytes))) return { binary: true };
-  const then = thenBytes ? decoder.decode(thenBytes) : "";
-  const now = nowBytes ? decoder.decode(nowBytes) : "";
-  return { binary: false, rows: alignRows(diffSequences(textLines(then), textLines(now))) };
+  if ((beforeBytes && looksBinary(beforeBytes)) || (afterBytes && looksBinary(afterBytes))) return { binary: true };
+  return {
+    binary: false,
+    before: beforeBytes ? decoder.decode(beforeBytes) : "",
+    after: afterBytes ? decoder.decode(afterBytes) : "",
+  };
 }
 
 /**
@@ -443,7 +507,7 @@ export async function exportVersionTree(
   await git.walk({
     fs,
     dir,
-    cache: {},
+    cache: await gitReadCache(dir),
     trees: [git.TREE({ ref: id })],
     map: async (filepath: string, entries: Array<WalkerEntry | null>) => {
       if (filepath === ".") return true;

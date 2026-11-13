@@ -17,6 +17,7 @@ import {
 import { makeHostServices } from "../support/host-services-fake";
 import { POST as remoteSyncRoute } from "../../src/routes/api/remote/sync/+server";
 import { POST as diagnoseProjectRoute } from "../../src/routes/api/remote/diagnose-project/+server";
+import { setLibForTests, type LibModule } from "../../src/routes/api/_lib/route";
 
 function request(body?: unknown): Request {
   return body === undefined
@@ -45,6 +46,7 @@ function baseServices(): HostServices {
 
 afterEach(() => {
   registerHostServices(undefined as unknown as HostServices);
+  setLibForTests(null);
 });
 
 const remoteBase = { tokenStore: {} as never, GITHUB_HOST: "github.com" };
@@ -69,6 +71,32 @@ describe("POST /api/remote/sync", () => {
     });
     const { status } = await caught(remoteSyncRoute({ request: request({}) } as never));
     expect(status).toBe(400);
+  });
+});
+
+describe("POST /api/remote/sync: Bring them in (#524)", () => {
+  /** The options the route handed the lib's sync, for each request. */
+  async function optionsFor(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    registerHostServices(makeHostServices({ fsGuard: { projectRoots: () => ["/abs/project"], readOnlyRoots: () => [] as string[] } }));
+    let seen: Record<string, unknown> = {};
+    setLibForTests({
+      syncProject: async (options: Record<string, unknown>) => {
+        seen = options;
+        return { status: "up-to-date", message: "" };
+      },
+    } as unknown as Partial<LibModule>);
+    await remoteSyncRoute({ request: request({ projectDir: "/abs/project", ...body }) } as never);
+    return seen;
+  }
+
+  test("bringInMainDraft: true reaches the lib's pass", async () => {
+    const seen = await optionsFor({ push: false, bringInMainDraft: true });
+    expect(seen).toMatchObject({ projectDir: "/abs/project", push: false, bringInMainDraft: true });
+  });
+
+  test("anything but true leaves it out, so an ordinary pass never combines the Main draft", async () => {
+    expect(await optionsFor({ push: false })).not.toHaveProperty("bringInMainDraft");
+    expect(await optionsFor({ push: false, bringInMainDraft: "yes" })).not.toHaveProperty("bringInMainDraft");
   });
 });
 

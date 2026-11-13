@@ -4,10 +4,10 @@
  * Book setup → Online, its Drafts list and the Version history
  * screen all need the same few facts about a book: what its online copy is
  * (`diagnoseProjectRemote`), its drafts (`listRevisions`, which can check the
- * online copy over the network) and, one click away, the first page of its
- * version history. Before this, each view asked again on every visit, one of
- * them twice, and the drafts list fetched online again after every local
- * action.
+ * online copy over the network) and the first page of its version history
+ * (Online's newest versions and what is waiting, then Version history).
+ * Before this, each view asked again on every visit, one of them twice, and
+ * the drafts list fetched online again after every local action.
  *
  * What it does:
  *  - `get(dir)` answers at once from the last snapshot. It starts a refresh in
@@ -19,6 +19,9 @@
  *  - `invalidate(dir)` forgets a book's snapshot: after a backup, a repair or a
  *    sign-in the next `get` starts over.
  *  - `subscribe(dir, fn)` is called with each published snapshot.
+ *  - `versionsPage(dir)` is the first Version history page, read once for
+ *    everything that asks within a few seconds; `takeVersionsPage(dir)` hands
+ *    it to the Version history screen.
  *  - `checkedAt` on the snapshot is when the online copy was last really
  *    checked (the host's `checkedAt` when it sends one). The status bar may
  *    read it with `peek(dir)?.checkedAt`.
@@ -52,7 +55,7 @@ export interface OnlineCopySnapshot {
 export interface OnlineCopyReads {
   diagnose: (dir: string) => Promise<ProjectRemoteDiagnosis>;
   listRevisions: (dir: string, options?: { refresh?: boolean; maxAgeMs?: number }) => Promise<RevisionList | null>;
-  firstVersionsPage?: (dir: string) => Promise<{ entries: VersionEntry[]; hasMore: boolean }>;
+  firstVersionsPage: (dir: string) => Promise<{ entries: VersionEntry[]; hasMore: boolean }>;
 }
 
 /** The fields WP-C's `list-revisions` adds; absent from older hosts. */
@@ -92,9 +95,13 @@ export function createOnlineCopyCache(reads: OnlineCopyReads, now: () => number 
     /** A read that something newer (an action, `invalidate`) replaced must not publish. */
     const publishNow = (s: OnlineCopySnapshot): OnlineCopySnapshot => (latest() ? publish(dir, s) : s);
     const before = snapshots.get(dir);
+    // A routine online check behind a snapshot already showing reads the drafts once, with the check:
+    // a local read first would only repeat what is showing. A first read, one after an action, or a
+    // book with no online copy to check reads this computer's answer.
+    const localFirst = !network || forceCheck || !before?.diag?.remoteUrl;
     const [diag, local] = await Promise.all([
       network || diagnoseToo || !before?.diag ? reads.diagnose(dir).catch(() => null) : Promise.resolve(before.diag),
-      reads.listRevisions(dir).catch(() => before?.revisions ?? null),
+      localFirst ? reads.listRevisions(dir).catch(() => before?.revisions ?? null) : Promise.resolve(before?.revisions ?? null),
     ]);
     const hasRemote = !!diag?.remoteUrl;
     const keep = { checkedAt: before?.checkedAt ?? null, checkedOnline: before?.checkedOnline ?? false };
@@ -190,14 +197,14 @@ export function createOnlineCopyCache(reads: OnlineCopyReads, now: () => number 
 
     subscribe,
 
-    /** Start reading the Version history's first page, so opening the screen is instant. */
-    prefetchVersions(dir: string): void {
-      if (!reads.firstVersionsPage) return;
+    /** The Version history's first page: one read shared by everything that asks within a few seconds. */
+    versionsPage(dir: string): Promise<{ entries: VersionEntry[]; hasMore: boolean }> {
       const have = versionPages.get(dir);
-      if (have && now() - have.at < PAGE_MAX_AGE_MS) return;
+      if (have && now() - have.at < PAGE_MAX_AGE_MS) return have.p;
       const p = reads.firstVersionsPage(dir);
       p.catch(() => versionPages.delete(dir));
       versionPages.set(dir, { p, at: now() });
+      return p;
     },
 
     /** The prefetched first page, once (a later open reads fresh), or undefined. */
@@ -237,7 +244,7 @@ export const refresh = shared.refresh;
 export const peek = shared.peek;
 export const invalidate = shared.invalidate;
 export const subscribe = shared.subscribe;
-export const prefetchVersions = shared.prefetchVersions;
+export const versionsPage = shared.versionsPage;
 export const takeVersionsPage = shared.takeVersionsPage;
 export const dropVersionsPage = shared.dropVersionsPage;
 export const noteBackupResult = shared.noteBackupResult;

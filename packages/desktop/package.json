@@ -1,7 +1,7 @@
 {
   "name": "@dimm-city/gutterpress-desktop",
   "private": true,
-  "version": "0.11.24",
+  "version": "0.11.25-beta.1",
   "type": "module",
   "main": "out/main/main.js",
   "imports": {
@@ -36,6 +36,7 @@
     "@codemirror/language": "^6.10.8",
     "@codemirror/language-data": "^6.5.1",
     "@codemirror/lint": "^6.8.4",
+    "@codemirror/merge": "^6.12.3",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.36.2",
     "@lezer/highlight": "^1.2.3",

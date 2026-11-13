@@ -209,8 +209,7 @@ export interface AppSettings {
     splitRatio: number;
     /**
      * Right-click (or Shift+F10) context menu over the paginated preview
-     * (inline-editing plan §4.5; Settings → Preview, "Right-click menu in the
-     * preview"). Default true — an explicit-invocation affordance, not seamless
+     * (Settings → Preview, "Right-click menu in the preview"). Default true — an explicit-invocation affordance, not seamless
      * WYSIWYG, so the UX contract's opt-in rule for the latter does not apply
      * here. Off: the menu never opens, from the mouse or the keyboard.
      */
@@ -808,6 +807,8 @@ export interface Revision {
   current: boolean;
   where: "online" | "this-computer" | "online-only";
   notBackedUp: boolean;
+  /** When its newest version was saved (ms), when the host could read it. */
+  savedAt?: number;
 }
 
 /** Files kept just before an interrupted-switch repair overwrote them (mirrors the lib's `RepairCopy`, #508). */
@@ -865,12 +866,15 @@ export interface OnlineVersionEntry extends VersionEntry {
   moreChanges: number;
 }
 
-/** One row of the side-by-side file compare: a line on each side, or a gap. */
-export interface CompareRow {
-  then: string | null;
-  now: string | null;
-  changed: boolean;
+/** What the online Main draft has that the open draft has not (#524; mirrors the lib's MainDraftAhead). */
+export interface MainDraftAhead {
+  count: number;
+  authors: string[];
+  latestAt: number;
 }
+
+/** What a file comparison is against: the version before it (default), or the book as it is now. */
+export type CompareBase = "previous" | "current";
 
 /** One bounded page of version history (mirrors the lib's HistoryPage). */
 export interface SnapshotPage {

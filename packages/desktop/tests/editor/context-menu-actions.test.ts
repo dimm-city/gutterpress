@@ -3,7 +3,6 @@ import MarkdownIt from "markdown-it";
 import {
   findImageToken,
   findImageWrapper,
-  makeLinkToken,
   rewriteImageToken,
   rewriteLinkToken,
   resolveLinkToken,
@@ -194,15 +193,6 @@ describe("parser-owned link coordinates", () => {
         'href="new%20path"',
       );
     }
-  });
-
-  test("builds a safe link from prompt text and destination", () => {
-    expect(makeLinkToken(String.raw`A ] [ \\ safe`, "new path")).toBe(
-      String.raw`[A \] \[ \\\\ safe](<new path>)`,
-    );
-    expect(new MarkdownIt().render(makeLinkToken("A ] safe", "new path"))).toContain(
-      'href="new%20path"',
-    );
   });
 
   test("supports a literal closing bracket inside a link-label code span", () => {

@@ -5,6 +5,70 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.25] - 2026-11-13
+
+### Added
+
+- **Desktop: a draft shows the Main draft's new work, and brings it in when you ask (#524).**
+  On any draft other than the Main draft, the Online tab says when the Main draft has work
+  this draft doesn't ("The Main draft has 4 changes this draft doesn't have yet.", with who
+  made them and when). It is checked as often as the draft's own online copy, and new work
+  raises a prompt the way new online changes do on the Main draft. **Bring them in**
+  combines it into the draft the same way backing up combines changes, so a passage changed
+  in both becomes two takes. Nothing comes in until you ask, and nothing is sent until the
+  next backup.
+
+### Changed
+
+- **No size caps on an npm plugin.** Installing a plugin no longer refuses a
+  package over 50 MB, a file over 50 MB, more than 250 MB of downloads or more
+  than 512 MB unpacked. A plugin that ships print-resolution art (full-page wall
+  tiles at 300 DPI) is legitimately large, and its size is its author's call.
+  The 15 MB cap on registry metadata, the file and package counts, the
+  dependency depth, integrity checks and path safety checks are unchanged.
+
+- **Desktop: the Online tab says at a glance whether your work is safe.** The top card now
+  states it ("7 versions aren't online yet · 2 new from Grace", or "Everything is online"),
+  says where the book is kept and when it was last checked, and holds the **Send changes
+  automatically** switch and one **Back up now** button, with **Get latest** beside it when
+  there is something to get. **Waiting** lists what is going up and coming down, with real
+  file names; click a row to see that version in Version history. **Saved versions** sums up
+  today's automatic versions and shows your named ones, beside **Drafts**, which now says
+  when each draft was last saved. A draft switch that didn't finish, or copies kept after a
+  repair, now show as a banner at the top of the tab.
+- **Desktop: Version history shows exactly what a version changed in a file.** Opening a
+  changed file now compares it with the version before, so it matches the "3 paragraphs
+  changed" on the card; **Compared with your book now** shows the version beside the book
+  as it is today. Changed words are marked inside each line, unchanged text is folded
+  away, and "Change 2 of 5" with previous/next (Alt+↑ / Alt+↓) steps through the changes.
+  Choose **Inline** or **Side by side**; the editor's colours and line numbers are kept.
+- **Desktop: Version history and the Online tab are fast on books with many pictures.**
+  Reads of a book's history now share what was already loaded from it for up to a
+  minute, and each version's changed files are worked out once. On a 300-version book
+  with a 234 MB history, Version history lists in about 0.04 s (was 1.5 s), switching
+  versions takes milliseconds (was up to 1 s) and opening a file comparison about
+  0.07 s (was 2.7 s). The Online tab reads the history and the unsaved changes once
+  instead of two or three times, Version history reuses the tab's online check, and
+  the tab shows the newest versions in about 2 s (was 5.5 s).
+- **Desktop: Version history opens on your newest version, already showing what changed.**
+  Automatic saves are grouped into editing sessions that name the files you worked on,
+  and the versions you saved stand out with a star. Find a version by its note or by a
+  file ("ch07"), or show only Named or Not online yet. A version's changed files are
+  chips you can switch between (←/→); ↑/↓ move through the list. Versions from someone
+  else that aren't on this computer yet are one line with **Get them**. **Restore the
+  whole book to this version…** now says what it restores, and asks without moving the
+  page. In a narrow window the list becomes a drawer.
+
+### Removed
+
+- **Editing text in the preview.** Double-clicking a block, and the right-click
+  menu's "Edit this block", no longer turn the block into a text box; a
+  double-click selects a word again. The menu's Bold, Italic, Strikethrough,
+  Inline code and Make link items for selected text are gone too — a selection
+  offers Copy and Go to source. Text is written in the editor pane. The rest of
+  the right-click menu (image properties, links, markers, block properties,
+  page breaks) is unchanged.
+
 ## [0.11.24] - 2026-11-07
 
 ### Added

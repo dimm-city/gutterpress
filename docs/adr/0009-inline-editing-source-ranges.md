@@ -1,6 +1,17 @@
-# ADR 0009 — Inline editing: source ranges, the commit gate, and the preview bridge
+# ADR 0009 — Preview actions: source ranges, the commit gate, and the preview bridge
 
-Date: 2026-08-04 · Status: accepted · **Revised 2026-08-24** (native engine)
+Date: 2026-08-04 · Status: accepted · **Revised 2026-08-24** (native engine) ·
+**Revised 2026-11-12** (in-place editing removed)
+
+> **Revision 2026-11-12 — nothing in the preview is edited as text.** In-place
+> block editing (the `contenteditable` surface, double-click to edit, "Edit
+> this block") and the selection-formatting menu items (bold, italic,
+> strikethrough, inline code, make link) are removed, with bridge protocol v8's
+> commands and events. The preview's context menu remains: every write it makes
+> takes its new value from a dialog or a fixed insert and only uses the preview
+> for the target's line range. Decisions 1–3 are unchanged and still carry
+> that menu. Decision 4 is back to its plain form: the preview DOM is never
+> mutated to edit.
 
 > **Revision 2026-08-24 — two of the three premises are dead.** This ADR was
 > written against a preview that pre-dated the current engine. The viewer is
@@ -21,8 +32,7 @@ Date: 2026-08-04 · Status: accepted · **Revised 2026-08-24** (native engine)
 > `data-source-range`, `token.meta.line` for markers, the clean-buffer commit
 > gate) — none of them ever depended on the engine — and premise 3, which is
 > still what rules out any HTML→markdown serializer. **Superseded:** decision 4
-> and the v5 half of decision 5. The replacement design is in
-> [`docs/inline-editing-plan.md`](../inline-editing-plan.md).
+> and the v5 half of decision 5.
 
 > **Note on predecessors.** `docs/architecture-rules.md` and `docs/ux-design-contract.md` reference
 > ADRs 0002, 0004, 0005, 0006 and 0007, none of which are present in this
@@ -49,9 +59,7 @@ properties of this app rule it out, each verified by spike rather than assumed:
 2. **Every save replaces the preview DOM** — still true, and now absolute:
    `spliceChapter()` was removed and every content update goes through
    `swap()` (`preview-shell.js`), which replaces the whole book iframe.
-   Anything stateful mounted inside it is destroyed. An in-flow editing surface
-   therefore has to hold the swap open while it is live — the shell's existing
-   `pendingSwap` gate is the hook.
+   Anything stateful mounted inside it is destroyed.
 3. **Gutterpress markdown is not CommonMark** — **still true, and still
    decisive.** The renderer stacks
    `markdown-it-attrs`, `markdown-it-footnote`, `markdown-it-deflist`,
@@ -65,12 +73,11 @@ properties of this app rule it out, each verified by spike rather than assumed:
 The full analysis was in `docs/reviews/inline-editing-analysis-2026-08-04.md`,
 which is **not present in this repository** (noted 2026-08-24 — same class of
 dangling reference as the predecessor ADRs above); this ADR is self-contained
-without it. The current plan is
-[`docs/inline-editing-plan.md`](../inline-editing-plan.md).
+without it.
 
 ## Decision
 
-Inline editing is a **projection over the markdown source plus a patch
+A preview action is a **projection over the markdown source plus a patch
 generator into it**. There is no second document model and no serializer. Four
 decisions carry the design, and each is easy to "simplify away" later by
 someone without this context — which is why they are recorded here.
@@ -123,7 +130,7 @@ occurrences before and after.
 
 Every mutation flows through `commitRangePatch`, which refuses unless the
 target chapter's buffer is **clean and disk-fresh** and the target slice
-matches what was captured when the menu or overlay opened.
+matches what was captured when the menu opened.
 
 The gate is load-bearing and non-obvious. The preview DOM is rendered from
 *saved* content. If the buffer is dirty — the author typed in the editor pane —
@@ -156,31 +163,20 @@ through `applyRangeEdit` when a CodeMirror view is mounted on the target file
 so the edit shares that view's undo history. A commit flushes immediately
 rather than waiting out the autosave debounce (default 2 s idle, 12 s max).
 
-### 4. The paginated DOM is never patched optimistically — **superseded 2026-08-24**
+### 4. The paginated DOM is never patched optimistically
 
-**The hazard is unchanged.** `.gp-strip` is a live CSS multicol container
-(`column-fill: auto`, fixed column width, `overflow: visible`) whose `.gp-run`
-wrapper is sized to the measured page count and does the clipping. Content that
-grows past that stays invisible rather than overlapping — it flows into columns
-beyond the drawn sheets. Spike-verified again on the native viewer
-(2026-08-24): a strip whose true extent grew to 2400px went on being clipped at
-its 900px run width, with no visual cue. An unrefreshed optimistic patch is
-still forbidden, for exactly this reason.
+`.gp-strip` is a live CSS multicol container (`column-fill: auto`, fixed column
+width, `overflow: visible`) whose `.gp-run` wrapper is sized to the measured
+page count and does the clipping. Content that grows past that stays invisible
+rather than overlapping — it flows into columns beyond the drawn sheets. So a
+committed edit is never painted into the preview ahead of the render: the
+authoritative layout arrives through the normal write → regenerate → `swap()`
+path.
 
-**What changed is that the viewer can now correct itself.**
-`Gutterpress.refresh()` → `relayout()` unwraps the strips, re-runs
-`buildStrips()` from scratch, and re-measures `scrollWidth / stride` into
-`--gp-pages` before redrawing the sheets. A full rebuild (not a re-measure) is
-what makes this sound for edits that introduce a new page context. So the rule
-becomes: **a DOM mutation is permitted when, and only when, a `refresh()`
-follows it.** Pagination shown mid-edit is a projection of the author's own
-in-progress typing; the authoritative render still arrives on commit, through
-the normal write → regenerate → `swap()` path.
+### 5. Bridge protocol
 
-### 5. Bridge protocol v3 → v5 — **partly superseded 2026-08-24**
-
-The preview bridge stays **read-only plus cosmetic**. It exposes geometry and
-target metadata and can mask/lock presentation; it never mutates markdown. All
+The preview bridge is **read-only plus cosmetic**. It exposes geometry and
+target metadata; it never mutates markdown or the book DOM. All
 writes happen SPA-side behind the gate above, so a malicious or broken preview
 document can at worst produce a menu with wrong labels.
 
@@ -190,33 +186,9 @@ document can at worst produce a menu with wrong labels.
 | v5 | `getRectsFor({ref} \| {chapter, range})`; `setEditMask({ref, masked})` |
 | v6 | the `{ref}` target form dropped from both (the native viewer never mints a ref) |
 | v7 | `getContextTargetAt()` gains `pageMarker` + the margin-band fallback |
-| v8 | `beginBlockEdit()` / `endBlockEdit()` and the `blockEditRequested` / `blockEditFinished` / `blockEditStateChanged` events. **Removes** `getRectsFor()` and `setEditMask()` |
-
-`getRectsFor()` and `setEditMask()` existed only to position and de-clutter
-behind a floating panel. With the panel gone they had no other caller and are
-removed; the in-flow surface needs neither geometry nor a mask.
-
-The **read-only plus cosmetic** rule above survives v8 in spirit but not in
-letter: the bridge now mutates the book DOM (it swaps a block's rendered HTML for
-its markdown source and back). It still writes nothing to disk — every write
-stays SPA-side behind the gate in decision 3 — and the mutation is fully
-reversible, with the rendered HTML restored on both the commit and cancel paths.
-
-Two constraints on the v8 surface, each a consequence of the caret living in a
-cross-origin document:
-
-- **The host supplies the text; the book document never sources its own.**
-  `beginBlockEdit` takes the source slice as an argument. Deriving it from the
-  DOM would mean editing a projection of possibly-stale content — and the DOM is
-  rendered from SAVED content, which is exactly what decision 3 guards against.
-- **An end the author initiates arrives as an event, not a reply.** Escape,
-  Cmd/Ctrl+Enter and blur happen inside the iframe where the SPA cannot observe
-  them, so `blockEditFinished` carries the text out. `endBlockEdit` is for ends
-  the HOST initiates (a dialog opening over the workspace) and returns the text
-  in its reply. `blockEditStateChanged` fires on every open and close regardless
-  of which side initiated it, because `preview-shell.js` holds hot-reload swaps
-  on it — a swap mid-edit would destroy the caret and the uncommitted text with
-  it, and a missed close would freeze the preview.
+| v8 | in-place block editing (removed in v10). **Removes** `getRectsFor()` and `setEditMask()` |
+| v9 | the print overlay commands and the `overlayChanged` event |
+| v10 | **Removes** in-place block editing and the selection's `withinSingleBlock` / `range` / `chapter` fields; a selection reports its text only |
 
 Two constraints shaped the surface:
 
@@ -245,10 +217,9 @@ element and there is nothing to group.
 - Only the edited block's bytes change, so snapshot diffs stay minimal and the
   version history remains useful — the property a remark round-trip would have
   destroyed.
-- Actions degrade to "open in editor" rather than guessing. Where the rendered
-  text cannot be mapped back to source unambiguously (ambiguous typography,
-  footnote markers, code spans and link interiors), the menu item is disabled
-  with a reason. This is deliberate: a wrong edit in an author's book is the
+- Actions degrade to "open in editor" rather than guessing. Where a target
+  cannot be located in the source (a reference-style link, a raw HTML image),
+  the menu item is disabled with a reason. This is deliberate: a wrong edit in an author's book is the
   worst outcome the feature can produce.
 - Editing precision is bounded by annotation coverage (§1). Extending it —
   inline-level ranges, raw HTML blocks — is additive future work, not a
@@ -262,14 +233,11 @@ element and there is nothing to group.
 - **Milkdown / Tiptap / BlockNote / Lexical owning the preview DOM** — still
   ruled out, but by premise 3 alone now: they need a document model and a
   serializer for a dialect that has neither. Premise 1 no longer contributes.
-- **`contenteditable` on page boxes with a DOM→markdown diff** — **half of this
-  flipped on 2026-08-24.** The DOM→markdown diff stays rejected: premise 3 means
-  there is no serializer for this dialect and never will be one. The
-  `contenteditable` half was rejected for two reasons that no longer hold ("the
-  caret cannot cross split fragments, and nothing re-paginates after a native
-  edit") — both spike-verified false on the native viewer. `contenteditable`
-  holding the block's markdown **source** (no diff, no serializer) is now the
-  adopted design; see `docs/inline-editing-plan.md`.
+- **`contenteditable` on page boxes** — with a DOM→markdown diff it needs a
+  serializer premise 3 rules out. Holding the block's markdown **source**
+  instead was built on the native viewer (2026-08-24) and removed on
+  2026-11-12: it needed caret, focus and re-pagination machinery in three
+  documents to duplicate what the source pane already does.
 - **Character offsets on the wire** — defeated by markdown-it's and
   CodeMirror's line-ending normalization.
 - **Slice comparison in place of the clean-buffer gate** — cannot detect the

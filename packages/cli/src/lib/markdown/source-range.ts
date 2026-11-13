@@ -20,7 +20,7 @@
  * line (the `@continue`-drops-`__line` bug class) must skip the token, not
  * silently resolve to a `NaN`-derived or whole-document range. This is the
  * exact "fail wrong" this primitive exists to prevent downstream (see
- * `docs/inline-editing-plan.md` §1 principle 3, §2.6, ADR 0009).
+ * ADR 0009).
  *
  * This rule is registered UNCONDITIONALLY, after any custom (manifest)
  * plugins have been applied — see `renderer.ts` — so it sees the final
@@ -50,7 +50,7 @@
  * renderer rule (`return token.content`) discards `token.attrs` entirely,
  * so the attribute never reaches rendered output. Overriding that renderer
  * rule to wrap raw HTML in a synthetic element was rejected (own blast
- * radius); see `docs/inline-editing-plan.md` §2.6.
+ * radius); see ADR 0009.
  */
 import type { RuleCore } from "markdown-it/lib/parser_core.mjs";
 import type Token from "markdown-it/lib/token.mjs";
@@ -70,7 +70,7 @@ export const SOURCE_CHAPTER_ATTR = "data-chapter-src";
  * `self.renderToken`, so an attr not named there is silently dropped); see
  * the comments at those renderer rules. Without this, the two "break"
  * marker kinds would be un-targetable by the future context menu's
- * "marker" kind (docs/inline-editing-plan.md §3.1's kind precedence
+ * "marker" kind (ADR 0009's kind precedence
  * explicitly covers "layout wrapper/break").
  */
 const SELF_CLOSING_BLOCK_TYPES = new Set<string>([

@@ -1,5 +1,5 @@
 /**
- * chapterPath (inline-editing plan §4.8) — joins a project directory with a
+ * chapterPath — joins a project directory with a
  * `data-chapter-src` value into an absolute, OS-native file path.
  *
  * `data-chapter-src` values are canonical forward-slash project-relative ids

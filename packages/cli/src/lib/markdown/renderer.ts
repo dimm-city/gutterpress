@@ -466,7 +466,7 @@ export function createMarkdownRenderer(
   // custom plugins must still get the rule. `md.core.ruler.push` appends in
   // registration order, so registering last here guarantees this rule sees
   // the final token stream even when a user plugin pushed its own core rule.
-  // See docs/inline-editing-plan.md §2.2 / ADR 0009.
+  // See ADR 0009.
   md.core.ruler.push("source_range", sourceRangeRule);
 
   return md;

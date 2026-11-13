@@ -1,69 +1,183 @@
-<script lang="ts">
-  /**
-   * VersionCompareView — one file at an earlier version beside the file as
-   * it is in the book now (#408), lines aligned and changed lines marked.
-   * The columns are "That version" and "Current": the words the Version history
-   * view and the preview bar use, never a bare Then/Now. Read-only:
-   * nothing here edits, and nothing is merged. The rows arrive aligned from
-   * the host (`api.vcs.compareFile`), so this is layout only.
-   */
-  import Icon from "#lib/components/Icon.svelte";
-  import type { CompareRow } from "#lib/api.ts";
+<script module lang="ts">
+  import type { DiffMode } from "#lib/editor/version-diff.ts";
 
-  let {
-    path,
-    versionLabel,
-    rows,
-    binary = false,
-    onBack,
-  }: {
-    /** The file, repo-relative, as the version card listed it. */
-    path: string;
-    /** The version's row title and time, for the left column's heading. */
-    versionLabel: string;
-    rows: CompareRow[];
-    /** A picture or other file that has no text to show. */
-    binary?: boolean;
-    onBack: () => void;
-  } = $props();
-
-  const isCss = $derived(/\.css$/i.test(path));
-  const changed = $derived(rows.filter((r) => r.changed).length);
+  /** The layout last chosen, kept for the rest of the session. */
+  let lastMode: DiffMode = "inline";
 </script>
 
+<script lang="ts">
+  /**
+   * VersionCompareView — one text file of a version, compared (#408). By
+   * default it shows what the version changed: the file before it beside
+   * the file in it, the comparison the file chips count. "Compared
+   * with your book now" shows the version beside the file as it is now.
+   * The host sends the two texts (`api.vcs.compareFile`); the diff itself
+   * is @codemirror/merge (#lib/editor/version-diff.ts), Inline or Side by
+   * side, opened at the first change, with "Change 2 of 5" to step through
+   * them (Alt+Down / Alt+Up). Read-only: nothing here edits, nothing is merged.
+   */
+  import { onMount } from "svelte";
+  import Icon from "#lib/components/Icon.svelte";
+  import { api, type CompareBase } from "#lib/api.ts";
+  import { friendlyHostError } from "#lib/errors.ts";
+  import { mountVersionDiff } from "#lib/editor/version-diff.ts";
+
+  let {
+    projectDir,
+    id,
+    path,
+  }: {
+    projectDir: string;
+    /** The version. */
+    id: string;
+    /** The file, repo-relative, as the version's changed files listed it. */
+    path: string;
+  } = $props();
+
+  let base = $state<CompareBase>("previous");
+  // A narrow window has no room for two columns: it opens Inline.
+  let mode = $state<DiffMode>(window.matchMedia("(max-width: 999px)").matches ? "inline" : lastMode);
+  let texts = $state<{ binary: true } | { binary: false; before: string; after: string } | null>(null);
+  let failed = $state<string | null>(null);
+  let count = $state(0);
+  let index = $state(0);
+  let goTo: (i: number) => void = () => {};
+
+  /** The two texts are identical: nothing to step through. */
+  const same = $derived(!!texts && !texts.binary && texts.before === texts.after);
+  const labels = $derived(
+    base === "previous" ? { before: "Before", after: "After · this version" } : { before: "This version", after: "Your book now" },
+  );
+
+  /** The latest request; an answer to an earlier one is dropped. */
+  let asked = 0;
+  async function load(next: CompareBase): Promise<void> {
+    base = next;
+    const mine = ++asked;
+    try {
+      const result = await api.vcs.compareFile(projectDir, id, path, next);
+      if (mine !== asked) return;
+      texts = result;
+      failed = null;
+    } catch (e) {
+      if (mine === asked) failed = friendlyHostError(e instanceof Error ? e.message : String(e));
+    }
+  }
+  onMount(() => void load("previous"));
+
+  function setMode(next: DiffMode): void {
+    mode = next;
+    lastMode = next;
+  }
+
+  function step(by: number): void {
+    if (count === 0) return;
+    index = Math.min(count - 1, Math.max(0, index + by));
+    goTo(index);
+  }
+
+  function onKeydown(e: KeyboardEvent): void {
+    if (!e.altKey || e.ctrlKey || e.metaKey || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
+    e.preventDefault();
+    step(e.key === "ArrowDown" ? 1 : -1);
+  }
+
+  /** The diff editor(s), rebuilt when the texts or the layout change, opened at the first change. */
+  function diffView(node: HTMLElement, params: { before: string; after: string; mode: DiffMode }) {
+    let diff = mountVersionDiff(node, { ...params, path });
+    const opened = () => {
+      count = diff.count;
+      index = 0;
+      goTo = diff.goTo;
+      diff.goTo(0);
+    };
+    opened();
+    return {
+      update(next: { before: string; after: string; mode: DiffMode }) {
+        diff.destroy();
+        diff = mountVersionDiff(node, { ...next, path });
+        opened();
+      },
+      destroy: () => diff.destroy(),
+    };
+  }
+</script>
+
+<svelte:window onkeydown={onKeydown} />
+
 <div class="compare-view">
-  <header class="compare-header">
-    <button class="back" onclick={onBack}><Icon name="chevron-left" size={14} /> Version history</button>
-    <h2 title={path}>{path}</h2>
-  </header>
-  {#if binary}
-    <p class="muted">This file is a picture or another kind of file that has no text to show side by side.</p>
-  {:else}
-    <p class="muted">{changed === 0 ? "No lines differ." : `${changed} ${changed === 1 ? "line differs" : "lines differ"}.`}</p>
-    <div class="columns" class:mono={isCss} role="table" aria-label="That version beside the current file">
-      <div class="col-head" role="columnheader">That version — {versionLabel}</div>
-      <div class="col-head" role="columnheader">Current</div>
-      {#each rows as row, i (i)}
-        <div class="cell" class:changed={row.changed} class:gap={row.then === null} role="cell">{row.then ?? ""}</div>
-        <div class="cell" class:changed={row.changed} class:gap={row.now === null} role="cell">{row.now ?? ""}</div>
-      {/each}
+  <div class="bar" role="toolbar" aria-label="Compare this file">
+    <div class="seg" role="group" aria-label="Compare">
+      <button class:active={base === "previous"} aria-pressed={base === "previous"} onclick={() => void load("previous")}>What this version changed</button>
+      <button class:active={base === "current"} aria-pressed={base === "current"} onclick={() => void load("current")}>Compared with your book now</button>
     </div>
+    {#if texts && !texts.binary && !same}
+      <div class="seg" role="group" aria-label="Layout">
+        <button class:active={mode === "inline"} aria-pressed={mode === "inline"} onclick={() => setMode("inline")}>Inline</button>
+        <button class:active={mode === "split"} aria-pressed={mode === "split"} onclick={() => setMode("split")}>Side by side</button>
+      </div>
+      <div class="nav">
+        <span class="count" aria-live="polite">{count === 0 ? "No changes" : `Change ${index + 1} of ${count}`}</span>
+        <button class="icon" onclick={() => step(-1)} disabled={index <= 0} aria-label="Previous change" title="Previous change (Alt+Up)"><Icon name="chevron-up" size={15} /></button>
+        <button class="icon" onclick={() => step(1)} disabled={index >= count - 1} aria-label="Next change" title="Next change (Alt+Down)"><Icon name="chevron-down" size={15} /></button>
+      </div>
+    {/if}
+  </div>
+
+  {#if failed}
+    <p class="note error" role="alert">
+      Couldn't compare this file. {failed}
+      <button class="retry" onclick={() => void load(base)}>Try again</button>
+    </p>
+  {:else if texts?.binary}
+    <p class="note">This file is a picture or another kind of file that has no text to compare.</p>
+  {:else if same}
+    <p class="note">{base === "previous" ? "This version left this file as it was." : "This file is the same in your book now."}</p>
+  {:else if texts}
+    <div class="labels" class:split={mode === "split"}>
+      {#if mode === "split"}
+        <span>{labels.before}</span><span>{labels.after}</span>
+      {:else}
+        <span><i class="swatch removed"></i>{labels.before}</span><span><i class="swatch added"></i>{labels.after}</span>
+      {/if}
+    </div>
+    <div class="diff" use:diffView={{ before: texts.before, after: texts.after, mode }}></div>
   {/if}
 </div>
 
 <style>
-  .compare-view { display: flex; flex-direction: column; gap: 10px; color: var(--app-text-secondary); }
-  .compare-header { position: sticky; top: 0; z-index: 1; padding: 12px 0; border-bottom: 1px solid var(--app-border-subtle); background: var(--app-bg); display: flex; align-items: center; gap: 12px; }
-  h2 { margin: 0; font-size: 14px; color: var(--app-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .back { display: inline-flex; align-items: center; gap: 4px; background: transparent; color: var(--app-text-muted); border: 1px solid var(--app-border); border-radius: 5px; padding: 4px 8px; font-size: 12px; cursor: pointer; flex: 0 0 auto; }
-  .back:hover { background: var(--app-control-hover-bg); }
-  .muted { margin: 0; color: var(--app-text-muted); font-size: 12px; }
-  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; margin: 0 0 16px; font-size: 12px; line-height: 1.45; }
-  .columns.mono { font-family: var(--app-font-mono); }
-  .col-head { position: sticky; top: 45px; padding: 4px 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--app-text-muted); background: var(--app-bg); border-bottom: 1px solid var(--app-border); }
-  .cell { padding: 1px 8px; white-space: pre-wrap; overflow-wrap: anywhere; border-left: 3px solid transparent; min-height: 1.45em; }
-  /* A line that changed: marked on both sides so the eye finds the pair. */
-  .cell.changed { background: var(--app-warning-bg); border-left-color: var(--app-warning-border); color: var(--app-text); }
-  /* The other side has no line here. */
-  .cell.gap { background: var(--app-surface-sunken); border-left-color: var(--app-border); }
+  .compare-view { flex: 1; min-height: 0; display: flex; flex-direction: column; color: var(--app-text-secondary); }
+  .bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+    padding: 8px 20px; background: var(--app-surface); border-bottom: 1px solid var(--app-border);
+  }
+  button { font: inherit; font-size: 12.5px; cursor: pointer; }
+  button:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
+  .retry { margin-left: 8px; padding: 3px 10px; border: 1px solid var(--app-border); border-radius: 5px; background: var(--app-surface); color: var(--app-text); }
+  .retry:hover { background: var(--app-control-hover-bg); }
+  .seg { display: inline-flex; flex: 0 0 auto; padding: 2px; border: 1px solid var(--app-control-border); border-radius: 6px; background: var(--app-control-bg); }
+  .seg button { padding: 3px 9px; border: 0; border-radius: 4px; background: transparent; color: var(--app-text-muted); }
+  .seg button:not(.active):hover { background: var(--app-control-hover-bg); color: var(--app-text); }
+  .seg button.active { background: var(--app-accent-subtle); color: var(--app-text); font-weight: 600; }
+  .nav { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; margin-left: auto; }
+  .count { min-width: 92px; margin-right: 4px; font-size: 12.5px; text-align: right; color: var(--app-text-secondary); font-variant-numeric: tabular-nums; }
+  .icon { display: inline-flex; padding: 4px; border: 1px solid var(--app-border); border-radius: 5px; background: transparent; color: var(--app-text-secondary); }
+  .icon:hover:not(:disabled) { background: var(--app-control-hover-bg); color: var(--app-text); }
+  .icon:disabled { opacity: 0.45; cursor: default; }
+  .labels {
+    display: flex; gap: 16px; padding: 4px 20px; font-size: 11.5px; font-weight: 600; color: var(--app-text-muted);
+    background: var(--app-surface); border-bottom: 1px solid var(--app-border-subtle);
+  }
+  /* Over each editor of the side-by-side layout. */
+  .labels.split { display: grid; grid-template-columns: 1fr 1fr; }
+  .labels span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 10px; height: 10px; border-radius: 2px; }
+  .swatch.removed { background: var(--app-diff-removed-word); border: 1px solid var(--app-diff-removed-mark); }
+  .swatch.added { background: var(--app-diff-added-word); border: 1px solid var(--app-diff-added-mark); }
+  .diff { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .diff > :global(.cm-editor) { flex: 1; min-height: 0; }
+  /* Side by side: the merge view is the one scroller for both editors. */
+  .diff > :global(.cm-mergeView) { flex: 1; min-height: 0; overflow-y: auto; }
+  .note { margin: 0; padding: 14px 20px; font-size: 12.5px; color: var(--app-text-muted); }
+  .note.error { color: var(--app-error-text); }
 </style>

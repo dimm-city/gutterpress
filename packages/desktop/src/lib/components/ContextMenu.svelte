@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * ContextMenu — presentational right-click/`Shift+F10` menu for the preview
-   * pane (inline-editing plan §4.1–4.2). All open/position/item state lives on
+   * pane. All open/position/item state lives on
    * the injected `ContextMenuController`; this component only renders it and
    * handles the DOM-level concerns a controller shouldn't own: focus
    * management, arrow-key navigation, and outside-click detection.
@@ -72,7 +72,7 @@
     await controller.runItem(item);
   }
 
-  // Outside click/mousedown dismissal (plan §4.2). `justOpened`-flag guard
+  // Outside click/mousedown dismissal. `justOpened`-flag guard
   // (`controller.wasJustOpened()`) mirrors EditorToolbar.svelte's outside-
   // click popover handling.
   function onWindowMousedown(e: MouseEvent): void {

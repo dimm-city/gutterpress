@@ -53,7 +53,7 @@ function renderPaged(
 /**
  * Parse (not render) markdown through a bare MarkdownIt + marker plugin
  * instance, for tests that inspect `token.meta` directly (source-line
- * threading — §2.1 of docs/inline-editing-plan.md) rather than rendered HTML.
+ * threading — ADR 0009 decision 2) rather than rendered HTML.
  */
 function parsePaged(
   src: string,
@@ -94,7 +94,7 @@ function classList(html: string, name = "class"): string[] {
   return v ? v.split(/\s+/).filter(Boolean) : [];
 }
 
-describe("token.meta.line threading (source-range primitive, plan §2.1)", () => {
+describe("token.meta.line threading (source-range primitive, ADR 0009 decision 2)", () => {
   test("layout_chapter_open carries the 1-based marker line, and token.map stays null", () => {
     const { tokens } = parsePaged("Intro\n\n@chapter C.01\nHi\n");
     const t = findToken(tokens, "layout_chapter_open")!;

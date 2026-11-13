@@ -64,9 +64,10 @@ export type {
   SnapshotEntry,
   VersionEntry,
   OnlineVersionEntry,
+  MainDraftAhead,
   VersionChanges,
   VersionFileChange,
-  CompareRow,
+  CompareBase,
   Revision,
   RevisionList,
   RepairCopy,
@@ -99,12 +100,10 @@ import type {
   SnapshotEntry,
   VersionEntry,
   OnlineVersionEntry,
+  MainDraftAhead,
   VersionChanges,
-  CompareRow,
-  Revision,
+  CompareBase,
   RevisionList,
-  RepairCopy,
-  UnfinishedSwitch,
   RemoteConnection,
   RemoteRepository,
   BackupTarget,
@@ -772,15 +771,17 @@ export const api = {
     onlineVersions: (projectDir: string, options?: { maxAgeMs?: number }) =>
       post<{
         entries: OnlineVersionEntry[];
+        /** On a draft other than the Main draft: what the online Main draft has that this draft has not (#524). */
+        mainDraft?: MainDraftAhead;
         reason?: 'no-remote' | 'auth' | 'not-found' | 'offline';
         checkedAt?: string | null;
       }>('/api/vcs/online-versions', { projectDir, ...options }),
     /** The files one version changed, each with a plain hint; `more` beyond the ones listed (#408). */
     versionChanges: (projectDir: string, id: string) =>
       post<VersionChanges>('/api/vcs/version-changes', { projectDir, id }),
-    /** One text file at a version beside the file as it is now, as aligned rows (#408). */
-    compareFile: (projectDir: string, id: string, path: string) =>
-      post<{ binary: true } | { binary: false; rows: CompareRow[] }>('/api/vcs/compare-file', { projectDir, id, path }),
+    /** One text file's two texts: before and after the version (`previous`, the default), or the version beside the book now (`current`) (#408). */
+    compareFile: (projectDir: string, id: string, path: string, base: CompareBase = 'previous') =>
+      post<{ binary: true } | { binary: false; before: string; after: string }>('/api/vcs/compare-file', { projectDir, id, path, base }),
     /** Render a version read-only; the URL for its frame, or null when a later open or close replaced it first (#408). */
     openVersionPreview: (projectDir: string, id: string) =>
       post<{ url: string } | null>('/api/vcs/open-version-preview', { projectDir, id }),
@@ -904,13 +905,16 @@ export const api = {
         ...(message ? { message } : {}),
       }),
 
-    /** "Get latest": the same pass with `push: false`: fetch and merge the online changes; never sends. */
-    getLatest: (projectDir: string) =>
-      post<SyncOutcome>('/api/remote/sync', { projectDir, push: false }),
+    /**
+     * "Get latest": the same pass with `push: false`: fetch and merge the online changes; never sends.
+     * `bringInMainDraft`: also combine the online Main draft into the open draft ("Bring them in", #524).
+     */
+    getLatest: (projectDir: string, options?: { bringInMainDraft?: boolean }) =>
+      post<SyncOutcome>('/api/remote/sync', { projectDir, push: false, ...(options?.bringInMainDraft ? { bringInMainDraft: true } : {}) }),
 
     /** Whether the book's branch has moved online (reads refs only; never throws). */
     checkUpdates: (projectDir: string) =>
-      post<{ available: boolean; reason?: 'no-remote' | 'auth' | 'offline' }>('/api/remote/check-updates', { projectDir }),
+      post<{ available: boolean; mainDraftMoved?: boolean; reason?: 'no-remote' | 'auth' | 'offline' }>('/api/remote/check-updates', { projectDir }),
 
     /**
      * "Repair the online copy": replace the book's broken history with a fresh

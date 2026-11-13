@@ -113,20 +113,14 @@ test("404 host classifies as not-found", async () => {
 }, 20_000);
 
 test("connection-refused classifies as unreachable", async () => {
-  // A just-closed server's port refuses connections.
-  const repoDir = await tempDir("gutterpress-access-refused-");
-  try {
-    await createFixtureRepo(repoDir);
-    const server = await startGitServer(repoDir);
-    const url = server.url;
-    await server.close();
-    const result = await testRemoteAccess({ url });
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toBe("unreachable");
-  } finally {
-    await rm(repoDir, { recursive: true, force: true });
-  }
-}, 20_000);
+  // Port 1 refuses connections: binding it takes root, and every test server
+  // listens on an ephemeral port. A just-closed test server's port does not do:
+  // under the full parallel suite another test's server can be given it before
+  // this probe runs, and that one answers ("unknown"), not refuses.
+  const result = await testRemoteAccess({ url: "http://127.0.0.1:1/book.git" });
+  expect(result.ok).toBe(false);
+  if (!result.ok) expect(result.reason).toBe("unreachable");
+});
 
 test("SSH URLs classify as ssh-unsupported with no network call", async () => {
   for (const url of [

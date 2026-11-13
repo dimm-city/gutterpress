@@ -26,7 +26,6 @@ import type {
   GoogleConnectResult,
   CloneProgressEvent,
   CloneRepositoryArgs,
-  SyncOutcome,
   SyncStatus,
   MarkdownFileLaunchEvent,
 } from "./contract";

@@ -38,7 +38,7 @@ contract and those documents conflict, the architecture documents win.**
 | Rule | Source | UX consequence |
 |---|---|---|
 | Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls, host fs primitives) | `docs/architecture-rules.md` §8 | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
-| Preview bridge protocol | `docs/inline-editing-plan.md` | Sync scroll, page navigation, outline, any preview overlay or overflow probe must go through the bridge. |
+| Preview bridge protocol | `docs/adr/0009-inline-editing-source-ranges.md` | Sync scroll, page navigation, outline, any preview overlay or overflow probe must go through the bridge. |
 | Plugins are plain markdown-it plugins; no plugin API; loader never auto-installs | `docs/architecture-rules.md` §5 | Constrains §9 (Extensions) below. |
 | PDF rendering = Electron `printToPDF` (desktop) / a system Chromium driven over raw CDP (CLI); pure-JS tooling posture | `docs/architecture-rules.md` §1/§3 | Preflight/export UX; "export" not "download". |
 | Git/GitHub operations are Node-native pure JS | `docs/architecture-rules.md` §7 | Project source / sync / provider-auth UX. |
@@ -63,7 +63,7 @@ section and the vocabulary review in #448 differ, this section wins.
 | **Saved** | "Saved" | Google Docs, Word AutoSave | file write |
 | **Version history** | a list of earlier versions of the book; go back to any one | Version history in Google Docs and Word | commits |
 | **Online copy** | the book kept online, up to date on its own; collaborators' changes arrive on their own | Dropbox, Google Drive | a remote (GitHub or a Git server) |
-| **Revisions** | separate lines of work in the same book ("Second edition", "Editor's pass") that you can start, switch, rename and delete; each says whether it is also online | a revised edition of a book | branches |
+| **Drafts** | separate lines of work in the same book ("Second edition", "Editor's pass") that you can start, switch, rename and delete; each says when it was last saved and whether it is also online | a second draft or edition of a book | branches |
 
 | Use | Never | Notes |
 |---|---|---|
@@ -72,10 +72,12 @@ section and the vocabulary review in #448 differ, this section wins.
 | **Restore this version** | revert, checkout | going back to a version |
 | **online copy** | online backup (noun), remote, repository, online repository/address/location | the book kept online |
 | **Back up** / **Backed up** / **Backing up…** / **Not backed up yet** | sync, push, upload | "Backed up" is shown only when a pass sent your work or there was nothing to send. |
-| **Back up now** | sync, push, upload | Online copy's button, whenever the book can back up, with automatic backing up on or off (#485): one pass that gets the latest changes from the online copy, then backs up yours, at once. With automatic backing up off the same button reads **Sync now**, and after a failure **Try again**. Tooltip: "Back up now: get the latest changes from the online copy, then back up yours". |
-| **Get latest** / **Getting the latest…** / **New online** | pull, fetch | brings in the online copy's changes and sends nothing; this computer's own versions wait for the next backup (the status says **Not backed up yet** if there are any). In Online copy beside Back up now, Sync now or Try again; in the status bar beside **Sync** with automatic backing up off (an arrow, reading **New online** when changes are waiting and **Getting…** while it runs); and the action on the "New changes are online for this book." toast (#485). Tooltip: "Get latest: bring in changes from the online copy without sending yours". |
-| **Sync** / **Sync now** / **Syncing…** | pull, fetch, push | the full pass's button with automatic backing up off: status bar **Sync** (beside Get latest), Online copy **Sync now**. It gets the latest changes from the online copy, then backs up yours. Tooltip: "Sync: get the latest changes from the online copy, then back up yours" ("Sync — new changes are online: get them, then back up yours" when some are waiting). Nowhere else says "sync" to an Author; status texts stay Backed up / Backing up…. |
-| **revision**, **New revision…**, **Revision you're working on** | branch, copy (for a branch), version (for a branch) | "copy" means only the online copy |
+| **Back up now** / **Backing up…** | sync, push, upload, Send now | the Online tab's one primary button, whenever the book can back up, with automatic backing up on or off (#485): one pass that gets the latest changes from the online copy, then backs up yours, at once. After a failure it reads **Try again**. |
+| **Get latest** / **Getting the latest…** / **New online** | pull, fetch, Get them now | brings in the online copy's changes and sends nothing; this computer's own versions wait for the next backup. On the Online tab's status card it is a quiet button beside Back up now when versions are waiting online, and the one button when only the online copy has news; in the status bar beside **Sync** with automatic backing up off (an arrow, reading **New online** when changes are waiting and **Getting…** while it runs); and the action on the "New changes are online for this book." toast (#485). Tooltip: "Get latest: bring in changes from the online copy without sending yours". |
+| **Bring them in** / **Bringing them in…** | merge, pull, main, branch | on a draft other than the Main draft, the Online tab's line "The Main draft has N changes this draft doesn't have yet." (with who made them and when) offers it: the Get latest pass that also combines the online Main draft into this draft, overlapping passages becoming two takes as in any sync. Nothing is combined unless the author asks, and nothing is sent; the next backup sends it. The Main draft is looked at on the draft's own schedule (each automatic pass, or the update check when automatic backing up is off), and new work there raises the toast "The Main draft has N changes this draft doesn't have yet." with **Bring them in**, once per discovery, as "New changes are online for this book." does on the Main draft. Shown only when the online check could read the Main draft (#524). |
+| **Sync** / **Syncing…** | pull, fetch, push | the full pass's button in the status bar with automatic backing up off (beside Get latest). It gets the latest changes from the online copy, then backs up yours. Tooltip: "Sync: get the latest changes from the online copy, then back up yours" ("Sync — new changes are online: get them, then back up yours" when some are waiting). Nowhere else says "sync" to an Author (the Online tab says Back up now); status texts stay Backed up / Backing up…. |
+| **draft**, **New draft**, **Main draft**, **You are here** | branch, revision, copy (for a branch), version (for a branch) | "copy" means only the online copy. Code and the routes keep the word "revision", and so does the history message "Saved before switching revision" (a file format in existing books). |
+| **Automatic version**, **3 automatic versions** | Changes, Automatic save, autosave | a version Gutterpress saved on its own; the Online tab and Version history use the same name. File names are shown as written (`ch19.md`, `images/plate-1.png`). |
 | **take**: "Two takes of a passage were kept in chapter-02.md — yours and the online copy's" | two versions, your version, online version | one side of a passage changed in two places. Buttons stay "Keep yours / Keep online / Keep both". The on-disk markers `<<<<<<< your version` / `>>>>>>> online version` and `name.online.ext` stay (a file format in existing books). |
 | **sign-in**, **Sign in again** | connection, reconnect, token (except "access token" where a writer pastes one) | |
 | **safety folder** | full copy of the folder, backup (for it) | Start over's kept folder |
@@ -112,7 +114,7 @@ puts the book back to the saved version, and removes only files whose bytes
 equal the target's (or that were written since the move began) and folders the
 move made; anything else is left and listed. A journal that cannot be read
 rolls back to HEAD and deletes nothing. The author sees a warning toast when the
-book opens, and the same text in Book setup → Revisions. The wording follows the
+book opens, and the same text in Book setup → Online (a banner above Drafts). The wording follows the
 journal's kind: "Switching revisions was interrupted" or "Restoring a version
 was interrupted". The editor is not read-only while a switch runs; the side ref
 covers edits made then. Tests: `packages/cli/src/lib/switch-crash-recovery.test.ts`,
@@ -222,20 +224,36 @@ gutterpress/
 │   │                                                    N of M"), then exact-name (with an
 │   │                                                    optional named export), folder, .zip/.css
 │   │                                                    and web-address adds)
-│   ├── Online copy (id `online-copy`)         SHIPPED  (ProjectConnectionsSection: one sentence for
-│   │                                                    the book's situation and at most one
-│   │                                                    primary action (Back up now, Sync now or
-│   │                                                    Try again, with Get latest beside it,
-│   │                                                    #485); GitHub or the book's own
-│   │                                                    server sign-in in place; "Saved · last
-│   │                                                    version …" with Save a version and Version
-│   │                                                    history…; Revisions (RevisionsList: switch,
-│   │                                                    new, rename, delete, each saying where it
-│   │                                                    is kept); and, collapsed, "If backing up
-│   │                                                    keeps failing": Test connection (this
-│   │                                                    book's online copy), Repair the online
-│   │                                                    copy, Start over from the online copy and
-│   │                                                    Sign in again; #448)
+│   ├── Online (id `online-copy`)              SHIPPED  (ProjectConnectionsSection: one statement of
+│   │                                                    whether the work is safe: the counts
+│   │                                                    ("7 versions aren't online yet · 2 new
+│   │                                                    from Grace", "Everything is online") or
+│   │                                                    the situation, where the book is kept and
+│   │                                                    when it was checked, the Send changes
+│   │                                                    automatically switch and ONE primary
+│   │                                                    action (Back up now or Try again, with a
+│   │                                                    quiet Get latest beside it, #485); GitHub
+│   │                                                    or the book's own server sign-in in
+│   │                                                    place; on a draft other than the Main
+│   │                                                    draft, a line saying what the online Main
+│   │                                                    draft has that this draft has not ("The
+│   │                                                    Main draft has 4 changes this draft
+│   │                                                    doesn't have yet.", by whom, when) with
+│   │                                                    Bring them in (#524); Waiting (Going up /
+│   │                                                    Coming down,
+│   │                                                    each row opening Version history on its
+│   │                                                    version, hidden when nothing waits); Saved
+│   │                                                    versions (Save a version…, today's
+│   │                                                    automatic versions in one line, the newest
+│   │                                                    named versions, See all versions) beside
+│   │                                                    Drafts (RevisionsList: switch, new, rename,
+│   │                                                    delete, each saying when it was last saved
+│   │                                                    and where it is kept) from ~1100 px; a
+│   │                                                    banner first when a draft switch didn't
+│   │                                                    finish or a repair kept saved copies; and,
+│   │                                                    collapsed, "Something wrong with the
+│   │                                                    online copy?": Check the connection, Sign
+│   │                                                    in again, Repair, Start over; #448)
 │   └── Advanced (id `advanced`)               SHIPPED  (the ONE advanced path: Open manifest.yaml,
 │                                                        the Stylesheets list (StylesSection: the
 │                                                        manifest's `styles:` in order, each with
@@ -392,16 +410,14 @@ Proposed refinements:
 - Avoid: forcing permanent single-pane mode; auto-hiding scrollbars that
   cause layout shift.
 
-### 1b. Inline editing in the preview
+### 1b. Actions on the preview
 
 **Status: SHIPPED** (0.10.0 — tracked by **#135** Tier 0 and **#136** Tier 1;
-implementation plan `docs/inline-editing-plan.md`, rationale
-`docs/adr/0009-inline-editing-source-ranges.md`).
+rationale `docs/adr/0009-inline-editing-source-ranges.md`).
 
-The paginated preview is an editing surface, not only a viewer. This does
-**not** supersede the opt-in WYSIWYG rule above: these are explicit,
-user-invoked actions on a specific target, not a seamless typing surface.
-The source pane remains the default editing model.
+The paginated preview offers explicit, user-invoked actions on a specific
+target. It is not a typing surface: text is written in the source pane, and
+nothing typed or selected in the preview is turned back into markdown.
 
 Shipped behavior:
 
@@ -410,9 +426,9 @@ Shipped behavior:
   not mutation.
 - **Context menu** on right-click, with items matched to the target:
   image (alt text, width, position, replace, reveal in Media panel), link
-  (edit, copy target), selected text (bold, italic, strikethrough, inline
-  code, make link), block (edit this block, insert page break
-  before/after, go to source), and `@marker` (edit marker, go to source).
+  (edit, copy target), selected text (copy, go to source), block (insert
+  page break before/after, go to source), and `@marker` (edit marker, go to
+  source).
   The block and `@marker` menus carry one further item, **"Edit page
   marker…"**, placed last before "Go to source": it edits the marker line
   of the `.page`/`.spread`/`.chapter` enclosing the point, and is offered
@@ -425,10 +441,6 @@ Shipped behavior:
   Gated by the `preview.contextMenu` setting (Settings → Preview, "Right-click
   menu in the preview"), default on; off, neither a right-click nor
   `Shift+F10` opens it.
-- **Block overlay.** "Edit this block" opens that block's **markdown
-  source** in place over the preview; commit on `Ctrl/Cmd+Enter` or blur,
-  cancel on `Escape`.
-
 Rules (normative):
 
 - **Keyboard parity is required, not optional.** `Shift+F10` / the menu key
@@ -556,18 +568,20 @@ buttons.
   automatic backing up off. Under 820px the "Saved here" clause moves into the
   tooltip. "New changes are online for this book." stays a toast with **Get the
   changes**, replaced by the next outcome and dismissed once a pass succeeds;
-  one outcome toast per action. Online copy offers **Back up now** (with
-  automatic backing up off it reads **Sync now**; after a failure, **Try
-  again**) and **Get latest** whenever the book can back up, whatever the
-  setting (#485). A Reader sees none of it: no control, no buttons, no online
+  one outcome toast per action. The Online tab offers **Back up now** (after
+  a failure, **Try again**) whenever the book can back up, whatever the
+  setting, with **Get latest** beside it when versions are waiting online
+  (#485). A Reader sees none of it: no control, no buttons, no online
   toasts (a Reader gets the latest changes automatically).
-- **Revisions are SHIPPED in Book setup → Online copy** (#448, which replaced
-  #273's switcher in Settings → Saving): the list names each revision, marks
-  the one the author is working on, and says where each is kept (Online; Online
-  · not backed up yet; Only on this computer; Only online). The open revision
-  comes first, then the rest by name; past five revisions a **Find a
-  revision** field filters them, and the list scrolls in its own box after
-  about six rows. **New revision…** sits above the list: it starts from what
+- **Drafts are SHIPPED in Book setup → Online** (#448, which replaced
+  #273's switcher in Settings → Saving): the list names each draft, marks
+  the one the author is working on (**You are here**), and says when each was
+  last saved and, as an icon with text, where it is kept (Online; Not online
+  yet; Only on this computer; Online only, not on this computer yet). The open
+  draft comes first, then the rest by name; past five drafts a **Find a
+  draft** field filters them and the card shows five until **Show all**. A
+  switch that didn't finish, and the saved copies a repair kept, are a banner
+  at the top of the tab, not rows in the list. **New draft** sits above the list: it starts from what
   is open now, switches to it, and goes online with the next backup. Switch
   (saves a version of in-progress edits first; an online-only revision is
   made on this computer first), Rename… and Delete… (never the open one) act
@@ -576,26 +590,61 @@ buttons.
   online-only revision can be deleted from the online copy (refused, changing
   nothing, when it changed online since the list was checked); and a revision
   holding versions found nowhere else asks a second time.
-- **Version history is SHIPPED as a screen of its own** (#448): Online copy's
-  Version history card lists the newest versions with **Save a version** and
-  **Browse versions**, which (or a listed version) opens the screen over Book
-  setup — the versions on the left grouped by day, the selected one on the
-  right with its **Changed files** (a text file opens line by line) or, only
-  when asked for, its **Pages** rendered as they were, and **Restore this
-  version** at the top. Selecting a version never renders it: selecting
-  another returns to its Changed files. × or Esc returns to Book setup. It
-  never takes over the editor pane.
-  As in 0.11.22 (#484), every version card lists the files its version
-  changed ("chapter-02.md · 3 paragraphs changed", "and N more" past eight,
-  "No changes"), loaded as the card scrolls into view, never a whole page up
-  front, so the list and **Show older versions** stay as quick as #461 made
-  them, and a card already seen selects instantly. With an online copy, the
-  versions in it that are not on this computer yet are listed above the
-  rest, under **Online, not yet on this computer**, each with its name, time,
-  author and changed files ("They come in with **Get latest**, or the next
-  time this book backs up."); they are shown, not selected or restored.
-  Author-facing vocabulary says "revision", never "branch"; "copy" means only
-  the online copy. The editor/file tree/preview show the new revision the same
+- **Version history is SHIPPED as a screen of its own** (#448): the Online
+  tab's Saved versions card (**Save a version…**, today's automatic versions,
+  the newest named versions) and its **See all versions**, or any row there or
+  in Waiting, opens the screen over Book setup. × or Esc returns to Book
+  setup. It never takes over the editor pane.
+  It opens on a version — the one clicked, else the newest — with its first
+  changed text file already compared; there is no empty "choose a version"
+  pane.
+  **The list** (left) is grouped by day. Within a day, consecutive automatic
+  versions fold into an editing session ("Editing · 14 automatic saves", the
+  time span, and the files it touched, filled in as they load); a pause of an
+  hour starts a new session. Opening a session lists its versions one line
+  each ("ch19.md · 3 paragraphs  4:52 PM"). Versions the author saved stand
+  out with a star, their title, time and files. A row names an author only
+  when it is not the book's usual one, and marks a version that is only on
+  this computer with a labelled "not online yet". What each version changed
+  loads as its row scrolls into view, never a whole page up front, so the
+  list and **Show older versions** stay as quick as #461 made them; a row
+  keeps its files line while they load, so it never grows. First paint is
+  skeleton rows. A search box ("Find a version or a file") matches a
+  version's title or note and the files it changed (a version's files match
+  once they have loaded; a search asks for every listed version's), and
+  **All · Named · Not online yet (N)** narrow the list. ↑/↓ and Home/End move
+  the selection (a closed session opens on the version the move reaches),
+  ←/→ switch files; a key hint sits at the list's foot. With an online copy,
+  the versions in it that are not on this computer yet are one banner row
+  ("2 versions from Grace aren't on this computer yet · **Get them**"); Get
+  them runs the same get-latest pass as the Online tab. Opened, the banner
+  lists them; one can be selected to see its changed files, compared only
+  when this computer already has it, and never restored.
+  **The selected version** (right): its title, date and author, where it is
+  kept (Online / Only on this computer), and its changed files as chips
+  ("ch19.md 3 paragraphs", "plate-4.png replaced"); the chosen chip's
+  comparison opens in place, and selecting another version keeps that file
+  open when the version changed it too. **Changes | Pages**: Pages renders
+  the version read-only, only when asked for. **Restore the whole book to
+  this version…** is a secondary button; it asks once, in a box over the
+  page (the layout never moves), and saves the current work as a version
+  first. There is no restore of a single file: the only safe single-file
+  write path is the open editor's buffer, which this screen does not reach.
+  Errors show where the author acted: a failed comparison or list says so in
+  that place, with Try again. Below 1000 px the list is a drawer (**Versions**
+  in the header) and the comparison opens Inline.
+  A changed text file opens to **What this version changed** (the file before
+  the version beside the file in it — the comparison the chips' "3
+  paragraphs" counts; "Before" / "After · this version"), or, when asked,
+  **Compared with your book now** ("This version" / "Your book now"). It is
+  shown **Inline** (the default, remembered for the session) or **Side by
+  side**, in the editor's syntax colours with line numbers, the changed words
+  marked inside each changed line, and unchanged text collapsed to a few
+  lines around each change. It opens at the first change; "Change 2 of 5"
+  with previous/next (Alt+↑ / Alt+↓) steps through the rest. One toolbar
+  holds both choices and the count. A picture says it has no text to compare.
+  Author-facing vocabulary says "draft", never "branch" or "revision"; "copy" means only
+  the online copy. The editor/file tree/preview show the new draft the same
   way they pick up any other external change.
 ### 4. Onboarding — progressive disclosure
 

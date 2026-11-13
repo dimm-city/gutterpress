@@ -1,13 +1,13 @@
 /**
- * commit-engine.ts — the single write path for context-menu and in-flow
- * block-edit mutations (docs/inline-editing-plan.md §3).
+ * commit-engine.ts — the single write path for context-menu mutations
+ * (ADR 0009 decision 3).
  *
  * `commitRangePatch({chapter, range, expected, replacement, expectedGeneration})`
  * is the ONLY function in the app that turns a menu action into a file
  * mutation. It never writes a file itself — every mutation flows into the
  * EXISTING `EditorBuffer` (buffer.edit / buffer.flush) or, when a CodeMirror
  * view is mounted on the target file, through `applyRangeEdit` so the edit
- * shares that view's undo history (plan §1 principle 2, "one write path").
+ * shares that view's undo history ("one write path").
  *
  * Pure logic + injected seams (buffer accessor, `selectEditorFile`, editor
  * accessors, `currentDir`, `rendering`) — zero DOM / `node:*` / lib value
@@ -66,17 +66,16 @@ export interface CommitPatch {
   /** `data-source-range` `[start, end)` of the target block (0-based, half-open line range). */
   range: [number, number];
   /**
-   * The exact source slice the menu/overlay captured at OPEN time (from
-   * `buffer.content`, with the freshness/clean gates holding then too — see
-   * plan §4.7 Step 3's comment). The commit is refused, not guessed, when
-   * this no longer matches.
+   * The exact source slice the menu captured at OPEN time (from
+   * `buffer.content`). The commit is refused, not guessed, when this no
+   * longer matches.
    */
   expected: string;
   /** The full replacement text for the `[from, to)` character range. */
   replacement: string;
   /**
-   * {@link CommitEngine.generation} as read by the caller when the menu/
-   * overlay opened. Re-checked at apply time (GATE 0b, plan §4.9) — closes
+   * {@link CommitEngine.generation} as read by the caller when the menu
+   * opened. Re-checked at apply time (GATE 0b) — closes
    * the window where an earlier commit's flush completes (buffer clean
    * again) before the chapter splice refreshes the DOM a second action's
    * `range`/`expected` were captured from.
@@ -115,7 +114,7 @@ export interface CommitSuccess {
    * False when `buffer.flush()` detected an external change: the edit landed
    * in the buffer as a dirty edit and the buffer's own `onExternalConflict`
    * callback has already surfaced the conflict banner. That is the NORMAL
-   * conflict flow (plan §4.7 Step 5), not a commit-engine error — the patch
+   * conflict flow, not a commit-engine error — the patch
    * itself was applied successfully.
    */
   flushed: boolean;
@@ -124,7 +123,7 @@ export interface CommitSuccess {
 export type CommitOutcome = CommitSuccess | CommitFailure;
 
 /**
- * `data-chapter-src` crosses the untrusted preview bridge (plan §3.5: the
+ * `data-chapter-src` crosses the untrusted preview bridge (the
  * book document runs author content with `allow-scripts`, and everything in
  * `contextMenuRequested`/`getContextTargetAt` payloads is untrusted input).
  * Reject anything that isn't a plain forward-slash-relative id BEFORE joining
@@ -152,7 +151,7 @@ export class CommitEngine {
   }
 
   /**
-   * Monotonic edit-generation counter (plan §4.9). Read this when a menu or
+   * Monotonic edit-generation counter. Read this when a menu or
    * overlay opens and pass it back as `expectedGeneration`; call
    * {@link noteRenderingComplete} on every `renderingComplete` preview event.
    * The counter also increments on every successful apply from this engine —
@@ -162,7 +161,7 @@ export class CommitEngine {
     return this.gen;
   }
 
-  /** Call on every preview `renderingComplete` event (plan §4.9). */
+  /** Call on every preview `renderingComplete` event. */
   noteRenderingComplete(): void {
     this.gen++;
   }
@@ -186,7 +185,7 @@ export class CommitEngine {
     }
     const absPath = chapterPath(dir, patch.chapter);
 
-    // ── GATE 0b — no render in flight, and the menu/overlay's captured
+    // ── GATE 0b — no render in flight, and the menu's captured
     // generation is still current.
     if (this.deps.rendering()) {
       return fail("render-in-flight", "The preview is still updating — try again in a moment.");
@@ -246,7 +245,7 @@ export class CommitEngine {
     // (boilerplate captions, disclaimers) — no slice comparison can detect
     // that failure mode, only this gate can. A dirty/error/conflicted
     // chapter must degrade to "open in editor", never guess. See ADR 0009
-    // ("commit engine clean-buffer gate") and plan §4.9.
+    // ("commit engine clean-buffer gate").
     if (!isCleanBuffer(buf)) {
       return fail(
         "not-clean",
@@ -293,7 +292,7 @@ export class CommitEngine {
       // flush() throws when performSave's live disk compare finds an
       // external change. The buffer's own onExternalConflict callback has
       // already surfaced the conflict banner; the patch stays in the buffer
-      // as a dirty edit. That's the normal conflict flow (plan §4.7 Step 5),
+      // as a dirty edit. That's the normal conflict flow,
       // not a commit-engine failure — the edit itself was applied.
       return { ok: true, flushed: false };
     }

@@ -118,6 +118,8 @@ export interface SyncStatusPayload {
   ahead?: number;
   /** The online copy, as last heard from, has versions this computer has not got. */
   behind?: boolean;
+  /** On a draft other than the Main draft: versions the online Main draft has that this draft has not (#524). */
+  fromMain?: number;
   /** Files that need the author's decision (combined with markers, or kept as a pair). */
   decide?: number;
   /** True when the completed sync changed files in the local worktree. */
@@ -520,6 +522,8 @@ export class AutoSyncOrchestrator {
         if (local) {
           if (payload.state === "unsent" && local.ahead > 0) full.ahead = local.ahead;
           if (local.behind) full.behind = true;
+          // Always, after a pass: a 0 is what clears a prompt once the work is in (#524).
+          full.fromMain = local.fromMain ?? 0;
         }
       } catch {
         // The counts are a nicety; the state itself stands.
@@ -583,6 +587,8 @@ export class AutoSyncOrchestrator {
         source: "local",
         ...(local.state === "unsent" && local.ahead > 0 ? { ahead: local.ahead } : {}),
         ...(local.behind ? { behind: true } : {}),
+        // At open nothing is known yet, so only news is worth saying (#524).
+        ...(local.fromMain ? { fromMain: local.fromMain } : {}),
       };
     } catch {
       // The pass at ~1 s answers instead.
