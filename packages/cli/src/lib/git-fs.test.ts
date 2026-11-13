@@ -204,7 +204,7 @@ async function packEverything(dir: string): Promise<void> {
   await git.indexPack({ fs, dir, filepath: path.join(".git", "objects", "pack", filename) });
 }
 
-test("REPRO: an empty loose object makes plain-fs merges fail with the masked TypeError", async () => {
+test("REPRO: an empty loose object makes plain-fs merges fail as a damaged object", async () => {
   const h = await makeDivergedRepo();
   try {
     await packEverything(h.dir);
@@ -215,9 +215,10 @@ test("REPRO: an empty loose object makes plain-fs merges fail with the masked Ty
     } catch (e) {
       caught = e;
     }
-    // Bun's wording differs from V8's ("Cannot create property 'caller' on
-    // string 'buffer error'"); both are the TypeError the field log showed.
-    expect(caught).toBeInstanceOf(TypeError);
+    // isomorphic-git 1.44 reports it as a DecompressionError. Older releases
+    // masked it as a TypeError ("Cannot create property 'caller' on string
+    // 'buffer error'" in V8), the error the 0.11.6 field log showed.
+    expect((caught as { code?: string })?.code).toBe("DecompressionError");
   } finally {
     await h.cleanup();
   }

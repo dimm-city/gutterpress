@@ -14,6 +14,7 @@
  */
 // Atomic writes for git metadata — see git-fs.ts. Drop-in for node:fs.
 import { gitFs as fs } from "./git-fs.ts";
+import { gitReadCache } from "./git-read-cache.ts";
 import path from "node:path";
 
 import git, { type ReadCommitResult } from "isomorphic-git";
@@ -36,10 +37,12 @@ const noopLogger: { debug(): void; info(): void; warn(): void; error(): void } =
 };
 
 /**
- * isomorphic-git object cache scoped to ONE operation and released with it.
- * NEVER hold one in module state: reading any object from a packfile loads
- * the ENTIRE pack into the cache (multi-GB RSS on large repos). See the
- * matching note in remote-auth/sync.ts.
+ * isomorphic-git object cache. Reading any object from a packfile loads the
+ * ENTIRE pack into it (multi-GB RSS on large repos), so it is never kept in
+ * module state here: a write (snapshot, checkout, restore, sync) gets one for
+ * that one operation, released with it, and the history reads share the
+ * bounded per-repository cache from git-read-cache.ts. See the matching note
+ * in remote-auth/sync-types.ts.
  */
 type GitCache = Record<string, unknown>;
 
@@ -671,7 +674,7 @@ class LocalGitSourceProvider implements SourceProvider {
     const dir = this.dir;
     const limit = Math.min(500, Math.max(1, options.limit ?? HISTORY_PAGE_LIMIT));
     const before = options.before;
-    const cache: GitCache = {}; // per-call cache — never pin packfile buffers across calls
+    const cache = await gitReadCache(dir);
     try {
       // Whole-repo history (a project is its git repo), walked from HEAD.
       const head = await git.resolveRef({ fs, dir, ref: "HEAD" });
@@ -728,7 +731,7 @@ class LocalGitSourceProvider implements SourceProvider {
     await git.checkout({
       fs,
       dir: this.dir,
-      cache: {}, // per-call cache — never pin packfile buffers across calls
+      cache: {}, // a write: its own cache, released with it (see git-read-cache.ts)
       ref: options.id,
       force: true,
       noUpdateHead: true,
@@ -1607,6 +1610,8 @@ export interface Revision {
   where: "online" | "this-computer" | "online-only";
   /** `where === "online"` and this computer has versions the online copy lacks (refs only, no network). */
   notBackedUp: boolean;
+  /** When its newest version was saved (ms; this computer's tip, else the online copy's), when it can be read. */
+  savedAt?: number;
 }
 
 /** The book's revisions, sorted by name, and which one is open (`null` on a detached/unborn HEAD). */
@@ -1718,17 +1723,22 @@ export async function listRevisions(dir: string): Promise<RevisionList | null> {
   if (source.type !== "local-git-folder") return null;
   const repoDir = gitScopeFor(source);
   const { current, local, online } = await readRevisionRefs(repoDir);
-  const cache: GitCache = {};
+  const cache = await gitReadCache(repoDir);
   const names = [...new Set([...local.keys(), ...online.keys()])].sort((a, b) => a.localeCompare(b));
   const revisions = await Promise.all(
     names.map(async (name): Promise<Revision> => {
       const here = local.get(name);
       const there = online.get(name);
+      // One commit read per revision (its tip), through the shared cache: when it was last saved.
+      const tip = await git
+        .readCommit({ fs, dir: repoDir, cache, oid: (here ?? there)! })
+        .catch(() => null);
       return {
         name,
         current: name === current,
         where: here && there ? "online" : here ? "this-computer" : "online-only",
         notBackedUp: Boolean(here && there && !(await isContained(repoDir, here, there, cache))),
+        ...(tip ? { savedAt: tip.commit.committer.timestamp * 1000 } : {}),
       };
     }),
   );

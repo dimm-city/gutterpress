@@ -88,12 +88,17 @@
 
   /** The last online check reached the online copy. */
   let checkedOnline = $state(true);
+  /** "Last saved 2 days ago" is counted from when the list was last read. */
+  let now = $state(Date.now());
+  /** The banner above the tab shows the action error while it is there. */
+  const banner = $derived(!!(list?.unfinishedSwitch || list?.repairCopies?.length || repairNotice));
 
   function apply(snap: onlineCopy.OnlineCopySnapshot): void {
     list = snap.revisions ?? list;
     checking = snap.checking;
     checkedOnline = snap.checkedOnline;
     repairNotice = list?.repairNotice ?? repairNotice;
+    now = Date.now();
   }
 
   /** The shared snapshot shows at once; it refreshes behind itself only when it is over a minute old. */
@@ -214,34 +219,63 @@
 
 <svelte:window onpointerdown={closeMenuOutside} />
 
+{#if list && (list.unfinishedSwitch || list.repairCopies?.length || repairNotice)}
+  <!-- Something to put right after a switch or a repair: a banner the tab places at its top. -->
+  <section class="section-card drafts-banner" aria-label="Drafts to put right">
+    {#if list.unfinishedSwitch}
+      <div class="banner-part" role="alert">
+        <h3><Icon name="triangle-alert" size={15} /> Switching drafts didn't finish</h3>
+        <p>{list.unfinishedSwitch.message}</p>
+        <p class="section-sub">
+          "Put the book back" returns it to how it was before the switch. "Keep the files as they are" leaves what is on screen now{list.unfinishedSwitch.copy ? " (a copy is kept below)" : ""}; check them before you build or save.
+        </p>
+        <div class="banner-actions">
+          <button class="app-btn-primary small" onclick={() => void tryAgain()} disabled={working || checking}>Put the book back</button>
+          <button class="ghost small" onclick={() => open({ kind: "keep-as-is" })} disabled={working || disabled}>Keep the files as they are</button>
+        </div>
+        {#if retryFailed}<p class="error" role="alert">Still couldn't put the book back. Your files are unchanged.</p>{/if}
+      </div>
+    {/if}
+    {#if list.repairCopies?.length}
+      <div class="banner-part" id="repair-copies">
+        <h3><Icon name="info" size={15} /> Saved copies after a repair</h3>
+        <p class="section-sub">
+          Gutterpress couldn't finish a repair or a switch, so it kept a copy of your files here first. Nothing is lost. You can bring a copy back, or discard it when you don't need it. Copies you no longer need clear themselves once their files are in a saved version.
+        </p>
+        <ul class="rev-list" aria-label="Saved copies after a repair">
+          {#each list.repairCopies as c (c.id)}
+            <li class="rev">
+              <div class="rev-main">
+                <span class="rev-name">Copy from {whenShort(c.savedAt, Date.now())}</span>
+                <span class="rev-meta">
+                  {agoFull(c.savedAt, Date.now())}{#if c.revision}{" · "}from "{label(c.revision)}"{/if}{" · "}<span class={c.saved ? "ok" : "pending"}>{c.saved ? "Your changes are saved in a version" : "Not saved anywhere else"}</span>
+                </span>
+              </div>
+              <div class="rev-actions">
+                <button class="ghost small" onclick={() => open({ kind: "restore-copy", copy: c })} disabled={working || disabled}>Restore files from this copy</button>
+                <button class="ghost small" onclick={() => open({ kind: "discard-copy", copy: c })} disabled={working || disabled}>Discard</button>
+              </div>
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
+    {#if repairNotice}<p class="section-note" role="status">{repairNotice}</p>{/if}
+    {#if error && !pending}<p class="section-note error" role="alert">{error}</p>{/if}
+  </section>
+{/if}
+
 {#if list}
   <section class="section-card revisions" class:checking aria-labelledby="revisions-title">
     <header class="section-head">
       <div>
         <h3 id="revisions-title">Drafts</h3>
-        <p class="section-sub">
-          Separate lines of work in this book, like a second edition.{#if currentName}{" "}You're working on <strong>{label(currentName)}</strong>.{/if}
-        </p>
+        <p class="section-sub">Separate lines of work in this book, like a second edition.</p>
       </div>
       <button class="ghost" onclick={() => open({ kind: "new" })} disabled={working || disabled}>
         <Icon name="plus" size={14} /> New draft
       </button>
     </header>
-
-    {#if list.unfinishedSwitch}
-      <div class="unfinished" role="alert">
-        <p>{list.unfinishedSwitch.message}</p>
-        <p class="section-sub">
-          Switching drafts didn't finish. "Put the book back" returns it to how it was before the switch. "Keep the files as they are" leaves what is on screen now{list.unfinishedSwitch.copy ? " (a copy is kept below)" : ""}; check them before you build or save.
-        </p>
-        <div class="unfinished-actions">
-          <button class="app-btn-primary small" onclick={() => void tryAgain()} disabled={working || checking}>Put the book back</button>
-          <button class="ghost small" onclick={() => open({ kind: "keep-as-is" })} disabled={working || disabled}>Keep the files as they are</button>
-        </div>
-        {#if retryFailed}<p class="error" role="alert">Still couldn't put the book back. Your files are unchanged.</p>{/if}
-        {#if error && !pending}<p class="error" role="alert">{error}</p>{/if}
-      </div>
-    {/if}
 
     {#if filtering}
       <div class="section-tools">
@@ -261,9 +295,10 @@
       {#each shown as r (r.name)}
         <li class="rev" class:current={r.current}>
           <div class="rev-main">
-            <span class="rev-name">{label(r.name)}</span>
-            {#if r.current}<span class="badge">You are here</span>{/if}
-            <span class="rev-where {whereTone(r)}"><Icon name={whereIcon(r)} size={13} /> {whereLabel(r)}</span>
+            <span class="rev-line"><span class="rev-name">{label(r.name)}</span>{#if r.current}<span class="badge">You are here</span>{/if}</span>
+            <span class="rev-meta">
+              {#if r.savedAt}Last saved {agoFull(r.savedAt, now)}{" · "}{/if}<span class="rev-where {whereTone(r)}"><Icon name={whereIcon(r)} size={13} /> {whereLabel(r)}</span>
+            </span>
           </div>
           <div class="rev-actions">
             {#if !r.current}
@@ -301,35 +336,10 @@
         </button>
       </div>
     {/if}
-    {#if repairNotice}<p class="section-note" role="status">{repairNotice}</p>{/if}
-    {#if list.repairCopies?.length}
-      <div class="copies" id="repair-copies">
-        <h4>Saved copies after a repair</h4>
-        <p class="section-sub">
-          Gutterpress couldn't finish a repair or a switch, so it kept a copy of your files here first. Nothing is lost. You can bring a copy back, or discard it when you don't need it. Copies you no longer need clear themselves once their files are in a saved version.
-        </p>
-        <ul class="rev-list" aria-label="Saved copies after a repair">
-          {#each list.repairCopies as c (c.id)}
-            <li class="rev">
-              <div class="rev-main">
-                <span class="rev-name">Copy from {whenShort(c.savedAt, Date.now())}</span>
-                <span class="rev-where plain">{agoFull(c.savedAt, Date.now())}</span>
-                {#if c.revision}<span class="rev-where plain">from "{label(c.revision)}"</span>{/if}
-                <span class="rev-where {c.saved ? 'ok' : 'pending'}">{c.saved ? "Your changes are saved in a version" : "Not saved anywhere else"}</span>
-              </div>
-              <div class="rev-actions">
-                <button class="ghost small" onclick={() => open({ kind: "restore-copy", copy: c })} disabled={working || disabled}>Restore files from this copy</button>
-                <button class="ghost small" onclick={() => open({ kind: "discard-copy", copy: c })} disabled={working || disabled}>Discard</button>
-              </div>
-            </li>
-          {/each}
-        </ul>
-      </div>
-    {/if}
     {#if hasOnlineCopy && !checking && !checkedOnline}
       <p class="section-note">Couldn't check the online copy just now, so drafts made elsewhere may be missing.</p>
     {/if}
-    {#if error && !pending}<p class="section-note error" role="alert">{error}</p>{/if}
+    {#if error && !pending && !banner}<p class="section-note error" role="alert">{error}</p>{/if}
   </section>
 {/if}
 
@@ -462,31 +472,30 @@
   }
   .rev:last-child { border-bottom: 0; }
   .rev.current { background: var(--app-accent-subtle); }
-  .rev-main { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; min-width: 0; }
-  .rev-name { font-size: 13.5px; font-weight: 600; color: var(--app-text); overflow-wrap: anywhere; }
+  .rev-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .rev-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
+  .rev-name { font-size: 13px; font-weight: 600; color: var(--app-text); overflow-wrap: anywhere; }
+  .rev-meta { font-size: 12px; color: var(--app-text-muted); overflow-wrap: anywhere; }
+  .rev-meta .ok { color: var(--app-success-text); }
+  .rev-meta .pending { color: var(--app-warning-text); }
   .badge {
     padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600;
     color: var(--app-text-on-accent); background: var(--app-accent);
   }
-  .rev-where { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--app-text-secondary); }
+  .rev-where { display: inline-flex; align-items: center; gap: 4px; vertical-align: bottom; }
   .rev-where.ok :global(svg) { color: var(--app-success-strong); }
   .rev-where.pending { color: var(--app-warning-text); }
   .rev-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; min-height: 28px; }
-  .unfinished { margin: 0 16px 8px; padding: 10px 12px; border: 1px solid var(--app-warning-text); border-radius: 6px; font-size: 13px; }
-  .unfinished p { margin: 0 0 6px; }
-  .unfinished-actions { display: flex; gap: 8px; }
-  .check-line { display: flex; align-items: center; gap: 6px; min-height: 18px; margin: 4px 0 0; font-size: 12px; color: var(--app-text-muted); }
-  .spin {
-    width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0;
-    border: 2px solid var(--app-border); border-top-color: var(--app-accent);
-    animation: spin 0.9s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }
+  .section-card.drafts-banner { border-left: 4px solid var(--app-warning-border); }
+  .banner-part { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; font-size: 13px; color: var(--app-text); }
+  .banner-part + .banner-part { border-top: 1px solid var(--app-border-subtle); }
+  .banner-part h3 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 14px; font-weight: 600; }
+  .banner-part h3 :global(svg) { color: var(--app-warning-text); }
+  .banner-part p { margin: 0; }
+  .banner-part .rev-list { margin: 4px -16px -14px; border-top: 1px solid var(--app-border-subtle); }
+  .banner-actions { display: flex; flex-wrap: wrap; gap: 8px; }
   /* While the online check runs the where-labels are the last known answer: dimmed. */
-  .checking .rev-where { opacity: 0.55; }
-  .copies { padding: 12px 16px 6px; border-top: 1px solid var(--app-border-subtle); background: var(--app-surface-sunken); }
-  .copies h4 { margin: 0 0 2px; font-size: 13px; }
+  .checking .rev-where, .checking .rev-where.pending, .checking .rev-where.ok :global(svg) { color: var(--app-text-muted); }
   .none { padding: 14px 16px; font-size: 12.5px; color: var(--app-text-muted); }
 
   .menu-wrap { position: relative; }

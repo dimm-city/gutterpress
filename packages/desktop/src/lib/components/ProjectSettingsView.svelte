@@ -310,7 +310,7 @@
   let templateDialogTrigger = $state<HTMLButtonElement | null>(null);
 </script>
 
-<AppView title="Book setup" icon="wrench" measure={860} onClose={close} {triggerEl}>
+<AppView title="Book setup" icon="wrench" measure={activeTab === "online-copy" ? 1120 : 860} onClose={close} {triggerEl}>
   {#snippet actions()}
     <!-- Always in the DOM with its text swapped: a live region announces a
          change to its content, not its own arrival (WCAG 2.2 SC 4.1.3). -->

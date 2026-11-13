@@ -1,4 +1,4 @@
-import type { SnapshotEntry } from "#lib/api.ts";
+import type { SnapshotEntry, VersionChanges, VersionEntry, VersionFileChange } from "#lib/api.ts";
 
 /**
  * Writer-facing view helpers for the "Version history" timeline
@@ -13,7 +13,7 @@ import type { SnapshotEntry } from "#lib/api.ts";
  */
 export type VersionKind = "automatic" | "combined" | "created" | "manual";
 
-/** Automatic machine messages (collapsible into one row per run). */
+/** Automatic machine messages (folded into editing sessions). */
 const AUTOMATIC_MESSAGES = new Set<string>([
   // Current spellings (docs/ux-design-contract.md, Vocabulary).
   "Automatic version",
@@ -137,56 +137,177 @@ export function groupVersionsByDay<T extends SnapshotEntry>(entries: T[], now: n
   return days;
 }
 
-// ── Collapsed automatic runs ─────────────────────────────────────────────────
+// ── Editing sessions ────────────────────────────────────────────────────────
 
-/** One renderable timeline row: a single version, or a run of automatic versions. */
+/** A pause this long between automatic versions ends an editing session. */
+export const SESSION_GAP_MS = 60 * 60_000;
+
+/** One renderable timeline row: a single version, or an editing session of automatic versions. */
 export type TimelineRow<T extends SnapshotEntry = SnapshotEntry> =
-  | { kind: "entry"; key: string; entry: T }
-  | { kind: "auto-run"; key: string; entries: T[] };
+  | { kind: "version"; key: string; entry: T }
+  | { kind: "session"; key: string; entries: T[] };
 
 /**
- * Fold 2+ consecutive automatic versions into one expandable row, so a
- * busy writing day reads as one line instead of hundreds. A pure
- * display transform over one day's (newest-first) entries — restore still
- * targets the individual entries inside the run. A run is keyed by its
- * OLDEST entry so its identity survives newer versions prepending.
+ * Fold 2+ consecutive automatic versions of one (newest-first) day into an
+ * editing session, so a busy writing day reads as a few lines and the
+ * versions the author named stand out between them. A pause of
+ * {@link SESSION_GAP_MS} starts a new session. Restore still targets the
+ * individual versions inside. A session is keyed by its OLDEST version so
+ * its identity (and whether it is open) survives newer versions arriving.
  */
-export function collapseAutomaticRuns<T extends SnapshotEntry>(entries: T[]): TimelineRow<T>[] {
+export function editingSessions<T extends SnapshotEntry>(entries: T[]): TimelineRow<T>[] {
   const rows: TimelineRow<T>[] = [];
   let run: T[] = [];
   const flush = () => {
-    if (run.length >= 2) {
-      rows.push({ kind: "auto-run", key: `auto-${run[run.length - 1]!.id}`, entries: run });
-    } else if (run.length === 1) {
-      rows.push({ kind: "entry", key: run[0]!.id, entry: run[0]! });
-    }
+    if (run.length >= 2) rows.push({ kind: "session", key: `session-${run[run.length - 1]!.id}`, entries: run });
+    else if (run.length === 1) rows.push({ kind: "version", key: run[0]!.id, entry: run[0]! });
     run = [];
   };
   for (const entry of entries) {
-    if (versionKind(entry.message) === "automatic") {
-      run.push(entry);
-    } else {
+    if (versionKind(entry.message) !== "automatic") {
       flush();
-      rows.push({ kind: "entry", key: entry.id, entry });
+      rows.push({ kind: "version", key: entry.id, entry });
+      continue;
     }
+    const prev = run[run.length - 1];
+    if (prev && prev.timestamp - entry.timestamp >= SESSION_GAP_MS) flush();
+    run.push(entry);
   }
   flush();
   return rows;
 }
 
-/** "Versions made automatically · 9:02 AM–1:14 PM · 84 times" (entries newest-first). */
-export function autoRunSummary(entries: SnapshotEntry[]): string {
-  const at = (ms: number): string => {
-    try {
-      return new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-    } catch {
-      return "";
-    }
-  };
-  const newest = at(entries[0]!.timestamp);
-  const oldest = at(entries[entries.length - 1]!.timestamp);
-  const span = oldest === newest ? newest : `${oldest}–${newest}`;
-  return `Versions made automatically · ${span} · ${entries.length} times`;
+/** "Editing · 14 automatic saves". */
+export function sessionTitle(count: number): string {
+  return `Editing · ${count} automatic saves`;
+}
+
+/** A clock time; without its AM/PM when `period` is false. */
+function clock(ms: number, period: boolean): string {
+  try {
+    const parts = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).formatToParts(new Date(ms));
+    return (period ? parts : parts.filter((p) => p.type !== "dayPeriod"))
+      .map((p) => p.value)
+      .join("")
+      .trim();
+  } catch {
+    return "";
+  }
+}
+
+/** A session's span, oldest to newest (entries newest-first): "4:49–4:52 PM", "11:58 AM–4:52 PM", or one time. */
+export function timeSpan(entries: SnapshotEntry[]): string {
+  const newest = entries[0]!.timestamp;
+  const oldest = entries[entries.length - 1]!.timestamp;
+  const end = clock(newest, true);
+  const start = clock(oldest, true);
+  if (start === end) return end;
+  // The same AM/PM on both ends is said once, at the end.
+  const period = (ms: number, full: string) => full.slice(clock(ms, false).length);
+  return `${period(oldest, start) === period(newest, end) ? clock(oldest, false) : start}–${end}`;
+}
+
+/** A file's name without its folders: "themes/book.css" → "book.css". */
+export function fileName(path: string): string {
+  return path.slice(path.lastIndexOf("/") + 1);
+}
+
+/** A size hint without the "changed" most hints end with: "3 paragraphs changed" → "3 paragraphs". */
+export function shortHint(hint: string): string {
+  return hint.endsWith(" changed") ? hint.slice(0, -" changed".length) : hint;
+}
+
+/**
+ * What a version row says it changed: "ch14.md · 1 paragraph" for one file,
+ * "ch03.md, ch04.md, ch11.md" for a few, "+N" past `shown`, "No changes".
+ */
+export function changedSummary(changes: VersionChanges, shown = 4): string {
+  const { files, more } = changes;
+  if (files.length === 0) return "No changes";
+  if (files.length === 1 && !more) return `${fileName(files[0]!.path)} · ${shortHint(files[0]!.hint)}`;
+  return namesWithMore(
+    files.map((f) => fileName(f.path)),
+    shown,
+    more,
+  );
+}
+
+/** The files a session touched, each named once, from the versions whose changes have loaded. */
+export function sessionFiles(loaded: (VersionChanges | undefined)[], shown = 4): string {
+  const names = new Set<string>();
+  let more = 0;
+  for (const changes of loaded) {
+    if (!changes) continue;
+    for (const f of changes.files) names.add(fileName(f.path));
+    more = Math.max(more, changes.more);
+  }
+  return namesWithMore([...names], shown, more);
+}
+
+function namesWithMore(names: string[], shown: number, more: number): string {
+  const extra = Math.max(0, names.length - shown) + more;
+  return names.slice(0, shown).join(", ") + (extra ? ` +${extra}` : "");
+}
+
+// ── Finding a version ───────────────────────────────────────────────────────
+
+/** Which versions the list shows: every one, the ones the author named, or the ones not online yet. */
+export type VersionFilter = "all" | "named" | "local";
+
+/** A version the author saved: a landmark in the list. */
+export function isNamed(message: string): boolean {
+  return versionKind(message) === "manual";
+}
+
+/**
+ * Whether a version is shown under `filter` and search `query`: the query
+ * matches its title or note, or the name of a file it changed (known only
+ * once its changes have loaded, `changes`).
+ */
+export function matchesVersion(
+  entry: VersionEntry,
+  filter: VersionFilter,
+  query: string,
+  changes?: VersionChanges,
+): boolean {
+  if (filter === "named" && !isNamed(entry.message)) return false;
+  if (filter === "local" && entry.backedUp !== false) return false;
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  if (entry.message.toLowerCase().includes(q) || versionTitle(entry.message).toLowerCase().includes(q)) return true;
+  return !!changes?.files.some((f) => f.path.toLowerCase().includes(q));
+}
+
+/**
+ * The file a version opens to: the one the author had open, when this
+ * version changed it too; else its first text file; else its first file.
+ */
+export function pickFile(files: VersionFileChange[], wanted: string | null): string | null {
+  if (wanted && files.some((f) => f.path === wanted)) return wanted;
+  return (files.find((f) => f.text) ?? files[0])?.path ?? null;
+}
+
+/** The name most versions carry: rows name an author only when it is someone else. */
+export function usualAuthor(entries: SnapshotEntry[]): string | null {
+  const counts = new Map<string, number>();
+  let best: string | null = null;
+  for (const { author } of entries) {
+    if (!author) continue;
+    const n = (counts.get(author) ?? 0) + 1;
+    counts.set(author, n);
+    if (!best || n > counts.get(best)!) best = author;
+  }
+  return best;
+}
+
+/** "2 versions from Grace aren't on this computer yet": the banner over the list. */
+export function onlineSummary(entries: SnapshotEntry[]): string {
+  const authors = [...new Set(entries.map((e) => e.author).filter((a): a is string => !!a))];
+  const names = authors.length > 1 ? `${authors.slice(0, -1).join(", ")} and ${authors[authors.length - 1]}` : authors[0];
+  const from = names ? ` from ${names}` : "";
+  return entries.length === 1
+    ? `1 version${from} isn't on this computer yet`
+    : `${entries.length} versions${from} aren't on this computer yet`;
 }
 
 /**
@@ -197,12 +318,6 @@ export function versionTitle(message: string): string {
   return versionDescription(message) ?? versionLabel(message);
 }
 
-/** The line under a noted version's title; null when the title already is the label. */
-export function versionSubtitle(_message: string): string | null {
-  // A noted version's note is its title; "Version saved by you" under it says nothing more.
-  return null;
-}
-
 /** "Today, 11:40 AM" / "Yesterday, 4:05 PM" / "Nov 5, 10:42 AM". */
 export function whenShort(ms: number, now: number): string {
   const d = new Date(ms);
@@ -211,4 +326,110 @@ export function whenShort(ms: number, now: number): string {
   if (day(ms) === day(now)) return `Today, ${time}`;
   if (day(ms) === day(now - 86_400_000)) return `Yesterday, ${time}`;
   return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, ${time}`;
+}
+
+// ── Book setup → Online: what is waiting, and the Saved versions summary ─────
+
+/** "4:46 PM" today, "4:37 PM–4:52 PM" for a run today, "Yesterday, 4:46 PM", "Nov 5, 4:37 PM–4:52 PM". */
+export function whenRange(from: number, to: number, now: number): string {
+  const end = whenShort(to, now).replace(/^Today, /, "");
+  if (new Date(from).toDateString() !== new Date(to).toDateString()) return end;
+  const clock = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return clock(from) === clock(to) ? end : end.replace(clock(to), `${clock(from)}–${clock(to)}`);
+}
+
+/** What one version changed, as the Waiting rows need it (VersionChanges, or an online version's own list). */
+export interface ChangedFiles {
+  files: { path: string; hint?: string }[];
+  more: number;
+}
+
+/** One row of the Waiting card: a version, or a run of automatic versions by one author. */
+export interface WaitingRow {
+  /** The newest version in the row: the row opens Version history on it. */
+  id: string;
+  /** How many versions the row stands for. */
+  count: number;
+  /** "New opening paragraph", "Automatic version", "3 automatic versions". */
+  title: string;
+  /** The author named it (shown with a star). */
+  named: boolean;
+  author?: string;
+  from: number;
+  to: number;
+  /** File names as written ("chapters/ch19.md"), a few; `hint` when the row is one version of one file. */
+  files: string[];
+  hint?: string;
+  /** Changed files beyond those named. */
+  more: number;
+  /** Some of the row's versions were not looked at, so there may be more files. */
+  partial: boolean;
+}
+
+const ROW_FILES = 3;
+
+/**
+ * Fold newest-first versions into Waiting rows: consecutive automatic versions by
+ * the same author become one row ("3 automatic versions", their time range and
+ * the files they touched); anything else is a row of its own. `changes` gives
+ * what a version changed, when it was looked at.
+ */
+export function waitingRows<T extends SnapshotEntry>(entries: T[], changes: (e: T) => ChangedFiles | undefined): WaitingRow[] {
+  const auto = (e: T) => versionKind(e.message) === "automatic";
+  const groups: T[][] = [];
+  for (const e of entries) {
+    const last = groups[groups.length - 1];
+    if (last && auto(e) && auto(last[0]!) && last[0]!.author === e.author) last.push(e);
+    else groups.push([e]);
+  }
+  return groups.map((g) => {
+    const newest = g[0]!;
+    const hints = new Map<string, string | undefined>();
+    let more = 0;
+    let partial = false;
+    for (const e of g) {
+      const c = changes(e);
+      if (!c) partial = true;
+      else {
+        more += c.more;
+        for (const f of c.files) if (!hints.has(f.path)) hints.set(f.path, f.hint);
+      }
+    }
+    const paths = [...hints.keys()];
+    const hint = g.length === 1 && paths.length === 1 && more === 0 ? hints.get(paths[0]!) : undefined;
+    return {
+      id: newest.id,
+      count: g.length,
+      title: auto(newest) ? (g.length === 1 ? "Automatic version" : `${g.length} automatic versions`) : versionTitle(newest.message),
+      named: versionDescription(newest.message) !== null,
+      ...(newest.author ? { author: newest.author } : {}),
+      from: g[g.length - 1]!.timestamp,
+      to: newest.timestamp,
+      files: paths.slice(0, ROW_FILES),
+      ...(hint ? { hint } : {}),
+      more: more + Math.max(0, paths.length - ROW_FILES),
+      partial,
+    };
+  });
+}
+
+/** The Saved versions card: today's automatic versions in one line, then the newest named ones. */
+export interface SavedSummary {
+  /** Today's automatic versions; `atLeast`: the page ends before today does, so there are more. */
+  today: { count: number; atLeast: boolean; from: number; to: number } | null;
+  /** The newest versions the author named, newest first. */
+  named: SnapshotEntry[];
+}
+
+export function savedSummary(page: { entries: SnapshotEntry[]; hasMore: boolean }, now: number, namedMax = 3): SavedSummary {
+  const today = new Date(now).toDateString();
+  const isToday = (e: SnapshotEntry) => new Date(e.timestamp).toDateString() === today;
+  const autos = page.entries.filter((e) => isToday(e) && versionKind(e.message) === "automatic");
+  const oldest = page.entries[page.entries.length - 1];
+  return {
+    today: autos.length
+      ? { count: autos.length, atLeast: page.hasMore && !!oldest && isToday(oldest), from: autos[autos.length - 1]!.timestamp, to: autos[0]!.timestamp }
+      : null,
+    named: page.entries.filter((e) => versionDescription(e.message) !== null).slice(0, namedMax),
+  };
 }

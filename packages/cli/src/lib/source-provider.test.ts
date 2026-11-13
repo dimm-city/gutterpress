@@ -1336,8 +1336,8 @@ test("listRevisions: with no online copy every revision is only on this computer
     expect(await listRevisions(dir)).toEqual({
       current: "main",
       revisions: [
-        { name: "main", current: true, where: "this-computer", notBackedUp: false },
-        { name: "Second-edition", current: false, where: "this-computer", notBackedUp: false },
+        { name: "main", current: true, where: "this-computer", notBackedUp: false, savedAt: expect.any(Number) },
+        { name: "Second-edition", current: false, where: "this-computer", notBackedUp: false, savedAt: expect.any(Number) },
       ],
       repairCopies: [],
     });
@@ -1369,10 +1369,10 @@ test("listRevisions reports where each revision is kept and what is not backed u
     const list = await listRevisions(dir);
     expect(list!.current).toBe("main");
     expect(list!.revisions).toEqual([
-      { name: "behind", current: false, where: "online", notBackedUp: false },
-      { name: "main", current: true, where: "online", notBackedUp: true },
-      { name: "mine", current: false, where: "this-computer", notBackedUp: false },
-      { name: "theirs", current: false, where: "online-only", notBackedUp: false },
+      { name: "behind", current: false, where: "online", notBackedUp: false, savedAt: expect.any(Number) },
+      { name: "main", current: true, where: "online", notBackedUp: true, savedAt: expect.any(Number) },
+      { name: "mine", current: false, where: "this-computer", notBackedUp: false, savedAt: expect.any(Number) },
+      { name: "theirs", current: false, where: "online-only", notBackedUp: false, savedAt: expect.any(Number) },
     ]);
   } finally {
     await rm(dir, { recursive: true, force: true });

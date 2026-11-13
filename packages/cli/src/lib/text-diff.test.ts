@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { alignRows, countChanged, diffSequences, textLines } from "./text-diff";
+import { countChanged, diffSequences, textLines } from "./text-diff";
 
 /** Apply the ops back to both sides to prove the script is a valid edit. */
 function sides<T>(ops: ReturnType<typeof diffSequences<T>>): { a: T[]; b: T[] } {
@@ -60,19 +60,6 @@ describe("countChanged", () => {
     expect(countChanged(diffSequences(["a", "c"], ["a", "b1", "b2", "c"]))).toBe(2);
     expect(countChanged(diffSequences(["a", "b", "c", "d"], ["A", "b", "C", "d"]))).toBe(2);
     expect(countChanged(diffSequences(["a"], ["a"]))).toBe(0);
-  });
-});
-
-describe("alignRows", () => {
-  test("equal lines share a row; a changed run pairs up and pads the shorter side", () => {
-    const rows = alignRows(diffSequences(["keep", "old1", "old2", "tail"], ["keep", "new1", "tail", "extra"]));
-    expect(rows).toEqual([
-      { then: "keep", now: "keep", changed: false },
-      { then: "old1", now: "new1", changed: true },
-      { then: "old2", now: null, changed: true },
-      { then: "tail", now: "tail", changed: false },
-      { then: null, now: "extra", changed: true },
-    ]);
   });
 });
 

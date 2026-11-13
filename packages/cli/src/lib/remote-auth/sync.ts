@@ -144,17 +144,19 @@ export function isUnrelatedHistories(e: unknown): boolean {
 }
 
 /**
- * A damaged object file, seen through isomorphic-git's error masking: pako
- * (its zlib) throws a plain STRING ("buffer error", "incorrect header
- * check"), and isomorphic-git's command wrapper then crashes assigning
- * `err.caller` to it — so the only trace is this TypeError, worded by the
- * engine: V8 (Electron, Node) says "Cannot create property 'caller' on string
- * …", JavaScriptCore (Bun: the CLI binary, the tests) says "Attempted to
- * assign to readonly property." Retrying can never fix it, so it is reported
- * as a damaged history, not a transient failure.
+ * A damaged object file. Current isomorphic-git reports it as a
+ * `DecompressionError` ("Invalid compressed buffer"). Releases before that
+ * fix let pako's plain-string throw ("buffer error", "incorrect header check")
+ * crash the command wrapper as it assigned `err.caller`, so the only trace was
+ * a TypeError worded by the engine: V8 (Electron, Node) "Cannot create
+ * property 'caller' on string …", JavaScriptCore (Bun) "Attempted to assign to
+ * readonly property." Both are recognised, since the declared range still
+ * reaches those releases. Retrying can never fix it, so it is reported as a
+ * damaged history, not a transient failure.
  */
 function isDamagedObjectError(e: unknown): boolean {
   return (
+    (e as { code?: string })?.code === "DecompressionError" ||
     (e instanceof TypeError &&
       /property 'caller' on string|^Attempted to assign to readonly property\.$/.test(e.message)) ||
     // An object the history refers to is gone — e.g. an empty loose object

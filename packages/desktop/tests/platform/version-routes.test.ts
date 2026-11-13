@@ -150,7 +150,7 @@ describe("POST /api/vcs/compare-file", () => {
     fakeLib({
       compareVersionFile: async (...args: unknown[]) => {
         calls.push(args);
-        return { binary: false, rows: [] };
+        return { binary: false, before: "a", after: "b" };
       },
     });
     for (const id of ["abc", undefined, 42]) {
@@ -162,10 +162,19 @@ describe("POST /api/vcs/compare-file", () => {
       expect(status).toBe(400);
       expect(message).toBe("vcs/compare-file requires a file path inside the book");
     }
+    for (const base of ["now", 1]) {
+      const { status } = await caught(compareFile({ request: request({ projectDir: "/abs/project", id: SHA, path: "a.md", base }) } as never));
+      expect(status).toBe(400);
+    }
     expect(calls).toEqual([]);
     const res = await compareFile({ request: request({ projectDir: "/abs/project", id: SHA, path: "chapters/a.md" }) } as never);
-    expect(await res.json()).toEqual({ binary: false, rows: [] });
-    expect(calls).toEqual([["/abs/project", SHA, "chapters/a.md"]]);
+    expect(await res.json()).toEqual({ binary: false, before: "a", after: "b" });
+    await compareFile({ request: request({ projectDir: "/abs/project", id: SHA, path: "a.md", base: "current" }) } as never);
+    // No base: what the version changed.
+    expect(calls).toEqual([
+      ["/abs/project", SHA, "chapters/a.md", "previous"],
+      ["/abs/project", SHA, "a.md", "current"],
+    ]);
   });
 });
 

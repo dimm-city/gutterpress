@@ -5,6 +5,40 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Desktop: the Online tab says at a glance whether your work is safe.** The top card now
+  states it ("7 versions aren't online yet · 2 new from Grace", or "Everything is online"),
+  says where the book is kept and when it was last checked, and holds the **Send changes
+  automatically** switch and one **Back up now** button, with **Get latest** beside it when
+  there is something to get. **Waiting** lists what is going up and coming down, with real
+  file names; click a row to see that version in Version history. **Saved versions** sums up
+  today's automatic versions and shows your named ones, beside **Drafts**, which now says
+  when each draft was last saved. A draft switch that didn't finish, or copies kept after a
+  repair, now show as a banner at the top of the tab.
+- **Desktop: Version history shows exactly what a version changed in a file.** Opening a
+  changed file now compares it with the version before, so it matches the "3 paragraphs
+  changed" on the card; **Compared with your book now** shows the version beside the book
+  as it is today. Changed words are marked inside each line, unchanged text is folded
+  away, and "Change 2 of 5" with previous/next (Alt+↑ / Alt+↓) steps through the changes.
+  Choose **Inline** or **Side by side**; the editor's colours and line numbers are kept.
+- **Desktop: Version history and the Online tab are fast on books with many pictures.**
+  Reads of a book's history now share what was already loaded from it for up to a
+  minute, and each version's changed files are worked out once. On a 300-version book
+  with a 234 MB history, Version history lists in about 0.04 s (was 1.5 s), switching
+  versions takes milliseconds (was up to 1 s) and opening a file comparison about
+  0.07 s (was 2.7 s). The Online tab reads the history and the unsaved changes once
+  instead of two or three times, Version history reuses the tab's online check, and
+  the tab shows the newest versions in about 2 s (was 5.5 s).
+- **Desktop: Version history opens on your newest version, already showing what changed.**
+  Automatic saves are grouped into editing sessions that name the files you worked on,
+  and the versions you saved stand out with a star. Find a version by its note or by a
+  file ("ch07"), or show only Named or Not online yet. A version's changed files are
+  chips you can switch between (←/→); ↑/↓ move through the list. Versions from someone
+  else that aren't on this computer yet are one line with **Get them**. **Restore the
+  whole book to this version…** now says what it restores, and asks without moving the
+  page. In a narrow window the list becomes a drawer.
+
 ### Removed
 
 - **Editing text in the preview.** Double-clicking a block, and the right-click
