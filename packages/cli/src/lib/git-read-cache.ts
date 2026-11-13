@@ -14,7 +14,8 @@
  *    a new pack), so it never keeps a pack that is gone or misses a new one.
  *
  * Only reads of commits, trees and blobs use it (history, a version's changes,
- * a file at a version, the tree written for Pages, revisions). Anything that
+ * a file at a version, the tree written for Pages, revisions, and the backup
+ * status read after every sync pass). Anything that
  * writes (snapshot, checkout, restore, sync) or reads the index (the
  * unsaved-changes count) keeps a cache of its own for that one operation: the
  * index cache isomorphic-git keeps beside the packs must not outlive a write

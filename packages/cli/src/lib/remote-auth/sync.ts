@@ -47,6 +47,7 @@ import { defaultGitHttp } from "./git-http.ts";
 import { countUnversionedChanges, DEFAULT_BRANCH, isContained, readRevisionRefs, resolveGitAuthor, withRepoLock } from "../source-provider.ts";
 import { errorLogData, type LogData, resolveLogger } from "./operation-log.ts";
 import { convergeMerge } from "./converge-merge.ts";
+import { gitReadCache } from "../git-read-cache.ts";
 import {
   MSG_BUSY,
   SYNC_LATE_EDIT_MESSAGE,
@@ -626,7 +627,10 @@ export async function localBackupStatus(
   if (!current) return null;
   const here = local.get(current);
   if (!here) return null;
-  const fromMain = current === DEFAULT_BRANCH ? 0 : await versionsMissing(dir, online.get(DEFAULT_BRANCH), here, {});
+  // Commit reads only, after every pass: the shared read cache keeps the pack
+  // loaded between ticks instead of reading it again for each walk.
+  const cache = await gitReadCache(dir);
+  const fromMain = current === DEFAULT_BRANCH ? 0 : await versionsMissing(dir, online.get(DEFAULT_BRANCH), here, cache);
   const main = fromMain > 0 ? { fromMain } : {};
   // Work saved to disk but not yet in a version (edited outside the app, or the
   // app stopped before its automatic version) is not backed up either.
@@ -641,7 +645,6 @@ export async function localBackupStatus(
   const there = online.get(current);
   if (!there) return { state: "unsent", ahead: 0, behind: false, ...unsaved, ...main };
   if (here === there) return { state: unversioned > 0 ? "unsent" : "synced", ahead: 0, behind: false, ...unsaved, ...main };
-  const cache: GitCache = {};
   const hereHasThere = await isContained(dir, there, here, cache);
   const thereHasHere = await isContained(dir, here, there, cache);
   const ahead = thereHasHere ? 0 : await versionsMissing(dir, here, there, cache);
