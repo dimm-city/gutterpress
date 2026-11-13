@@ -1373,12 +1373,11 @@ describe("syncProject — a history that cannot be read", () => {
   }
 });
 
-test("a damaged object file (masked by isomorphic-git as a TypeError) says the versions can't be read", async () => {
-  // 0.11.6 field report: pako throws a STRING for a damaged object and
-  // isomorphic-git's wrapper crashes assigning `err.caller` to it, so the
-  // failure reached the writer as a bare "merge failed". HEAD, its commit
-  // and the index all still read, so only recognising the masked error can
-  // tell this apart from a transient failure.
+test("a damaged object file says the versions can't be read", async () => {
+  // 0.11.6 field report: a damaged object reached the writer as a bare
+  // "merge failed" (isomorphic-git then masked it as a TypeError; it now
+  // reports a DecompressionError). Recognising that error is what tells it
+  // apart from a transient failure.
   const h = await setupClone();
   try {
     await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nLocal work.\n");
