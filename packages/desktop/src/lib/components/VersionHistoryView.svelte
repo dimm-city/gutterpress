@@ -223,6 +223,13 @@
   async function loadOnline(): Promise<void> {
     // The Online tab checked a moment ago, as a rule: its check is reused rather than asked again.
     online = (await api.vcs.onlineVersions(projectDir, { maxAgeMs: onlineCopy.FRESH_MS }).catch(() => null))?.entries ?? [];
+    // Opened on a version that is online only (a Coming down row in the Online tab): it is
+    // listed only now, so select it, unless the author has chosen another meanwhile.
+    const asked = online.find((e) => e.id === initialId);
+    if (asked && (!selected || selected.id === entries[0]?.id)) {
+      onlineOpen = true;
+      void select(asked);
+    }
   }
 
   /** Get them: the page's get-latest pass, then the list again with what came in. */
