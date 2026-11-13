@@ -461,6 +461,7 @@
     syncChanges: (dir) => api.remote.syncChanges(dir),
     getLatest: (dir, options) => api.remote.getLatest(dir, options),
     checkUpdates: (dir) => api.remote.checkUpdates(dir),
+    mainDraftAhead: (dir) => api.vcs.onlineVersions(dir).then((r) => r.mainDraft?.count ?? 0),
     repair: (dir) => api.remote.repairOnlineBackup(dir),
     diagnose: (dir) => api.remote.diagnoseProjectRemote(dir),
     currentDir: () => lifecycle.currentDir,

@@ -412,7 +412,8 @@ test("handleRepair: a no-op when no project is open", async () => {
 
 function makeManual(opts: { auto?: boolean; reader?: boolean; available?: boolean; reason?: string; host?: string; sync?: SyncOutcome | Error; latest?: SyncOutcome | Error; showless?: boolean } = {}) {
   const show = spy<[string, string?, number?, { label: string; onClick: () => void }?, string?]>();
-  const toast = { ...makeToast(), ...(opts.showless ? {} : { show }) };
+  const dismissKey = spy<[string]>();
+  const toast = { ...makeToast(), dismissKey, ...(opts.showless ? {} : { show }) };
   const onFilesChanged = spy<[]>();
   const onSyncCompleted = spy<[boolean, boolean]>();
   const checks: string[] = [];
@@ -422,7 +423,7 @@ function makeManual(opts: { auto?: boolean; reader?: boolean; available?: boolea
   const pulls: string[] = [];
   /** What each Get latest pass was asked to do besides (Bring them in, #524). */
   const pullOptions: ({ bringInMainDraft?: boolean } | undefined)[] = [];
-  const state = { dir: "/proj" as string | null, available: opts.available ?? true, reason: opts.reason as string | undefined, host: opts.host };
+  const state = { dir: "/proj" as string | null, available: opts.available ?? true, reason: opts.reason as string | undefined, host: opts.host, mainMoved: false, mainCount: 0 };
   const outcome = opts.sync ?? { status: "synced", message: "", mergedRemoteChanges: true, filesChanged: true };
   // What the lib's push: false pass returns: always "up-to-date", never "synced".
   const latest = opts.latest ?? { status: "up-to-date", message: "", filesChanged: true };
@@ -438,8 +439,9 @@ function makeManual(opts: { auto?: boolean; reader?: boolean; available?: boolea
     },
     checkUpdates: (d) => {
       checks.push(d);
-      return Promise.resolve({ available: state.available, ...(state.reason ? { reason: state.reason } : {}), ...(state.host ? { host: state.host } : {}) });
+      return Promise.resolve({ available: state.available, ...(state.mainMoved ? { mainDraftMoved: true } : {}), ...(state.reason ? { reason: state.reason } : {}), ...(state.host ? { host: state.host } : {}) });
     },
+    mainDraftAhead: () => Promise.resolve(state.mainCount),
     repair: () => Promise.reject(new Error("not wired")),
     diagnose: () => Promise.resolve(DIAG),
     currentDir: () => state.dir,
@@ -449,7 +451,7 @@ function makeManual(opts: { auto?: boolean; reader?: boolean; available?: boolea
     autoBackup: () => opts.auto ?? false,
     isReader: () => opts.reader ?? false,
   });
-  return { ctrl, toast: toast as typeof toast & { show: typeof show }, onFilesChanged, onSyncCompleted, checks, syncs, pulls, pullOptions, state };
+  return { ctrl, toast: toast as typeof toast & { show: typeof show }, show, dismissKey, onFilesChanged, onSyncCompleted, checks, syncs, pulls, pullOptions, state };
 }
 
 test("checkForUpdates: automatic sending off -> one sticky prompt with a Get latest action (#485)", async () => {
@@ -898,4 +900,56 @@ test("a host pass counts as touching files from its 'syncing' (even a skipped on
   expect(h.ctrl.passTouchedFiles).toBe(true);
   h.ctrl.applyStatus({ state: "synced", projectDir: "/proj", lastSyncAt: "2026-11-07T10:00:00Z" } as SyncStatus);
   expect(h.ctrl.passTouchedFiles).toBe(false);
+});
+
+// ── The Main draft's new work, on another draft (#524) ──────────────────────
+
+const MAIN_PROMPT = (n: number) => `The Main draft has ${n} ${n === 1 ? "change" : "changes"} this draft doesn't have yet.`;
+
+test("a tick that finds new Main draft work prompts once, with Bring them in", async () => {
+  const m = makeManual({ auto: true });
+  m.ctrl.applyStatus(status({ fromMain: 3 } as Partial<SyncStatus>));
+  expect(m.ctrl.mainDraftAhead).toBe(3);
+  expect(m.show.calls).toHaveLength(1);
+  const [message, , duration, action, key] = m.show.calls[0]!;
+  expect([message, duration, action?.label, key]).toEqual([MAIN_PROMPT(3), 0, "Bring them in", "new-main-draft"]);
+  // The same count again is no news; more is.
+  m.ctrl.applyStatus(status({ fromMain: 3 } as Partial<SyncStatus>));
+  expect(m.show.calls).toHaveLength(1);
+  m.ctrl.applyStatus(status({ fromMain: 5 } as Partial<SyncStatus>));
+  expect(m.show.calls[1]![0]).toBe(MAIN_PROMPT(5));
+  // Its button runs Bring them in, which clears the prompt once the work is in.
+  action!.onClick();
+  await new Promise((r) => setTimeout(r, 0));
+  expect(m.pullOptions.at(-1)).toEqual({ bringInMainDraft: true });
+  expect(m.ctrl.mainDraftAhead).toBe(0);
+  expect(m.dismissKey.calls).toContainEqual(["new-main-draft"]);
+});
+
+test("nothing waiting from the Main draft drops the prompt; a reader is never prompted", () => {
+  const m = makeManual({ auto: true });
+  m.ctrl.applyStatus(status({ fromMain: 2 } as Partial<SyncStatus>));
+  m.ctrl.applyStatus(status({ fromMain: 0 } as Partial<SyncStatus>));
+  expect(m.ctrl.mainDraftAhead).toBe(0);
+  expect(m.dismissKey.calls).toContainEqual(["new-main-draft"]);
+  const reader = makeManual({ auto: true, reader: true });
+  reader.ctrl.applyStatus(status({ fromMain: 2 } as Partial<SyncStatus>));
+  expect(reader.show.calls).toEqual([]);
+});
+
+test("with automatic backing up off, the update check counts the Main draft's work when it has moved", async () => {
+  const m = makeManual({ available: false });
+  m.state.mainMoved = true;
+  m.state.mainCount = 4;
+  await m.ctrl.refreshSyncDiag("/proj");
+  await new Promise((r) => setTimeout(r, 0));
+  expect(m.ctrl.mainDraftAhead).toBe(4);
+  expect(m.show.calls.map((c) => c[0])).toEqual([MAIN_PROMPT(4)]);
+  // Not moved: nothing is counted or said.
+  const still = makeManual({ available: false });
+  still.state.mainCount = 4;
+  await still.ctrl.refreshSyncDiag("/proj");
+  await new Promise((r) => setTimeout(r, 0));
+  expect(still.ctrl.mainDraftAhead).toBe(0);
+  expect(still.show.calls).toEqual([]);
 });

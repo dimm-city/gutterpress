@@ -2423,6 +2423,38 @@ describe("bringing the Main draft's work into another draft (#524)", () => {
     }
   });
 
+  test("an ordinary pass on a draft keeps the Main draft's count fresh, on the draft's own schedule", async () => {
+    const h = await setupClone();
+    try {
+      await startDraft(h, "second-edition", { "notes.md": "Draft notes.\n" });
+      await serverCommit(h.serverDir, { "chapter-02.md": "# Two\n" }, "Added chapter two");
+      await serverCommit(h.serverDir, { "chapter-03.md": "# Three\n" }, "Added chapter three");
+      expect((await localBackupStatus(h.projectDir))?.fromMain).toBeUndefined(); // not fetched yet
+      await syncProject({ projectDir: h.projectDir, push: false });
+      expect((await localBackupStatus(h.projectDir))?.fromMain).toBe(2);
+      // On the Main draft there is nothing to count.
+      await git.checkout({ fs, dir: h.projectDir, ref: "main" });
+      expect((await localBackupStatus(h.projectDir))?.fromMain).toBeUndefined();
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("the update check says when the Main draft has moved, even for a draft never sent online", async () => {
+    const h = await setupClone();
+    try {
+      await startDraft(h, "second-edition", { "notes.md": "Draft notes.\n" });
+      expect(await checkRemoteUpdates({ projectDir: h.projectDir })).toEqual({ available: false });
+      await serverCommit(h.serverDir, { "chapter-02.md": "# Two\n" }, "Added chapter two");
+      expect(await checkRemoteUpdates({ projectDir: h.projectDir })).toEqual({ available: false, mainDraftMoved: true });
+      // Once the Main draft is fetched (any pass on the draft does it), it has not moved since.
+      await syncProject({ projectDir: h.projectDir, push: false });
+      expect(await checkRemoteUpdates({ projectDir: h.projectDir })).toEqual({ available: false });
+    } finally {
+      await h.cleanup();
+    }
+  });
+
   test("on the Main draft, Bring them in is an ordinary pass", async () => {
     const h = await setupClone();
     try {

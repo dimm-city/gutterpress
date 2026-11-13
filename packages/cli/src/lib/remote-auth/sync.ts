@@ -328,58 +328,67 @@ export async function syncProject(
           });
         }
 
+        // On any other draft the Main draft is fetched too, as often as the draft
+        // itself, so what it has that this draft lacks is known on the same
+        // schedule (#524). Quiet when it fails: that never fails the pass.
+        let mainTip: string | null = null;
+        if (branch !== DEFAULT_BRANCH) {
+          step("fetch-main", { remote: transport.remote });
+          try {
+            mainTip = await fetchRemoteTip(dir, DEFAULT_BRANCH, transport, http, cache);
+          } catch (e) {
+            if (options.bringInMainDraft) throw e;
+            logger.warn("fetch-main", "couldn't read the Main draft", errorLogData(e));
+          }
+        }
         // "Bring them in" (#524): the online Main draft's work, combined into this
         // draft before the usual pass, by the one converge-merge every sync uses.
         // The pass below then sends the result, or (pull-only) keeps it here.
-        if (options.bringInMainDraft && branch !== DEFAULT_BRANCH) {
-          step("fetch-main", { remote: transport.remote });
-          const mainTip = await fetchRemoteTip(dir, DEFAULT_BRANCH, transport, http, cache);
-          if (mainTip) {
-            // Whatever is on disk is committed first, so it is combined, not overwritten.
-            step("snapshot-before-main");
-            const saved = await snapshotBeforeAction({
-              projectDir: options.projectDir,
+        if (options.bringInMainDraft && mainTip) {
+          // Whatever is on disk is committed first, so it is combined, not overwritten.
+          step("snapshot-before-main");
+          const saved = await snapshotBeforeAction({
+            projectDir: options.projectDir,
+            dir,
+            message: options.message,
+            authorName: options.authorName,
+            authorEmail: options.authorEmail,
+            cache,
+          });
+          if (saved) snapshotId = saved;
+          const before = await git.resolveRef({ fs, dir, ref: branch });
+          step("author");
+          const author = await resolveGitAuthor(dir, options.authorName, options.authorEmail);
+          let converge;
+          try {
+            step("merge-main", { local: before, main: mainTip });
+            converge = await convergeMerge({
               dir,
-              message: options.message,
+              cache,
+              branch,
+              theirs: mainTip,
+              author,
+              onStep: step,
+              logger,
               authorName: options.authorName,
               authorEmail: options.authorEmail,
-              cache,
             });
-            if (saved) snapshotId = saved;
-            const before = await git.resolveRef({ fs, dir, ref: branch });
-            step("author");
-            const author = await resolveGitAuthor(dir, options.authorName, options.authorEmail);
-            let converge;
-            try {
-              step("merge-main", { local: before, main: mainTip });
-              converge = await convergeMerge({
-                dir,
-                cache,
-                branch,
-                theirs: mainTip,
-                author,
-                onStep: step,
-                logger,
-                authorName: options.authorName,
-                authorEmail: options.authorEmail,
-              });
-            } catch (e) {
-              if (isUnrelatedHistories(e)) {
-                logger.warn(stage, "unrelated histories — refusing to combine the Main draft", errorLogData(e));
-                return { status: "error", message: MSG_UNRELATED, ...base() };
-              }
-              throw e;
+          } catch (e) {
+            if (isUnrelatedHistories(e)) {
+              logger.warn(stage, "unrelated histories — refusing to combine the Main draft", errorLogData(e));
+              return { status: "error", message: MSG_UNRELATED, ...base() };
             }
-            if (converge.oid !== before) {
-              pulled = true;
-              const [was, now] = await Promise.all([
-                git.readCommit({ fs, dir, cache, oid: before }),
-                git.readCommit({ fs, dir, cache, oid: converge.oid }),
-              ]);
-              filesChanged = filesChanged || was.commit.tree !== now.commit.tree;
-              for (const f of converge.combinedFiles) combinedFiles.add(f);
-              keptBothFiles.push(...converge.keptBothFiles);
-            }
+            throw e;
+          }
+          if (converge.oid !== before) {
+            pulled = true;
+            const [was, now] = await Promise.all([
+              git.readCommit({ fs, dir, cache, oid: before }),
+              git.readCommit({ fs, dir, cache, oid: converge.oid }),
+            ]);
+            filesChanged = filesChanged || was.commit.tree !== now.commit.tree;
+            for (const f of converge.combinedFiles) combinedFiles.add(f);
+            keptBothFiles.push(...converge.keptBothFiles);
           }
         }
 
@@ -604,17 +613,21 @@ const AHEAD_DEPTH = 1000;
  * it lacks (`ahead` of them, capped by the walk depth); `behind` when the last
  * heard-from online tip holds versions this computer has not got. `null` for a
  * book with no history or no online copy of this revision to compare with
- * (never backed up counts as `unsent`: everything here is unsent).
+ * (never backed up counts as `unsent`: everything here is unsent). On a draft
+ * other than the Main draft, `fromMain` counts the versions the online Main
+ * draft (as last heard from) has that this draft has not (#524).
  */
 export async function localBackupStatus(
   projectDir: string,
   options: { countUnversioned?: boolean } = {},
-): Promise<{ state: "synced" | "unsent"; ahead: number; behind: boolean; unversioned?: number } | null> {
+): Promise<{ state: "synced" | "unsent"; ahead: number; behind: boolean; unversioned?: number; fromMain?: number } | null> {
   const dir = await repoDirFor(projectDir);
   const { current, local, online } = await readRevisionRefs(dir);
   if (!current) return null;
   const here = local.get(current);
   if (!here) return null;
+  const fromMain = current === DEFAULT_BRANCH ? 0 : await versionsMissing(dir, online.get(DEFAULT_BRANCH), here, {});
+  const main = fromMain > 0 ? { fromMain } : {};
   // Work saved to disk but not yet in a version (edited outside the app, or the
   // app stopped before its automatic version) is not backed up either.
   // (`countUnversioned: false` skips the tree walk when only ahead/behind are
@@ -626,25 +639,29 @@ export async function localBackupStatus(
   const unversioned = pending ? pending.changedFiles + (pending.stale ? 1 : 0) : 0;
   const unsaved = unversioned > 0 ? { unversioned } : {};
   const there = online.get(current);
-  if (!there) return { state: "unsent", ahead: 0, behind: false, ...unsaved };
-  if (here === there) return { state: unversioned > 0 ? "unsent" : "synced", ahead: 0, behind: false, ...unsaved };
+  if (!there) return { state: "unsent", ahead: 0, behind: false, ...unsaved, ...main };
+  if (here === there) return { state: unversioned > 0 ? "unsent" : "synced", ahead: 0, behind: false, ...unsaved, ...main };
   const cache: GitCache = {};
   const hereHasThere = await isContained(dir, there, here, cache);
   const thereHasHere = await isContained(dir, here, there, cache);
-  let ahead = 0;
-  if (!thereHasHere) {
-    const known = new Set(
-      (await git.log({ fs, dir, ref: there, depth: AHEAD_DEPTH, cache }).catch(() => [])).map((c) => c.oid),
-    );
-    const mine = await git.log({ fs, dir, ref: here, depth: AHEAD_DEPTH, cache }).catch(() => []);
-    ahead = mine.filter((c) => !known.has(c.oid)).length;
-  }
+  const ahead = thereHasHere ? 0 : await versionsMissing(dir, here, there, cache);
   return {
     state: thereHasHere && unversioned === 0 ? "synced" : "unsent",
     ahead,
     behind: !hereHasThere,
     ...unsaved,
+    ...main,
   };
+}
+
+/** How many of `from`'s versions `base` has not got, within the last AHEAD_DEPTH; 0 when either is missing. */
+async function versionsMissing(dir: string, from: string | undefined, base: string, cache: GitCache): Promise<number> {
+  if (!from || from === base) return 0;
+  const known = new Set(
+    (await git.log({ fs, dir, ref: base, depth: AHEAD_DEPTH, cache }).catch(() => [])).map((c) => c.oid),
+  );
+  const theirs = await git.log({ fs, dir, ref: from, depth: AHEAD_DEPTH, cache }).catch(() => []);
+  return theirs.filter((c) => !known.has(c.oid)).length;
 }
 
 /** The book's online copy changed hands (sign-in changed, disconnected, new address): drop what was known about it. */
@@ -763,7 +780,7 @@ export async function checkRemoteUpdates(options: {
   credential?: HostCredential;
   tokenStore?: TokenStore;
   httpClient?: typeof defaultGitHttp;
-}): Promise<{ available: boolean; reason?: "no-remote" | "auth" | "not-found" | "offline" }> {
+}): Promise<{ available: boolean; mainDraftMoved?: boolean; reason?: "no-remote" | "auth" | "not-found" | "offline" }> {
   const http = options.httpClient ?? defaultGitHttp;
   try {
     const dir = await repoDirFor(options.projectDir);
@@ -772,8 +789,6 @@ export async function checkRemoteUpdates(options: {
       ...(options.tokenStore ? { tokenStore: options.tokenStore } : {}),
     });
     const branch = await currentBranchOrThrow(dir);
-    const remoteTip = await serverTip(transport, branch, http);
-    if (!remoteTip) return { available: false };
     const known = async (ref: string) => {
       try {
         return await git.resolveRef({ fs, dir, ref });
@@ -781,9 +796,15 @@ export async function checkRemoteUpdates(options: {
         return null;
       }
     };
+    // On another draft: has the online Main draft moved since it was last fetched (#524)?
+    const mainTip = branch === DEFAULT_BRANCH ? null : await serverTip(transport, DEFAULT_BRANCH, http).catch(() => null);
+    const moved = !!mainTip && mainTip !== (await known(`refs/remotes/${transport.remote}/${DEFAULT_BRANCH}`));
+    const main = moved ? { mainDraftMoved: true } : {};
+    const remoteTip = await serverTip(transport, branch, http);
+    if (!remoteTip) return { available: false, ...main };
     const tracking = await known(`refs/remotes/${transport.remote}/${branch}`);
     const local = await known(branch);
-    return { available: remoteTip !== tracking && remoteTip !== local };
+    return { available: remoteTip !== tracking && remoteTip !== local, ...main };
   } catch (e) {
     const message = (e as { message?: string })?.message ?? "";
     if (message === MSG_NO_REMOTE || message === MSG_SSH_REMOTE) {

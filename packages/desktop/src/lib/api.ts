@@ -914,7 +914,7 @@ export const api = {
 
     /** Whether the book's branch has moved online (reads refs only; never throws). */
     checkUpdates: (projectDir: string) =>
-      post<{ available: boolean; reason?: 'no-remote' | 'auth' | 'offline' }>('/api/remote/check-updates', { projectDir }),
+      post<{ available: boolean; mainDraftMoved?: boolean; reason?: 'no-remote' | 'auth' | 'offline' }>('/api/remote/check-updates', { projectDir }),
 
     /**
      * "Repair the online copy": replace the book's broken history with a fresh

@@ -42,6 +42,8 @@ interface SyncToast {
 /** One outcome toast per author action, and one for "new changes online": a newer one replaces the older. */
 const OUTCOME_KEY = "sync-outcome";
 const NEW_ONLINE_KEY = "new-online";
+/** The prompt for the Main draft's new work, on another draft (#524). */
+const NEW_MAIN_KEY = "new-main-draft";
 /** The host's own passes (the status stream) report their two takes under this key. */
 const CONVERGE_AMBIENT_KEY = "converge-ambient";
 
@@ -57,7 +59,9 @@ export interface SyncControllerDeps {
   /** Host round-trip: "Get latest", the same pass with `push: false`: fetch and merge, never send; `bringInMainDraft` also combines the online Main draft (#524). */
   getLatest: (dir: string, options?: { bringInMainDraft?: boolean }) => Promise<SyncOutcome>;
   /** Host round-trip: has the book's open revision moved online? (reads refs only; never throws) */
-  checkUpdates: (dir: string) => Promise<{ available: boolean; reason?: string; host?: string }>;
+  checkUpdates: (dir: string) => Promise<{ available: boolean; mainDraftMoved?: boolean; reason?: string; host?: string }>;
+  /** Host round-trip: how many versions the online Main draft has that the open draft has not, after an online check (#524). */
+  mainDraftAhead?: (dir: string) => Promise<number>;
   /** Host round-trip: "Repair the online copy" for the given project dir. */
   repair: (dir: string) => Promise<{ outcome: SyncOutcome; restoredFiles: string[]; movedGitTo?: string }>;
   /** Host round-trip: diagnose the project's remote (protocol/credential/provider). */
@@ -160,6 +164,8 @@ export class SyncController {
   gettingLatest = $state(false);
   /** The online copy has changes this one has not got (last check said so). */
   updatesAvailable = $state(false);
+  /** On a draft other than the Main draft: versions the online Main draft has that this draft has not (#524). */
+  mainDraftAhead = $state(0);
   /** The newest status event for a book: the host's stream, seeded with what it kept when the book opened. */
   private streamed = $state<StreamedStatus | null>(null);
   /** The book whose online changes this session has checked for at least once (manual mode's first real answer). */
@@ -219,7 +225,7 @@ export class SyncController {
       return;
     }
     // WP-C's fields, all optional: absent from an older host.
-    const extra = status as unknown as { ahead?: number; behind?: boolean; decide?: number; source?: string; reason?: string; host?: string };
+    const extra = status as unknown as { ahead?: number; behind?: boolean; fromMain?: number; decide?: number; source?: string; reason?: string; host?: string };
     // The first network pass right after an instant local "Backed up" usually just confirms it:
     // keep the answer on screen instead of flashing "Backing up…" (the pass's own result replaces it).
     // Only a `syncing` that comes straight after it (the orchestrator's first pass starts about a second
@@ -252,6 +258,7 @@ export class SyncController {
     };
     // The host knows the online copy has moved on (or has not): keep the Update button's cue in step.
     if (typeof extra.behind === "boolean") this.updatesAvailable = extra.behind;
+    if (typeof extra.fromMain === "number") this.noteMainDraft(extra.fromMain);
     // A finished pass makes a version first, so it also proves the automatic versions work again.
     if ((status.state === "synced" || status.state === "unsent") && status.source !== "local") this.versionsProblemOf = null;
   }
@@ -291,7 +298,7 @@ export class SyncController {
     const dir = this.deps.currentDir();
     if (!dir || !this.syncDiag?.canSync || (this.deps.autoBackup?.() ?? true) || this.deps.isReader?.()) return;
     if (this.forceSyncing || this.gettingLatest) return;
-    let result: { available: boolean; reason?: string; host?: string };
+    let result: { available: boolean; mainDraftMoved?: boolean; reason?: string; host?: string };
     try {
       result = await this.deps.checkUpdates(dir);
     } catch {
@@ -317,6 +324,31 @@ export class SyncController {
       if (t?.show) t.show(message, "info", 0, { label: "Get changes", onClick: () => void this.handleGetLatest() }, NEW_ONLINE_KEY);
       else t?.info?.(`${message} Use the Update button to bring them in.`);
     }
+    // On another draft, the same check looks at the Main draft (#524): when it has
+    // moved, one online check counts what it has that this draft has not.
+    if (result.mainDraftMoved && this.deps.mainDraftAhead) {
+      const count = await this.deps.mainDraftAhead(dir).catch(() => null);
+      if (count !== null && this.deps.currentDir() === dir) this.noteMainDraft(count);
+    }
+  }
+
+  /**
+   * What the online Main draft has that the open draft has not (#524): prompt
+   * once when it grows, as "New changes are online" does on the Main draft,
+   * and drop the prompt once nothing is waiting. Never for a reader.
+   */
+  private noteMainDraft(count: number): void {
+    const discovered = count > this.mainDraftAhead;
+    this.mainDraftAhead = count;
+    const t = this.deps.toast();
+    if (count === 0) {
+      t?.dismissKey?.(NEW_MAIN_KEY);
+      return;
+    }
+    if (!discovered || this.deps.isReader?.()) return;
+    const message = `The Main draft has ${count} ${count === 1 ? "change" : "changes"} this draft doesn't have yet.`;
+    if (t?.show) t.show(message, "info", 0, { label: "Bring them in", onClick: () => void this.handleGetLatest(true) }, NEW_MAIN_KEY);
+    else t?.info?.(message);
   }
 
   /**
@@ -374,6 +406,7 @@ export class SyncController {
       if (outcome.status === "synced" || outcome.status === "up-to-date") {
         this.updatesAvailable = false;
         this.clearNewOnline();
+        if (fromMainDraft) this.noteMainDraft(0);
         this.recordManual(dir, outcomeState(outcome));
         if (outcome.filesChanged) {
           this.filesChanged();

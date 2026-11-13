@@ -10,9 +10,11 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **Desktop: a draft shows the Main draft's new work, and brings it in when you ask (#524).**
   On any draft other than the Main draft, the Online tab says when the Main draft has work
   this draft doesn't ("The Main draft has 4 changes this draft doesn't have yet.", with who
-  made them and when). **Bring them in** combines it into the draft the same way backing up
-  combines changes, so a passage changed in both becomes two takes. Nothing comes in
-  until you ask, and nothing is sent until the next backup.
+  made them and when). It is checked as often as the draft's own online copy, and new work
+  raises a prompt the way new online changes do on the Main draft. **Bring them in**
+  combines it into the draft the same way backing up combines changes, so a passage changed
+  in both becomes two takes. Nothing comes in until you ask, and nothing is sent until the
+  next backup.
 
 ### Changed
 
