@@ -23,7 +23,6 @@ import {
   rmdir,
 } from "node:fs/promises";
 import path from "node:path";
-import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
 import { maxSatisfying, satisfies, validRange } from "semver";
@@ -48,10 +47,6 @@ import { npmRegistryUrl } from "./npm-registry.ts";
 
 interface NpmPluginInstallLimits {
   metadataBytes: number;
-  packageTarballBytes: number;
-  totalNetworkBytes: number;
-  packageFileBytes: number;
-  totalUnpackedBytes: number;
   totalFiles: number;
   totalPackages: number;
   dependencyDepth: number;
@@ -59,10 +54,6 @@ interface NpmPluginInstallLimits {
 
 const DEFAULT_LIMITS: NpmPluginInstallLimits = {
   metadataBytes: 15 * 1024 * 1024,
-  packageTarballBytes: 50 * 1024 * 1024,
-  totalNetworkBytes: 250 * 1024 * 1024,
-  packageFileBytes: 50 * 1024 * 1024,
-  totalUnpackedBytes: 512 * 1024 * 1024,
   totalFiles: 50_000,
   totalPackages: 512,
   dependencyDepth: 64,
@@ -124,8 +115,6 @@ interface InstallContext {
   packuments: Map<string, Promise<Record<string, unknown>>>;
   records: InstalledRecord[];
   warnings: Set<string>;
-  totalNetworkBytes: number;
-  totalUnpackedBytes: number;
   totalFiles: number;
   archiveCounter: number;
 }
@@ -179,23 +168,17 @@ function mergeLimits(overrides?: Partial<NpmPluginInstallLimits>): NpmPluginInst
   return limits;
 }
 
+/** Stream a registry response through `onChunk`. Only metadata is capped
+ * (`maxBytes`): a plugin's own size is the author's business. */
 async function streamResponse(
-  ctx: InstallContext,
   response: Response,
   maxBytes: number,
-  totalLimitMessage: string,
   onChunk: (chunk: Uint8Array) => void | Promise<void>,
 ): Promise<number> {
   if (!response.body) throw new Error("Registry response had no body.");
   const declared = Number(response.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > maxBytes) {
     throw new SecurityInstallError(`Registry response is too large (max ${mb(maxBytes)}).`);
-  }
-  if (
-    Number.isFinite(declared) &&
-    declared > ctx.limits.totalNetworkBytes - ctx.totalNetworkBytes
-  ) {
-    throw new SecurityInstallError(totalLimitMessage);
   }
   const reader = response.body.getReader();
   let total = 0;
@@ -208,11 +191,6 @@ async function streamResponse(
         await reader.cancel("size limit exceeded").catch(() => {});
         throw new SecurityInstallError(`Registry response is too large (max ${mb(maxBytes)}).`);
       }
-      if (ctx.totalNetworkBytes + value.length > ctx.limits.totalNetworkBytes) {
-        await reader.cancel("total size limit exceeded").catch(() => {});
-        throw new SecurityInstallError(totalLimitMessage);
-      }
-      ctx.totalNetworkBytes += value.length;
       await onChunk(value);
     }
   } finally {
@@ -246,10 +224,8 @@ async function fetchPackument(ctx: InstallContext, name: string): Promise<Record
       }
       const chunks: Uint8Array[] = [];
       const size = await streamResponse(
-        ctx,
         response,
         ctx.limits.metadataBytes,
-        `Plugin dependency metadata exceeds the ${mb(ctx.limits.totalNetworkBytes)} total download limit.`,
         (chunk) => {
           chunks.push(chunk);
         },
@@ -410,10 +386,8 @@ async function downloadTarball(
           );
         }
         await streamResponse(
-          ctx,
           response,
-          ctx.limits.packageTarballBytes,
-          `Plugin dependency downloads exceed the ${mb(ctx.limits.totalNetworkBytes)} total limit.`,
+          Number.POSITIVE_INFINITY,
           async (chunk) => {
             hash.update(chunk);
             try {
@@ -529,10 +503,8 @@ async function extractTarball(
           throw new SecurityInstallError(`Plugin graph exceeds ${ctx.limits.totalFiles} files.`);
         }
         if (entry.type !== "Directory") {
-          if (!Number.isSafeInteger(entry.size) || entry.size < 0 || entry.size > ctx.limits.packageFileBytes) {
-            throw new SecurityInstallError(
-              `Package file exceeds the ${mb(ctx.limits.packageFileBytes)} limit: ${entryPath}`,
-            );
+          if (!Number.isSafeInteger(entry.size) || entry.size < 0) {
+            throw new SecurityInstallError(`The npm tarball has an invalid file size: ${entryPath}`);
           }
         }
         return true;
@@ -542,20 +514,8 @@ async function extractTarball(
       }
     },
   });
-  const limiter = new Transform({
-    transform(chunk: Buffer, _encoding, callback) {
-      ctx.totalUnpackedBytes += chunk.length;
-      if (ctx.totalUnpackedBytes > ctx.limits.totalUnpackedBytes) {
-        callback(
-          new SecurityInstallError(
-            `Plugin graph expands beyond the ${mb(ctx.limits.totalUnpackedBytes)} limit.`,
-          ),
-        );
-      } else callback(null, chunk);
-    },
-  });
   try {
-    await pipeline(createReadStream(archivePath), createGunzip(), limiter, unpack);
+    await pipeline(createReadStream(archivePath), createGunzip(), unpack);
   } catch (error) {
     if (rejected) throw rejected;
     if (error instanceof SecurityInstallError) throw error;
@@ -851,8 +811,6 @@ export async function installNpmPlugin(
     packuments: new Map(),
     records: [],
     warnings: new Set(),
-    totalNetworkBytes: 0,
-    totalUnpackedBytes: 0,
     totalFiles: 0,
     archiveCounter: 0,
   };

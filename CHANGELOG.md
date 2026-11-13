@@ -5,6 +5,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **No size caps on an npm plugin.** Installing a plugin no longer refuses a
+  package over 50 MB, a file over 50 MB, more than 250 MB of downloads or more
+  than 512 MB unpacked. A plugin that ships print-resolution art (full-page wall
+  tiles at 300 DPI) is legitimately large, and its size is its author's call.
+  The 15 MB cap on registry metadata, the file and package counts, the
+  dependency depth, integrity checks and path safety checks are unchanged.
+
 ## [0.11.24] - 2026-11-07
 
 ### Added
