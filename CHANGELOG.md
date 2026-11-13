@@ -20,6 +20,13 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **No size caps on an npm plugin.** Installing a plugin no longer refuses a
+  package over 50 MB, a file over 50 MB, more than 250 MB of downloads or more
+  than 512 MB unpacked. A plugin that ships print-resolution art (full-page wall
+  tiles at 300 DPI) is legitimately large, and its size is its author's call.
+  The 15 MB cap on registry metadata, the file and package counts, the
+  dependency depth, integrity checks and path safety checks are unchanged.
+
 - **Desktop: the Online tab says at a glance whether your work is safe.** The top card now
   states it ("7 versions aren't online yet · 2 new from Grace", or "Everything is online"),
   says where the book is kept and when it was last checked, and holds the **Send changes
