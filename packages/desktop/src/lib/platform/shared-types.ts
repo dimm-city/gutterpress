@@ -866,6 +866,13 @@ export interface OnlineVersionEntry extends VersionEntry {
   moreChanges: number;
 }
 
+/** What the online Main draft has that the open draft has not (#524; mirrors the lib's MainDraftAhead). */
+export interface MainDraftAhead {
+  count: number;
+  authors: string[];
+  latestAt: number;
+}
+
 /** What a file comparison is against: the version before it (default), or the book as it is now. */
 export type CompareBase = "previous" | "current";
 

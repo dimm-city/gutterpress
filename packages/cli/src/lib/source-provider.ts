@@ -159,7 +159,8 @@ export const NO_VERSION_HISTORY =
 
 const DEFAULT_AUTHOR = "gutterpress";
 const DEFAULT_EMAIL = "noreply@gutterpress.local";
-const DEFAULT_BRANCH = "main";
+/** The Main draft: the branch every new book starts on. */
+export const DEFAULT_BRANCH = "main";
 const SNAPSHOT_STAGING_MARKER = "gutterpress-snapshot-staging";
 
 // ── Per-repo operation queue ─────────────────────────────────────────────────

@@ -420,6 +420,8 @@ function makeManual(opts: { auto?: boolean; reader?: boolean; available?: boolea
   const syncs: string[] = [];
   /** Get latest passes: the same pass with push: false, which never sends. */
   const pulls: string[] = [];
+  /** What each Get latest pass was asked to do besides (Bring them in, #524). */
+  const pullOptions: ({ bringInMainDraft?: boolean } | undefined)[] = [];
   const state = { dir: "/proj" as string | null, available: opts.available ?? true, reason: opts.reason as string | undefined, host: opts.host };
   const outcome = opts.sync ?? { status: "synced", message: "", mergedRemoteChanges: true, filesChanged: true };
   // What the lib's push: false pass returns: always "up-to-date", never "synced".
@@ -429,8 +431,9 @@ function makeManual(opts: { auto?: boolean; reader?: boolean; available?: boolea
       syncs.push(d);
       return outcome instanceof Error ? Promise.reject(outcome) : Promise.resolve(outcome);
     },
-    getLatest: (d) => {
+    getLatest: (d, o) => {
       pulls.push(d);
+      pullOptions.push(o);
       return latest instanceof Error ? Promise.reject(latest) : Promise.resolve(latest);
     },
     checkUpdates: (d) => {
@@ -446,7 +449,7 @@ function makeManual(opts: { auto?: boolean; reader?: boolean; available?: boolea
     autoBackup: () => opts.auto ?? false,
     isReader: () => opts.reader ?? false,
   });
-  return { ctrl, toast: toast as typeof toast & { show: typeof show }, onFilesChanged, onSyncCompleted, checks, syncs, pulls, state };
+  return { ctrl, toast: toast as typeof toast & { show: typeof show }, onFilesChanged, onSyncCompleted, checks, syncs, pulls, pullOptions, state };
 }
 
 test("checkForUpdates: automatic sending off -> one sticky prompt with a Get latest action (#485)", async () => {
@@ -542,6 +545,31 @@ test("handleGetLatest: a thrown call toasts the fixed failure and clears getting
   await m.ctrl.handleGetLatest();
   expect(m.toast.error.calls[0]![0]).toContain("Couldn't get the latest changes");
   expect(m.ctrl.gettingLatest).toBe(false);
+});
+
+// ── Bring them in (#524): Get latest, also combining the Main draft ──────────
+
+test("Bring them in: the Get latest pass, asked to combine the Main draft too", async () => {
+  const m = makeManual({ showless: true });
+  await m.ctrl.handleGetLatest(true);
+  expect(m.pulls).toEqual(["/proj"]);
+  expect(m.pullOptions).toEqual([{ bringInMainDraft: true }]);
+  expect(m.syncs).toEqual([]);
+  expect(m.onFilesChanged.calls).toHaveLength(1);
+  expect(m.toast.success.calls).toEqual([["Brought in the Main draft's changes."]]);
+  // Plain Get latest asks for nothing more.
+  await m.ctrl.handleGetLatest();
+  expect(m.pullOptions[1]).toBeUndefined();
+});
+
+test("Bring them in: nothing new, or a failure, is said in its own words", async () => {
+  const none = makeManual({ showless: true, latest: { status: "up-to-date", message: "" } });
+  await none.ctrl.handleGetLatest(true);
+  expect(none.toast.info.calls).toEqual([["Nothing new from the Main draft."]]);
+  const failed = makeManual({ showless: true, latest: new Error("net down") });
+  await failed.ctrl.handleGetLatest(true);
+  expect(failed.toast.error.calls[0]![0]).toContain("Couldn't bring in the Main draft's changes");
+  expect(failed.ctrl.gettingLatest).toBe(false);
 });
 
 test("Get latest and Sync never run at once", async () => {

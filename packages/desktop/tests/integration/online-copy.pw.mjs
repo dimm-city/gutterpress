@@ -750,6 +750,23 @@ await evalJs(`window.__revisions.revisions.forEach((r) => { if (r.current) { r.w
 check(await waitFor(`document.querySelector('#project-settings-panel .status-text h3')?.textContent.trim() === 'Everything is online' && !document.querySelector('#project-settings-panel .wc')`), `the card then says everything is online, and Waiting goes (${await cardTitle()})`);
 check((await cardButtons()) === "Back up now", `online, it still offers Back up now (${await cardButtons()})`);
 
+// Another draft (#524): the online check says the Main draft has work this draft lacks;
+// Bring them in runs the Get latest pass that also combines the Main draft, and sends nothing.
+const fromMainCard = `document.querySelector('#project-settings-panel .from-main')`;
+check(await evalJs(`!${fromMainCard}`), "with nothing new on the Main draft, there is no Main draft line");
+await evalJs(`window.__online = { entries: [], mainDraft: { count: 4, authors: ["Hern"], latestAt: Date.now() - 86400000 } }; true`);
+await click("#project-settings-panel .status-action button", "Back up now");
+await evalJs(`window.__sync.release(); true`);
+check(await waitFor(`/^The Main draft has 4 changes this draft doesn't have yet\.$/.test(${fromMainCard}?.querySelector('h3')?.textContent.trim() ?? '')`), "the next online check says the Main draft has 4 changes this draft doesn't have yet");
+check(await evalJs(`/^by Hern · Yesterday, /.test(${fromMainCard}.querySelector('.section-sub').textContent.trim())`), "with who made them and when");
+await screenshot(join(tmpdir(), "online-copy-from-main.png"));
+await click("#project-settings-panel .from-main button", "Bring them in");
+check(await waitFor(`${fromMainCard}?.querySelector('button')?.textContent.trim() === 'Bringing them in…' && ${fromMainCard}.querySelector('button').disabled`), "Bring them in reads Bringing them in… while it runs");
+const bringIn = await evalJs(`window.__sync.calls.at(-1)`);
+check(bringIn?.push === false && bringIn?.bringInMainDraft === true, `it ran the Get latest pass that also combines the Main draft (${JSON.stringify(bringIn)})`);
+await evalJs(`window.__online = { entries: [] }; window.__sync.release(); true`);
+check(await waitFor(`!${fromMainCard}`), "once they are in, the line goes");
+
 // Save a version, then Escape: the button is disabled while it saves, so the focus a click gave
 // it drops to <body>, outside Book setup. Escape must still close Book setup (#448, #451).
 const saveVersionBtn = `[...document.querySelectorAll('#project-settings-panel [aria-labelledby="version-history-title"] .section-head button')].find((b) => b.textContent.trim() === 'Save a version…')`;

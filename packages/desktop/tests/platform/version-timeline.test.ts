@@ -18,6 +18,7 @@ import {
   pickFile,
   usualAuthor,
   onlineSummary,
+  mainDraftLine,
 } from "../../src/lib/routes/version-timeline";
 import type { SnapshotEntry, VersionEntry, VersionFileChange } from "../../src/lib/api";
 
@@ -308,5 +309,24 @@ describe("groupVersionsByDay — chronological day buckets", () => {
 
   test("empty input yields no day buckets", () => {
     expect(groupVersionsByDay([], now)).toEqual([]);
+  });
+});
+
+describe("mainDraftLine — the Main draft's work, on another draft (#524)", () => {
+  const now = new Date(2026, 10, 12, 18, 0).getTime();
+  const yesterday = new Date(2026, 10, 11, 16, 46).getTime();
+  test("counts the changes and says who made them and when", () => {
+    const line = mainDraftLine({ count: 4, authors: ["Hern"], latestAt: yesterday }, now);
+    expect(line.title).toBe("The Main draft has 4 changes this draft doesn't have yet.");
+    expect(line.by).toMatch(/^by Hern · Yesterday, /);
+  });
+  test("one change, several authors, and no author", () => {
+    expect(mainDraftLine({ count: 1, authors: [], latestAt: yesterday }, now).title).toBe("The Main draft has 1 change this draft doesn't have yet.");
+    expect(mainDraftLine({ count: 3, authors: ["Hern", "Grace", "Ada"], latestAt: yesterday }, now).by).toMatch(/^by Hern, Grace and Ada · /);
+    expect(mainDraftLine({ count: 1, authors: [], latestAt: yesterday }, now).by).toMatch(/^Yesterday, /);
+  });
+  test("uses none of the words authors are not shown", () => {
+    const line = mainDraftLine({ count: 2, authors: ["Hern"], latestAt: yesterday }, now);
+    expect(bannedTermsIn(`${line.title} ${line.by}`)).toEqual([]);
   });
 });

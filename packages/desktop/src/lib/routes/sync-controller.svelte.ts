@@ -54,8 +54,8 @@ export const UPDATE_CHECK_INTERVAL_MS = 5 * 60_000;
 export interface SyncControllerDeps {
   /** Host round-trip: a full pass (get the latest, then back up) for the given project dir. */
   syncChanges: (dir: string) => Promise<SyncOutcome>;
-  /** Host round-trip: "Get latest", the same pass with `push: false`: fetch and merge, never send. */
-  getLatest: (dir: string) => Promise<SyncOutcome>;
+  /** Host round-trip: "Get latest", the same pass with `push: false`: fetch and merge, never send; `bringInMainDraft` also combines the online Main draft (#524). */
+  getLatest: (dir: string, options?: { bringInMainDraft?: boolean }) => Promise<SyncOutcome>;
   /** Host round-trip: has the book's open revision moved online? (reads refs only; never throws) */
   checkUpdates: (dir: string) => Promise<{ available: boolean; reason?: string; host?: string }>;
   /** Host round-trip: "Repair the online copy" for the given project dir. */
@@ -357,14 +357,19 @@ export class SyncController {
    * The lib's own pass with `push: false` (the one PDF export uses): edits not
    * in a version yet are kept (it saves a version first when it has something
    * to combine), and overlaps are combined as in any backing up.
+   *
+   * `fromMainDraft` is the Online tab's "Bring them in" (#524): the same pass,
+   * which also combines the online Main draft into the open draft.
    */
-  async handleGetLatest(): Promise<void> {
+  async handleGetLatest(fromMainDraft = false): Promise<void> {
     const dir = this.deps.currentDir();
     if (!dir || this.gettingLatest || this.forceSyncing) return;
     this.gettingLatest = true;
-    const failed = "Couldn't get the latest changes. Your work is saved on this computer — try again when you're ready.";
+    const failed = fromMainDraft
+      ? "Couldn't bring in the Main draft's changes. Your work is saved on this computer — try again when you're ready."
+      : "Couldn't get the latest changes. Your work is saved on this computer — try again when you're ready.";
     try {
-      const outcome = await this.deps.getLatest(dir);
+      const outcome = await this.deps.getLatest(dir, fromMainDraft ? { bringInMainDraft: true } : undefined);
       if (this.deps.currentDir() !== dir) return;
       if (outcome.status === "synced" || outcome.status === "up-to-date") {
         this.updatesAvailable = false;
@@ -373,10 +378,10 @@ export class SyncController {
         if (outcome.filesChanged) {
           this.filesChanged();
           if (!this.applyConvergeReport(outcome.combinedFiles, outcome.keptBothFiles)) {
-            this.notify("success", "Got the changes from the online copy.");
+            this.notify("success", fromMainDraft ? "Brought in the Main draft's changes." : "Got the changes from the online copy.");
           }
         } else {
-          this.notify("info", "Already up to date — nothing new online.");
+          this.notify("info", fromMainDraft ? "Nothing new from the Main draft." : "Already up to date — nothing new online.");
         }
       } else if (outcome.status === "auth") {
         this.notify("error", NOT_SIGNED_IN);

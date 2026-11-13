@@ -96,6 +96,13 @@ export interface SyncProjectOptions {
    * and enables the push only every ~15 minutes and on app exit.
    */
   push?: boolean;
+  /**
+   * Also combine the online Main draft into the open draft (#524), once, with
+   * the same converge-merge as the rest of the pass: overlapping passages
+   * become two takes. Ignored on the Main draft itself, and when the online
+   * copy has no Main draft.
+   */
+  bringInMainDraft?: boolean;
   /** Injectable git HTTP transport for tests. */
   httpClient?: typeof httpNode;
   /**

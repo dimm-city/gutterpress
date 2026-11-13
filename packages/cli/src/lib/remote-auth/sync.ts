@@ -44,7 +44,7 @@ import { randomUUID } from "node:crypto";
 import pkg from "../../../package.json" with { type: "json" };
 import { defaultGitHttp } from "./git-http.ts";
 
-import { countUnversionedChanges, isContained, readRevisionRefs, resolveGitAuthor, withRepoLock } from "../source-provider.ts";
+import { countUnversionedChanges, DEFAULT_BRANCH, isContained, readRevisionRefs, resolveGitAuthor, withRepoLock } from "../source-provider.ts";
 import { errorLogData, type LogData, resolveLogger } from "./operation-log.ts";
 import { convergeMerge } from "./converge-merge.ts";
 import {
@@ -326,6 +326,61 @@ export async function syncProject(
             authorEmail: options.authorEmail,
             cache,
           });
+        }
+
+        // "Bring them in" (#524): the online Main draft's work, combined into this
+        // draft before the usual pass, by the one converge-merge every sync uses.
+        // The pass below then sends the result, or (pull-only) keeps it here.
+        if (options.bringInMainDraft && branch !== DEFAULT_BRANCH) {
+          step("fetch-main", { remote: transport.remote });
+          const mainTip = await fetchRemoteTip(dir, DEFAULT_BRANCH, transport, http, cache);
+          if (mainTip) {
+            // Whatever is on disk is committed first, so it is combined, not overwritten.
+            step("snapshot-before-main");
+            const saved = await snapshotBeforeAction({
+              projectDir: options.projectDir,
+              dir,
+              message: options.message,
+              authorName: options.authorName,
+              authorEmail: options.authorEmail,
+              cache,
+            });
+            if (saved) snapshotId = saved;
+            const before = await git.resolveRef({ fs, dir, ref: branch });
+            step("author");
+            const author = await resolveGitAuthor(dir, options.authorName, options.authorEmail);
+            let converge;
+            try {
+              step("merge-main", { local: before, main: mainTip });
+              converge = await convergeMerge({
+                dir,
+                cache,
+                branch,
+                theirs: mainTip,
+                author,
+                onStep: step,
+                logger,
+                authorName: options.authorName,
+                authorEmail: options.authorEmail,
+              });
+            } catch (e) {
+              if (isUnrelatedHistories(e)) {
+                logger.warn(stage, "unrelated histories — refusing to combine the Main draft", errorLogData(e));
+                return { status: "error", message: MSG_UNRELATED, ...base() };
+              }
+              throw e;
+            }
+            if (converge.oid !== before) {
+              pulled = true;
+              const [was, now] = await Promise.all([
+                git.readCommit({ fs, dir, cache, oid: before }),
+                git.readCommit({ fs, dir, cache, oid: converge.oid }),
+              ]);
+              filesChanged = filesChanged || was.commit.tree !== now.commit.tree;
+              for (const f of converge.combinedFiles) combinedFiles.add(f);
+              keptBothFiles.push(...converge.keptBothFiles);
+            }
+          }
         }
 
         for (let attempt = 0; attempt < attempts; attempt++) {

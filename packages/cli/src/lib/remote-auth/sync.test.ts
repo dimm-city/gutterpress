@@ -2327,3 +2327,111 @@ describe("localBackupStatus without the unversioned walk", () => {
   });
 });
 
+
+// ── The Main draft's work, on another draft (#524) ───────────────────────────
+//
+// The open draft keeps in step with its own online copy only. What a co-writer
+// saves on the Main draft reaches another draft only when the writer asks:
+// the online check says how much is waiting, and "Bring them in" combines it
+// with the same converge-merge as every sync.
+
+describe("bringing the Main draft's work into another draft (#524)", () => {
+  const WRITER = { name: "Writer", email: "writer@example.com" };
+  /** This computer moves to a new draft and saves `files` on it. */
+  async function startDraft(h: Harness, name: string, files: Record<string, string>): Promise<void> {
+    await git.branch({ fs, dir: h.projectDir, ref: name, checkout: true });
+    for (const [file, content] of Object.entries(files)) {
+      await writeFile(path.join(h.projectDir, file), content);
+      await git.add({ fs, dir: h.projectDir, filepath: file });
+    }
+    await git.commit({ fs, dir: h.projectDir, message: "Draft work", author: WRITER });
+  }
+
+  test("on a draft, the online check says what the Main draft has that the draft has not", async () => {
+    const h = await setupClone();
+    try {
+      await startDraft(h, "second-edition", { "notes.md": "Draft notes.\n" });
+      expect((await listOnlineVersions({ projectDir: h.projectDir })).mainDraft).toBeUndefined();
+      await serverCommit(h.serverDir, { "chapter-02.md": "# Two\n" }, "Added chapter two");
+      await serverCommit(h.serverDir, { "chapter-03.md": "# Three\n" }, "Added chapter three");
+      const { mainDraft, entries } = await listOnlineVersions({ projectDir: h.projectDir });
+      expect(entries).toEqual([]); // the draft itself was never sent online
+      expect(mainDraft?.count).toBe(2);
+      expect(mainDraft?.authors).toEqual([SERVER_AUTHOR.name]);
+      expect(typeof mainDraft?.latestAt).toBe("number");
+      // On the Main draft that work is its own online copy's, listed as entries.
+      await git.checkout({ fs, dir: h.projectDir, ref: "main" });
+      const onMain = await listOnlineVersions({ projectDir: h.projectDir });
+      expect(onMain.mainDraft).toBeUndefined();
+      expect(onMain.entries).toHaveLength(2);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("a pass on a draft does not bring the Main draft's work in by itself", async () => {
+    const h = await setupClone();
+    try {
+      await startDraft(h, "second-edition", { "notes.md": "Draft notes.\n" });
+      await serverCommit(h.serverDir, { "chapter-02.md": "# Two\n" }, "Added chapter two");
+      await syncProject({ projectDir: h.projectDir, push: false });
+      expect(fs.existsSync(path.join(h.projectDir, "chapter-02.md"))).toBe(false);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("Bring them in combines the Main draft's work into the draft and keeps the draft's own", async () => {
+    const h = await setupClone();
+    try {
+      await startDraft(h, "second-edition", { "notes.md": "Draft notes.\n" });
+      await serverCommit(h.serverDir, { "chapter-02.md": "# Two\n" }, "Added chapter two");
+      await writeFile(path.join(h.projectDir, "notes.md"), "Draft notes, not in a version yet.\n");
+
+      const outcome = await syncProject({ projectDir: h.projectDir, push: false, bringInMainDraft: true });
+
+      expect(outcome.status).toBe("up-to-date");
+      expect(outcome.filesChanged).toBe(true);
+      expect(await git.currentBranch({ fs, dir: h.projectDir })).toBe("second-edition");
+      expect(await readFile(path.join(h.projectDir, "chapter-02.md"), "utf8")).toBe("# Two\n");
+      expect(await readFile(path.join(h.projectDir, "notes.md"), "utf8")).toBe("Draft notes, not in a version yet.\n");
+      // Nothing is waiting from the Main draft any more, and nothing was sent.
+      expect((await listOnlineVersions({ projectDir: h.projectDir })).mainDraft).toBeUndefined();
+      const online = await git.listBranches({ fs, dir: h.serverDir });
+      expect(online).not.toContain("second-edition");
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("a passage changed on both drafts becomes two takes, as in any sync", async () => {
+    const h = await setupClone();
+    try {
+      await startDraft(h, "second-edition", { "chapter-01.md": "# One\n\nThe draft's take.\n" });
+      await serverCommit(h.serverDir, { "chapter-01.md": "# One\n\nThe Main draft's take.\n" }, "Reworded chapter one");
+
+      const outcome = await syncProject({ projectDir: h.projectDir, push: false, bringInMainDraft: true });
+
+      expect(outcome.status).toBe("up-to-date");
+      if (outcome.status !== "up-to-date") throw new Error("unreachable");
+      expect(outcome.combinedFiles).toEqual(["chapter-01.md"]);
+      const text = await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8");
+      expect(text).toContain("The draft's take.");
+      expect(text).toContain("The Main draft's take.");
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("on the Main draft, Bring them in is an ordinary pass", async () => {
+    const h = await setupClone();
+    try {
+      await serverCommit(h.serverDir, { "chapter-02.md": "# Two\n" }, "Added chapter two");
+      const outcome = await syncProject({ projectDir: h.projectDir, push: false, bringInMainDraft: true });
+      expect(outcome.status).toBe("up-to-date");
+      expect(await readFile(path.join(h.projectDir, "chapter-02.md"), "utf8")).toBe("# Two\n");
+    } finally {
+      await h.cleanup();
+    }
+  });
+});
