@@ -74,6 +74,7 @@ section and the vocabulary review in #448 differ, this section wins.
 | **Back up** / **Backed up** / **Backing up…** / **Not backed up yet** | sync, push, upload | "Backed up" is shown only when a pass sent your work or there was nothing to send. |
 | **Back up now** / **Backing up…** | sync, push, upload, Send now | the Online tab's one primary button, whenever the book can back up, with automatic backing up on or off (#485): one pass that gets the latest changes from the online copy, then backs up yours, at once. After a failure it reads **Try again**. |
 | **Get latest** / **Getting the latest…** / **New online** | pull, fetch, Get them now | brings in the online copy's changes and sends nothing; this computer's own versions wait for the next backup. On the Online tab's status card it is a quiet button beside Back up now when versions are waiting online, and the one button when only the online copy has news; in the status bar beside **Sync** with automatic backing up off (an arrow, reading **New online** when changes are waiting and **Getting…** while it runs); and the action on the "New changes are online for this book." toast (#485). Tooltip: "Get latest: bring in changes from the online copy without sending yours". |
+| **Bring them in** / **Bringing them in…** | merge, pull, main, branch | on a draft other than the Main draft, the Online tab's line "The Main draft has N changes this draft doesn't have yet." (with who made them and when) offers it: the Get latest pass that also combines the online Main draft into this draft, overlapping passages becoming two takes as in any sync. Nothing is combined unless the author asks, and nothing is sent; the next backup sends it. The Main draft is looked at on the draft's own schedule (each automatic pass, or the update check when automatic backing up is off), and new work there raises the toast "The Main draft has N changes this draft doesn't have yet." with **Bring them in**, once per discovery, as "New changes are online for this book." does on the Main draft. Shown only when the online check could read the Main draft (#524). |
 | **Sync** / **Syncing…** | pull, fetch, push | the full pass's button in the status bar with automatic backing up off (beside Get latest). It gets the latest changes from the online copy, then backs up yours. Tooltip: "Sync: get the latest changes from the online copy, then back up yours" ("Sync — new changes are online: get them, then back up yours" when some are waiting). Nowhere else says "sync" to an Author (the Online tab says Back up now); status texts stay Backed up / Backing up…. |
 | **draft**, **New draft**, **Main draft**, **You are here** | branch, revision, copy (for a branch), version (for a branch) | "copy" means only the online copy. Code and the routes keep the word "revision", and so does the history message "Saved before switching revision" (a file format in existing books). |
 | **Automatic version**, **3 automatic versions** | Changes, Automatic save, autosave | a version Gutterpress saved on its own; the Online tab and Version history use the same name. File names are shown as written (`ch19.md`, `images/plate-1.png`). |
@@ -233,7 +234,13 @@ gutterpress/
 │   │                                                    action (Back up now or Try again, with a
 │   │                                                    quiet Get latest beside it, #485); GitHub
 │   │                                                    or the book's own server sign-in in
-│   │                                                    place; Waiting (Going up / Coming down,
+│   │                                                    place; on a draft other than the Main
+│   │                                                    draft, a line saying what the online Main
+│   │                                                    draft has that this draft has not ("The
+│   │                                                    Main draft has 4 changes this draft
+│   │                                                    doesn't have yet.", by whom, when) with
+│   │                                                    Bring them in (#524); Waiting (Going up /
+│   │                                                    Coming down,
 │   │                                                    each row opening Version history on its
 │   │                                                    version, hidden when nothing waits); Saved
 │   │                                                    versions (Save a version…, today's

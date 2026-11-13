@@ -29,7 +29,7 @@ import postcss from "postcss";
 import { gitFs as fs } from "./git-fs.ts";
 import { gitReadCache } from "./git-read-cache.ts";
 import { detectProjectSource, syncRemoteFor } from "./project-source.ts";
-import { gitScopeFor, nextInHistory, startHistoryWalk, type SnapshotEntry } from "./source-provider.ts";
+import { DEFAULT_BRANCH, gitScopeFor, nextInHistory, startHistoryWalk, type SnapshotEntry } from "./source-provider.ts";
 import { currentBranchOrThrow, repoDirFor, resolveTransport } from "./remote-auth/transport.ts";
 import { defaultGitHttp } from "./remote-auth/git-http.ts";
 import { refreshRemoteCopies } from "./remote-auth/sync.ts";
@@ -63,6 +63,17 @@ export interface OnlineVersionEntry extends VersionEntry {
   changes: VersionFileChange[];
   /** Changed files beyond the ones listed. */
   moreChanges: number;
+}
+
+/**
+ * What the online Main draft has that the open draft has not (#524): how many
+ * versions, who made them, and when the newest was made. Only on a draft other
+ * than the Main draft.
+ */
+export interface MainDraftAhead {
+  count: number;
+  authors: string[];
+  latestAt: number;
 }
 
 /** How many changed files a version card lists before "and N more". */
@@ -372,6 +383,8 @@ export async function listOnlineVersions(options: {
   maxAgeMs?: number;
 }): Promise<{
   entries: OnlineVersionEntry[];
+  /** On a draft other than the Main draft: what the online Main draft has that this draft has not. */
+  mainDraft?: MainDraftAhead;
   reason?: "no-remote" | "auth" | "not-found" | "offline";
   checkedAt?: string | null;
 }> {
@@ -395,13 +408,24 @@ export async function listOnlineVersions(options: {
     const cache = await gitReadCache(dir);
     const tip = await resolveOrNull(dir, `refs/remotes/${transport.remote}/${branch}`);
     const local = await resolveOrNull(dir, branch);
-    if (!tip || !local) return { entries: [], checkedAt: checked.checkedAt };
+    if (!local) return { entries: [], checkedAt: checked.checkedAt };
     const entries: OnlineVersionEntry[] = [];
-    for (const entry of await commitsAhead(dir, tip, local, cache)) {
+    for (const entry of tip ? await commitsAhead(dir, tip, local, cache) : []) {
       const { files, more } = await changesOf(dir, cache, entry.id);
       entries.push({ ...entry, backedUp: true, changes: files, moreChanges: more });
     }
-    return { entries, checkedAt: checked.checkedAt };
+    // The same all-branch check brought the online Main draft in, so another
+    // draft can say what it lacks from it without a fetch of its own.
+    const mainTip = branch === DEFAULT_BRANCH ? null : await resolveOrNull(dir, `refs/remotes/${transport.remote}/${DEFAULT_BRANCH}`);
+    const fromMain = mainTip ? await commitsAhead(dir, mainTip, local, cache) : [];
+    const mainDraft: MainDraftAhead | undefined = fromMain.length
+      ? {
+          count: fromMain.length,
+          authors: [...new Set(fromMain.map((e) => e.author).filter((a): a is string => !!a))],
+          latestAt: Math.max(...fromMain.map((e) => e.timestamp)),
+        }
+      : undefined;
+    return { entries, ...(mainDraft ? { mainDraft } : {}), checkedAt: checked.checkedAt };
   } catch {
     return { entries: [], reason: "offline", checkedAt: checked.checkedAt };
   }

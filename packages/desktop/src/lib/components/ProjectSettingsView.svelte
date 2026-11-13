@@ -82,6 +82,7 @@
     onProjectFilesChanged,
     onBackUpNow,
     onGetLatest,
+    onBringInMainDraft,
     onRepair,
     onSaveVersion,
     onBrowseVersions,
@@ -116,6 +117,8 @@
     onBackUpNow?: () => Promise<void>;
     /** The Online tab's Get latest: the page's get-latest pass, which sends nothing. */
     onGetLatest?: () => Promise<void>;
+    /** The Online tab's Bring them in: the page's get-latest pass, which also combines the Main draft (#524). */
+    onBringInMainDraft?: () => Promise<void>;
     /** The Online tab's Repair the online copy: the page's repair. */
     onRepair?: () => Promise<string | null | void>;
     /** The Online tab's Save a version: the page's save; resolves "unchanged" when there was nothing new. */
@@ -346,7 +349,7 @@
 
       {#if activeTab === "online-copy"}
         <!-- This book's versions, revisions and online copy: signing in to its GitHub account or server happens here, in place; Version history replaces the tab's content. -->
-        <ProjectConnectionsSection bind:this={onlineCopy} {projectDir} {backup} {versionsProblem} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} {onBackUpNow} {onGetLatest} {onRepair} {onSaveVersion} {onBrowseVersions} {onCloseBook} {onOpenAccounts} {decide} {onReviewDecisions} {toast} />
+        <ProjectConnectionsSection bind:this={onlineCopy} {projectDir} {backup} {versionsProblem} {onVersionHistoryEnabled} {onBackupSetUp} {onProjectFilesChanged} {onBackUpNow} {onGetLatest} {onBringInMainDraft} {onRepair} {onSaveVersion} {onBrowseVersions} {onCloseBook} {onOpenAccounts} {decide} {onReviewDecisions} {toast} />
       {/if}
 
       {#if activeTab === "advanced"}

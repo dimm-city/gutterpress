@@ -330,6 +330,17 @@ export function whenShort(ms: number, now: number): string {
 
 // ── Book setup → Online: what is waiting, and the Saved versions summary ─────
 
+/**
+ * The Online tab's line for work the Main draft has and the open draft has not
+ * (#524): "The Main draft has 4 changes this draft doesn't have yet." and
+ * "by Hern · Yesterday, 4:46 PM".
+ */
+export function mainDraftLine(m: { count: number; authors: string[]; latestAt: number }, now: number): { title: string; by: string } {
+  const title = `The Main draft has ${m.count} ${m.count === 1 ? "change" : "changes"} this draft doesn't have yet.`;
+  const who = m.authors.length > 1 ? `${m.authors.slice(0, -1).join(", ")} and ${m.authors[m.authors.length - 1]}` : m.authors[0];
+  return { title, by: `${who ? `by ${who} · ` : ""}${whenShort(m.latestAt, now)}` };
+}
+
 /** "4:46 PM" today, "4:37 PM–4:52 PM" for a run today, "Yesterday, 4:46 PM", "Nov 5, 4:37 PM–4:52 PM". */
 export function whenRange(from: number, to: number, now: number): string {
   const end = whenShort(to, now).replace(/^Today, /, "");

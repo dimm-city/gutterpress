@@ -7,7 +7,7 @@
  *
  * Plain TypeScript (no runes) so it is unit-tested directly.
  */
-import type { OnlineVersionEntry, VersionChanges, VersionEntry } from "#lib/platform/contract.ts";
+import type { MainDraftAhead, OnlineVersionEntry, VersionChanges, VersionEntry } from "#lib/platform/contract.ts";
 
 export interface OnlineViewSnapshot {
   /** The first page of Version history (shared with the Version history screen). */
@@ -21,6 +21,8 @@ export interface OnlineViewSnapshot {
   incomingReason?: "no-remote" | "auth" | "not-found" | "offline";
   /** When the online side was last read successfully (ms). */
   incomingAt: number | null;
+  /** On a draft other than the Main draft: what the online Main draft has that this draft has not (#524). */
+  mainDraft?: MainDraftAhead | null;
 }
 
 const snapshots = new Map<string, OnlineViewSnapshot>();

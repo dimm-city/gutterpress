@@ -34,13 +34,13 @@
    * PWA-clean (§8): api.* routes only.
    */
   import { onMount, tick } from "svelte";
-  import { api, type OnlineVersionEntry, type VersionChanges, type VersionEntry } from "#lib/api.ts";
+  import { api, type MainDraftAhead, type OnlineVersionEntry, type VersionChanges, type VersionEntry } from "#lib/api.ts";
   import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
   import { cancelInlineConfirm, dialogBehavior, requestInlineConfirm, type InlineConfirmState } from "#lib/dialog.ts";
   import { useSettings } from "#lib/settings.svelte.ts";
   import { backupState, onlineCopyName } from "#lib/backup-state.ts";
   import { NOTHING_NEW_NOTICE, versionsLine } from "#lib/save-status.ts";
-  import { savedSummary, versionTitle, waitingRows, whenRange, whenShort } from "#lib/routes/version-timeline.ts";
+  import { mainDraftLine, savedSummary, versionTitle, waitingRows, whenRange, whenShort } from "#lib/routes/version-timeline.ts";
   import { backupCard, checkedAgo, repairSetAsideText, type CardAction } from "#lib/routes/backup-card.ts";
   import * as onlineCopy from "#lib/routes/online-copy-cache.ts";
   import BackupWizard from "#lib/components/BackupWizard.svelte";
@@ -63,6 +63,7 @@
     onProjectFilesChanged,
     onBackUpNow,
     onGetLatest,
+    onBringInMainDraft,
     onRepair,
     onSaveVersion,
     onBrowseVersions,
@@ -87,6 +88,8 @@
     onBackUpNow?: () => Promise<void>;
     /** Get the changes: the page's own pass that gets the latest and sends nothing (its toasts and editor refresh). */
     onGetLatest?: () => Promise<void>;
+    /** Bring them in: the page's get-latest pass that also combines the online Main draft into this draft (#524). */
+    onBringInMainDraft?: () => Promise<void>;
     /** Repair the online copy: the page's repair (its toasts and editor refresh). */
     onRepair?: () => Promise<string | null | void>;
     /** Save a version now: the page's own save (its toast); resolves "unchanged" when there was nothing new. */
@@ -122,7 +125,7 @@
   let done = $state<string | null>(null);
   /** The one action of the current situation is running. */
   let busy = $state(false);
-  let running = $state<"back-up" | "get-latest" | "repair" | "start-over" | null>(null);
+  let running = $state<"back-up" | "get-latest" | "bring-in" | "repair" | "start-over" | null>(null);
   let confirm = $state<InlineConfirmState>({});
   let actionError = $state<string | null>(null);
   // Where focus goes after an action: the button that ran it is disabled or
@@ -164,6 +167,8 @@
   let incoming = $state<OnlineVersionEntry[] | null>(seenView?.incoming ?? null);
   let incomingReason = $state<string | undefined>(seenView?.incomingReason);
   let incomingAt = $state<number | null>(seenView?.incomingAt ?? null);
+  /** On another draft: what the online Main draft has that this draft has not (#524). */
+  let fromMain = $state<MainDraftAhead | null>(seenView?.mainDraft ?? null);
   let nothingNew = $state(false);
   let savingVersion = $state(false);
 
@@ -316,12 +321,15 @@
       const r = await api.vcs.onlineVersions(dir);
       incomingReason = r.reason;
       if (r.reason) {
-        view.update(dir, { incomingReason: r.reason });
+        // Offline or no online copy: say nothing about the Main draft.
+        fromMain = null;
+        view.update(dir, { incomingReason: r.reason, mainDraft: null });
         return;
       }
       incoming = r.entries;
+      fromMain = r.mainDraft ?? null;
       incomingAt = r.checkedAt ? Date.parse(r.checkedAt) || Date.now() : Date.now();
-      view.update(dir, { incoming, incomingReason: undefined, incomingAt });
+      view.update(dir, { incoming, incomingReason: undefined, incomingAt, mainDraft: fromMain });
     } catch {
       // Keep what is showing.
     }
@@ -389,7 +397,7 @@
     });
 
   // The page's passes, run from here; the sync controller's `backup` is the headline.
-  const pass = (kind: "back-up" | "get-latest", run: (() => Promise<void>) | undefined) =>
+  const pass = (kind: "back-up" | "get-latest" | "bring-in", run: (() => Promise<void>) | undefined) =>
     act(async (dir) => {
       running = kind;
       try {
@@ -406,6 +414,7 @@
     });
   const backUpNow = () => pass("back-up", onBackUpNow);
   const getLatest = () => pass("get-latest", onGetLatest);
+  const bringInMainDraft = () => pass("bring-in", onBringInMainDraft);
 
   // Save a version: the page saves and toasts; this line catches up.
   async function saveVersion() {
@@ -667,6 +676,21 @@
       {#if actionError}<p class="status-note error" role="alert" bind:this={errorEl} tabindex="-1">{actionError}</p>{/if}
     </section>
 
+    {#if situation === "ready" && fromMain && onBringInMainDraft}
+      {@const line = mainDraftLine(fromMain, now)}
+      <!-- On another draft: the Main draft's work this draft has not got yet, brought in only when asked (#524). -->
+      <section class="section-card from-main span" aria-labelledby="from-main-title">
+        <div class="from-main-row">
+          <span class="from-main-icon"><Icon name="cloud-download" size={18} /></span>
+          <div class="from-main-text">
+            <h3 id="from-main-title">{line.title}</h3>
+            <p class="section-sub">{line.by}</p>
+          </div>
+          <button class="ghost" onclick={() => void bringInMainDraft()} disabled={busy}>{running === "bring-in" ? "Bringing them in…" : "Bring them in"}</button>
+        </div>
+      </section>
+    {/if}
+
     {#if showWaiting}
       <!-- 2. What is waiting on each side; each row opens Version history on its version. -->
       <div class="span">
@@ -860,11 +884,22 @@
     padding: 0 20px 18px 80px;
   }
   .status-note { margin: 0; padding: 0 20px 16px 80px; font-size: 13px; }
+  /* Another draft: the Main draft's work, waiting to be brought in (#524). */
+  .from-main-row { display: flex; align-items: center; gap: 16px; padding: 14px 20px; }
+  .from-main-icon {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--app-info-bg); color: var(--app-info-text);
+  }
+  .from-main-text { flex: 1; min-width: 0; }
+  .from-main-text h3 { margin: 0; font-size: 14.5px; font-weight: 600; color: var(--app-text); overflow-wrap: anywhere; }
+  .from-main-text .section-sub { margin: 2px 0 0; }
   .done { color: var(--app-success-text); }
   @media (max-width: 720px) {
     .status-row { flex-wrap: wrap; }
     .status-action { width: 100%; justify-content: flex-end; }
     .status-body, .status-note { padding-left: 20px; }
+    .from-main-row { flex-wrap: wrap; }
   }
 
   /* The switch is Settings' (SettingsView.svelte), at the size of a line of text here. */

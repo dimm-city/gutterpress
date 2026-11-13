@@ -68,6 +68,8 @@ interface FakeLibOptions {
   unfinishedSwitch?: { message: string } | null;
   /** The online copy holds versions this computer lacks (the fake `localBackupStatus`). */
   behind?: boolean;
+  /** On another draft: versions the online Main draft has that it lacks (the fake `localBackupStatus`, #524). */
+  fromMain?: number;
   /** The last network answer kept from an earlier launch. */
   lastKnown?: { state: SyncStatusPayload["state"]; at: string; ahead?: number } | null;
 }
@@ -122,8 +124,9 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
       localStatusCalls.push(options);
       const open = opts.openRevision;
       if (!open) return null;
-      if (open.where === "online" && !open.notBackedUp) return { state: "synced", ahead: 0, behind: false };
-      return { state: "unsent", ahead: open.notBackedUp ? 2 : 0, behind: opts.behind ?? false };
+      const main = opts.fromMain ? { fromMain: opts.fromMain } : {};
+      if (open.where === "online" && !open.notBackedUp) return { state: "synced", ahead: 0, behind: false, ...main };
+      return { state: "unsent", ahead: open.notBackedUp ? 2 : 0, behind: opts.behind ?? false, ...main };
     },
     resolveLogger: () => ({ info: () => {}, error: () => {} }),
     AUTO_SYNC_PUSH_INTERVAL_MINUTES: 15,
@@ -838,3 +841,12 @@ test("a finished pass asks for ahead/behind without the unversioned walk", async
   expect(h.localStatusCalls).toEqual([{ countUnversioned: false }]);
 });
 
+
+test("a finished pass on another draft says what the Main draft has that it lacks; 0 when nothing (#524)", async () => {
+  const h = makeHarness({ openRevision: { where: "online", notBackedUp: false }, fromMain: 3, syncProject: () => ({ status: "up-to-date" }) });
+  await h.orch.run(DIR);
+  expect(h.emitted.at(-1)).toMatchObject({ state: "synced", source: "network", fromMain: 3 });
+  const none = makeHarness({ openRevision: { where: "online", notBackedUp: false }, syncProject: () => ({ status: "up-to-date" }) });
+  await none.orch.run(DIR);
+  expect(none.emitted.at(-1)).toMatchObject({ source: "network", fromMain: 0 });
+});
