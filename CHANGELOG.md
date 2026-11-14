@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.26] - 2026-11-14
+
 ### Fixed
 
 - **The preview placed a page background from the sheet's corner; print places it from the
