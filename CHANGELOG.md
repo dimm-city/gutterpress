@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.27] - 2026-11-14
+
 ### Fixed
 
 - **The preview re-read every stylesheet image on every edit.** Each `url()` in a look's CSS
