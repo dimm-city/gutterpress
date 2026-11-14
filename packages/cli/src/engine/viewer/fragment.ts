@@ -459,6 +459,42 @@ function holdsPinRoot(el: Element): boolean {
   });
 }
 
+/** What `explodeChildren` reads from one child element. */
+interface FlowRead {
+  /** it makes no box (`display: none`) */
+  boxless: boolean;
+  page: string | undefined;
+  pin: PinRun | undefined;
+  /** a descendant names a page or is a pin root, so its children are partitioned too */
+  descend: boolean;
+}
+
+/**
+ * Every read `explodeChildren` needs under `container`, taken BEFORE it moves
+ * anything. Splitting an element dirties style, and with one `h2 + *` in a
+ * book's stylesheet a moved element dirties every sibling after it, the rest
+ * of the book: read after each split, a computed style cost a recalc of the
+ * whole document per split (measured: 13 of them, a second of a preview load).
+ * Print reads the same unsplit document.
+ */
+function readFlow(
+  container: Element,
+  model: GcpmModel,
+  into = new Map<Element, FlowRead>(),
+): Map<Element, FlowRead> {
+  for (const kid of Array.from(container.children) as HTMLElement[]) {
+    const boxless = getComputedStyle(kid).display === "none";
+    if (boxless || kid.classList.contains("gp-layer")) {
+      into.set(kid, { boxless, page: undefined, pin: undefined, descend: false });
+      continue;
+    }
+    const descend = hasDescendantPageAssignment(kid, model) || holdsPinRoot(kid);
+    into.set(kid, { boxless, page: directPageName(kid), pin: pinRunOf(kid), descend });
+    if (descend) readFlow(kid, model, into);
+  }
+  return into;
+}
+
 /**
  * Partition `container`'s child NODES into runs of identical page context, in
  * document order — recursively.
@@ -496,7 +532,7 @@ function holdsPinRoot(el: Element): boolean {
  * shell, which is where the element starts — the answer a cross-reference
  * wants.
  */
-function explodeChildren(container: Element, model: GcpmModel): Run[] {
+function explodeChildren(container: Element, flow: Map<Element, FlowRead>): Run[] {
   const runs: Run[] = [];
   let pending: ChildNode[] = [];
   /** Nodes to emit before the next element: prior run if there is one. */
@@ -527,15 +563,15 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
     // Text, comments and elements that make no box (a `<script>` after the
     // last named page) wait for a run: alone, they would open a page print
     // never makes.
-    if (node.nodeType !== 1 || getComputedStyle(node as Element).display === "none") {
+    const read = node.nodeType === 1 ? flow.get(node as Element) : undefined;
+    if (!read || read.boxless) {
       pending.push(node);
       continue;
     }
     const kid = node as HTMLElement;
     if (kid.classList.contains("gp-layer")) continue; // viewer chrome, not content
-    const pin = pinRunOf(kid);
-    const own = directPageName(kid);
-    if (!hasDescendantPageAssignment(kid, model) && !holdsPinRoot(kid)) {
+    const { pin, page: own } = read;
+    if (!read.descend) {
       pushRun(runs, own, [...carry(), kid], pin);
       continue;
     }
@@ -543,7 +579,7 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
     // runs inside a named element default to that element's page; a
     // descendant that names another (a `.gp-bleed` plate on a named page)
     // still splits it, as print breaks there.
-    const inner = explodeChildren(kid, model).map((r) => ({ ...r, page: r.page ?? own }));
+    const inner = explodeChildren(kid, flow).map((r) => ({ ...r, page: r.page ?? own }));
     if (own !== undefined && inner.every((r) => r.page === own)) {
       pushRun(runs, own, [...carry(), kid], pin);
       continue;
@@ -976,8 +1012,15 @@ export function buildStrips(
   const root = opts.root ?? doc.querySelector("main") ?? doc.body;
   const gap = opts.sheetGap ?? 24;
 
-  const runs = explodeChildren(root, model);
+  const runs = explodeChildren(root, readFlow(root, model));
   const area = printAreaFromMeta(doc);
+  // Each pin root's own padding, before the first strip is built: read in the
+  // loop below, each run's came after the previous run's writes (see readFlow).
+  for (const run of runs) {
+    for (const pinRoot of run.pin?.roots ?? []) {
+      ownPadding.set(pinRoot, paddingOf(getComputedStyle(pinRoot)));
+    }
+  }
 
   const strips: StripInfo[] = [];
   for (const run of runs) {
@@ -1002,7 +1045,6 @@ export function buildStrips(
     // Each root's authored inline style is kept for `restorePinRoots`.
     if (run.pin) {
       const { edges, roots } = run.pin;
-      for (const pinRoot of roots) ownPadding.set(pinRoot, paddingOf(getComputedStyle(pinRoot)));
       for (const pinRoot of roots) {
         pinRoot.dataset.gpPinStyle ??= pinRoot.getAttribute("style") ?? "";
         const recto = pinRootStyle(geometry.margin, area, "recto", edges, ownPadding.get(pinRoot));

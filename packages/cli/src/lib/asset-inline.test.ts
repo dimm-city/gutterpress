@@ -134,6 +134,27 @@ describe("inlineStyles", () => {
     expect(copies[0]!.to).toMatch(/^assets\/[a-f0-9]{16}\.png$/);
   });
 
+  test("an image named many times is one copy, and its name follows the file when the file changes", async () => {
+    // The hash is kept between renders while the file is unchanged (a look
+    // names a wall on every named page, and the preview renders on every
+    // edit), so a changed file must still get its new name.
+    await put("images/wall.png", Buffer.alloc(64, 1));
+    await put(
+      "styles/book.css",
+      '@page a { background: url("../images/wall.png"); }\n@page b { background: url("../images/wall.png"); }',
+    );
+
+    const first = await inlineStyles(dir, ["styles/book.css"]);
+    expect(first.copies).toHaveLength(1);
+    expect(first.css.split(first.copies[0]!.to)).toHaveLength(3);
+    expect((await inlineStyles(dir, ["styles/book.css"])).copies[0]!.to).toBe(first.copies[0]!.to);
+
+    await put("images/wall.png", Buffer.alloc(80, 2));
+    const changed = await inlineStyles(dir, ["styles/book.css"]);
+    expect(changed.copies).toHaveLength(1);
+    expect(changed.copies[0]!.to).not.toBe(first.copies[0]!.to);
+  });
+
   test("follows local @import and preserves its position in the cascade", async () => {
     await put("styles/base.css", "body { color: red; }");
     await put("styles/book.css", '@import "base.css";\nbody { color: blue; }');

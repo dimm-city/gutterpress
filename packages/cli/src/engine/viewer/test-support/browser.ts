@@ -25,6 +25,8 @@ export interface TestPage {
   evaluate<T = unknown>(fnOrExpr: string | ((...a: any[]) => T | Promise<T>), ...args: unknown[]): Promise<T>;
   waitForFunction(fnOrExpr: string | (() => unknown), opts?: { timeout?: number }): Promise<void>;
   pdf(opts?: Record<string, unknown>): Promise<Uint8Array>;
+  /** Chromium's page counters (`Performance.getMetrics`): `RecalcStyleCount`, `LayoutCount`, … */
+  metrics(): Promise<Record<string, number>>;
   close(): Promise<void>;
 }
 
@@ -60,6 +62,13 @@ function wrap(session: Session): TestPage {
       }
     },
     pdf: (opts = {}) => session.printToPDF(opts),
+    async metrics() {
+      await session.send("Performance.enable");
+      const { metrics } = await session.send<{ metrics: Array<{ name: string; value: number }> }>(
+        "Performance.getMetrics",
+      );
+      return Object.fromEntries(metrics.map((m) => [m.name, m.value]));
+    },
     close: () => session.close(),
   };
 }
