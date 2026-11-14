@@ -448,6 +448,7 @@ try {
     JSON.stringify(targetRows) ===
       JSON.stringify([
         ["DriveThruRPG (print)", "Checks the finished PDF against DriveThruRPG's print rules."],
+        ["DriveThruRPG (digital)", "Checks the finished PDF is well-formed with embedded fonts."],
         ["itch.io (digital)", "Checks the finished PDF is well-formed with embedded fonts."],
       ]),
     "each print check says what it does, in the new-book wizard's words",
