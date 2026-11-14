@@ -23,7 +23,7 @@ import {
   pinRootStyle,
   type PinEdge,
 } from "../shared/pin-edges.ts";
-import { pageGeometryVarsCss } from "../shared/page-vars.ts";
+import { contentHeightPt, pageGeometryVarsCss, pagePseudoContexts } from "../shared/page-vars.ts";
 import type { PrintArea } from "../shared/print-area.ts";
 import {
   isIgnoredMarginBoxProperty,
@@ -184,55 +184,6 @@ const CLIP_EDGES_JS = `((establishesAbsContainingBlock) => {
       return { edges, chain };
     };
   })(${ABS_CONTAINING_BLOCK_JS})`;
-
-/**
- * Page contexts needed by geometry audits, without an exponential powerset.
- *
- * The four standard traits have a fixed cross-product ceiling:
- * physical side (none/left/right) × progression side (none/recto/verso) ×
- * first (no/yes) × blank (no/yes) = 36. Exact/nonstandard pseudos such as
- * `nth(17)` are kept in the sets authors actually wrote, then crossed with
- * those standard states. Thus compound `:right:recto` geometry is retained,
- * while N distinct `:nth()` rules produce at most 36 × (N + 1) candidates
- * before deduplication instead of 2^N.
- */
-function pagePseudoContexts(model: GcpmModel): string[][] {
-  const used = new Set(pseudoVariants(model));
-  const standard = new Set(["left", "right", "recto", "verso", "first", "blank"]);
-  const choices = (a: string, b: string): Array<string | undefined> => [
-    undefined,
-    ...(used.has(a) ? [a] : []),
-    ...(used.has(b) ? [b] : []),
-  ];
-  const physical = choices("left", "right");
-  const progression = choices("recto", "verso");
-  const first = used.has("first") ? [false, true] : [false];
-  const blank = used.has("blank") ? [false, true] : [false];
-  const standardContexts: string[][] = [];
-  for (const p of physical)
-    for (const r of progression)
-      for (const f of first)
-        for (const b of blank)
-          standardContexts.push([
-            ...(p ? [p] : []),
-            ...(r ? [r] : []),
-            ...(f ? ["first"] : []),
-            ...(b ? ["blank"] : []),
-          ]);
-
-  const authoredExactSets = [
-    [] as string[],
-    ...model.pageRules.map((rule) => rule.pseudos.filter((pseudo) => !standard.has(pseudo))),
-  ];
-  const contexts = new Map<string, string[]>();
-  for (const exact of authoredExactSets) {
-    for (const common of standardContexts) {
-      const context = [...new Set([...exact, ...common])].sort();
-      contexts.set(context.join("\0"), context);
-    }
-  }
-  return [...contexts.values()];
-}
 
 /**
  * Codes are stable identifiers a UI can map to a plain-language label; the
@@ -570,16 +521,9 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // `--gp-content-h` publication below must not stretch a page root past
     // the shortest sheet it can land on (which would print a spurious blank).
     const pseudoContexts = pagePseudoContexts(model);
-    const contentHeightPt = (name?: string): number =>
-      Math.min(
-        ...pseudoContexts.map((pseudos) => {
-          const geometry = resolvePage(model, { name, pseudos }).geometry;
-          return geometry.height - geometry.margin.top - geometry.margin.bottom;
-        }),
-      );
-    const contentHeightPx = (contentHeightPt() * 96) / 72;
+    const contentHeightPx = (contentHeightPt(model) * 96) / 72;
     const namedContentHeightsPx = Object.fromEntries(
-      model.pageNames.map((name) => [name, (contentHeightPt(name) * 96) / 72]),
+      model.pageNames.map((name) => [name, (contentHeightPt(model, name) * 96) / 72]),
     );
     // Minimum content height across every page context (base + named pages),
     // for the multicol fragmentation check below: that check needs a
@@ -587,7 +531,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // smaller margins has a shorter content box than the default page and
     // would otherwise under-report fragmentation there.
     const minContentHeightPx =
-      (Math.min(contentHeightPt(), ...model.pageNames.map((name) => contentHeightPt(name))) * 96) /
+      (Math.min(contentHeightPt(model), ...model.pageNames.map((name) => contentHeightPt(model, name))) * 96) /
       72;
 
 
@@ -1851,8 +1795,9 @@ async function findWidthOffenders(
   const contexts = [
     resolvePage(model),
     // Exclude core's own `gp-` reserved-namespace pages (markers.js
-    // MARKER_CSS — today `gp-full-bleed`): they are injected into EVERY
-    // document with zero side margins so `.full-bleed` art can reach the
+    // MARKER_CSS — today `gp-page-blank` and `gp-page-full-bleed`): they are
+    // injected into EVERY document, the full-bleed one with zero margins so
+    // `@page full-bleed` and `.gp-bleed` art can reach the
     // sheet edge, which would otherwise raise this Math.max to the full
     // sheet width for every book and silently disable the shrink-to-fit
     // hard error project-wide. Filtering the whole reserved prefix (not the

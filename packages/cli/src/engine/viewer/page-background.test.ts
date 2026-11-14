@@ -69,7 +69,14 @@ testIf(
       try {
         const browser = await getBrowser();
         const page = await browser.newPage();
-        let sheets: Array<{ page: string; side: string; bg: string }>;
+        let sheets: Array<{
+          page: string;
+          side: string;
+          bg: string;
+          padding: string;
+          origin: string;
+          contentH: string;
+        }>;
         try {
           await page.goto(`${root}page-background.html`);
           await page.waitForFunction(
@@ -80,6 +87,9 @@ testIf(
               page: s.dataset.page ?? "",
               side: s.dataset.side ?? "",
               bg: getComputedStyle(s).backgroundColor,
+              padding: getComputedStyle(s).padding,
+              origin: getComputedStyle(s).backgroundOrigin,
+              contentH: getComputedStyle(s).getPropertyValue("--gp-content-h"),
             })),
           );
         } finally {
@@ -97,6 +107,13 @@ testIf(
         // No sheet may be left at the viewer's default white: that is exactly
         // the pre-fix symptom.
         expect(sheets.map((s) => s.bg)).not.toContain("rgb(255, 255, 255)");
+        // Print positions a page background from the page area's corner (and
+        // ignores background-origin), resolving its var()s at :root, where the
+        // compiler puts --gp-content-h. Each sheet's content box is that area
+        // (0.5in margins) and it carries the same --gp-content-h (3in - 1in).
+        for (const s of sheets) {
+          expect(s).toMatchObject({ padding: "48px", origin: "content-box", contentH: "192px" });
+        }
       } finally {
         await close();
       }

@@ -143,9 +143,9 @@ describe("@page margins in print (#454)", () => {
       });
       const model = extract(html.slice(html.indexOf("<style data-project-css>"), html.indexOf("</style>")));
       const fullBleed = resolvePage(model, { name: "gp-page-full-bleed", pseudos: ["left"] }).geometry.margin;
-      const bleed = resolvePage(model, { name: "gp-full-bleed", pseudos: ["right"] }).geometry.margin;
+      const bleed = resolvePage(model, { name: "gp-page-full-bleed", pseudos: ["right"] }).geometry.margin;
       expect(fullBleed).toEqual({ top: 0, right: 0, bottom: 0, left: 0 });
-      expect([bleed.left, bleed.right]).toEqual([0, 0]);
+      expect(bleed).toEqual({ top: 0, right: 0, bottom: 0, left: 0 });
 
       const report = await buildReport(fixture);
       // The full-bleed page fits on one sheet. Inset by the margins, it ran onto a second.
@@ -155,10 +155,13 @@ describe("@page margins in print (#454)", () => {
       const sheet = pageWith(report, "Full-bleed text");
       expect(sheet).toBe(2);
       expect(leftEdge(report.pages[sheet - 1]!)).toBeCloseTo(fullBleed.left + 18, 0);
-      // The bleed image, on a recto whose inside margin is 72pt, spans the sheet.
+      // The bleed image, on a recto whose inside margin is 72pt, covers the
+      // whole 432x648pt sheet (cropped to fill, so it may overhang an edge).
       const image = report.pages[3]!.images[0]!;
-      expect(image.x).toBeCloseTo(bleed.left, 0);
-      expect(image.w).toBeCloseTo(432 - bleed.left - bleed.right, 0);
+      expect(image.x).toBeLessThanOrEqual(0.5);
+      expect(image.y).toBeLessThanOrEqual(0.5);
+      expect(image.x + image.w).toBeGreaterThanOrEqual(431.5);
+      expect(image.y + image.h).toBeGreaterThanOrEqual(647.5);
       // The pages around them keep the manifest's: recto, inside margin 72pt.
       expect(leftEdge(report.pages[0]!)).toBeCloseTo(72, 0);
       expect(leftEdge(report.pages[4]!)).toBeCloseTo(72, 0);

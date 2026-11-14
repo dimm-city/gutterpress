@@ -59,3 +59,68 @@ export function pageGeometryVarsCss(model: GcpmModel, area: PrintArea | null): s
     ...model.pageAssignments.map((a) => `${a.selector} { ${pageDecls(model, a.page)} }`),
   ].join("\n");
 }
+
+/**
+ * Page contexts needed by geometry audits, without an exponential powerset.
+ *
+ * The four standard traits have a fixed cross-product ceiling:
+ * physical side (none/left/right) × progression side (none/recto/verso) ×
+ * first (no/yes) × blank (no/yes) = 36. Exact/nonstandard pseudos such as
+ * `nth(17)` are kept in the sets authors actually wrote, then crossed with
+ * those standard states. Thus compound `:right:recto` geometry is retained,
+ * while N distinct `:nth()` rules produce at most 36 × (N + 1) candidates
+ * before deduplication instead of 2^N.
+ */
+export function pagePseudoContexts(model: GcpmModel): string[][] {
+  const used = new Set(model.pageRules.flatMap((rule) => rule.pseudos));
+  const standard = new Set(["left", "right", "recto", "verso", "first", "blank"]);
+  const choices = (a: string, b: string): Array<string | undefined> => [
+    undefined,
+    ...(used.has(a) ? [a] : []),
+    ...(used.has(b) ? [b] : []),
+  ];
+  const physical = choices("left", "right");
+  const progression = choices("recto", "verso");
+  const first = used.has("first") ? [false, true] : [false];
+  const blank = used.has("blank") ? [false, true] : [false];
+  const standardContexts: string[][] = [];
+  for (const p of physical)
+    for (const r of progression)
+      for (const f of first)
+        for (const b of blank)
+          standardContexts.push([
+            ...(p ? [p] : []),
+            ...(r ? [r] : []),
+            ...(f ? ["first"] : []),
+            ...(b ? ["blank"] : []),
+          ]);
+
+  const authoredExactSets = [
+    [] as string[],
+    ...model.pageRules.map((rule) => rule.pseudos.filter((pseudo) => !standard.has(pseudo))),
+  ];
+  const contexts = new Map<string, string[]>();
+  for (const exact of authoredExactSets) {
+    for (const common of standardContexts) {
+      const context = [...new Set([...exact, ...common])].sort();
+      contexts.set(context.join("\0"), context);
+    }
+  }
+  return [...contexts.values()];
+}
+
+/**
+ * The page area's height, in pt, on the shortest sheet a page named `name`
+ * (the unnamed page when omitted) can land on — `--gp-content-h`. The compiler
+ * publishes it for the PDF (`:root` and each named page's selectors); the
+ * viewer gives the book-wide one to each sheet, where an `@page` background
+ * resolves it as print does, from `:root`.
+ */
+export function contentHeightPt(model: GcpmModel, name?: string): number {
+  return Math.min(
+    ...pagePseudoContexts(model).map((pseudos) => {
+      const { geometry } = resolvePage(model, { name, pseudos });
+      return geometry.height - geometry.margin.top - geometry.margin.bottom;
+    }),
+  );
+}

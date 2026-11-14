@@ -1183,24 +1183,25 @@ describe("GUTTERPRESS_CSS author-facing image/block utilities (M17)", () => {
     expect(rule![0]).toMatch(/width:\s*100%/);
   });
 
-  test("defines .gp-bleed as break-before + the zero-side-margin named page (no margin out-dent)", () => {
+  test("defines .gp-bleed as a plate on core's full-bleed page (no margin out-dent)", () => {
     const rule = GUTTERPRESS_CSS.match(/\.gp-bleed\s*\{[^}]*\}/);
     expect(rule).not.toBeNull();
     const body = rule![0];
     expect(body).toMatch(/break-before:\s*page/);
-    // The bleed comes from `@page gp-full-bleed { margin-left/right: 0 }` —
-    // the page's content box IS the sheet, so a plain `width: 100%` reaches
-    // both edges. Nothing may out-dent past the content box: measured on
-    // Chromium 148, feeding the real page margins into a negative margin
+    // The bleed comes from core's `@page full-bleed` page (zero margins,
+    // margin boxes cleared) — the page's content box IS the sheet, so a plain
+    // `width: 100%` and the sheet's height reach every edge, and `cover` crops
+    // the art to fill it. Nothing may out-dent past the content box: measured
+    // on Chromium 148, feeding the real page margins into a negative margin
     // shrinks the WHOLE document ~10% (the shrink-to-fit trigger is the
     // content box, not the sheet).
-    expect(body).toMatch(/page:\s*gp-full-bleed/);
+    expect(body).toMatch(/page:\s*gp-page-full-bleed/);
     expect(body).toMatch(/width:\s*100%/);
+    expect(body).toMatch(/height:\s*var\(--gp-content-h\)/);
+    expect(body).toMatch(/object-fit:\s*cover/);
     expect(body).not.toMatch(/calc\(/);
     expect(body).not.toMatch(/--gp-margin/);
-    expect(GUTTERPRESS_CSS).toMatch(/@page gp-full-bleed\s*\{[^}]*margin-left:\s*0/);
-    // Must NOT promise a named `art` page template or header/footer removal —
-    // neither is implemented.
+    expect(MARKER_CSS).toMatch(/@page gp-page-full-bleed\s*\{\s*margin:\s*0;/);
     expect(GUTTERPRESS_CSS).not.toMatch(/@page\s+art\b/);
   });
 });
@@ -1348,13 +1349,13 @@ describe("GUTTERPRESS_CSS gp-* vocabulary", () => {
     expect(GUTTERPRESS_CSS).toContain(":where(p:has(> img.gp-pin:only-child)) { margin: 0; }");
   });
 
-  test("adds no new @page gp-* names (gp-full-bleed stays the only one)", () => {
+  test("adds no @page gp-* names of its own (.gp-bleed uses core's full-bleed page)", () => {
     // build.ts's shrink-to-fit guard excludes the whole `gp-` named-page
     // namespace from its page-width Math.max; every name added here widens
     // that exclusion and must be deliberate. (`gp--pin-*` pages exist too,
     // but the COMPILER generates those per build — they are never in this
     // static stylesheet, and the width guard readmits them explicitly.)
-    expect(GUTTERPRESS_CSS.match(/@page gp-/g)).toHaveLength(1);
+    expect(GUTTERPRESS_CSS.match(/@page gp-/g)).toBeNull();
   });
 });
 

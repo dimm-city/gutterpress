@@ -1,8 +1,8 @@
 /* style.css — core's own full-bleed pages, in a book whose manifest sets
    `page.margin`, and nothing else.
 
-   Core's `@page full-bleed` (`@page gp-page-full-bleed { margin: 0 }`) and
-   `.gp-bleed` (`@page gp-full-bleed`, no side margins) used to sit in core's
+   Core's `@page full-bleed` (`@page gp-page-full-bleed { margin: 0 }`), which
+   is also `.gp-bleed`'s page, used to sit in core's
    cascade layers, and Chromium ranks `@page` declarations by layer before
    page name: the manifest's unlayered margins beat them, so in print the
    full-bleed page was inset and ran onto a second page and the bleed image

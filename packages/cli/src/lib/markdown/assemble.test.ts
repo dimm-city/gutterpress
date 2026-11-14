@@ -271,20 +271,18 @@ test("core's @page rules follow its layers, unlayered and ahead of every extensi
   root.walkAtRules("page", (rule) => {
     pages.push([rule.params, layersAround(rule)]);
   });
-  // In source order: `@page blank`, `@page full-bleed` and `.gp-bleed`'s page,
-  // unlayered; the 1in default, still in core's layer and so below every
+  // In source order: `@page blank` and `@page full-bleed` (also `.gp-bleed`'s
+  // page), unlayered; the 1in default, still in core's layer and so below every
   // unlayered rule; the manifest's size, last.
   expect(pages).toEqual([
     ["gp-page-blank", []],
     ["gp-page-full-bleed", []],
-    ["gp-full-bleed", []],
     ["", ["gp.vocab"]],
     ["", []],
   ]);
   // Each block's after its layer; all of them before the extensions.
   expect(css.indexOf("@page gp-page-full-bleed")).toBeGreaterThan(css.indexOf("@layer gp.marker {"));
-  expect(css.indexOf("@page gp-full-bleed")).toBeGreaterThan(css.indexOf("@layer gp.vocab {"));
-  expect(css.indexOf("@page gp-full-bleed")).toBeLessThan(css.indexOf("/* extension css */"));
+  expect(css.indexOf("@page gp-page-full-bleed")).toBeLessThan(css.indexOf("/* extension css */"));
   // Element rules stay in their layers.
   const layersOf = (selector: string): string[][] => {
     const found: string[][] = [];

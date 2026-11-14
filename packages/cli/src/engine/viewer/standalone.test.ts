@@ -230,6 +230,57 @@ testIf(
 );
 
 testIf(
+  "a box on its own named page splits a container that is on another named page",
+  async () => {
+    const dir = await fsp.mkdtemp(path.join(tmpdir(), "gutterpress-named-root-test-"));
+    try {
+      // The same fixture with the wrapper itself on a named page (`wall`), as
+      // a `.page` root with `@page wall-4` is: its unnamed children stay on
+      // `wall`, and the boxes naming another page still break out of it, as
+      // in print (Page.printToPDF of this file: the same 5 pages). Before, a
+      // named wrapper was never split, so a `.gp-bleed` plate inside one sat
+      // inset on the wrapper's page in the preview alone.
+      const html = await fsp.readFile(path.join(FIXTURES_DIR, "named-page-runs.html"), "utf8");
+      await fsp.writeFile(
+        path.join(dir, "named-root.html"),
+        html.replace("</style>", "@page wall { margin: 0.75in; }\n.chapter { page: wall; }\n</style>"),
+      );
+      await fsp.copyFile(
+        await getAssetPath("engine/gutterpress-viewer.js"),
+        path.join(dir, "gutterpress-viewer.js")
+      );
+      const { url, close } = await serveDir(dir, "named-root.html");
+      try {
+        const browser = await getBrowser();
+        const page = await browser.newPage();
+        try {
+          await page.setViewport({ width: 3000, height: 1200 });
+          await page.goto(url);
+          await page.waitForFunction(
+            "window.Gutterpress && window.Gutterpress.totalPages > 0"
+          );
+          const result = await page.evaluate(() => ({
+            totalPages: (window as any).Gutterpress.totalPages,
+            pages: Array.from(document.querySelectorAll<HTMLElement>(".gp-strip")).map(
+              (s) => s.dataset.page ?? ""
+            ),
+          }));
+          expect(result.totalPages).toBe(5);
+          expect(result.pages).toEqual(["wall", "chapter", "wall", "wide", "wall"]);
+        } finally {
+          await page.close();
+        }
+      } finally {
+        await close();
+      }
+    } finally {
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
+  },
+  RENDER_TEST_TIMEOUT_MS
+);
+
+testIf(
   "the author's canvas background is painted on every sheet, not behind the filmstrip",
   async () => {
     const dir = await fsp.mkdtemp(path.join(tmpdir(), "gutterpress-canvas-bg-test-"));

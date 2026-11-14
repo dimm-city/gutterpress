@@ -15,6 +15,7 @@ import {
   type PageGeometry,
 } from "../shared/gcpm-extract.ts";
 import { evaluate, needsMeasurement } from "../shared/content-value.ts";
+import { contentHeightPt } from "../shared/page-vars.ts";
 import {
   isIgnoredMarginBoxProperty,
   marginBoxAlign,
@@ -129,6 +130,16 @@ interface PageCtx {
  *
  * `background-attachment` is skipped for the same reason `captureCanvasBackground`
  * skips it: `fixed` is viewport-relative and meaningless for a page box.
+ *
+ * Print paints the whole sheet but POSITIONS from the page area's corner, the
+ * page and the canvas background alike, and ignores `background-origin`
+ * (measured: `0 0` lands at the margins' corner whatever the
+ * origin). The sheet is padded by the page margins and positions from its
+ * content box (`positionFromPageArea`), so a background that lines up across
+ * a spread in the PDF lines up on screen too. Its `var()`s resolve against
+ * `:root` in print, where the compiler puts the book-wide `--gp-content-h`; the
+ * sheet carries the same value, since a sheet is not inside the strip that has
+ * its own.
  */
 function applyPageBackground(sheet: HTMLElement, decls: Declarations): void {
   for (const [prop, value] of Object.entries(decls)) {
@@ -139,11 +150,19 @@ function applyPageBackground(sheet: HTMLElement, decls: Declarations): void {
   }
 }
 
+function positionFromPageArea(sheet: HTMLElement, g: PageGeometry, contentH: string): void {
+  const m = g.margin;
+  sheet.style.padding = `${px(m.top)} ${px(m.right)} ${px(m.bottom)} ${px(m.left)}`;
+  sheet.style.backgroundOrigin = "content-box";
+  sheet.style.setProperty("--gp-content-h", contentH);
+}
+
 export function decorate(
   layout: GutterpressViewerApi,
   opts: { designer?: boolean } = {},
 ): DecorationApi {
   const model: GcpmModel = layout.model;
+  const contentH = px(contentHeightPt(model));
   const sheets = new Map<number, HTMLElement>();
   let blankPages = new Set<number>();
   let paddedPages = new Set<number>();
@@ -479,6 +498,7 @@ export function decorate(
         sheet.style.setProperty("--gp-page-h", px(ctx.geometry.height));
         applyPageBackground(sheet, ctx.decls);
         if (!ctx.padded) for (const [prop, value] of canvasBg) sheet.style.setProperty(prop, value);
+        positionFromPageArea(sheet, ctx.geometry, contentH);
         layer.appendChild(sheet);
         sheets.set(bookIndex, sheet);
 

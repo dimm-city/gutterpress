@@ -289,6 +289,7 @@
 
 .gp-sheet {
   position: absolute;
+  box-sizing: border-box;
   top: 0;
   width: var(--gp-page-w);
   height: var(--gp-page-h);
@@ -1251,6 +1252,48 @@
     ].join(`
 `);
   }
+  function pagePseudoContexts(model) {
+    const used = new Set(model.pageRules.flatMap((rule) => rule.pseudos));
+    const standard = new Set(["left", "right", "recto", "verso", "first", "blank"]);
+    const choices = (a, b) => [
+      undefined,
+      ...used.has(a) ? [a] : [],
+      ...used.has(b) ? [b] : []
+    ];
+    const physical = choices("left", "right");
+    const progression = choices("recto", "verso");
+    const first = used.has("first") ? [false, true] : [false];
+    const blank = used.has("blank") ? [false, true] : [false];
+    const standardContexts = [];
+    for (const p of physical)
+      for (const r of progression)
+        for (const f of first)
+          for (const b of blank)
+            standardContexts.push([
+              ...p ? [p] : [],
+              ...r ? [r] : [],
+              ...f ? ["first"] : [],
+              ...b ? ["blank"] : []
+            ]);
+    const authoredExactSets = [
+      [],
+      ...model.pageRules.map((rule) => rule.pseudos.filter((pseudo) => !standard.has(pseudo)))
+    ];
+    const contexts = new Map;
+    for (const exact of authoredExactSets) {
+      for (const common of standardContexts) {
+        const context = [...new Set([...exact, ...common])].sort();
+        contexts.set(context.join("\x00"), context);
+      }
+    }
+    return [...contexts.values()];
+  }
+  function contentHeightPt(model, name) {
+    return Math.min(...pagePseudoContexts(model).map((pseudos) => {
+      const { geometry } = resolvePage(model, { name, pseudos });
+      return geometry.height - geometry.margin.top - geometry.margin.bottom;
+    }));
+  }
 
   // src/engine/shared/page-root-span.ts
   function spanningMinHeight(height, content, offset = 0) {
@@ -1409,14 +1452,9 @@
     }
     return site;
   }
-  function directPageName(el, model) {
-    for (const a of model.pageAssignments) {
-      try {
-        if (el.matches(a.selector))
-          return a.page;
-      } catch {}
-    }
-    return;
+  function directPageName(el) {
+    const page = getComputedStyle(el).page;
+    return page && page !== "auto" ? page : undefined;
   }
   function hasDescendantPageAssignment(el, model) {
     for (const a of model.pageAssignments) {
@@ -1464,14 +1502,14 @@
         pushRun(runs, last.page, held, last.pin && { edges: last.pin.edges, roots: [] });
         return [];
       }
-      if (held.some((n) => (n.textContent ?? "").trim() !== "")) {
+      if (held.some((n) => n.nodeType === 3 && (n.textContent ?? "").trim() !== "")) {
         pushRun(runs, undefined, held);
         return [];
       }
       return held;
     };
     for (const node of Array.from(container.childNodes)) {
-      if (node.nodeType !== 1) {
+      if (node.nodeType !== 1 || getComputedStyle(node).display === "none") {
         pending.push(node);
         continue;
       }
@@ -1479,16 +1517,16 @@
       if (kid.classList.contains("gp-layer"))
         continue;
       const pin = pinRunOf(kid);
-      const own = directPageName(kid, model);
-      if (own !== undefined) {
+      const own = directPageName(kid);
+      if (!hasDescendantPageAssignment(kid, model) && !holdsPinRoot(kid)) {
         pushRun(runs, own, [...carry(), kid], pin);
         continue;
       }
-      if (!hasDescendantPageAssignment(kid, model) && !holdsPinRoot(kid)) {
-        pushRun(runs, undefined, [...carry(), kid], pin);
+      const inner = explodeChildren(kid, model).map((r) => ({ ...r, page: r.page ?? own }));
+      if (own !== undefined && inner.every((r) => r.page === own)) {
+        pushRun(runs, own, [...carry(), kid], pin);
         continue;
       }
-      const inner = explodeChildren(kid, model);
       if (inner.length <= 1) {
         pushRun(runs, inner[0]?.page, [...carry(), kid], pin ?? inner[0]?.pin);
         continue;
@@ -1529,7 +1567,7 @@
       if (!(stripHeight > 0))
         continue;
       for (let el = strip.el.firstElementChild;el; el = el.firstElementChild) {
-        if (directPageName(el, model) !== strip.page)
+        if (directPageName(el) !== strip.page)
           continue;
         const cs = getComputedStyle(el);
         const height = parseFloat(cs.height);
@@ -2845,8 +2883,15 @@
       sheet.style.setProperty(p, value);
     }
   }
+  function positionFromPageArea(sheet, g, contentH) {
+    const m = g.margin;
+    sheet.style.padding = `${px(m.top)} ${px(m.right)} ${px(m.bottom)} ${px(m.left)}`;
+    sheet.style.backgroundOrigin = "content-box";
+    sheet.style.setProperty("--gp-content-h", contentH);
+  }
   function decorate(layout, opts = {}) {
     const model = layout.model;
+    const contentH = px(contentHeightPt(model));
     const sheets = new Map;
     let blankPages = new Set;
     let paddedPages = new Set;
@@ -3097,6 +3142,7 @@
           if (!ctx.padded)
             for (const [prop, value] of canvasBg)
               sheet.style.setProperty(prop, value);
+          positionFromPageArea(sheet, ctx.geometry, contentH);
           layer.appendChild(sheet);
           sheets.set(bookIndex, sheet);
           drawMarginBoxes(sheet, ctx, layout.totalPages - paddedPages.size);
