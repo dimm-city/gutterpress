@@ -17,7 +17,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import postcss, { type Declaration, type AtRule } from "postcss";
 import { BuildError } from "./build-error";
@@ -187,6 +187,26 @@ function contentHash(bytes: Buffer): string {
 }
 
 /**
+ * Each image's content hash, kept while its file is unchanged (same size and
+ * times). A look names one image many times (a wall on every named page) and
+ * the preview renders the book again on every edit: unkept, a book whose look
+ * carries 110 MB of walls read and hashed 2.5 GB on each render (measured).
+ */
+const assetHashes = new Map<string, { stamp: string; hash: string }>();
+
+async function assetContentHash(absAsset: string, referencedFrom: string): Promise<string> {
+  const stamp = await stat(absAsset, { bigint: true }).then(
+    (s) => `${s.size}:${s.mtimeNs}:${s.ctimeNs}`,
+    () => "",
+  );
+  const kept = assetHashes.get(absAsset);
+  if (stamp && kept?.stamp === stamp) return kept.hash;
+  const hash = contentHash(await readOrThrow(absAsset, "asset", referencedFrom));
+  if (stamp) assetHashes.set(absAsset, { stamp, hash });
+  return hash;
+}
+
+/**
  * Rewrite every `url(...)` in a declaration value, preserving the rest verbatim
  * (multi-`src` `@font-face`, `image-set()`, layered backgrounds). Quotes are
  * re-applied so a data URI containing `)` cannot terminate the token early.
@@ -329,8 +349,7 @@ async function inlineOne(
       // raw HTML can write is able to utter this name (see
       // asset-inline.css-prose-url-disjoint.test.ts). It also keeps
       // same-basename files from outside the project collision-proof.
-      const bytes = await readOrThrow(absAsset, "asset", abs);
-      const dest = `${HASHED_ASSET_DIR}/${contentHash(bytes)}${ext}`;
+      const dest = `${HASHED_ASSET_DIR}/${await assetContentHash(absAsset, abs)}${ext}`;
       copies.set(dest, { from: absAsset, to: dest });
       return dest;
     });

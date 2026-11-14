@@ -5,6 +5,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The preview re-read every stylesheet image on every edit.** Each `url()` in a look's CSS
+  had its file read whole and hashed on every render, once per mention. A look that names a
+  page background on each of its named pages multiplied that: a book whose look carries 110 MB
+  of textures read and hashed 2.5 GB each time the preview refreshed, about three seconds per
+  edit. An image is now hashed once and again only when its file changes; the same render
+  takes a quarter of a second.
+
 ## [0.11.26] - 2026-11-14
 
 ### Changed
