@@ -25,10 +25,16 @@ export interface PublishTargetChoice {
 
 export const PUBLISH_TARGET_CHOICES: PublishTargetChoice[] = [
   {
-    id: "dtrpg",
+    id: "drivethrurpg-print",
     label: "DriveThruRPG (print)",
     description: "Checks the finished PDF against DriveThruRPG's print rules.",
     tools: ["qpdf", "gs"],
+  },
+  {
+    id: "drivethrurpg-digital",
+    label: "DriveThruRPG (digital)",
+    description: "Checks the finished PDF is well-formed with embedded fonts.",
+    tools: [],
   },
   {
     id: "itch",
@@ -40,11 +46,11 @@ export const PUBLISH_TARGET_CHOICES: PublishTargetChoice[] = [
 
 /**
  * The targets a book designed for a preset validates against by default
- * (mirrors the lib presets' `defaultTargets`: dtrpg → [dtrpg]; else none).
+ * (mirrors the lib presets' `defaultTargets`: dtrpg → [drivethrurpg-print]; else none).
  * Shared by the new-book wizard and Book setup > Book.
  */
 export function defaultTargetsFor(preset: string | null): string[] {
-  return preset === "dtrpg" ? ["dtrpg"] : [];
+  return preset === "dtrpg" ? ["drivethrurpg-print"] : [];
 }
 
 /** Tool ids whose absence blocks a print-compliant build (for `/api/doctor`). */

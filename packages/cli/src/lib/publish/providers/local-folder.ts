@@ -22,16 +22,14 @@ import type {
   PublishProviderInfo,
   PublishRequest,
 } from "../types.ts";
+import { targetInfo } from "../target-info.ts";
 
 /** The folder used when `publish.local.dir` is unset — inside the book. */
 export const LOCAL_PUBLISH_DEFAULT_DIR = "dist";
 
 const info: PublishProviderInfo = {
-  id: "local",
-  label: "A folder on this computer",
+  ...targetInfo("local"),
   kind: "api",
-  format: "pdf",
-  formats: ["pdf", "html"],
   description: "Save the finished file to a folder you choose.",
   configFields: [
     { key: "dir", label: "Folder", placeholder: LOCAL_PUBLISH_DEFAULT_DIR },

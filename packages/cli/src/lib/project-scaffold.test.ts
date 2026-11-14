@@ -325,10 +325,10 @@ test("scaffoldProject writes the chosen preset into the manifest (overwriting th
     // manifests only.
     expect(manifest).toContain("targets:");
     const parsed = await loadManifest(result.projectDir);
-    expect(parsed.targets).toEqual(["dtrpg"]);
+    expect(parsed.targets).toEqual(["drivethrurpg-print"]);
     const config = resolveConfig({}, parsed);
     expect(config.page.width).toBe(621);
-    expect(config.targets).toEqual(["dtrpg"]);
+    expect(config.targets).toEqual(["drivethrurpg-print"]);
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
@@ -386,7 +386,7 @@ test("scaffoldProject accepts an explicit targets override (deduped)", async () 
       versionHistory: "none",
     });
     const parsed = await loadManifest(result.projectDir);
-    expect(parsed.targets).toEqual(["dtrpg", "itch"]);
+    expect(parsed.targets).toEqual(["drivethrurpg-print", "itch"]);
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
@@ -408,7 +408,7 @@ test("scaffoldProject rejects an unknown target id with code invalid-targets, be
       err = e as CreateProjectError;
     }
     expect(err?.code).toBe("invalid-targets");
-    expect(err?.message).toContain("dtrpg, itch");
+    expect(err?.message).toContain("drivethrurpg-print, drivethrurpg-digital");
     expect(existsSync(path.join(parent, "bad-target"))).toBe(false);
   } finally {
     await rm(parent, { recursive: true, force: true });

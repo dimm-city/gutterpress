@@ -15,6 +15,7 @@ import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { loadManifestWithPath, resolveConfig } from "../manifest.ts";
 import { artifactName, BOOK_HTML, resolveOutputDir } from "../output-paths.ts";
+import { canonicalTargetId } from "../targets.ts";
 import { resolvePublishProvider } from "./plugin-provider.ts";
 import { publishProviderFor } from "./registry.ts";
 import type {
@@ -63,17 +64,28 @@ export interface RunPublishResult {
 }
 
 /**
- * Compute the EFFECTIVE artifact format for a publish request (#221 phase 3,
- * D8). Every provider except gdrive declares only a single fixed
- * `info.format` and has no `info.formats` array — for those, this function
- * always returns `info.format`, so their behavior is byte-for-byte
- * unaffected by this change. For a provider that DOES declare `formats`
- * (currently only gdrive: `["pdf", "html"]`), the author's manifest
- * `publish.<id>.format` selects the effective one — but only when it's a
- * value the provider actually declares; an unset, invalid, or typo'd value
- * is IGNORED and falls back to `info.format` rather than blocking publish
- * with a preflight error over one bad manifest field.
+ * The file a publish request sends (ADR 0012). A target that defines its file
+ * (no `info.formats`) always gets `info.format`. One that offers a pick gets
+ * the saved `publish.<id>.format` when it is on offer; an unset, invalid or
+ * typo'd value is IGNORED and falls back to `info.format` rather than
+ * blocking publish with a preflight error over one bad manifest field.
  */
+/**
+ * A target's settings as the manifest's `publish:` holds them: its own
+ * section laid over any section kept under an older name for it.
+ */
+export function targetSettings(publish: unknown, targetId: string): Record<string, unknown> {
+  const merged: Record<string, unknown> = {};
+  if (!publish || typeof publish !== "object") return merged;
+  const sections = Object.entries(publish as Record<string, unknown>).filter(
+    ([key, value]) => canonicalTargetId(key) === targetId && value && typeof value === "object",
+  );
+  // Older names first, so the target's own section wins.
+  sections.sort(([a], [b]) => Number(a === targetId) - Number(b === targetId));
+  for (const [, section] of sections) Object.assign(merged, section);
+  return merged;
+}
+
 export function resolvePublishFormat(
   info: PublishProviderInfo,
   providerConfig: Record<string, unknown>,
@@ -121,9 +133,10 @@ async function requestFor(
   // The person's PRIVATE values for this book (deps.selections) win over what
   // the manifest shares: this run's, then private, then manifest, then the
   // provider's default.
-  const publishSettings = (manifest.publish ?? {}) as Record<string, unknown>;
+  // A section under an older name for the target (`drivethrurpg`) still
+  // applies, beneath the one under its own.
   const providerConfig = {
-    ...((publishSettings[provider.info.id] as Record<string, unknown> | undefined) ?? {}),
+    ...targetSettings(manifest.publish, provider.info.id),
     ...((await deps.selections?.settings(options.projectDir))?.[provider.info.id] ?? {}),
     ...options.settings,
   };
@@ -150,10 +163,10 @@ async function requestFor(
   // publish preflight looking for an artifact in the wrong directory.
   const outDir = resolveOutputDir(manifestDir, config.title);
   const effectiveFormat = resolvePublishFormat(provider.info, providerConfig);
+  // Each file has its own name (`-pdf.pdf`, `-pdfx.pdf`), so a target is
+  // sent the one it needs, never whichever was built last.
   const defaultArtifact =
-    effectiveFormat === "pdf"
-      ? path.join(outDir, artifactName(config.title, "pdf"))
-      : outDir;
+    effectiveFormat === "html" ? outDir : path.join(outDir, artifactName(config.title, effectiveFormat));
   const artifact: PublishArtifact = {
     path: options.artifactPath
       ? path.resolve(options.projectDir, options.artifactPath)
@@ -180,19 +193,25 @@ async function requestFor(
 // exports from the app; the message must make sense to both.
 const PDF_HINT =
   "Build the PDF first (gutterpress build, or export it from the app).";
+const PDFX_HINT =
+  "Build the PDF/X first (gutterpress build --format pdfx).";
 const HTML_HINT =
   "Build the website export first (gutterpress build --format html).";
 
+const ARTIFACT_HINTS: Record<PublishArtifactFormat, string> = { pdf: PDF_HINT, pdfx: PDFX_HINT, html: HTML_HINT };
+const ARTIFACT_NAMES: Record<PublishArtifactFormat, string> = { pdf: "PDF", pdfx: "PDF/X", html: "HTML export" };
+
 /** Artifact-existence checks shared by every provider. */
 async function artifactIssues(artifact: PublishArtifact): Promise<PreflightIssue[]> {
+  const hint = ARTIFACT_HINTS[artifact.format];
   try {
     const s = await stat(artifact.path);
-    if (artifact.format === "pdf" && !s.isFile()) {
+    if (artifact.format !== "html" && !s.isFile()) {
       return [
         {
           severity: "error",
           id: "publish/artifact-not-file",
-          message: `${artifact.path} is not a file. ${PDF_HINT}`,
+          message: `${artifact.path} is not a file. ${hint}`,
         },
       ];
     }
@@ -205,12 +224,12 @@ async function artifactIssues(artifact: PublishArtifact): Promise<PreflightIssue
         },
       ];
     }
-    if (artifact.format === "pdf" && s.size === 0) {
+    if (artifact.format !== "html" && s.size === 0) {
       return [
         {
           severity: "error",
           id: "publish/artifact-empty",
-          message: `${artifact.path} is empty. ${PDF_HINT}`,
+          message: `${artifact.path} is empty. ${hint}`,
         },
       ];
     }
@@ -218,12 +237,11 @@ async function artifactIssues(artifact: PublishArtifact): Promise<PreflightIssue
       return htmlDirIssues(artifact.path);
     }
   } catch {
-    const hint = artifact.format === "html" ? HTML_HINT : PDF_HINT;
     return [
       {
         severity: "error",
         id: "publish/artifact-missing",
-        message: `No built ${artifact.format === "pdf" ? "PDF" : "HTML export"} at ${artifact.path}. ${hint}`,
+        message: `No built ${ARTIFACT_NAMES[artifact.format]} at ${artifact.path}. ${hint}`,
       },
     ];
   }

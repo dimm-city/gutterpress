@@ -247,7 +247,7 @@ Push a built PDF/HTML artifact to a publishing platform (itch.io, DriveThruRPG, 
 ```sh
 gutterpress publish [project] [options]
 
-  --provider <id>     local | itch | drivethrurpg | kdp | azure-swa | shopify | gdrive
+  --provider <id>     local | itch | drivethrurpg-print | drivethrurpg-digital | kdp | azure-swa | shopify | gdrive
   --list               List providers and connection status
   --connect            Store an API key for --provider (from --token, the provider's env var, or piped stdin) — or, for gdrive, open the browser to connect
   --disconnect         Forget the stored key for --provider
@@ -261,6 +261,12 @@ gutterpress publish [project] [options]
   --json               Machine-readable JSON output (CI)
   --open               Open the result page / guided upload page in the browser
 ```
+
+Each target is sent the file it needs. `drivethrurpg-print` takes the print-ready PDF/X
+(`<slug>-pdfx.pdf`, from `gutterpress build --format pdfx`); `drivethrurpg-digital` and `itch`
+take the PDF; `azure-swa` takes the website. `local`, `gdrive`, `kdp` and `shopify` take the file
+named by `publish.<id>.format` in the manifest (`pdf`, the default, or `pdfx`; `local` and `gdrive`
+also take `html`). The older name `drivethrurpg` still works and means `drivethrurpg-print`.
 
 ```sh
 # List providers and connection status

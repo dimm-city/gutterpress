@@ -24,6 +24,7 @@ import {
   type PublishProviderInfo,
   type PublishRequest,
 } from "../types.ts";
+import { targetInfo } from "../target-info.ts";
 
 const SHOPIFY_HOST = "shopify";
 const DEFAULT_API_VERSION = "2026-04";
@@ -58,10 +59,8 @@ function requireValidShop(shop: string): string {
 }
 
 const info: PublishProviderInfo = {
-  id: "shopify",
-  label: "Shopify",
+  ...targetInfo("shopify"),
   kind: "api",
-  format: "pdf",
   description:
     "Create or update a digital product on your Shopify store (file delivery is attached in the Shopify admin).",
   configFields: [

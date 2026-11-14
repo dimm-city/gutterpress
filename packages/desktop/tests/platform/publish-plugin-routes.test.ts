@@ -67,7 +67,7 @@ test("publish/list offers the book's publishing plugin after the built-ins, mark
     description: "Demo destination",
     kind: "plugin",
     experimental: true,
-    formats: ["pdf", "html"],
+    formats: ["pdf", "pdfx", "html"],
     credentialRequired: false,
   });
   expect(cards.filter((c) => c.experimental).map((c) => c.id)).toEqual(["pub-demo"]);

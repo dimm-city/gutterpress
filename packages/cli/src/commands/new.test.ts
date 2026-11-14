@@ -225,7 +225,8 @@ describe("new command — publish targets (ADR 0008)", () => {
       rawArgs: ["My Book", "--preset", "book", "--targets", "dtrpg,itch"],
     });
 
-    expect(captured?.targets).toEqual(["dtrpg", "itch"]);
+    // An older name is accepted and passed on under the registry's own.
+    expect(captured?.targets).toEqual(["drivethrurpg-print", "itch"]);
   });
 
   test("--targets none maps to an explicit empty list (informed opt-out)", async () => {
@@ -267,7 +268,7 @@ describe("new command — publish targets (ADR 0008)", () => {
       })
     ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.USAGE}\\)`));
     expect(scaffoldSpy).not.toHaveBeenCalled();
-    expect(String(consoleErrorSpy?.mock.calls[0]?.[0])).toContain("dtrpg, itch");
+    expect(String(consoleErrorSpy?.mock.calls[0]?.[0])).toContain("drivethrurpg-print, drivethrurpg-digital");
   });
 });
 

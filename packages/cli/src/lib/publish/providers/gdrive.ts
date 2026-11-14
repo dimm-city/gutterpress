@@ -42,19 +42,16 @@ import {
 } from "../types.ts";
 import type { HostCredential } from "../../remote-auth/token-store.ts";
 import { DEFAULT_FOLDER_NAME, resolveFolder, toDestination, uploadFolder } from "./gdrive-folder.ts";
+import { targetInfo } from "../target-info.ts";
 
 const NOT_CONNECTED_MESSAGE =
   "Google Drive isn't connected. Run `gutterpress publish --provider gdrive --connect` (or set GDRIVE_REFRESH_TOKEN) first.";
 
 const info: PublishProviderInfo = {
-  id: "gdrive",
-  label: "Google Drive",
+  // The registry offers a pick of file here (PDF, PDF/X or the website); an
+  // unset publish.gdrive.format is the PDF, as it always was.
+  ...targetInfo("gdrive"),
   kind: "api",
-  format: "pdf",
-  // #221 phase 3, D8: gdrive is the one provider that can publish either
-  // build output. `format` above stays the default (PDF) so an unset
-  // publish.gdrive.format keeps every existing book's behavior unchanged.
-  formats: ["pdf", "html"],
   description:
     "Upload the finished PDF (or the website export, zipped) to a folder in your Google Drive — publishing again updates the same file, so shared links stay current. Drive delivers files, not live websites; use Azure Static Web Apps to publish the HTML export as a site.",
   configFields: [{ key: "folder", label: "Drive folder", placeholder: DEFAULT_FOLDER_NAME }],

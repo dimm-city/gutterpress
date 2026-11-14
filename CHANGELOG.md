@@ -5,6 +5,22 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **A publish target now says which file it gets** (ADR 0012, first part). DriveThruRPG is two
+  targets: `drivethrurpg-print`, which is sent the print-ready PDF/X, and
+  `drivethrurpg-digital`, which is sent the PDF and is held to the same digital rules as
+  itch.io. `gutterpress publish --provider drivethrurpg` used to send the plain PDF; it now
+  means `drivethrurpg-print` and sends `<slug>-pdfx.pdf`. `kdp` and `shopify` can be sent the
+  PDF/X as well as the PDF, and `gdrive` and `local` the PDF, the PDF/X or the website, by
+  setting `publish.<id>.format`.
+- **`publish:` in the manifest is the list of a book's targets.** A target is on because it is
+  there; one with nothing to set is just its name. Older books keep working unchanged: a
+  manifest with a `targets:` list or `enabled:` ticks is read with its old meaning, and the
+  names `dtrpg` and `drivethrurpg` both mean `drivethrurpg-print`, including for
+  `validate --target` and `new --targets`. Check results for that target are now labelled
+  `[drivethrurpg-print]`.
+
 ### Fixed
 
 - **Desktop: a failed PDF export did not say why.** The reason the build gave was dropped on

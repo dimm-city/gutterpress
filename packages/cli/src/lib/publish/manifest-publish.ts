@@ -11,6 +11,14 @@ import { isMap } from "yaml";
 import type { Document } from "yaml";
 import { loadManifestDoc, writeManifestDoc } from "../manifest-doc.ts";
 import type { PublishSelectionsStore } from "./selections.ts";
+import { canonicalTargetId } from "../targets.ts";
+import { targetSettings } from "./run-publish.ts";
+
+/** The raw `publish:` map, as written. */
+function settingsKeysOf(doc: Document.Parsed): Record<string, unknown> {
+  const node = doc.get("publish", true);
+  return isMap(node) ? (node.toJSON() as Record<string, unknown>) : {};
+}
 
 function settingsFromDoc(
   doc: Document.Parsed,
@@ -19,10 +27,16 @@ function settingsFromDoc(
   if (!isMap(node)) return {};
   const json = node.toJSON() as Record<string, unknown>;
   const out: Record<string, Record<string, unknown>> = {};
-  for (const [key, value] of Object.entries(json)) {
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      out[key] = value as Record<string, unknown>;
-    }
+  // Keyed by the registry's name for each target: a section an older book
+  // keeps under an older name (`drivethrurpg`) is read into its target, with
+  // the target's own section laid over it.
+  const ids = new Set(Object.keys(json).map(canonicalTargetId));
+  for (const id of ids) {
+    const settings = targetSettings(json, id);
+    const present = Object.entries(json).some(
+      ([key, value]) => canonicalTargetId(key) === id && value && typeof value === "object" && !Array.isArray(value),
+    );
+    if (present) out[id] = settings;
   }
   return out;
 }
@@ -45,7 +59,7 @@ export async function readPublishSettings(
 }
 
 /**
- * Merge `values` into `publish.<providerId>`. A value of `undefined`, `null`
+ * Merge `values` into the target's `publish:` section. A value of `undefined`, `null`
  * or `""` deletes that key; emptied sections (and an emptied `publish:` map)
  * are removed rather than left dangling. Returns the updated settings straight
  * from the in-memory document — no re-read.
@@ -56,18 +70,25 @@ export async function setPublishProviderConfig(
   values: Record<string, unknown>,
 ): Promise<Record<string, Record<string, unknown>>> {
   const { doc, file } = await loadManifestDoc(projectDir);
+  // Written under the registry's name for the target. A book that already
+  // keeps the target's section under an older name keeps it there, so a
+  // target never ends up with two sections.
+  const targetId = canonicalTargetId(providerId);
+  const sectionKey = isMap(doc.getIn(["publish", targetId], true))
+    ? targetId
+    : (Object.keys(settingsKeysOf(doc)).find((key) => canonicalTargetId(key) === targetId) ?? targetId);
 
   for (const [key, value] of Object.entries(values)) {
     if (value === undefined || value === null || value === "") {
-      doc.deleteIn(["publish", providerId, key]);
+      doc.deleteIn(["publish", sectionKey, key]);
     } else {
-      doc.setIn(["publish", providerId, key], value);
+      doc.setIn(["publish", sectionKey, key], value);
     }
   }
 
-  const section = doc.getIn(["publish", providerId], true);
+  const section = doc.getIn(["publish", sectionKey], true);
   if (isMap(section) && section.items.length === 0) {
-    doc.deleteIn(["publish", providerId]);
+    doc.deleteIn(["publish", sectionKey]);
   }
   const publish = doc.get("publish", true);
   if (isMap(publish) && publish.items.length === 0) {
@@ -111,10 +132,12 @@ function insideBook(projectDir: string, dir: string): string | null {
  */
 export async function savePublishSettings(
   projectDir: string,
-  providerId: string,
+  target: string,
   values: Record<string, unknown>,
   selections: Pick<PublishSelectionsStore, "settings" | "setSettings">,
 ): Promise<Record<string, Record<string, unknown>>> {
+  // One name per target, in the manifest and in the private store alike.
+  const providerId = canonicalTargetId(target);
   const shared: Record<string, unknown> = {};
   const mine: Record<string, string> = {};
   for (const [key, value] of Object.entries(values)) {

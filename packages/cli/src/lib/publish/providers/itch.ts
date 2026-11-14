@@ -18,6 +18,7 @@ import {
   type PublishProviderInfo,
   type PublishRequest,
 } from "../types.ts";
+import { targetInfo } from "../target-info.ts";
 
 const ITCH_HOST = "itch.io";
 const TARGET_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
@@ -27,10 +28,8 @@ const TARGET_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 const ITCH_API_TIMEOUT_MS = 15_000;
 
 const info: PublishProviderInfo = {
-  id: "itch",
-  label: "itch.io",
+  ...targetInfo("itch"),
   kind: "api",
-  format: "pdf",
   description:
     "Upload the PDF to your itch.io project page (games, zines, and other printable projects).",
   configFields: [

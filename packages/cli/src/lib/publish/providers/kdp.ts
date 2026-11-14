@@ -12,14 +12,13 @@ import type {
   PublishRequest,
 } from "../types.ts";
 import { stageGuidedPackage } from "./guided.ts";
+import { targetInfo } from "../target-info.ts";
 
 const KDP_URL = "https://kdp.amazon.com/en_US/bookshelf";
 
 const info: PublishProviderInfo = {
-  id: "kdp",
-  label: "Amazon KDP",
+  ...targetInfo("kdp"),
   kind: "guided",
-  format: "pdf",
   description:
     "Prepare a KDP-ready package and open kdp.amazon.com (Amazon has no KDP API; automation violates its ToS).",
   configFields: [],

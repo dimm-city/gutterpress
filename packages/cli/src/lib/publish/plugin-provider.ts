@@ -30,6 +30,7 @@ import { loadManifestWithPath, resolveConfig } from "../manifest.ts";
 import type { PublishPluginLocation } from "../markdown/plugins.ts";
 import { resolveVendoredPluginInstallRoot, vendoredNpmPluginPackageDir } from "../plugin-vendor.ts";
 import { listPublishProviders, publishProviderFor } from "./registry.ts";
+import { canonicalTargetId } from "../targets.ts";
 import type {
   PublishPluginFunction,
   PublishPluginResult,
@@ -57,7 +58,8 @@ interface BookExtensions {
  *  gets the rest. */
 const RESERVED_SETTINGS = new Set(["format", "credential", "enabled"]);
 
-const isBuiltIn = (id: string) => listPublishProviders().some((p) => p.id === id);
+// An older name for a built-in target (`drivethrurpg`) is still that built-in.
+const isBuiltIn = (id: string) => listPublishProviders().some((p) => p.id === canonicalTargetId(id));
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 async function bookExtensions(book: PublishBook): Promise<BookExtensions> {
@@ -164,7 +166,7 @@ function infoFor(p: Publisher): PublishProviderInfo {
     label: p.id,
     kind: "plugin",
     format: "pdf",
-    formats: ["pdf", "html"],
+    formats: ["pdf", "pdfx", "html"],
     description: p.description ?? "Publishing plugin",
     // No settings form yet: settings are edited in the manifest.
     configFields: [],

@@ -22,14 +22,13 @@ import {
   type PublishProviderInfo,
   type PublishRequest,
 } from "../types.ts";
+import { targetInfo } from "../target-info.ts";
 
 const AZURE_SWA_HOST = "azure-swa";
 
 const info: PublishProviderInfo = {
-  id: "azure-swa",
-  label: "Azure Static Web Apps",
+  ...targetInfo("azure-swa"),
   kind: "api",
-  format: "html",
   description:
     "Deploy the HTML export as a website on Azure Static Web Apps (requires the SWA CLI).",
   configFields: [{ key: "env", label: "Environment", placeholder: "production" }],

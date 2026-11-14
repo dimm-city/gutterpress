@@ -1,16 +1,13 @@
 /**
  * `#lib/publish-targets` mirrors the lib's target registry (ADR 0008) because
  * the SPA may not value-import `gutterpress` (§8). A mirror can drift, so
- * this test reads the REAL registry source and pins the two together: every
- * id the UI offers exists, none is missing, and each one's declared tool
- * needs match what the lib says that destination requires.
- *
- * Source-text parsing (not an import) keeps this PWA-clean and dependency
- * free, in the same spirit as the other pin tests in this directory.
+ * this test reads the REAL registry and pins the two together: every id the
+ * UI offers exists, none is missing, and each one's declared tool needs match
+ * what the lib says that destination requires. (A test may import the lib;
+ * the SPA may not.)
  */
 import { describe, test, expect } from "bun:test";
-import * as fs from "node:fs";
-import * as path from "node:path";
+import { TARGETS, hasOwnRules } from "../../../cli/src/lib/targets";
 import {
   PUBLISH_TARGET_CHOICES,
   PRINT_TOOL_IDS,
@@ -18,24 +15,17 @@ import {
   toolGapMessage,
 } from "../../src/lib/publish-targets";
 
-const TARGETS_SRC = path.resolve(
-  __dirname,
-  "../../../cli/src/lib/targets.ts",
-);
-
-/** `{ dtrpg: ["qpdf","gs"], itch: [] }` parsed from the lib's registry. */
+/**
+ * `{ "drivethrurpg-print": ["qpdf","gs"], itch: [], … }`: the registry's
+ * targets that hold a file to rules of their own — the ones a book is checked
+ * against, which is what these choices offer.
+ */
 function libTargets(): Record<string, string[]> {
-  const src = fs.readFileSync(TARGETS_SRC, "utf-8");
-  const out: Record<string, string[]> = {};
-  // Each target literal: id, then (further down) its requiredTools array.
-  const blocks = src.split(/const \w+_TARGET: PublishTarget = \{/).slice(1);
-  for (const block of blocks) {
-    const id = /^\s*id: "([^"]+)"/m.exec(block)?.[1];
-    const tools = /requiredTools: \[([^\]]*)\]/.exec(block)?.[1] ?? "";
-    if (!id) continue;
-    out[id] = [...tools.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
-  }
-  return out;
+  return Object.fromEntries(
+    Object.values(TARGETS)
+      .filter(hasOwnRules)
+      .map((target) => [target.id, [...target.requiredTools]]),
+  );
 }
 
 describe("publish-targets mirrors the lib registry", () => {
@@ -43,7 +33,7 @@ describe("publish-targets mirrors the lib registry", () => {
 
   test("the parse actually found the registry (guards a silently-empty pin)", () => {
     expect(Object.keys(lib).length).toBeGreaterThan(0);
-    expect(lib.dtrpg).toBeDefined();
+    expect(lib["drivethrurpg-print"]).toBeDefined();
   });
 
   test("the UI offers exactly the registered target ids", () => {
@@ -67,12 +57,12 @@ describe("publish-targets mirrors the lib registry", () => {
 describe("tool-gap messaging", () => {
   test("no message when a selected destination needs nothing missing", () => {
     expect(toolGapMessage(missingToolsForTargets(["itch"], ["qpdf", "gs"]))).toBeNull();
-    expect(toolGapMessage(missingToolsForTargets(["dtrpg"], []))).toBeNull();
+    expect(toolGapMessage(missingToolsForTargets(["drivethrurpg-print"], []))).toBeNull();
     expect(toolGapMessage(missingToolsForTargets([], ["qpdf", "gs"]))).toBeNull();
   });
 
   test("only the tools a SELECTED destination needs count", () => {
-    expect(missingToolsForTargets(["dtrpg"], ["qpdf"])).toEqual(["qpdf"]);
+    expect(missingToolsForTargets(["drivethrurpg-print"], ["qpdf"])).toEqual(["qpdf"]);
     expect(missingToolsForTargets(["itch"], ["qpdf"])).toEqual([]);
   });
 

@@ -486,7 +486,7 @@ test("a saved custom template carries its project's preset and targets", async (
 
     const [saved] = await listCustomTemplates(templatesRoot);
     expect(saved?.preset).toBe("dtrpg");
-    expect(saved?.targets).toEqual(["dtrpg", "itch"]);
+    expect(saved?.targets).toEqual(["drivethrurpg-print", "itch"]);
   } finally {
     await rm(parent, { recursive: true, force: true });
     await rm(templatesRoot, { recursive: true, force: true });

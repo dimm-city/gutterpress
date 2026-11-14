@@ -231,7 +231,9 @@ try {
   if (marginEvidence.source !== "Safe margins") {
     fail(`safe-margins finding label was ${marginEvidence.source}, expected Safe margins`);
   }
-  if (!/^\[dtrpg\] Page 1: ".+" is [\d.]+in too close to the (top|bottom|binding|outside) edge\./.test(marginEvidence.message ?? "")) {
+  // The fixture names its target the older way (`targets: [dtrpg]`); findings
+  // are tagged with the registry's name for it.
+  if (!/^\[drivethrurpg-print\] Page 1: ".+" is [\d.]+in too close to the (top|bottom|binding|outside) edge\./.test(marginEvidence.message ?? "")) {
     fail(`safe-margins finding did not name the page, words and edge: ${marginEvidence.message}`);
   }
   if (!/sev-error/.test(marginEvidence.severity ?? "")) {

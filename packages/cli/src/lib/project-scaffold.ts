@@ -33,7 +33,7 @@ import { MANIFEST_FILENAMES } from "./manifest.ts";
 import { loadManifestDoc, writeManifestDoc } from "./manifest-doc.ts";
 import { PRESET_IDS, PRESETS, type PresetId } from "./presets.ts";
 import { deletePageBounds, isPositivePoints, writePageBounds, type CustomPageOptions } from "./page-size.ts";
-import { TARGETS, TARGET_IDS } from "./targets.ts";
+import { TARGETS, TARGET_IDS, canonicalTargetId } from "./targets.ts";
 import { ensureProjectGitignore } from "./project-gitignore.ts";
 import { slugify } from "./slug.ts";
 
@@ -247,7 +247,8 @@ function resolveScaffoldTargets(
   requested: string[] | undefined,
   preset: PresetId,
 ): string[] {
-  const ids = requested ?? [...PRESETS[preset].defaultTargets];
+  // Recorded under the registry's own names (an older name is accepted).
+  const ids = (requested ?? [...PRESETS[preset].defaultTargets]).map(canonicalTargetId);
   const unknown = ids.filter((id) => !TARGETS[id]);
   if (unknown.length > 0) {
     throw new CreateProjectErrorImpl(

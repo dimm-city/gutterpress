@@ -37,6 +37,7 @@ import {
   applyDefaultPdfStrictChecks,
   publishTargetFor,
   resolveTargets,
+  ruleTargets,
   type PublishTarget,
 } from "./targets";
 import type { GutterpressManifest, ResolvedConfig } from "../schema/manifest.types";
@@ -438,11 +439,12 @@ export async function executeValidation(
     args.skipStylelint ? { checks: { "source.stylelint": "off" } } : {},
     manifest
   );
-  // Explicit --target overrides the manifest's targets for this run; both go
-  // through the registry so an unknown id fails loudly either way.
-  const targetIds = resolveTargets(
-    parseCsv(typeof args.target === "string" ? args.target : undefined),
-    config.targets
+  // Explicit --target overrides the book's targets for this run, and an
+  // unknown id there fails loudly. Only targets with rules of their own get a
+  // run: the rest (a Drive folder, a local folder) add no rules to check.
+  const requestedTargets = parseCsv(typeof args.target === "string" ? args.target : undefined);
+  const targetIds = ruleTargets(
+    requestedTargets ? resolveTargets(requestedTargets, []) : config.targets
   );
   const pdfPath = typeof args.pdf === "string" ? resolve(args.pdf) : undefined;
   const inputDir = typeof args.input === "string" ? resolve(args.input) : undefined;

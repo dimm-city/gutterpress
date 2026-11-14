@@ -70,7 +70,7 @@ test("custom preset resolves the author's geometry with the presets' 0.5pt toler
 });
 
 test("each preset carries its default publish targets into the resolved config", () => {
-  expect(resolveConfig({}, { preset: "dtrpg" }).targets).toEqual(["dtrpg"]);
+  expect(resolveConfig({}, { preset: "dtrpg" }).targets).toEqual(["drivethrurpg-print"]);
   expect(resolveConfig({}, { preset: "book" }).targets).toEqual([]);
 });
 
@@ -108,7 +108,7 @@ test("an explicit signature always wins over the preset's, at any trim size", ()
 
 test("manifest targets override the preset's defaults and are validated", () => {
   const config = resolveConfig({}, { preset: "book", targets: ["dtrpg", "itch"] });
-  expect(config.targets).toEqual(["dtrpg", "itch"]);
+  expect(config.targets).toEqual(["drivethrurpg-print", "itch"]);
   expect(() => resolveConfig({}, { preset: "book", targets: ["kdp-express"] })).toThrow(
     /Unknown publish target/
   );

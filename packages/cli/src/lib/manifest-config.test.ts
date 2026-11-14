@@ -278,7 +278,8 @@ describe("manifest-config", () => {
 
       const out = await setManifestFields(dir, { targets: ["dtrpg", "itch"] });
 
-      expect(out.targets).toEqual(["dtrpg", "itch"]);
+      // The older name is accepted and recorded under the registry's own.
+      expect(out.targets).toEqual(["drivethrurpg-print", "itch"]);
       expect(readManifest(dir)).toContain("targets:");
     });
 

@@ -414,7 +414,7 @@ test("a book with no targets: key and preset dtrpg shows DriveThruRPG checked, a
     pageSetup: { preset: "dtrpg", bounds: { width: 621, height: 810, tolerance: 0.5 }, margins: INCH, marginsFrom: "default" },
   });
   await h.ctrl.loadDetails();
-  expect(h.ctrl.targetsDraft).toEqual(["dtrpg"]);
+  expect(h.ctrl.targetsDraft).toEqual(["drivethrurpg-print"]);
   h.ctrl.titleDraft = "Renamed";
   await h.ctrl.flushPendingSave();
   expect(h.writeCalls.map((w) => w.updates)).toEqual([{ title: "Renamed" }]);
@@ -426,11 +426,11 @@ test("changing the preset on a book with no targets: key reseeds the default tar
   expect(h.ctrl.targetsDraft).toEqual([]);
   h.ctrl.setPreset("dtrpg");
   await settle();
-  expect(h.ctrl.targetsDraft).toEqual(["dtrpg"]);
+  expect(h.ctrl.targetsDraft).toEqual(["drivethrurpg-print"]);
   // The preset change wrote the page size, never the (still implicit) targets.
   expect(h.pageWrites).toEqual([{ size: { preset: "dtrpg" } }]);
   expect(h.writeCalls).toEqual([]);
-  h.ctrl.toggleTarget("dtrpg");
+  h.ctrl.toggleTarget("drivethrurpg-print");
   await settle();
   expect(h.writeCalls.map((w) => w.updates)).toEqual([{ targets: [] }]);
   h.ctrl.setPreset("book");

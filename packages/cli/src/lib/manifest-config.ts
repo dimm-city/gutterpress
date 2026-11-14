@@ -20,7 +20,7 @@ import {
   writeManifestDoc as writeDoc,
   scalarString,
 } from "./manifest-doc";
-import { TARGETS, TARGET_IDS } from "./targets";
+import { TARGETS, TARGET_IDS, canonicalTargetId } from "./targets";
 import { UsageError } from "./cli-args";
 import { rewriteOldThresholds } from "./manifest-old-spellings";
 
@@ -78,7 +78,8 @@ export async function setManifestFields(
   }
 
   if (hasKey(updates, "targets")) {
-    const t = updates.targets;
+    // Recorded under the registry's own names (an older name is accepted).
+    const t = updates.targets?.map(canonicalTargetId);
     if (t === undefined) {
       doc.delete("targets");
     } else {
@@ -134,7 +135,8 @@ export async function readManifestFields(projectDir: string): Promise<ProjectCon
     if (isSeq(targetsNode)) {
       out.targets = (targetsNode.items as unknown[])
         .map((i) => scalarString(i))
-        .filter((s): s is string => s !== null);
+        .filter((s): s is string => s !== null)
+        .map(canonicalTargetId);
     }
     // `chapters`, or an older book's `source.files` (read until it is rewritten).
     const sourceNode = doc.get("source", true);

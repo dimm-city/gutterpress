@@ -15,7 +15,7 @@ import type {
 import { isNonNegativePoints } from "../engine/shared/print-area";
 import { isPathSpecifier, parseExtensionSpecifier } from "./extension-specifier";
 import { resolvePreset, type VendorPreset } from "./presets";
-import { overlayPreset, publishTargetFor, resolveTargets } from "./targets";
+import { bookTargets, overlayPreset, publishTargetFor, resolveTargets } from "./targets";
 import { UsageError } from "./cli-args";
 import { TWO_VERSIONS_OPEN } from "./two-versions-markers";
 import { readOldSpellings } from "./manifest-old-spellings";
@@ -500,7 +500,10 @@ function resolveWithPreset(
     // would defeat that documented fallback chain on every real render path.
     styles: c.styles ?? m.styles,
     extensions,
-    targets: resolveTargets(c.targets ?? m.targets, preset.defaultTargets),
+    // Where the book goes (ADR 0012): `--target` for this run, else what the
+    // manifest names (`publish:`, or an older book's `targets:` and ticks),
+    // else the preset's.
+    targets: c.targets !== undefined ? resolveTargets(c.targets, []) : bookTargets(m, preset.defaultTargets),
     chapters: c.chapters ?? m.chapters ?? preset.chapters,
     // An open dictionary keyed by check or rule id: merged key by key, the
     // preset's (and the target's) levels first, then the manifest's, then

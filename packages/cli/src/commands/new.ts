@@ -11,6 +11,7 @@ import {
   PRESET_IDS,
   TARGETS,
   TARGET_IDS,
+  canonicalTargetId,
 } from "../index.ts";
 import type {
   CreateProjectError,
@@ -323,7 +324,7 @@ export default defineCommand({
       targets =
         args.targets.trim().toLowerCase() === "none"
           ? []
-          : args.targets.split(",").map((s) => s.trim()).filter(Boolean);
+          : args.targets.split(",").map((s) => canonicalTargetId(s.trim())).filter(Boolean);
       const unknown = targets.filter((id) => !TARGETS[id]);
       if (unknown.length > 0) {
         console.error(
