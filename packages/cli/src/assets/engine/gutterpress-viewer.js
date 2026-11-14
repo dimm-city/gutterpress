@@ -17,37 +17,37 @@
   // src/engine/viewer/fragment.ts
   var exports_fragment = {};
   __export(exports_fragment, {
-    PX_PER_PT: () => PX_PER_PT,
-    applySpreadMode: () => applySpreadMode,
-    blankPageIndices: () => blankPageIndices,
-    buildStrips: () => buildStrips,
-    collectCssText: () => collectCssText,
-    columnReserve: () => columnReserve,
-    compensateRectoBreaks: () => compensateRectoBreaks,
-    contentEdgeRect: () => contentEdgeRect,
-    cssZoomOf: () => cssZoomOf,
-    extendSpanningPageRoots: () => extendSpanningPageRoots,
-    fragmentDocument: () => fragmentDocument,
-    indexInStrip: () => indexInStrip,
-    injectBreakMapping: () => injectBreakMapping,
-    injectPageVars: () => injectPageVars,
-    injectViewerCss: () => injectViewerCss,
-    loadStyleSources: () => loadStyleSources,
-    makeOverflowFragmentable: () => makeOverflowFragmentable,
-    measure: () => measure,
-    padToSignature: () => padToSignature,
-    pageOf: () => pageOf,
-    pageRangeOf: () => pageRangeOf,
-    rowStrideOf: () => rowStrideOf,
-    runPageBox: () => runPageBox,
-    spreadModeSupported: () => spreadModeSupported,
-    stabilizeFullHeightPageRoots: () => stabilizeFullHeightPageRoots,
-    strideOf: () => strideOf,
-    stripMetrics: () => stripMetrics,
-    synthesizeColumnBreaks: () => synthesizeColumnBreaks,
-    versoShiftPt: () => versoShiftPt,
+    wrapGeometry: () => wrapGeometry,
     waitForLayoutReady: () => waitForLayoutReady,
-    wrapGeometry: () => wrapGeometry
+    versoShiftPt: () => versoShiftPt,
+    synthesizeColumnBreaks: () => synthesizeColumnBreaks,
+    stripMetrics: () => stripMetrics,
+    strideOf: () => strideOf,
+    stabilizeFullHeightPageRoots: () => stabilizeFullHeightPageRoots,
+    spreadModeSupported: () => spreadModeSupported,
+    runPageBox: () => runPageBox,
+    rowStrideOf: () => rowStrideOf,
+    pageRangeOf: () => pageRangeOf,
+    pageOf: () => pageOf,
+    padToSignature: () => padToSignature,
+    measure: () => measure,
+    makeOverflowFragmentable: () => makeOverflowFragmentable,
+    loadStyleSources: () => loadStyleSources,
+    injectViewerCss: () => injectViewerCss,
+    injectPageVars: () => injectPageVars,
+    injectBreakMapping: () => injectBreakMapping,
+    indexInStrip: () => indexInStrip,
+    fragmentDocument: () => fragmentDocument,
+    extendSpanningPageRoots: () => extendSpanningPageRoots,
+    cssZoomOf: () => cssZoomOf,
+    contentEdgeRect: () => contentEdgeRect,
+    compensateRectoBreaks: () => compensateRectoBreaks,
+    columnReserve: () => columnReserve,
+    collectCssText: () => collectCssText,
+    buildStrips: () => buildStrips,
+    blankPageIndices: () => blankPageIndices,
+    applySpreadMode: () => applySpreadMode,
+    PX_PER_PT: () => PX_PER_PT
   });
 
   // src/engine/viewer/viewer.css
@@ -289,6 +289,7 @@
 
 .gp-sheet {
   position: absolute;
+  box-sizing: border-box;
   top: 0;
   width: var(--gp-page-w);
   height: var(--gp-page-h);
@@ -383,17 +384,17 @@
   // src/engine/shared/gcpm-extract.ts
   var exports_gcpm_extract = {};
   __export(exports_gcpm_extract, {
-    DEFAULT_PAGE_MARGIN_PT: () => DEFAULT_PAGE_MARGIN_PT,
-    MARGIN_BOX_NAMES: () => MARGIN_BOX_NAMES,
-    PAGE_SIZES: () => PAGE_SIZES,
-    extract: () => extract,
-    mediaPrintBodies: () => mediaPrintBodies,
-    parseDeclarations: () => parseDeclarations,
-    parseMargin: () => parseMargin,
-    parseSize: () => parseSize,
-    resolvePage: () => resolvePage,
+    toPt: () => toPt,
     splitTopLevel: () => splitTopLevel,
-    toPt: () => toPt
+    resolvePage: () => resolvePage,
+    parseSize: () => parseSize,
+    parseMargin: () => parseMargin,
+    parseDeclarations: () => parseDeclarations,
+    mediaPrintBodies: () => mediaPrintBodies,
+    extract: () => extract,
+    PAGE_SIZES: () => PAGE_SIZES,
+    MARGIN_BOX_NAMES: () => MARGIN_BOX_NAMES,
+    DEFAULT_PAGE_MARGIN_PT: () => DEFAULT_PAGE_MARGIN_PT
   });
   var MARGIN_BOX_NAMES = [
     "top-left-corner",
@@ -1251,6 +1252,48 @@
     ].join(`
 `);
   }
+  function pagePseudoContexts(model) {
+    const used = new Set(model.pageRules.flatMap((rule) => rule.pseudos));
+    const standard = new Set(["left", "right", "recto", "verso", "first", "blank"]);
+    const choices = (a, b) => [
+      undefined,
+      ...used.has(a) ? [a] : [],
+      ...used.has(b) ? [b] : []
+    ];
+    const physical = choices("left", "right");
+    const progression = choices("recto", "verso");
+    const first = used.has("first") ? [false, true] : [false];
+    const blank = used.has("blank") ? [false, true] : [false];
+    const standardContexts = [];
+    for (const p of physical)
+      for (const r of progression)
+        for (const f of first)
+          for (const b of blank)
+            standardContexts.push([
+              ...p ? [p] : [],
+              ...r ? [r] : [],
+              ...f ? ["first"] : [],
+              ...b ? ["blank"] : []
+            ]);
+    const authoredExactSets = [
+      [],
+      ...model.pageRules.map((rule) => rule.pseudos.filter((pseudo) => !standard.has(pseudo)))
+    ];
+    const contexts = new Map;
+    for (const exact of authoredExactSets) {
+      for (const common of standardContexts) {
+        const context = [...new Set([...exact, ...common])].sort();
+        contexts.set(context.join("\x00"), context);
+      }
+    }
+    return [...contexts.values()];
+  }
+  function contentHeightPt(model, name) {
+    return Math.min(...pagePseudoContexts(model).map((pseudos) => {
+      const { geometry } = resolvePage(model, { name, pseudos });
+      return geometry.height - geometry.margin.top - geometry.margin.bottom;
+    }));
+  }
 
   // src/engine/shared/page-root-span.ts
   function spanningMinHeight(height, content, offset = 0) {
@@ -2027,13 +2070,13 @@
   // src/engine/shared/content-value.ts
   var exports_content_value = {};
   __export(exports_content_value, {
-    evaluate: () => evaluate,
-    evaluateContent: () => evaluateContent,
-    formatCounter: () => formatCounter,
-    needsMeasurement: () => needsMeasurement,
-    parseContent: () => parseContent,
+    unquote: () => unquote,
     resolveUrlArg: () => resolveUrlArg,
-    unquote: () => unquote
+    parseContent: () => parseContent,
+    needsMeasurement: () => needsMeasurement,
+    formatCounter: () => formatCounter,
+    evaluateContent: () => evaluateContent,
+    evaluate: () => evaluate
   });
   var FUNC = /^([a-z-]+)\(/i;
   function parseContent(value) {
@@ -2845,8 +2888,15 @@
       sheet.style.setProperty(p, value);
     }
   }
+  function positionFromPageArea(sheet, g, contentH) {
+    const m = g.margin;
+    sheet.style.padding = `${px(m.top)} ${px(m.right)} ${px(m.bottom)} ${px(m.left)}`;
+    sheet.style.backgroundOrigin = "content-box";
+    sheet.style.setProperty("--gp-content-h", contentH);
+  }
   function decorate(layout, opts = {}) {
     const model = layout.model;
+    const contentH = px(contentHeightPt(model));
     const sheets = new Map;
     let blankPages = new Set;
     let paddedPages = new Set;
@@ -3097,6 +3147,7 @@
           if (!ctx.padded)
             for (const [prop, value] of canvasBg)
               sheet.style.setProperty(prop, value);
+          positionFromPageArea(sheet, ctx.geometry, contentH);
           layer.appendChild(sheet);
           sheets.set(bookIndex, sheet);
           drawMarginBoxes(sheet, ctx, layout.totalPages - paddedPages.size);

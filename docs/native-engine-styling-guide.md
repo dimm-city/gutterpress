@@ -24,6 +24,12 @@ something makes one. Almost every gotcha below is a consequence of that.
   margins.** A full-bleed texture needs two layers: `html { background: … }`
   for the content area, plus `@page` margin boxes carrying the same background
   for the margin band (all 16 boxes if you want a seamless frame).
+- **An `@page { background }` is positioned from the page area's corner, not the
+  sheet's.** It paints the whole sheet, margins and bleed included, but `0 0` is
+  the top-left corner inside the margins, a percentage is not reliable vertically,
+  and `background-origin` is ignored (measured). To pin a texture to the sheet's
+  edge, offset it by the margins, e.g. `calc(-1 * var(--gp-page-margin-top))` for
+  the top. The preview positions it the same way.
 - **Don't use `position: fixed` for per-page backdrops.** It's
   viewport-dependent and unreliable under print. The `html` background is
   viewport-independent and repeats correctly on every page.

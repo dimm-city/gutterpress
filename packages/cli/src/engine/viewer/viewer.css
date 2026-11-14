@@ -236,6 +236,7 @@
 
 .gp-sheet {
   position: absolute;
+  box-sizing: border-box;
   top: 0;
   width: var(--gp-page-w);
   height: var(--gp-page-h);

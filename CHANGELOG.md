@@ -5,6 +5,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The preview placed a page background from the sheet's corner; print places it from the
+  text area's.** An `@page` background paints the whole sheet in both, but print measures its
+  position from the corner inside the page margins. The preview measured from the sheet's
+  edge, so a texture that ran straight across a spread in the PDF jumped at the spine on
+  screen, by the page margins. The preview now positions page and document backgrounds the way
+  print does, and resolves `--gp-content-h` in them to the same value.
+
 ## [0.11.25] - 2026-11-13
 
 ### Added
