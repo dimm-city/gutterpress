@@ -15,8 +15,10 @@ const [book = "", shots = "shots"] = process.argv.slice(2);
 mkdirSync(shots, { recursive: true });
 const app = await _electron.launch({
   executablePath: resolve("node_modules/electron/dist/electron"),
-  args: ["--no-sandbox", "--disable-gpu", "out/main/main.js"],
-  env: { ...process.env, HOME: process.env.GP_HOME ?? "/tmp/gphome" }, // isolated settings/recents
+  // Not --disable-gpu: with it a PDF build's render window never finishes
+  // laying out under xvfb. ELECTRON_DISABLE_GPU is what the integration drives use.
+  args: ["--no-sandbox", "out/main/main.js"],
+  env: { ...process.env, ELECTRON_DISABLE_GPU: "1", HOME: process.env.GP_HOME ?? "/tmp/gphome" }, // isolated settings/recents
   timeout: 60000,
 });
 const p = await app.firstWindow();

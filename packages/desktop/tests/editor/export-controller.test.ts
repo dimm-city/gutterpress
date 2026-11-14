@@ -81,11 +81,11 @@ test("syncProgress adopts the first exportId and folds in state + pages", () => 
   expect(ctrl.activeExportId).toBe("exp-1");
   expect(ctrl.state).toBe("rendering");
   expect(ctrl.pages).toBe(5);
-  expect(ctrl.pdfProgress).toBe("Exporting page 5…");
+  expect(ctrl.pdfProgress).toBe("Opening your book…");
 
   ctrl.syncProgress(ev({ state: "finalizing", pages: 12 }));
   expect(ctrl.state).toBe("finalizing");
-  expect(ctrl.pdfProgress).toBe("Finalizing PDF (12 pages)…");
+  expect(ctrl.pdfProgress).toBe("Laying out and writing the PDF (12 pages)…");
 });
 
 test("syncProgress ignores events from a different export id", () => {
@@ -102,9 +102,9 @@ test("rendering/finalizing labels fall back when no page count is known", () => 
   const { ctrl } = makeController();
   ctrl.start();
   ctrl.syncProgress(ev({ state: "rendering" }));
-  expect(ctrl.pdfProgress).toBe("Exporting…");
+  expect(ctrl.pdfProgress).toBe("Opening your book…");
   ctrl.syncProgress(ev({ state: "finalizing" }));
-  expect(ctrl.pdfProgress).toBe("Finalizing PDF…");
+  expect(ctrl.pdfProgress).toBe("Laying out and writing the PDF…");
 });
 
 test("markCanceling shows a fixed label with no elapsed suffix", () => {
@@ -592,8 +592,19 @@ test("buildTo() PDF inside the book builds straight into the folder with no dial
   expect(deps.chooseSavePath.calls.length).toBe(0);
   expect(deps.buildPdf.calls[0]![1]).toBe("/proj/dist/My Book.pdf");
   expect(deps.buildPdf.calls[0]![2]).toEqual({ validate: true, allowShrink: false });
-  expect(result).toBe("/proj/dist/My Book.pdf");
+  expect(result).toEqual({ path: "/proj/dist/My Book.pdf", findings: [] });
   expect(ctrl.state).toBe("idle");
+});
+
+test("buildTo() PDF hands the findings to the wizard that asked: no toasts, no settle wait", async () => {
+  const { ctrl, deps } = makeHostController();
+  const findings = [finding({ severity: "error", message: "Too close to the edge" })];
+  deps.buildPdf.impl = async () => ({ exportId: "exp-1", pdfPath: "/proj/dist/My Book.pdf", findings });
+  const result = await ctrl.buildTo({ format: "pdf", dir: "/proj/dist", validate: true });
+  expect(result).toEqual({ path: "/proj/dist/My Book.pdf", findings });
+  expect(deps.toastSuccess.calls.length).toBe(0);
+  expect(deps.toastWarning.calls.length).toBe(0);
+  expect(deps.wait.calls.length).toBe(0);
 });
 
 test("buildTo() PDF outside the book confirms the destination in the Save dialog, pre-pointed at that folder", async () => {
@@ -603,7 +614,7 @@ test("buildTo() PDF outside the book confirms the destination in the Save dialog
   const result = await ctrl.buildTo({ format: "pdf", dir: "/elsewhere", validate: false });
   expect(deps.chooseSavePath.calls).toEqual([["My Book.pdf", "/elsewhere"]]);
   expect(deps.buildPdf.calls[0]![1]).toBe("/elsewhere/My Book.pdf");
-  expect(result).toBe("/elsewhere/My Book.pdf");
+  expect(result).toEqual({ path: "/elsewhere/My Book.pdf", findings: [] });
 });
 
 test("buildTo() resolves null (no build) when the author cancels the dialog, and when a build fails", async () => {
@@ -618,16 +629,14 @@ test("buildTo() resolves null (no build) when the author cancels the dialog, and
   expect(deps.toastError.calls[0]![0]).toBe("friendly: boom");
 });
 
-test("buildTo() website builds the folder and offers Show in Folder", async () => {
+test("buildTo() website builds the folder and leaves announcing it to the wizard", async () => {
   const { ctrl, deps } = makeHostController();
   deps.buildHtml.impl = async () => ({ outDir: "/proj/dist" });
   const result = await ctrl.buildTo({ format: "html", dir: "/proj/dist" });
   expect(deps.buildHtml.calls[0]).toEqual([{ key: "/proj", displayName: "My Book" }, "/proj/dist"]);
   expect(deps.pickOutputFolder.calls.length).toBe(0);
-  expect(result).toBe("/proj/dist");
-  expect(deps.toastSuccess.calls[0]![0]).toBe("Website saved to /proj/dist");
-  deps.toastSuccess.calls[0]![2]?.onClick();
-  expect(deps.showInFolder.calls).toEqual([["/proj/dist"]]);
+  expect(result).toEqual({ path: "/proj/dist", findings: [] });
+  expect(deps.toastSuccess.calls.length).toBe(0);
   expect(ctrl.exporting).toBe(false);
 });
 
@@ -637,7 +646,7 @@ test("buildTo() website outside the book confirms the folder in the folder dialo
   const result = await ctrl.buildTo({ format: "html", dir: "/out/site" });
   expect(deps.pickOutputFolder.calls).toEqual([["/out/site"]]);
   expect(deps.buildHtml.calls[0]![1]).toBe("/out/site");
-  expect(result).toBe("/out/site");
+  expect(result).toEqual({ path: "/out/site", findings: [] });
 });
 
 test("buildTo() honours the readiness warning and the one in-flight guard like savePdf", async () => {

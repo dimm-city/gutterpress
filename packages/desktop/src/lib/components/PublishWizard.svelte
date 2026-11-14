@@ -3,15 +3,16 @@
    * PublishWizard — front-and-centre publishing flow opened from the toolbar
    * Publish button.
    *
-   * Flow is DYNAMIC: [format] → [choose destinations] → one setup step PER
-   * selected destination → [preflight] → [publish]. No long scrolling form —
-   * each destination gets its own focused step.
+   * Flow is DYNAMIC (`wizardSteps`): [format] → [choose destinations] → one
+   * setup step PER online destination → [check, only when the author asked
+   * for checks] → [save/publish]. No long scrolling form — each destination
+   * gets its own focused step.
    *
    * The first destination is always "A folder on this computer" (the lib's
-   * `local` provider): Publish BUILDS the book there first,
-   * then uploads that artifact to every other selected destination. So a
-   * publish with no online destination is exactly a plain export, and an
-   * online publish never depends on a stale build.
+   * `local` provider), chosen on the Choose step: Publish BUILDS the book
+   * there first, then uploads that artifact to every other selected
+   * destination. So a publish with no online destination is exactly a plain
+   * export, and an online publish never depends on a stale build.
    *
    * Opens in the shared AppView layer like Book setup; form controls and
    * the `.app-btn-*` buttons follow the rest of the app.
@@ -50,7 +51,9 @@
   import type { ProblemEntry } from "#lib/platform/dtos.ts";
   import type { PublishProviderCard } from "#lib/platform/contract.ts";
   import type { PublishSectionController } from "#lib/routes/publish-section-controller.svelte.ts";
+  import type { BuildToResult } from "#lib/export/export-controller.svelte.ts";
   import { isPathAtOrUnder, joinPath } from "#lib/platform/paths.ts";
+  import { wizardSteps, displayPath, isCommandLineTip } from "#lib/publish-wizard.ts";
 
   /** The lib's "A folder on this computer" provider id. */
   const LOCAL = "local";
@@ -66,12 +69,26 @@
     onClose,
     onNavigate,
     onManageAccounts,
+    onReviewProblems,
+    progress = null,
+    onCancelBuild,
+    canCancelBuild = false,
+    saveWarning = null,
   }: {
     controller: PublishSectionController;
     projectDir: string;
     /** Build the book into `dir` (ExportController.buildTo): resolves with the
-     *  artifact path, or null when canceled/failed (already toasted). */
-    buildArtifact: (opts: { format: "pdf" | "html"; dir: string; validate: boolean }) => Promise<string | null>;
+     *  artifact path and what the PDF checks found, or null when
+     *  canceled/failed (already toasted). */
+    buildArtifact: (opts: { format: "pdf" | "html"; dir: string; validate: boolean }) => Promise<BuildToResult | null>;
+    /** The running build's progress words (ExportController.pdfProgress). */
+    progress?: string | null;
+    onCancelBuild?: () => void;
+    canCancelBuild?: boolean;
+    /** Why the last build could not start (the book is still loading, a tool is missing). */
+    saveWarning?: string | null;
+    /** Close the wizard and open the Problems list (the saved PDF's findings). */
+    onReviewProblems?: () => void;
     /** Native folder dialog for the local destination; null when canceled. */
     pickFolder: (defaultPath: string) => Promise<string | null>;
     onShowInFolder: (path: string) => void;
@@ -85,8 +102,7 @@
     onManageAccounts?: () => void;
   } = $props();
 
-  // 0 = format; 1 = choose; 2..N+1 = setup step for selectedCards[i-2];
-  // N+2 = preflight; N+3 = publish.
+  // An index into `steps` (wizardSteps).
   let stepIndex = $state(0);
   // The local folder is always selected: it is where the book gets built.
   let selected = $state<Set<string>>(new Set([LOCAL]));
@@ -94,7 +110,12 @@
   let validate = $state(false);
   // The artifact the Publish step built (the PDF file or the website folder).
   let builtArtifact = $state<string | null>(null);
+  // How many problems the checks found in the saved PDF (only when asked).
+  let pdfFindings = $state(0);
   let publishing = $state(false);
+  // Preflight groups showing every row, not just the first few.
+  let expandedGroups = $state<Set<string>>(new Set());
+  const GROUP_PREVIEW = 5;
   // Preflight override (#105): the author may publish past blocking errors, but
   // only after an explicit inline confirmation.
   let publishAnyway = $state(false);
@@ -163,32 +184,22 @@
   });
   /** A folder outside the book is the author's own: kept on this computer, not in the book. */
   const localOutside = $derived(!isPathAtOrUnder(localDir, projectDir));
-  const totalSteps = $derived(selectedCards.length + 4);
-  // Publish is the strict last index; preflight sits one before it.
-  const stepKind = $derived(
-    stepIndex === 0
-      ? "format"
-      : stepIndex === 1
-        ? "choose"
-        : stepIndex === totalSteps - 1
-          ? "publish"
-          : stepIndex === totalSteps - 2
-            ? "preflight"
-            : "setup",
-  );
-  const currentCard = $derived(
-    stepKind === "setup" ? (selectedCards[stepIndex - 2] ?? null) : null,
-  );
-  const stepLabels = $derived([
-    "Format",
-    "Choose",
-    ...selectedCards.map((c) => (c.id === LOCAL ? "Folder" : c.label)),
-    "Preflight",
-    "Publish",
-  ]);
-  const blockedCards = $derived(
-    selectedCards.filter((c) => c.credentialRequired && !c.connected),
-  );
+  const steps = $derived(wizardSteps(onlineCards, validate));
+  const step = $derived(steps[Math.min(stepIndex, steps.length - 1)]!);
+  const stepKind = $derived(step.kind);
+  const isLast = $derived(stepIndex >= steps.length - 1);
+  const cardFor = (s: (typeof steps)[number]) =>
+    s.kind === "setup" ? (onlineCards.find((c) => c.id === s.cardId) ?? null) : null;
+  const currentCard = $derived(cardFor(step));
+  const needsAccount = (c: PublishProviderCard) => c.credentialRequired && !c.connected;
+  /** Online destinations the Publish step skips (no account yet), and the ones it sends to. */
+  const blockedCards = $derived(onlineCards.filter(needsAccount));
+  const readyCards = $derived(onlineCards.filter((c) => !needsAccount(c)));
+  const formatName = $derived(format === "pdf" ? "PDF" : "website");
+  /** What the last button does: Publish only when it will send the book somewhere. */
+  const action = $derived(readyCards.length > 0 ? "Publish" : "Save");
+  /** The built artifact is saved: the wizard is finished unless the author wants more. */
+  const finished = $derived(builtArtifact !== null && !publishing);
 
   // ── Preflight gate (#105) ───────────────────────────────────────────────────
   // A blocking ERROR disables Publish by default; the author may override with an
@@ -204,8 +215,9 @@
   const preflightBlocks = $derived(
     controller.preflightRan && preflightErrorCount > 0 && !publishAnyway,
   );
-  /** Publish actions are disabled while preflight hasn't run, errored, or blocks. */
-  const publishGated = $derived(preflightMissing || preflightErrored || preflightBlocks);
+  /** When the author asked for checks, Publish waits for them: disabled while
+   *  they haven't run, errored, or block. Without checks nothing is gated. */
+  const publishGated = $derived(validate && (preflightMissing || preflightErrored || preflightBlocks));
 
   onMount(() => {
     stepIndex = 0;
@@ -224,21 +236,24 @@
   }
 
   function close() {
+    // A build in progress is canceled from its own row, not by leaving.
+    if (publishing) return;
     onClose?.();
   }
   /** Entering a step may need to react (no $effect — driven by these
    *  step-change event handlers, CLAUDE.md §8): a FORWARD entry into the
-   *  Preflight step runs its checks; a connected setup step with a folder
+   *  Check step runs its checks; a connected setup step with a folder
    *  picker (#221) loads it, so revisiting the step after connecting (or
    *  coming back to it) shows current folders without a manual refresh.
    *  `direction` matters ONLY for the preflight rerun —
-   *  stepping BACK into Preflight from Publish must not re-run it and
+   *  stepping BACK into Check from Publish must not re-run it and
    *  silently clear an override the author already granted; see
    *  `entersPreflightForward`'s doc comment for the full story. */
   function enterStep(target: number, direction: "forward" | "back") {
     stepIndex = target;
-    if (entersPreflightForward(direction, target, totalSteps)) runPreflightNow();
-    const card = selectedCards[target - 2];
+    const s = steps[target];
+    if (entersPreflightForward(direction, s?.kind)) runPreflightNow();
+    const card = s ? cardFor(s) : null;
     if (card?.connected && card.destinations) void controller.loadDestinations(card.id);
     // A destination that takes both formats (gdrive) follows the wizard's
     // format choice — written to its manifest setting like any other pick.
@@ -246,16 +261,30 @@
       void controller.selectFormat(card.id, format);
     }
   }
-  async function next() {
-    // Leaving Choose saves the ticks in the manifest; stay here if that fails.
+  /** Leaving a step saves what was chosen on it; false (stay) when that fails. */
+  async function saveStep(): Promise<boolean> {
     if (stepKind === "choose") {
       const shown = visibleCards.filter((c) => c.id !== LOCAL);
-      if (!(await controller.saveDestinations(Object.fromEntries(shown.map((c) => [c.id, selected.has(c.id)]))))) return;
+      return controller.saveDestinations(Object.fromEntries(shown.map((c) => [c.id, selected.has(c.id)])));
     }
-    enterStep(Math.min(stepIndex + 1, totalSteps - 1), "forward");
+    if (currentCard && Object.keys(controller.publishConfigDrafts[currentCard.id] ?? {}).length > 0) {
+      await controller.savePublishConfig(currentCard.id);
+      return !controller.publishError;
+    }
+    return true;
   }
-  function back() {
+  async function next() {
+    if (!(await saveStep())) return;
+    enterStep(Math.min(stepIndex + 1, steps.length - 1), "forward");
+  }
+  async function back() {
+    if (!(await saveStep())) return;
     enterStep(Math.max(stepIndex - 1, 0), "back");
+  }
+  /** Jump to a destination's setup step (from the Publish step's "Set it up"). */
+  function setUp(card: PublishProviderCard) {
+    const target = steps.findIndex((s) => s.kind === "setup" && s.cardId === card.id);
+    if (target >= 0) enterStep(target, "back");
   }
   function runPreflightNow() {
     // Re-running invalidates any prior "publish anyway" override.
@@ -296,13 +325,14 @@
     if (publishGated || publishing) return; // preflight gate (belt-and-braces with the disabled state)
     publishing = true;
     builtArtifact = null;
+    pdfFindings = 0;
     try {
-      const artifact = await buildArtifact({ format, dir: localDir, validate });
-      if (!artifact) return;
-      builtArtifact = artifact;
-      for (const card of onlineCards) {
-        if (card.credentialRequired && !card.connected) continue;
-        await controller.runPublish(card.id, false, artifact);
+      const built = await buildArtifact({ format, dir: localDir, validate });
+      if (!built) return;
+      builtArtifact = built.path;
+      pdfFindings = built.findings.filter((f) => f.severity !== "info").length;
+      for (const card of readyCards) {
+        await controller.runPublish(card.id, false, built.path);
       }
     } finally {
       publishing = false;
@@ -314,12 +344,19 @@
 
   <!-- Dynamic step indicator: Choose → each destination → Publish -->
   <ol class="steps" aria-label="Publishing steps">
-    {#each stepLabels as label, i (i)}
-      <li class:done={stepIndex > i} class:current={stepIndex === i} aria-current={stepIndex === i ? "step" : undefined}>
-        <!-- The check Icon is aria-hidden (like every Icon); the sr-only text
-             keeps the completed state announced. -->
-        <span class="step-dot">{#if stepIndex > i}<Icon name="check" size={12} /><span class="sr-only">Completed:</span>{:else}{i + 1}{/if}</span>
-        <span class="step-label">{label}</span>
+    {#each steps as s, i (i)}
+      {@const card = cardFor(s)}
+      {@const attention = stepIndex > i && card !== null && needsAccount(card)}
+      <li class:done={stepIndex > i && !attention} class:attention class:current={stepIndex === i} aria-current={stepIndex === i ? "step" : undefined}>
+        <!-- Icons are aria-hidden (like every Icon); the sr-only text keeps
+             the state announced. A passed destination without an account is
+             not done: it is skipped when publishing. -->
+        <span class="step-dot">
+          {#if attention}<Icon name="triangle-alert" size={12} /><span class="sr-only">Needs setup:</span>
+          {:else if stepIndex > i}<Icon name="check" size={12} /><span class="sr-only">Completed:</span>
+          {:else}{i + 1}{/if}
+        </span>
+        <span class="step-label">{s.label}</span>
       </li>
     {/each}
   </ol>
@@ -355,17 +392,18 @@
           </label>
         </li>
       </ul>
-      {#if format === "pdf"}
-        <label class="setting">
-          <input type="checkbox" bind:checked={validate} />
-          <span class="dest-main">
-            <span class="setting-title">Run print-safety validation</span>
-            <span class="dest-desc">Checks the output before and after the build. Slower, but catches print problems early.</span>
+      <label class="setting">
+        <input type="checkbox" bind:checked={validate} />
+        <span class="dest-main">
+          <span class="setting-title">Check my book before saving</span>
+          <span class="dest-desc">
+            Adds a Check step that looks over your content, images and fonts{#if format === "pdf"}, and checks the
+            saved PDF's page size, margins and fonts{/if}. Slower, but catches print problems early. Unticked, no checks run.
           </span>
-        </label>
-      {/if}
+        </span>
+      </label>
     {:else if stepKind === "choose"}
-      <p class="lead">Your {format === "pdf" ? "PDF" : "website"} is saved to a folder on this computer first. Pick any other places to send it; each one gets its own quick setup step. Your choice is saved with the book, so everyone who has it sees the same places.</p>
+      <p class="lead">Your {formatName} is saved to a folder on this computer first. Pick any other places to send it; each one gets its own quick setup step. Your choice is saved with the book, so everyone who has it sees the same places.</p>
       {#if cards.length === 0}
         <p class="muted">Loading destinations…</p>
       {:else}
@@ -376,16 +414,23 @@
                 <input type="checkbox" checked={selected.has(card.id)} disabled={card.id === LOCAL} onchange={() => toggle(card.id)} />
                 <span class="dest-main">
                   <span class="dest-name">{card.label}</span>
-                  <span class="dest-desc">{card.id === LOCAL ? localDir : card.description}</span>
+                  {#if card.id === LOCAL}
+                    <span class="dest-desc"><code class="path">{displayPath(localDir, projectDir)}</code></span>
+                    {#if localOutside}
+                      <span class="dest-desc">Outside your book, so it is yours alone: saved on this computer only, and confirmed in a dialog each time.</span>
+                    {/if}
+                  {:else}
+                    <span class="dest-desc">{card.description}</span>
+                  {/if}
                 </span>
                 <span class="dest-meta">
                   {#if card.id === LOCAL}
-                    <span class="status ok">Always</span>
+                    <button class="app-btn app-btn-ghost small" onclick={chooseLocalFolder} disabled={controller.publishBusyId === LOCAL}>Change…</button>
                   {:else}
                   <span class="badge">{card.experimental ? "Experimental" : card.kind === "api" ? "direct upload" : "guided"}</span>
                   {#if card.credentialRequired}
                     <span class={`status ${card.connected ? "ok" : "off"}`}>
-                      {#if card.connected}<Icon name="circle-check" size={12} /> Connected{:else}Needs a key{/if}
+                      {#if card.connected}<Icon name="circle-check" size={12} /> Connected{:else if card.connectKind === "oauth"}Needs sign-in{:else}Needs a key{/if}
                     </span>
                   {:else if card.kind !== "plugin"}
                     <span class="status ok">No account needed</span>
@@ -397,33 +442,18 @@
           {/each}
         </ul>
       {/if}
-    {:else if stepKind === "setup" && currentCard?.id === LOCAL}
-      {@const busy = controller.publishBusyId === LOCAL}
-      <p class="lead">Where the {format === "pdf" ? "PDF" : "website"} is saved on this computer.</p>
-      <div class="field">
-        <span>Folder</span>
-        <div class="key-row">
-          <input type="text" readonly value={localDir} aria-label="Folder" />
-          <button class="app-btn app-btn-ghost" onclick={chooseLocalFolder} disabled={busy}>Choose…</button>
-        </div>
-      </div>
-      <p class="field-hint">
-        {#if localOutside}
-          This folder is outside your book, so it is your own choice: it is saved on this computer only, not in the book. You confirm it in a dialog each time you publish. Choose a folder inside the book to go back to the book's own.
-        {:else}
-          Inside your book (<code>{LOCAL_DEFAULT_DIR}</code> by default), so everyone who has the book saves to the same folder. A folder outside the book is yours alone: saved on this computer only, and confirmed in a dialog each time you publish.
-        {/if}
-      </p>
     {:else if stepKind === "setup" && currentCard}
       {@const card = currentCard}
       {@const busy = controller.publishBusyId === card.id}
       {#if card.kind === "plugin"}
         <p class="lead">Set up <strong>{card.label}</strong>: {card.description}</p>
-      {:else}
+      {:else if card.credentialRequired}
         <p class="lead">
           Set up <strong>{card.label}</strong>. Your accounts are saved on this computer and used by every book, so you only connect once.
-          {#if card.credentialRequired && !card.connected}To publish here, connect your own account; the book's settings are shared with your team.{/if}
+          {#if !card.connected}To publish here, connect your own account; the book's settings are shared with your team.{/if}
         </p>
+      {:else}
+        <p class="lead">Set up <strong>{card.label}</strong>. These settings are saved with the book, so your team shares them.</p>
       {/if}
 
       {#if card.fields.length > 0}
@@ -439,7 +469,7 @@
             />
           </label>
         {/each}
-        <button class="app-btn app-btn-ghost self-start" onclick={() => controller.savePublishConfig(card.id)} disabled={busy}>Save settings</button>
+        <p class="field-hint">Saved with the book when you go to the next step.</p>
       {/if}
 
       {#if card.credentialRequired}
@@ -571,7 +601,7 @@
       {:else}
         <p class="muted">No account or key needed — we'll prepare an upload package with step-by-step instructions.</p>
       {/if}
-    {:else if stepKind === "preflight"}
+    {:else if stepKind === "check"}
       {@const level = preflightHeaderLevel(controller.preflightRows)}
       {@const counts = preflightCounts(controller.preflightRows)}
       <p class="lead">A quick readiness check of your content, images, and fonts before you publish.</p>
@@ -598,9 +628,9 @@
             {:else if level === "error"}
               {counts.errors} {counts.errors === 1 ? "problem" : "problems"} to fix before publishing.
             {:else if level === "warning"}
-              Looks publishable — {counts.warnings} {counts.warnings === 1 ? "thing" : "things"} to review.
+              {counts.warnings} {counts.warnings === 1 ? "thing" : "things"} to review before publishing.
             {:else}
-              All clear — ready to publish.
+              No problems in your content, images, or fonts.
             {/if}
           </span>
         </span>
@@ -614,14 +644,14 @@
       {/if}
 
       {#if controller.preflightRan && !controller.preflightBusy && !controller.preflightError}
-        {#if controller.preflightRows.length === 0}
-          <p class="success-line"><Icon name="circle-check" size={13} /> No problems found in your content, images, or fonts.</p>
-        {:else}
+        {#if controller.preflightRows.length > 0}
           {#each groupPreflight(controller.preflightRows) as group (group.category)}
+            {@const all = expandedGroups.has(group.category)}
+            {@const rows = all ? group.rows : group.rows.slice(0, GROUP_PREVIEW)}
             <section class="pf-group">
-              <h3 class="pf-group-title">{categoryLabel(group.category)}</h3>
+              <h3 class="pf-group-title">{categoryLabel(group.category)} <span class="pf-count">({group.rows.length})</span></h3>
               <ul class="pf-list">
-                {#each group.rows as row, i (row.id + "|" + i)}
+                {#each rows as row, i (row.id + "|" + i)}
                   <li class={`pf-row sev-${row.severity}`}>
                     <Icon
                       name={row.severity === "error" ? "circle-x" : row.severity === "warning" ? "triangle-alert" : "info"}
@@ -644,26 +674,45 @@
                   </li>
                 {/each}
               </ul>
+              {#if group.rows.length > GROUP_PREVIEW}
+                <button
+                  class="link self-start"
+                  onclick={() => {
+                    const nextSet = new Set(expandedGroups);
+                    if (all) nextSet.delete(group.category);
+                    else nextSet.add(group.category);
+                    expandedGroups = nextSet;
+                  }}
+                >{all ? "Show fewer" : `Show all ${group.rows.length}`}</button>
+              {/if}
             </section>
           {/each}
         {/if}
       {/if}
 
-      <p class="muted small">
-        <Icon name="info" size={12} /> No PDF is built here. Your book's PDF checks — page size, safe margins, embedded fonts, and PDF/X when qpdf and Ghostscript are installed — run on the saved file and report to Problems.
-      </p>
+      {#if blockedCards.length > 0}
+        <p class="warn">
+          <Icon name="triangle-alert" size={13} />
+          {blockedCards.map((c) => c.label).join(", ")} {blockedCards.length === 1 ? "isn't" : "aren't"} set up yet, so {blockedCards.length === 1 ? "it is" : "they are"} skipped when publishing.
+        </p>
+      {/if}
+      {#if format === "pdf"}
+        <p class="muted small">
+          <Icon name="info" size={12} /> No PDF is built yet. Page size, safe margins, embedded fonts, and PDF/X (when qpdf and Ghostscript are installed) are checked on the saved PDF in the next step.
+        </p>
+      {/if}
     {:else}
-      <!-- Publish step -->
+      <!-- Save / Publish step -->
       <p class="lead">
-        Your book is built fresh as a {format === "pdf" ? "PDF" : "website"} into
-        <code>{localDir}</code>{#if onlineCards.length > 0}, then sent to {onlineCards.map((c) => c.label).join(", ")}{/if}.
+        Your book is built fresh as a {formatName} into
+        <code class="path">{displayPath(localDir, projectDir)}</code>{#if readyCards.length > 0}, then sent to {readyCards.map((c) => c.label).join(", ")}{/if}.
       </p>
-      {#if preflightMissing}
+      {#if validate && preflightMissing}
         <p class="warn" role="alert">
           <Icon name="triangle-alert" size={14} />
           Readiness hasn't run yet. <button class="link" onclick={back}>Go back to check</button> before publishing.
         </p>
-      {:else if preflightErrorCount > 0}
+      {:else if validate && preflightErrorCount > 0}
         <p class="warn" role="alert">
           <Icon name="triangle-alert" size={14} />
           Preflight found {preflightErrorCount} {preflightErrorCount === 1 ? "problem" : "problems"} that
@@ -677,21 +726,33 @@
           {/if}
         </p>
       {/if}
-      {#if blockedCards.length > 0}
-        <p class="warn" role="alert">
-          <Icon name="triangle-alert" size={14} />
-          {blockedCards.map((c) => c.label).join(", ")} still {blockedCards.length === 1 ? "needs" : "need"} a key — go back to set {blockedCards.length === 1 ? "it" : "them"} up, or publish the others.
-        </p>
-      {/if}
       <section class="pub-row">
         <div class="pub-head">
           <span class="dest-name">A folder on this computer</span>
-          {#if publishing && !builtArtifact}<span class="muted small"><Icon name="refresh-cw" size={13} /> Building…</span>{/if}
+          {#if publishing && !builtArtifact}
+            <span class="muted small progress" role="status"><Icon name="refresh-cw" size={13} /> {progress ?? "Building…"}</span>
+            {#if onCancelBuild}<button class="app-btn app-btn-ghost small" onclick={onCancelBuild} disabled={!canCancelBuild}>Cancel</button>{/if}
+          {/if}
         </div>
+        {#if saveWarning && !publishing && !builtArtifact}
+          <p class="warn" role="alert"><Icon name="triangle-alert" size={13} /> {saveWarning}</p>
+        {/if}
         {#if builtArtifact}
+          {@const artifact = builtArtifact}
           <div class="result ok" role="status">
-            <p class="success-line"><Icon name="circle-check" size={13} /> Saved to <code>{builtArtifact}</code></p>
-            <button class="link" onclick={() => onShowInFolder(builtArtifact!)}>Show in folder</button>
+            <p class="success-line"><Icon name="circle-check" size={13} /> Saved to <code class="path">{displayPath(artifact, projectDir)}</code></p>
+            <button class="link" onclick={() => onShowInFolder(artifact)}>Show in folder</button>
+            {#if validate && format === "pdf"}
+              {#if pdfFindings > 0}
+                <p class="warn">
+                  <Icon name="triangle-alert" size={13} />
+                  The PDF checks found {pdfFindings} {pdfFindings === 1 ? "problem" : "problems"}.
+                  {#if onReviewProblems}<button class="link" onclick={onReviewProblems}>Review problems</button>{/if}
+                </p>
+              {:else}
+                <p class="success-line"><Icon name="circle-check" size={13} /> The PDF checks found no problems.</p>
+              {/if}
+            {/if}
           </div>
         {/if}
       </section>
@@ -703,12 +764,18 @@
             <span class="dest-name">{card.label}</span>
             {#if busy}<span class="muted small"><Icon name="refresh-cw" size={13} /> Publishing…</span>{/if}
           </div>
-          {#if result}
+          {#if needsAccount(card)}
+            <p class="muted">
+              Skipped: {card.connectKind === "oauth" ? "sign in" : "connect an account"} to publish here.
+              {#if !publishing}<button class="link" onclick={() => setUp(card)}>Set it up</button>{/if}
+            </p>
+          {:else if result}
             {@const outcome = result.outcome}
+            {@const issues = result.issues.filter((i) => !isCommandLineTip(i.id))}
             <div class={`result ${result.ok ? "ok" : "failed"}`} role="status">
-              {#if result.issues.length > 0}
+              {#if issues.length > 0}
                 <ul class="issues">
-                  {#each result.issues as issue (issue.id)}
+                  {#each issues as issue (issue.id)}
                     <li class={issue.severity}>
                       {#if issue.severity === "info"}<Icon name="info" size={12} />{:else}<Icon name="triangle-alert" size={12} />{/if}
                       {issue.message}
@@ -733,7 +800,10 @@
                 {/if}
               {:else}
                 <p class="success-line"><Icon name="circle-check" size={13} /> {outcome.detail ?? "Upload package prepared."}</p>
-                <p class="muted small">Package folder: <code>{outcome.packageDir}</code></p>
+                <p class="muted small">
+                  Package folder: <code class="path">{displayPath(outcome.packageDir, projectDir)}</code>
+                  <button class="link" onclick={() => onShowInFolder(outcome.packageDir)}>Show in folder</button>
+                </p>
                 <button class="app-btn app-btn-primary" onclick={() => controller.openPublishUrl(outcome.openUrl)}>Open upload page <Icon name="external-link" size={12} /></button>
                 <ol class="checklist">{#each outcome.checklist as s, i (i)}<li>{s}</li>{/each}</ol>
               {/if}
@@ -745,31 +815,30 @@
 
     <footer class="view-actions">
       {#if stepIndex > 0}
-        <button class="app-btn app-btn-ghost" onclick={back}>Back</button>
+        <button class="app-btn app-btn-ghost" onclick={back} disabled={publishing}>Back</button>
       {:else}
         <button class="app-btn app-btn-ghost" onclick={close}>Cancel</button>
       {/if}
       <div class="spacer"></div>
-      {#if stepKind === "format" || stepKind === "choose"}
-        <button class="app-btn app-btn-primary" onclick={next}>Next</button>
-      {:else if stepKind === "setup"}
-        <button class="app-btn app-btn-primary" onclick={next}>Next</button>
-      {:else if stepKind === "preflight"}
-        <button class="app-btn app-btn-primary" onclick={next} disabled={controller.preflightBusy}>Next</button>
+      {#if !isLast}
+        <button class="app-btn app-btn-primary" onclick={next} disabled={stepKind === "check" && controller.preflightBusy}>Next</button>
       {:else}
+        <!-- Once saved, Done is the way on; saving again stays at hand. -->
         <button
-          class="app-btn app-btn-primary"
+          class={`app-btn ${finished ? "app-btn-ghost" : "app-btn-primary"}`}
           onclick={publishAll}
           disabled={publishing || controller.publishBusyId !== null || publishGated}
-          title={preflightMissing
-            ? "Run the readiness check first."
-            : preflightBlocks
-              ? "Preflight found blocking problems — fix them or choose Publish anyway."
-              : undefined}
+          title={!validate
+            ? undefined
+            : preflightMissing
+              ? "Run the readiness check first."
+              : preflightBlocks
+                ? "The check found blocking problems — fix them or choose Publish anyway."
+                : undefined}
         >
-          {publishing ? "Publishing…" : onlineCards.length > 0 ? "Publish" : "Save"}
+          {publishing ? `${action === "Publish" ? "Publishing" : "Saving"}…` : finished ? `${action} again` : action}
         </button>
-        <button class="app-btn app-btn-ghost" onclick={close} disabled={publishing}>Done</button>
+        <button class={`app-btn ${finished ? "app-btn-primary" : "app-btn-ghost"}`} onclick={close} disabled={publishing}>Done</button>
       {/if}
     </footer>
   </div>
@@ -785,6 +854,8 @@
   .step-dot { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--app-border-strong); font-size: 11px; }
   .steps li.current .step-dot { background: var(--app-accent); color: var(--app-accent-text); border-color: var(--app-accent-border); }
   .steps li.done .step-dot { background: var(--app-surface-hover); }
+  .steps li.attention { color: var(--app-warning-text); }
+  .steps li.attention .step-dot { border-color: currentColor; }
 
   .dialog-body { display: flex; flex-direction: column; gap: 14px; color: var(--app-text-secondary); }
   .lead { margin: 0; font-size: 13px; color: var(--app-text-muted); }
@@ -793,21 +864,16 @@
   .error { color: var(--app-error-text); font-size: 12px; margin: 0; }
   .warn { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; color: var(--app-warning-text); }
 
-  /* Fields match NewProjectWizard / the shared dialog form language. */
-  .field { display: flex; flex-direction: column; gap: 6px; }
-  .field > span { font-size: 12px; color: var(--app-text-muted); font-weight: 500; }
+  /* Fields match PublishKeyForm, which shares these steps. */
+  .field { display: flex; flex-direction: column; gap: 6px; max-width: 420px; }
+  .field > span { font-size: 13px; color: var(--app-text); font-weight: 600; }
   /* The hint sits OUTSIDE any .field wrapper (it precedes the label), so no
      higher-specificity label rule competes — no !important needed. */
   .field-hint { font-weight: 400; color: var(--app-text-muted); font-size: 11px; }
-  .field input {
-    padding: 8px 10px;
-    font-size: 14px;
-    width: 100%;
-    box-sizing: border-box;
-  }
+  .field input,
   .field select {
-    padding: 8px 10px;
-    font-size: 14px;
+    padding: 7px 9px;
+    font-size: 13px;
     width: 100%;
     box-sizing: border-box;
   }
@@ -820,6 +886,8 @@
   .setting input { margin-top: 2px; flex-shrink: 0; }
   .setting-title { font-size: 12.5px; font-weight: 500; color: var(--app-text-secondary); }
   .dialog-body code { font-size: 11px; word-break: break-all; }
+  /* Paths break at their separators where they can, not mid-word. */
+  .dialog-body code.path { word-break: normal; overflow-wrap: anywhere; }
   .dest-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
   .dest { display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); cursor: pointer; }
   .dest:hover { background: var(--app-surface-hover); }
@@ -850,10 +918,12 @@
   .status-raw summary { cursor: pointer; color: var(--app-text-muted); font-size: 12px; }
   .status-raw pre { margin: 6px 0 0; padding: 8px; background: var(--app-surface-sunken); border: 1px solid var(--app-border); border-radius: 6px; font-size: 11px; white-space: pre-wrap; overflow: auto; }
 
+  .app-btn.small { font-size: 11px; padding: 4px 8px; }
+  .progress { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
   button.link { background: none; border: none; padding: 0; font-size: 11px; color: var(--app-focus-ring); cursor: pointer; display: inline-flex; align-items: center; gap: 3px; }
 
-  /* In-flow footer at the end of the step's content. */
-  .view-actions { display: flex; align-items: center; gap: 8px; padding: 14px 0 0; margin-top: 4px; border-top: 1px solid var(--app-border-subtle); }
+  /* Pinned to the bottom of the view, so Next/Publish stays in reach on a long step. */
+  .view-actions { position: sticky; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 14px 0; margin-top: 4px; border-top: 1px solid var(--app-border-subtle); background: var(--app-bg); }
   .view-actions .spacer { flex: 1; }
 
   /* ── Preflight step (#105) ────────────────────────────────────────────── */
@@ -864,6 +934,7 @@
   .pf-status.pf-ok { color: var(--app-success-text); }
 
   .pf-group { display: flex; flex-direction: column; gap: 6px; }
+  .pf-count { font-weight: 400; }
   .pf-group-title { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--app-text-muted); font-weight: 600; }
   .pf-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .pf-row { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }

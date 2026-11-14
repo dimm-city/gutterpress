@@ -67,6 +67,12 @@ export function exportFindingsMessage(findings: ExportFindingDto[] | undefined):
   return `${n} ${n === 1 ? "problem" : "problems"} found in the PDF — see Problems.`;
 }
 
+/** What a build into a folder produced: the artifact and what the PDF checks found. */
+export interface BuildToResult {
+  path: string;
+  findings: ExportFindingDto[];
+}
+
 /**
  * Timer seam so the elapsed-seconds ticker can be driven by a fake clock in
  * tests. Defaults to the global `setInterval`/`clearInterval`.
@@ -272,12 +278,11 @@ export class ExportController {
     }
     if (this.state === "finalizing") {
       this.pdfProgress =
-        this.pages > 0 ? `Finalizing PDF (${this.pages} pages)…${elapsed}` : `Finalizing PDF…${elapsed}`;
+        this.pages > 0 ? `Laying out and writing the PDF (${this.pages} pages)…${elapsed}` : `Laying out and writing the PDF…${elapsed}`;
       return;
     }
     if (this.state === "rendering") {
-      this.pdfProgress =
-        this.pages > 0 ? `Exporting page ${this.pages}…${elapsed}` : `Exporting…${elapsed}`;
+      this.pdfProgress = `Opening your book…${elapsed}`;
       return;
     }
     this.pdfProgress = `Preparing PDF…${elapsed}`;
@@ -351,7 +356,7 @@ export class ExportController {
     const defaultName = (h.displayName() ?? basenameOf(inputDir) ?? "book") + ".pdf";
     const outPath = await h.chooseSavePath(defaultName);
     if (!outPath) return;
-    await this.runPdfBuild(inputDir, outPath, opts);
+    await this.runPdfBuild(inputDir, outPath, opts, true);
   }
 
   /**
@@ -360,14 +365,16 @@ export class ExportController {
    * (the default, `dist`) needs no dialog; one outside it is confirmed in
    * the native dialog each time, pre-pointed at that folder, because the
    * host only writes outside the book to a destination a dialog returned.
-   * Resolves with the artifact path (the PDF file, or the website folder),
-   * or null when the author canceled or the build failed (already toasted).
+   * Resolves with the artifact path (the PDF file, or the website folder) and
+   * what the PDF checks found, or null when the author canceled or the build
+   * failed (failures are toasted). Success is not toasted: the wizard that
+   * asked shows the result itself.
    */
   async buildTo(opts: {
     format: "pdf" | "html";
     dir: string;
     validate?: boolean;
-  }): Promise<string | null> {
+  }): Promise<BuildToResult | null> {
     const h = this.requireHost();
     if (this.exporting) return null;
     const warning = h.checkSaveReadiness();
@@ -382,7 +389,7 @@ export class ExportController {
       let outPath: string | null = joinPath(opts.dir, `${displayName}.pdf`);
       if (!insideBook) outPath = await h.chooseSavePath(`${displayName}.pdf`, opts.dir);
       if (!outPath) return null;
-      return this.runPdfBuild(inputDir, outPath, { validate: opts.validate });
+      return this.runPdfBuild(inputDir, outPath, { validate: opts.validate }, false);
     }
 
     let out: string | null = opts.dir;
@@ -391,14 +398,7 @@ export class ExportController {
     this.beginSimpleExport();
     try {
       const data = await h.buildHtml({ key: inputDir, displayName }, out);
-      const savedDir = data.outDir ?? out;
-      h.toastSuccess(`Website saved to ${savedDir}`, 8000, {
-        label: "Show in Folder",
-        onClick: () => {
-          void h.showInFolder(savedDir).catch(() => {});
-        },
-      });
-      return savedDir;
+      return { path: data.outDir ?? out, findings: [] };
     } catch (e) {
       h.toastError(h.friendlyPdfError(e) || "Website export failed");
       return null;
@@ -407,13 +407,16 @@ export class ExportController {
     }
   }
 
-  /** The PDF build proper, once a destination is known: drive the FSM, toast
-   *  the result. Resolves with the saved PDF path, or null on cancel/failure. */
+  /** The PDF build proper, once a destination is known: drive the FSM and,
+   *  when `announce` (the quick export, which has no screen of its own), toast
+   *  the result. Resolves with the saved PDF path and what the checks found,
+   *  or null on cancel/failure. */
   private async runPdfBuild(
     inputDir: string,
     outPath: string,
-    opts?: { validate?: boolean; allowShrink?: boolean },
-  ): Promise<string | null> {
+    opts: { validate?: boolean; allowShrink?: boolean } | undefined,
+    announce: boolean,
+  ): Promise<BuildToResult | null> {
     const h = this.requireHost();
     // Non-blocking: the build runs in a separate render window, so keep the
     // preview interactive and show progress in a corner pill (not the overlay).
@@ -440,6 +443,7 @@ export class ExportController {
       );
       this.markSuccess(data.exportId);
       const savedPdfPath = data.pdfPath ?? outPath;
+      if (!announce) return { path: savedPdfPath, findings: data.findings ?? [] };
       h.toastSuccess(`PDF saved to ${savedPdfPath}`, 8000, {
         label: "Show in Folder",
         onClick: () => {
@@ -454,7 +458,7 @@ export class ExportController {
         h.toastWarning(findingsMessage, 0, { label: "Review", onClick: () => h.showProblems() });
       }
       await h.wait(2000);
-      return savedPdfPath;
+      return { path: savedPdfPath, findings: data.findings ?? [] };
     } catch (e) {
       if ((e as { code?: string })?.code === "EXPORT_CANCELED") {
         this.reset();

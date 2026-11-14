@@ -191,6 +191,44 @@ export interface ExportControllerDeps {
   registerPickedPath: (absPath: string) => void;
 }
 
+/**
+ * Wrap the engine-browser factory so the export reports its render phase:
+ * "rendering" when a page starts loading the book (layout), "finalizing" when
+ * the PDF is being written. Pages are laid out by Chromium at print time, so
+ * these phases are the progress there is to report. Phases only move forward:
+ * the lib's predict pass opens a second page after the first has loaded.
+ */
+export function reportRenderPhases(
+  factory: () => Promise<EngineBrowser>,
+  onPhase: (state: "rendering" | "finalizing") => void,
+): () => Promise<EngineBrowser> {
+  let reached: "none" | "rendering" | "finalizing" = "none";
+  const advance = (state: "rendering" | "finalizing") => {
+    if (reached === "finalizing" || reached === state) return;
+    reached = state;
+    onPhase(state);
+  };
+  return async () => {
+    const browser = await factory();
+    const newPage = browser.newPage.bind(browser);
+    browser.newPage = async () => {
+      const page = await newPage();
+      const navigate = page.navigate.bind(page);
+      const printToPDF = page.printToPDF.bind(page);
+      page.navigate = async (url) => {
+        advance("rendering");
+        return navigate(url);
+      };
+      page.printToPDF = async (opts) => {
+        advance("finalizing");
+        return printToPDF(opts);
+      };
+      return page;
+    };
+    return browser;
+  };
+}
+
 export class ExportController {
   constructor(private readonly deps: ExportControllerDeps) {}
 
@@ -396,8 +434,11 @@ export class ExportController {
           skipPreValidate: args.skipPreValidate,
           skipPostValidate: args.skipPostValidate,
           allowShrink: args.allowShrink,
-          // Render with Electron's own Chromium.
-          engineBrowser: this.deps.engineBrowser,
+          // Render with Electron's own Chromium, reporting which phase the
+          // render is in so the author sees more than a ticking clock.
+          engineBrowser: reportRenderPhases(this.deps.engineBrowser, (state) =>
+            this.deps.sendProgress({ exportId: exportSession.id, state }),
+          ),
           rawArgs: { input: args.input, format, out: args.out },
         });
         this.deps.throwIfCanceled(exportSession);
@@ -425,14 +466,19 @@ export class ExportController {
         // rename, so nothing is authorized unless a file was really written.
         this.deps.registerPickedPath(exportSession.outPath);
         // The post-build PDF checks (#399), on the delivered file, before the
-        // export is reported done. The pill shows this phase the way it shows
-        // the sync gate: the "started" wire state with a message.
-        this.deps.sendProgress({
-          exportId: exportSession.id,
-          state: "started",
-          message: "Checking the PDF…",
-        });
-        const findings = await this.checkExportedPdf(lib, args, exportSession.outPath);
+        // export is reported done — only when the author asked for checks
+        // (`skipPostValidate` is the export's "Check my book" choice). The
+        // pill shows this phase the way it shows the sync gate: the
+        // "started" wire state with a message.
+        let findings: ExportFindingDto[] = [];
+        if (!args.skipPostValidate) {
+          this.deps.sendProgress({
+            exportId: exportSession.id,
+            state: "started",
+            message: "Checking the PDF…",
+          });
+          findings = await this.checkExportedPdf(lib, args, exportSession.outPath);
+        }
         this.deps.sendProgress({
           exportId: exportSession.id,
           state: "success",

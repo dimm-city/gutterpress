@@ -6,15 +6,21 @@ description: Send your book to itch.io, DriveThruRPG, Amazon KDP, Shopify, Googl
 # Publish your book
 
 Click **Publish** in the toolbar to open **Publish your book**. It walks through **Format**,
-**Choose**, a step for each destination, **Preflight** and **Publish**.
+**Choose**, a step for each destination, **Check** (only when you ask for checks) and
+**Publish** (**Save** when only the folder is ticked).
 
 ## 1. Format
 
 Choose **PDF** (a print-ready PDF) or **Website** (a folder with a standalone `book.html`).
+Tick **Check my book before saving** to add the **Check** step and, for a PDF, to check the saved
+file. Unticked, no checks run.
 
 ## 2. Choose where it goes
 
-**A folder on this computer** is always included. Tick any other destinations. The list shows
+**A folder on this computer** is always included. It shows where the file goes (`dist` inside
+your book by default); **Change…** picks another folder. A folder inside the book is saved with
+the book, so everyone saves to the same place. A folder outside the book is yours alone: it is
+saved on this computer only, never in the book. Tick any other destinations. The list shows
 the ones that take the format you chose: Azure Static Web Apps appears for **Website**, and
 Google Drive for both.
 
@@ -27,7 +33,8 @@ Google Drive for both.
 | Google Drive | Uploads the PDF, or the website as a zip |
 | Azure Static Web Apps | Uploads the website (needs Microsoft's SWA CLI) |
 
-Each destination shows whether it is **Connected**, **Needs a key**, or needs **No account**.
+Each destination shows whether it is **Connected**, **Needs a key** (or **Needs sign-in** for
+Google Drive), or needs **No account**.
 
 The places you tick are saved with the book, so everyone who opens it sees the same ones
 ticked. Where a book is published is the team's decision; each person only connects their own
@@ -54,13 +61,12 @@ computer.
   with **New folder…**. The folder is where the whole team publishes, so it is saved with the
   book. Changing it later asks first: "This changes the folder for everyone who publishes this
   book." See [The book's Drive folder and your own](#the-books-drive-folder-and-your-own).
-- **Folder:** choose where the file goes on your computer. A folder inside the book (`dist` by
-  default) is saved with the book, so everyone saves to the same place. A folder outside the
-  book is yours alone: it is saved on this computer only, never in the book.
 - **A publishing plugin:** there is nothing to enter here yet. The step says where its settings go
   in your book's `manifest.yaml`; the plugin handles its own sign-in.
 
-Click **Save settings** to keep a destination's settings with your book.
+A destination's settings are saved with your book when you leave its step. A destination you
+pass without connecting an account is marked with a warning in the steps along the top, and is
+skipped when you publish.
 
 ### Your account
 
@@ -96,18 +102,23 @@ for you only, on this computer; the book keeps its folder for everyone else.
 - A book that names its folder only by name publishes to a folder of that name in each person's
   own Drive. If several of yours have that name, the step asks you to choose one, for you only.
 
-## Preflight
+## Check
 
-Preflight checks the book before anything is sent. It reports **All clear — ready to publish.**,
-things to review, or problems to fix; **Go to** takes you to each one, and **Re-run** checks
-again. You can still **Publish anyway**. The PDF itself is checked once it is built — see
+When you asked for checks, this step looks over your content, images and fonts before anything
+is sent. It reports problems to fix, things to review, or none; **Go to** takes you to each one,
+**Show all** lists every row of a long group, and **Re-run** checks again. Problems to fix hold
+**Publish** back, but you can still **Publish anyway**. It also says which destinations are not
+set up yet and will be skipped. The PDF itself is checked once it is built — see
 [Save a PDF](07-export-pdf.md).
 
 ## 4. Publish
 
-Click **Publish** (or **Save** if only the folder is ticked). Each destination reports back:
-**Show in folder** for your copy, **View it online** for an upload, and for guided destinations
-**Open upload page** with a checklist of what to do there.
+Click **Publish** (or **Save** if no other destination is ready). The folder row shows the
+build's progress, with **Cancel**. Each destination reports back: **Show in folder** for your
+copy, **View it online** for an upload, and for guided destinations the package folder (with
+**Show in folder**) and **Open upload page** with a checklist of what to do there. A destination
+without an account says it was skipped, with **Set it up**. When it is done, **Done** closes
+the view.
 
 The [privacy policy](https://gutterpress.dimm.city/privacy/) explains what Google Drive
 publishing can access.

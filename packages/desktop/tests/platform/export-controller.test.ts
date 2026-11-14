@@ -6,6 +6,7 @@ import {
   ExportController,
   EXPORT_CHECKS_SOURCE,
   findingsFromValidation,
+  reportRenderPhases,
   type ExportControllerDeps,
 } from "../../electron/export/controller";
 import type { ExportProgressEvent, ExportSession } from "../../electron/pdf-export";
@@ -581,6 +582,30 @@ test("a check run that cannot complete is one error finding, not a swallowed sil
       message: "The PDF was saved, but its checks could not run: File not found: /out/book.pdf",
     },
   ]);
+});
+
+test("a PDF export the author did not ask to check runs no PDF checks", async () => {
+  const h = makeHarness();
+  const res = await h.controller.build({ input: "/book", format: "pdf", out: "/out/book.pdf", skipPostValidate: true });
+  expect(h.validationArgs).toEqual([]);
+  expect(h.progress.some((p) => p.message === "Checking the PDF…")).toBe(false);
+  expect(res.findings).toEqual([]);
+  expect(res.pdfPath).toBe("/out/book.pdf");
+});
+
+test("reportRenderPhases reports layout then writing, once each and only forward", async () => {
+  const phases: string[] = [];
+  const page = () => ({ navigate: async () => {}, printToPDF: async () => new Uint8Array() });
+  const factory = reportRenderPhases(async () => ({ newPage: async () => page() }) as never, (s) => phases.push(s));
+  const browser = await factory();
+  const main = await browser.newPage();
+  await main.navigate("file:///book.html");
+  // The lib's predict pass loads a second page before the main one prints.
+  const predict = await browser.newPage();
+  await predict.navigate("file:///book.html");
+  await main.printToPDF({});
+  await predict.navigate("file:///book.html");
+  expect(phases).toEqual(["rendering", "finalizing"]);
 });
 
 test("an html export runs no PDF checks and carries no findings", async () => {

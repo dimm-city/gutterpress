@@ -159,20 +159,12 @@ test("categoryLabel gives plain language, falls back to the raw category", () =>
 // should rerun it — stepping BACK into it from Publish must leave an existing
 // "publish anyway" override alone. Pure decision, unit-tested here since
 // there's no Svelte component-render harness in this repo.
-test("entersPreflightForward is true only for forward navigation landing exactly on the Preflight step", () => {
-  // 1 selected destination → totalSteps = 1 + 3 = 4; preflight index = 2.
-  const totalSteps = 4;
-  expect(entersPreflightForward("forward", 2, totalSteps)).toBe(true);
-  expect(entersPreflightForward("back", 2, totalSteps)).toBe(false);
-  expect(entersPreflightForward("forward", 1, totalSteps)).toBe(false); // a setup step
-  expect(entersPreflightForward("forward", 3, totalSteps)).toBe(false); // the Publish step
-  expect(entersPreflightForward("back", 3, totalSteps)).toBe(false);
-});
-
-test("entersPreflightForward holds regardless of how many destinations are selected", () => {
-  // 3 selected destinations → totalSteps = 3 + 3 = 6; preflight index = 4.
-  expect(entersPreflightForward("forward", 4, 6)).toBe(true);
-  expect(entersPreflightForward("back", 4, 6)).toBe(false);
+test("entersPreflightForward is true only for forward navigation landing on the Check step", () => {
+  expect(entersPreflightForward("forward", "check")).toBe(true);
+  expect(entersPreflightForward("back", "check")).toBe(false);
+  expect(entersPreflightForward("forward", "setup")).toBe(false);
+  expect(entersPreflightForward("forward", "finish")).toBe(false);
+  expect(entersPreflightForward("forward", undefined)).toBe(false);
 });
 
 // ── label coverage: every registered ASSET check has a friendly label ─────────

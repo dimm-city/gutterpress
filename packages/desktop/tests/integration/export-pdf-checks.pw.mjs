@@ -5,10 +5,11 @@
  *
  * A purpose-built book targets DriveThruRPG (`preset: dtrpg`, `targets:
  * [dtrpg]`) and pushes its body text to 0.15in from the trim, inside the
- * target's 0.5in text safe area. Exporting it with the quick-export shortcut
- * (Ctrl+Shift+E — the native Save dialog is stubbed in this Electron process
- * only, so the whole SPA hop runs: ExportController → host build → checks →
- * findings → toast → Problems) must:
+ * target's 0.5in text safe area. Saving it from the Publish wizard with
+ * "Check my book before saving" ticked (the checks run only when asked; the
+ * default folder is `dist` inside the book, so no native dialog is involved
+ * and the whole SPA hop runs: wizard → ExportController → host build →
+ * checks → findings → wizard → Problems) must:
  *
  *   1. report `pdf.print.safe-margins`'s finding — the page, the words and the
  *      edge — under its writer-facing label "Safe margins", file-less (no
@@ -18,8 +19,8 @@
  *      not available" when qpdf is absent (this container), or the check's
  *      own non-conformance findings on a plain PDF when it is present. Never
  *      a silent pass;
- *   3. tell the author in a toast how many problems the checks found, whose
- *      Review button opens the Problems list.
+ *   3. tell the author in the wizard how many problems the checks found, whose
+ *      "Review problems" button opens the Problems list.
  *
  * No fixture or preference mutation survives the run. Every panel entry is
  * logged, and `EXPORT_PDF_CHECKS_SHOT=<png path>` saves a screenshot of the
@@ -112,8 +113,7 @@ process.once("SIGTERM", () => void handleSignal(143));
 try {
   projectDir = mkdtempSync(join(tmpdir(), "gutterpress-export-pdf-checks-project-"));
   userDataDir = mkdtempSync(join(tmpdir(), "gutterpress-export-pdf-checks-home-"));
-  // Where the stubbed Save dialog points the export: inside the book, so the
-  // host authorizes it either way (dialog capability or in-project path).
+  // The wizard's default folder, inside the book.
   mkdirSync(join(projectDir, "dist"), { recursive: true });
   outputPath = join(projectDir, "dist", `${basename(projectDir)}.pdf`);
 
@@ -175,18 +175,29 @@ try {
   await page.locator(".toc-item").first().waitFor({ state: "visible", timeout: 120_000 });
   log("throwaway dtrpg project opened and preview rendered");
 
-  // The quick export: Ctrl+Shift+E asks the host for a Save destination
-  // through Electron's native dialog, which cannot be driven — so this process
-  // answers it with the fixture's own path. Patched on the `dialog` module
-  // object in MAIN, which is what `electron/main.ts`'s `showSaveDialog` host
-  // service calls; the `dialog:savePdf` route then registers the returned
-  // path as the one-time save capability the export controller consumes,
-  // exactly as for a real pick.
-  await electronApp.evaluate(({ dialog }, filePath) => {
-    dialog.showSaveDialog = async () => ({ canceled: false, filePath });
-  }, outputPath);
-  await page.locator("body").click({ position: { x: 5, y: 5 } }).catch(() => {});
-  await page.keyboard.press("Control+Shift+E");
+  // Format (PDF, checks ticked) → Choose (the local folder, always on) →
+  // Check (the readiness check) → Save.
+  await page.locator("button.publish-btn").click();
+  const wizard = page.locator(".app-view.wizard");
+  await wizard.waitFor({ state: "visible", timeout: 5_000 });
+  const nextStep = async (label) => {
+    await wizard.locator(".steps li.current").filter({ hasText: label }).waitFor({ timeout: 10_000 });
+    await wizard.locator(".view-actions .app-btn-primary").click();
+  };
+  await wizard.getByLabel(/Check my book before saving/).check();
+  await nextStep("Format");
+  await nextStep("Choose");
+  await nextStep("Check");
+  await wizard.locator(".steps li.current").filter({ hasText: "Save" }).waitFor({ timeout: 10_000 });
+  // The readiness check may block on this deliberately bad book: publish past
+  // it the way an author would, with the two-click override.
+  const save = wizard.locator(".view-actions .app-btn-primary");
+  if (await save.isDisabled()) {
+    const anyway = wizard.locator("button.link", { hasText: /publish anyway/i });
+    await anyway.click();
+    await anyway.click();
+  }
+  await save.click();
   await waitUntil(
     () => existsSync(outputPath) && statSync(outputPath).size > 1_000,
     120_000,
@@ -194,15 +205,15 @@ try {
   );
   log(`PDF exported (${statSync(outputPath).size} bytes)`);
 
-  // 3. The findings toast, and its Review button opening the Problems list.
-  const findingsToast = page.locator(".toast.toast-warning").filter({ hasText: "found in the PDF" });
-  await findingsToast.waitFor({ state: "visible", timeout: 30_000 });
-  const toastText = (await findingsToast.locator(".toast-message").textContent())?.trim();
-  if (!/^\d+ problems? found in the PDF — see Problems\.$/.test(toastText ?? "")) {
-    fail(`findings toast read "${toastText}"`);
+  // 3. The wizard says what the checks found, and Review problems opens the list.
+  const findingsLine = wizard.locator(".pub-row .warn").filter({ hasText: "The PDF checks found" });
+  await findingsLine.waitFor({ state: "visible", timeout: 30_000 });
+  const findingsText = (await findingsLine.textContent())?.replace(/\s+/g, " ").trim();
+  if (!/The PDF checks found \d+ problems?\./.test(findingsText ?? "")) {
+    fail(`wizard findings line read "${findingsText}"`);
   }
-  await findingsToast.locator("button.toast-action", { hasText: "Review" }).click();
-  log(`findings toast arrived and Review was pressed: "${toastText}"`);
+  await findingsLine.locator("button.link", { hasText: "Review problems" }).click();
+  log(`wizard reported the findings and Review problems was pressed: "${findingsText}"`);
 
   // 1. Safe margins, with its page, words and edge, under its label.
   const marginEntry = page

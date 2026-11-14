@@ -5,6 +5,27 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Desktop: unticking the checks in Publish did not stop them.** The readiness check ran on
+  every publish and the saved PDF was checked after every export, whatever the box said. The
+  box is now **Check my book before saving**, offered for both formats: ticked, it adds a
+  **Check** step and checks the saved PDF; unticked, nothing is checked. The Ctrl+Shift+E quick
+  export no longer checks the PDF.
+- **Desktop: Publish gave little sign of progress.** The build now says **Opening your book…**
+  and then **Laying out and writing the PDF…** in the Publish view itself, with **Cancel**, and the result
+  (where it was saved, and what the checks found, with **Review problems**) appears there
+  rather than in toasts that arrived two seconds late.
+- **Desktop: rough spots in the Publish view.** The buttons stay in view on a long step; the
+  output folder is chosen on the Choose step instead of a step of its own; paths read relative
+  to the book; a destination's settings are saved when you leave its step; a destination with
+  no account is marked in the steps and reported as skipped, with **Set it up**; after a save
+  **Done** is the main button; Back is locked while building; long check results collapse to
+  five rows per group; Google Drive says **Needs sign-in** rather than **Needs a key**; the
+  DriveThruRPG step no longer talks about accounts it doesn't need or suggests a command-line
+  check; and a save that cannot start yet says why. Source labels in the Problems list are no
+  longer cut off.
+
 ## [0.11.27] - 2026-11-14
 
 ### Fixed

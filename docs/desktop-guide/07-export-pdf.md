@@ -9,15 +9,18 @@ PDFs are made from the **Publish** view, where a folder on your computer is alwa
 destinations.
 
 1. Click **Publish** in the toolbar.
-2. Under **Format**, choose **PDF** ("Print-ready PDF using your book's page settings"). Leave
-   **Run print-safety validation** ticked to check the PDF for printing problems as it is made.
-3. On the **Folder** step, the PDF goes to the `dist` folder inside your book unless you choose
-   another folder with **Choose…**.
-4. **Preflight** checks the book is ready (see [Publish your book](08-publish.md#preflight)).
-5. Click **Save**. When it finishes, **Show in folder** opens the folder with your PDF. Your
-   book's PDF checks — page size, safe margins, embedded fonts, and PDF/X when qpdf and
-   Ghostscript are installed — run on the saved file; anything they find is listed in
-   **Problems**, and a **Review** button takes you there.
+2. Under **Format**, choose **PDF** ("Print-ready PDF using your book's page settings"). Tick
+   **Check my book before saving** to check it for printing problems; unticked, no checks run
+   and the PDF is saved sooner.
+3. On **Choose**, the PDF goes to the `dist` folder inside your book unless you pick another
+   folder with **Change…**.
+4. If you ticked the checks, **Check** looks over the book first (see
+   [Publish your book](08-publish.md#check)).
+5. Click **Save**. While it runs, the step shows **Opening your book…** and then **Laying out
+   and writing the PDF…**, with **Cancel**. When it finishes, **Show in folder** opens the folder with your PDF.
+   With checks ticked, the book's PDF checks (page size, safe margins, embedded fonts, and PDF/X
+   when qpdf and Ghostscript are installed) run on the saved file. The step says how many
+   problems they found, and **Review problems** opens the list.
 
 ![Publish your book, Format step: PDF or Website](images/publish-format.jpg)
 

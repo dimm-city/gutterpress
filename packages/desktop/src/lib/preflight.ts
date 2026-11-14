@@ -84,10 +84,9 @@ export interface PreflightRow {
  */
 export function entersPreflightForward(
   direction: "forward" | "back",
-  targetIndex: number,
-  totalSteps: number,
+  targetKind: string | undefined,
 ): boolean {
-  return direction === "forward" && targetIndex === totalSteps - 2;
+  return direction === "forward" && targetKind === "check";
 }
 
 function isEditableSource(path: string): boolean {

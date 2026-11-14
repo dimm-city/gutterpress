@@ -264,10 +264,10 @@ try {
     `problem click opened ${activeFile?.trim()} and revealed line ${malformedLine}: ${JSON.stringify(revealEvidence)}`,
   );
 
-  // Export is the Publish wizard's first two steps now: Format (PDF) → Choose
-  // (the local folder, always on) → Folder → Preflight → Save. The default
-  // folder is `dist` inside the book, so the real build path runs end to end
-  // with no native dialog to stub.
+  // Export is the Publish wizard: Format (PDF) → Choose (the local folder,
+  // always on) → Save. No checks are asked for, so there is no Check step.
+  // The default folder is `dist` inside the book, so the real build path runs
+  // end to end with no native dialog to stub.
   await page.locator("button.publish-btn").click();
   const wizard = page.locator(".app-view.wizard");
   await wizard.waitFor({ state: "visible", timeout: 5_000 });
@@ -277,10 +277,7 @@ try {
   };
   await nextStep("Format");
   await nextStep("Choose");
-  await nextStep("Folder");
-  await nextStep("Preflight");
-  await wizard.locator(".steps li.current").filter({ hasText: "Publish" }).waitFor({ timeout: 10_000 });
-  await wizard.locator(".view-actions .app-btn-primary").click();
+  await nextStep("Save");
   await waitUntil(
     () => existsSync(outputPath) && statSync(outputPath).size > 1_000,
     120_000,

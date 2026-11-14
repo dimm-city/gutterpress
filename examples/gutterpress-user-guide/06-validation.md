@@ -226,7 +226,7 @@ Run it like any other PDF check:
 gutterpress validate --pdf dist/my-book/my-book-pdfx.pdf --target dtrpg
 ```
 
-`gutterpress preflight` runs it too, and so does the last step of a `--format pdfx` build. It reads the PDF itself and needs no extra tool, but the PDF/X lines in the same run need **qpdf** and **Ghostscript** installed ([Chapter 7](#ch-system)). To turn it off or change its severity, use `checks` like any other check (see Manifest Configuration below). The desktop app runs it on every PDF export and lists what it finds in the Problems list; the **Safe area** layers draw the same lines while you write.
+`gutterpress preflight` runs it too, and so does the last step of a `--format pdfx` build. It reads the PDF itself and needs no extra tool, but the PDF/X lines in the same run need **qpdf** and **Ghostscript** installed ([Chapter 7](#ch-system)). To turn it off or change its severity, use `checks` like any other check (see Manifest Configuration below). The desktop app runs it when you tick **Check my book before saving** in Publish and lists what it finds in the Problems list; the **Safe area** layers draw the same lines while you write.
 
 ### Asset checks (pre-build)
 

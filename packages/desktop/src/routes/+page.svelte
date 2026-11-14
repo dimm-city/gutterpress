@@ -183,9 +183,9 @@
         // ExportController.savePdf) — never a stored setting.
         allowShrink: opts?.allowShrink,
         // Validation is skipped by default (the quick Ctrl+Shift+E export and
-        // the dialog's default) — it's a fast RGB export, not the full
-        // preflight. The export dialog's "Run print-safety validation" toggle
-        // opts back in. Lint stays ON either way — the in-process PostCSS
+        // the Publish wizard's default) — it's a fast RGB export, not the full
+        // preflight. The wizard's "Check my book before saving" box opts back
+        // in, and also runs the checks on the saved PDF. Lint stays ON either way — the in-process PostCSS
         // print-safety checks catch real CSS problems before PDF gen.
         skipPreValidate: !opts?.validate,
         skipPostValidate: !opts?.validate,
@@ -3035,7 +3035,7 @@
 <!-- Non-blocking PDF export progress: a corner pill that leaves the preview
      fully interactive (the build runs in a separate render window). -->
 <ActivityIndicator
-  stage={activity.exporting}
+  stage={publishOpen ? null : activity.exporting}
   kind="pill"
   anchor="app"
   onCancel={activity.exporting?.cancelable ? () => exportController.cancelExport() : undefined}
@@ -3599,6 +3599,14 @@
     controller={publishController}
     projectDir={lifecycle.currentDir ?? ""}
     buildArtifact={(opts) => exportController.buildTo(opts)}
+    progress={exportController.pdfProgress}
+    onCancelBuild={() => exportController.cancelExport()}
+    canCancelBuild={!!exportController.activeExportId}
+    saveWarning={lifecycle.saveWarning}
+    onReviewProblems={() => {
+      publishOpen = false;
+      openProblemsList();
+    }}
     pickFolder={(defaultPath) => api.dialog.pickOutputFolder(defaultPath)}
     onShowInFolder={(path) => void api.shell.showInFolder(path).catch(() => {})}
     triggerEl={publishBtnEl}
