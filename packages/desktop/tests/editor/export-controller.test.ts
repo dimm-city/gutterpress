@@ -258,6 +258,7 @@ interface HostHarness {
     >;
     toastWarning: Spy<[string, (number | undefined)?, ({ label: string; onClick: () => void } | undefined)?]>;
     showProblems: Spy<[]>;
+    explainPdfError: Spy<[unknown, (string | undefined)?]>;
     wait: Spy<[number]>;
   };
 }
@@ -296,6 +297,7 @@ function makeHostController(): HostHarness {
   >();
   const toastWarning = hspy<[string, (number | undefined)?, ({ label: string; onClick: () => void } | undefined)?]>();
   const showProblems = hspy<[]>();
+  const explainPdfError = hspy<[unknown, (string | undefined)?]>();
   const wait = hspy<[number]>();
 
   const host: ExportHostDeps = {
@@ -349,7 +351,14 @@ function makeHostController(): HostHarness {
     toastError: (m, d, a) => toastError(m, d, a),
     toastWarning: (m, d, a) => toastWarning(m, d, a),
     showProblems: () => showProblems(),
-    friendlyPdfError: (e) => `friendly: ${e instanceof Error ? e.message : String(e)}`,
+    // The real explanation (errors.ts) is tested on its own; here it is marked
+    // so a test can tell the controller passed it through.
+    explainPdfError: (e, what) => {
+      explainPdfError(e, what);
+      if ((e as { code?: string } | null)?.code === "EXPORT_CANCELED") return { summary: "" };
+      const raw = e instanceof Error ? e.message : String(e);
+      return { summary: `friendly: ${raw.split("\n")[0]}`, ...(raw.includes("\n") ? { details: raw } : {}) };
+    },
     wait: (ms) => {
       wait(ms);
       return Promise.resolve();
@@ -376,6 +385,7 @@ function makeHostController(): HostHarness {
       toastError,
       toastWarning,
       showProblems,
+      explainPdfError,
       wait,
     },
   };
@@ -469,11 +479,13 @@ test("savePdf() onBuildProgress dispatch: 'canceled' marks canceling, 'error' is
   await p;
 });
 
-test("savePdf() a non-EXPORT_CANCELED failure toasts the friendly error and resets", async () => {
+test("savePdf() a non-EXPORT_CANCELED failure says why in a toast that stays, and resets", async () => {
   const { ctrl, deps } = makeHostController();
   deps.buildPdf.impl = () => Promise.reject(new Error("disk full"));
   await ctrl.savePdf();
-  expect(deps.toastError.calls).toEqual([["friendly: disk full"]]);
+  // Duration 0: a build can fail after many minutes, with nobody watching.
+  // A toast that leaves after five seconds takes the reason with it.
+  expect(deps.toastError.calls).toEqual([["friendly: disk full", 0, undefined]]);
   expect(ctrl.state).toBe("idle");
   expect(ctrl.exporting).toBe(false);
 });
@@ -626,7 +638,41 @@ test("buildTo() resolves null (no build) when the author cancels the dialog, and
     throw new Error("boom");
   };
   expect(await ctrl.buildTo({ format: "pdf", dir: "/proj/dist" })).toBeNull();
-  expect(deps.toastError.calls[0]![0]).toBe("friendly: boom");
+  expect(ctrl.failure).toEqual({ summary: "friendly: boom" });
+});
+
+test("a failed wizard build keeps the reason and its details for the wizard to show, with no toast", async () => {
+  const { ctrl, deps } = makeHostController();
+  const raw = "Ghostscript failed (exit 1)\nUnrecoverable error in pdfwrite";
+  deps.buildPdf.impl = () => Promise.reject(new Error(raw));
+  expect(await ctrl.buildTo({ format: "pdf", dir: "/proj/dist" })).toBeNull();
+  expect(ctrl.failure).toEqual({ summary: "friendly: Ghostscript failed (exit 1)", details: raw });
+  // The wizard that asked shows it, and keeps showing it; a toast would be gone in seconds.
+  expect(deps.toastError.calls.length).toBe(0);
+});
+
+test("the last failure is cleared when the next build starts, and a cancel leaves none", async () => {
+  const { ctrl, deps } = makeHostController();
+  deps.buildPdf.impl = () => Promise.reject(new Error("boom"));
+  await ctrl.buildTo({ format: "pdf", dir: "/proj/dist" });
+  expect(ctrl.failure).not.toBeNull();
+  let seenWhileBuilding: unknown = "unset";
+  deps.buildPdf.impl = async () => {
+    seenWhileBuilding = ctrl.failure;
+    throw Object.assign(new Error("canceled"), { code: "EXPORT_CANCELED" });
+  };
+  await ctrl.buildTo({ format: "pdf", dir: "/proj/dist" });
+  expect(seenWhileBuilding).toBeNull();
+  expect(ctrl.failure).toBeNull();
+});
+
+test("a failed website build says it was the website, and keeps the reason", async () => {
+  const { ctrl, deps } = makeHostController();
+  deps.buildHtml.impl = () => Promise.reject(new Error("no space left on device"));
+  expect(await ctrl.buildTo({ format: "html", dir: "/proj/site" })).toBeNull();
+  expect(ctrl.failure).toEqual({ summary: "friendly: no space left on device" });
+  expect(deps.explainPdfError.calls.at(-1)![1]).toBe("Website export");
+  expect(deps.toastError.calls.length).toBe(0);
 });
 
 test("buildTo() website builds the folder and leaves announcing it to the wizard", async () => {

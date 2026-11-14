@@ -1,6 +1,7 @@
 import { json, error, isHttpError, isRedirect } from '@sveltejs/kit';
 import type { RequestEvent } from '@sveltejs/kit';
 import { isAbsolute } from 'node:path';
+import { logFailure, redactUrlCredentials } from '../../../../electron/server-bridge/friendly-errors';
 
 // Shared plumbing for the desktop's host API routes (packages/desktop/src/routes/api/**).
 // These run in the SvelteKit host (Node), not the PWA-clean renderer, so node imports
@@ -50,7 +51,12 @@ export function jsonRoute<B = unknown>(fn: JsonRouteFn<B>, options: JsonRouteOpt
         const classified = options.onError(e);
         if (classified) throw error(classified.status, classified.message);
       }
+      // Unexpected, and about to become one sentence in the UI: keep the whole
+      // of it in the app log. (A route with its own `onError` filter logs there.)
       const msg = e instanceof Error ? e.message : String(e);
+      // `?.`: recording a failure must never replace it with one of its own.
+      logFailure(`[${event?.url?.pathname ?? "api"}] failed: ${redactUrlCredentials(msg)}`);
+      if (e instanceof Error && e.stack) logFailure(redactUrlCredentials(e.stack));
       throw error(500, msg);
     }
   };

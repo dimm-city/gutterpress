@@ -22,6 +22,10 @@ destinations.
    when qpdf and Ghostscript are installed) run on the saved file. The step says how many
    problems they found, and **Review problems** opens the list.
 
+If the save fails, the step says why and keeps saying it until you try again; **Show details**
+has the rest when there is more. The whole error is also in the app's log: on the start screen,
+**Troubleshooting → Logs**.
+
 ![Publish your book, Format step: PDF or Website](images/publish-format.jpg)
 
 **Shortcut:** Ctrl+Shift+E (Cmd+Shift+E on a Mac) saves a PDF straight away: choose where in the

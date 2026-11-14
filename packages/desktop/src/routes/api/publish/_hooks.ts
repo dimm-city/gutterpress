@@ -12,7 +12,7 @@
 import path from 'node:path';
 import { getHostServices, loadLib, type LibModule } from '../_lib/route';
 
-export { handlePublishErrors } from '../../../../electron/server-bridge/friendly-errors';
+export { handlePublishErrors, logPublishOutcome } from '../../../../electron/server-bridge/friendly-errors';
 
 let selections: { file: string; store: InstanceType<LibModule['PublishSelectionsStore']> } | null = null;
 

@@ -4,7 +4,7 @@ import { friendlyPublishError } from "../../src/lib/errors";
 // friendlyPublishError (M41) maps the raw text that reaches PublishSection —
 // either a publish-route catch's `e.message` (ProjectConfigPanel) or a
 // `PublishRunResult.error` string — to plain-language guidance, mirroring
-// friendlyPdfError's approach: recognized technical shapes (a butler/swa
+// explainPdfError's approach: recognized technical shapes (a butler/swa
 // exit code + log tail, a raw Shopify HTTP/GraphQL failure) get a short
 // summary with the original text preserved as `details` for a "Show details"
 // disclosure; messages the host/lib already wrote in plain author language

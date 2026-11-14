@@ -162,52 +162,64 @@ export function overWideExportMessage(e: unknown): string | null {
   );
 }
 
+/** A failed export, for display: one line to show, and the original text when there is more to it. */
+export interface PdfErrorExplanation {
+  /** Safe to show at once. Empty for a cancel the author asked for: nothing to show. */
+  summary: string;
+  /** The error as the build reported it, for a "Show details" disclosure. */
+  details?: string;
+}
+
 /**
- * Map a raw PDF-export error to plain-language guidance for a toast. Reads the
- * host error `code` when present and falls back to message pattern-matching.
- * Returns "" for a user-initiated cancel (EXPORT_CANCELED) so the caller can
- * suppress the toast entirely.
+ * Explain a failed PDF export in plain language without losing the reason.
+ * Failures the app knows get their own sentence; any other says what the
+ * build itself said. The original text is kept as `details` whenever the
+ * summary doesn't already show all of it. `what` names the thing being made
+ * when it isn't a PDF ("Website export").
  */
-export function friendlyPdfError(e: unknown): string {
-  const msg = e instanceof Error ? e.message : String(e);
+export function explainPdfError(e: unknown, what = "PDF export"): PdfErrorExplanation {
   const code = (e as { code?: string } | null)?.code ?? "";
-  if (code === "EXPORT_CANCELED") {
-    return "";
-  }
-  // Electron flattens a rejected ipcMain.handle error to its message (code lost),
-  // so also match the engine's stable wording (source-provider unfinishedSwitchMessage;
-  // pinned by repair-copies.test.ts).
+  if (code === "EXPORT_CANCELED") return { summary: "" };
+  // The build crosses to the renderer as data (platform/ipc-result.ts), so it
+  // arrives unwrapped; scrub Electron's prefix for any error that still came
+  // through a plain rejected `ipcMain.handle`.
+  const msg = friendlyHostError(e instanceof Error ? e.message : String(e ?? "")).trim();
+  const reworded = (summary: string): PdfErrorExplanation => (msg ? { summary, details: msg } : { summary });
+
+  // The engine's stable wording as well as the code (source-provider
+  // unfinishedSwitchMessage; pinned by repair-copies.test.ts).
   if (code === "UNFINISHED_SWITCH" || /part-way through switching/.test(msg)) {
-    return "Gutterpress can't export while the book is part-way through switching drafts. Go to Book setup → Online → Drafts to put it right.";
+    return reworded(
+      "Gutterpress can't export while the book is part-way through switching drafts. Go to Book setup → Online → Drafts to put it right.",
+    );
   }
   if (isMissingManifestError(msg)) {
-    return 'PDF export needs manifest.yaml. Choose "Set up as a book" first, then try again.';
+    return reworded('PDF export needs manifest.yaml. Choose "Set up as a book" first, then try again.');
   }
   // Over-wide content (#163) — the engine's own message ends in advice only a
   // CLI user can take ("pass allowShrink"). Say what the author can act on
   // instead; the "Build anyway" offer that goes with it lives in
   // ExportController.savePdf.
   const overWide = overWideExportMessage(e);
-  if (overWide) return overWide;
-  if (code === "BUILD_ERROR") {
-    const firstLine = msg.split("\n")[0]?.trim() ?? msg;
-    return `PDF generation failed: ${firstLine}. Open Help (?) for setup details.`;
-  }
+  if (overWide) return reworded(overWide);
   if (code === "TOOL_MISSING") {
     const match = msg.match(/Required system tool not found: ([^\n]+)/);
     const tool = match?.[1]?.trim() ?? "a required tool";
-    return `PDF export needs "${tool}" installed. Open Help (?) > System tools to see how to install it.`;
+    return reworded(`PDF export needs "${tool}" installed. Open Help (?) > System tools to see how to install it.`);
   }
   if (/chrome|chromium|browser/i.test(msg)) {
-    return "PDF export needs a browser (Chrome or Edge) installed. Open Help (?) for setup details.";
+    return reworded("PDF export needs a browser (Chrome or Edge) installed. Open Help (?) for setup details.");
   }
   if (/ENOENT|not found/i.test(msg)) {
-    return "Could not find a required program. Open Help (?) > System tools to check what needs to be installed.";
+    return reworded("Could not find a required program. Open Help (?) > System tools to check what needs to be installed.");
   }
   if (/permission|EACCES/i.test(msg)) {
-    return "Permission denied saving the PDF. Try saving to a different folder (like your Desktop).";
+    return reworded("Permission denied saving the PDF. Try saving to a different folder (like your Desktop).");
   }
-  return "PDF export failed. Open Help (?) > System tools to check for issues.";
+  // No words of the app's own for this one: say what the build said.
+  const reason = msg.split("\n")[0]?.trim() ?? "";
+  if (!reason) return { summary: `${what} failed. Open Help (?) > System tools to check for issues.` };
+  return { summary: `${what} failed: ${reason}`, ...(reason === msg ? {} : { details: msg }) };
 }
 
 /**
@@ -249,7 +261,7 @@ export function unwrapRouteError(text: string): string {
 /**
  * Map a raw publish error (from a publish route's thrown/rejected message, or
  * a `PublishRunResult.error` string) to plain-language guidance, mirroring
- * `friendlyPdfError`'s approach: recognized technical shapes get a short
+ * `explainPdfError`'s approach: recognized technical shapes get a short
  * author-facing summary with the raw text preserved as `details`; messages
  * the host/lib already wrote in plain language (see `PUBLISH_FRIENDLY_ERROR`
  * in electron/server-bridge/friendly-errors.ts — e.g. "No itch.io API key

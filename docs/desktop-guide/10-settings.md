@@ -104,5 +104,8 @@ set up (not its text) and the end of the app's log already filled in; nothing is
 create the issue. On GitHub, drag any screenshots or sample files into **Screenshots or files**,
 since the app can't attach them for you. **Copy report** copies the same details. Error messages
 also offer **Report a problem**. The **Logs** and **Diagnostics** tabs help when something isn't
-working, and with a book open, **Open terminal in book folder** on the **Diagnostics** tab opens
-a terminal there (bash; on Windows, a Command Prompt when bash isn't installed).
+working. The app's own log records when it started and closed, each PDF or website build (when
+it started, how long it took and, if it failed, the whole error), publishing that failed, and
+errors the app ran into. With a book open, **Open terminal in book folder** on the
+**Diagnostics** tab opens a terminal there (bash; on Windows, a Command Prompt when bash isn't
+installed).

@@ -37,6 +37,7 @@ import type {
 // Shared IPC payload types — imported from the single source of truth
 // (shared-types.ts), which the Electron host imports directly too, so these
 // types cannot drift between the host and renderer sides.
+import type { IpcResult } from "./ipc-result";
 import type {
   UpdaterStatus,
   UpdaterEventPayload,
@@ -512,7 +513,8 @@ export interface ElectronBridge
   // the translation seam that unwraps FolderRef.key back into the string `input`
   // the existing IPC expects.
   startPreview(args: { input: string } & Omit<PreviewStartArgs, "input">): Promise<PreviewStartResult>;
-  build(args: { input: string } & Omit<BuildArgs, "input">): Promise<BuildResult>;
+  /** Resolves with the outcome as data, so a failure keeps its code (see `ipc-result.ts`). */
+  build(args: { input: string } & Omit<BuildArgs, "input">): Promise<IpcResult<BuildResult>>;
   /**
    * Raw folder-watch IPC behind `PlatformAdapter.watchFolder` (#44). Subscribes
    * to change events for `path` and returns an unsubscribe fn.

@@ -30,7 +30,7 @@
  * the guard.
  */
 
-import { overWideExportMessage } from "../errors";
+import { overWideExportMessage, type PdfErrorExplanation } from "../errors";
 import { basenameOf, isPathAtOrUnder, joinPath } from "../platform/paths";
 import { problemCounts } from "../problems";
 
@@ -148,7 +148,9 @@ export interface ExportHostDeps {
   ) => void;
   /** Open the Problems list (the findings toast's "Review" button). */
   showProblems: () => void;
-  friendlyPdfError: (e: unknown) => string;
+  /** Why an export failed, in plain language, with the original text as details
+   *  (`errors.ts`). `what` names the thing being made when it isn't a PDF. */
+  explainPdfError: (e: unknown, what?: string) => PdfErrorExplanation;
   /** Injected so the post-save 2s pill-linger delay is fake-clock-able in tests. */
   wait: (ms: number) => Promise<void>;
 }
@@ -159,6 +161,9 @@ export class ExportController {
   exporting = $state(false);
   /** Human-facing status label for the pill; null when there is nothing to show. */
   pdfProgress = $state<string | null>(null);
+  /** Why the last export failed, until the next one starts. The Publish view
+   *  shows it for as long as it stands; a toast would be gone in seconds. */
+  failure = $state<PdfErrorExplanation | null>(null);
   /** The host's export id once known — gates the Cancel button + progress match. */
   activeExportId = $state<string | null>(null);
   /** The FSM state driving the pill icon and label. */
@@ -202,6 +207,7 @@ export class ExportController {
 
   /** Begin a PDF export: reset counters, enter "started", start the 1s ticker. */
   start(): void {
+    this.failure = null;
     this.exporting = true;
     this.state = "started";
     this.pages = 0;
@@ -222,6 +228,7 @@ export class ExportController {
    * pill.
    */
   beginSimpleExport(): void {
+    this.failure = null;
     this.exporting = true;
   }
 
@@ -400,7 +407,9 @@ export class ExportController {
       const data = await h.buildHtml({ key: inputDir, displayName }, out);
       return { path: data.outDir ?? out, findings: [] };
     } catch (e) {
-      h.toastError(h.friendlyPdfError(e) || "Website export failed");
+      // No toast: only the Publish view builds a website, and it shows this.
+      const why = h.explainPdfError(e, "Website export");
+      this.failure = why.summary ? why : { summary: "Website export failed." };
       return null;
     } finally {
       this.endSimpleExport();
@@ -471,6 +480,7 @@ export class ExportController {
       // is deliberately not a standing checkbox in the export dialog: a
       // permanent opt-out invites shipping a silently scaled-down book,
       // while an offer only exists when a real over-wide element does.
+      this.failure = h.explainPdfError(e);
       const overWide = opts?.allowShrink ? null : overWideExportMessage(e);
       if (overWide) {
         h.toastError(overWide, 0, {
@@ -481,8 +491,11 @@ export class ExportController {
           // failed export already spent.
           onClick: () => this.savePdf({ validate: opts?.validate, allowShrink: true }),
         });
-      } else {
-        h.toastError(h.friendlyPdfError(e));
+      } else if (announce) {
+        // The quick export has no screen of its own, so it says why in a toast
+        // that stays: a build can fail after many minutes with nobody watching.
+        // The Publish view (`announce` false) shows `failure` itself.
+        h.toastError(this.failure.summary, 0, undefined);
       }
       return null;
     } finally {

@@ -509,10 +509,12 @@ export class ExportController {
         if (e instanceof lib.BuildError) {
           const err = new Error(e.message);
           (err as Error & { code?: string }).code = "BUILD_ERROR";
+          // Keep where it failed: this is what the app log records.
+          if (e.stack) err.stack = e.stack;
           throw err;
         }
         // Book is part-way through a draft switch: keep the stable code so the
-        // renderer can say why in plain words (friendlyPdfError).
+        // renderer can say why in plain words (explainPdfError).
         if ((e as { code?: string } | null)?.code === "UNFINISHED_SWITCH") {
           const err = new Error(e instanceof Error ? e.message : String(e));
           (err as Error & { code?: string }).code = "UNFINISHED_SWITCH";

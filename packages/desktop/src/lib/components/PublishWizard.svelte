@@ -39,7 +39,7 @@
   import { replaceHint } from "#lib/accounts.ts";
   import { onMount } from "svelte";
   import { requestInlineConfirm, cancelInlineConfirm, type InlineConfirmState } from "#lib/dialog.ts";
-  import { friendlyPublishError } from "#lib/errors.ts";
+  import { friendlyPublishError, type PdfErrorExplanation } from "#lib/errors.ts";
   import {
     groupPreflight,
     preflightHeaderLevel,
@@ -74,6 +74,7 @@
     onCancelBuild,
     canCancelBuild = false,
     saveWarning = null,
+    buildFailure = null,
   }: {
     controller: PublishSectionController;
     projectDir: string;
@@ -87,6 +88,8 @@
     canCancelBuild?: boolean;
     /** Why the last build could not start (the book is still loading, a tool is missing). */
     saveWarning?: string | null;
+    /** Why the last build failed (ExportController.failure), until the next one starts. */
+    buildFailure?: PdfErrorExplanation | null;
     /** Close the wizard and open the Problems list (the saved PDF's findings). */
     onReviewProblems?: () => void;
     /** Native folder dialog for the local destination; null when canceled. */
@@ -113,6 +116,8 @@
   // How many problems the checks found in the saved PDF (only when asked).
   let pdfFindings = $state(0);
   let publishing = $state(false);
+  // A build was started from this view: only then is `buildFailure` this view's to show.
+  let buildTried = $state(false);
   // Preflight groups showing every row, not just the first few.
   let expandedGroups = $state<Set<string>>(new Set());
   const GROUP_PREVIEW = 5;
@@ -324,6 +329,7 @@
   async function publishAll() {
     if (publishGated || publishing) return; // preflight gate (belt-and-braces with the disabled state)
     publishing = true;
+    buildTried = true;
     builtArtifact = null;
     pdfFindings = 0;
     try {
@@ -736,6 +742,16 @@
         </div>
         {#if saveWarning && !publishing && !builtArtifact}
           <p class="warn" role="alert"><Icon name="triangle-alert" size={13} /> {saveWarning}</p>
+        {/if}
+        {#if buildTried && buildFailure?.summary && !publishing && !builtArtifact}
+          <!-- Stays until the next build: a build can fail after many minutes, with nobody watching. -->
+          <div class="result failed" role="alert">
+            <p class="error">{buildFailure.summary}</p>
+            {#if buildFailure.details}
+              <details class="status-raw"><summary>Show details</summary><pre>{buildFailure.details}</pre></details>
+            {/if}
+            <p class="muted small">The app log has the full error: Troubleshooting &gt; Logs on the start screen.</p>
+          </div>
         {/if}
         {#if builtArtifact}
           {@const artifact = builtArtifact}

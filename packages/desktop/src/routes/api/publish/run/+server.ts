@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { handlePublishErrors, publishDeps } from '../_hooks';
+import { handlePublishErrors, logPublishOutcome, publishDeps } from '../_hooks';
 import { defineRoute, loadLib, requireContainedOrPicked, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
@@ -73,6 +73,8 @@ export const POST: RequestHandler = defineRoute<{
           },
         },
       );
+      // A real run that failed reports its reason as a result, not a throw.
+      if (!body.dryRun) logPublishOutcome(body.providerId, result);
       return { ...result, log };
     }),
 });

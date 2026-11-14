@@ -7,6 +7,18 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Desktop: a failed PDF export did not say why.** The reason the build gave was dropped on
+  the way to the screen, so most failures read "PDF export failed. Open Help (?) > System
+  tools to check for issues." The Publish view now shows the build's own reason and keeps it
+  there until you try again, with **Show details** for the rest; the quick export
+  (Ctrl+Shift+E) shows it in a message that stays instead of leaving after five seconds.
+- **Desktop: the app log recorded almost nothing.** It held the app's start and close and
+  update failures only, so a failed build left nothing to look at. It now records each build
+  (when it started, how long it took, and the whole error with where it happened if it
+  failed), publishing that failed, an unexpected failure in any of the app's own requests,
+  errors in the window, and errors the app itself did not catch. Sign-in details in web
+  addresses are left out.
+
 - **Desktop: unticking the checks in Publish did not stop them.** The readiness check ran on
   every publish and the saved PDF was checked after every export, whatever the box said. The
   box is now **Check my book before saving**, offered for both formats: ticked, it adds a

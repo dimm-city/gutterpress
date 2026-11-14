@@ -18,7 +18,7 @@ function makeBridge() {
     startPreview: rec("startPreview", Promise.resolve({ url: "x" })),
     stopPreview: rec("stopPreview", Promise.resolve({ stopped: true })),
     cancelExport: rec("cancelExport", Promise.resolve({ canceled: true })),
-    build: rec("build", Promise.resolve({ outDir: "/out" })),
+    build: rec("build", Promise.resolve({ ok: true, value: { outDir: "/out" } })),
     onBuildProgress: rec("onBuildProgress", () => {}),
     onUrlPreviewBlocked: rec("onUrlPreviewBlocked", () => {}),
     onRestoreProgress: rec("onRestoreProgress", () => {}),
@@ -56,6 +56,31 @@ test("getPlatform() returns the memoised ElectronAdapter", () => {
   const p = getPlatform();
   expect(p).toBeInstanceOf(ElectronAdapter);
   expect(getPlatform()).toBe(p); // memoised
+});
+
+test("a failed build rejects with the host's own message and its code, not Electron's wrapper", async () => {
+  const { bridge } = makeBridge();
+  bridge.build = () =>
+    Promise.resolve({ ok: false, error: { message: "Missing ICC profile at press.icc.", code: "BUILD_ERROR" } });
+  // @ts-expect-error test global
+  globalThis.window = { electron: bridge };
+  const failure = await new ElectronAdapter()
+    .build({ input: { key: "/proj", displayName: "proj" }, format: "pdfx" })
+    .then(
+      () => null,
+      (e: Error & { code?: string }) => e,
+    );
+  expect(failure?.message).toBe("Missing ICC profile at press.icc.");
+  expect(failure?.code).toBe("BUILD_ERROR");
+});
+
+test("a finished build resolves with the host's result", async () => {
+  const { bridge } = makeBridge();
+  // @ts-expect-error test global
+  globalThis.window = { electron: bridge };
+  expect(await new ElectronAdapter().build({ input: { key: "/proj", displayName: "proj" }, format: "pdf" })).toEqual({
+    outDir: "/out",
+  });
 });
 
 test("ElectronAdapter unwraps FolderRef for build/startPreview and delegates 1:1", async () => {

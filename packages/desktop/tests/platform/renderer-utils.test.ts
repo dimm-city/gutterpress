@@ -1,8 +1,8 @@
 import { test, expect } from "bun:test";
 import {
+  explainPdfError,
   friendlyFolderError,
   friendlyHostError,
-  friendlyPdfError,
   friendlyPreviewError,
   overWideExportMessage,
 } from "../../src/lib/errors";
@@ -70,17 +70,17 @@ test("friendlyPreviewError preserves missing-file details for the repair view", 
   expect(result.details).toContain("/books/example/css/missing.css");
 });
 
-test("friendlyPdfError still falls back to the generic message for unrelated errors", () => {
-  expect(friendlyPdfError(new Error("spawn ENOENT"))).toBe(
+test("explainPdfError still falls back to the generic message for unrelated errors", () => {
+  expect(explainPdfError(new Error("spawn ENOENT")).summary).toBe(
     "Could not find a required program. Open Help (?) > System tools to check what needs to be installed.",
   );
 });
 
-test("friendlyPdfError directs a loose preview folder to the existing setup action", () => {
+test("explainPdfError directs a loose preview folder to the existing setup action", () => {
   expect(
-    friendlyPdfError(
+    explainPdfError(
       new Error("No manifest.yaml found in /books/example."),
-    ),
+    ).summary,
   ).toBe(
     'PDF export needs manifest.yaml. Choose "Set up as a book" first, then try again.',
   );
@@ -171,26 +171,82 @@ test("overWideExportMessage returns null for every other export failure", () => 
   expect(overWideExportMessage(null)).toBeNull();
 });
 
-test("friendlyPdfError stops telling desktop authors to pass allowShrink", () => {
-  const shown = friendlyPdfError(
+test("explainPdfError stops telling desktop authors to pass allowShrink", () => {
+  const shown = explainPdfError(
     Object.assign(new Error(OVER_WIDE_MESSAGE), { code: "BUILD_ERROR" }),
-  );
+  ).summary;
   expect(shown).not.toContain("allowShrink");
   expect(shown).toContain("div.dc-sidebar.inset");
 });
 
-test("friendlyPdfError explains an export refused during an unfinished draft switch", () => {
+test("explainPdfError explains an export refused during an unfinished draft switch", () => {
   // The real IPC-wrapped, code-less form (Electron flattens the error to its message).
   const err = new Error(
     "Error invoking remote method 'api:build': Error: This book is part-way through switching revisions, so its files may be a mix of two revisions and it can't be built or saved yet.",
   );
-  const shown = friendlyPdfError(err);
+  const shown = explainPdfError(err).summary;
   expect(shown).toContain("part-way through switching drafts");
   expect(shown).toContain("Online → Drafts");
   expect(shown).not.toContain("System tools");
 });
 
-test("friendlyPdfError still honours the UNFINISHED_SWITCH code when it survives", () => {
+test("explainPdfError still honours the UNFINISHED_SWITCH code when it survives", () => {
   const err = Object.assign(new Error("anything the engine said"), { code: "UNFINISHED_SWITCH" });
-  expect(friendlyPdfError(err)).toContain("part-way through switching drafts");
+  expect(explainPdfError(err).summary).toContain("part-way through switching drafts");
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A failed export says why. The reason used to be dropped: Electron stripped
+// the host's error `code`, so every branch keyed on it was dead in the real
+// app, and anything the phrase-matching didn't know became "PDF export
+// failed. Open Help…" with the cause thrown away. The build now crosses as
+// data (platform/ipc-result.ts), so the code and the whole message arrive.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("a build failure the app has no special words for still says its reason", () => {
+  const shown = explainPdfError(
+    Object.assign(new Error("Missing ICC profile at press.icc. Place the ICC profile or specify --icc <path>"), {
+      code: "BUILD_ERROR",
+    }),
+  );
+  expect(shown.summary).toBe(
+    "PDF export failed: Missing ICC profile at press.icc. Place the ICC profile or specify --icc <path>",
+  );
+  expect(shown.details).toBeUndefined(); // nothing more to show than the line itself
+});
+
+test("a failure with no code at all still says its reason", () => {
+  const shown = explainPdfError(new Error("gs exited with code 1"));
+  expect(shown.summary).toBe("PDF export failed: gs exited with code 1");
+  expect(shown.summary).not.toContain("System tools to check for issues");
+});
+
+test("a long failure shows its first line, and keeps the rest as details", () => {
+  const raw = "Ghostscript failed (exit 1)\nGPL Ghostscript 10.06: Unrecoverable error, exit code 1\n  in pdfwrite";
+  const shown = explainPdfError(new Error(raw));
+  expect(shown.summary).toBe("PDF export failed: Ghostscript failed (exit 1)");
+  expect(shown.details).toBe(raw);
+});
+
+test("Electron's own wrapper around a host error is never shown", () => {
+  const shown = explainPdfError(new Error("Error invoking remote method 'api:build': Error: disk full"));
+  expect(shown.summary).toBe("PDF export failed: disk full");
+});
+
+test("a failure the app rewords keeps the original as details", () => {
+  const raw = "spawn gs ENOENT";
+  const shown = explainPdfError(new Error(raw));
+  expect(shown.summary).toContain("Could not find a required program");
+  expect(shown.details).toBe(raw);
+});
+
+test("only a failure that says nothing gets the generic line", () => {
+  expect(explainPdfError(new Error("")).summary).toBe(
+    "PDF export failed. Open Help (?) > System tools to check for issues.",
+  );
+});
+
+test("a cancel is not a failure: nothing to show", () => {
+  const shown = explainPdfError(Object.assign(new Error("PDF export canceled"), { code: "EXPORT_CANCELED" }));
+  expect(shown.summary).toBe("");
 });

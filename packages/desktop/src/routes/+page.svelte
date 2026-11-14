@@ -104,8 +104,8 @@
   import WelcomeLanding from "#lib/components/WelcomeLanding.svelte";
   import { continueStatus, shouldReshowLanding } from "#lib/routes/startup-landing.ts";
   import {
+    explainPdfError,
     friendlyFolderError,
-    friendlyPdfError,
     friendlyHostError,
     friendlyPreviewError,
     unwrapRouteError,
@@ -214,7 +214,7 @@
     toastWarning: (message, durationMs, action) =>
       toast?.show(message, "warning", durationMs, action),
     showProblems: () => openProblemsList(),
-    friendlyPdfError: (e) => friendlyPdfError(e),
+    explainPdfError: (e, what) => explainPdfError(e, what),
     wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   });
   let diagnosticsTools = $state<DiagnosticsTool[] | null>(null);
@@ -3603,6 +3603,7 @@
     onCancelBuild={() => exportController.cancelExport()}
     canCancelBuild={!!exportController.activeExportId}
     saveWarning={lifecycle.saveWarning}
+    buildFailure={exportController.failure}
     onReviewProblems={() => {
       publishOpen = false;
       openProblemsList();

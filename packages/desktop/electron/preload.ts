@@ -15,6 +15,7 @@ import type {
   UrlPreviewBlockedEvent,
   MarkdownFileLaunchEvent,
 } from "../src/lib/platform/shared-types";
+import type { IpcResult } from "../src/lib/platform/ipc-result";
 
 /**
  * Bridge exposed to the SvelteKit renderer as window.electron.
@@ -167,7 +168,9 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("api:stopPreview"),
   cancelExport: (exportId: string): Promise<{ canceled: boolean }> =>
     ipcRenderer.invoke("api:cancelExport", exportId),
-  build: (args: RawBuildArgs): Promise<BuildResult> =>
+  // An IpcResult, not a rejection: the adapter turns a failure back into an
+  // Error with its code (custom Error properties do not cross this bridge).
+  build: (args: RawBuildArgs): Promise<IpcResult<BuildResult>> =>
     ipcRenderer.invoke("api:build", args),
 
   // Live PDF-build progress (main → renderer). Returns an unsubscribe fn.

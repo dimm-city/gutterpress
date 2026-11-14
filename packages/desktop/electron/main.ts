@@ -117,7 +117,10 @@ import {
   operationLogSlug,
   logsDir as logsDirImpl,
 } from "./recovery-paths";
-import { appendAppLog, initAppLog, logAppEvent } from "./app-log";
+import { appendAppLog, initAppLog, logAppError, logAppEvent } from "./app-log";
+import { loggedExport } from "./export/export-log";
+import { logMainProcessFaults } from "./fault-log";
+import { toIpcResult } from "../src/lib/platform/ipc-result";
 import {
   ExportCanceledError,
   getActiveExportSession,
@@ -309,6 +312,9 @@ const operationLogPath = (repoSlug: string): string =>
 // The app's OWN fault log goes in that same logs dir, so the start screen's
 // Logs tab lists it alongside the project logs (electron/app-log.ts).
 initAppLog(() => appLogPathImpl(app.getPath("userData")));
+// From here on, an error nothing caught and a rejection nothing handled are in
+// the app log too (fault-log.ts).
+logMainProcessFaults(process, (line) => void logAppError(line));
 
 /**
  * The operation-log path for a project directory, keyed to its REPOSITORY.
@@ -754,26 +760,28 @@ function createWindow() {
     }
   });
 
-  // Surface renderer errors to stdout so terminal-launched runs reveal
-  // their own failures without needing DevTools.
+  // Renderer faults go to the app log as well as the console: a packaged app
+  // has no console, so the log is the only place an author (or a problem
+  // report) can find why the window went blank or a click did nothing.
+  // Warnings stay console-only.
   mainWindow.webContents.on(
     "did-fail-load",
     (_e, errorCode, errorDescription, validatedURL) => {
-      console.error(
+      void logAppError(
         `[renderer] did-fail-load url=${validatedURL} code=${errorCode} desc=${errorDescription}`
       );
     }
   );
   mainWindow.webContents.on("render-process-gone", (_e, details) => {
-    console.error(`[renderer] render-process-gone reason=${details.reason}`);
+    void logAppError(`[renderer] render-process-gone reason=${details.reason}`);
   });
   mainWindow.webContents.on(
     "console-message",
     (_e, level, message, line, sourceId) => {
-      if (level >= 2) {
-        console.error(
-          `[renderer:${level === 3 ? "error" : "warn"}] ${sourceId}:${line} ${message}`
-        );
+      if (level === 3) {
+        void logAppError(`[renderer:error] ${sourceId}:${line} ${message}`);
+      } else if (level === 2) {
+        console.error(`[renderer:warn] ${sourceId}:${line} ${message}`);
       }
     }
   );
@@ -1656,7 +1664,17 @@ const exportController = new ExportController({
   registerPickedPath: (absPath) => pickedFilesImpl.register([absPath]),
 });
 
-secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(args));
+// The outcome crosses as data (ipc-result.ts): a rejected handler would reach
+// the renderer as a bare message, without the code it branches on. And the
+// export is logged (export-log.ts), since the author sees one line of a failure.
+secureHandle("api:build", (_e, args: ExportBuildArgs) =>
+  toIpcResult(
+    loggedExport(args?.format ?? "pdf", () => exportController.build(args), {
+      event: (line) => void logAppEvent(line),
+      error: (line) => void logAppError(line),
+    }),
+  ),
+);
 
 // ──────────────────────────────────────────────────────────────────────────
 // Desktop updater wiring (electron-updater + macOS check-only notifier)
