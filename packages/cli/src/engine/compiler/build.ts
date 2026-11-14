@@ -1795,8 +1795,9 @@ async function findWidthOffenders(
   const contexts = [
     resolvePage(model),
     // Exclude core's own `gp-` reserved-namespace pages (markers.js
-    // MARKER_CSS — today `gp-full-bleed`): they are injected into EVERY
-    // document with zero side margins so `.full-bleed` art can reach the
+    // MARKER_CSS — today `gp-page-blank` and `gp-page-full-bleed`): they are
+    // injected into EVERY document, the full-bleed one with zero margins so
+    // `@page full-bleed` and `.gp-bleed` art can reach the
     // sheet edge, which would otherwise raise this Math.max to the full
     // sheet width for every book and silently disable the shrink-to-fit
     // hard error project-wide. Filtering the whole reserved prefix (not the

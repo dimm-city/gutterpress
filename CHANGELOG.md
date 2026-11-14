@@ -7,8 +7,24 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [0.11.26] - 2026-11-14
 
+### Changed
+
+- **A `.gp-bleed` image fills its whole sheet, bleed included.** It used to reach only the side
+  edges: the page's top and bottom margins stayed, a tall image split onto a second page, and
+  the running head and folio moved onto the trim line. It now sits on the same zero-margin page
+  as `@page full-bleed`, covers the sheet (cropped to fill when the art is not the sheet's shape)
+  and has no running head or folio. `.gp-flush` is still for pinned art only.
+
 ### Fixed
 
+- **The preview put a `.gp-bleed` image on the page around it.** Inside a block on a named page
+  (`@page wall-4`, say), the preview kept the image on that page, inset by its margins, while
+  print gave it a page of its own. The preview now breaks out of a named page wherever print
+  does, and takes an element's page from the cascade, as print does, rather than from the
+  first `page:` rule its selector matches.
+- **The print-resolution warning measured cropped art by its box.** An image scaled to cover its
+  box (`object-fit: cover`, as a `.gp-bleed` plate is) is reported at the resolution it actually
+  prints at.
 - **The preview placed a page background from the sheet's corner; print places it from the
   text area's.** An `@page` background paints the whole sheet in both, but print measures its
   position from the corner inside the page margins. The preview measured from the sheet's

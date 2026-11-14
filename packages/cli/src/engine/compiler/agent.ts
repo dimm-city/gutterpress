@@ -394,15 +394,22 @@ export function auditContent(
     const src = img.currentSrc || img.src;
     // A vector image has no print resolution: its naturalWidth is a CSS size.
     if (/^data:image\/svg|\.svg(?:[?#]|$)/i.test(src)) continue;
-    // CSS px are 1/96in; effective DPI = source pixels per printed inch
-    const dpi = img.naturalWidth / (rect.width / 96);
+    // CSS px are 1/96in; effective DPI = source pixels per printed inch.
+    // `object-fit` scales the picture inside its box: `cover` (a `.gp-bleed`
+    // plate) by the larger ratio, cropping the other side; `contain` by the
+    // smaller.
+    const fit = getComputedStyle(img).objectFit;
+    const sx = rect.width / img.naturalWidth;
+    const sy = rect.height / img.naturalHeight;
+    const scale = fit === "cover" ? Math.max(sx, sy) : fit === "contain" ? Math.min(sx, sy) : sx;
+    const dpi = 96 / scale;
     if (dpi < dpiFloor) {
       // Name the file, which is what the author can fix.
       const file = src.startsWith("data:") ? "" : decodeURIComponent(src.split(/[?#]/)[0]!.split("/").pop()!);
       out.push({
         kind: "low-dpi",
         what: file ? `${name(img)} (${file})` : name(img),
-        detail: `${img.naturalWidth}px wide printed at ${(rect.width / 96).toFixed(2)}in = ${Math.round(dpi)} DPI`,
+        detail: `${img.naturalWidth}px wide printed at ${((img.naturalWidth * scale) / 96).toFixed(2)}in = ${Math.round(dpi)} DPI`,
       });
     }
   }

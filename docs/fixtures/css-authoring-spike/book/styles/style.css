@@ -113,10 +113,3 @@ p { orphans: 3; widows: 3; }
 .cover-page h1 {
   font-size: 30pt;
 }
-
-/* Full-bleed gallery page: suppress the running head / folio that would
-   otherwise land on the trim edge (per the user guide's full-bleed note). */
-@page gp-full-bleed {
-  @top-center { content: none; }
-  @bottom-center { content: none; }
-}

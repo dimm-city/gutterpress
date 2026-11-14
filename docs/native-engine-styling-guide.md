@@ -300,14 +300,18 @@ fixture — but only when the thing being kept-with can actually be placed:
   every other sheet. Keep engine workarounds in that one file, each rule
   commented with the measured failure it fixes.
 - **`GUTTERPRESS_CSS`'s `.gp-bleed` reaches the sheet edge by assigning the
-  element's page to a core-owned named page**, `@page gp-full-bleed {
-  margin-left: 0; margin-right: 0; }`. That page's content box already IS the
-  sheet, so `width: 100%` reaches both edges and nothing out-dents — no
-  shrink-to-fit trigger. The obvious alternative (out-denting by the real page
-  margins) was implemented, measured, and REVERTED: out-denting to the sheet
-  edge shrinks the whole document, because the shrink-to-fit trigger is the
-  page CONTENT box, not the sheet (§2). Measured on Chromium 148, 6×4in sheet,
-  0.75in margins, by the width of a fixed text run:
+  element's page to core's own full-bleed page** (`@page full-bleed`,
+  `@page gp-page-full-bleed { margin: 0 }`, its margin boxes cleared). That
+  page's content box already IS the sheet, so `width: 100%` and the sheet's
+  height (`--gp-content-h`) cover it, `object-fit: cover` crops the art to
+  fill it, and nothing out-dents — no shrink-to-fit trigger. Art that is not
+  the sheet's shape loses a sliver on one axis; export it at the sheet's size
+  with bleed (8.625×11.25in for a letter book with 0.125in bleed) to keep all
+  of it. The obvious alternative (out-denting by the real page margins) was
+  implemented, measured, and REVERTED: out-denting to the sheet edge shrinks
+  the whole document, because the shrink-to-fit trigger is the page CONTENT
+  box, not the sheet (§2). Measured on Chromium 148, 6×4in sheet, 0.75in
+  margins, by the width of a fixed text run:
 
   | band | text run | result |
   |---|---|---|
@@ -326,22 +330,8 @@ fixture — but only when the thing being kept-with can actually be placed:
   0.000–6.000in after. The reset is first in the cascade (`assemble.ts` puts
   author CSS last), so declaring your own `body` margin still wins.
 
-  **Known gap, not fixed in core:** on the bleed page, the running head/folio
-  move onto the trim line under native (margin boxes are positioned by the
-  page's own margins, which `gp-full-bleed` zeroes). If you need to keep
-  them, suppress the ones that would land on the trim edge, scoped to core's
-  named page:
-
-  ```css
-  @page gp-full-bleed {
-    @top-center { content: none; }
-    @bottom-center { content: none; }
-  }
-  ```
-
-  Core does not ship this suppression itself — which margin boxes a book
-  actually uses (and whether hiding them on the art page is even wanted) is a
-  book-level design call, not a default.
+  The plate's sheet carries no running head or folio (the full-bleed page
+  clears its margin boxes); the folio still counts it.
 
 ## 10. Debugging workflow that actually finds things
 

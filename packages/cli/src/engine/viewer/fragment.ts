@@ -389,16 +389,15 @@ function propagatedBreakTarget(el: Element, strip: HTMLElement): Element | null 
   return site;
 }
 
-/** Named page assigned directly ON `el` itself (not a descendant). */
-function directPageName(el: Element, model: GcpmModel): string | undefined {
-  for (const a of model.pageAssignments) {
-    try {
-      if (el.matches(a.selector)) return a.page;
-    } catch {
-      /* unsupported selector — ignore, never throw on author CSS */
-    }
-  }
-  return undefined;
+/**
+ * Named page assigned directly ON `el` itself (not a descendant): the
+ * cascade's `page` value, which the preview computes from the print
+ * stylesheet. The first matching `page:` rule in source order is not it: a
+ * book's `h1 { page: chapter }` loses to its own `.cover-page h1 { page: cover }`.
+ */
+function directPageName(el: Element): string | undefined {
+  const page = getComputedStyle(el).page;
+  return page && page !== "auto" ? page : undefined;
 }
 
 /** Whether some descendant of `el` (not `el` itself) carries a page assignment. */
@@ -517,7 +516,7 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
     // Nothing precedes it: text with real content opens its own default-page
     // run (print puts it on the default page, then the named element breaks
     // to its own). Whitespace generates no box, so it just rides along.
-    if (held.some((n) => (n.textContent ?? "").trim() !== "")) {
+    if (held.some((n) => n.nodeType === 3 && (n.textContent ?? "").trim() !== "")) {
       pushRun(runs, undefined, held);
       return [];
     }
@@ -525,23 +524,30 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
   };
 
   for (const node of Array.from(container.childNodes)) {
-    if (node.nodeType !== 1) {
+    // Text, comments and elements that make no box (a `<script>` after the
+    // last named page) wait for a run: alone, they would open a page print
+    // never makes.
+    if (node.nodeType !== 1 || getComputedStyle(node as Element).display === "none") {
       pending.push(node);
       continue;
     }
     const kid = node as HTMLElement;
     if (kid.classList.contains("gp-layer")) continue; // viewer chrome, not content
     const pin = pinRunOf(kid);
-    const own = directPageName(kid, model);
-    if (own !== undefined) {
+    const own = directPageName(kid);
+    if (!hasDescendantPageAssignment(kid, model) && !holdsPinRoot(kid)) {
       pushRun(runs, own, [...carry(), kid], pin);
       continue;
     }
-    if (!hasDescendantPageAssignment(kid, model) && !holdsPinRoot(kid)) {
-      pushRun(runs, undefined, [...carry(), kid], pin);
+    // A child that names no page is on its parent's (`page: auto`), so the
+    // runs inside a named element default to that element's page; a
+    // descendant that names another (a `.gp-bleed` plate on a named page)
+    // still splits it, as print breaks there.
+    const inner = explodeChildren(kid, model).map((r) => ({ ...r, page: r.page ?? own }));
+    if (own !== undefined && inner.every((r) => r.page === own)) {
+      pushRun(runs, own, [...carry(), kid], pin);
       continue;
     }
-    const inner = explodeChildren(kid, model);
     if (inner.length <= 1) {
       pushRun(runs, inner[0]?.page, [...carry(), kid], pin ?? inner[0]?.pin);
       continue;
@@ -657,7 +663,7 @@ export function stabilizeFullHeightPageRoots(model: GcpmModel, strips: StripInfo
       el;
       el = el.firstElementChild as HTMLElement | null
     ) {
-      if (directPageName(el, model) !== strip.page) continue;
+      if (directPageName(el) !== strip.page) continue;
       const cs = getComputedStyle(el);
       const height = parseFloat(cs.height);
       const rootRects = el.getClientRects();

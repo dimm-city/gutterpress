@@ -17,37 +17,37 @@
   // src/engine/viewer/fragment.ts
   var exports_fragment = {};
   __export(exports_fragment, {
-    wrapGeometry: () => wrapGeometry,
-    waitForLayoutReady: () => waitForLayoutReady,
-    versoShiftPt: () => versoShiftPt,
-    synthesizeColumnBreaks: () => synthesizeColumnBreaks,
-    stripMetrics: () => stripMetrics,
-    strideOf: () => strideOf,
-    stabilizeFullHeightPageRoots: () => stabilizeFullHeightPageRoots,
-    spreadModeSupported: () => spreadModeSupported,
-    runPageBox: () => runPageBox,
-    rowStrideOf: () => rowStrideOf,
-    pageRangeOf: () => pageRangeOf,
-    pageOf: () => pageOf,
-    padToSignature: () => padToSignature,
-    measure: () => measure,
-    makeOverflowFragmentable: () => makeOverflowFragmentable,
-    loadStyleSources: () => loadStyleSources,
-    injectViewerCss: () => injectViewerCss,
-    injectPageVars: () => injectPageVars,
-    injectBreakMapping: () => injectBreakMapping,
-    indexInStrip: () => indexInStrip,
-    fragmentDocument: () => fragmentDocument,
-    extendSpanningPageRoots: () => extendSpanningPageRoots,
-    cssZoomOf: () => cssZoomOf,
-    contentEdgeRect: () => contentEdgeRect,
-    compensateRectoBreaks: () => compensateRectoBreaks,
-    columnReserve: () => columnReserve,
-    collectCssText: () => collectCssText,
-    buildStrips: () => buildStrips,
-    blankPageIndices: () => blankPageIndices,
+    PX_PER_PT: () => PX_PER_PT,
     applySpreadMode: () => applySpreadMode,
-    PX_PER_PT: () => PX_PER_PT
+    blankPageIndices: () => blankPageIndices,
+    buildStrips: () => buildStrips,
+    collectCssText: () => collectCssText,
+    columnReserve: () => columnReserve,
+    compensateRectoBreaks: () => compensateRectoBreaks,
+    contentEdgeRect: () => contentEdgeRect,
+    cssZoomOf: () => cssZoomOf,
+    extendSpanningPageRoots: () => extendSpanningPageRoots,
+    fragmentDocument: () => fragmentDocument,
+    indexInStrip: () => indexInStrip,
+    injectBreakMapping: () => injectBreakMapping,
+    injectPageVars: () => injectPageVars,
+    injectViewerCss: () => injectViewerCss,
+    loadStyleSources: () => loadStyleSources,
+    makeOverflowFragmentable: () => makeOverflowFragmentable,
+    measure: () => measure,
+    padToSignature: () => padToSignature,
+    pageOf: () => pageOf,
+    pageRangeOf: () => pageRangeOf,
+    rowStrideOf: () => rowStrideOf,
+    runPageBox: () => runPageBox,
+    spreadModeSupported: () => spreadModeSupported,
+    stabilizeFullHeightPageRoots: () => stabilizeFullHeightPageRoots,
+    strideOf: () => strideOf,
+    stripMetrics: () => stripMetrics,
+    synthesizeColumnBreaks: () => synthesizeColumnBreaks,
+    versoShiftPt: () => versoShiftPt,
+    waitForLayoutReady: () => waitForLayoutReady,
+    wrapGeometry: () => wrapGeometry
   });
 
   // src/engine/viewer/viewer.css
@@ -384,17 +384,17 @@
   // src/engine/shared/gcpm-extract.ts
   var exports_gcpm_extract = {};
   __export(exports_gcpm_extract, {
-    toPt: () => toPt,
-    splitTopLevel: () => splitTopLevel,
-    resolvePage: () => resolvePage,
-    parseSize: () => parseSize,
-    parseMargin: () => parseMargin,
-    parseDeclarations: () => parseDeclarations,
-    mediaPrintBodies: () => mediaPrintBodies,
-    extract: () => extract,
-    PAGE_SIZES: () => PAGE_SIZES,
+    DEFAULT_PAGE_MARGIN_PT: () => DEFAULT_PAGE_MARGIN_PT,
     MARGIN_BOX_NAMES: () => MARGIN_BOX_NAMES,
-    DEFAULT_PAGE_MARGIN_PT: () => DEFAULT_PAGE_MARGIN_PT
+    PAGE_SIZES: () => PAGE_SIZES,
+    extract: () => extract,
+    mediaPrintBodies: () => mediaPrintBodies,
+    parseDeclarations: () => parseDeclarations,
+    parseMargin: () => parseMargin,
+    parseSize: () => parseSize,
+    resolvePage: () => resolvePage,
+    splitTopLevel: () => splitTopLevel,
+    toPt: () => toPt
   });
   var MARGIN_BOX_NAMES = [
     "top-left-corner",
@@ -1452,14 +1452,9 @@
     }
     return site;
   }
-  function directPageName(el, model) {
-    for (const a of model.pageAssignments) {
-      try {
-        if (el.matches(a.selector))
-          return a.page;
-      } catch {}
-    }
-    return;
+  function directPageName(el) {
+    const page = getComputedStyle(el).page;
+    return page && page !== "auto" ? page : undefined;
   }
   function hasDescendantPageAssignment(el, model) {
     for (const a of model.pageAssignments) {
@@ -1507,14 +1502,14 @@
         pushRun(runs, last.page, held, last.pin && { edges: last.pin.edges, roots: [] });
         return [];
       }
-      if (held.some((n) => (n.textContent ?? "").trim() !== "")) {
+      if (held.some((n) => n.nodeType === 3 && (n.textContent ?? "").trim() !== "")) {
         pushRun(runs, undefined, held);
         return [];
       }
       return held;
     };
     for (const node of Array.from(container.childNodes)) {
-      if (node.nodeType !== 1) {
+      if (node.nodeType !== 1 || getComputedStyle(node).display === "none") {
         pending.push(node);
         continue;
       }
@@ -1522,16 +1517,16 @@
       if (kid.classList.contains("gp-layer"))
         continue;
       const pin = pinRunOf(kid);
-      const own = directPageName(kid, model);
-      if (own !== undefined) {
+      const own = directPageName(kid);
+      if (!hasDescendantPageAssignment(kid, model) && !holdsPinRoot(kid)) {
         pushRun(runs, own, [...carry(), kid], pin);
         continue;
       }
-      if (!hasDescendantPageAssignment(kid, model) && !holdsPinRoot(kid)) {
-        pushRun(runs, undefined, [...carry(), kid], pin);
+      const inner = explodeChildren(kid, model).map((r) => ({ ...r, page: r.page ?? own }));
+      if (own !== undefined && inner.every((r) => r.page === own)) {
+        pushRun(runs, own, [...carry(), kid], pin);
         continue;
       }
-      const inner = explodeChildren(kid, model);
       if (inner.length <= 1) {
         pushRun(runs, inner[0]?.page, [...carry(), kid], pin ?? inner[0]?.pin);
         continue;
@@ -1572,7 +1567,7 @@
       if (!(stripHeight > 0))
         continue;
       for (let el = strip.el.firstElementChild;el; el = el.firstElementChild) {
-        if (directPageName(el, model) !== strip.page)
+        if (directPageName(el) !== strip.page)
           continue;
         const cs = getComputedStyle(el);
         const height = parseFloat(cs.height);
@@ -2070,13 +2065,13 @@
   // src/engine/shared/content-value.ts
   var exports_content_value = {};
   __export(exports_content_value, {
-    unquote: () => unquote,
-    resolveUrlArg: () => resolveUrlArg,
-    parseContent: () => parseContent,
-    needsMeasurement: () => needsMeasurement,
-    formatCounter: () => formatCounter,
+    evaluate: () => evaluate,
     evaluateContent: () => evaluateContent,
-    evaluate: () => evaluate
+    formatCounter: () => formatCounter,
+    needsMeasurement: () => needsMeasurement,
+    parseContent: () => parseContent,
+    resolveUrlArg: () => resolveUrlArg,
+    unquote: () => unquote
   });
   var FUNC = /^([a-z-]+)\(/i;
   function parseContent(value) {

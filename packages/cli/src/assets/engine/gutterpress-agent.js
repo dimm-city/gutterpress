@@ -576,13 +576,17 @@
       const src = img.currentSrc || img.src;
       if (/^data:image\/svg|\.svg(?:[?#]|$)/i.test(src))
         continue;
-      const dpi = img.naturalWidth / (rect.width / 96);
+      const fit = getComputedStyle(img).objectFit;
+      const sx = rect.width / img.naturalWidth;
+      const sy = rect.height / img.naturalHeight;
+      const scale = fit === "cover" ? Math.max(sx, sy) : fit === "contain" ? Math.min(sx, sy) : sx;
+      const dpi = 96 / scale;
       if (dpi < dpiFloor) {
         const file = src.startsWith("data:") ? "" : decodeURIComponent(src.split(/[?#]/)[0].split("/").pop());
         out.push({
           kind: "low-dpi",
           what: file ? `${name(img)} (${file})` : name(img),
-          detail: `${img.naturalWidth}px wide printed at ${(rect.width / 96).toFixed(2)}in = ${Math.round(dpi)} DPI`
+          detail: `${img.naturalWidth}px wide printed at ${(img.naturalWidth * scale / 96).toFixed(2)}in = ${Math.round(dpi)} DPI`
         });
       }
     }

@@ -13,8 +13,8 @@ import { launchChromium, type Browser } from "../../engine/shared/cdp.ts";
  * written its own `body { margin: 0 }`.
  *
  * `.gp-bleed` gets edge-to-edge under the native engine by sitting on
- * `@page gp-full-bleed`, whose side margins are zero — so the PAGE content
- * box is the sheet. But `width: 100%` resolves against the element's
+ * core's `@page gp-page-full-bleed`, whose margins are zero — so the PAGE
+ * content box is the sheet. But `width: 100%` resolves against the element's
  * containing block, which is the BODY, and the UA default `body { margin:
  * 8px }` survives print. The art therefore stopped 8px short of each edge
  * unless the book happened to reset the body itself.

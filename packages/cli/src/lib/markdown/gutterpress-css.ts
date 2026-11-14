@@ -58,32 +58,25 @@
  *                   to the PAPER's edge, past the printer's safe area. It
  *                   only zeroes the pin box's insets (the rule after the
  *                   edge modifiers). Inert without .gp-pin + an edge word.
- *   .gp-bleed     — forces its own page (break-before) and spans it
- *                   edge-to-edge horizontally. This does NOT cancel the
- *                   top/bottom margins, extend past the trim into printer
- *                   bleed overage, or remove headers/footers — none of
- *                   that is implemented.
+ *   .gp-bleed     — a plate: the art gets a sheet of its own and covers
+ *                   all of it, bleed included, cropped to fill (object-fit:
+ *                   cover) and never split. No running heads or folios on
+ *                   that sheet.
  *
  *                   The mechanism is a named page: the rule below assigns the
- *                   element's page to `@page gp-full-bleed`, which has zero
- *                   side margins, so the page's own CONTENT box IS the sheet
- *                   and a plain `width: 100%` already reaches both edges —
- *                   with no shrink-to-fit trigger, because nothing out-dents
- *                   past the content box. MEASURED (Chromium 148, 6x4in
- *                   sheet, 0.75in margins): the obvious alternative — a
+ *                   element's page to core's `@page full-bleed` page
+ *                   (`gp-page-full-bleed`, markers.js: zero margins, margin
+ *                   boxes cleared), so the page's own CONTENT box IS the sheet,
+ *                   and `width: 100%` with `height: var(--gp-content-h)` (both
+ *                   engines publish the sheet's height there for this page)
+ *                   fills it with no shrink-to-fit trigger, because nothing
+ *                   out-dents past the content box. MEASURED (Chromium 148,
+ *                   6x4in sheet, 0.75in margins): the obvious alternative — a
  *                   negative out-dent of the real page margins — shrank the
  *                   WHOLE document ~10% (text run 204.4pt -> 182.9pt),
  *                   because the shrink-to-fit trigger is the page CONTENT
  *                   box, not the sheet. That failure mode is why the named
  *                   page exists.
- *
- *                   KNOWN GAP: on the bleed page, native's running head/folio
- *                   move onto the trim line (margin boxes are positioned by
- *                   the page's own margins, which are now zero on this named
- *                   page). This is not fixed in core — see
- *                   docs/native-engine-styling-guide.md §9 for the one-line
- *                   author remedy (`@top-center { content: none }` etc. on
- *                   `@page gp-full-bleed`).
  *
  *                   A standalone `![Art](x.jpg){.gp-bleed}` markdown image
  *                   is rendered as `<p><img class="gp-bleed"></p>` — a
@@ -182,16 +175,16 @@ export const GUTTERPRESS_CSS = `
   width: 100%;
   max-width: 100%;
 }
-@page gp-full-bleed { margin-left: 0; margin-right: 0; }
 .gp-bleed {
   display: block;
   float: none;
   break-before: page;
-  page: gp-full-bleed;
+  page: gp-page-full-bleed;
   max-width: none;
   width: 100%;
-  margin-left: 0;
-  margin-right: 0;
+  height: var(--gp-content-h);
+  object-fit: cover;
+  margin: 0;
 }
 
 /* sizes — AFTER the flow positions so max-width:100% lifts the floats' 50%
