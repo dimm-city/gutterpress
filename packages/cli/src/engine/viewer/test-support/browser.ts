@@ -81,13 +81,25 @@ export async function getBrowser(): Promise<TestBrowser> {
   return { newPage: async () => wrap(await browser.newPage()) };
 }
 
+/**
+ * How long a test file's teardown waits for the browser to close. The lib
+ * gives Chromium 5s to exit cleanly before it kills it (cdp.ts `teardown`),
+ * and Bun gives an `afterAll` hook the same 5s: waiting out the lib's whole
+ * budget turns one slow exit on a loaded machine into a failed test file.
+ */
+const CLOSE_WAIT_MS = 3_000;
+
 export async function closeBrowser(): Promise<void> {
   const p = browserPromise;
   browserPromise = null;
   if (!p) return;
-  try {
-    await (await p).close();
-  } catch {
-    /* already gone */
-  }
+  const closed = (async () => {
+    try {
+      await (await p).close();
+    } catch {
+      /* already gone */
+    }
+  })();
+  // Stop waiting, not closing: the lib's own fallback still kills the process.
+  await Promise.race([closed, new Promise<void>((done) => setTimeout(done, CLOSE_WAIT_MS))]);
 }
