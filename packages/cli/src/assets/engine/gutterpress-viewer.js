@@ -1489,7 +1489,21 @@
       return !!root && root !== el && el.contains(root) && root.matches(PAGE_ROOT);
     });
   }
-  function explodeChildren(container, model) {
+  function readFlow(container, model, into = new Map) {
+    for (const kid of Array.from(container.children)) {
+      const boxless = getComputedStyle(kid).display === "none";
+      if (boxless || kid.classList.contains("gp-layer")) {
+        into.set(kid, { boxless, page: undefined, pin: undefined, descend: false });
+        continue;
+      }
+      const descend = hasDescendantPageAssignment(kid, model) || holdsPinRoot(kid);
+      into.set(kid, { boxless, page: directPageName(kid), pin: pinRunOf(kid), descend });
+      if (descend)
+        readFlow(kid, model, into);
+    }
+    return into;
+  }
+  function explodeChildren(container, flow) {
     const runs = [];
     let pending = [];
     const carry = () => {
@@ -1509,20 +1523,20 @@
       return held;
     };
     for (const node of Array.from(container.childNodes)) {
-      if (node.nodeType !== 1 || getComputedStyle(node).display === "none") {
+      const read = node.nodeType === 1 ? flow.get(node) : undefined;
+      if (!read || read.boxless) {
         pending.push(node);
         continue;
       }
       const kid = node;
       if (kid.classList.contains("gp-layer"))
         continue;
-      const pin = pinRunOf(kid);
-      const own = directPageName(kid);
-      if (!hasDescendantPageAssignment(kid, model) && !holdsPinRoot(kid)) {
+      const { pin, page: own } = read;
+      if (!read.descend) {
         pushRun(runs, own, [...carry(), kid], pin);
         continue;
       }
-      const inner = explodeChildren(kid, model).map((r) => ({ ...r, page: r.page ?? own }));
+      const inner = explodeChildren(kid, flow).map((r) => ({ ...r, page: r.page ?? own }));
       if (own !== undefined && inner.every((r) => r.page === own)) {
         pushRun(runs, own, [...carry(), kid], pin);
         continue;
@@ -1744,8 +1758,13 @@
     const doc = document;
     const root = opts.root ?? doc.querySelector("main") ?? doc.body;
     const gap = opts.sheetGap ?? 24;
-    const runs = explodeChildren(root, model);
+    const runs = explodeChildren(root, readFlow(root, model));
     const area = printAreaFromMeta(doc);
+    for (const run of runs) {
+      for (const pinRoot of run.pin?.roots ?? []) {
+        ownPadding.set(pinRoot, paddingOf(getComputedStyle(pinRoot)));
+      }
+    }
     const strips = [];
     for (const run of runs) {
       const geometry = runPageBox(model, run.page, warnings);
@@ -1756,8 +1775,6 @@
       const margin = run.pin ? flushMargins(geometry.margin, run.pin.edges) : geometry.margin;
       if (run.pin) {
         const { edges, roots } = run.pin;
-        for (const pinRoot of roots)
-          ownPadding.set(pinRoot, paddingOf(getComputedStyle(pinRoot)));
         for (const pinRoot of roots) {
           pinRoot.dataset.gpPinStyle ??= pinRoot.getAttribute("style") ?? "";
           const recto = pinRootStyle(geometry.margin, area, "recto", edges, ownPadding.get(pinRoot));
@@ -3112,10 +3129,14 @@
       let prevVersoShift = 0;
       let prevRunX = 0;
       let first = true;
-      for (const strip of layout.strips) {
-        const run = ensureRun(strip);
-        const { stride, rowStride } = stripMetrics(strip.el);
-        const sheetGap = parseFloat(getComputedStyle(strip.el).getPropertyValue("--gp-sheet-gap")) || 0;
+      const runs = layout.strips.map((strip) => ensureRun(strip));
+      const metrics = layout.strips.map((strip) => ({
+        ...stripMetrics(strip.el),
+        sheetGap: parseFloat(getComputedStyle(strip.el).getPropertyValue("--gp-sheet-gap")) || 0
+      }));
+      for (const [stripIndex, strip] of layout.strips.entries()) {
+        const run = runs[stripIndex];
+        const { stride, rowStride, sheetGap } = metrics[stripIndex];
         run.style.setProperty("--gp-sheet-gap", `${sheetGap}px`);
         const { perRow, shift } = wrapGeometry(strip);
         const layer = run.querySelector(".gp-layer");

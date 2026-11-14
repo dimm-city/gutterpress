@@ -433,14 +433,22 @@ export function decorate(
     let prevRunX = 0;
     let first = true;
 
-    for (const strip of layout.strips) {
-      const run = ensureRun(strip);
-      // One computed-style read per strip, BEFORE the sheet-append loop
-      // below mutates the DOM — reading after those writes forces a
-      // synchronous style recalc per strip on every mount and hot reload.
-      const { stride, rowStride } = stripMetrics(strip.el);
-      const sheetGap =
-        parseFloat(getComputedStyle(strip.el).getPropertyValue("--gp-sheet-gap")) || 0;
+    // Every strip's computed-style reads, in one pass BEFORE any strip's
+    // sheets are drawn. Read inside the loop below, each strip's read came
+    // after the previous strip's writes and forced a style recalc of its own —
+    // and a book stylesheet with one `h2 + *` makes each of those a recalc of
+    // the whole document (inserting a run dirties every later sibling), so a
+    // book of 60 named-page runs recalculated its 14,000 elements 60 times
+    // on every mount (measured: 5.4s of an 11s preview load).
+    const runs = layout.strips.map((strip) => ensureRun(strip));
+    const metrics = layout.strips.map((strip) => ({
+      ...stripMetrics(strip.el),
+      sheetGap: parseFloat(getComputedStyle(strip.el).getPropertyValue("--gp-sheet-gap")) || 0,
+    }));
+
+    for (const [stripIndex, strip] of layout.strips.entries()) {
+      const run = runs[stripIndex]!;
+      const { stride, rowStride, sheetGap } = metrics[stripIndex]!;
       // The gap originates on the strip because it also drives multicol's
       // row/column pitch. The run owns spacing BETWEEN named-page runs, so
       // copy that one value up instead of giving both elements a margin.

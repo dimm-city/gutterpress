@@ -13,6 +13,13 @@ This project follows [Semantic Versioning](https://semver.org/).
   of textures read and hashed 2.5 GB each time the preview refreshed, about three seconds per
   edit. An image is now hashed once and again only when its file changes; the same render
   takes a quarter of a second.
+- **The preview recalculated the whole book's styles once per run of pages.** While building
+  and drawing each run of same-named pages, the preview read a computed style straight after
+  changing the page, which forces the browser to recalculate first. A stylesheet with a rule
+  such as `:is(.a, .b) > .label + *` makes every such recalculation cover the whole document,
+  so a book with 60 runs of named pages recalculated its 14,000 elements about 90 times on
+  each load: 8 of 12 seconds. The preview now takes those readings once, before it changes
+  anything; the same book loads in under 5 seconds, laid out exactly as before.
 
 ## [0.11.26] - 2026-11-14
 
