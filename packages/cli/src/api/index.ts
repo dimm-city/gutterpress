@@ -520,11 +520,28 @@ export {
   runPublish,
   resolvePublishRequest,
   resolvePublishFormat,
+  checkTargetSetup,
 } from "../lib/publish/run-publish.ts";
 export type {
   RunPublishOptions,
   RunPublishResult,
 } from "../lib/publish/run-publish.ts";
+
+// ── The one publish run (ADR 0012): both views call this and show its progress.
+export { publishBook, renderPhases } from "../lib/publish/publish-book.ts";
+export type {
+  PublishStep,
+  PublishProgress,
+  CheckFinding,
+  PublishedFile,
+  TargetStatus,
+  TargetResult,
+  PublishBookResult,
+  PublishBookOptions,
+  PublishBookDeps,
+} from "../lib/publish/publish-book.ts";
+export { explainBuildFailure, explainSendFailure, isCanceled } from "../lib/publish/explain.ts";
+export type { Failure, FailureCode } from "../lib/publish/explain.ts";
 
 export {
   listPublishProviders,

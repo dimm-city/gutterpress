@@ -47,13 +47,19 @@ export const EXIT_CODES = {
  */
 export class BuildError extends Error {
   exitCode: number;
+  /**
+   * A stable name for a failure the author can act on (`DISK_FULL`, …), so a
+   * view explains it without matching the message. See publish/explain.ts.
+   */
+  code?: string;
   constructor(
     message: string,
     exitCode: number = EXIT_CODES.PIPELINE,
-    options?: ErrorOptions,
+    options?: ErrorOptions & { code?: string },
   ) {
     super(message, options);
     this.name = "BuildError";
     this.exitCode = exitCode;
+    if (options?.code) this.code = options.code;
   }
 }

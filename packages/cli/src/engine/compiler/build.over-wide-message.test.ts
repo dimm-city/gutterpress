@@ -98,8 +98,10 @@ if (!chromium) {
   );
 }
 
-/** Build `html` and return the message of the hard error it must throw. */
-const buildAndCatch = async (name: string, html: string): Promise<string> => {
+type OverWideError = Error & { code?: string; offenders?: string[]; scale?: number | null };
+
+/** Build `html` and return the hard error it must throw. */
+const buildAndCatchError = async (name: string, html: string): Promise<OverWideError> => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), `gp-over-wide-${name}-`));
   const browser = await launchChromium();
   try {
@@ -110,12 +112,15 @@ const buildAndCatch = async (name: string, html: string): Promise<string> => {
       (e: Error) => e,
     );
     expect(err).not.toBeNull();
-    return err!.message;
+    return err!;
   } finally {
     await browser.close();
     await fsp.rm(dir, { recursive: true, force: true });
   }
 };
+
+const buildAndCatch = async (name: string, html: string): Promise<string> =>
+  (await buildAndCatchError(name, html)).message;
 
 testIf(
   "right-edge overflow: the thrown message still yields offenders and a scale to the desktop parser",
@@ -157,4 +162,25 @@ testIf(
     expect(parsed!.scale).toBeNull();
   },
   RENDER_TEST_TIMEOUT_MS,
+);
+
+testIf(
+  "the thrown error carries its code, offenders and scale, so the publish run never reads the prose",
+  async () => {
+    const wide = await buildAndCatchError("wide-code", overWide);
+    expect(wide.code).toBe("TOO_WIDE");
+    expect(wide.offenders).toEqual([
+      "div.wide.bare-art",
+      "div.wide.second-art",
+      "div.wide.third-art",
+      "div.wide.fourth-art",
+    ]);
+    expect(wide.scale?.toFixed(2)).toBe("0.67");
+
+    const pulled = await buildAndCatchError("pulled-code", pulledLeft);
+    expect(pulled.code).toBe("TOO_WIDE");
+    expect(pulled.offenders).toEqual(["div.pull.left-art"]);
+    expect(pulled.scale).toBeNull();
+  },
+  RENDER_TEST_TIMEOUT_MS * 2,
 );

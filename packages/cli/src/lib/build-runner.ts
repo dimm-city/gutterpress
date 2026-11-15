@@ -90,6 +90,14 @@ export interface BuildRunnerOptions {
    * obtains and closes it when the build ends.
    */
   engineBrowser?: () => Promise<EngineBrowser>;
+  /**
+   * For a `pdfx` build into the book's own `dist/<slug>/`: also deliver the
+   * plain PDF (`<slug>-pdf.pdf`), copied from the same Chromium render before
+   * any PDF/X step changes it. One render makes both files (ADR 0012 §5).
+   */
+  withPlainPdf?: boolean;
+  /** Told when the build reaches a long step it can name (the PDF/X conversion). */
+  onStep?: (step: "converting") => void;
 }
 
 export interface BuildRunnerResult {
@@ -104,6 +112,8 @@ export interface BuildRunnerResult {
    */
   htmlPath: string | null;
   pdfPath: string | null;
+  /** The plain PDF a `withPlainPdf` pdfx build delivered beside the PDF/X. */
+  plainPdfPath?: string;
   /** As {@link htmlPath}: `null` when nothing but the artifact was published. */
   fingerprintPath: string | null;
   /**
@@ -852,6 +862,18 @@ class PdfOutput implements OutputStrategy {
         );
       }
 
+      // The plain PDF from this same render, before any PDF/X step rewrites
+      // the raw file.
+      let plainPdfPath: string | undefined;
+      if (pdfxMode && opts.withPlainPdf) {
+        if (ctx.target.kind !== "project") {
+          throw new BuildError("withPlainPdf builds into the book's own output folder only", 1);
+        }
+        const plainName = artifactName(config.title, "pdf");
+        await fsp.copyFile(rawPdf, path.join(workDir, plainName));
+        plainPdfPath = path.join(outDir, plainName);
+      }
+
       let effectiveIccPath: string | null = null;
       let shouldStripAnnotations: boolean | null = null;
 
@@ -968,6 +990,7 @@ class PdfOutput implements OutputStrategy {
         }
 
         log.info(`Converting to CMYK PDF/X (${pdfxMode})`);
+        opts.onStep?.("converting");
         await convertToPdfxCmyk(rawPdf, path.resolve(pdfFile), {
           iccPath: effectiveIccPath,
           pdfx: pdfxMode,
@@ -995,7 +1018,7 @@ class PdfOutput implements OutputStrategy {
         }
       }
 
-      return await finalizeBuild(
+      const result = await finalizeBuild(
         ctx,
         {
           command: "build",
@@ -1018,6 +1041,7 @@ class PdfOutput implements OutputStrategy {
         pdfName,
         engineDiagnostics
       );
+      return plainPdfPath ? { ...result, plainPdfPath } : result;
     } finally {
       await fsp.rm(stage, { recursive: true, force: true });
     }

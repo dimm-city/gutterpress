@@ -18,6 +18,7 @@ import { artifactName, BOOK_HTML, resolveOutputDir } from "../output-paths.ts";
 import { canonicalTargetId } from "../targets.ts";
 import { resolvePublishProvider } from "./plugin-provider.ts";
 import { publishProviderFor } from "./registry.ts";
+import { publishConnectionStatus } from "./types.ts";
 import type {
   PreflightIssue,
   PublishArtifact,
@@ -300,6 +301,22 @@ async function htmlDirIssues(dir: string): Promise<PreflightIssue[]> {
     });
   }
   return issues;
+}
+
+/**
+ * What a target needs before anything is built (ADR 0012 §5, step 1): its
+ * file, whether its account is connected, and what its own setup check finds
+ * (a missing itch.io page, …). Reads settings only: nothing is contacted and
+ * no file need exist yet.
+ */
+export async function checkTargetSetup(
+  provider: PublishProvider,
+  options: RequestOptions,
+  deps: PublishDeps,
+): Promise<{ format: PublishArtifactFormat; connected: boolean; issues: PreflightIssue[] }> {
+  const req = await requestFor(provider, options, deps);
+  const { connected } = await publishConnectionStatus(provider.info, req.deps);
+  return { format: req.artifact.format, connected, issues: await provider.preflight(req) };
 }
 
 /** Preflight → authenticate → upload, with structured results throughout. */
