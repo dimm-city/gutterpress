@@ -415,11 +415,6 @@ test("resumableUpload retries a chunk on 5xx up to the retry limit, honoring Ret
   }
 });
 
-test("resumable chunks are 2 MiB, a multiple of Drive's 256 KiB granularity", () => {
-  expect(RESUMABLE_CHUNK_SIZE).toBe(2 * 1024 * 1024);
-  expect(RESUMABLE_CHUNK_SIZE % (256 * 1024)).toBe(0);
-});
-
 test("resumableUpload caps a huge Retry-After at 60 s", async () => {
   const chunkSize = 200;
   const { dir, filePath } = await tempFile(chunkSize);

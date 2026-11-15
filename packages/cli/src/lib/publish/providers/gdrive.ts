@@ -121,7 +121,7 @@ interface UploadSource {
 }
 
 /** Bytes pushed into fflate's streaming `ZipDeflate` per `push()` call (see
- * `zipEntriesNonBlocking` below) — small enough that no single push blocks
+ * `zipFilesToStream` below) — small enough that no single push blocks
  * the event loop for long, large enough not to dominate runtime with
  * per-chunk overhead. */
 const ZIP_CHUNK_BYTES = 64 * 1024;
@@ -154,32 +154,37 @@ async function zipFilesToStream(
   opts: DeflateOptions,
 ): Promise<void> {
   let failure: Error | null = null;
-  let needDrain = false;
   out.on("error", (e) => (failure ??= e));
   const archive = new Zip((err: FlateError | null, chunk: Uint8Array | null) => {
     if (err) failure ??= err;
-    else if (chunk && !out.write(chunk)) needDrain = true;
+    else if (chunk) out.write(chunk);
   });
-  for (const [name, source] of files) {
-    const stream = new ZipDeflate(name, opts);
-    archive.add(stream);
-    let pending: Uint8Array | null = null;
-    // One chunk of lookahead so the LAST push can carry `final = true`.
-    for await (const chunk of createReadStream(source, { highWaterMark: ZIP_CHUNK_BYTES })) {
-      if (pending) stream.push(pending, false);
-      pending = chunk as Uint8Array;
-      if (failure) throw failure;
-      if (needDrain) {
-        needDrain = false;
-        await once(out, "drain");
+  try {
+    for (const [name, source] of files) {
+      const stream = new ZipDeflate(name, opts);
+      archive.add(stream);
+      let pending: Uint8Array | null = null;
+      // One chunk of lookahead so the LAST push can carry `final = true`.
+      for await (const chunk of createReadStream(source, { highWaterMark: ZIP_CHUNK_BYTES })) {
+        if (pending) stream.push(pending, false);
+        pending = chunk as Uint8Array;
+        if (failure) throw failure;
+        // The property, not a flag set at write time: the buffer may have
+        // drained (and emitted 'drain') while we awaited the next read.
+        if (out.writableNeedDrain) await once(out, "drain");
+        await yieldToEventLoop();
       }
-      await yieldToEventLoop();
+      stream.push(pending ?? new Uint8Array(0), true);
     }
-    stream.push(pending ?? new Uint8Array(0), true);
+    archive.end();
+    if (failure) throw failure;
+    await finished(out.end());
+  } catch (e) {
+    // A failed read must not leave the output file open (a leaked fd per
+    // failed publish, and an undeletable temp dir on Windows).
+    out.destroy();
+    throw e;
   }
-  archive.end();
-  if (failure) throw failure;
-  await finished(out.end());
 }
 
 /** Recursively collect every FILE under `dir` into `out`, keyed by its path
