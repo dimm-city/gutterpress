@@ -19,12 +19,12 @@
    * cache-hit short-circuit — so re-expanding a folder is always current; (2)
    * the component subscribes to the same `onFolderChanged` push MediaPanel uses
    * to refresh the ROOT listing on external changes (git pull, an external
-   * editor). The host's folder watcher is a single NON-RECURSIVE `fs.watch` on
-   * the project root (`electron/folder-watch/watcher.ts`), so it can only ever
-   * report root-level changes — nested directories are refreshed directly by
+   * editor). The host's folder watcher is recursive
+   * (`electron/folder-watch/watcher.ts`), but this component only re-lists the
+   * ROOT on that signal — nested directories are refreshed directly by
    * this component's own create/rename/delete calls (via `afterMutateDir`,
    * `file-tree-cache.ts`'s invalidation helpers), which know exactly which
-   * directory just changed, rather than by that coarse signal. A nested file
+   * directory just changed. A nested file
    * changed by something OTHER than this app (with no tree action to invalidate
    * it) stays stale until its ancestor is re-expanded or the project reopens —
    * the same watcher-scope limit `MediaPanel`/the editor's own external-edit
