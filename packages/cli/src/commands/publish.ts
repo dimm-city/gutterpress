@@ -8,6 +8,7 @@ import {
   PublishSelectionsStore,
   connectPublishProvider,
   connectGoogleDrive,
+  driveFolderForRun,
   disconnectPublishCredential,
   listBookPublishProviders,
   resolvePublishProvider,
@@ -424,8 +425,11 @@ export default defineCommand({
     // elsewhere without changing it for everyone.
     const folderId = typeof args["folder-id"] === "string" ? args["folder-id"].trim() : "";
     const folder = typeof args.folder === "string" ? args.folder.trim() : "";
-    if ((folderId || folder) && targets.length > 0 && !targets.includes("gdrive")) {
-      log.error("--folder-id and --folder are for the gdrive target.");
+    let runSettings: ReturnType<typeof driveFolderForRun>;
+    try {
+      runSettings = driveFolderForRun(targets, folderId, folder);
+    } catch (e) {
+      log.error(e instanceof Error ? e.message : String(e));
       process.exit(EXIT_CODES.USAGE);
     }
 
@@ -442,7 +446,7 @@ export default defineCommand({
         skipChecks: !!args["skip-checks"],
         ...(args["send-anyway"] ? { sendAnyway: targets.length > 0 ? targets : true } : {}),
         allowShrink: !!args["allow-shrink"],
-        ...(folderId || folder ? { runSettings: { gdrive: { folderId, folder } } } : {}),
+        ...(runSettings ? { runSettings } : {}),
         ...(json ? {} : { onProgress: (p) => log.info(p.message) }),
       },
       { ...deps, ...(json ? {} : { onProgress: (line: string) => log.info(line) }) },

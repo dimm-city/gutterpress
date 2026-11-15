@@ -115,3 +115,21 @@ test("a folder that is not a book says so, with the build's own advice as detail
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("a book with source problems says so, before anything is made", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "gp-source-problems-"));
+  try {
+    await Bun.write(path.join(dir, "manifest.yaml"), "title: Broken\nstyles:\n  - broken.css\n");
+    await Bun.write(path.join(dir, "broken.css"), "body { color: red;\n");
+    await Bun.write(path.join(dir, "chapter-01.md"), "# Hello\n");
+    const e = await runBuild({ inputDir: dir, format: "pdf", outDir: path.join(dir, "out"), rawArgs: {} }).then(
+      () => null,
+      (err: unknown) => err,
+    );
+    const f = explainBuildFailure(e);
+    expect(f.code).toBe("SOURCE_PROBLEMS");
+    expect(f.message).toBe("The book has problems to fix before the PDF can be made.");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

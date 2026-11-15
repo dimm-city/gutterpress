@@ -1,6 +1,6 @@
 /**
  * export/controller.ts — the quick PDF export (Ctrl+Shift+E) behind the
- * `api:build` IPC channel, as an injectable, unit-testable class: a draft PDF
+ * `api:build` IPC channel, as an injectable, unit-testable class: a plain PDF
  * saved where the person chose, as `gutterpress build` makes one. Publishing
  * (checked files for each target) is the lib's publish run (publish-run.ts).
  *
@@ -262,10 +262,9 @@ export class ExportController {
           format: "pdf",
           outDir: workspaceDir,
           pdfFileOverride: path.resolve(tempOutPath),
-          // A quick draft, as `gutterpress build` makes one: the checks are
-          // the publish run's.
-          skipPreValidate: true,
-          skipPostValidate: true,
+          // A plain PDF, as `gutterpress build` makes one: the book's
+          // source is checked first, and a problem to fix stops it
+          // (SOURCE_PROBLEMS). The publish run checks each target's file.
           allowShrink: args.allowShrink,
           // Render with Electron's own Chromium, reporting the render's phase
           // so the author sees more than a ticking clock.

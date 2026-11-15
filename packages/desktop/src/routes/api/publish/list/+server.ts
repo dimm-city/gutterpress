@@ -64,6 +64,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
             // Connect button; absent/"token" is every provider's existing
             // paste-a-key behavior, unchanged.
             ...(info.credential.connect === 'oauth' ? { connectKind: 'oauth' as const } : {}),
+            checkField: info.configFields.find((f) => f.key === info.credential.checkSetting) ?? null,
             connected: status.connected,
             config,
             savedAccounts,

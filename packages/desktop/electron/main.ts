@@ -1401,7 +1401,7 @@ secureHandle("remote:connectGitHubCancel", async () => githubDeviceFlow.cancel()
 // electron/google-connect-flow.ts. Opens the auth URL via the app's single
 // http(s)-only shell.openExternal gate (desktopHooksImpl.openExternal,
 // defined above — the same one `api/shell/open-external` calls); the
-// credential is stored under the "gdrive" host in the same electronTokenStore
+// credential is stored under Google Drive's own key in the same electronTokenStore
 // every publish credential uses.
 const googleConnectFlow = new GoogleConnectFlow({
   loadLib,

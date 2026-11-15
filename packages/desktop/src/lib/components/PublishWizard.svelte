@@ -367,7 +367,7 @@
                   provider={card}
                   askAccount={card.savedAccounts.length > 0}
                   saved={card.savedAccounts.map((a) => ({ provider: card, account: a.account, label: a.label }))}
-                  store={draftValue(card, "shop")}
+                  checkValue={card.checkField ? draftValue(card, card.checkField.key) : ""}
                   takeFocus={accountForm[card.id] === "add"}
                   onConnected={(account) => accountSaved(card, account)}
                   onCancel={card.savedAccounts.length > 0 ? () => closeAccountForm(card) : undefined}
@@ -377,7 +377,7 @@
                   provider={card}
                   account={card.selectedAccount}
                   hint={replaceHint(card)}
-                  store={draftValue(card, "shop")}
+                  checkValue={card.checkField ? draftValue(card, card.checkField.key) : ""}
                   submitLabel="Save"
                   takeFocus
                   onConnected={(account) => accountSaved(card, account)}
@@ -576,10 +576,11 @@
         <button class="app-btn app-btn-ghost" onclick={controller.cancel}>Stop</button>
       {:else}
         <button class="app-btn app-btn-ghost" onclick={() => controller.publish({ checkOnly: true })} disabled={busy || sending.length === 0}>Check only</button>
-        <button class={`app-btn ${result?.ok ? "app-btn-ghost" : "app-btn-primary"}`} onclick={() => controller.publish()} disabled={busy || sending.length === 0}>
-          {result ? "Publish again" : "Publish"}
+        {@const done = !!result?.ok && controller.published}
+        <button class={`app-btn ${done ? "app-btn-ghost" : "app-btn-primary"}`} onclick={() => controller.publish()} disabled={busy || sending.length === 0}>
+          {controller.published ? "Publish again" : "Publish"}
         </button>
-        <button class={`app-btn ${result?.ok ? "app-btn-primary" : "app-btn-ghost"}`} onclick={close}>Done</button>
+        <button class={`app-btn ${done ? "app-btn-primary" : "app-btn-ghost"}`} onclick={close}>Done</button>
       {/if}
     </footer>
   </div>

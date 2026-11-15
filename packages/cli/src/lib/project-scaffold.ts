@@ -106,12 +106,9 @@ export interface CreateProjectOptions {
   preset?: PresetId;
   /**
    * Publish-target ids written into the generated manifest as its explicit
-   * `publish:` list (ADR 0012). Defaults to the chosen preset's
-   * `defaultTargets`; pass `[]` to opt out of every destination policy
-   * (e.g. when the tools a destination's checks need aren't installed).
-   * Like `preset`, the creation flow always records the choice explicitly —
-   * the preset-derived fallback exists for hand-written manifests only.
-   * Ignored with `templateDir` (the saved template's manifest is kept).
+   * `publish:` list (ADR 0012), with `preset`. Left out, a template that
+   * names its own targets keeps them, and one that names none gets the
+   * preset's `defaultTargets`; `[]` means none.
    */
   targets?: string[];
   /**
@@ -410,7 +407,11 @@ export async function scaffoldProject(
       const { doc, file } = await loadManifestDoc(projectDir);
       if (preset) {
         doc.set("preset", preset);
-        writeBookTargets(doc, targets ?? []);
+        // A template that names its own targets keeps them unless the caller
+        // chose others; one that names none gets the preset's.
+        if (options.targets !== undefined || !(doc.has("publish") || doc.has("targets"))) {
+          writeBookTargets(doc, targets ?? []);
+        }
         // A template's own `page:` size must not shadow the chosen preset's.
         if (preset !== "custom") deletePageBounds(doc);
       }

@@ -106,16 +106,17 @@ test("publish/connect with no book: a rejected key is not stored and leaves the 
   expect(stored.get("itch.io")?.token).toBe("old-key");
 });
 
-test("publish/connect with no book: a Shopify key needs the store address, which is used for the check and never stored", async () => {
+test("publish/connect with no book: a Shopify key needs the setting its check names (the store), which is used for the check and never stored", async () => {
   // No address (or one that isn't text): refused in plain words, nothing asked of Shopify or stored.
-  for (const shop of [undefined, "", 42]) {
-    const res = await outcome(publishConnect({ request: request({ providerId: "shopify", token: "good-key", shop }) } as never));
-    expect(res).toMatchObject({ ok: false, message: expect.stringContaining("store's address") });
+  for (const checkValue of [undefined, "", 42]) {
+    const res = await outcome(publishConnect({ request: request({ providerId: "shopify", token: "good-key", checkValue }) } as never));
+    // Asked for as its field is labelled.
+    expect(res).toMatchObject({ ok: false, message: "Enter the store domain (like my-store.myshopify.com) to check the key." });
   }
   expect(fetchCalls).toEqual([]);
   expect(stored.size).toBe(0);
 
-  const res = await outcome(publishConnect({ request: request({ providerId: "shopify", token: "good-key", shop: "my-store.myshopify.com" }) } as never));
+  const res = await outcome(publishConnect({ request: request({ providerId: "shopify", token: "good-key", checkValue: "my-store.myshopify.com" }) } as never));
   expect(res).toEqual({ ok: true, body: { connected: true, providerId: "shopify" } });
   expect(fetchCalls).toHaveLength(1);
   expect(fetchCalls[0]).toContain("https://my-store.myshopify.com/admin/api/");
@@ -124,12 +125,12 @@ test("publish/connect with no book: a Shopify key needs the store address, which
   expect(JSON.stringify([...stored.values()])).not.toContain("myshopify");
 
   // A rejected Shopify key is not stored over the saved one.
-  const bad = await outcome(publishConnect({ request: request({ providerId: "shopify", token: "bad-key", shop: "my-store.myshopify.com" }) } as never));
+  const bad = await outcome(publishConnect({ request: request({ providerId: "shopify", token: "bad-key", checkValue: "my-store.myshopify.com" }) } as never));
   expect(bad.ok).toBe(false);
   expect(stored.get("shopify")?.token).toBe("good-key");
 });
 
-test("publish/connect: `shop` is taken only with no projectDir; a book's own settings are used when one is sent", async () => {
+test("publish/connect: `checkValue` is taken only with no projectDir; a book's own settings are used when one is sent", async () => {
   const book = await mkdtemp(path.join(tmpdir(), "gutterpress-accounts-routes-"));
   try {
     await writeFile(path.join(book, "manifest.yaml"), "title: T\nauthors: [A]\n", "utf8"); // no Shopify store set
@@ -139,7 +140,7 @@ test("publish/connect: `shop` is taken only with no projectDir; a book's own set
         remote: { tokenStore: { get: async () => null, set: async (k: string, c: Stored) => void stored.set(k, c), list: async () => [] } as never },
       }),
     );
-    const res = await outcome(publishConnect({ request: request({ projectDir: book, providerId: "shopify", token: "good-key", shop: "my-store.myshopify.com" }) } as never));
+    const res = await outcome(publishConnect({ request: request({ projectDir: book, providerId: "shopify", token: "good-key", checkValue: "my-store.myshopify.com" }) } as never));
     expect(res).toMatchObject({ ok: false, message: expect.stringContaining("Set the store first") });
     expect(fetchCalls).toEqual([]);
     expect(stored.size).toBe(0);

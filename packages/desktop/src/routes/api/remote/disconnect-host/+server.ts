@@ -9,8 +9,8 @@ export const POST: RequestHandler = defineRoute<{ host?: string }>({
         throw new Error('remote:disconnectHost requires a host');
       }
       // This is the generic "remove any stored connection" path Settings →
-      // Connections uses for publish credentials too (bare `gdrive` or a
-      // named `gdrive#<account>` key), so a google-oauth one needs the same
+      // Connections uses for publish credentials too (a target's bare key or
+      // a named `<target>#<account>` one), so a google-oauth one needs the same
       // best-effort revoke-then-delete the provider-specific publish:disconnect
       // route has — disconnectPublishCredential is the shared implementation
       // for both. `loadLib()` (#221 C6) only runs for a google-oauth

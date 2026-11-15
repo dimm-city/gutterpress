@@ -908,7 +908,7 @@ test("a book with no Shopify store still fails the key check: connect stores not
     expect(auth.message).toMatch(/Set the store first/);
     await deps.tokenStore.delete("shopify");
     await expect(
-      connectPublishProvider({ projectDir: dir, providerId: "shopify", token: "shpat_x", shop: "my-store.myshopify.com" }, deps),
+      connectPublishProvider({ projectDir: dir, providerId: "shopify", token: "shpat_x", checkValue: "my-store.myshopify.com" }, deps),
     ).rejects.toThrow(/Set the store first/); // a book's own settings win over a `shop` that was passed
     expect(await deps.tokenStore.get("shopify")).toBeNull();
     expect(requests).toEqual([]);
@@ -928,15 +928,15 @@ test("a Shopify key added with no book needs the store address, which is used fo
 
     // No address: refused in plain words, before anything is asked of Shopify or stored.
     await expect(connectPublishProvider({ providerId: "shopify", token: "shpat_x" }, deps)).rejects.toThrow(
-      /Enter your Shopify store's address \(like my-store.myshopify.com\)/,
+      /Enter the store domain \(like my-store.myshopify.com\) to check the key/,
     );
-    await expect(connectPublishProvider({ providerId: "shopify", token: "shpat_x", shop: "  " }, deps)).rejects.toThrow(
-      /store's address/,
+    await expect(connectPublishProvider({ providerId: "shopify", token: "shpat_x", checkValue: "  " }, deps)).rejects.toThrow(
+      /store domain/,
     );
     expect(requests).toEqual([]);
 
     // With one: checked through adminGraphQL (the token goes only to the myshopify.com store), then stored.
-    await connectPublishProvider({ providerId: "shopify", token: "shpat_x", shop: " My-Store.myshopify.com " }, deps);
+    await connectPublishProvider({ providerId: "shopify", token: "shpat_x", checkValue: " My-Store.myshopify.com " }, deps);
     expect(requests).toHaveLength(1);
     expect(requests[0]!.url).toContain("https://my-store.myshopify.com/admin/api/");
     expect((requests[0]!.init?.headers as Record<string, string>)["X-Shopify-Access-Token"]).toBe("shpat_x");
@@ -945,11 +945,11 @@ test("a Shopify key added with no book needs the store address, which is used fo
     expect(JSON.stringify(stored)).not.toContain("myshopify");
 
     // A rejected key is not stored over it, and an address that isn't a myshopify.com one never receives the token.
-    await expect(connectPublishProvider({ providerId: "shopify", token: "shpat_bad", shop: "my-store.myshopify.com" }, deps)).rejects.toThrow(
+    await expect(connectPublishProvider({ providerId: "shopify", token: "shpat_bad", checkValue: "my-store.myshopify.com" }, deps)).rejects.toThrow(
       /rejected the access token/,
     );
     expect((await deps.tokenStore.get("shopify"))?.token).toBe("shpat_x");
-    await expect(connectPublishProvider({ providerId: "shopify", token: "shpat_y", shop: "attacker.example" }, deps)).rejects.toThrow(
+    await expect(connectPublishProvider({ providerId: "shopify", token: "shpat_y", checkValue: "attacker.example" }, deps)).rejects.toThrow(
       /myshopify\.com/,
     );
     expect(requests).toHaveLength(2);

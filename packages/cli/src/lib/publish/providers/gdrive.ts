@@ -17,6 +17,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Zip, ZipDeflate, type DeflateOptions, type FlateError } from "fflate";
 import { bookSlug } from "../../output-paths.ts";
+import { UsageError } from "../../cli-args.ts";
+import { canonicalTargetId } from "../../targets.ts";
 import {
   GDRIVE_HOST,
   requireGoogleClientCredentials,
@@ -421,3 +423,20 @@ export const gdriveProvider: PublishProvider = {
     }
   },
 };
+
+/**
+ * The terminal's `--folder-id` / `--folder` (#452): another Drive folder for
+ * this run only, as the run's settings. Refused when the run names targets
+ * and Google Drive is not one of them.
+ */
+export function driveFolderForRun(
+  targets: string[],
+  folderId: string,
+  folder: string,
+): Record<string, Record<string, string>> | undefined {
+  if (!folderId && !folder) return undefined;
+  if (targets.length > 0 && !targets.map(canonicalTargetId).includes(GDRIVE_HOST)) {
+    throw new UsageError(`--folder-id and --folder are for the ${GDRIVE_HOST} target.`);
+  }
+  return { [GDRIVE_HOST]: { folderId, folder } };
+}

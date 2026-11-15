@@ -115,6 +115,12 @@ export interface PublishProviderInfo {
      * unverifiable credential for one (#221).
      */
     connect?: "token" | "oauth";
+    /**
+     * The setting (a {@link PublishProviderInfo.configFields} key) the key
+     * check needs, which a book's manifest otherwise supplies: with no book
+     * open, a connect UI asks for it beside the key (Shopify: its store).
+     */
+    checkSetting?: string;
   };
   /**
    * Present when the provider has a notion of "existing places to publish

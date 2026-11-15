@@ -193,8 +193,6 @@ export interface TemplateInfo {
   /** The `preset:` this template's manifest declares — the starting point
    *  the new-book wizard seeds its preset choice from (ADR 0008). */
   preset?: string;
-  /** The `targets:` this template's manifest declares, if any. */
-  targets?: string[];
   /** The `page:` size (points) a `custom`-preset template is designed for, if any. */
   page?: { width: number; height: number };
 }
@@ -294,6 +292,8 @@ export interface PublishProviderStaticInfo {
   /** #221 — "oauth" = the browser consent flow (gdrive); null/absent = the
    *  existing paste-an-API-key flow. Drives Connections' add-a-key branch. */
   connectKind: 'token' | 'oauth' | null;
+  /** The setting the key check needs with no book open (Shopify's store), as its field. */
+  checkField: { key: string; label: string; placeholder?: string } | null;
 }
 
 // ── Project configuration view — author-facing manifest subset ─────────────
@@ -955,16 +955,16 @@ export const api = {
      * host; the response is redacted and the key never comes back. An optional
      * `account` label stores a NAMED credential (a user can keep several per
      * provider); empty stores the default. `projectDir` is null with no book
-     * (the Accounts page): the check then reads no manifest settings, so
-     * Shopify's check takes its store address as `shop` (not stored).
+     * (the Accounts page): the check then reads no manifest settings, so the
+     * setting it needs (`checkField`) comes as `checkValue` (not stored).
      */
-    connect: (projectDir: string | null, providerId: string, token: string, account?: string, shop?: string) =>
+    connect: (projectDir: string | null, providerId: string, token: string, account?: string, checkValue?: string) =>
       post<{ connected: boolean; providerId: string }>('/api/publish/connect', {
         ...(projectDir ? { projectDir } : {}),
         providerId,
         token,
         ...(account ? { account } : {}),
-        ...(shop ? { shop } : {}),
+        ...(checkValue ? { checkValue } : {}),
       }),
 
     /** Forget a stored key for a provider (the default, or a named `account`). */

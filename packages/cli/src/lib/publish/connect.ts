@@ -51,11 +51,12 @@ export interface ConnectPublishProviderOptions {
   account?: string;
   manifestPath?: string;
   /**
-   * With no `projectDir` only: Shopify's store address (`publish.shopify.shop`
-   * in a book's manifest), which its key check needs. Used for the check and
-   * never stored; ignored when a book supplies its own settings.
+   * With no `projectDir` only: the value of the setting the provider's key
+   * check needs (`credential.checkSetting`; Shopify's store), which a book's
+   * manifest otherwise supplies. Used for the check and never stored; ignored
+   * when a book supplies its own settings.
    */
-  shop?: string;
+  checkValue?: string;
 }
 
 /**
@@ -106,11 +107,14 @@ export async function connectPublishProvider(
     createdAt: Date.now(),
   };
 
-  const shop = (options.shop ?? "").trim();
-  if (!options.projectDir && info.id === "shopify" && !shop) {
-    // Shopify's key can only be checked against a store; the manifest's wording
-    // ("publish.shopify.shop") would mean nothing to a writer with no book open.
-    throw new Error("Enter your Shopify store's address (like my-store.myshopify.com) to check the key.");
+  const needed = info.credential.checkSetting;
+  const checkValue = (options.checkValue ?? "").trim();
+  if (!options.projectDir && needed && !checkValue) {
+    // Said as the field is labelled: the manifest's key would mean nothing to
+    // a writer with no book open.
+    const field = info.configFields.find((f) => f.key === needed);
+    const like = field?.placeholder ? ` (like ${field.placeholder})` : "";
+    throw new Error(`Enter the ${(field?.label ?? needed).toLowerCase()}${like} to check the key.`);
   }
   const req: PublishRequest = options.projectDir
     ? await resolvePublishRequest(
@@ -123,7 +127,7 @@ export async function connectPublishProvider(
       )
     : {
         project: { projectDir: "", title: "", authors: [] },
-        config: shop ? { shop } : {},
+        config: needed && checkValue ? { [needed]: checkValue } : {},
         artifact: { path: "", format: info.format },
         deps,
       };

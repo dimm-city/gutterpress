@@ -452,7 +452,7 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
       }
     }
     if (!result.ok) {
-      throw new BuildError("Pre-build validation failed", 1);
+      throw new BuildError("Pre-build validation failed", 1, { code: "SOURCE_PROBLEMS" });
     }
   }
 }

@@ -112,6 +112,13 @@ export class PublishSectionController {
   progress = $state<PublishProgress[]>([]);
   /** The last run's result (merged, when a run was for some targets only). */
   result = $state<PublishBookResult | null>(null);
+  /**
+   * True once the last result sent or prepared something. After Check only
+   * nothing went anywhere, so Publish, not Done, is the next step.
+   */
+  get published(): boolean {
+    return this.result?.targets.some((t) => t.status === "sent" || t.status === "prepared") ?? false;
+  }
 
   private readonly deps: PublishSectionDeps;
 

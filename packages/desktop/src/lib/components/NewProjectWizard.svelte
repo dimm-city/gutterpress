@@ -13,13 +13,6 @@
     sizeDraftsFor,
     trimPoints,
   } from "#lib/page-size-choices.ts";
-  import {
-    PUBLISH_TARGET_CHOICES,
-    PRINT_TOOL_IDS,
-    defaultTargetsFor,
-    missingToolsForTargets,
-    toolGapMessage,
-  } from "#lib/publish-targets.ts";
 
   // `open` is purely internal state, not a `$bindable` prop: the ONLY open
   // protocol is the imperative `show()` below (reset + template-load + focus
@@ -42,8 +35,8 @@
     triggerEl?: HTMLButtonElement | undefined;
   } = $props();
 
-  // Three short steps (#312): as one screen, the template, print target and
-  // publish targets (ADR 0008) push Create below the fold. The footer stays
+  // Three short steps (#312): as one screen, the template and print target
+  // push Create below the fold. The footer stays
   // pinned, and each step owns the validation for its own fields.
   const STEPS = ["Name & author", "Template", "Print & save"];
   const LAST_STEP = STEPS.length - 1;
@@ -54,7 +47,7 @@
   let useVersionHistory = $state(true);
 
   // Preset choice (ADR 0008): which vendor the book is DESIGNED for. The
-  // chosen TEMPLATE seeds this (and the targets below) from the template's
+  // chosen TEMPLATE seeds this from the template's
   // own manifest — the template is the first decision, and everything under
   // it starts from what that template is for. The writer can still change
   // any of it before creating.
@@ -71,50 +64,6 @@
 
   /** The trim in points the manifest will record, or null while incomplete. */
   const customPagePoints = $derived(trimPoints(sizeChoice, widthIn, heightIn));
-
-  // Publish targets (ADR 0008, 0012): WHERE the book will be published,
-  // recorded explicitly as the new manifest's `publish:` list (an
-  // unchecked-everything selection is written as `publish: {}`, a visible
-  // opt-out, never an accident of omission). Seeded from the template/preset
-  // and freely uncheckable — a writer without qpdf/Ghostscript can opt out of
-  // print checks knowingly instead of hitting required-check errors later.
-  // Changed afterwards in Publish → Targets (#lib/publish-targets).
-  const TARGET_CHOICES = PUBLISH_TARGET_CHOICES;
-  // Defaults follow the template/preset until the writer touches a checkbox;
-  // after that their selection is theirs (no $effect — the derived falls
-  // back only while untouched).
-  let targetsTouched = $state(false);
-  let checkedTargets = $state<string[]>([]);
-  /** The template's own `targets:`, when it declares one. */
-  let templateTargets = $state<string[] | null>(null);
-  let effectiveTargets = $derived(
-    targetsTouched ? checkedTargets : (templateTargets ?? defaultTargetsFor(selectedPreset))
-  );
-  function toggleTarget(id: string): void {
-    const base = effectiveTargets;
-    targetsTouched = true;
-    checkedTargets = base.includes(id) ? base.filter((t) => t !== id) : [...base, id];
-  }
-
-  // qpdf/Ghostscript availability on this computer (from the same /api/doctor
-  // data Troubleshooting → Diagnostics shows), for the can't-build-compliant-PDFs note below.
-  // Best-effort: a failed probe just shows no note.
-  let missingTools = $state<string[]>([]);
-  async function loadToolStatus(): Promise<void> {
-    try {
-      const doctor = await api.doctor();
-      missingTools = (doctor.tools ?? [])
-        .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
-        .map((t) => t.id);
-    } catch {
-      missingTools = [];
-    }
-  }
-  // The explanation for tools a CHECKED destination needs but this computer
-  // lacks.
-  let targetToolGap = $derived(
-    toolGapMessage(missingToolsForTargets(effectiveTargets, missingTools))
-  );
 
   // Template selection (#29). Built-in + custom templates, loaded on open.
   let templates = $state<TemplateInfo[]>([]);
@@ -151,12 +100,9 @@
 
   /**
    * Choosing a template is the FIRST decision and seeds everything under it:
-   * the design preset, the page size and the publish targets all start from
-   * what that template's own manifest declares (falling back to the preset's
-   * defaults when it declares no targets). Any of it can then be changed —
-   * this only moves the starting point, so it runs in the click handler,
-   * never an `$effect`. A writer-touched target selection is reset so the new
-   * template's own choices actually show.
+   * the design preset and the page size start from what that template's own
+   * manifest declares. Either can then be changed — this only moves the
+   * starting point, so it runs in the click handler, never an `$effect`.
    */
   function selectTemplate(tpl: TemplateInfo | null): void {
     selectedTemplate = tpl;
@@ -166,9 +112,6 @@
     // A custom-size template says which size it is designed for; the size
     // fields show it so the writer sees (and can change) the real choice.
     ({ sizeChoice, widthIn, heightIn } = sizeDraftsFor(preset === "custom" ? tpl?.page : null));
-    templateTargets = tpl?.targets ?? null;
-    targetsTouched = false;
-    checkedTargets = [];
   }
 
   async function importTemplate() {
@@ -229,9 +172,6 @@
     sizeChoice = "letter";
     widthIn = "";
     heightIn = "";
-    targetsTouched = false;
-    checkedTargets = [];
-    templateTargets = null;
     creating = false;
     error = null;
   }
@@ -303,7 +243,6 @@
     open = true;
     void loadTemplates();
     void loadDefaultParentDir();
-    void loadToolStatus();
   }
 
   /**
@@ -394,12 +333,13 @@
             ? (tpl.id as "book" | "zine" | "technical" | "paper")
             : undefined,
         templateDir: tpl && tpl.kind === "custom" ? tpl.dir : undefined,
-        // ADR 0008: the preset, publish targets, and custom trim shown in the
-        // dialog are what gets written — including for a saved custom
-        // template, whose own manifest values seeded these fields, so leaving
-        // them alone reproduces the captured design exactly.
+        // ADR 0008: the preset and custom trim shown in the dialog are what
+        // gets written — including for a saved custom template, whose own
+        // manifest values seeded these fields, so leaving them alone
+        // reproduces the captured design exactly. Where the book is
+        // published comes from the template, else the preset (ADR 0012), and
+        // is changed in Publish → Targets.
         preset: selectedPreset ?? undefined,
-        targets: [...effectiveTargets],
         customPage:
           selectedPreset === "custom" && customPagePoints ? customPagePoints : undefined,
         versionHistory: useVersionHistory ? "local-git" : "none",
@@ -485,9 +425,9 @@
           />
         </label>
       {:else if step === 1}
-        <!-- The template comes BEFORE the print and publish choices: it is the
-             decision they start from (selectTemplate seeds the preset and the
-             publish targets from the template's own manifest). -->
+        <!-- The template comes BEFORE the print choice: it is the decision
+             it starts from (selectTemplate seeds the preset from the
+             template's own manifest). -->
         {#if templates.length > 0}
           <div class="field">
             <span>Start from a template</span>
@@ -550,36 +490,6 @@
               This is the size your book prints at and is checked against.
             </p>
           {/if}
-        </div>
-
-        <div class="field">
-          <span>Check the finished PDF against a print service's rules? <em class="optional">(optional)</em></span>
-          <ul class="target-list" aria-label="Print services to check against">
-            {#each TARGET_CHOICES as choice (choice.id)}
-              <li>
-                <label class="target-row">
-                  <input
-                    type="checkbox"
-                    checked={effectiveTargets.includes(choice.id)}
-                    onchange={() => toggleTarget(choice.id)}
-                    disabled={creating}
-                  />
-                  <span class="target-copy">
-                    <span class="target-label">{choice.label}</span>
-                    <span class="target-desc">{choice.description}</span>
-                  </span>
-                </label>
-              </li>
-            {/each}
-          </ul>
-          {#if targetToolGap}
-            <p class="tool-note" role="note">{targetToolGap}</p>
-          {/if}
-          <p class="page-hint">
-            Gutterpress has no checks for other places you publish to (Amazon KDP, Google
-            Drive…); you choose where to send the PDF when you publish. With none checked, only
-            the general print checks run.
-          </p>
         </div>
 
         <div class="field">
@@ -690,24 +600,6 @@
     background: var(--app-accent); color: var(--app-accent-text);
   }
   .preset-list { grid-template-columns: 1fr 1fr 1fr; }
-  .target-list {
-    list-style: none; margin: 0; padding: 0;
-    display: flex; flex-direction: column; gap: 6px;
-  }
-  .target-row {
-    display: flex; align-items: flex-start; gap: 8px;
-    font-size: 13px; color: var(--app-text-secondary); cursor: pointer;
-  }
-  .target-row input { margin-top: 2px; flex-shrink: 0; }
-  .target-copy { display: flex; flex-direction: column; gap: 1px; }
-  .target-label { font-size: 13px; font-weight: 600; color: var(--app-text); }
-  .target-desc { font-size: 11px; color: var(--app-text-muted); line-height: 1.35; }
-  .tool-note {
-    margin: 4px 0 0;
-    font-size: 11px;
-    line-height: 1.45;
-    color: var(--app-warning-text);
-  }
   .page-hint {
     margin: 4px 0 0;
     font-size: 11px;

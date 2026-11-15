@@ -78,6 +78,7 @@ const info: PublishProviderInfo = {
     envVar: "SHOPIFY_ADMIN_TOKEN",
     tokenUrl: "https://help.shopify.com/manual/apps/app-types/custom-apps",
     hint: "Create a custom app in Shopify admin (Settings → Apps → Develop apps) with write_products scope, then paste its Admin API access token.",
+    checkSetting: "shop",
   },
 };
 

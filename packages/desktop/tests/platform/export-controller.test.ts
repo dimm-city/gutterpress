@@ -160,8 +160,10 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
 test("happy path builds, renames temp→out, emits started+success, clears session", async () => {
   const h = makeHarness();
   const res = await h.controller.build({ input: "/book", out: "/out/book.pdf" });
-  // A draft PDF, as `gutterpress build` makes one: the checks are the publish run's.
-  expect(h.buildArgs[0]).toMatchObject({ format: "pdf", skipPreValidate: true, skipPostValidate: true });
+  // A plain PDF, as `gutterpress build` makes one: the book's source is
+  // checked first (checks are on by default).
+  expect(h.buildArgs[0]).toMatchObject({ format: "pdf" });
+  expect(h.buildArgs[0]?.skipPreValidate).toBeUndefined();
 
   expect(res.pdfPath).toBe("/out/book.pdf");
   expect(res.outDir).toBe("/out");

@@ -394,6 +394,7 @@ export type {
 } from "../lib/publish/google-auth.ts";
 
 export { connectGoogleDrive } from "../lib/publish/connect-google.ts";
+export { driveFolderForRun } from "../lib/publish/providers/gdrive.ts";
 export type {
   ConnectGoogleDriveOptions,
   ConnectGoogleDriveResult,

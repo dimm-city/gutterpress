@@ -442,7 +442,7 @@ test("a self-contained book (no escaping refs) is captured unchanged, no shared/
   }
 });
 
-// ── ADR 0008: a template carries the preset/targets a new book starts from ──
+// ── ADR 0008: a template carries the preset a new book starts from ──
 //
 // The creation flows (wizard, `gutterpress new`) use these as the starting
 // point for their pickers, so the template's own manifest is the single
@@ -467,7 +467,7 @@ test("a template designed for one size exposes it; a preset-sized template does 
   expect(byId.book?.page).toBeUndefined();
 });
 
-test("a saved custom template carries its project's preset and targets", async () => {
+test("a saved custom template carries its project's preset", async () => {
   const parent = await tmp("gutterpress-tplchoices-src-");
   const templatesRoot = await tmp("gutterpress-tplchoices-dest-");
   try {
@@ -486,7 +486,6 @@ test("a saved custom template carries its project's preset and targets", async (
 
     const [saved] = await listCustomTemplates(templatesRoot);
     expect(saved?.preset).toBe("dtrpg");
-    expect(saved?.targets).toEqual(["drivethrurpg-print", "itch"]);
   } finally {
     await rm(parent, { recursive: true, force: true });
     await rm(templatesRoot, { recursive: true, force: true });
@@ -502,7 +501,6 @@ test("a template with no manifest choices simply carries none", async () => {
 
     const [bare] = await listCustomTemplates(templatesRoot);
     expect(bare?.preset).toBeUndefined();
-    expect(bare?.targets).toBeUndefined();
   } finally {
     await rm(templatesRoot, { recursive: true, force: true });
   }
@@ -533,6 +531,35 @@ test("scaffoldProject from a templateDir applies an explicit preset override", a
     const manifest = await readFile(result.manifestPath, "utf8");
     expect(manifest).toContain("preset: dtrpg");
     expect(manifest).toContain("itch");
+  } finally {
+    await rm(templateDir, { recursive: true, force: true });
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject from a templateDir keeps the template's own targets when none are given, preset or not", async () => {
+  const templateDir = await tmp("gutterpress-tpltargets-tpl-");
+  const parent = await tmp("gutterpress-tpltargets-out-");
+  try {
+    await writeFile(
+      path.join(templateDir, "manifest.yaml"),
+      'title: "{{TITLE}}"\npreset: book\npublish:\n  itch:\n    target: ada/guide\n',
+      "utf8",
+    );
+    await writeFile(path.join(templateDir, "chapter-01.md"), "# {{TITLE}}\n", "utf8");
+
+    const result = await scaffoldProject({
+      name: "Kept Targets",
+      parentDir: parent,
+      templateDir,
+      preset: "dtrpg",
+      versionHistory: "none",
+    });
+
+    const manifest = await readFile(result.manifestPath, "utf8");
+    expect(manifest).toContain("preset: dtrpg");
+    expect(manifest).toContain("publish:\n  itch:\n    target: ada/guide");
+    expect(manifest).not.toContain("drivethrurpg-print");
   } finally {
     await rm(templateDir, { recursive: true, force: true });
     await rm(parent, { recursive: true, force: true });

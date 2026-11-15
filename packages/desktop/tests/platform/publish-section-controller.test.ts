@@ -259,6 +259,22 @@ test("Send anyway runs that target alone and puts its result in its place", asyn
   expect(h.ctrl.result?.ok).toBe(true);
 });
 
+test("only a run that sent something is a publish to do again; after Check only, Publish is next", async () => {
+  const h = make({ cards: book });
+  await h.ctrl.loadPublish();
+  expect(h.ctrl.published).toBe(false);
+  h.runResult = runResult({ targets: [target("itch", "checked"), target("gdrive", "checked")] });
+  await h.ctrl.publish({ checkOnly: true });
+  expect(h.ctrl.result?.ok).toBe(true);
+  expect(h.ctrl.published).toBe(false);
+  h.runResult = runResult({ targets: [target("itch", "sent"), target("gdrive", "not-connected")] });
+  await h.ctrl.publish();
+  expect(h.ctrl.published).toBe(true);
+  h.runResult = runResult({ targets: [target("itch", "prepared")] });
+  await h.ctrl.publish();
+  expect(h.ctrl.published).toBe(true);
+});
+
 test("a run that could not start says why in plain words", async () => {
   const h = make({ cards: book });
   await h.ctrl.loadPublish();

@@ -680,6 +680,8 @@ export interface PublishProviderCard {
    * button driving `connectGoogleStart`/`Wait`/`Cancel` (see HostServices).
    */
   connectKind?: "token" | "oauth";
+  /** The setting the key check needs with no book open (Shopify's store): one of `fields`. */
+  checkField?: PublishConfigFieldInfo | null;
   /** Redacted — a usable credential exists (env var or stored key) for the
    *  effective selected account. */
   connected: boolean;

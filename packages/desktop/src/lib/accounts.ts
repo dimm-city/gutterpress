@@ -87,6 +87,8 @@ export interface KeyFormProvider {
   tokenUrl?: string | null;
   hint?: string | null;
   connectKind?: "token" | "oauth" | null;
+  /** The setting the key check needs with no book open (Shopify's store), as its field. */
+  checkField?: { key: string; label: string; placeholder?: string } | null;
 }
 
 /** What to tell the author above the form that replaces a saved key or sign-in (a saved key is never shown). */
