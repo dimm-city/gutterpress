@@ -415,6 +415,36 @@ test("resumableUpload retries a chunk on 5xx up to the retry limit, honoring Ret
   }
 });
 
+test("resumableUpload caps a huge Retry-After at 60 s", async () => {
+  const chunkSize = 200;
+  const { dir, filePath } = await tempFile(chunkSize);
+  try {
+    let attempts = 0;
+    const sleeps: number[] = [];
+    const fetchImpl = (async (url: string | URL | Request) => {
+      if (String(url).includes("uploadType=resumable")) {
+        return new Response(null, { status: 200, headers: { Location: "https://upload.example/s" } });
+      }
+      attempts++;
+      if (attempts === 1) return new Response("busy", { status: 503, headers: { "Retry-After": "3600" } });
+      return jsonResponse({ id: "f", name: "book.pdf" });
+    }) as unknown as typeof fetch;
+    await resumableUpload(fetchImpl, "at", {
+      name: "book.pdf",
+      parentFolderId: "f1",
+      filePath,
+      totalBytes: chunkSize,
+      chunkSize,
+      sleepImpl: async (ms) => {
+        sleeps.push(ms);
+      },
+    });
+    expect(sleeps).toEqual([60_000]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("resumableUpload gives up after exceeding the retry limit and throws a friendly error", async () => {
   const chunkSize = 200;
   const total = chunkSize;
