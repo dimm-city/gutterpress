@@ -38,7 +38,7 @@ function extractUrls(value: string): string[] {
   return urls;
 }
 
-function isRemoteUrl(url: string): boolean {
+export function isRemoteUrl(url: string): boolean {
   const lower = url.trim().toLowerCase();
   return (
     lower.startsWith("http://") ||
