@@ -11,8 +11,8 @@
  *
  * The PDF/X file's Info /Creator must be gutterpress (#497). Ghostscript's
  * pdfwrite keeps the input's Info entries over its DOCINFO pdfmark, so the
- * file used to carry Chromium's user-agent string; the build stamps the raw
- * PDF before converting, as it always did for a plain PDF.
+ * file used to carry Chromium's user-agent string; the engine stamps the raw
+ * PDF it makes, so the converter keeps it.
  */
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";

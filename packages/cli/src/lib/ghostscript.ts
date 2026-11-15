@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile, writeFile, unlink, rename, readdir, statfs } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, basename, dirname, resolve } from "node:path";
+import type { PDFDocument } from "pdf-lib";
 import { BuildError } from "./build-error";
 import { enhancedPath, execCapture, run, spawnCapture } from "./exec";
 import { log } from "../utils/logger";
@@ -85,6 +86,25 @@ export async function resolveGhostscript(
 }
 
 /**
+ * The PDF as a pdf-lib document for a read-only scan, or null when it cannot be
+ * parsed. Pass the result of an earlier call as `parsed` and it is returned as
+ * is, so one parse can serve {@link transparentPages} and
+ * {@link findPostScriptShadingPages}.
+ */
+export async function loadScanDoc(
+  pdfBytes: Uint8Array,
+  parsed?: PDFDocument | null
+): Promise<PDFDocument | null> {
+  if (parsed !== undefined) return parsed;
+  const { PDFDocument } = await import("pdf-lib");
+  try {
+    return await PDFDocument.load(pdfBytes, { updateMetadata: false, throwOnInvalidObject: false });
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The 1-based page numbers of `pdfBytes` that use live PDF transparency — the
  * PDF 1.4 imaging feature, in ALL the forms Chromium emits it, not just
  * alpha-channel images:
@@ -117,21 +137,16 @@ export async function resolveGhostscript(
  * are not followed: an annotation's appearance stream is not page content, and
  * PDF/X builds strip annotations before conversion.
  */
-export async function transparentPages(pdfBytes: Uint8Array): Promise<number[]> {
-  const { PDFDocument, PDFDict, PDFName, PDFNumber, PDFRawStream, PDFArray, PDFRef } =
-    await import("pdf-lib");
-  let doc;
-  try {
-    doc = await PDFDocument.load(pdfBytes, {
-      updateMetadata: false,
-      throwOnInvalidObject: false,
-    });
-  } catch {
-    // Never let a detection heuristic fail a build: if the PDF can't be
-    // parsed here, Ghostscript is still about to be handed it and will
-    // report anything genuinely wrong. Skip the advisory step instead.
-    return [];
-  }
+export async function transparentPages(
+  pdfBytes: Uint8Array,
+  parsed?: PDFDocument | null
+): Promise<number[]> {
+  const { PDFDict, PDFName, PDFNumber, PDFRawStream, PDFArray, PDFRef } = await import("pdf-lib");
+  // Never let a detection heuristic fail a build: if the PDF can't be
+  // parsed here, Ghostscript is still about to be handed it and will
+  // report anything genuinely wrong. Skip the advisory step instead.
+  const doc = await loadScanDoc(pdfBytes, parsed);
+  if (!doc) return [];
   const ctx = doc.context;
   const SKIP = new Set(["Parent", "Font", "Annots"]);
   const isSet = (v: unknown) => v !== undefined && String(v) !== "/None";
@@ -209,19 +224,13 @@ export async function transparentPages(pdfBytes: Uint8Array): Promise<number[]> 
  * {@link transparentPages}, it never fails a build: an unparseable PDF
  * reports no pages.
  */
-export async function findPostScriptShadingPages(pdfBytes: Uint8Array): Promise<number[]> {
-  const { PDFDocument, PDFDict, PDFName, PDFNumber, PDFRawStream, PDFRef } = await import(
-    "pdf-lib"
-  );
-  let doc;
-  try {
-    doc = await PDFDocument.load(pdfBytes, {
-      updateMetadata: false,
-      throwOnInvalidObject: false,
-    });
-  } catch {
-    return [];
-  }
+export async function findPostScriptShadingPages(
+  pdfBytes: Uint8Array,
+  parsed?: PDFDocument | null
+): Promise<number[]> {
+  const { PDFDict, PDFName, PDFNumber, PDFRawStream, PDFRef } = await import("pdf-lib");
+  const doc = await loadScanDoc(pdfBytes, parsed);
+  if (!doc) return [];
   const ctx = doc.context;
   const asDict = (obj: unknown) => {
     const o = obj instanceof PDFRef ? ctx.lookup(obj) : obj;
@@ -492,7 +501,7 @@ function psFileName(path: string): string {
  * have no effect on this ICC-managed conversion.
  *
  * No /Creator: pdfwrite keeps the input's Info entries over the DOCINFO
- * pdfmark's, so the build stamps it on the input instead ({@link stampCreator},
+ * pdfmark's, so the engine stamps it on the PDF it makes (`postprocess`,
  * #497). /Title likewise applies only when the input has none.
  */
 function makePdfxDefPs(params: {
@@ -539,25 +548,6 @@ ${registry}  /DestOutputProfile {icc_PDFX}
 
 [{Catalog} << /OutputIntents [ {OutputIntent_PDFX} ] >> /PUT pdfmark
 `;
-}
-
-/**
- * Stamp the Creator metadata field on an existing PDF.
- *
- * Uses pdf-lib (pure JS, MIT) rather than Ghostscript, so the plain-PDF build
- * path needs no system tool at all — gs is now required only for PDF/X CMYK
- * conversion. The PDF/X build stamps its raw PDF the same way before
- * converting, since pdfwrite carries the input's Info entries into the output
- * (#497). `updateMetadata: false` keeps pdf-lib from rewriting the
- * ModDate/Producer so the only change is the /Creator field.
- */
-export async function stampCreator(pdfPath: string): Promise<void> {
-  const { PDFDocument } = await import("pdf-lib");
-  const bytes = await readFile(pdfPath);
-  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
-  doc.setCreator("gutterpress");
-  const out = await doc.save();
-  await writeFile(pdfPath, out);
 }
 
 /** true when `version` (as `gs --version` prints it, e.g. "10.02.1") is below major.minor; unparseable → false. */

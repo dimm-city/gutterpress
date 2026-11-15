@@ -151,3 +151,13 @@ test("crop marks sit on the trim's lines, which the in-sheet bleed moves", async
   // The outer (right) vertical arm stands on x = 630, from the bleed edge y = 828 up.
   expect(content).toContain("630 828 m");
 });
+
+test("the Creator is gutterpress, not the renderer's user agent", async () => {
+  const source = await PDFDocument.create();
+  source.addPage([612, 792]);
+  source.setCreator("HeadlessChrome/141");
+  const r = await postprocess(await source.save(), { geometry });
+  // Read as stored: pdf-lib would otherwise name itself as Producer on load.
+  const out = await PDFDocument.load(r.bytes, { updateMetadata: false });
+  expect(out.getCreator()).toBe("gutterpress");
+});

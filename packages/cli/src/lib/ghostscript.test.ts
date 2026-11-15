@@ -11,7 +11,9 @@ import { getAssetPath } from "./embedded-assets";
 import { BuildError } from "./build-error";
 import {
   convertToPdfxCmyk,
+  findPostScriptShadingPages,
   ghostscriptOlderThan,
+  loadScanDoc,
   planTransparentPages,
   transparentPages,
   resolveGhostscript,
@@ -570,5 +572,23 @@ describe("planTransparentPages", () => {
 
   test("listed or gradient pages without transparency are ignored", () => {
     expect(planTransparentPages([2], new Map(), [1, 9], [3])).toEqual({ split: [2], artOnly: [], kept: new Map() });
+  });
+});
+
+describe("one parse shared by the PDF/X page scans", () => {
+  test("transparentPages and findPostScriptShadingPages use the parse they are given, not the bytes", async () => {
+    const { PDFDocument, PDFName } = await import("pdf-lib");
+    const source = await PDFDocument.create();
+    const page = source.addPage([100, 100]);
+    page.node.set(PDFName.of("Group"), source.context.obj({ S: "Transparency" }));
+    const bytes = await source.save();
+
+    const parsed = await loadScanDoc(bytes);
+    expect(await loadScanDoc(bytes, parsed)).toBe(parsed);
+    // Bytes that cannot be parsed: only a reused parse can find the page.
+    const junk = new Uint8Array([1, 2, 3]);
+    expect(await transparentPages(junk, parsed)).toEqual([1]);
+    expect(await findPostScriptShadingPages(junk, parsed)).toEqual([]);
+    expect(await transparentPages(junk)).toEqual([]);
   });
 });
