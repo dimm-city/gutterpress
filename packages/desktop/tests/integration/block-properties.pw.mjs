@@ -121,9 +121,15 @@ const WebSocketImpl = globalThis.WebSocket ?? require_("playwright-core/lib/util
 const ws = new WebSocketImpl(await getWsUrl());
 let msgId = 0;
 const pending = new Map();
+// The class catalog request, seen over the Network domain (app:// fetches are
+// not in the page's resource timing).
+const catalogRequests = new Set();
+let catalogLoaded = false;
 ws.onmessage = (ev) => {
   const m = JSON.parse(String(ev.data));
   if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
+  if (m.method === "Network.requestWillBeSent" && m.params.request.url.includes("/api/snip/classes")) catalogRequests.add(m.params.requestId);
+  if (m.method === "Network.loadingFinished" && catalogRequests.has(m.params.requestId)) catalogLoaded = true;
 };
 await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
 function send(method, params = {}) {
@@ -191,6 +197,7 @@ const ALT = 1;
 const CTRL = 2;
 
 await send("Page.bringToFront");
+await send("Network.enable");
 
 // ── 3. SPA + book ready ─────────────────────────────────────────────────────
 await waitFor(`!!document.querySelector('button[aria-label="Edit"]')`, 60000, "SPA never became interactive");
@@ -261,6 +268,11 @@ const setColumns = (v) =>
 const apply = () => evalJs(`(() => { document.querySelector('.block-properties button[type="submit"]').click(); return true; })()`);
 
 await settled();
+// The class catalog is fetched after the render, and the dialog reads it when it opens.
+for (let t = Date.now(); !catalogLoaded; await sleep(50)) {
+  if (Date.now() - t > 20000) fail("CONTROL: the class catalog was never fetched");
+}
+await sleep(100);
 
 // ── CHECK 1 — Alt+Enter in the source editor ────────────────────────────────
 const linePos = await evalJs(`(() => {
