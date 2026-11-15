@@ -43,7 +43,7 @@ const inspectState: {
 // run — every file that runs afterwards, not just this one — and is never
 // auto-restored. That caused real cross-file pollution: any later file that
 // freshly imported the real `pdf-parse`/`pdf-inspect` silently got these fakes
-// (e.g. `readPdfBytes()` always returning `""`), and any later file importing
+// (e.g. `findPdfMarkers()` always finding nothing), and any later file importing
 // the check registry hit a module-link `SyntaxError` because the fake's export
 // list omitted `isLoadable`, which `checks/pdf/qpdf-structure.ts` imports
 // statically. Reproducible with `bun test --randomize --seed=12345`.
@@ -54,7 +54,7 @@ const inspectState: {
 // `build-runner.browser-lifecycle.test.ts` and `chromium.test.ts` document.
 const measure = spyOn(pdfParse, "getPerPageInkCoverage").mockImplementation(async () => inkResult);
 spyOn(pdfParse, "hasOutputIntent").mockImplementation(async () => pdfx);
-spyOn(pdfParse, "readPdfBytes").mockImplementation(async () => "");
+spyOn(pdfParse, "findPdfMarkers").mockImplementation(async () => new Set());
 
 spyOn(pdfInspect, "loadPdf").mockImplementation(
   async () => ({ getPage: async () => ({}) }) as never
@@ -75,7 +75,7 @@ afterAll(() => {
   for (const fn of [
     pdfParse.getPerPageInkCoverage,
     pdfParse.hasOutputIntent,
-    pdfParse.readPdfBytes,
+    pdfParse.findPdfMarkers,
     pdfInspect.loadPdf,
     pdfInspect.getOpPass,
     pdfInspect.getTextPass,
