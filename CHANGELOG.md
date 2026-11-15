@@ -7,21 +7,18 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-<<<<<<< HEAD
 - **A build no longer copies every image at once.** Copying a book's images into the build folder
   now runs at most 8 copies at a time, and uses an instant copy on filesystems that support it, so
   a book with a lot of art puts far less load on a slow or spinning disk.
 - **The preview no longer reads every asset to check whether it changed.** It now uses the file's
   size and modified times, so reloading a book with large images is lighter, and a changed file
   still always reloads.
-=======
 - **Checking for unsaved changes no longer reads your whole book.** Every automatic version,
   Save version and backup check used to read and re-hash every tracked file, including all your
   art, even when nothing had changed. A file is now read again only when its saved details no
   longer match, or when it was edited right around the moment the version history was last
   written, which is where a same-length edit could otherwise be missed. In our test book a
   check no longer rereads the whole book (150 MB before, under 1 MB now).
->>>>>>> perf/g4-git-walk
 
 ## [0.11.28] - 2026-11-15
 
