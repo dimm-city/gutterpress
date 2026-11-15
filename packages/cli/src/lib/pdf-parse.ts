@@ -41,7 +41,7 @@ export async function findPdfMarkers<K extends string>(
       const end = carried + bytesRead;
       // The "A" stops a word boundary (`\b`) from matching at the cut: a marker
       // that ends there is tested again, with its real next byte, in the next step.
-      const text = buf.latin1Slice(0, end) + (bytesRead === SCAN_CHUNK ? "A" : "");
+      const text = buf.toString("latin1", 0, end) + (bytesRead === SCAN_CHUNK ? "A" : "");
       for (let i = pending.length - 1; i >= 0; i--) {
         if (pending[i]![1].test(text)) {
           found.add(pending[i]![0]);
