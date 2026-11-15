@@ -14,16 +14,15 @@
  * - Global: a default account for a provider across books.
  *
  * NON-SECRET (label references into the credential store and paths, never
- * tokens). Mirrors {@link FileTokenStore}: a `0600` JSON file under a config
- * dir, with serialized read-modify-write. The CLI and the desktop host each
- * construct one with their OWN directory (CLI: {@link defaultConfigDir};
- * desktop: Electron `userData`) — they do not share the file, the same way
- * their credential stores don't. The desktop passes its store to the lib as
- * `PublishDeps.selections`; a front-end may also resolve the global account
- * and pass it as `PublishDeps.credentialAccount`, the fallback when neither
- * the private store nor the manifest names one.
+ * tokens). Mirrors {@link FileTokenStore}: a `0600` JSON file under
+ * {@link defaultConfigDir}, with serialized read-modify-write. One file per
+ * person, shared by the terminal and the app (ADR 0012); the app's older copy
+ * in its own folder is moved here once (move-app-stores.ts). A front-end may
+ * also resolve the global account and pass it as
+ * `PublishDeps.credentialAccount`, the fallback when neither the private store
+ * nor the manifest names one.
  */
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { defaultConfigDir } from "../remote-auth/token-store.ts";
 
@@ -73,10 +72,15 @@ export class PublishSelectionsStore {
 
   private async write(data: SelectionsShape): Promise<void> {
     await mkdir(path.dirname(this.filePath), { recursive: true });
-    await writeFile(this.filePath, JSON.stringify(data, null, 2), {
+    // Replaced whole (tmp + rename), like the token store: the app and the
+    // terminal share this file, and a read part-way through an in-place write
+    // would see it as corrupt and the next write would save it empty.
+    const tmpPath = `${this.filePath}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+    await writeFile(tmpPath, JSON.stringify(data, null, 2), {
       encoding: "utf8",
       mode: 0o600,
     });
+    await rename(tmpPath, this.filePath);
     await chmod(this.filePath, 0o600);
   }
 
@@ -141,6 +145,39 @@ export class PublishSelectionsStore {
     return this.enqueue(async () => {
       const data = await this.read();
       return data.projects[normalizeProjectKey(projectDir)] ?? {};
+    });
+  }
+
+  /**
+   * Add what another selections file holds and this one does not: each global
+   * account, and each book's value per target and key. A value already here
+   * is kept. Returns how many values were added (0 when the file is absent).
+   */
+  addMissingFrom(file: string): Promise<number> {
+    return this.enqueue(async () => {
+      const other = await new PublishSelectionsStore(file).read();
+      const data = await this.read();
+      let added = 0;
+      for (const [provider, account] of Object.entries(other.global)) {
+        if (data.global[provider] || !account?.trim()) continue;
+        data.global[provider] = account;
+        added++;
+      }
+      for (const [book, providers] of Object.entries(other.projects)) {
+        const mine = (data.projects[book] ??= {});
+        for (const [provider, values] of Object.entries(providers)) {
+          const target = (mine[provider] ??= {});
+          for (const [key, value] of Object.entries(values)) {
+            if (key in target || !String(value ?? "").trim()) continue;
+            target[key] = value;
+            added++;
+          }
+          if (Object.keys(target).length === 0) delete mine[provider];
+        }
+        if (Object.keys(mine).length === 0) delete data.projects[book];
+      }
+      if (added > 0) await this.write(data);
+      return added;
     });
   }
 

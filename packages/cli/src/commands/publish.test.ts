@@ -31,6 +31,9 @@ import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import * as connectGoogleMod from "../lib/publish/connect-google.ts";
+import * as buildRunnerMod from "../lib/build-runner.ts";
+import * as validationExecMod from "../lib/validation-exec.ts";
+import type { ValidationExecutionResult } from "../lib/validation-exec.ts";
 import type { ConnectGoogleDriveResult } from "../lib/publish/connect-google.ts";
 import publishCommand from "./publish.ts";
 import { EXIT_CODES } from "../lib/cli-args.ts";
@@ -39,6 +42,8 @@ import { listPublishProviders } from "../lib/publish/registry.ts";
 import { ProcessExitSignal, stubProcessExit } from "../test-helpers/testkit.ts";
 
 let connectGoogleSpy: ReturnType<typeof spyOn> | undefined;
+let runBuildSpy: ReturnType<typeof spyOn> | undefined;
+let validateSpy: ReturnType<typeof spyOn> | undefined;
 let exitSpy: ReturnType<typeof stubProcessExit> | undefined;
 let consoleErrorSpy: ReturnType<typeof spyOn> | undefined;
 let consoleLogSpy: ReturnType<typeof spyOn> | undefined;
@@ -63,6 +68,33 @@ function stubConnectGoogleDrive(
 }
 
 beforeEach(async () => {
+  // No real browser or checks: the build writes a stand-in PDF where a real
+  // one would go, and the checks find nothing.
+  runBuildSpy = spyOn(buildRunnerMod, "runBuild").mockImplementation(async (opts) => {
+    const out = resolveOutputDir(opts.inputDir, "Test Book");
+    await mkdir(out, { recursive: true });
+    if (opts.format === "html") return { outDir: out, htmlPath: path.join(out, "book.html"), pdfPath: null, fingerprintPath: null, diagnostics: [] };
+    const pdf = path.join(out, artifactName("Test Book", opts.format));
+    await writeFile(pdf, "%PDF-1.4 fake");
+    const plainPdfPath = path.join(out, artifactName("Test Book", "pdf"));
+    if (opts.withPlainPdf) await writeFile(plainPdfPath, "%PDF-1.4 fake");
+    return {
+      outDir: out,
+      htmlPath: null,
+      pdfPath: pdf,
+      ...(opts.withPlainPdf ? { plainPdfPath } : {}),
+      fingerprintPath: null,
+      diagnostics: [],
+    };
+  });
+  validateSpy = spyOn(validationExecMod, "executeValidation").mockImplementation(
+    async () =>
+      ({
+        report: { results: [] },
+        tools: { missing: [], skippedChecks: [], toolToChecks: new Map() },
+      }) as unknown as ValidationExecutionResult,
+  );
+
   // Isolate the credential store from this machine's real one.
   tmpConfigDir = await mkdtemp(path.join(tmpdir(), "gutterpress-publish-cmd-"));
   prevConfigDir = process.env.GUTTERPRESS_CONFIG_DIR;
@@ -82,6 +114,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  runBuildSpy?.mockRestore();
+  validateSpy?.mockRestore();
   connectGoogleSpy?.mockRestore();
   exitSpy?.mockRestore();
   consoleErrorSpy?.mockRestore();
@@ -301,8 +335,13 @@ export async function publish(outputDir, context) {
 
     expect(lastJson(consoleLogSpy)).toMatchObject({
       ok: true,
-      providerId: "pub-demo",
-      outcome: { kind: "published", url: "https://example.com/pub", detail: "Sent to the demo" },
+      targets: [
+        {
+          id: "pub-demo",
+          status: "sent",
+          outcome: { kind: "published", url: "https://example.com/pub", detail: "Sent to the demo" },
+        },
+      ],
     });
     expect(JSON.parse(await readFile(path.join(dir, "received.json"), "utf8"))).toMatchObject({
       settings: { dest: "somewhere" },
@@ -413,11 +452,13 @@ describe("publish --provider gdrive — the book's folder from the manifest, nev
       "title: Test Book\nauthors: [Tester]\npreset: book\npublish:\n  gdrive:\n    folderId: F1\n    folder: Harbor Books\n",
       "utf8",
     );
-    await writeFile(path.join(dir, "book.pdf"), "%PDF-1.4 fake");
     return dir;
   }
 
-  function lastJson(spy: ReturnType<typeof spyOn>): { ok: boolean; error?: string } {
+  function lastJson(spy: ReturnType<typeof spyOn>): {
+    ok: boolean;
+    targets: Array<{ status: string; failure?: { message: string } }>;
+  } {
     const writes = (spy.mock.calls ?? [])
       .map((c: unknown[]) => c[0])
       .filter((s: unknown): s is string => typeof s === "string" && /^\s*\{/.test(s));
@@ -431,13 +472,14 @@ describe("publish --provider gdrive — the book's folder from the manifest, nev
     consoleLogSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
 
     await expect(
-      runCommand(publishCommand, { rawArgs: [dir, "--provider", "gdrive", "--file", "book.pdf", "--json"] }),
+      runCommand(publishCommand, { rawArgs: [dir, "--provider", "gdrive", "--json"] }),
     ).rejects.toThrow(new ProcessExitSignal(EXIT_CODES.FINDINGS).message);
 
     const result = lastJson(consoleLogSpy);
     expect(result.ok).toBe(false);
-    expect(result.error).toContain('the Drive folder "Harbor Books", which this Google account can\'t reach');
-    expect(result.error).toContain("--folder-id <id> or --folder <name>");
+    expect(result.targets[0]?.status).toBe("failed");
+    expect(result.targets[0]?.failure?.message).toContain('the Drive folder "Harbor Books", which this Google account can\'t reach');
+    expect(result.targets[0]?.failure?.message).toContain("--folder-id <id> or --folder <name>");
     expect(uploads).toEqual([]);
     expect(await readFile(path.join(dir, "manifest.yaml"), "utf8")).toBe(before);
   });
@@ -448,7 +490,7 @@ describe("publish --provider gdrive — the book's folder from the manifest, nev
     consoleLogSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
 
     await runCommand(publishCommand, {
-      rawArgs: [dir, "--provider", "gdrive", "--file", "book.pdf", "--folder-id", "B1", "--json"],
+      rawArgs: [dir, "gdrive", "--folder-id", "B1", "--json"],
     });
 
     expect(lastJson(consoleLogSpy).ok).toBe(true);
@@ -465,6 +507,166 @@ describe("publish --provider gdrive — the book's folder from the manifest, nev
     await expect(
       runCommand(publishCommand, { rawArgs: [dir, "--provider", "kdp", "--folder", "Mine"] }),
     ).rejects.toThrow(new ProcessExitSignal(EXIT_CODES.USAGE).message);
-    expect(errors.join("\n")).toContain("--folder-id and --folder are for --provider gdrive.");
+    expect(errors.join("\n")).toContain("--folder-id and --folder are for the gdrive target.");
+  });
+});
+
+// ADR 0012: `gutterpress publish` is the terminal's view of the one publish run.
+describe("publish — the one run, from the terminal", () => {
+  const dirs: string[] = [];
+  afterEach(async () => {
+    for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true }).catch(() => {});
+  });
+
+  async function book(): Promise<string> {
+    const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-publish-run-cmd-"));
+    dirs.push(dir);
+    await writeFile(
+      path.join(dir, "manifest.yaml"),
+      "title: Test Book\nauthors: [Tester]\npreset: book\npublish:\n  drivethrurpg-print:\n  local:\n    dir: out\n",
+      "utf8",
+    );
+    return dir;
+  }
+
+  function json(): { ok: boolean; targets: Array<{ id: string; status: string }> } {
+    const writes = (consoleLogSpy!.mock.calls ?? [])
+      .map((c: unknown[]) => c[0])
+      .filter((s: unknown): s is string => typeof s === "string" && /^\s*\{/.test(s));
+    return JSON.parse(writes[writes.length - 1] as string);
+  }
+
+  const status = () => json().targets.map((t) => `${t.id}:${t.status}`);
+
+  test("with no targets named, every target of the book is made from one build and sent", async () => {
+    const dir = await book();
+    consoleLogSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await runCommand(publishCommand, { rawArgs: [dir, "--json"] });
+
+    expect(status()).toEqual(["drivethrurpg-print:prepared", "local:sent"]);
+    expect(runBuildSpy!.mock.calls.map((c: unknown[]) => (c[0] as { format: string }).format)).toEqual(["pdfx"]);
+  });
+
+  test("named targets are the only ones published, in either order with the folder", async () => {
+    const dir = await book();
+    consoleLogSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await runCommand(publishCommand, { rawArgs: ["local", dir, "--json"] });
+
+    expect(status()).toEqual(["local:sent"]);
+  });
+
+  test("--dry-run makes and checks the files and sends nothing", async () => {
+    const dir = await book();
+    consoleLogSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await runCommand(publishCommand, { rawArgs: [dir, "local", "--dry-run", "--json"] });
+
+    expect(status()).toEqual(["local:checked"]);
+    expect(validateSpy).toHaveBeenCalled();
+    expect(await readFile(path.join(dir, "out", artifactName("Test Book", "pdf"))).catch(() => null)).toBeNull();
+  });
+
+  test("--skip-checks runs no checks", async () => {
+    const dir = await book();
+    consoleLogSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await runCommand(publishCommand, { rawArgs: [dir, "local", "--skip-checks", "--json"] });
+
+    expect(status()).toEqual(["local:sent"]);
+    expect(validateSpy).not.toHaveBeenCalled();
+  });
+
+  test("a target whose file breaks its rules is held alone, says how to send it anyway, and fails the command", async () => {
+    const dir = await book();
+    validateSpy!.mockImplementation(
+      async (args: { phase?: string }) =>
+        ({
+          report: {
+            results:
+              args.phase === "post-build"
+                ? [{ checkId: "pdf.print.bleed", severity: "error", message: "No bleed.", target: "drivethrurpg-print" }]
+                : [],
+          },
+          tools: { missing: [], skippedChecks: [], toolToChecks: new Map() },
+        }) as unknown as ValidationExecutionResult,
+    );
+    stubExit();
+    const lines: string[] = [];
+    consoleLogSpy = spyOn(console, "log").mockImplementation((...a) => void lines.push(a.join(" ")));
+    consoleErrorSpy = spyOn(console, "error").mockImplementation((...a) => void lines.push(a.join(" ")));
+
+    await expect(runCommand(publishCommand, { rawArgs: [dir] })).rejects.toThrow(
+      new ProcessExitSignal(EXIT_CODES.FINDINGS).message,
+    );
+    const text = lines.join("\n");
+    expect(text).toContain("[pdf.print.bleed] No bleed.");
+    expect(text).toContain("gutterpress publish drivethrurpg-print --send-anyway");
+    expect(await readFile(path.join(dir, "out", artifactName("Test Book", "pdf")), "utf8")).toBe("%PDF-1.4 fake");
+
+    exitSpy?.mockRestore();
+    exitSpy = undefined;
+    consoleLogSpy.mockRestore();
+    consoleLogSpy = spyOn(process.stdout, "write").mockImplementation(() => true);
+    await runCommand(publishCommand, { rawArgs: [dir, "--send-anyway", "--json"] });
+    expect(status()).toEqual(["drivethrurpg-print:prepared", "local:sent"]);
+  });
+
+  test("--json prints only the result on stdout, even when the build logs", async () => {
+    // A real run in a real process: the build's own log lines must not reach stdout.
+    const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-publish-json-cmd-"));
+    dirs.push(dir);
+    await writeFile(
+      path.join(dir, "manifest.yaml"),
+      "title: Test Book\nauthors: [Tester]\npreset: book\npublish:\n  local:\n    format: html\n    dir: out\n",
+    );
+    await writeFile(path.join(dir, "chapter.md"), "# Hello\n");
+    const run = Bun.spawnSync(["bun", path.join(import.meta.dir, "..", "cli.ts"), "publish", dir, "--dry-run", "--json"], {
+      env: { ...process.env, GUTTERPRESS_CONFIG_DIR: tmpConfigDir! },
+    });
+    const stdout = run.stdout.toString();
+    expect(stdout).not.toContain("Build (html)");
+    expect(JSON.parse(stdout).targets[0].status).toBe("checked");
+  }, 60_000);
+
+  test("a target that passes still shows its check warnings, but not the notes", async () => {
+    const dir = await book();
+    validateSpy!.mockImplementation(
+      async (args: { phase?: string }) =>
+        ({
+          report: {
+            results:
+              args.phase === "post-build"
+                ? [
+                    { checkId: "pdf.print.bleed", severity: "warning", message: "Bleed area appears insufficient.", target: "drivethrurpg-print", data: { page: 3 } },
+                    { checkId: "pdf.nav.page-labels", severity: "info", message: "No page labels." },
+                  ]
+                : [],
+          },
+          tools: { missing: [], skippedChecks: [], toolToChecks: new Map() },
+        }) as unknown as ValidationExecutionResult,
+    );
+    const lines: string[] = [];
+    consoleLogSpy = spyOn(console, "log").mockImplementation((...a) => void lines.push(a.join(" ")));
+    const warnSpy = spyOn(console, "warn").mockImplementation((...a) => void lines.push(a.join(" ")));
+    try {
+      await runCommand(publishCommand, { rawArgs: [dir, "drivethrurpg-print"] });
+    } finally {
+      warnSpy.mockRestore();
+    }
+    const text = lines.join("\n");
+    expect(text).toContain("[pdf.print.bleed] Bleed area appears insufficient. (page 3)");
+    expect(text).not.toContain("No page labels.");
+  });
+
+  test("--connect takes the target by name", async () => {
+    const dir = await book();
+    const lines: string[] = [];
+    consoleLogSpy = spyOn(console, "log").mockImplementation((...a) => void lines.push(a.join(" ")));
+
+    await runCommand(publishCommand, { rawArgs: [dir, "--connect", "local"] });
+
+    expect(lines.join("\n")).toContain("A folder on this computer needs no account. Just run: gutterpress publish local");
   });
 });

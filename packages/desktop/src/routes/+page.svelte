@@ -21,7 +21,7 @@
   import type { ToastController } from "#lib/components/Toast.svelte";
   import type { MarkdownFileLaunchEvent } from "#lib/platform/contract.ts";
   import type { ProblemEntry } from "#lib/platform/dtos.ts";
-  import { buildProblems, exportProblems, problemCounts } from "#lib/problems.ts";
+  import { buildProblems, checkProblems, problemCounts } from "#lib/problems.ts";
   import { NOTHING_NEW_NOTICE, saveFailureReason } from "#lib/save-status.ts";
   import StatusBar from "#lib/components/StatusBar.svelte";
   import ProblemsPanel from "#lib/components/ProblemsPanel.svelte";
@@ -105,7 +105,6 @@
   import { continueStatus, shouldReshowLanding } from "#lib/routes/startup-landing.ts";
   import {
     friendlyFolderError,
-    friendlyPdfError,
     friendlyHostError,
     friendlyPreviewError,
     unwrapRouteError,
@@ -156,7 +155,7 @@
   // PDF export runs in a separate render window, so the UI stays usable — track
   // it separately with a NON-blocking status pill instead of the modal overlay.
   // The whole export FSM (state + 1s ticker + progress label) AND the
-  // savePdf/buildTo/cancelExport intents live in the ExportController; the view
+  // savePdf/cancelExport intents live in the ExportController; the view
   // drives it via intent methods and reads its rune getters. Host coupling
   // injected (§8): forward-references to page-local functions/state declared
   // further down (lifecycle, toast, getSaveReadinessWarning, …) are safe
@@ -170,40 +169,25 @@
     displayName: () => lifecycle.currentFolderDisplayName,
     isBusy: () => lifecycle.busy,
     sourceMode: () => lifecycle.sourceMode,
-    chooseSavePath: (defaultName, defaultDir) => api.dialog.savePdf(defaultName, defaultDir),
-    pickOutputFolder: (defaultPath) => api.dialog.pickOutputFolder(defaultPath),
+    chooseSavePath: (defaultName) => api.dialog.savePdf(defaultName),
     onBuildProgress: (cb) => getPlatform().onBuildProgress(cb),
     buildPdf: (input, outPath, opts) =>
       getPlatform()
         .build({
-        input,
-        format: "pdf",
-        out: outPath,
-        // #163: opt-in per export, offered by the failure itself (see
-        // ExportController.savePdf) — never a stored setting.
-        allowShrink: opts?.allowShrink,
-        // Validation is skipped by default (the quick Ctrl+Shift+E export and
-        // the dialog's default) — it's a fast RGB export, not the full
-        // preflight. The export dialog's "Run print-safety validation" toggle
-        // opts back in. Lint stays ON either way — the in-process PostCSS
-        // print-safety checks catch real CSS problems before PDF gen.
-        skipPreValidate: !opts?.validate,
-        skipPostValidate: !opts?.validate,
+          input,
+          out: outPath,
+          // #163: opt-in per export, offered by the failure itself (see
+          // ExportController.savePdf) — never a stored setting.
+          allowShrink: opts?.allowShrink,
         })
         // Print-quality findings are only knowable once the book paginates,
         // so they arrive from the export rather than the source lint that
-        // fills the panel — the render's own diagnostics and what the
-        // post-build PDF checks found on the saved file (#399). Held
-        // separately (see `buildProblems`) so the next lint refresh — any
-        // file save — does not wipe them.
+        // fills the panel. Held separately (see `buildProblems`) so the next
+        // lint refresh — any file save — does not wipe them.
         .then((result) => {
-          buildProblemEntries = [
-            ...buildProblems(result.diagnostics ?? []),
-            ...exportProblems(result.findings ?? []),
-          ];
+          buildProblemEntries = buildProblems(result.diagnostics ?? []);
           return result;
         }),
-    buildHtml: (input, out) => getPlatform().build({ input, format: "html", ...(out ? { out } : {}) }),
     cancelExportHost: (exportId) => getPlatform().cancelExport(exportId),
     showInFolder: (path) => api.shell.showInFolder(path),
     toastSuccess: (message, durationMs, action) => toast?.success(message, durationMs, action),
@@ -211,10 +195,6 @@
     // needs a duration and an action button, which `error()` does not take.
     toastError: (message, durationMs, action) =>
       toast?.show(message, "error", durationMs, action),
-    toastWarning: (message, durationMs, action) =>
-      toast?.show(message, "warning", durationMs, action),
-    showProblems: () => openProblemsList(),
-    friendlyPdfError: (e) => friendlyPdfError(e),
     wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   });
   let diagnosticsTools = $state<DiagnosticsTool[] | null>(null);
@@ -226,17 +206,26 @@
   const publishController = new PublishSectionController({
     projectDir: () => lifecycle.currentDir,
     listProviders: (dir) => api.publish.listProviders(dir),
-    preflight: (dir, providerIds) => api.publish.preflight(dir, providerIds),
+    setTarget: (dir, target, inBook) => api.publish.setTarget(dir, target, inBook),
     setConfig: (dir, providerId, values) => api.publish.setConfig(dir, providerId, values),
     // #221 — provider-neutral destinations picker.
     listDestinations: (dir, providerId) => api.publish.listDestinations(dir, providerId),
     createDestination: (dir, providerId, name) => api.publish.createDestination(dir, providerId, name),
     destinationStatus: (dir, providerId) => api.publish.destinationStatus(dir, providerId),
-    run: (dir, providerId, options) => api.publish.run(dir, providerId, options),
+    // The one publish run (ADR 0012), in main.
+    publish: (args) => getPlatform().publish(args),
+    cancelPublish: () => getPlatform().cancelPublish(),
+    onProgress: (cb) => getPlatform().onPublishProgress(cb),
     openExternal: (url) => api.shell.openExternal(url),
     onSaved: () => toast?.success?.("Publish settings saved."),
-    onPublished: (guided) =>
-      toast?.success?.(guided ? "Upload package ready — follow the checklist to finish." : "Published!"),
+    // The run's findings join the Problems list, held apart from the source
+    // lint like an export's (see `buildProblems`).
+    onResult: (result) => {
+      buildProblemEntries = [
+        ...buildProblems(result.diagnostics ?? []),
+        ...checkProblems([...result.sourceFindings, ...result.targets.flatMap((t) => t.findings)], lifecycle.currentDir ?? ""),
+      ];
+    },
   });
   let publishOpen = $state(false);
 
@@ -2591,6 +2580,10 @@
     if (lifecycle.sourceMode !== "folder" || !lifecycle.currentDir) {
       return "Open a book before saving a PDF.";
     }
+    // A preview that failed is not still loading: say what the build would.
+    if (lifecycle.previewError) {
+      return "The book has problems to fix before the PDF can be made. The preview shows what they are.";
+    }
     if (lifecycle.rendering || !lifecycle.previewUrl) {
       return "Your document is still loading. Wait a moment and try again.";
     }
@@ -3035,7 +3028,7 @@
 <!-- Non-blocking PDF export progress: a corner pill that leaves the preview
      fully interactive (the build runs in a separate render window). -->
 <ActivityIndicator
-  stage={activity.exporting}
+  stage={publishOpen ? null : activity.exporting}
   kind="pill"
   anchor="app"
   onCancel={activity.exporting?.cancelable ? () => exportController.cancelExport() : undefined}
@@ -3598,15 +3591,18 @@
   <PublishWizard
     controller={publishController}
     projectDir={lifecycle.currentDir ?? ""}
-    buildArtifact={(opts) => exportController.buildTo(opts)}
+    onReviewProblems={() => {
+      publishOpen = false;
+      openProblemsList();
+    }}
     pickFolder={(defaultPath) => api.dialog.pickOutputFolder(defaultPath)}
     onShowInFolder={(path) => void api.shell.showInFolder(path).catch(() => {})}
     triggerEl={publishBtnEl}
     onClose={() => (publishOpen = false)}
     onManageAccounts={() => (accountsOpen = true)}
     onNavigate={(entry) => {
-      // A preflight "Go to" — close the wizard, then reveal the finding
-      // in the editor via the shared Problems-panel navigation affordance.
+      // A finding's "Go to" — close the view, then reveal the finding in the
+      // editor via the shared Problems-panel navigation affordance.
       publishOpen = false;
       openProblem(entry);
     }}

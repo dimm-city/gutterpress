@@ -25,11 +25,13 @@ import path from "node:path";
 
 import type { ResolvedExtensionConfig } from "../../schema/manifest.types.ts";
 import { log } from "../../utils/logger.ts";
+import { UsageError } from "../cli-args.ts";
 import { readExtensionMeta } from "../extension-manifest.ts";
 import { loadManifestWithPath, resolveConfig } from "../manifest.ts";
 import type { PublishPluginLocation } from "../markdown/plugins.ts";
 import { resolveVendoredPluginInstallRoot, vendoredNpmPluginPackageDir } from "../plugin-vendor.ts";
 import { listPublishProviders, publishProviderFor } from "./registry.ts";
+import { canonicalTargetId } from "../targets.ts";
 import type {
   PublishPluginFunction,
   PublishPluginResult,
@@ -57,7 +59,8 @@ interface BookExtensions {
  *  gets the rest. */
 const RESERVED_SETTINGS = new Set(["format", "credential", "enabled"]);
 
-const isBuiltIn = (id: string) => listPublishProviders().some((p) => p.id === id);
+// An older name for a built-in target (`drivethrurpg`) is still that built-in.
+const isBuiltIn = (id: string) => listPublishProviders().some((p) => p.id === canonicalTargetId(id));
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 async function bookExtensions(book: PublishBook): Promise<BookExtensions> {
@@ -137,13 +140,13 @@ export async function resolvePublishProvider(id: string, book: PublishBook): Pro
   const publisher = publishers.find((p) => p.id === id);
   if (publisher) return pluginProvider(publisher);
   if (npmEntry) {
-    throw new Error(
+    throw new UsageError(
       `"${id}" is in this book's extensions but is not a publishing plugin ` +
         `(its package.json has no "gutterpress": { "publish": true }).`,
     );
   }
   const known = [...listPublishProviders().map((p) => p.id), ...publishers.map((p) => p.id)].join(", ");
-  throw new Error(`Unknown publish provider "${id}". Available: ${known}.`);
+  throw new UsageError(`Unknown publish provider "${id}". Available: ${known}.`);
 }
 
 /** An http(s) URL, normalised; anything else is dropped — `--open` hands it
@@ -164,7 +167,7 @@ function infoFor(p: Publisher): PublishProviderInfo {
     label: p.id,
     kind: "plugin",
     format: "pdf",
-    formats: ["pdf", "html"],
+    formats: ["pdf", "pdfx", "html"],
     description: p.description ?? "Publishing plugin",
     // No settings form yet: settings are edited in the manifest.
     configFields: [],

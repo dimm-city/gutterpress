@@ -12,6 +12,8 @@
  * `loadLib()` in `src/routes/api/_lib/route.ts`, which suites substitute with
  * `setLibForTests()`.
  */
+import path from "node:path";
+import { PublishSelectionsStore } from "gutterpress";
 import type { HostServices } from "../../electron/server-bridge/host-services";
 import type { TokenStore } from "../../electron/server-bridge/remote-hooks";
 import type { UpdaterStatus } from "../../src/lib/platform/shared-types";
@@ -50,6 +52,7 @@ const idleUpdaterStatus = (): UpdaterStatus => ({
 });
 
 export function makeHostServices(overrides: HostServicesOverrides = {}): HostServices {
+  let selections: PublishSelectionsStore | undefined;
   const base: HostServices = {
     app: { setRendererDirty: noop },
     appImage: {
@@ -90,6 +93,12 @@ export function makeHostServices(overrides: HostServicesOverrides = {}): HostSer
       GITHUB_HOST: "github.com",
       cloneRepository: unstubbed("remote.cloneRepository"),
       defaultCloneParent: () => "/home/test/Documents/Gutterpress",
+      // The person's publishing choices: a file in the suite's userData
+      // folder (as overridden), so each suite's temp dir holds its own.
+      publishSelections: async () =>
+        (selections ??= new PublishSelectionsStore(
+          path.join((services.desktop as HostServices["desktop"]).getUserDataPath(), "publish-selections.json"),
+        )),
     },
     savePaths: { register: noop, consume: () => false },
     sync: {

@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { ExportController, exportFindingsMessage } from "../../src/lib/export/export-controller.svelte";
+import { ExportController } from "../../src/lib/export/export-controller.svelte";
 import type { ExportHostDeps, ExportProgressEvent } from "../../src/lib/export/export-controller.svelte";
-import type { ExportFindingDto } from "../../src/lib/platform/shared-types";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests. The production compiler replaces $state; the class only
@@ -81,11 +80,11 @@ test("syncProgress adopts the first exportId and folds in state + pages", () => 
   expect(ctrl.activeExportId).toBe("exp-1");
   expect(ctrl.state).toBe("rendering");
   expect(ctrl.pages).toBe(5);
-  expect(ctrl.pdfProgress).toBe("Exporting page 5…");
+  expect(ctrl.pdfProgress).toBe("Opening your book…");
 
   ctrl.syncProgress(ev({ state: "finalizing", pages: 12 }));
   expect(ctrl.state).toBe("finalizing");
-  expect(ctrl.pdfProgress).toBe("Finalizing PDF (12 pages)…");
+  expect(ctrl.pdfProgress).toBe("Laying out and writing the PDF (12 pages)…");
 });
 
 test("syncProgress ignores events from a different export id", () => {
@@ -102,9 +101,9 @@ test("rendering/finalizing labels fall back when no page count is known", () => 
   const { ctrl } = makeController();
   ctrl.start();
   ctrl.syncProgress(ev({ state: "rendering" }));
-  expect(ctrl.pdfProgress).toBe("Exporting…");
+  expect(ctrl.pdfProgress).toBe("Opening your book…");
   ctrl.syncProgress(ev({ state: "finalizing" }));
-  expect(ctrl.pdfProgress).toBe("Finalizing PDF…");
+  expect(ctrl.pdfProgress).toBe("Laying out and writing the PDF…");
 });
 
 test("markCanceling shows a fixed label with no elapsed suffix", () => {
@@ -150,18 +149,6 @@ test("reset returns everything to idle and clears the ticker", () => {
   expect(ctrl.elapsedSeconds).toBe(0);
   expect(ctrl.pdfProgress).toBe(null);
   expect(clock.running).toBe(false);
-});
-
-test("beginSimpleExport/endSimpleExport toggle only the busy flag (HTML path)", () => {
-  const { ctrl, clock } = makeController();
-  ctrl.beginSimpleExport();
-  expect(ctrl.exporting).toBe(true);
-  // No FSM/timer engaged for the simple path.
-  expect(ctrl.state).toBe("idle");
-  expect(ctrl.pdfProgress).toBe(null);
-  expect(clock.running).toBe(false);
-  ctrl.endSimpleExport();
-  expect(ctrl.exporting).toBe(false);
 });
 
 // ── M27: start() must clear a stale activeExportId ──────────────────────────
@@ -232,19 +219,9 @@ interface HostHarness {
     displayName: Spy<[]> & { value: string | null };
     isBusy: Spy<[]> & { value: boolean };
     sourceMode: Spy<[]> & { value: "folder" | "url" };
-    chooseSavePath: Spy<[string, (string | undefined)?]> & { value: string | null };
-    pickOutputFolder: Spy<[string]> & { value: string | null };
-    buildPdf: Spy<
-      [
-        { key: string; displayName: string },
-        string,
-        ({ validate?: boolean; allowShrink?: boolean } | undefined)?,
-      ]
-    > & {
-      impl: () => Promise<{ exportId?: string; pdfPath?: string; findings?: ExportFindingDto[] }>;
-    };
-    buildHtml: Spy<[{ key: string; displayName: string }, (string | undefined)?]> & {
-      impl: () => Promise<{ outDir?: string }>;
+    chooseSavePath: Spy<[string]> & { value: string | null };
+    buildPdf: Spy<[{ key: string; displayName: string }, string, ({ allowShrink?: boolean } | undefined)?]> & {
+      impl: () => Promise<{ exportId?: string; pdfPath?: string }>;
     };
     cancelExportHost: Spy<[string]>;
     showInFolder: Spy<[string]>;
@@ -256,8 +233,6 @@ interface HostHarness {
         ({ label: string; onClick: () => void | Promise<void> } | undefined)?,
       ]
     >;
-    toastWarning: Spy<[string, (number | undefined)?, ({ label: string; onClick: () => void } | undefined)?]>;
-    showProblems: Spy<[]>;
     wait: Spy<[number]>;
   };
 }
@@ -269,21 +244,11 @@ function makeHostController(): HostHarness {
   const displayName = Object.assign(hspy<[]>(), { value: "My Book" as string | null });
   const isBusy = Object.assign(hspy<[]>(), { value: false });
   const sourceMode = Object.assign(hspy<[]>(), { value: "folder" as "folder" | "url" });
-  const chooseSavePath = Object.assign(hspy<[string, (string | undefined)?]>(), { value: "/out/book.pdf" as string | null });
-  const pickOutputFolder = Object.assign(hspy<[string]>(), { value: "/out/site" as string | null });
+  const chooseSavePath = Object.assign(hspy<[string]>(), { value: "/out/book.pdf" as string | null });
   const buildPdf = Object.assign(
-    hspy<
-      [
-        { key: string; displayName: string },
-        string,
-        ({ validate?: boolean; allowShrink?: boolean } | undefined)?,
-      ]
-    >(),
-    { impl: async (): Promise<{ exportId?: string; pdfPath?: string; findings?: ExportFindingDto[] }> => ({ exportId: "exp-1", pdfPath: "/out/book.pdf" }) },
+    hspy<[{ key: string; displayName: string }, string, ({ allowShrink?: boolean } | undefined)?]>(),
+    { impl: async (): Promise<{ exportId?: string; pdfPath?: string }> => ({ exportId: "exp-1", pdfPath: "/out/book.pdf" }) },
   );
-  const buildHtml = Object.assign(hspy<[{ key: string; displayName: string }, (string | undefined)?]>(), {
-    impl: async (): Promise<{ outDir?: string }> => ({ outDir: "/proj/dist" }),
-  });
   const cancelExportHost = hspy<[string]>();
   const showInFolder = hspy<[string]>();
   const toastSuccess = hspy<[string, (number | undefined)?, ({ label: string; onClick: () => void } | undefined)?]>();
@@ -294,8 +259,6 @@ function makeHostController(): HostHarness {
       ({ label: string; onClick: () => void | Promise<void> } | undefined)?,
     ]
   >();
-  const toastWarning = hspy<[string, (number | undefined)?, ({ label: string; onClick: () => void } | undefined)?]>();
-  const showProblems = hspy<[]>();
   const wait = hspy<[number]>();
 
   const host: ExportHostDeps = {
@@ -320,22 +283,14 @@ function makeHostController(): HostHarness {
       sourceMode();
       return sourceMode.value;
     },
-    chooseSavePath: (defaultName, defaultDir) => {
-      chooseSavePath(defaultName, defaultDir);
+    chooseSavePath: (defaultName) => {
+      chooseSavePath(defaultName);
       return Promise.resolve(chooseSavePath.value);
-    },
-    pickOutputFolder: (defaultPath) => {
-      pickOutputFolder(defaultPath);
-      return Promise.resolve(pickOutputFolder.value);
     },
     onBuildProgress: () => undefined,
     buildPdf: (input, outPath, opts) => {
       buildPdf(input, outPath, opts);
       return buildPdf.impl();
-    },
-    buildHtml: (input, out) => {
-      buildHtml(input, out);
-      return buildHtml.impl();
     },
     cancelExportHost: (id) => {
       cancelExportHost(id);
@@ -347,9 +302,6 @@ function makeHostController(): HostHarness {
     },
     toastSuccess: (m, d, a) => toastSuccess(m, d, a),
     toastError: (m, d, a) => toastError(m, d, a),
-    toastWarning: (m, d, a) => toastWarning(m, d, a),
-    showProblems: () => showProblems(),
-    friendlyPdfError: (e) => `friendly: ${e instanceof Error ? e.message : String(e)}`,
     wait: (ms) => {
       wait(ms);
       return Promise.resolve();
@@ -367,15 +319,11 @@ function makeHostController(): HostHarness {
       isBusy,
       sourceMode,
       chooseSavePath,
-      pickOutputFolder,
       buildPdf,
-      buildHtml,
       cancelExportHost,
       showInFolder,
       toastSuccess,
       toastError,
-      toastWarning,
-      showProblems,
       wait,
     },
   };
@@ -469,46 +417,40 @@ test("savePdf() onBuildProgress dispatch: 'canceled' marks canceling, 'error' is
   await p;
 });
 
-test("savePdf() a non-EXPORT_CANCELED failure toasts the friendly error and resets", async () => {
+test("savePdf() a non-EXPORT_CANCELED failure says why in a toast that stays, and resets", async () => {
   const { ctrl, deps } = makeHostController();
-  deps.buildPdf.impl = () => Promise.reject(new Error("disk full"));
+  // The host's failure is the lib's own sentence (ADR 0012), shown as it is.
+  deps.buildPdf.impl = () =>
+    Promise.reject(Object.assign(new Error("Making the PDF failed: disk full"), { code: "BUILD_FAILED" }));
   await ctrl.savePdf();
-  expect(deps.toastError.calls).toEqual([["friendly: disk full"]]);
+  // Duration 0: a build can fail after many minutes, with nobody watching.
+  // A toast that leaves after five seconds takes the reason with it.
+  expect(deps.toastError.calls).toEqual([["Making the PDF failed: disk full", 0, undefined]]);
   expect(ctrl.state).toBe("idle");
   expect(ctrl.exporting).toBe(false);
 });
 
 // ── #163: the over-wide escape hatch, offered where the author meets it ──────
-// The engine's over-wide-content check is a hard error whose message says
-// "pass allowShrink to build anyway" — advice a desktop author cannot act on
-// (no flag, no dialog field). Rather than a permanently-visible checkbox that
-// invites shipping a silently-scaled book, the offer appears only on the
-// failure, names the offenders, and states what accepting it costs.
+// Content too wide for the page is a hard error. Rather than a permanently-
+// visible checkbox that invites shipping a silently-scaled book, the offer
+// appears only on that failure (its TOO_WIDE code), under the lib's sentence
+// naming the offenders and what accepting it costs.
 
-const overWideError = () =>
-  Object.assign(
-    new Error(
-      "Error invoking remote method 'api:build': Error: PDF build failed: " +
-        "content wider than the page content box: Chromium print shrink-to-fit " +
-        "scales the WHOLE document — every page, every measurement — to about " +
-        "0.69x its declared size (12pt type prints at 8.3pt). The page size and " +
-        "page count do not change, so the shrink is invisible in the PDF:\n" +
-        "  div.dc-sidebar.inset — 842px > 828px content box (give it an explicit width)\n" +
-        "Fix the offending widths, or pass allowShrink to build anyway.",
-    ),
-    { code: "BUILD_ERROR" },
-  );
+const TOO_WIDE_MESSAGE =
+  "Too wide for the page: div.dc-sidebar.inset. Give each one a width that fits, or build anyway, " +
+  "which scales the whole book to about 0.69× its declared size.";
+const overWideError = () => Object.assign(new Error(TOO_WIDE_MESSAGE), { code: "TOO_WIDE" });
 
 test("savePdf() passes allowShrink through to the host build", async () => {
   const { ctrl, deps } = makeHostController();
-  await ctrl.savePdf({ validate: true, allowShrink: true });
-  expect(deps.buildPdf.calls[0]![2]).toEqual({ validate: true, allowShrink: true });
+  await ctrl.savePdf({ allowShrink: true });
+  expect(deps.buildPdf.calls[0]![2]).toEqual({ allowShrink: true });
 });
 
 test("savePdf() leaves allowShrink off by default", async () => {
   const { ctrl, deps } = makeHostController();
   await ctrl.savePdf();
-  expect(deps.buildPdf.calls[0]![2]).toEqual({ validate: false, allowShrink: false });
+  expect(deps.buildPdf.calls[0]![2]).toEqual({ allowShrink: false });
 });
 
 test("savePdf() an over-wide failure offers 'Build anyway', naming the offenders and the cost", async () => {
@@ -516,10 +458,7 @@ test("savePdf() an over-wide failure offers 'Build anyway', naming the offenders
   deps.buildPdf.impl = () => Promise.reject(overWideError());
   await ctrl.savePdf();
   const [message, duration, action] = deps.toastError.calls[0]!;
-  expect(message).toContain("div.dc-sidebar.inset");
-  expect(message).toContain("whole book");
-  expect(message).toContain("0.69");
-  expect(message).not.toContain("allowShrink");
+  expect(message).toBe(TOO_WIDE_MESSAGE);
   // Sticky: an offer the author has to read and decide on must not time out.
   expect(duration).toBe(0);
   expect(action?.label).toMatch(/build anyway/i);
@@ -528,12 +467,12 @@ test("savePdf() an over-wide failure offers 'Build anyway', naming the offenders
 test("savePdf() 'Build anyway' re-runs the same export with allowShrink", async () => {
   const { ctrl, deps } = makeHostController();
   deps.buildPdf.impl = () => Promise.reject(overWideError());
-  await ctrl.savePdf({ validate: true });
+  await ctrl.savePdf();
   const action = deps.toastError.calls[0]![2]!;
   deps.buildPdf.impl = async () => ({ exportId: "exp-2", pdfPath: "/out/book.pdf" });
   await action.onClick();
   expect(deps.buildPdf.calls.length).toBe(2);
-  expect(deps.buildPdf.calls[1]![2]).toEqual({ validate: true, allowShrink: true });
+  expect(deps.buildPdf.calls[1]![2]).toEqual({ allowShrink: true });
   expect(deps.toastSuccess.calls.length).toBe(1);
 });
 
@@ -546,6 +485,14 @@ test("savePdf() a shrunk build that fails again does not offer the hatch a secon
   // Second failure: a plain error toast, no action to click again.
   expect(deps.toastError.calls.length).toBe(2);
   expect(deps.toastError.calls[1]![2]).toBeUndefined();
+});
+
+test("savePdf() any other failure offers nothing to click", async () => {
+  const { ctrl, deps } = makeHostController();
+  deps.buildPdf.impl = () =>
+    Promise.reject(Object.assign(new Error("Making the PDF failed: content wider than the page"), { code: "BUILD_FAILED" }));
+  await ctrl.savePdf();
+  expect(deps.toastError.calls[0]![2]).toBeUndefined();
 });
 
 test("savePdf() EXPORT_CANCELED resets quietly without an error toast", async () => {
@@ -581,134 +528,4 @@ test("cancelExport() swallows a host cancel failure", async () => {
   ctrl2.start();
   ctrl2.syncProgress({ exportId: "exp-9", state: "rendering" });
   await expect(ctrl2.cancelExport()).resolves.toBeUndefined();
-});
-
-// ── buildTo (the Publish wizard's "build into a folder" step) ────────────────
-
-test("buildTo() PDF inside the book builds straight into the folder with no dialog and resolves with the saved path", async () => {
-  const { ctrl, deps } = makeHostController();
-  deps.buildPdf.impl = async () => ({ exportId: "exp-1", pdfPath: "/proj/dist/My Book.pdf" });
-  const result = await ctrl.buildTo({ format: "pdf", dir: "/proj/dist", validate: true });
-  expect(deps.chooseSavePath.calls.length).toBe(0);
-  expect(deps.buildPdf.calls[0]![1]).toBe("/proj/dist/My Book.pdf");
-  expect(deps.buildPdf.calls[0]![2]).toEqual({ validate: true, allowShrink: false });
-  expect(result).toBe("/proj/dist/My Book.pdf");
-  expect(ctrl.state).toBe("idle");
-});
-
-test("buildTo() PDF outside the book confirms the destination in the Save dialog, pre-pointed at that folder", async () => {
-  const { ctrl, deps } = makeHostController();
-  deps.chooseSavePath.value = "/elsewhere/My Book.pdf";
-  deps.buildPdf.impl = async () => ({ exportId: "exp-1", pdfPath: "/elsewhere/My Book.pdf" });
-  const result = await ctrl.buildTo({ format: "pdf", dir: "/elsewhere", validate: false });
-  expect(deps.chooseSavePath.calls).toEqual([["My Book.pdf", "/elsewhere"]]);
-  expect(deps.buildPdf.calls[0]![1]).toBe("/elsewhere/My Book.pdf");
-  expect(result).toBe("/elsewhere/My Book.pdf");
-});
-
-test("buildTo() resolves null (no build) when the author cancels the dialog, and when a build fails", async () => {
-  const { ctrl, deps } = makeHostController();
-  deps.chooseSavePath.value = null;
-  expect(await ctrl.buildTo({ format: "pdf", dir: "/elsewhere" })).toBeNull();
-  expect(deps.buildPdf.calls.length).toBe(0);
-  deps.buildPdf.impl = async () => {
-    throw new Error("boom");
-  };
-  expect(await ctrl.buildTo({ format: "pdf", dir: "/proj/dist" })).toBeNull();
-  expect(deps.toastError.calls[0]![0]).toBe("friendly: boom");
-});
-
-test("buildTo() website builds the folder and offers Show in Folder", async () => {
-  const { ctrl, deps } = makeHostController();
-  deps.buildHtml.impl = async () => ({ outDir: "/proj/dist" });
-  const result = await ctrl.buildTo({ format: "html", dir: "/proj/dist" });
-  expect(deps.buildHtml.calls[0]).toEqual([{ key: "/proj", displayName: "My Book" }, "/proj/dist"]);
-  expect(deps.pickOutputFolder.calls.length).toBe(0);
-  expect(result).toBe("/proj/dist");
-  expect(deps.toastSuccess.calls[0]![0]).toBe("Website saved to /proj/dist");
-  deps.toastSuccess.calls[0]![2]?.onClick();
-  expect(deps.showInFolder.calls).toEqual([["/proj/dist"]]);
-  expect(ctrl.exporting).toBe(false);
-});
-
-test("buildTo() website outside the book confirms the folder in the folder dialog first", async () => {
-  const { ctrl, deps } = makeHostController();
-  deps.buildHtml.impl = async () => ({ outDir: "/out/site" });
-  const result = await ctrl.buildTo({ format: "html", dir: "/out/site" });
-  expect(deps.pickOutputFolder.calls).toEqual([["/out/site"]]);
-  expect(deps.buildHtml.calls[0]![1]).toBe("/out/site");
-  expect(result).toBe("/out/site");
-});
-
-test("buildTo() honours the readiness warning and the one in-flight guard like savePdf", async () => {
-  const { ctrl, deps } = makeHostController();
-  deps.checkSaveReadiness.value = "Still loading";
-  expect(await ctrl.buildTo({ format: "pdf", dir: "/proj/dist" })).toBeNull();
-  expect(deps.setSaveWarning.calls).toEqual([["Still loading"]]);
-  deps.checkSaveReadiness.value = null;
-  ctrl.start();
-  expect(await ctrl.buildTo({ format: "pdf", dir: "/proj/dist" })).toBeNull();
-  expect(deps.buildPdf.calls.length).toBe(0);
-});
-
-// ── the post-build PDF checks' findings (#399) ───────────────────────────────
-// The host runs the checks on the saved PDF and returns their findings with
-// the build result; the author is told how many problems there are and can
-// go straight to the Problems list. The PDF is saved either way, so this sits
-// beside the success toast and never replaces it.
-
-const finding = (over: Partial<ExportFindingDto>): ExportFindingDto => ({
-  source: "pdf.print.safe-margins",
-  severity: "error",
-  message: 'Page 3: "Too close" is 0.12in too close to the outside edge.',
-  ...over,
-});
-
-test("exportFindingsMessage counts errors and warnings only, singular and plural, null when none", () => {
-  expect(exportFindingsMessage(undefined)).toBeNull();
-  expect(exportFindingsMessage([])).toBeNull();
-  // An info row (a check skipped for a missing tool) is not a problem to announce.
-  expect(exportFindingsMessage([finding({ severity: "info" })])).toBeNull();
-  expect(exportFindingsMessage([finding({})])).toBe("1 problem found in the PDF — see Problems.");
-  expect(
-    exportFindingsMessage([finding({}), finding({ severity: "warning" }), finding({ severity: "info" })]),
-  ).toBe("2 problems found in the PDF — see Problems.");
-});
-
-test("savePdf() with findings: the success toast stays, and a sticky Review toast opens the Problems list", async () => {
-  const { ctrl, deps } = makeHostController();
-  deps.buildPdf.impl = async () => ({
-    exportId: "exp-1",
-    pdfPath: "/out/book.pdf",
-    findings: [finding({}), finding({ severity: "warning", source: "pdf.print.embedded-fonts" }), finding({ severity: "info" })],
-  });
-  await ctrl.savePdf();
-  expect(deps.toastSuccess.calls[0]![0]).toBe("PDF saved to /out/book.pdf");
-  expect(deps.toastWarning.calls.length).toBe(1);
-  const [message, duration, action] = deps.toastWarning.calls[0]!;
-  expect(message).toBe("2 problems found in the PDF — see Problems.");
-  // Sticky: the author decides when they have seen it.
-  expect(duration).toBe(0);
-  expect(action?.label).toBe("Review");
-  action!.onClick();
-  expect(deps.showProblems.calls.length).toBe(1);
-  // Still a successful export.
-  expect(ctrl.state).toBe("idle");
-  expect(deps.toastError.calls.length).toBe(0);
-});
-
-test("savePdf() with no findings (or info only) shows no findings toast", async () => {
-  const { ctrl, deps } = makeHostController();
-  await ctrl.savePdf();
-  expect(deps.toastWarning.calls.length).toBe(0);
-
-  const second = makeHostController();
-  second.deps.buildPdf.impl = async () => ({
-    exportId: "exp-2",
-    pdfPath: "/out/book.pdf",
-    findings: [finding({ severity: "info", message: "Skipped: qpdf is not installed on this computer." })],
-  });
-  await second.ctrl.savePdf();
-  expect(second.deps.toastWarning.calls.length).toBe(0);
-  expect(second.deps.toastSuccess.calls.length).toBe(1);
 });

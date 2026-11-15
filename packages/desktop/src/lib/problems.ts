@@ -3,7 +3,7 @@
  * grouping/labeling logic is unit-testable outside Svelte.
  */
 import type { ProblemEntry } from "#lib/platform/dtos.ts";
-import type { ExportFindingDto } from "#lib/platform/shared-types.ts";
+import { joinPath } from "#lib/platform/paths.ts";
 
 /** One file's worth of problems, ready to render as a panel group. */
 export interface ProblemGroup {
@@ -109,19 +109,23 @@ export function buildProblems(
 }
 
 /**
- * The post-build PDF checks' findings (#399), held with `buildProblems`'s
- * entries for the same reason: they come from an export, not the source lint.
- * No file or line either — a finding is about the finished PDF, and its
- * message already names the page where it has one ("Page 3: …"). The check's
- * rule (`detail`) follows the message so the author reads what the limit is,
- * and a finding produced for one publish target carries that target's tag the
- * way the CLI prints it (`[dtrpg] …`).
+ * The publish run's findings as Problems entries (the lib's `CheckFinding`):
+ * the book's own, and each target's, tagged with the target as the terminal
+ * prints them (`[itch] …`). A finding with a file can be gone to.
  */
-export function exportProblems(findings: ExportFindingDto[]): ProblemEntry[] {
+export function checkProblems(
+  findings: Array<{ checkId: string; severity: ProblemEntry["severity"]; message: string; detail?: string; target?: string; file?: string; line?: number; column?: number }>,
+  projectDir: string,
+): ProblemEntry[] {
   return findings.map((f) => ({
     severity: f.severity,
     message: `${f.target ? `[${f.target}] ` : ""}${f.message}${f.detail ? ` ${f.detail}` : ""}`,
-    source: f.source,
+    source: f.checkId,
+    ...(f.file
+      ? { filePath: /^(\/|[A-Za-z]:[\\/]|\\\\)/.test(f.file) ? f.file : joinPath(projectDir, f.file), file: f.file }
+      : {}),
+    ...(f.line ? { line: f.line } : {}),
+    ...(f.column ? { column: f.column } : {}),
   }));
 }
 

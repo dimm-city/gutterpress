@@ -20,13 +20,14 @@ import {
   cpSync,
   existsSync,
   mkdtempSync,
+  readdirSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { waitForAppWindow } from "./app-window.mjs";
 
@@ -115,7 +116,7 @@ try {
   userDataDir = mkdtempSync(join(tmpdir(), "gutterpress-problems-last-hop-home-"));
   // Where the wizard's local folder build lands: <book>/dist/<folder name>.pdf
   // (the display name of a plain folder is its basename).
-  outputPath = join(projectDir, "dist", `${basename(projectDir)}.pdf`);
+  outputPath = join(projectDir, "dist");
   cpSync(sourceFixture, projectDir, { recursive: true });
 
   // Put the malformed marker well below the initial CodeMirror viewport. The
@@ -264,28 +265,37 @@ try {
     `problem click opened ${activeFile?.trim()} and revealed line ${malformedLine}: ${JSON.stringify(revealEvidence)}`,
   );
 
-  // Export is the Publish wizard's first two steps now: Format (PDF) → Choose
-  // (the local folder, always on) → Folder → Preflight → Save. The default
-  // folder is `dist` inside the book, so the real build path runs end to end
-  // with no native dialog to stub.
+  // Publishing is the one run (ADR 0012): Targets → Set up → Publish. The
+  // book has no targets, so the drive adds "A folder on this computer"; its
+  // default folder is `dist` inside the book, so the real run goes end to end
+  // with no native dialog to stub. The checks are turned off: the source's
+  // deliberate marker problem would otherwise stop the run before the render,
+  // and this drive is about the render's own diagnostic reaching Problems.
   await page.locator("button.publish-btn").click();
   const wizard = page.locator(".app-view.wizard");
   await wizard.waitFor({ state: "visible", timeout: 5_000 });
-  const nextStep = async (label) => {
-    await wizard.locator(".steps li.current").filter({ hasText: label }).waitFor({ timeout: 10_000 });
-    await wizard.locator(".view-actions .app-btn-primary").click();
-  };
-  await nextStep("Format");
-  await nextStep("Choose");
-  await nextStep("Folder");
-  await nextStep("Preflight");
-  await wizard.locator(".steps li.current").filter({ hasText: "Publish" }).waitFor({ timeout: 10_000 });
+  const atStep = (label) => wizard.locator(".steps li.current").filter({ hasText: label }).waitFor({ timeout: 10_000 });
+  await atStep("Targets");
+  await wizard.locator(".add-targets li").filter({ hasText: "A folder on this computer" }).locator("button").click();
+  await wizard.locator(`input[id="pw-send-local"]:checked`).waitFor({ timeout: 10_000 });
+  await wizard.locator(".setting input[type=checkbox]").uncheck();
   await wizard.locator(".view-actions .app-btn-primary").click();
+  await atStep("Set up");
+  await wizard.locator(".view-actions .app-btn-primary").click();
+  await atStep("Publish");
+  await wizard.locator(".view-actions button", { hasText: /^Publish$/ }).click();
+  const pdfs = (dir) =>
+    existsSync(dir)
+      ? readdirSync(dir, { recursive: true }).map((f) => join(dir, String(f))).filter((f) => f.endsWith(".pdf"))
+      : [];
   await waitUntil(
-    () => existsSync(outputPath) && statSync(outputPath).size > 1_000,
+    () => pdfs(outputPath).some((f) => statSync(f).size > 1_000),
     120_000,
-    "PDF export did not finish",
+    "the publish run made no PDF",
   );
+  await wizard.locator(".success-line", { hasText: "Saved to" }).waitFor({ timeout: 30_000 });
+  outputPath = pdfs(outputPath).find((f) => statSync(f).size > 1_000);
+  log(`published: ${pdfs(join(projectDir, "dist")).join(", ")}`);
 
   const engineEntry = page
     .locator(".problems-panel .entry")

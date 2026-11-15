@@ -109,7 +109,8 @@ export async function requireChromiumExecutable(): Promise<string> {
   const found = await resolveChromiumExecutable();
   if (found) return found;
 
-  throw new Error(
+  // `code` lets the publish run say "a program is missing" without reading this text.
+  throw Object.assign(new Error(
     [
       "No Chrome / Chromium / Edge binary found. Gutterpress needs a Chromium-based browser to render PDFs.",
       "",
@@ -126,7 +127,7 @@ export async function requireChromiumExecutable(): Promise<string> {
       "PDF export and needs no separate install.",
       "This message is about the CLI, which does need one.",
     ].join("\n")
-  );
+  ), { code: "TOOL_MISSING" });
 }
 
 /**

@@ -8,10 +8,9 @@
    * (connectGoogleStart/Wait/Cancel). It saves the account and says which one
    * (onConnected); picking the account a book uses is the caller's.
    *
-   * Shopify's check needs the store's address, which a book keeps in its own
-   * settings and which is not read here: the form asks for it (the wizard
-   * fills in the one it knows), uses it for the check only and does not save
-   * it.
+   * A provider whose check needs one of a book's settings (`checkField`,
+   * Shopify's store) has it asked for here, since no book is read: the wizard
+   * fills in the one it knows, and it is used for the check only, not saved.
    *
    * A new account may be given a name, so several can be kept for one
    * provider; saving under a name that already exists replaces that key, which
@@ -33,7 +32,7 @@
     account = "",
     askAccount = false,
     saved = [],
-    store: knownStore = "",
+    checkValue: knownValue = "",
     hint,
     submitLabel = "Add",
     takeFocus = false,
@@ -47,8 +46,8 @@
     askAccount?: boolean;
     /** The accounts already saved, so a name that would replace one says so. */
     saved?: Array<{ provider: { id: string }; account: string; label: string }>;
-    /** Shopify's store address, when the caller already knows it (the book's own setting). */
-    store?: string;
+    /** The `checkField` setting, when the caller already knows it (the book's own). */
+    checkValue?: string;
     /** What to tell the author before the fields; the provider's own hint when left out. */
     hint?: string;
     submitLabel?: string;
@@ -60,13 +59,13 @@
   } = $props();
 
   let typedAccount = $state("");
-  let store = $state(untrack(() => knownStore));
+  let checkValue = $state(untrack(() => knownValue));
   let token = $state("");
   let busy = $state(false);
   let error = $state<string | null>(null);
   /** Google's sign-in page, while the browser is being waited on. */
   let signInUrl = $state<string | null>(null);
-  let storeEl = $state<HTMLInputElement>();
+  let checkEl = $state<HTMLInputElement>();
   let nameEl = $state<HTMLInputElement>();
   let tokenEl = $state<HTMLInputElement>();
   // The button that starts the sign-in is replaced by the waiting line's, and a removed
@@ -77,13 +76,13 @@
   let attempt = 0;
 
   const oauth = $derived(provider.connectKind === "oauth");
-  const needsStore = $derived(provider.id === "shopify");
-  const ready = $derived(!!token.trim() && (!needsStore || !!store.trim()));
+  const checkField = $derived(provider.checkField ?? null);
+  const ready = $derived(!!token.trim() && (!checkField || !!checkValue.trim()));
   const name = $derived((askAccount ? typedAccount : account).trim());
   const replaces = $derived(askAccount ? savedAccount(saved, provider.id, name) : undefined);
 
   onMount(() => {
-    if (takeFocus) (storeEl ?? tokenEl ?? nameEl)?.focus();
+    if (takeFocus) (checkEl ?? tokenEl ?? nameEl)?.focus();
     // A sign-in left waiting must not outlive the page.
     return () => {
       if (signInUrl) getPlatform().connectGoogleCancel().catch(() => {});
@@ -97,7 +96,7 @@
     busy = true;
     error = null;
     try {
-      await api.publish.connect(null, provider.id, token, name || undefined, needsStore ? store.trim() : undefined);
+      await api.publish.connect(null, provider.id, token, name || undefined, checkField ? checkValue.trim() : undefined);
       token = ""; // the key has done its job: never keep it in state
       await onConnected(name);
     } catch (e) {
@@ -142,12 +141,12 @@
 
 <form class="key-form" onsubmit={(e) => { e.preventDefault(); void (oauth ? signIn() : submit()); }}>
   {#if hint ?? provider.hint}<p class="hint">{hint ?? provider.hint}</p>{/if}
-  {#if needsStore}
+  {#if checkField}
     <label class="field">
-      <span class="lbl">Store address</span>
-      <input bind:this={storeEl} bind:value={store} placeholder="your-store.myshopify.com" autocomplete="off" spellcheck="false" />
+      <span class="lbl">{checkField.label}</span>
+      <input bind:this={checkEl} bind:value={checkValue} placeholder={checkField.placeholder ?? ""} autocomplete="off" spellcheck="false" />
     </label>
-    <p class="hint">Used to check the key, not saved. Each book keeps its own store in its Publish settings.</p>
+    <p class="hint">Used to check the key, not saved. Each book keeps its own in its Publish settings.</p>
   {/if}
   {#if !oauth}
     <label class="field">

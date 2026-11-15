@@ -14,7 +14,7 @@
  *   - `vcs/restore-snapshot` force-checks-out any git repo
  *     (`git.checkout({ force: true })`)
  *   - `remote/sync` runs a CREDENTIALED push/pull against any repo
- *   - `publish/run` uploads a file to a configured provider
+ *   - `publish/targets` rewrites any `manifest.yaml`'s targets
  *   - `extension/remove` `rm -rf`s an npm entry's vendored subtree
  *   - `extension/add` / `extension/add-built-in` / `style/set-active` /
  *     `manifest/set-fields` / `extension/set-enabled` rewrite any `manifest.yaml`
@@ -52,11 +52,10 @@ import { POST as vcsListRevisions } from "../../src/routes/api/vcs/list-revision
 import { POST as vcsSwitchBranch } from "../../src/routes/api/vcs/switch-branch/+server";
 import { POST as remoteSync } from "../../src/routes/api/remote/sync/+server";
 import { POST as remoteDiagnoseProject } from "../../src/routes/api/remote/diagnose-project/+server";
-import { POST as publishRun } from "../../src/routes/api/publish/run/+server";
+import { POST as publishTargets } from "../../src/routes/api/publish/targets/+server";
 import { POST as publishSetConfig } from "../../src/routes/api/publish/set-config/+server";
 import { POST as publishConnect } from "../../src/routes/api/publish/connect/+server";
 import { POST as publishList } from "../../src/routes/api/publish/list/+server";
-import { POST as publishPreflight } from "../../src/routes/api/publish/preflight/+server";
 import { POST as publishDestinationsList } from "../../src/routes/api/publish/destinations/list/+server";
 import { POST as publishDestinationsCreate } from "../../src/routes/api/publish/destinations/create/+server";
 import { POST as publishDestinationsStatus } from "../../src/routes/api/publish/destinations/status/+server";
@@ -109,11 +108,10 @@ const ROUTES: Array<{ name: string; handler: RouteHandler; body: (dir: string) =
   { name: "vcs/switch-branch", handler: vcsSwitchBranch as RouteHandler, body: (d) => ({ projectDir: d, branch: "main" }) },
   { name: "remote/sync", handler: remoteSync as RouteHandler, body: (d) => ({ projectDir: d }) },
   { name: "remote/diagnose-project", handler: remoteDiagnoseProject as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "publish/run", handler: publishRun as RouteHandler, body: (d) => ({ projectDir: d, providerId: "itch" }) },
+  { name: "publish/targets", handler: publishTargets as RouteHandler, body: (d) => ({ projectDir: d, target: "local", inBook: false }) },
   { name: "publish/set-config", handler: publishSetConfig as RouteHandler, body: (d) => ({ projectDir: d, providerId: "itch", values: {} }) },
   { name: "publish/connect", handler: publishConnect as RouteHandler, body: (d) => ({ projectDir: d, providerId: "itch", token: "tok" }) },
   { name: "publish/list", handler: publishList as RouteHandler, body: (d) => ({ projectDir: d }) },
-  { name: "publish/preflight", handler: publishPreflight as RouteHandler, body: (d) => ({ projectDir: d, providerIds: [] }) },
   { name: "publish/destinations/list", handler: publishDestinationsList as RouteHandler, body: (d) => ({ projectDir: d, providerId: "gdrive" }) },
   { name: "publish/destinations/create", handler: publishDestinationsCreate as RouteHandler, body: (d) => ({ projectDir: d, providerId: "gdrive", name: "New folder" }) },
   { name: "publish/destinations/status", handler: publishDestinationsStatus as RouteHandler, body: (d) => ({ projectDir: d, providerId: "gdrive" }) },
@@ -239,7 +237,7 @@ const SIBLING_CASES = [
   "vcs/restore-snapshot",
   "vcs/switch-branch",
   "remote/sync",
-  "publish/run",
+  "publish/targets",
   "extension/remove",
   "manifest/set-fields",
   "extension/validate",
@@ -358,123 +356,6 @@ test("manifest/set-fields still writes inside the open book", async () => {
   } as Parameters<typeof manifestSetFields>[0])) as Response;
   expect(res.status).toBe(200);
   expect(await res.json()).toMatchObject({ title: "Renamed" });
-});
-
-// ── publish/run's artifactPath: the upload SOURCE, not just projectDir ────
-//
-// `artifactPath` is forwarded to `lib.runPublish`, which uploads that file to
-// the configured provider with the author's stored credential — so an
-// unchecked renderer-supplied value is a local-file-to-network exfiltration
-// primitive, not merely an out-of-project read. It cannot simply be confined
-// to the project either: desktop PDF exports go wherever the author chose in
-// the Save dialog, which is the documented common case. So an out-of-project
-// artifact must be a path a native picker actually returned — the same
-// one-time-capability model `media:importImage`/`fs:copyFile` use for `src`.
-
-function publishHost(roots: string[], picked: ReturnType<typeof createPickedFilesService>) {
-  registerHostServices(
-    makeHostServices({
-      desktop: { getUserDataPath: () => base },
-      fsGuard: { projectRoots: () => roots, readOnlyRoots: () => [] as string[] },
-      pickedFiles: picked,
-      remote: { tokenStore: {} as never, GITHUB_HOST: "github.com" },
-    }),
-  );
-  setLibForTests({ runPublish: async () => ({ ok: true, outcome: { kind: "api" } }) } as unknown as Partial<LibModule>);
-}
-
-test("publish/run: an artifact inside the project is allowed", async () => {
-  const picked = createPickedFilesService();
-  publishHost([bookDir, repoRoot], picked);
-  const artifact = path.join(bookDir, "dist", "book.pdf");
-  await mkdir(path.dirname(artifact), { recursive: true });
-  await writeFile(artifact, "%PDF-1.4", "utf8");
-  const status = await statusOf(
-    publishRun({ request: request({ projectDir: bookDir, providerId: "itch", artifactPath: artifact }) } as Parameters<
-      typeof publishRun
-    >[0]),
-  );
-  expect(status).not.toBe(403);
-});
-
-test("publish/run: an out-of-project artifact that was never picked is rejected (403)", async () => {
-  const picked = createPickedFilesService();
-  publishHost([bookDir, repoRoot], picked);
-  const secret = path.join(outsideDir, "id_rsa");
-  await writeFile(secret, "PRIVATE KEY", "utf8");
-  const status = await statusOf(
-    publishRun({ request: request({ projectDir: bookDir, providerId: "itch", artifactPath: secret }) } as Parameters<
-      typeof publishRun
-    >[0]),
-  );
-  expect(status).toBe(403);
-});
-
-test("publish/run: an out-of-project artifact the native picker returned is allowed", async () => {
-  const picked = createPickedFilesService();
-  publishHost([bookDir, repoRoot], picked);
-  const exported = path.join(outsideDir, "book.pdf");
-  await writeFile(exported, "%PDF-1.4", "utf8");
-  picked.register([exported]); // what dialog/pick-pdf-file does with its result
-  const status = await statusOf(
-    publishRun({ request: request({ projectDir: bookDir, providerId: "itch", artifactPath: exported }) } as Parameters<
-      typeof publishRun
-    >[0]),
-  );
-  expect(status).not.toBe(403);
-});
-
-test("publish/run: a picked artifact survives the dry-run → publish sequence", async () => {
-  // The wizard's "Check readiness" (dryRun) and the real publish are two
-  // separate calls with the SAME artifactPath. A strictly one-time consume
-  // would 403 the second one.
-  const picked = createPickedFilesService();
-  publishHost([bookDir, repoRoot], picked);
-  const exported = path.join(outsideDir, "book.pdf");
-  await writeFile(exported, "%PDF-1.4", "utf8");
-  picked.register([exported]);
-  const dry = await statusOf(
-    publishRun({
-      request: request({ projectDir: bookDir, providerId: "itch", artifactPath: exported, dryRun: true }),
-    } as Parameters<typeof publishRun>[0]),
-  );
-  expect(dry).not.toBe(403);
-  const real = await statusOf(
-    publishRun({ request: request({ projectDir: bookDir, providerId: "itch", artifactPath: exported }) } as Parameters<
-      typeof publishRun
-    >[0]),
-  );
-  expect(real).not.toBe(403);
-});
-
-test("publish/run: a RELATIVE artifactPath resolves against the project, as the lib does", async () => {
-  // run-publish.ts does `path.resolve(projectDir, artifactPath)`, so a
-  // relative artifact is project-relative and must not need a picker.
-  const picked = createPickedFilesService();
-  publishHost([bookDir, repoRoot], picked);
-  await mkdir(path.join(bookDir, "dist"), { recursive: true });
-  await writeFile(path.join(bookDir, "dist", "book.pdf"), "%PDF-1.4", "utf8");
-  const status = await statusOf(
-    publishRun({
-      request: request({ projectDir: bookDir, providerId: "itch", artifactPath: "dist/book.pdf" }),
-    } as Parameters<typeof publishRun>[0]),
-  );
-  expect(status).not.toBe(403);
-});
-
-test("publish/run: a relative artifactPath cannot ../ its way out of the project", async () => {
-  const picked = createPickedFilesService();
-  publishHost([bookDir], picked); // book-only session, so the repo is outside
-  const status = await statusOf(
-    publishRun({
-      request: request({
-        projectDir: bookDir,
-        providerId: "itch",
-        artifactPath: path.join("..", "..", "..", "elsewhere", "id_rsa"),
-      }),
-    } as Parameters<typeof publishRun>[0]),
-  );
-  expect(status).toBe(403);
 });
 
 // ── shell/show-in-folder: the reveal target ───────────────────────────────

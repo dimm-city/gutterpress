@@ -3,15 +3,17 @@ import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
- * Provider cards for the Publish panel: static info (incl. the provider's
+ * Target cards for the Publish view: static info (incl. the target's
  * declared settings fields) + redacted connection status + the project's
  * non-secret `publish.*` settings as this person sees them: the manifest's,
- * with their own private values for the book laid over it. The built-ins
- * first, then the book's publishing plugins (experimental, #381), each marked
+ * with their own private values for the book laid over it. Each card says
+ * whether it is one of the book's targets and whether this person sends it
+ * (the lib's `publishPlan`, the terminal's plan too). The built-ins first,
+ * then the book's publishing plugins (experimental, #381), each marked
  * `experimental`.
  */
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
-  // In `validate`, not `call` — see publish/run's note on handlePublishErrors.
+  // In `validate`, not `call` — see handlePublishErrors.
   validate: async (raw) => ({
     projectDir: await requireProjectDir((raw as { projectDir?: unknown }).projectDir, 'publish:list'),
   }),
@@ -20,6 +22,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
       const lib = await loadLib();
       const deps = await publishDeps();
       const settings = await lib.readPublishSettings(body.projectDir, deps.selections);
+      const plan = await lib.publishPlan({ projectDir: body.projectDir }, deps.selections);
       const cards = await Promise.all(
         (await lib.listBookPublishProviders({ projectDir: body.projectDir })).map(async (info) => {
           const raw = settings[info.id] ?? {};
@@ -31,7 +34,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
             typeof raw.credential === 'string' ? raw.credential.trim() : '';
           const config: Record<string, string> = {};
           for (const [k, v] of Object.entries(raw)) {
-            if (k === 'credential') continue;
+            if (k === 'credential' || k === 'send') continue;
             if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') config[k] = String(v);
           }
           // "connected" (env var or stored key) is evaluated for the SELECTED
@@ -61,6 +64,7 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
             // Connect button; absent/"token" is every provider's existing
             // paste-a-key behavior, unchanged.
             ...(info.credential.connect === 'oauth' ? { connectKind: 'oauth' as const } : {}),
+            checkField: info.configFields.find((f) => f.key === info.credential.checkSetting) ?? null,
             connected: status.connected,
             config,
             savedAccounts,
@@ -69,6 +73,8 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
             // picker (gdrive); the wizard renders the picker only when this is set.
             ...(info.destinations ? { destinations: info.destinations } : {}),
             ...(info.experimental ? { experimental: true } : {}),
+            inBook: plan.targets.includes(info.id),
+            sending: plan.sending.includes(info.id),
           };
         }),
       );

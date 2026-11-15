@@ -159,7 +159,7 @@ describe("executeValidation publish-target handling", () => {
   test("an unknown --target value throws naming the registry", async () => {
     stubCheckExecution();
     await expect(executeValidation({ target: "bogus" })).rejects.toThrow(
-      'Unknown publish target "bogus". Known targets: dtrpg, itch.'
+      'Unknown publish target "bogus". Known targets: local, itch, drivethrurpg-print, drivethrurpg-digital, kdp, azure-swa, shopify, gdrive.'
     );
   });
 
@@ -171,7 +171,21 @@ describe("executeValidation publish-target handling", () => {
 
       const execution = await executeValidation({ input: dir });
 
-      expect(execution.targets).toEqual(["dtrpg"]);
+      expect(execution.targets).toEqual(["drivethrurpg-print"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an empty target list means the book's own rules only, not the book's targets", async () => {
+    const dir = await makeDir("gutterpress-vexec-no-targets-");
+    try {
+      await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
+      stubCheckExecution();
+
+      const execution = await executeValidation({ input: dir, target: "" });
+
+      expect(execution.targets).toEqual([]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -192,7 +206,7 @@ describe("executeValidation publish-target handling", () => {
 
       const execution = await executeValidation({ input: dir, target: "dtrpg" });
 
-      expect(execution.targets).toEqual(["dtrpg"]);
+      expect(execution.targets).toEqual(["drivethrurpg-print"]);
       // Base config keeps the book preset's neutral policy…
       expect(execution.config.ink.maxTac).not.toBe(DTRPG_PRESET.ink.maxTac);
       // …while the target-dependent run (asset/pdf categories) received the
@@ -225,9 +239,9 @@ describe("executeValidation publish-target handling", () => {
 
       const synthetic = execution.report.errors.find((e) => e.checkId === skippedId);
       expect(synthetic).toBeDefined();
-      expect(synthetic!.target).toBe("dtrpg");
+      expect(synthetic!.target).toBe("drivethrurpg-print");
       expect(synthetic!.message).toContain(
-        `Target dtrpg requires check ${skippedId}, but it was skipped`
+        `Target drivethrurpg-print requires check ${skippedId}, but it was skipped`
       );
       // The synthetic error must be reflected in the summary count too, or
       // executeAndReport's ok/exit-code decision would silently ignore it.
@@ -270,7 +284,7 @@ describe("executeValidation publish-target handling", () => {
 
       const execution = await executeValidation({ input: dir, target: "dtrpg,itch" });
 
-      expect(execution.targets).toEqual(["dtrpg", "itch"]);
+      expect(execution.targets).toEqual(["drivethrurpg-print", "itch"]);
       // One base run (source/heuristic) + one per target (asset/pdf).
       expect(runChecksSpy!.mock.calls).toHaveLength(3);
     } finally {

@@ -685,7 +685,13 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           );
         log(`WARNING: ${msg}`);
       } else {
-        throw new Error(`${msg}\nFix the offending widths, or pass allowShrink to build anyway.`);
+        // `code` and the measured facts travel with the error, so a view can
+        // explain it without reading the message (publish/explain.ts).
+        throw Object.assign(new Error(`${msg}\nFix the offending widths, or pass allowShrink to build anyway.`), {
+          code: "TOO_WIDE",
+          offenders: widthOffenders.boxes.map((o) => o.desc),
+          scale,
+        });
       }
     }
     if (widthOffenders.intrinsics.length) {

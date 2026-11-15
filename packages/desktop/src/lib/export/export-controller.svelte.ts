@@ -1,6 +1,7 @@
 /**
- * ExportController — the single owner of the PDF-export finite state machine
- * AND the `savePdf`/`buildTo`/`cancelExport` intents.
+ * ExportController — the single owner of the quick PDF export's finite state
+ * machine AND its `savePdf`/`cancelExport` intents. Publishing (checked files
+ * for each target) is the publish run's, not this.
  *
  * Centralises the export status pill's state: the FSM state
  * (idle → started → rendering → finalizing → success / canceling), the running
@@ -10,7 +11,7 @@
  * the component reads the public rune getters (`exporting`, `pdfProgress`,
  * `state`, `activeExportId`, …) and calls the intent methods (`start`,
  * `syncProgress`, `markCanceling`, `markSuccess`, `reset`, `savePdf`,
- * `buildTo`, `cancelExport`, …).
+ * `cancelExport`, …).
  *
  * The FSM half stays pure UI/timer state (ZERO `node:*` / lib value imports);
  * the 1-second ticker is injected through a timer seam so it's unit-testable
@@ -20,7 +21,7 @@
  * second constructor argument, `ExportHostDeps`, keeping this module itself
  * PWA-clean (§8). `host` is optional so the pure-FSM tests can construct it
  * with timers only (`new ExportController(timers)`);
- * `savePdf`/`buildTo`/`cancelExport` throw a clear error if called without it
+ * `savePdf`/`cancelExport` throw a clear error if called without it
  * (a programming error, not a reachable runtime state — `+page.svelte` always
  * constructs its one instance with host deps).
  *
@@ -30,9 +31,7 @@
  * the guard.
  */
 
-import { overWideExportMessage } from "../errors";
-import { basenameOf, isPathAtOrUnder, joinPath } from "../platform/paths";
-import { problemCounts } from "../problems";
+import { basenameOf } from "../platform/paths";
 
 /** The export pill's FSM state. */
 export type ExportState =
@@ -53,19 +52,7 @@ export type ExportState =
  * import it from here.
  */
 export type { ExportProgressEvent } from "../platform/shared-types";
-import type { ExportFindingDto, ExportProgressEvent } from "../platform/shared-types";
-
-/**
- * The toast line for what the post-build PDF checks found (#399): only the
- * errors and warnings — the badge's own count — so an info-only run (a check
- * skipped for a missing tool) does not read as a problem. Null when there is
- * nothing to say.
- */
-export function exportFindingsMessage(findings: ExportFindingDto[] | undefined): string | null {
-  const n = problemCounts(findings ?? []).badge;
-  if (n === 0) return null;
-  return `${n} ${n === 1 ? "problem" : "problems"} found in the PDF — see Problems.`;
-}
+import type { ExportProgressEvent } from "../platform/shared-types";
 
 /**
  * Timer seam so the elapsed-seconds ticker can be driven by a fake clock in
@@ -77,7 +64,7 @@ export interface ExportTimerSeam {
 }
 
 /**
- * Host coupling for `savePdf`/`buildTo`/`cancelExport`. All host work — the save
+ * Host coupling for `savePdf`/`cancelExport`. All host work — the save
  * dialog, the build round-trip, the toast surface, the download — goes
  * through this seam so the controller stays testable with fakes and PWA-clean.
  */
@@ -96,23 +83,18 @@ export interface ExportHostDeps {
   displayName: () => string | null;
   isBusy: () => boolean;
   sourceMode: () => "folder" | "url";
-  /** The native "Save PDF as…" dialog; null/empty means the author canceled.
-   *  `defaultDir` pre-points it at the folder the author chose earlier. */
-  chooseSavePath: (defaultName: string, defaultDir?: string) => Promise<string | null>;
-  /** The native "choose where to save" folder dialog (website builds outside
-   *  the book); null means the author canceled. */
-  pickOutputFolder: (defaultPath: string) => Promise<string | null>;
+  /** The native "Save PDF as…" dialog; null/empty means the author canceled. */
+  chooseSavePath: (defaultName: string) => Promise<string | null>;
   onBuildProgress: (cb: (event: ExportProgressEvent) => void) => (() => void) | undefined;
+  /**
+   * Build the PDF. A failure rejects with the lib's plain sentence as its
+   * message and its `code` (ADR 0012): TOO_WIDE is the one this acts on.
+   */
   buildPdf: (
     input: { key: string; displayName: string },
     outPath: string,
-    opts?: { validate?: boolean; allowShrink?: boolean },
-  ) => Promise<{ exportId?: string; pdfPath?: string; findings?: ExportFindingDto[] }>;
-  /** `out` is the destination FOLDER. */
-  buildHtml: (
-    input: { key: string; displayName: string },
-    out?: string,
-  ) => Promise<{ outDir?: string }>;
+    opts?: { allowShrink?: boolean },
+  ) => Promise<{ exportId?: string; pdfPath?: string }>;
   cancelExportHost: (exportId: string) => Promise<unknown>;
   showInFolder: (path: string) => Promise<unknown>;
   toastSuccess: (
@@ -130,26 +112,13 @@ export interface ExportHostDeps {
     durationMs?: number,
     action?: { label: string; onClick: () => void | Promise<void> },
   ) => void;
-  /**
-   * The PDF checks' findings toast (#399): sticky (`durationMs` 0) with a
-   * "Review" action, since the author decides when they have seen it — the
-   * PDF itself was saved, so this is neither the success toast nor an error.
-   */
-  toastWarning: (
-    message: string,
-    durationMs?: number,
-    action?: { label: string; onClick: () => void },
-  ) => void;
-  /** Open the Problems list (the findings toast's "Review" button). */
-  showProblems: () => void;
-  friendlyPdfError: (e: unknown) => string;
   /** Injected so the post-save 2s pill-linger delay is fake-clock-able in tests. */
   wait: (ms: number) => Promise<void>;
 }
 
 export class ExportController {
   // ── Public rune state (read by the template; mutated only via methods) ──────
-  /** True while any export (PDF FSM or the simple HTML path) is in flight. */
+  /** True while an export is in flight. */
   exporting = $state(false);
   /** Human-facing status label for the pill; null when there is nothing to show. */
   pdfProgress = $state<string | null>(null);
@@ -174,7 +143,7 @@ export class ExportController {
    */
   private pendingMessage: string | null = null;
 
-  /** Host coupling for `savePdf`/`buildTo`/`cancelExport` — see `ExportHostDeps`. */
+  /** Host coupling for `savePdf`/`cancelExport` — see `ExportHostDeps`. */
   private host?: ExportHostDeps;
 
   constructor(timers?: Partial<ExportTimerSeam>, host?: ExportHostDeps) {
@@ -189,7 +158,7 @@ export class ExportController {
 
   private requireHost(): ExportHostDeps {
     if (!this.host) {
-      throw new Error("ExportController: host deps required for savePdf/buildTo/cancelExport");
+      throw new Error("ExportController: host deps required for savePdf/cancelExport");
     }
     return this.host;
   }
@@ -208,20 +177,6 @@ export class ExportController {
     this.pendingMessage = null;
     this.pdfProgress = "Preparing PDF…";
     this.startTimer();
-  }
-
-  /**
-   * Mark the simple (HTML) export busy WITHOUT entering the PDF FSM/timer —
-   * the HTML (website) export shows only the "Exporting…" button label, no
-   * pill.
-   */
-  beginSimpleExport(): void {
-    this.exporting = true;
-  }
-
-  /** End the simple (HTML) export busy flag. */
-  endSimpleExport(): void {
-    this.exporting = false;
   }
 
   private startTimer(): void {
@@ -272,12 +227,11 @@ export class ExportController {
     }
     if (this.state === "finalizing") {
       this.pdfProgress =
-        this.pages > 0 ? `Finalizing PDF (${this.pages} pages)…${elapsed}` : `Finalizing PDF…${elapsed}`;
+        this.pages > 0 ? `Laying out and writing the PDF (${this.pages} pages)…${elapsed}` : `Laying out and writing the PDF…${elapsed}`;
       return;
     }
     if (this.state === "rendering") {
-      this.pdfProgress =
-        this.pages > 0 ? `Exporting page ${this.pages}…${elapsed}` : `Exporting…${elapsed}`;
+      this.pdfProgress = `Opening your book…${elapsed}`;
       return;
     }
     this.pdfProgress = `Preparing PDF…${elapsed}`;
@@ -334,7 +288,7 @@ export class ExportController {
    * Save the open project as a PDF: pick a destination, drive the FSM through
    * the build, and show the resulting toast.
    */
-  async savePdf(opts?: { validate?: boolean; allowShrink?: boolean }): Promise<void> {
+  async savePdf(opts?: { allowShrink?: boolean }): Promise<void> {
     const h = this.requireHost();
     // One guard covering every entry point (toolbar button, both keyboard
     // shortcuts) — a `disabled` attribute alone leaves either keyboard
@@ -351,77 +305,12 @@ export class ExportController {
     const defaultName = (h.displayName() ?? basenameOf(inputDir) ?? "book") + ".pdf";
     const outPath = await h.chooseSavePath(defaultName);
     if (!outPath) return;
-    await this.runPdfBuild(inputDir, outPath, opts);
-  }
 
-  /**
-   * Build the book into a FOLDER — the Publish wizard's first step, which
-   * every other destination then uploads from. A folder inside the book
-   * (the default, `dist`) needs no dialog; one outside it is confirmed in
-   * the native dialog each time, pre-pointed at that folder, because the
-   * host only writes outside the book to a destination a dialog returned.
-   * Resolves with the artifact path (the PDF file, or the website folder),
-   * or null when the author canceled or the build failed (already toasted).
-   */
-  async buildTo(opts: {
-    format: "pdf" | "html";
-    dir: string;
-    validate?: boolean;
-  }): Promise<string | null> {
-    const h = this.requireHost();
-    if (this.exporting) return null;
-    const warning = h.checkSaveReadiness();
-    h.setSaveWarning(warning);
-    if (warning) return null;
-    const inputDir = h.currentDir();
-    if (!inputDir) return null;
-    const displayName = h.displayName() ?? basenameOf(inputDir) ?? "book";
-    const insideBook = isPathAtOrUnder(opts.dir, inputDir);
-
-    if (opts.format === "pdf") {
-      let outPath: string | null = joinPath(opts.dir, `${displayName}.pdf`);
-      if (!insideBook) outPath = await h.chooseSavePath(`${displayName}.pdf`, opts.dir);
-      if (!outPath) return null;
-      return this.runPdfBuild(inputDir, outPath, { validate: opts.validate });
-    }
-
-    let out: string | null = opts.dir;
-    if (!insideBook) out = await h.pickOutputFolder(opts.dir);
-    if (!out) return null;
-    this.beginSimpleExport();
-    try {
-      const data = await h.buildHtml({ key: inputDir, displayName }, out);
-      const savedDir = data.outDir ?? out;
-      h.toastSuccess(`Website saved to ${savedDir}`, 8000, {
-        label: "Show in Folder",
-        onClick: () => {
-          void h.showInFolder(savedDir).catch(() => {});
-        },
-      });
-      return savedDir;
-    } catch (e) {
-      h.toastError(h.friendlyPdfError(e) || "Website export failed");
-      return null;
-    } finally {
-      this.endSimpleExport();
-    }
-  }
-
-  /** The PDF build proper, once a destination is known: drive the FSM, toast
-   *  the result. Resolves with the saved PDF path, or null on cancel/failure. */
-  private async runPdfBuild(
-    inputDir: string,
-    outPath: string,
-    opts?: { validate?: boolean; allowShrink?: boolean },
-  ): Promise<string | null> {
-    const h = this.requireHost();
     // Non-blocking: the build runs in a separate render window, so keep the
     // preview interactive and show progress in a corner pill (not the overlay).
     this.start();
     let offProgress: (() => void) | undefined;
     try {
-      // Live progress: pagination of large books can take time, so show the
-      // growing page count instead of an opaque spinner.
       offProgress = h.onBuildProgress((p) => {
         if (p.state === "canceled") {
           this.markCanceling();
@@ -436,7 +325,7 @@ export class ExportController {
         // #49: the app-facing contract takes a FolderRef (key + displayName).
         { key: inputDir, displayName: h.displayName() ?? basenameOf(inputDir) },
         outPath,
-        { validate: opts?.validate ?? false, allowShrink: opts?.allowShrink ?? false },
+        { allowShrink: opts?.allowShrink ?? false },
       );
       this.markSuccess(data.exportId);
       const savedPdfPath = data.pdfPath ?? outPath;
@@ -446,41 +335,23 @@ export class ExportController {
           void h.showInFolder(savedPdfPath).catch(() => {});
         },
       });
-      // What the post-build PDF checks found (#399), beside the success toast
-      // rather than in it: the PDF is saved either way, and each toast keeps
-      // its one action (reveal the file / review the problems).
-      const findingsMessage = exportFindingsMessage(data.findings);
-      if (findingsMessage) {
-        h.toastWarning(findingsMessage, 0, { label: "Review", onClick: () => h.showProblems() });
-      }
       await h.wait(2000);
-      return savedPdfPath;
     } catch (e) {
-      if ((e as { code?: string })?.code === "EXPORT_CANCELED") {
-        this.reset();
-        return null;
-      }
-      // #163: the engine's over-wide-content check is a hard error whose
-      // message tells the author to "pass allowShrink" — an instruction with
-      // no desktop equivalent. Offer it HERE instead, on the failure that
-      // provoked it, naming the offenders and what accepting it costs. This
-      // is deliberately not a standing checkbox in the export dialog: a
-      // permanent opt-out invites shipping a silently scaled-down book,
-      // while an offer only exists when a real over-wide element does.
-      const overWide = opts?.allowShrink ? null : overWideExportMessage(e);
-      if (overWide) {
-        h.toastError(overWide, 0, {
-          label: "Build anyway",
-          // The host consumes the Save-dialog capability for `out` on every
-          // build (electron/export/controller.ts), so the retry
-          // goes back through the dialog rather than replaying a path this
-          // failed export already spent.
-          onClick: () => this.savePdf({ validate: opts?.validate, allowShrink: true }),
-        });
-      } else {
-        h.toastError(h.friendlyPdfError(e));
-      }
-      return null;
+      const code = (e as { code?: string } | null)?.code;
+      if (code === "EXPORT_CANCELED") return;
+      // The lib's own sentence, in a toast that stays: a build can fail after
+      // many minutes with nobody watching. The original text is in the app log.
+      const message = e instanceof Error ? e.message : String(e);
+      // #163: content too wide for the page is offered "Build anyway" HERE, on
+      // the failure that provoked it, rather than as a standing checkbox: a
+      // permanent opt-out invites shipping a silently scaled-down book. The
+      // retry goes back through the Save dialog, since the host spends the
+      // dialog's path on every build.
+      const offer =
+        code === "TOO_WIDE" && !opts?.allowShrink
+          ? { label: "Build anyway", onClick: () => this.savePdf({ allowShrink: true }) }
+          : undefined;
+      h.toastError(message || "PDF export failed.", 0, offer);
     } finally {
       offProgress?.();
       this.reset();

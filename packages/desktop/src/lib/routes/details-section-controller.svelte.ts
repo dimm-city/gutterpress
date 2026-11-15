@@ -1,15 +1,16 @@
 /**
  * DetailsSectionController — the single owner of the Book tab's state + logic
- * (title, authors, page size and margins, publish targets, chapters).
+ * (title, authors, page size and margins, chapters). Where the book is
+ * published is the Publish view's (ADR 0012).
  *
  * Details saves as you go — there is no Save button. A choice (preset,
- * target, chapter order, remove author) commits at once; a text field (title,
+ * chapter order, remove author) commits at once; a text field (title,
  * author) commits when the view reports `change` (blur or Enter) through
  * `flushPendingSave`, which the panel also calls on tab switch, close and
  * unmount so nothing typed is lost (it resolves to false when the write
  * failed, so close can keep the panel open on the error). Each commit writes
  * only what differs from the manifest as last read (`fields`): a title edit
- * never rewrites `targets` or the page geometry. The page size and margins
+ * never rewrites the chapters or the page geometry. The page size and margins
  * (#357) live in the manifest alone and are written only when their own
  * controls were touched (`pageTouched` / `marginsTouched`, set as soon as a
  * value is typed), so a change to them is never a side effect of an unrelated
@@ -18,11 +19,6 @@
  *
  * Chapters are named by their first `# ` heading (`readFirstHeading`, read
  * after load, best-effort), else by the file name made readable.
- *
- * Publish targets: a manifest with no `targets:` key shows the preset's
- * default (dtrpg → DriveThruRPG) and keeps following the preset until the
- * author touches a checkbox; only then (or when the key already exists) is
- * `targets` written, empty included (`targets: []` is the explicit opt-out).
  *
  * Single-owner discipline mirrors `DesignSectionController`
  * (`design-section-controller.svelte.ts`): the component reads the public
@@ -47,7 +43,6 @@ import {
   type InchesDraft,
   type PresetChoice,
 } from "#lib/page-size-choices.ts";
-import { defaultTargetsFor } from "#lib/publish-targets.ts";
 import {
   buildSourceList,
   moveEntry,
@@ -75,9 +70,6 @@ export interface DetailsSectionDeps {
   /** A chapter file's first `# ` heading, or null when it has none. Best-effort:
    *  a rejection (a missing file) just leaves the file name. */
   readFirstHeading?: (projectDir: string, path: string) => Promise<string | null>;
-  /** Which of the print tools (`qpdf`/`gs`) are missing on this computer.
-   *  Best-effort: a rejection just means no tool note is shown. */
-  listMissingPrintTools?: () => Promise<string[]>;
   /** Read the book's page geometry from its manifest (#357). Optional: without
    *  it the section simply has no page-size or margin controls. */
   readPageSetup?: (projectDir: string) => Promise<PageSetup>;
@@ -113,12 +105,6 @@ export class DetailsSectionController {
   sourceFiles = $state<SourceFileEntry[]>([]);
   /** Each chapter's first `# ` heading, by path, once read. */
   titles = $state<Record<string, string>>({});
-  /** Editable publish-target selection (ADR 0008) — the destinations this
-   *  book is validated against. */
-  targetsDraft = $state<string[]>([]);
-  /** Tool ids (`qpdf`/`gs`) missing on this computer, for the note beside a
-   *  checked destination that needs them. Empty when the probe failed. */
-  missingTools = $state<string[]>([]);
 
   /** The page geometry as last read/saved, or null before the first read / when unavailable. */
   pageSetup = $state<PageSetup | null>(null);
@@ -140,10 +126,6 @@ export class DetailsSectionController {
    *  an explicit manifest (never the "all files" null sentinel), so a blind
    *  save can't silently widen the book to files we couldn't see. */
   private scanOk = false;
-  /** True once the manifest has a `targets:` key or the author touched a
-   *  checkbox; until then the draft follows the preset's default and is
-   *  never written. */
-  private targetsExplicit = false;
   /** True when a page-size control was touched since the last page write. */
   private pageTouched = false;
   /** True when a margin field was touched since the last page write: the
@@ -181,8 +163,6 @@ export class DetailsSectionController {
       // One field to type into even when the book names no author yet.
       this.authorsDraft = f.authors?.length ? f.authors : [""];
       await this.loadPageSetup(projectDir);
-      this.targetsExplicit = f.targets !== undefined;
-      this.targetsDraft = f.targets ?? defaultTargetsFor(this.pageSetup?.preset ?? null);
       this.pageTouched = false;
       this.marginsTouched = false;
       this.detailsSaveStatus = "idle";
@@ -194,15 +174,6 @@ export class DetailsSectionController {
       // Last: every field a commit diffs is now this book's.
       this.loadedDir = projectDir;
       void this.loadTitles(projectDir);
-      // Independent + best-effort: the tool probe must never fail the load.
-      void this.deps
-        .listMissingPrintTools?.()
-        .then((tools) => {
-          this.missingTools = tools;
-        })
-        .catch(() => {
-          this.missingTools = [];
-        });
     } catch (e) {
       this.detailsError = e instanceof Error ? e.message : String(e);
     }
@@ -292,10 +263,9 @@ export class DetailsSectionController {
     return !!margins && !sameMargins(margins, setup.margins);
   }
 
-  /** Choose a preset: the targets follow it while the manifest has none of its own. */
+  /** Choose a preset. */
   setPreset = (preset: PresetChoice): void => {
     this.presetDraft = preset;
-    if (!this.targetsExplicit) this.targetsDraft = defaultTargetsFor(preset);
     this.pageTouched = true;
     void this.flushPendingSave();
   };
@@ -318,15 +288,6 @@ export class DetailsSectionController {
   useFallbackMargins = (): void => {
     this.marginsReset = true;
     this.marginsTouched = false;
-    void this.flushPendingSave();
-  };
-
-  // ── Publish-target intents (ADR 0008) ───────────────────────────────────────
-  toggleTarget = (id: string): void => {
-    this.targetsDraft = this.targetsDraft.includes(id)
-      ? this.targetsDraft.filter((t) => t !== id)
-      : [...this.targetsDraft, id];
-    this.targetsExplicit = true;
     void this.flushPendingSave();
   };
 
@@ -392,15 +353,6 @@ export class DetailsSectionController {
         : included.length > 0
           ? included
           : null;
-    }
-    // Written only once explicit, empty included: `targets: []` is the
-    // explicit "no destination policies" opt-out, not an omission. A manifest
-    // with no key yet gets one on the first touch, whatever the selection.
-    if (this.targetsExplicit) {
-      const recorded = this.fields.targets;
-      if (recorded === undefined || !sameList(this.targetsDraft, recorded)) {
-        updates.targets = [...this.targetsDraft];
-      }
     }
     // Each part of the page geometry is written only once the author touched
     // it and it is complete; the other part stays as recorded. So a margin

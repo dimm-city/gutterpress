@@ -672,11 +672,12 @@ buttons.
   Technical document, Academic paper — plus custom templates, save-as-template,
   import-from-folder); each template lists its look (Clean book, Zine,
   Technical doc, Academic) and its description says so. The chosen template
-  seeds the book's page size (a `custom` template's own size shows pre-filled)
-  and publish targets (ADR 0008), all of which stay editable. Step 3 asks
-  "What size should the pages be?" (DriveThruRPG print / Trade paperback /
-  Another size) and "Check the finished PDF against a print service's rules?";
-  Create is never disabled for a missing folder — pressing it asks for one.
+  seeds the book's page size (a `custom` template's own size shows pre-filled),
+  which stays editable. Step 3 asks "What size should the pages be?"
+  (DriveThruRPG print / Trade paperback / Another size). It asks nothing about
+  targets: a new book gets its template's, else its preset's, and they are
+  changed in Publish → Targets (ADR 0012). Create is never disabled for a
+  missing folder — pressing it asks for one.
 - Templates come from the **shared lib scaffolding** in
   `gutterpress` (same set behind `gutterpress new`; docs/architecture-rules.md §7 "one
   implementation, two thin front-ends") — the picker is a front-end over the
@@ -718,7 +719,7 @@ buttons.
 - **Every Book setup tab saves as you go; there is no Save button.** Text
   fields commit when you leave them or press Enter; pending edits are saved
   when you switch tabs or close the panel. A commit writes only what changed
-  (a title edit never rewrites the page size or `targets:`).
+  (a title edit never rewrites the page size or `publish:`).
 - Settings is one page with no tabs (How you use Gutterpress, Appearance, Preview, Editor, Saving,
   Accounts…; a Reset on each group of settings), reached
   from the status bar's settings button, `Cmd/Ctrl+,` and the start screen;
@@ -797,24 +798,32 @@ navigation UI and a Problems-panel entry with the page number.
 ### 6. Publishing workflow
 
 **Status: SHIPPED baseline (#35, closed 2026-07-06)** — normative provider
-detail lives in `docs/publishing.md`. Shipped: toolbar **Publish** button →
-`PublishWizard` (choose destinations → one setup step per destination →
-publish), five built-in providers, saved named credentials (`safeStorage`) with
-an account picker, the **Accounts** page.
+detail lives in `docs/publishing.md`; the model is
+[ADR 0012](adr/0012-one-publishing-system.md). Shipped: toolbar **Publish**
+button → `PublishWizard` with three steps, **Targets** (the book's targets,
+each with the file it gets or a **File** menu; **Add a target**, **Remove from
+book**, a per-person untick to skip one this time, and **Check the files
+before sending (recommended)**), **Set up** (each sent target's settings and
+account) and **Publish** (the lib's one run, with a result per target); saved
+named credentials shared with the CLI, with an account picker; the **Accounts**
+page. The view names no target: every card, label, file and setting comes from
+the lib.
 
 **Shared vs private (binding):** the team decides where a book is published,
 so that is saved in the **manifest** (`publish:`) and travels with the book:
-the destinations ticked in the wizard (`publish.<id>.enabled`), each one's
+the book's targets (the entries under `publish:`), each one's
 settings (itch.io target and channel, Shopify store and product, Azure
-environment, DriveThruRPG product URL, the **Google Drive folder**, the format)
+environment, DriveThruRPG product URL, the **Google Drive folder**, the file)
 and the output folder when it is **inside the book** (saved relative to it,
-`dist` by default). A teammate who opens the book finds the same destinations
-ticked and the settings filled in; the only thing they do is connect their own
+`dist` by default). A teammate who opens the book finds the same targets
+and the settings filled in; the only thing they do is connect their own
 account. What is one person's own stays on their computer, in private settings
-keyed to the book (`publish-selections.json` in the app's user-data folder,
-never in the manifest): **which of their saved accounts the book publishes
+keyed to the book (`publish-selections.json` in the Gutterpress user config
+folder, shared with the CLI, never in the manifest): **which of their saved accounts the book publishes
 with**, and an **output folder outside the book** (a personal override; an
-absolute path is never written to the manifest). Precedence when publishing:
+absolute path is never written to the manifest; it is confirmed in the app's
+own dialog each run), and a target they are **not sending this time**
+(`send: off`). Precedence when publishing:
 the private value, then the manifest, then the default. The host files each
 value where it belongs when it is saved (the renderer never decides), and an
 older book's account or absolute in-book folder is moved on the next save of
@@ -836,8 +845,9 @@ again), and is never switched silently: once the book's folder is reachable the
 step shows "You publish to your own folder 'X' instead of the book's 'Y'" with
 **Use the book's folder**. **Use a different folder just for me** makes a
 private choice while the book's folder is reachable. A folder named only by
-name is each person's own of that name. The CLI reads the manifest only and
-offers `--folder-id` / `--folder` for one run. Detail: `docs/publishing.md`.
+name is each person's own of that name. The CLI reads the same private
+settings, never writes the manifest when it publishes, and offers
+`--folder-id` / `--folder` for one run. Detail: `docs/publishing.md`.
 
 **One place for accounts (binding):** the **Accounts** page is where accounts
 are managed. The wizard lists the provider's saved accounts, lets the author
@@ -851,10 +861,13 @@ uses, one step: connect (the form is right in the step) or pick one of their
 saved accounts (**Choose an account…**); they never re-enter the team's
 settings.
 
-**Provider model (binding):** providers are **built into the lib's publish
-registry** (`packages/cli/src/lib/publish/`) — they are *not plugins* and there
-is no "publish plugin" category (docs/architecture-rules.md §5). New providers are code
-contributions to the registry. Two provider classes (from the shipped matrix):
+**Provider model (binding):** targets are **one registry in the lib**
+(`packages/cli/src/lib/targets.ts` and `publish/`). A new built-in target is
+one entry there, and then appears in the manifest, the app and the terminal
+with no other change. An extension's target (a package flagged
+`"gutterpress": { "publish": true }`, experimental) is listed from its
+`package.json` and goes through the same run. Two provider classes (from the
+shipped matrix):
 
 | Class | Providers | Publish flow | Success state |
 |---|---|---|---|
@@ -865,43 +878,22 @@ The one-size "direct link to published work" success state is wrong for
 Guided providers (KDP review takes up to ~72h); the success state is
 **provider-aware** per the table.
 
-**Placement & gate (decisions on #105, 2026-07-14):** preflight is a **step
-inside the PublishWizard**, shown after destination selection so checks are
-provider-aware. A blocking ❌ **disables Publish by default**; the user may
-explicitly override (**Publish anyway**, with confirmation). Warnings/info
-never block.
+**Checks and the gate (ADR 0012, supersedes the #105 preflight step):**
+checks are on by default and one switch turns them off. The run checks the
+book's source first; a problem to fix stops it before anything is made, listed
+under **Your book** with **Review all in Problems**. Each file is then checked
+against the rules of each target it goes to. A target whose file breaks its
+rules is **Held back** alone (the others still go), with its problems and
+**Send anyway**; **Check only** runs everything but the send. Warnings and info
+never hold a target back.
 
-**Flow order:** provider selection → provider-aware preflight → publish.
-Provider-specific checks appear only after that provider is selected,
-appended below the shared checks. (The original mock showed a KDP row before
-selection *and* a green header above an ❌ row — both corrected: any ❌ makes
-the header red.)
-
-```
-┌─────────────────────────────────────────┐
-│ 🔴 2 issues blocking publish            │   Preflight — KDP selected
-│                                         │
-│ ✅ Title set                            │
-│ ✅ Cover meets KDP print spec           │   (trim + bleed at ≥300dpi — computed
-│ ✅ All referenced images resolve        │    per provider; 1600×2560 is KDP's
-│ ⚠️ Table of contents — not generated    │    EBOOK spec and is not used here)
-│ ❌ KDP: ISBN field empty                │   ← [Set…] navigates to the field
-│                                         │
-│ [Set ISBN…]            [Publish anyway]  │
-└─────────────────────────────────────────┘
-```
-
-- Every preflight rule declares `fixable: none | navigate`. A `navigate` rule
-  (like ISBN) gets a Set…/Go-to button that jumps to the field; a `none` rule
-  explains itself. **There is no auto-fix** — preflight never mutates document
-  content (decision on #105, 2026-07-14; the earlier `auto` class and "Fix
-  all" button were dropped).
-- Severity: error / warning / info; header is red/amber/green accordingly —
-  no guessing.
-- Progress: side drawer (not modal) with step indicators and a collapsible
-  live log. The progress stream is a **push stream → adapter/IPC seam** (see
-  Architectural constraints). Error state shows the exact error, suggests a
-  fix, and always preserves the PDF locally.
+- A finding with a place in the book gets **Go to**; one about the made file
+  names no source file. **There is no auto-fix** — checks never change the
+  book (decision on #105, 2026-07-14).
+- Progress is a line in the Publish step (`role="status"`), with **Stop**,
+  fed by the push-stream seam (see Architectural constraints). A failure shows
+  the lib's plain sentence, **Show details** with the original text, and
+  **Try again**; the file made so far stays on disk.
 - **Publish history — evaluated, not planned (2026-07-14):** a last-N publish
   log was considered and dropped; provider dashboards and the project's git
   snapshot history cover the need. If revisited, storage must be per project

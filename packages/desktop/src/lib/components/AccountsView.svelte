@@ -29,9 +29,6 @@
    * token values), sorted by `groupAccounts`. A Git server is removed by its
    * host, a publishing account through the provider route and the account's
    * name (the redacted listing does not expose the store's compound key).
-   * Entries whose ciphertext no longer decrypts (OS keyring changed —
-   * HostConnectionInfo.unreadable) say "Needs signing in again" instead of
-   * silently looking healthy; Edit is the way back.
    *
    * PWA-clean (§8): api.* routes and getPlatform() only.
    */
@@ -203,13 +200,10 @@
 {/snippet}
 
 <!-- One saved account's line: what it is, then Edit and Remove. The Edit form opens under it. -->
-{#snippet line(id: string, name: string, detail: string, unreadable: boolean, edit: string, question: string, run: () => Promise<unknown>)}
+{#snippet line(id: string, name: string, detail: string, edit: string, question: string, run: () => Promise<unknown>)}
   <div class="acct">
     <span class="acct-name">{name}</span>
-    <span class="acct-detail">
-      {detail}
-      {#if unreadable}<span class="warn">Needs signing in again</span>{/if}
-    </span>
+    <span class="acct-detail">{detail}</span>
     {#if !confirmRemove[id]}
       <button class="app-btn app-btn-ghost" onclick={() => toggleForm(id)} aria-expanded={open === id}>{edit}</button>
     {/if}
@@ -281,7 +275,7 @@
       <h2 id="accounts-servers">Other services</h2>
       <p class="hint">GitLab, Gitea, Forgejo, Bitbucket, Azure Repos, or any server with an https:// address. Books on it send changes with the token saved here.</p>
       {#each groups.servers as server (server.host)}
-        {@render line(`server:${server.host}`, server.host, server.username, server.unreadable, "Edit", "Remove this server? Books that send changes there stop until you sign in to it again.", () => api.remote.disconnectHost(server.host))}
+        {@render line(`server:${server.host}`, server.host, server.username, "Edit", "Remove this server? Books that send changes there stop until you sign in to it again.", () => api.remote.disconnectHost(server.host))}
         {#if open === `server:${server.host}`}
           <div class="form edit" use:keepInView>
             <GitServerForm
@@ -312,7 +306,7 @@
       <h2 id="accounts-publishing">Publishing</h2>
       <p class="hint">Keys that let Gutterpress publish a book for you: {addableNames}.</p>
       {#each groups.publishing as acct (acct.key)}
-        {@render line(`publishing:${acct.key}`, acct.provider.label, acct.label, acct.unreadable, acct.provider.connectKind === "oauth" ? "Sign in again…" : "Edit", acct.provider.connectKind === "oauth" ? "Remove this sign-in?" : "Remove this key?", () => api.publish.disconnect(acct.provider.id, acct.account || undefined))}
+        {@render line(`publishing:${acct.key}`, acct.provider.label, acct.label, acct.provider.connectKind === "oauth" ? "Sign in again…" : "Edit", acct.provider.connectKind === "oauth" ? "Remove this sign-in?" : "Remove this key?", () => api.publish.disconnect(acct.provider.id, acct.account || undefined))}
         {#if open === `publishing:${acct.key}`}
           <div class="form edit" use:keepInView>
             <PublishKeyForm
@@ -371,7 +365,6 @@
   /* Also GitHubConnect's row: its children are this component's markup, so these rules reach them. */
   .acct-name { min-width: 120px; color: var(--app-text); font-weight: 600; font-size: 13px; }
   .acct-detail { flex: 1 1 160px; min-width: 0; color: var(--app-text-muted); font-size: 13px; overflow-wrap: anywhere; }
-  .warn { margin-left: 8px; color: var(--app-warning-text); }
   .confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--app-text-secondary); }
   /* An open form sits under its row, in line with the account's name and details. */
   .form { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 6px; }

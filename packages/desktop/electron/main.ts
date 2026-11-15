@@ -9,6 +9,7 @@ import {
   net,
   powerMonitor,
   protocol,
+  safeStorage,
   session,
   shell,
 } from "electron";
@@ -60,12 +61,7 @@ import {
 import type { MarkdownFileLaunchEvent, UpdaterEventPayload } from "../src/lib/platform/shared-types";
 import { removeRecentFolder, toggleFavoriteFolder } from "./recent-folders";
 import { clearProjectStateField, readProjectState, writeProjectState } from "./project-state";
-import {
-  electronTokenStore,
-  markLinuxBasicTextStorageNoticeShown,
-  onCredentialChange,
-  shouldShowLinuxBasicTextStorageNotice,
-} from "./credential-store";
+import { createUserStores } from "./credential-store";
 import {
   AutoSyncOrchestrator,
   type LastKnownBackup,
@@ -87,6 +83,7 @@ import {
 } from "./markdown-file-launch";
 import { AutoSnapshotScheduler } from "./auto-snapshot/scheduler";
 import { gitIdentityFrom } from "./git-identity";
+import { PublishRunner, type PublishRunArgs } from "./publish-run";
 import { RendererFlushSession, runCloseGate } from "./close-gate";
 import { createLastFlushFailure } from "../src/lib/persistence-failures";
 import { FolderWatcher } from "./folder-watch/watcher";
@@ -117,7 +114,10 @@ import {
   operationLogSlug,
   logsDir as logsDirImpl,
 } from "./recovery-paths";
-import { appendAppLog, initAppLog, logAppEvent } from "./app-log";
+import { appendAppLog, initAppLog, logAppError, logAppEvent } from "./app-log";
+import { loggedExport } from "./export/export-log";
+import { logMainProcessFaults } from "./fault-log";
+import { toIpcResult } from "../src/lib/platform/ipc-result";
 import {
   ExportCanceledError,
   getActiveExportSession,
@@ -214,6 +214,17 @@ function loadLib(): Promise<LibModule> {
   return libPromise;
 }
 
+// Saved accounts and publishing choices: one store per person, shared with the
+// terminal (ADR 0012). Older versions' copies in userData are moved there once.
+const userStores = createUserStores({
+  loadLib,
+  whenReady: () => app.whenReady(),
+  appDir: () => app.getPath("userData"),
+  decrypt: (cipher) => safeStorage.decryptString(Buffer.from(cipher, "base64")),
+  log: { event: logAppEvent, error: logAppError },
+});
+const electronTokenStore = userStores.tokenStore;
+
 /**
  * Resolve once no git operation (snapshot, backup, merge, restore, clone) is
  * queued or running. Quitting mid-operation killed isomorphic-git between its
@@ -309,6 +320,9 @@ const operationLogPath = (repoSlug: string): string =>
 // The app's OWN fault log goes in that same logs dir, so the start screen's
 // Logs tab lists it alongside the project logs (electron/app-log.ts).
 initAppLog(() => appLogPathImpl(app.getPath("userData")));
+// From here on, an error nothing caught and a rejection nothing handled are in
+// the app log too (fault-log.ts).
+logMainProcessFaults(process, (line) => void logAppError(line));
 
 /**
  * The operation-log path for a project directory, keyed to its REPOSITORY.
@@ -530,7 +544,7 @@ function startFolderWatch(dirPath: string): void {
 // host, re-diagnose the OPEN project and either start syncing right away
 // (connect → the pill flips to "Saving changes…" within seconds) or
 // re-emit the honest not-syncing state (disconnect → "connect"/"local").
-onCredentialChange((host) => {
+userStores.onCredentialChange((host) => {
   void (async () => {
     try {
       const dir = folderWatch.getWatchedDir();
@@ -754,26 +768,28 @@ function createWindow() {
     }
   });
 
-  // Surface renderer errors to stdout so terminal-launched runs reveal
-  // their own failures without needing DevTools.
+  // Renderer faults go to the app log as well as the console: a packaged app
+  // has no console, so the log is the only place an author (or a problem
+  // report) can find why the window went blank or a click did nothing.
+  // Warnings stay console-only.
   mainWindow.webContents.on(
     "did-fail-load",
     (_e, errorCode, errorDescription, validatedURL) => {
-      console.error(
+      void logAppError(
         `[renderer] did-fail-load url=${validatedURL} code=${errorCode} desc=${errorDescription}`
       );
     }
   );
   mainWindow.webContents.on("render-process-gone", (_e, details) => {
-    console.error(`[renderer] render-process-gone reason=${details.reason}`);
+    void logAppError(`[renderer] render-process-gone reason=${details.reason}`);
   });
   mainWindow.webContents.on(
     "console-message",
     (_e, level, message, line, sourceId) => {
-      if (level >= 2) {
-        console.error(
-          `[renderer:${level === 3 ? "error" : "warn"}] ${sourceId}:${line} ${message}`
-        );
+      if (level === 3) {
+        void logAppError(`[renderer:error] ${sourceId}:${line} ${message}`);
+      } else if (level === 2) {
+        console.error(`[renderer:warn] ${sourceId}:${line} ${message}`);
       }
     }
   );
@@ -1293,7 +1309,7 @@ const vcsHooksImpl: VcsHooks = {
 // ── Managed GitHub integration (#15) ───────────────────────────────
 // Auth (device flow), connection status, repo/branch discovery, clone-and-open.
 // All real work lives in the lib (CLAUDE.md §7: isomorphic-git + plain fetch —
-// never system git/gh); credentials live in the safeStorage-backed store and
+// never system git/gh); credentials live in the shared account store and
 // NEVER cross the IPC boundary (remote:getConnection is redacted status only).
 
 const GITHUB_HOST = "github.com";
@@ -1310,6 +1326,7 @@ const GITHUB_HOST = "github.com";
 // these hooks are the raw operation.
 const remoteHooksImpl: RemoteHooks = {
   tokenStore: electronTokenStore,
+  publishSelections: userStores.selections,
   GITHUB_HOST,
   defaultCloneParent: () => path.join(app.getPath("documents"), "Gutterpress"),
   cloneRepository: async (args) => {
@@ -1369,43 +1386,8 @@ const githubDeviceFlow = new GitHubDeviceFlow({
   clientId: () => process.env.GUTTERPRESS_GITHUB_CLIENT_ID ?? "",
 });
 
-async function showLinuxCredentialStorageNoticeOnce(): Promise<void> {
-  if (!(await shouldShowLinuxBasicTextStorageNotice())) return;
-  const options: Electron.MessageBoxOptions = {
-    type: "warning",
-    title: "GitHub sign-in protection",
-    message: "Your Linux desktop keyring isn't available",
-    detail:
-      "Gutterpress can still connect to GitHub, but this computer can only lightly protect the saved sign-in. " +
-      "The credentials file is private to your user account, but anyone with access to that account could recover it. " +
-      "Set up or unlock your desktop keyring for stronger protection.",
-    buttons: ["Continue"],
-    defaultId: 0,
-  };
-  try {
-    if (mainWindow) await dialog.showMessageBox(mainWindow, options);
-    else await dialog.showMessageBox(options);
-  } catch (e) {
-    // A notification failure must never block or cancel the device flow.
-    console.warn("[credential-store] could not show the Linux protection notice:", e);
-    return;
-  }
-  try {
-    await markLinuxBasicTextStorageNoticeShown();
-  } catch (e) {
-    console.warn(
-      "[credential-store] could not remember the Linux credential-protection notice; it may be shown again:",
-      e,
-    );
-  }
-}
-
 secureHandle("remote:connectGitHubStart", () =>
-  handleRemoteErrors("remote:connectGitHubStart", async () => {
-    const info = await githubDeviceFlow.start();
-    await showLinuxCredentialStorageNoticeOnce();
-    return info;
-  }),
+  handleRemoteErrors("remote:connectGitHubStart", () => githubDeviceFlow.start()),
 );
 
 secureHandle("remote:connectGitHubWait", () =>
@@ -1419,7 +1401,7 @@ secureHandle("remote:connectGitHubCancel", async () => githubDeviceFlow.cancel()
 // electron/google-connect-flow.ts. Opens the auth URL via the app's single
 // http(s)-only shell.openExternal gate (desktopHooksImpl.openExternal,
 // defined above — the same one `api/shell/open-external` calls); the
-// credential is stored under the "gdrive" host in the same electronTokenStore
+// credential is stored under Google Drive's own key in the same electronTokenStore
 // every publish credential uses.
 const googleConnectFlow = new GoogleConnectFlow({
   loadLib,
@@ -1656,7 +1638,46 @@ const exportController = new ExportController({
   registerPickedPath: (absPath) => pickedFilesImpl.register([absPath]),
 });
 
-secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(args));
+// The outcome crosses as data (ipc-result.ts): a rejected handler would reach
+// the renderer as a bare message, without the code it branches on. And the
+// export is logged (export-log.ts), since the author sees one line of a failure.
+secureHandle("api:build", (_e, args: ExportBuildArgs) =>
+  toIpcResult(
+    loggedExport(() => exportController.build(args), {
+      event: (line) => void logAppEvent(line),
+      error: (line) => void logAppError(line),
+    }),
+  ),
+);
+
+// The one publish run (ADR 0012): the lib's `publishBook`, the same run the
+// terminal's `gutterpress publish` does, with Electron's own Chromium. On IPC
+// because it streams progress and drives BrowserWindows; the outcome crosses as
+// data (ipc-result.ts) so a failure keeps its code.
+const publishRunner = new PublishRunner({
+  loadLib,
+  engineBrowser: createElectronEngineBrowser,
+  tokenStore: electronTokenStore,
+  selections: userStores.selections,
+  identity: async () => gitIdentityFrom(await readSettings()),
+  sendProgress: (progress) => safeSend("publish:progress", progress),
+  isWithinProject: (absPath) => isWithinAnyRootCanonical(absPath, fsGuardImpl.projectRoots()),
+  pickFolder: async (defaultPath) => {
+    const options: Electron.OpenDialogOptions = {
+      title: "Save the files to this folder",
+      defaultPath,
+      properties: ["openDirectory", "createDirectory"],
+    };
+    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+    const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+    return picked.canceled ? null : (picked.filePaths[0] ?? null);
+  },
+  registerPickedPath: (absPath) => pickedFilesImpl.register([absPath]),
+  log: { event: (line) => void logAppEvent(line), error: (line) => void logAppError(line) },
+});
+
+secureHandle("api:publish", (_e, args: PublishRunArgs) => toIpcResult(publishRunner.run(args)));
+secureHandle("api:cancelPublish", () => publishRunner.cancel());
 
 // ──────────────────────────────────────────────────────────────────────────
 // Desktop updater wiring (electron-updater + macOS check-only notifier)

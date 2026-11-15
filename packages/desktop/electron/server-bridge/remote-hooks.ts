@@ -10,14 +10,17 @@
  * results the lib returns after validation.
  */
 
-import type { electronTokenStore } from '../credential-store';
+import type { PublishSelectionsStore } from 'gutterpress';
+import type { SharedTokenStore } from '../credential-store';
 import type { CloneRepositoryArgs } from '../../src/lib/platform/shared-types';
 
-/** The desktop's safeStorage-backed credential store: the lib's `TokenStore` plus the redacted read methods. */
-export type TokenStore = typeof electronTokenStore;
+/** The person's account store, shared with the terminal: the lib's `TokenStore` plus the redacted read methods. */
+export type TokenStore = SharedTokenStore;
 
 export interface RemoteHooks {
   tokenStore: TokenStore;
+  /** The person's own publishing choices per book, shared with the terminal. */
+  publishSelections: () => Promise<PublishSelectionsStore>;
   GITHUB_HOST: string;
   /**
    * Clone a repo into `${parentDir}/${sanitized folderName}` and resolve to the

@@ -5,6 +5,87 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.28] - 2026-11-15
+
+### Changed
+
+- **A publish target now says which file it gets** (ADR 0012, first part). DriveThruRPG is two
+  targets: `drivethrurpg-print`, which is sent the print-ready PDF/X, and
+  `drivethrurpg-digital`, which is sent the PDF and is held to the same digital rules as
+  itch.io. `gutterpress publish --provider drivethrurpg` used to send the plain PDF; it now
+  means `drivethrurpg-print` and sends `<slug>-pdfx.pdf`. `kdp` and `shopify` can be sent the
+  PDF/X as well as the PDF, and `gdrive` and `local` the PDF, the PDF/X or the website, by
+  setting `publish.<id>.format`.
+- **`publish:` in the manifest is the list of a book's targets.** A target is on because it is
+  there; one with nothing to set is just its name. Older books keep working unchanged: a
+  manifest with a `targets:` list or `enabled:` ticks is read with its old meaning, and the
+  names `dtrpg` and `drivethrurpg` both mean `drivethrurpg-print`, including for
+  `validate --target` and `new --targets`. Check results for that target are now labelled
+  `[drivethrurpg-print]`. **Check once after upgrading:** an older book with neither (its
+  `publish:` entries have settings but no `enabled:`) is read the new way, so every entry is a
+  target and the preset's own targets are not added. Open **Publish → Targets** to confirm the
+  list.
+- **One place for your accounts, shared by the app and the terminal** (ADR 0012). Saved
+  accounts and your own publishing choices for each book (which account it uses, an output
+  folder outside the book, your own Drive folder) now live in the Gutterpress folder
+  (`~/.config/gutterpress`, `%APPDATA%\gutterpress`), so an account connected in the app works
+  for `gutterpress publish` and the other way round, and `gutterpress publish` now uses your
+  choices for the book. The app moves the accounts it kept in its own folder there the first
+  time it needs them, keeping the old file beside as `credentials.json.moved`; an account the
+  OS keychain can no longer read needs signing in again. Accounts are no longer encrypted by
+  the OS keychain: the file is readable only by your user account, as the terminal's always
+  was. The one-time notice about a missing Linux keyring is gone.
+- **`gutterpress publish` makes, checks and sends the book in one run** (ADR 0012). With no
+  targets named it publishes every target under `publish:`; name some to send only those
+  (`gutterpress publish itch gdrive`). It builds the files itself, once each (the PDF and the
+  PDF/X come from one render), checks each against its target's own rules (the plain PDF is
+  not held to the checks only a PDF/X can pass, even on a `dtrpg` book), and holds back
+  only a target whose file breaks them; `--send-anyway` sends it, `--skip-checks` runs no
+  checks, and `--dry-run` now makes and checks the files without sending. `--connect itch`
+  and `--disconnect itch` take the target by name (`--provider` still works). **`--file` is
+  removed**: publish no longer sends a file built earlier, so a book published from CI needs
+  the same tools as `gutterpress build`. `--json` prints the run's result (each target's
+  status, file and findings) and keeps log lines on stderr. The website is made in a folder
+  of its own (`dist/<slug>-website/`), so the book's PDFs, upload packages and build record
+  are never published with it; a later build keeps the upload packages; and a PDF/X that
+  cannot be made (no Ghostscript) fails only the targets that take it.
+- **Desktop: one Publish view over the same run** (ADR 0012). It has three steps: **Targets**
+  (each target with the file it gets, or a choice of file), **Set up** (accounts and
+  settings) and **Publish** (progress for each file, then a result for each target).
+  **Check the files before sending (recommended)** is on by default; **Check only** makes and
+  checks the files without sending. A target whose file breaks its rules is **Held back**
+  alone, with **Send anyway**; a failed one has **Try again** and **Show details**. A
+  warning from sending shows under its target, and adding or removing a target leaves the
+  book's others as written, even an extension's that is not downloaded yet.
+- **A book's targets are chosen in one place, Publish → Targets.** Book settings no longer
+  lists them, and the new-book wizard no longer asks: a new book starts with its template's
+  targets, else its preset's (`dtrpg` starts with DriveThruRPG print), written under
+  `publish:`. `gutterpress new --targets` still chooses them at creation.
+- **An extension's publish target goes through the same run** as a built-in one: its file is
+  made, checked and sent with the others, and it appears in the app and `gutterpress publish
+  --list` without other changes.
+- **Desktop: the quick PDF (Ctrl+Shift+E) is the PDF `gutterpress build` makes.** It checks the
+  book's source first, as before, and no longer checks the saved PDF: Publish checks each
+  target's file against that target's rules. A problem to fix in the source stops it with
+  **The book has problems to fix before the PDF can be made.**
+- **Desktop: connecting Shopify from Accounts asks for the store domain** the key is checked
+  against, without a book open. The domain is not saved with the account; each book keeps its
+  own in its Publish settings.
+
+### Fixed
+
+- **Desktop: a failed PDF export did not say why.** The reason the build gave was dropped on
+  the way to the screen, so most failures read "PDF export failed. Open Help (?) > System
+  tools to check for issues." The Publish view now shows the build's own reason and keeps it
+  there until you try again, with **Show details** for the rest; the quick export
+  (Ctrl+Shift+E) shows it in a message that stays instead of leaving after five seconds.
+- **Desktop: the app log recorded almost nothing.** It held the app's start and close and
+  update failures only, so a failed build left nothing to look at. It now records each build
+  (when it started, how long it took, and the whole error with where it happened if it
+  failed), publishing that failed, an unexpected failure in any of the app's own requests,
+  errors in the window, and errors the app itself did not catch. Sign-in details in web
+  addresses are left out.
+
 ## [0.11.27] - 2026-11-14
 
 ### Fixed

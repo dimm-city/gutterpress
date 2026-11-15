@@ -38,8 +38,8 @@
     },
     "targets": {
       "type": "array",
-      "description": "Where the book is published (ADR 0008): publish targets whose requirements `gutterpress validate` checks the built PDF against — each target is validated separately, so one book can target several destinations. Omitting it uses the preset's default (dtrpg -> [\"dtrpg\"]; book/custom -> []).",
-      "items": { "type": "string", "enum": ["dtrpg", "itch"] },
+      "description": "Older form of the book's targets (ADR 0008), still read: a book that has it publishes to these plus any `publish.<id>` with `enabled: true`. New books list their targets under `publish:` instead (ADR 0012).",
+      "items": { "type": "string", "enum": ["dtrpg", "drivethrurpg", "drivethrurpg-print", "drivethrurpg-digital", "itch", "local", "kdp", "azure-swa", "shopify", "gdrive"] },
       "examples": [["dtrpg"], ["dtrpg", "itch"]]
     },
     "styles": {
@@ -460,22 +460,22 @@
     },
     "publish": {
       "type": "object",
-      "description": "Publish provider settings, keyed by the same provider id `gutterpress publish --provider <id>` takes. Non-secret configuration only — API keys and tokens are stored in the host credential store, never in this file.",
+      "description": "The book's targets (ADR 0012): a target is published to because it is listed here, and one with nothing to set is just its name (`itch:`). Keyed by the same target id `gutterpress publish <id>` takes. No `publish:` key means the preset's targets; `publish: {}` means none. Non-secret settings only — API keys and tokens are kept in your own settings, never in this file.",
       "properties": {
         "local": {
-          "type": "object",
+          "type": ["object", "null"],
           "description": "A folder on this computer — where the desktop's Publish builds the book before sending it anywhere else (default: `dist` inside the book)",
           "properties": {
             "dir": { "type": "string", "description": "Output folder inside the book, relative to it (default: dist). The desktop app keeps a folder outside the book in the person's own settings, not here; an absolute path written here still works." },
-            "format": { "type": "string", "enum": ["pdf", "html"], "description": "Which build to save (default: pdf)" }
+            "format": { "type": "string", "enum": ["pdf", "pdfx", "html"], "description": "Which file to save: the PDF, the PDF/X for print, or the website (default: pdf)" }
           },
           "additionalProperties": true
         },
         "itch": {
-          "type": "object",
+          "type": ["object", "null"],
           "description": "itch.io publishing (uploaded with butler)",
           "properties": {
-            "enabled": { "type": "boolean", "description": "Whether the desktop app's Publish view ticks this destination for the book. The team decides where the book is published, so this is shared; each person connects their own account." },
+            "enabled": { "type": "boolean", "description": "Older form, still read: in a book with an `enabled:` key anywhere, only the targets with `enabled: true` (and those in `targets:`) are published to. New books list a target by its entry alone." },
             "target": {
               "type": "string",
               "description": "itch.io project as user/game (the butler push target)",
@@ -493,11 +493,31 @@
             }
           }
         },
-        "drivethrurpg": {
-          "type": "object",
-          "description": "DriveThruRPG guided publishing (export package + open the publisher hub)",
+        "drivethrurpg-print": {
+          "type": ["object", "null"],
+          "description": "DriveThruRPG print (guided: a checked PDF/X package, then the publisher hub). Held to DriveThruRPG's print rules.",
           "properties": {
-            "enabled": { "type": "boolean", "description": "Whether the desktop app's Publish view ticks this destination for the book. The team decides where the book is published, so this is shared; each person connects their own account." },
+            "productUrl": {
+              "type": "string",
+              "description": "Existing product page URL, when updating a published title"
+            }
+          }
+        },
+        "drivethrurpg-digital": {
+          "type": ["object", "null"],
+          "description": "DriveThruRPG digital (guided: a checked PDF package, then the publisher hub). Held to the digital rules.",
+          "properties": {
+            "productUrl": {
+              "type": "string",
+              "description": "Existing product page URL, when updating a published title"
+            }
+          }
+        },
+        "drivethrurpg": {
+          "type": ["object", "null"],
+          "description": "Older name for drivethrurpg-print, still read.",
+          "properties": {
+            "enabled": { "type": "boolean", "description": "Older form, still read: in a book with an `enabled:` key anywhere, only the targets with `enabled: true` (and those in `targets:`) are published to. New books list a target by its entry alone." },
             "productUrl": {
               "type": "string",
               "description": "Existing product page URL, when updating a published title"
@@ -505,17 +525,18 @@
           }
         },
         "kdp": {
-          "type": "object",
+          "type": ["object", "null"],
           "description": "Amazon KDP guided publishing (export package + open kdp.amazon.com)",
           "properties": {
-            "enabled": { "type": "boolean", "description": "Whether the desktop app's Publish view ticks this destination for the book. The team decides where the book is published, so this is shared; each person connects their own account." }
+            "format": { "type": "string", "enum": ["pdf", "pdfx"], "description": "Which file to send: the PDF or the PDF/X for print (default: pdf)" },
+            "enabled": { "type": "boolean", "description": "Older form, still read: in a book with an `enabled:` key anywhere, only the targets with `enabled: true` (and those in `targets:`) are published to. New books list a target by its entry alone." }
           }
         },
         "azure-swa": {
-          "type": "object",
+          "type": ["object", "null"],
           "description": "Azure Static Web Apps deployment of the HTML export",
           "properties": {
-            "enabled": { "type": "boolean", "description": "Whether the desktop app's Publish view ticks this destination for the book. The team decides where the book is published, so this is shared; each person connects their own account." },
+            "enabled": { "type": "boolean", "description": "Older form, still read: in a book with an `enabled:` key anywhere, only the targets with `enabled: true` (and those in `targets:`) are published to. New books list a target by its entry alone." },
             "env": {
               "type": "string",
               "description": "Deploy environment",
@@ -528,10 +549,11 @@
           }
         },
         "shopify": {
-          "type": "object",
+          "type": ["object", "null"],
           "description": "Shopify product publishing (Admin GraphQL API)",
           "properties": {
-            "enabled": { "type": "boolean", "description": "Whether the desktop app's Publish view ticks this destination for the book. The team decides where the book is published, so this is shared; each person connects their own account." },
+            "format": { "type": "string", "enum": ["pdf", "pdfx"], "description": "Which file to send: the PDF or the PDF/X for print (default: pdf)" },
+            "enabled": { "type": "boolean", "description": "Older form, still read: in a book with an `enabled:` key anywhere, only the targets with `enabled: true` (and those in `targets:`) are published to. New books list a target by its entry alone." },
             "shop": {
               "type": "string",
               "description": "Store domain, e.g. my-store.myshopify.com"
@@ -552,10 +574,10 @@
           }
         },
         "gdrive": {
-          "type": "object",
+          "type": ["object", "null"],
           "description": "Google Drive publishing (uploads the finished PDF or zipped HTML export to a Drive folder)",
           "properties": {
-            "enabled": { "type": "boolean", "description": "Whether the desktop app's Publish view ticks this destination for the book. The team decides where the book is published, so this is shared; each person connects their own account." },
+            "enabled": { "type": "boolean", "description": "Older form, still read: in a book with an `enabled:` key anywhere, only the targets with `enabled: true` (and those in `targets:`) are published to. New books list a target by its entry alone." },
             "folder": {
               "type": "string",
               "description": "Drive folder name to find-or-create at My Drive root. Ignored once folderId is recorded.",
@@ -571,8 +593,8 @@
             },
             "format": {
               "type": "string",
-              "description": "Which build output to upload",
-              "enum": ["pdf", "html"],
+              "description": "Which file to upload: the PDF, the PDF/X for print, or the zipped website",
+              "enum": ["pdf", "pdfx", "html"],
               "default": "pdf"
             }
           }

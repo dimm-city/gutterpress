@@ -18,7 +18,7 @@ import type {
 import { resolvePublishCredential, publishConnectionStatus } from "./types";
 import { itchProvider, itchProjectUrl } from "./providers/itch";
 import { shopifyProvider, shopifyLegacyId } from "./providers/shopify";
-import { drivethrurpgProvider } from "./providers/drivethrurpg";
+import { drivethrurpgDigitalProvider, drivethrurpgPrintProvider } from "./providers/drivethrurpg";
 import { kdpProvider } from "./providers/kdp";
 import { azureSwaProvider } from "./providers/azure-swa";
 import { gdriveProvider } from "./providers/gdrive";
@@ -80,19 +80,28 @@ async function requestFor(
 // (output-paths.ts), so the artifact this writes must match whatever title
 // the caller's manifest declares — "Test Book" (the shared MANIFEST fixture)
 // unless a test's own manifest sets something else.
-async function withPdfArtifact(dir: string, title = "Test Book"): Promise<string> {
+async function withPdfArtifact(dir: string, title = "Test Book", format: "pdf" | "pdfx" = "pdf"): Promise<string> {
   const out = resolveOutputDir(dir, title);
   await mkdir(out, { recursive: true });
-  const pdf = path.join(out, artifactName(title, "pdf"));
+  const pdf = path.join(out, artifactName(title, format));
   await writeFile(pdf, "%PDF-1.4 fake");
   return pdf;
 }
 
 // ── registry ────────────────────────────────────────────────────────────────
 
-test("registry lists all seven providers, the local folder first, and resolves by id", () => {
+test("registry lists every target's provider, the local folder first, and resolves by id", () => {
   const ids = listPublishProviders().map((p) => p.id);
-  expect(ids).toEqual(["local", "itch", "drivethrurpg", "kdp", "azure-swa", "shopify", "gdrive"]);
+  expect(ids).toEqual([
+    "local",
+    "itch",
+    "drivethrurpg-print",
+    "drivethrurpg-digital",
+    "kdp",
+    "azure-swa",
+    "shopify",
+    "gdrive",
+  ]);
   expect(publishProviderFor("itch").info.label).toBe("itch.io");
   expect(() => publishProviderFor("nope")).toThrow(/Unknown publish provider/);
 });
@@ -121,11 +130,16 @@ test("every provider declares its author-editable config fields", () => {
 
 // ── effective format resolution (#221 phase 3, D8) ──────────────────────────
 
-test("resolvePublishFormat defaults to info.format for every single-format provider, ignoring any publish.<id>.format value", () => {
-  // These providers declare no `formats` array at all — the plan's explicit
-  // regression guarantee: a mistake in effective-format computation must not
-  // silently change what they resolve to, no matter what a manifest sets.
-  for (const provider of [itchProvider, drivethrurpgProvider, kdpProvider, azureSwaProvider, shopifyProvider]) {
+test("resolvePublishFormat keeps a target that defines its file on that file, whatever publish.<id>.format says", () => {
+  // These targets declare no `formats` array at all: a mistake in
+  // effective-format computation must not silently change what they resolve
+  // to, no matter what a manifest sets.
+  for (const provider of [
+    itchProvider,
+    drivethrurpgPrintProvider,
+    drivethrurpgDigitalProvider,
+    azureSwaProvider,
+  ]) {
     expect(provider.info.formats).toBeUndefined();
     expect(resolvePublishFormat(provider.info, {})).toBe(provider.info.format);
     expect(resolvePublishFormat(provider.info, { format: "html" })).toBe(provider.info.format);
@@ -135,7 +149,7 @@ test("resolvePublishFormat defaults to info.format for every single-format provi
 });
 
 test("resolvePublishFormat: gdrive defaults to pdf when publish.gdrive.format is unset", () => {
-  expect(gdriveProvider.info.formats).toEqual(["pdf", "html"]);
+  expect(gdriveProvider.info.formats).toEqual(["pdf", "pdfx", "html"]);
   expect(resolvePublishFormat(gdriveProvider.info, {})).toBe("pdf");
 });
 
@@ -226,11 +240,13 @@ test("runPublish fails preflight when the artifact is missing", async () => {
   try {
     const deps = await depsFor(dir);
     const result = await runPublish(
-      { projectDir: dir, providerId: "drivethrurpg" },
+      { projectDir: dir, providerId: "drivethrurpg-digital" },
       deps,
     );
     expect(result.ok).toBe(false);
     expect(result.issues.some((i) => i.id === "publish/artifact-missing")).toBe(true);
+    // The failure says why, so a view that shows only the error still does.
+    expect(result.error).toBe(result.issues.find((i) => i.id === "publish/artifact-missing")?.message);
     expect(result.outcome).toBeUndefined();
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -253,7 +269,7 @@ test("resolvePublishRequest anchors the default artifact on the MANIFEST's direc
 
     const deps = await depsFor(projectDir);
     const req = await resolvePublishRequest(
-      { projectDir, providerId: "drivethrurpg", manifestPath },
+      { projectDir, providerId: "drivethrurpg-digital", manifestPath },
       deps,
     );
     expect(req.artifact.path).toBe(
@@ -264,7 +280,7 @@ test("resolvePublishRequest anchors the default artifact on the MANIFEST's direc
     );
 
     const result = await runPublish(
-      { projectDir, providerId: "drivethrurpg", manifestPath, dryRun: true },
+      { projectDir, providerId: "drivethrurpg-digital", manifestPath, dryRun: true },
       deps,
     );
     expect(result.ok).toBe(true);
@@ -280,7 +296,7 @@ test("runPublish --dry-run stops after a passing preflight", async () => {
     await withPdfArtifact(dir);
     const deps = await depsFor(dir);
     const result = await runPublish(
-      { projectDir: dir, providerId: "drivethrurpg", dryRun: true },
+      { projectDir: dir, providerId: "drivethrurpg-digital", dryRun: true },
       deps,
     );
     expect(result.ok).toBe(true);
@@ -466,13 +482,43 @@ test("ensureButler maps download failures to friendly messages", async () => {
 
 // ── guided providers ────────────────────────────────────────────────────────
 
-test("drivethrurpg upload stages a package with the PDF and LISTING.md", async () => {
+test("DriveThruRPG print is sent the PDF/X, never the plain PDF that happens to be built", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    // Only the plain PDF exists: the print target must not take it. The older
+    // name `drivethrurpg` meant print, and still does.
+    await withPdfArtifact(dir);
+    const deps = await depsFor(dir);
+    const missing = await runPublish({ projectDir: dir, providerId: "drivethrurpg" }, deps);
+    expect(missing.ok).toBe(false);
+    expect(missing.providerId).toBe("drivethrurpg-print");
+    const issue = missing.issues.find((i) => i.id === "publish/artifact-missing");
+    expect(issue?.message).toContain("No built PDF/X");
+    expect(issue?.message).toContain(artifactName("Test Book", "pdfx"));
+
+    await withPdfArtifact(dir, "Test Book", "pdfx");
+    const result = await runPublish({ projectDir: dir, providerId: "drivethrurpg-print" }, deps);
+    expect(result.ok).toBe(true);
+    if (result.outcome?.kind !== "guided") throw new Error("expected guided");
+    // Its own package folder, holding the PDF/X.
+    expect(result.outcome.packageDir).toBe(
+      path.join(resolveOutputDir(dir, "Test Book"), "publish", "drivethrurpg-print"),
+    );
+    expect(await readFile(path.join(result.outcome.packageDir, artifactName("Test Book", "pdfx")), "utf8")).toContain(
+      "%PDF",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("drivethrurpg digital upload stages a package with the PDF and LISTING.md", async () => {
   const dir = await tempProject(MANIFEST);
   try {
     await withPdfArtifact(dir);
     const deps = await depsFor(dir);
     const result = await runPublish(
-      { projectDir: dir, providerId: "drivethrurpg" },
+      { projectDir: dir, providerId: "drivethrurpg-digital" },
       deps,
     );
     expect(result.ok).toBe(true);
@@ -480,7 +526,7 @@ test("drivethrurpg upload stages a package with the PDF and LISTING.md", async (
     if (result.outcome?.kind !== "guided") throw new Error("unreachable");
     const pkg = result.outcome.packageDir;
     expect(pkg).toBe(
-      path.join(resolveOutputDir(dir, "Test Book"), "publish", "drivethrurpg"),
+      path.join(resolveOutputDir(dir, "Test Book"), "publish", "drivethrurpg-digital"),
     );
     const listing = await readFile(path.join(pkg, "LISTING.md"), "utf8");
     expect(listing).toContain("Test Book");
@@ -497,15 +543,15 @@ test("drivethrurpg upload stages a package with the PDF and LISTING.md", async (
   }
 });
 
-test("drivethrurpg opens the existing product page when configured", async () => {
+test("drivethrurpg opens the existing product page when configured (an older book's section still applies)", async () => {
   const dir = await tempProject(
     `title: T\nauthors: [A]\npublish:\n  drivethrurpg:\n    productUrl: https://www.drivethrurpg.com/product/1234\n`,
   );
   try {
-    await withPdfArtifact(dir, "T");
+    await withPdfArtifact(dir, "T", "pdfx");
     const deps = await depsFor(dir);
     const req = await requestFor(dir, "drivethrurpg", deps);
-    const outcome = await drivethrurpgProvider.upload(req);
+    const outcome = await drivethrurpgPrintProvider.upload(req);
     if (outcome.kind !== "guided") throw new Error("expected guided");
     expect(outcome.openUrl).toBe("https://www.drivethrurpg.com/product/1234");
   } finally {
@@ -864,7 +910,7 @@ test("a book with no Shopify store still fails the key check: connect stores not
     expect(auth.message).toMatch(/Set the store first/);
     await deps.tokenStore.delete("shopify");
     await expect(
-      connectPublishProvider({ projectDir: dir, providerId: "shopify", token: "shpat_x", shop: "my-store.myshopify.com" }, deps),
+      connectPublishProvider({ projectDir: dir, providerId: "shopify", token: "shpat_x", checkValue: "my-store.myshopify.com" }, deps),
     ).rejects.toThrow(/Set the store first/); // a book's own settings win over a `shop` that was passed
     expect(await deps.tokenStore.get("shopify")).toBeNull();
     expect(requests).toEqual([]);
@@ -884,15 +930,15 @@ test("a Shopify key added with no book needs the store address, which is used fo
 
     // No address: refused in plain words, before anything is asked of Shopify or stored.
     await expect(connectPublishProvider({ providerId: "shopify", token: "shpat_x" }, deps)).rejects.toThrow(
-      /Enter your Shopify store's address \(like my-store.myshopify.com\)/,
+      /Enter the store domain \(like my-store.myshopify.com\) to check the key/,
     );
-    await expect(connectPublishProvider({ providerId: "shopify", token: "shpat_x", shop: "  " }, deps)).rejects.toThrow(
-      /store's address/,
+    await expect(connectPublishProvider({ providerId: "shopify", token: "shpat_x", checkValue: "  " }, deps)).rejects.toThrow(
+      /store domain/,
     );
     expect(requests).toEqual([]);
 
     // With one: checked through adminGraphQL (the token goes only to the myshopify.com store), then stored.
-    await connectPublishProvider({ providerId: "shopify", token: "shpat_x", shop: " My-Store.myshopify.com " }, deps);
+    await connectPublishProvider({ providerId: "shopify", token: "shpat_x", checkValue: " My-Store.myshopify.com " }, deps);
     expect(requests).toHaveLength(1);
     expect(requests[0]!.url).toContain("https://my-store.myshopify.com/admin/api/");
     expect((requests[0]!.init?.headers as Record<string, string>)["X-Shopify-Access-Token"]).toBe("shpat_x");
@@ -901,11 +947,11 @@ test("a Shopify key added with no book needs the store address, which is used fo
     expect(JSON.stringify(stored)).not.toContain("myshopify");
 
     // A rejected key is not stored over it, and an address that isn't a myshopify.com one never receives the token.
-    await expect(connectPublishProvider({ providerId: "shopify", token: "shpat_bad", shop: "my-store.myshopify.com" }, deps)).rejects.toThrow(
+    await expect(connectPublishProvider({ providerId: "shopify", token: "shpat_bad", checkValue: "my-store.myshopify.com" }, deps)).rejects.toThrow(
       /rejected the access token/,
     );
     expect((await deps.tokenStore.get("shopify"))?.token).toBe("shpat_x");
-    await expect(connectPublishProvider({ providerId: "shopify", token: "shpat_y", shop: "attacker.example" }, deps)).rejects.toThrow(
+    await expect(connectPublishProvider({ providerId: "shopify", token: "shpat_y", checkValue: "attacker.example" }, deps)).rejects.toThrow(
       /myshopify\.com/,
     );
     expect(requests).toHaveLength(2);
@@ -1198,7 +1244,7 @@ test("setPublishProviderConfig round-trips yaml and preserves other sections", a
     expect(settings.itch?.target).toBe("someone/book");
     expect(settings.shopify?.shop).toBe("x.myshopify.com");
 
-    // Clearing every key removes the section (and eventually `publish:`).
+    // Clearing every key leaves the target's bare name: it stays in the book (ADR 0012).
     settings = await setPublishProviderConfig(dir, "shopify", { shop: "" });
     expect(settings.shopify).toBeUndefined();
     settings = await setPublishProviderConfig(dir, "itch", {
@@ -1210,7 +1256,7 @@ test("setPublishProviderConfig round-trips yaml and preserves other sections", a
     const raw = await readFile(path.join(dir, "manifest.yaml"), "utf8");
     expect(raw).toContain("title: Keep Me");
     expect(raw).toContain("# a comment");
-    expect(raw).not.toContain("publish:");
+    expect(raw).toMatch(/publish:\n {2}itch:\n {2}shopify:\n/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -623,10 +623,6 @@ export interface HostConnectionInfo {
   username?: string;
   label?: string;
   createdAt: number;
-  /** True when the stored ciphertext no longer decrypts (OS keyring changed):
-   *  the entry LOOKS connected but sync/publish see no credential. The UI
-   *  presents it as "needs reconnecting". */
-  unreadable?: boolean;
 }
 
 // ── Publish providers (#35) ────────────────────────────────────────────────
@@ -639,6 +635,21 @@ export interface PublishConfigFieldInfo {
   key: string;
   label: string;
   placeholder?: string;
+  /** "folder": offer the folder dialog (one outside the book is the person's own). */
+  kind?: "folder";
+}
+
+/** What the window asks the one publish run for (ADR 0012 §5); main adds the rest. */
+export interface PublishRunArgs {
+  projectDir: string;
+  targets: string[];
+  /** Make and check the files; send nothing. */
+  checkOnly?: boolean;
+  skipChecks?: boolean;
+  /** Send these targets (`true`: every one) even when their file broke their rules. */
+  sendAnyway?: string[] | true;
+  /** Build past the too-wide-content check (the whole book shrinks to fit). */
+  allowShrink?: boolean;
 }
 
 /** One provider card in the Publish panel — static info + redacted status. */
@@ -649,16 +660,11 @@ export interface PublishProviderCard {
    *  one of the book's publishing plugins (experimental, #381), which runs
    *  the upload and handles its own sign-in. */
   kind: "api" | "guided" | "plugin";
-  /** Which build output the provider publishes BY DEFAULT (and, absent
-   *  `formats` below, the only one it ever publishes). */
-  format: "pdf" | "html";
-  /**
-   * Present only for a provider that supports more than one format (#221 —
-   * currently only gdrive: `["pdf", "html"]`). The wizard
-   * renders a PDF/Website choice for the card only when this is set; every
-   * other provider stays fixed on `format` above.
-   */
-  formats?: Array<"pdf" | "html">;
+  /** The file this target receives: fixed when `formats` is absent, else the
+   *  pick when none is saved (`config.format` holds the saved pick). */
+  format: "pdf" | "pdfx" | "html";
+  /** Present when the target does not fix its file: the formats to pick from. */
+  formats?: Array<"pdf" | "pdfx" | "html">;
   description: string;
   /** The provider's declared settings fields — the panel renders these. */
   fields: PublishConfigFieldInfo[];
@@ -674,6 +680,8 @@ export interface PublishProviderCard {
    * button driving `connectGoogleStart`/`Wait`/`Cancel` (see HostServices).
    */
   connectKind?: "token" | "oauth";
+  /** The setting the key check needs with no book open (Shopify's store): one of `fields`. */
+  checkField?: PublishConfigFieldInfo | null;
   /** Redacted — a usable credential exists (env var or stored key) for the
    *  effective selected account. */
   connected: boolean;
@@ -704,6 +712,10 @@ export interface PublishProviderCard {
     label: string;
     canCreate: boolean;
   };
+  /** One of the book's targets (`publish:` in the manifest, shared with the team). */
+  inBook: boolean;
+  /** This person sends it (one of the book's targets they have not turned off). */
+  sending: boolean;
 }
 
 /** One existing place a provider can publish into (#221) — a Drive folder
@@ -733,43 +745,6 @@ export interface PublishSavedAccountInfo {
   /** Display name. */
   label: string;
   createdAt: number;
-}
-
-/** One publish preflight finding. */
-export interface PublishIssue {
-  severity: "error" | "warning" | "info";
-  id: string;
-  message: string;
-}
-
-/**
- * What a publish produced (mirrors the lib's PublishOutcome union — the
- * discriminant keeps the panel's rendering type-narrowed, no `!` assertions).
- */
-export type PublishOutcomeInfo =
-  | {
-      kind: "published";
-      url?: string;
-      detail?: string;
-      followUp?: string[];
-    }
-  | {
-      kind: "guided";
-      packageDir: string;
-      openUrl: string;
-      checklist: string[];
-      detail?: string;
-    };
-
-/** Structured result of a publish run (or dry run). */
-export interface PublishRunResult {
-  ok: boolean;
-  providerId: string;
-  issues: PublishIssue[];
-  outcome?: PublishOutcomeInfo;
-  error?: string;
-  /** Progress lines captured during the run (butler/swa output etc.). */
-  log?: string[];
 }
 
 // ── Local version history (#13) ───────────────────────────────────────────
@@ -954,16 +929,7 @@ export type PreviewStartResult = PreviewStartSuccess | PreviewStartFailure;
 
 export interface RawBuildArgs {
   input: string;
-  format: "pdf" | "html" | "pdfx";
   out?: string;
-  title?: string;
-  pdfxFlavor?: string;
-  icc?: string;
-  manifest?: string;
-  stripAnnotations?: boolean;
-  skipLint?: boolean;
-  skipPreValidate?: boolean;
-  skipPostValidate?: boolean;
   /** See `BuildArgs.allowShrink` (#163) — the host's `ExportBuildArgs` half. */
   allowShrink?: boolean;
 }
@@ -971,24 +937,13 @@ export interface RawBuildArgs {
 export interface BuildResult {
   exportId?: string;
   outDir: string;
-  htmlPath?: string;
   pdfPath?: string;
-  fingerprintPath?: string;
   /**
    * Print-quality findings the render produced (native engine only). Defined
    * locally, decoupled from the lib (§8) — the renderer never value-imports
    * `gutterpress`. Maps into the Problems panel.
    */
   diagnostics?: BuildDiagnosticDto[];
-  /**
-   * What the post-build PDF checks found on the delivered PDF (#399): the
-   * same registry and policy as `gutterpress validate --pdf`, run by the host
-   * on the exported file, so the required checks of the book's publish
-   * targets (safe margins, page size, embedded fonts, PDF/X when qpdf and gs
-   * are installed) have a verdict in the desktop too. Absent for an html
-   * export. Maps into the Problems panel beside `diagnostics`.
-   */
-  findings?: ExportFindingDto[];
 }
 
 /** One print-quality finding, mirrored from the lib's `BuildDiagnostic`. */
@@ -997,30 +952,6 @@ export interface BuildDiagnosticDto {
   code: string;
   severity: "warning" | "info";
   message: string;
-}
-
-/**
- * One finding of the post-build PDF checks, mirrored from the lib's
- * `CheckResult` minus its `file`: every PDF check reports the PDF itself as
- * its file, and a Problems entry with a file is a jump to a source line, which
- * a finding about the finished PDF cannot offer. Defined locally (§8).
- */
-export interface ExportFindingDto {
-  /**
-   * The check id, e.g. "pdf.print.safe-margins"; "desktop.export.checks" when
-   * the checks themselves could not run.
-   */
-  source: string;
-  severity: "error" | "warning" | "info";
-  message: string;
-  /** The check's longer explanation (the rule the finding breaks), when any. */
-  detail?: string;
-  /** The publish target the finding was produced for, on a targeted run. */
-  target?: string;
-  /** The PDF page the finding is about, when the check says. */
-  page?: number;
-  /** The page edge the finding is about ("top", "outside", …), when the check says. */
-  edge?: string;
 }
 
 export interface ExportProgressEvent {

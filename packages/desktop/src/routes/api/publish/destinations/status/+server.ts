@@ -10,7 +10,7 @@ import type { RequestHandler } from './$types';
  * private folder that no longer applies; it never writes the manifest.
  */
 export const POST: RequestHandler = defineRoute<{ projectDir: string; providerId?: string }>({
-  // In `validate`, not `call` — see publish/run's note on handlePublishErrors.
+  // In `validate`, not `call` — see handlePublishErrors.
   validate: async (raw) => {
     const body = raw as { projectDir?: unknown; providerId?: unknown };
     return {

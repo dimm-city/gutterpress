@@ -61,8 +61,6 @@ export interface TemplateInfo {
    * everything under it.
    */
   preset?: string;
-  /** The `targets:` this template's manifest declares, when it has one. */
-  targets?: string[];
   /**
    * The `page:` size (points) this template's manifest declares, when it has
    * one. A `custom`-preset template says what size it is designed for here,
@@ -72,26 +70,20 @@ export interface TemplateInfo {
 }
 
 /**
- * Read the `preset:`/`targets:`/`page:` a template's manifest declares.
+ * Read the `preset:` and `page:` a template's manifest declares.
  * Best-effort and never throws: a template with no (or an unreadable)
  * manifest simply carries no starting point, and the caller falls back to
  * its own defaults.
  */
 async function readTemplateChoices(
   manifestPath: string,
-): Promise<Pick<TemplateInfo, "preset" | "targets" | "page">> {
+): Promise<Pick<TemplateInfo, "preset" | "page">> {
   try {
     const text = await readFile(manifestPath, "utf8");
     const doc = parseDocument(text);
-    const out: Pick<TemplateInfo, "preset" | "targets" | "page"> = {};
+    const out: Pick<TemplateInfo, "preset" | "page"> = {};
     const preset = doc.get("preset");
     if (typeof preset === "string" && preset) out.preset = preset;
-    const targets = doc.get("targets", true);
-    if (isSeq(targets)) {
-      out.targets = (targets.items as unknown[])
-        .map((i) => scalarString(i))
-        .filter((s): s is string => s !== null);
-    }
     const width = numberAt(doc, ["page", "width"]);
     const height = numberAt(doc, ["page", "height"]);
     if (width !== undefined && height !== undefined) out.page = { width, height };

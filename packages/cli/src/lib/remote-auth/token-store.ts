@@ -1,16 +1,17 @@
 /**
- * Host-keyed credential store for remote Git providers (#15).
+ * Host-keyed credential store for remote Git providers and publishing
+ * accounts (#15, ADR 0012).
  *
  * Credentials are keyed by REMOTE HOST (e.g. "github.com"), not by project: a
  * credential for a host makes every project whose origin points at that host
- * syncable, including repos cloned externally.
+ * syncable, including repos cloned externally. A named publishing account is
+ * keyed `host#name`.
  *
- * The lib NEVER touches OS keychains — host applications inject the
- * implementation (the Electron desktop uses `safeStorage`; see
- * packages/desktop/electron/credential-store.ts). The one concrete
- * implementation here, {@link FileTokenStore}, is the CLI's store: a `0600`
- * JSON file under the user config dir (the `gh` CLI model — encrypted-at-rest
- * is explicitly not required for the CLI).
+ * One store per person, shared by the terminal and the app:
+ * {@link FileTokenStore}, a `0600` JSON file under {@link defaultConfigDir}
+ * (the `gh` CLI model — not encrypted at rest; ADR 0012 accepts that cost so
+ * an account connected in either view works in the other). The app's older
+ * keychain-encrypted copy is moved here once (see move-app-stores.ts).
  *
  * SECURITY INVARIANT: token values must never be logged or embedded in error
  * messages — mask them at the point of use.
@@ -36,9 +37,8 @@ export interface HostCredential {
 }
 
 /**
- * Host-keyed credential vault contract. Implementations
- * are provided by the HOST APP (Electron safeStorage, CLI 0600 file); the lib
- * only consumes this interface.
+ * Host-keyed credential vault contract. {@link FileTokenStore} is the one
+ * implementation; tests pass in-memory ones.
  */
 export interface TokenStore {
   get(host: string): Promise<HostCredential | null>;
@@ -112,15 +112,25 @@ interface StoredFileShape {
   credentials: Record<string, HostCredential>;
 }
 
+/** A saved credential as a list may show it: never the token. */
+export interface RedactedCredential {
+  host: string;
+  kind: HostCredential["kind"];
+  username?: string;
+  label?: string;
+  createdAt: number;
+}
+
 /**
- * The CLI's {@link TokenStore}: a JSON file with `0600` permissions under the
- * user config dir. Plaintext-at-rest by design (the `gh`/`npm` model) — the
- * desktop uses an OS-keychain-backed store instead.
+ * The {@link TokenStore} both views use: a JSON file with `0600` permissions
+ * under the user config dir. Plaintext-at-rest by design (the `gh`/`npm`
+ * model).
  */
 export class FileTokenStore implements TokenStore {
   readonly filePath: string;
   // Serialize writes so concurrent set/delete can't interleave read-modify-write.
   private queue: Promise<unknown> = Promise.resolve();
+  private readonly listeners = new Set<(key: string) => void>();
 
   constructor(filePath?: string) {
     this.filePath = filePath ?? path.join(defaultConfigDir(), "credentials.json");
@@ -200,7 +210,7 @@ export class FileTokenStore implements TokenStore {
       const data = await this.read();
       data.credentials[normalizeHost(host)] = credential;
       await this.write(data);
-    });
+    }).then(() => this.notify(normalizeHost(host)));
   }
 
   delete(host: string): Promise<void> {
@@ -208,7 +218,62 @@ export class FileTokenStore implements TokenStore {
       const data = await this.read();
       delete data.credentials[normalizeHost(host)];
       await this.write(data);
+    }).then(() => this.notify(normalizeHost(host)));
+  }
+
+  /**
+   * Add the credentials whose key is not saved yet, in one write; a key
+   * already saved keeps its credential. Returns the keys added.
+   */
+  addMissing(credentials: Record<string, HostCredential>): Promise<string[]> {
+    return this.enqueue(async () => {
+      const data = await this.read();
+      const added: string[] = [];
+      for (const [key, credential] of Object.entries(credentials)) {
+        const k = normalizeHost(key);
+        if (!k || data.credentials[k]) continue;
+        data.credentials[k] = credential;
+        added.push(k);
+      }
+      if (added.length > 0) await this.write(data);
+      return added;
     });
+  }
+
+  /** Whether a credential is saved for `host`, with who it signs in as. Never the token. */
+  async status(host: string): Promise<{ connected: boolean; username?: string; label?: string }> {
+    const credential = await this.get(host);
+    if (!credential) return { connected: false };
+    return { connected: true, ...redactedNames(credential) };
+  }
+
+  /** Every saved credential, never with its token. */
+  async listRedacted(): Promise<RedactedCredential[]> {
+    return (await this.list()).map((c) => ({
+      host: c.host,
+      kind: c.kind,
+      ...redactedNames(c),
+      createdAt: c.createdAt,
+    }));
+  }
+
+  /**
+   * Be told when a credential is saved or removed in this process (the key
+   * changed). Returns an unsubscribe. A listener that throws is ignored.
+   */
+  onChange(listener: (key: string) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private notify(key: string): void {
+    for (const listener of this.listeners) {
+      try {
+        listener(key);
+      } catch {
+        // One listener's failure must not stop the others or the write.
+      }
+    }
   }
 
   list(): Promise<HostCredential[]> {
@@ -223,6 +288,10 @@ export class FileTokenStore implements TokenStore {
       }
     });
   }
+}
+
+function redactedNames(c: HostCredential): { username?: string; label?: string } {
+  return { ...(c.username ? { username: c.username } : {}), ...(c.label ? { label: c.label } : {}) };
 }
 
 /** Lower-case the host so "GitHub.com" and "github.com" share one entry. */

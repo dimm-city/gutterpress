@@ -51,12 +51,12 @@ describe("groupAccounts", () => {
 
   test("a provider's credential host is a publishing account; any other host is a Git server", () => {
     const groups = groupAccounts(
-      [entry("gitlab.com", { username: "ada" }), entry("itch.io"), entry("git.example.org:3000", { unreadable: true })],
+      [entry("gitlab.com", { username: "ada" }), entry("itch.io"), entry("git.example.org:3000")],
       PROVIDERS,
     );
     expect(groups.servers).toEqual([
-      { host: "gitlab.com", username: "ada", unreadable: false },
-      { host: "git.example.org:3000", username: "", unreadable: true },
+      { host: "gitlab.com", username: "ada" },
+      { host: "git.example.org:3000", username: "" },
     ]);
     expect(groups.publishing.map((a) => [a.provider.id, a.account, a.label])).toEqual([["itch", "", "Default account"]]);
   });
@@ -87,11 +87,6 @@ describe("groupAccounts", () => {
       PROVIDERS,
     );
     expect(groups.publishing[0]?.label).toBe("ada@example.com");
-  });
-
-  test("an entry that no longer decrypts keeps saying so", () => {
-    const groups = groupAccounts([entry("itch.io", { unreadable: true })], PROVIDERS);
-    expect(groups.publishing[0]?.unreadable).toBe(true);
   });
 
   test("nothing saved, or no providers: two empty lists", () => {

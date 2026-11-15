@@ -1,12 +1,13 @@
 import { expect, test } from "bun:test";
 import { PublishSectionController } from "../../src/lib/routes/publish-section-controller.svelte";
 import type {
+  PublishBookResult,
   PublishDestination,
   PublishDestinationStatus,
+  PublishProgress,
   PublishProviderCard,
-  PublishRunResult,
+  PublishRunArgs,
 } from "../../src/lib/platform/contract";
-import type { PreflightRow } from "../../src/lib/preflight";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests (same shim as design-section-controller.test.ts).
@@ -21,7 +22,7 @@ const spy = (): ((...a: unknown[]) => void) & Spy => {
   return fn;
 };
 
-const CARD: PublishProviderCard = {
+const CARD = {
   id: "itch",
   label: "itch.io",
   kind: "api",
@@ -31,19 +32,35 @@ const CARD: PublishProviderCard = {
   credentialRequired: true,
   connected: false,
   config: {},
-};
+  inBook: true,
+  sending: true,
+} as unknown as PublishProviderCard;
+
+const target = (id: string, status: PublishBookResult["targets"][number]["status"]) =>
+  ({ id, label: id, format: "pdf", status, connected: true, findings: [], issues: [] }) as PublishBookResult["targets"][number];
+
+const runResult = (over: Partial<PublishBookResult> = {}): PublishBookResult => ({
+  ok: true,
+  files: [],
+  targets: [],
+  sourceFindings: [],
+  diagnostics: [],
+  ...over,
+});
 
 interface Harness {
   ctrl: PublishSectionController;
   onSaved: ReturnType<typeof spy>;
-  onPublished: ReturnType<typeof spy>;
   projectDir: string | null;
   cards: PublishProviderCard[];
   setConfigCalls: Array<{ dir: string; providerId: string; values: Record<string, string> }>;
-  runResult: PublishRunResult;
-  preflightRows: PreflightRow[];
-  preflightCalls: Array<{ dir: string; providerIds: string[] }>;
-  failPreflight: boolean;
+  setTargetCalls: Array<[string, boolean]>;
+  publishCalls: PublishRunArgs[];
+  /** What the run reports while it runs, and what it resolves with (or rejects with). */
+  progress: PublishProgress[];
+  runResult: PublishBookResult | Error;
+  cancels: number;
+  results: PublishBookResult[];
   /** What the host reports for the Drive step (#452), and the folders it lists. */
   status: PublishDestinationStatus;
   statusCalls: number;
@@ -52,31 +69,31 @@ interface Harness {
 
 function make(over: Partial<{ noProject: boolean; cards: PublishProviderCard[] }> = {}): Harness {
   const onSaved = spy();
-  const onPublished = spy();
   const h = {
     onSaved,
-    onPublished,
     projectDir: over.noProject ? null : "/proj",
     cards: over.cards ?? [CARD],
     setConfigCalls: [],
-    runResult: { ok: true, providerId: "itch", issues: [] },
-    preflightRows: [],
-    preflightCalls: [],
-    failPreflight: false,
+    setTargetCalls: [],
+    publishCalls: [],
+    progress: [],
+    runResult: runResult(),
+    cancels: 0,
+    results: [],
     status: { state: "unset" },
     statusCalls: 0,
     folders: [],
-  } as Harness;
+  } as unknown as Harness;
+  let listener: ((p: PublishProgress) => void) | null = null;
   h.ctrl = new PublishSectionController({
     projectDir: () => h.projectDir,
     listProviders: () => Promise.resolve(h.cards),
-    preflight: (dir, providerIds) => {
-      h.preflightCalls.push({ dir, providerIds });
-      if (h.failPreflight) return Promise.reject(new Error("preflight boom"));
-      return Promise.resolve(h.preflightRows);
+    setTarget: (_dir, target, inBook) => {
+      h.setTargetCalls.push([target, inBook]);
+      return Promise.resolve({});
     },
     setConfig: (dir, providerId, values) => {
-      h.setConfigCalls.push({ dir, providerId, values });
+      h.setConfigCalls.push({ dir, providerId, values: values as Record<string, string> });
       return Promise.resolve({});
     },
     listDestinations: () => Promise.resolve(h.folders),
@@ -85,10 +102,25 @@ function make(over: Partial<{ noProject: boolean; cards: PublishProviderCard[] }
       h.statusCalls++;
       return Promise.resolve(h.status);
     },
-    run: () => Promise.resolve(h.runResult),
+    publish: async (args) => {
+      h.publishCalls.push(args);
+      for (const p of h.progress) listener?.(p);
+      if (h.runResult instanceof Error) throw h.runResult;
+      return h.runResult;
+    },
+    cancelPublish: async () => {
+      h.cancels++;
+      return { canceled: true };
+    },
+    onProgress: (cb) => {
+      listener = cb;
+      return () => {
+        listener = null;
+      };
+    },
     openExternal: () => Promise.resolve({ ok: true }),
     onSaved: () => onSaved(),
-    onPublished: (guided) => onPublished(guided),
+    onResult: (r) => h.results.push(r),
   });
   return h;
 }
@@ -98,7 +130,8 @@ test("initial public rune state matches the panel defaults", () => {
   expect(ctrl.publishCards).toEqual([]);
   expect(ctrl.publishError).toBeNull();
   expect(ctrl.publishBusyId).toBeNull();
-  expect(ctrl.publishResults).toEqual({});
+  expect(ctrl.result).toBeNull();
+  expect(ctrl.skipChecks).toBe(false);
   expect(ctrl.publishConfigDrafts).toEqual({});
 });
 
@@ -137,64 +170,151 @@ test("savePublishConfig is a no-op when there is no pending draft (no host call)
   expect(h.onSaved.calls.length).toBe(1); // still "saved" — reload + callback run either way
 });
 
-test("runPublish (dry run) does not flush drafts, and does not fire onPublished even on success", async () => {
-  const h = make();
-  h.ctrl.setPublishConfigDraft("itch", "project", "unsaved-value");
-  h.runResult = { ok: true, providerId: "itch", issues: [] };
-  await h.ctrl.runPublish("itch", true);
-  expect(h.setConfigCalls.length).toBe(0); // dry run must have no side effects
-  expect(h.ctrl.publishResults.itch).toEqual(h.runResult);
-  expect(h.onPublished.calls.length).toBe(0);
+// ── The book's targets, and what this person sends ─────────────────────────
+
+const book = [
+  CARD,
+  { ...CARD, id: "gdrive", sending: false },
+  { ...CARD, id: "kdp", inBook: false, sending: false },
+] as PublishProviderCard[];
+
+test("the book's targets and the ones this person sends come from the cards", async () => {
+  const h = make({ cards: book });
+  await h.ctrl.loadPublish();
+  expect(h.ctrl.bookTargets.map((c) => c.id)).toEqual(["itch", "gdrive"]);
+  expect(h.ctrl.sendingTargets.map((c) => c.id)).toEqual(["itch"]);
 });
 
-test("runPublish (real run) flushes drafts first and fires onPublished(false) for a direct-publish outcome", async () => {
-  const h = make();
-  h.ctrl.setPublishConfigDraft("itch", "project", "my-book");
-  h.runResult = { ok: true, providerId: "itch", issues: [], outcome: { kind: "published", detail: "Published." } };
-  await h.ctrl.runPublish("itch", false);
-  expect(h.setConfigCalls.length).toBe(1);
-  expect(h.onPublished.calls).toEqual([[false]]);
+test("adding or taking out a target changes that one only, so targets the app has no card for are kept", async () => {
+  const h = make({ cards: book });
+  await h.ctrl.loadPublish();
+  expect(await h.ctrl.setInBook("kdp", true)).toBe(true);
+  expect(await h.ctrl.setInBook("gdrive", false)).toBe(true);
+  expect(h.setTargetCalls).toEqual([["kdp", true], ["gdrive", false]]);
+  expect(h.ctrl.publishBusyId).toBeNull();
 });
 
-test("runPublish fires onPublished(true) for a guided outcome", async () => {
-  const h = make();
-  h.runResult = {
-    ok: true,
-    providerId: "itch",
-    issues: [],
-    outcome: { kind: "guided", packageDir: "/pkg", openUrl: "https://x", checklist: [] },
-  };
-  await h.ctrl.runPublish("itch", false);
-  expect(h.onPublished.calls).toEqual([[true]]);
+test("not sending a target is this person's own setting, and sending it again clears it", async () => {
+  const h = make({ cards: book });
+  await h.ctrl.setSending("itch", false);
+  await h.ctrl.setSending("gdrive", true);
+  expect(h.setConfigCalls.map((c) => [c.providerId, c.values])).toEqual([
+    ["itch", { send: "off" }],
+    ["gdrive", { send: "" }],
+  ]);
 });
 
-test("runPublish does not fire onPublished when the run failed", async () => {
-  const h = make();
-  h.runResult = { ok: false, providerId: "itch", issues: [], error: "boom" };
-  await h.ctrl.runPublish("itch", false);
-  expect(h.onPublished.calls.length).toBe(0);
+// ── The run ─────────────────────────────────────────────────────────────────
+
+test("Publish runs the targets this person sends, with checks on, after saving what they typed", async () => {
+  const h = make({ cards: book });
+  await h.ctrl.loadPublish();
+  h.ctrl.setPublishConfigDraft("itch", "project", "ada/guide");
+  h.runResult = runResult({ targets: [target("itch", "sent")] });
+  await h.ctrl.publish();
+  expect(h.setConfigCalls).toEqual([{ dir: "/proj", providerId: "itch", values: { project: "ada/guide" } }]);
+  expect(h.publishCalls).toEqual([{ projectDir: "/proj", targets: ["itch"] }]);
+  expect(h.ctrl.result).toEqual(h.runResult);
+  expect(h.results).toEqual([h.runResult]);
+  expect(h.ctrl.running).toBe(false);
 });
 
-test("runPublish forwards the artifact the wizard just built, and omits it when none is given", async () => {
-  const h = make();
-  let capturedOptions: unknown;
-  h.ctrl = new PublishSectionController({
-    projectDir: () => h.projectDir,
-    listProviders: () => Promise.resolve(h.cards),
-    preflight: () => Promise.resolve([]),
-    setConfig: () => Promise.resolve({}),
-    listDestinations: () => Promise.resolve([]),
-    createDestination: () => Promise.resolve({ id: "d", title: "d" }),
-    run: (_dir, _providerId, options) => {
-      capturedOptions = options;
-      return Promise.resolve(h.runResult);
-    },
-    openExternal: () => Promise.resolve({ ok: true }),
+test("Check only, and the one switch that skips the checks, reach the run", async () => {
+  const h = make({ cards: book });
+  await h.ctrl.loadPublish();
+  h.ctrl.skipChecks = true;
+  await h.ctrl.publish({ checkOnly: true });
+  expect(h.publishCalls).toEqual([{ projectDir: "/proj", targets: ["itch"], checkOnly: true, skipChecks: true }]);
+});
+
+test("the run's progress is kept in order, fresh for each run", async () => {
+  const h = make({ cards: book });
+  await h.ctrl.loadPublish();
+  h.progress = [
+    { step: "render", message: "Laying out the pages…" },
+    { step: "send", message: "Uploading…", target: "itch" },
+  ];
+  await h.ctrl.publish();
+  await h.ctrl.publish();
+  expect(h.ctrl.progress).toEqual(h.progress);
+});
+
+test("Send anyway runs that target alone and puts its result in its place", async () => {
+  const h = make({ cards: book });
+  await h.ctrl.loadPublish();
+  h.runResult = runResult({
+    ok: false,
+    files: [{ format: "pdf", path: "/proj/dist/a.pdf" }],
+    targets: [target("itch", "held"), target("gdrive", "sent")],
   });
-  await h.ctrl.runPublish("itch", true);
-  expect(capturedOptions).toEqual({ dryRun: true });
-  await h.ctrl.runPublish("itch", false, "/proj/dist/book.pdf");
-  expect(capturedOptions).toEqual({ dryRun: false, artifactPath: "/proj/dist/book.pdf" });
+  await h.ctrl.publish();
+  h.runResult = runResult({ files: [{ format: "pdf", path: "/proj/dist/a.pdf" }], targets: [target("itch", "sent")] });
+  await h.ctrl.publish({ targets: ["itch"], sendAnyway: ["itch"] });
+  expect(h.publishCalls[1]).toEqual({ projectDir: "/proj", targets: ["itch"], sendAnyway: ["itch"] });
+  expect(h.ctrl.result?.targets.map((t) => [t.id, t.status])).toEqual([
+    ["itch", "sent"],
+    ["gdrive", "sent"],
+  ]);
+  expect(h.ctrl.result?.files).toHaveLength(1);
+  expect(h.ctrl.result?.ok).toBe(true);
+});
+
+test("after Check only, Send anyway sends that target, and with the others only checked the run is not finished", async () => {
+  const h = make({ cards: book });
+  await h.ctrl.loadPublish();
+  h.runResult = runResult({ ok: false, targets: [target("itch", "held"), target("gdrive", "checked")] });
+  await h.ctrl.publish({ checkOnly: true });
+  h.runResult = runResult({ targets: [target("itch", "sent")] });
+  await h.ctrl.publish({ targets: ["itch"], sendAnyway: ["itch"] });
+  expect(h.ctrl.result?.targets.map((t) => t.status)).toEqual(["sent", "checked"]);
+  expect(h.ctrl.result?.ok).toBe(false);
+});
+
+test("another book starts fresh: what was typed and the last result for one book never reach the next", async () => {
+  const h = make({ cards: book });
+  await h.ctrl.loadPublish();
+  h.runResult = runResult({ targets: [target("itch", "sent")] });
+  await h.ctrl.publish();
+  // Typed, then the view closed without saving, and another book opened.
+  h.ctrl.setPublishConfigDraft("itch", "project", "ada/guide");
+  h.projectDir = "/other";
+  await h.ctrl.loadPublish();
+  expect(h.ctrl.result).toBeNull();
+  expect(h.ctrl.publishConfigDrafts).toEqual({});
+  await h.ctrl.publish();
+  expect(h.setConfigCalls).toEqual([]);
+  expect(h.publishCalls.map((c) => c.projectDir)).toEqual(["/proj", "/other"]);
+});
+
+test("only a run that sent something is a publish to do again; after Check only, Publish is next", async () => {
+  const h = make({ cards: book });
+  await h.ctrl.loadPublish();
+  expect(h.ctrl.published).toBe(false);
+  h.runResult = runResult({ targets: [target("itch", "checked"), target("gdrive", "checked")] });
+  await h.ctrl.publish({ checkOnly: true });
+  expect(h.ctrl.result?.ok).toBe(true);
+  expect(h.ctrl.published).toBe(false);
+  h.runResult = runResult({ targets: [target("itch", "sent"), target("gdrive", "not-connected")] });
+  await h.ctrl.publish();
+  expect(h.ctrl.published).toBe(true);
+  h.runResult = runResult({ targets: [target("itch", "prepared")] });
+  await h.ctrl.publish();
+  expect(h.ctrl.published).toBe(true);
+});
+
+test("a run that could not start says why in plain words", async () => {
+  const h = make({ cards: book });
+  await h.ctrl.loadPublish();
+  h.runResult = new Error("Error invoking remote method 'api:publish': Error: The app is already publishing a book.");
+  await h.ctrl.publish();
+  expect(h.ctrl.publishError).toBe("The app is already publishing a book.");
+  expect(h.ctrl.running).toBe(false);
+});
+
+test("Stop asks the host to stop the run", () => {
+  const h = make();
+  h.ctrl.cancel();
+  expect(h.cancels).toBe(1);
 });
 
 // ── Multi-format providers (#221 phase 3, D8 — gdrive) ──────────────────────
@@ -248,49 +368,6 @@ test("selectFormat writes publish.<id>.format via setConfig and reloads the card
   expect(h.ctrl.publishBusyId).toBeNull();
 });
 
-const PF_ROW = (over: Partial<PreflightRow>): PreflightRow => ({
-  id: "source.markdownlint",
-  category: "source",
-  severity: "warning",
-  label: "Markdown style",
-  message: "msg",
-  code: null,
-  fixable: "none",
-  ...over,
-});
-
-test("runPreflight forwards the selected provider ids and stores the rows + ran flag", async () => {
-  const h = make();
-  h.preflightRows = [PF_ROW({ severity: "error" })];
-  expect(h.ctrl.preflightRan).toBe(false);
-  await h.ctrl.runPreflight(["itch", "kdp"]);
-  expect(h.preflightCalls).toEqual([{ dir: "/proj", providerIds: ["itch", "kdp"] }]);
-  expect(h.ctrl.preflightRows.length).toBe(1);
-  expect(h.ctrl.preflightRan).toBe(true);
-  expect(h.ctrl.preflightBusy).toBe(false);
-  expect(h.ctrl.preflightError).toBeNull();
-});
-
-test("runPreflight is a no-op with no project open", async () => {
-  const h = make({ noProject: true });
-  await h.ctrl.runPreflight(["itch"]);
-  expect(h.preflightCalls).toEqual([]);
-  expect(h.ctrl.preflightRan).toBe(false);
-});
-
-test("runPreflight records the error, clears rows, but still marks ran (so the gate evaluates)", async () => {
-  const h = make();
-  h.preflightRows = [PF_ROW({})];
-  await h.ctrl.runPreflight(["itch"]); // seed some rows first
-  expect(h.ctrl.preflightRows.length).toBe(1);
-  h.failPreflight = true;
-  await h.ctrl.runPreflight(["itch"]);
-  expect(h.ctrl.preflightError).toBe("preflight boom");
-  expect(h.ctrl.preflightRows).toEqual([]);
-  expect(h.ctrl.preflightRan).toBe(true);
-  expect(h.ctrl.preflightBusy).toBe(false);
-});
-
 // ── Account choice + destinations picker (#221 C2/C3) ───────────────────────
 
 const GDRIVE_DEST_CARD: PublishProviderCard = {
@@ -329,55 +406,6 @@ test("a chosen Drive folder is written as {folderId, folder} through setConfig (
   expect(h.setConfigCalls).toEqual([{ dir: "/proj", providerId: "gdrive", values: { folderId: "F1", folder: "My Books" } }]);
 });
 
-test("saveDestinations writes only the ticks that changed, as publish.<id>.enabled, then reloads", async () => {
-  const shopify = { ...CARD, id: "shopify", config: { enabled: "true" } };
-  const gdrive = { ...CARD, id: "gdrive", config: {} };
-  const h = make({ cards: [CARD, shopify, gdrive] });
-  await h.ctrl.loadPublish();
-
-  // itch newly ticked, shopify unticked, gdrive still unticked (unchanged).
-  expect(await h.ctrl.saveDestinations({ itch: true, shopify: false, gdrive: false })).toBe(true);
-  expect(h.setConfigCalls).toEqual([
-    { dir: "/proj", providerId: "itch", values: { enabled: true } },
-    { dir: "/proj", providerId: "shopify", values: { enabled: "" } },
-  ]);
-  expect(h.ctrl.publishBusyId).toBeNull();
-});
-
-test("tickedDestinations lists the destinations the manifest has ticked, so a teammate sees them ticked", async () => {
-  const ticked = { ...CARD, id: "shopify", config: { enabled: "true" } };
-  const h = make({ cards: [CARD, ticked, { ...CARD, id: "gdrive", config: { enabled: "false" } }] });
-  expect(h.ctrl.tickedDestinations).toEqual([]);
-  await h.ctrl.loadPublish();
-  expect(h.ctrl.tickedDestinations).toEqual(["shopify"]);
-});
-
-test("saveDestinations does not touch the manifest when nothing changed", async () => {
-  const h = make({ cards: [{ ...CARD, config: { enabled: "true" } }] });
-  await h.ctrl.loadPublish();
-  expect(await h.ctrl.saveDestinations({ itch: true })).toBe(true);
-  expect(h.setConfigCalls.length).toBe(0);
-});
-
-test("saveDestinations reports a failed write and keeps the reason", async () => {
-  const h = make();
-  await h.ctrl.loadPublish();
-  const failing = new PublishSectionController({
-    projectDir: () => "/proj",
-    listProviders: () => Promise.resolve(h.cards),
-    preflight: () => Promise.resolve([]),
-    setConfig: () => Promise.reject(new Error("manifest is read-only")),
-    listDestinations: () => Promise.resolve([]),
-    createDestination: () => Promise.reject(new Error("not used")),
-    run: () => Promise.reject(new Error("not used")),
-    openExternal: () => Promise.resolve({ ok: true }),
-  });
-  await failing.loadPublish();
-  expect(await failing.saveDestinations({ itch: true })).toBe(false);
-  expect(failing.publishError).toBe("manifest is read-only");
-  expect(failing.publishBusyId).toBeNull();
-});
-
 test("the controller holds no key or account-name drafts: accounts are added in the Accounts page's own form", () => {
   const { ctrl } = make();
   const names = Object.getOwnPropertyNames(ctrl);
@@ -397,7 +425,7 @@ test("selectCredential triggers a destinations reload for the newly selected acc
   const ctrl = new PublishSectionController({
     projectDir: () => "/proj",
     listProviders: () => Promise.resolve([{ ...GDRIVE_DEST_CARD, connected: true }]),
-    preflight: () => Promise.resolve([]),
+    setTarget: () => Promise.resolve({}),
     setConfig: () => Promise.resolve({}),
     listDestinations: (dir, providerId) => {
       listDestinationsCalls.push({ dir, providerId });
@@ -405,7 +433,9 @@ test("selectCredential triggers a destinations reload for the newly selected acc
     },
     createDestination: () => Promise.reject(new Error("not used")),
     destinationStatus: () => Promise.resolve({ state: "unset" }),
-    run: () => Promise.reject(new Error("not used")),
+    publish: () => Promise.reject(new Error("not used")),
+    cancelPublish: () => Promise.resolve({}),
+    onProgress: () => () => {},
     pickPdfFile: () => Promise.resolve(null),
     openDirectory: () => Promise.resolve(null),
     openExternal: () => Promise.resolve({ ok: true }),
@@ -423,7 +453,7 @@ test("selectCredential does not reload destinations for a provider without a pic
   h.ctrl = new PublishSectionController({
     projectDir: () => h.projectDir,
     listProviders: () => Promise.resolve(h.cards),
-    preflight: () => Promise.resolve([]),
+    setTarget: () => Promise.resolve({}),
     setConfig: (dir, providerId, values) => {
       h.setConfigCalls.push({ dir, providerId, values });
       return Promise.resolve({});
@@ -434,7 +464,9 @@ test("selectCredential does not reload destinations for a provider without a pic
     },
     createDestination: () => Promise.reject(new Error("not used")),
     destinationStatus: () => Promise.resolve({ state: "unset" }),
-    run: () => Promise.reject(new Error("not used")),
+    publish: () => Promise.reject(new Error("not used")),
+    cancelPublish: () => Promise.resolve({}),
+    onProgress: () => () => {},
     pickPdfFile: () => Promise.resolve(null),
     openDirectory: () => Promise.resolve(null),
     openExternal: () => Promise.resolve({ ok: true }),
@@ -448,7 +480,7 @@ test("destinationsError and destinationsBusyId are keyed PER PROVIDER — an err
   const ctrl = new PublishSectionController({
     projectDir: () => "/proj",
     listProviders: () => Promise.resolve([]),
-    preflight: () => Promise.resolve([]),
+    setTarget: () => Promise.resolve({}),
     setConfig: () => Promise.resolve({}),
     listDestinations: (dir, providerId) => {
       if (providerId === "gdrive-a" && providerAShouldFail) {
@@ -458,7 +490,9 @@ test("destinationsError and destinationsBusyId are keyed PER PROVIDER — an err
     },
     createDestination: () => Promise.reject(new Error("not used")),
     destinationStatus: () => Promise.resolve({ state: "unset" }),
-    run: () => Promise.reject(new Error("not used")),
+    publish: () => Promise.reject(new Error("not used")),
+    cancelPublish: () => Promise.resolve({}),
+    onProgress: () => () => {},
     pickPdfFile: () => Promise.resolve(null),
     openDirectory: () => Promise.resolve(null),
     openExternal: () => Promise.resolve({ ok: true }),
@@ -482,7 +516,7 @@ test("destinationsBusyId's single-flight guard is per-provider, not global", asy
   const ctrl = new PublishSectionController({
     projectDir: () => "/proj",
     listProviders: () => Promise.resolve([]),
-    preflight: () => Promise.resolve([]),
+    setTarget: () => Promise.resolve({}),
     setConfig: () => Promise.resolve({}),
     listDestinations: (dir, providerId) => {
       calls.push(providerId);
@@ -495,7 +529,9 @@ test("destinationsBusyId's single-flight guard is per-provider, not global", asy
     },
     createDestination: () => Promise.reject(new Error("not used")),
     destinationStatus: () => Promise.resolve({ state: "unset" }),
-    run: () => Promise.reject(new Error("not used")),
+    publish: () => Promise.reject(new Error("not used")),
+    cancelPublish: () => Promise.resolve({}),
+    onProgress: () => () => {},
     pickPdfFile: () => Promise.resolve(null),
     openDirectory: () => Promise.resolve(null),
     openExternal: () => Promise.resolve({ ok: true }),

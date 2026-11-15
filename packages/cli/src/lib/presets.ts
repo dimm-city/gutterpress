@@ -49,7 +49,7 @@ export const DTRPG_PRESET: VendorPreset = {
     url: "https://help.drivethrupartners.com/hc/en-us/articles/12780800178583-Quick-Specifications-for-Print-Books",
   },
   // Books designed for DriveThruRPG validate against it by default.
-  defaultTargets: ["dtrpg"],
+  defaultTargets: ["drivethrurpg-print"],
   // No default `styles:` — `resolveActiveStyles`
   // (style-resolver.ts) is the SINGLE source of default-stylesheet truth: the
   // manifest `styles:` list, else `styles/book.css`, else the first

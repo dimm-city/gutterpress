@@ -1,6 +1,8 @@
 import { existsSync } from "node:fs";
-import { readFile, writeFile, unlink, rename, readdir } from "node:fs/promises";
-import { join, basename, resolve } from "node:path";
+import { readFile, writeFile, unlink, rename, readdir, statfs } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, basename, dirname, resolve } from "node:path";
+import { BuildError } from "./build-error";
 import { enhancedPath, execCapture, run, spawnCapture } from "./exec";
 import { log } from "../utils/logger";
 import { findTool } from "./tool-probe";
@@ -575,6 +577,12 @@ export function ghostscriptOlderThan(version: string, major: number, minor: numb
  * its default rendering intent and black-point setting, and every image is
  * read as sRGB (`-dOverrideICC` ignores a profile embedded in an image).
  */
+/** "N GB free in <dir>", for a message about a full disk. */
+async function freeSpace(dir: string): Promise<string> {
+  const s = await statfs(dir).catch(() => null);
+  return s ? `${((s.bavail * s.bsize) / 1e9).toFixed(1)} GB free in ${dir}` : `free space in ${dir} unknown`;
+}
+
 export async function convertToPdfxCmyk(
   inputPdf: string,
   outPdf: string,
@@ -701,7 +709,24 @@ export async function convertToPdfxCmyk(
       );
     }
     if (code !== 0) {
-      throw new Error(`${ghostscript} ${args.join(" ")} exited ${code}\n${stdout}${stderr}`);
+      const raw = `${ghostscript} ${args.join(" ")} exited ${code}\n${stdout}${stderr}`;
+      // pdfwrite reports a failed write (a full disk) only as an "ioerror" on
+      // closing, after a "Page drawing error" on whatever page it had reached:
+      // nothing about that page is wrong. Its scratch files go in the temp
+      // folder and grow to about twice the finished file (measured: 2.7 GB
+      // for a 1.4 GB, 248-page PDF/X), on top of the file itself.
+      if (`${stdout}${stderr}`.includes("ioerror")) {
+        throw new BuildError(
+          "Ghostscript could not finish writing the PDF/X file, which usually means a disk filled up " +
+            `(${await freeSpace(tmpdir())}; ${await freeSpace(dirname(resolve(outPdf)))}). ` +
+            "Converting needs about three times the finished file's size free in the temp folder: " +
+            "free some space, or set TMPDIR to a folder on a bigger disk, and try again.\n\n" +
+            raw,
+          undefined,
+          { code: "DISK_FULL" }
+        );
+      }
+      throw new Error(raw);
     }
     const at = stderr.indexOf("The following warnings");
     if (at >= 0) {

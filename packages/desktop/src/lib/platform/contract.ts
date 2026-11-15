@@ -32,11 +32,14 @@ import type {
   CreateProjectOptions,
   AdoptFolderOptions,
   CreateProjectResult,
+  PublishBookResult,
+  PublishProgress,
 } from "gutterpress";
 
 // Shared IPC payload types — imported from the single source of truth
 // (shared-types.ts), which the Electron host imports directly too, so these
 // types cannot drift between the host and renderer sides.
+import type { IpcResult } from "./ipc-result";
 import type {
   UpdaterStatus,
   UpdaterEventPayload,
@@ -67,9 +70,6 @@ import type {
   PublishProviderCard,
   PublishDestination,
   PublishDestinationStatus,
-  PublishIssue,
-  PublishOutcomeInfo,
-  PublishRunResult,
   SnapshotEntry,
   SnapshotPage,
   VersionEntry,
@@ -89,6 +89,7 @@ import type {
   RestoreProgressEvent,
   UrlPreviewBlockedEvent,
   MarkdownFileLaunchEvent,
+  PublishRunArgs,
 } from "./shared-types";
 
 export type {
@@ -130,9 +131,6 @@ export type {
   PublishProviderCard,
   PublishDestination,
   PublishDestinationStatus,
-  PublishIssue,
-  PublishOutcomeInfo,
-  PublishRunResult,
   SnapshotEntry,
   SnapshotPage,
   VersionEntry,
@@ -152,6 +150,9 @@ export type {
   RestoreProgressEvent,
   UrlPreviewBlockedEvent,
   MarkdownFileLaunchEvent,
+  PublishRunArgs,
+  PublishBookResult,
+  PublishProgress,
 };
 
 /**
@@ -346,18 +347,10 @@ export interface PreviewStartArgs {
   input: FolderRef;
 }
 
+/** The quick PDF export: a draft saved where the person chose. */
 export interface BuildArgs {
   input: FolderRef;
-  format: "pdf" | "html" | "pdfx";
   out?: string;
-  title?: string;
-  pdfxFlavor?: string;
-  icc?: string;
-  manifest?: string;
-  stripAnnotations?: boolean;
-  skipLint?: boolean;
-  skipPreValidate?: boolean;
-  skipPostValidate?: boolean;
   /**
    * Proceed past the engine's over-wide-content check, which is otherwise a
    * hard error (#163). The host accepted this all along; without it here the
@@ -456,6 +449,15 @@ export interface HostServices {
   cancelExport(exportId: string): Promise<{ canceled: boolean }>;
   build(args: BuildArgs): Promise<BuildResult>;
 
+  /**
+   * The one publish run (ADR 0012 §5), the same one `gutterpress publish`
+   * runs: makes each target's file once, checks it, sends it. A local folder
+   * outside the book is confirmed in a native dialog first. One run at a time.
+   */
+  publish(args: PublishRunArgs): Promise<PublishBookResult>;
+  cancelPublish(): Promise<{ canceled: boolean }>;
+  onPublishProgress(cb: (data: PublishProgress) => void): () => void;
+
   // Event subscriptions (return an unsubscribe fn)
   onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void;
   onUrlPreviewBlocked(cb: (data: UrlPreviewBlockedEvent) => void): () => void;
@@ -500,6 +502,7 @@ export interface ElectronBridge
     HostServices,
     | "startPreview"
     | "build"
+    | "publish"
     // These are server routes (api.sync.setAutoSync /
     // api.remote.cloneRepository) — the raw bridge doesn't expose them.
     // `updater` is narrowed below instead of omitted: applyNow/onEvent stay
@@ -512,7 +515,9 @@ export interface ElectronBridge
   // the translation seam that unwraps FolderRef.key back into the string `input`
   // the existing IPC expects.
   startPreview(args: { input: string } & Omit<PreviewStartArgs, "input">): Promise<PreviewStartResult>;
-  build(args: { input: string } & Omit<BuildArgs, "input">): Promise<BuildResult>;
+  /** Resolves with the outcome as data, so a failure keeps its code (see `ipc-result.ts`). */
+  build(args: { input: string } & Omit<BuildArgs, "input">): Promise<IpcResult<BuildResult>>;
+  publish(args: PublishRunArgs): Promise<IpcResult<PublishBookResult>>;
   /**
    * Raw folder-watch IPC behind `PlatformAdapter.watchFolder` (#44). Subscribes
    * to change events for `path` and returns an unsubscribe fn.

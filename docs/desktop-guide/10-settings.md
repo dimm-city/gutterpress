@@ -78,8 +78,9 @@ asks once more before it deletes an account.
   publishes with is picked there and remembered on this computer only; the book itself never names
   your account.
 
-An account that says **Needs signing in again** can no longer be read (this happens when the computer's
-keychain changes): **Edit** it, or **Sign in again…** for Google Drive, to save it again.
+Your accounts are kept in your Gutterpress folder (`~/.config/gutterpress`, or
+`%APPDATA%\gutterpress` on Windows), in a file only your user account can read. The `gutterpress`
+terminal command uses the same accounts, so one you add here works there too, and the other way round.
 
 ## Updates
 
@@ -104,5 +105,8 @@ set up (not its text) and the end of the app's log already filled in; nothing is
 create the issue. On GitHub, drag any screenshots or sample files into **Screenshots or files**,
 since the app can't attach them for you. **Copy report** copies the same details. Error messages
 also offer **Report a problem**. The **Logs** and **Diagnostics** tabs help when something isn't
-working, and with a book open, **Open terminal in book folder** on the **Diagnostics** tab opens
-a terminal there (bash; on Windows, a Command Prompt when bash isn't installed).
+working. The app's own log records when it started and closed, each PDF or website build (when
+it started, how long it took and, if it failed, the whole error), publishing that failed, and
+errors the app ran into. With a book open, **Open terminal in book folder** on the
+**Diagnostics** tab opens a terminal there (bash; on Windows, a Command Prompt when bash isn't
+installed).

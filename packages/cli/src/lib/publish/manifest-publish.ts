@@ -7,10 +7,19 @@
  * {@link savePublishSettings} keeps those in the private store (selections.ts).
  */
 import path from "node:path";
-import { isMap } from "yaml";
+import { isMap, Scalar } from "yaml";
 import type { Document } from "yaml";
 import { loadManifestDoc, writeManifestDoc } from "../manifest-doc.ts";
+import { loadManifestWithPath, resolveConfig } from "../manifest.ts";
 import type { PublishSelectionsStore } from "./selections.ts";
+import { canonicalTargetId } from "../targets.ts";
+import { targetSettings } from "./run-publish.ts";
+
+/** The raw `publish:` map, as written. */
+function settingsKeysOf(doc: Document): Record<string, unknown> {
+  const node = doc.get("publish", true);
+  return isMap(node) ? (node.toJSON() as Record<string, unknown>) : {};
+}
 
 function settingsFromDoc(
   doc: Document.Parsed,
@@ -19,10 +28,16 @@ function settingsFromDoc(
   if (!isMap(node)) return {};
   const json = node.toJSON() as Record<string, unknown>;
   const out: Record<string, Record<string, unknown>> = {};
-  for (const [key, value] of Object.entries(json)) {
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      out[key] = value as Record<string, unknown>;
-    }
+  // Keyed by the registry's name for each target: a section an older book
+  // keeps under an older name (`drivethrurpg`) is read into its target, with
+  // the target's own section laid over it.
+  const ids = new Set(Object.keys(json).map(canonicalTargetId));
+  for (const id of ids) {
+    const settings = targetSettings(json, id);
+    const present = Object.entries(json).some(
+      ([key, value]) => canonicalTargetId(key) === id && value && typeof value === "object" && !Array.isArray(value),
+    );
+    if (present) out[id] = settings;
   }
   return out;
 }
@@ -45,9 +60,9 @@ export async function readPublishSettings(
 }
 
 /**
- * Merge `values` into `publish.<providerId>`. A value of `undefined`, `null`
- * or `""` deletes that key; emptied sections (and an emptied `publish:` map)
- * are removed rather than left dangling. Returns the updated settings straight
+ * Merge `values` into the target's `publish:` section. A value of `undefined`, `null`
+ * or `""` deletes that key; a section left empty becomes the target's bare
+ * name, so the target stays in the book. Returns the updated settings straight
  * from the in-memory document — no re-read.
  */
 export async function setPublishProviderConfig(
@@ -56,26 +71,82 @@ export async function setPublishProviderConfig(
   values: Record<string, unknown>,
 ): Promise<Record<string, Record<string, unknown>>> {
   const { doc, file } = await loadManifestDoc(projectDir);
+  // Written under the registry's name for the target. A book that already
+  // keeps the target's section under an older name keeps it there, so a
+  // target never ends up with two sections.
+  const targetId = canonicalTargetId(providerId);
+  const sectionKey = isMap(doc.getIn(["publish", targetId], true))
+    ? targetId
+    : (Object.keys(settingsKeysOf(doc)).find((key) => canonicalTargetId(key) === targetId) ?? targetId);
 
+  // A target written as just its name (`itch:`) takes settings as a block.
+  if (doc.hasIn(["publish", sectionKey]) && !isMap(doc.getIn(["publish", sectionKey], true))) {
+    doc.setIn(["publish", sectionKey], doc.createNode({}));
+  }
   for (const [key, value] of Object.entries(values)) {
     if (value === undefined || value === null || value === "") {
-      doc.deleteIn(["publish", providerId, key]);
+      doc.deleteIn(["publish", sectionKey, key]);
     } else {
-      doc.setIn(["publish", providerId, key], value);
+      doc.setIn(["publish", sectionKey, key], value);
     }
   }
 
-  const section = doc.getIn(["publish", providerId], true);
+  // A target is in the book because its entry is there (ADR 0012): clearing
+  // its last setting leaves just its name.
+  const section = doc.getIn(["publish", sectionKey], true);
   if (isMap(section) && section.items.length === 0) {
-    doc.deleteIn(["publish", providerId]);
-  }
-  const publish = doc.get("publish", true);
-  if (isMap(publish) && publish.items.length === 0) {
-    doc.delete("publish");
+    doc.setIn(["publish", sectionKey], bareTarget());
   }
 
   await writeManifestDoc(file, doc);
   return settingsFromDoc(doc);
+}
+
+/** A target with nothing to set, written as just its name (`itch:`). */
+function bareTarget(): Scalar {
+  const node = new Scalar(null);
+  node.source = "";
+  return node;
+}
+
+/**
+ * Add one target to the book, or take it out (ADR 0012 §3). The book's other
+ * targets stay as they are, including ones this computer has nothing to show
+ * for (an extension's not downloaded yet, a misspelt name).
+ */
+export async function setBookTarget(projectDir: string, id: string, inBook: boolean): Promise<void> {
+  const { doc, file } = await loadManifestDoc(projectDir);
+  const { manifest } = await loadManifestWithPath(projectDir);
+  const others = resolveConfig({}, manifest).targets.filter((t) => t !== canonicalTargetId(id));
+  writeBookTargets(doc, inBook ? [...others, id] : others);
+  await writeManifestDoc(file, doc);
+}
+
+/**
+ * Make the book's targets exactly `ids`, in the new form: one `publish:`
+ * entry per target, a target with nothing to set written as just its name. A
+ * kept target keeps its settings; a removed one goes, settings and all. An
+ * older book's `targets:` list and `enabled:` ticks are dropped, since the
+ * list now says it all. No targets is `publish: {}`, which means none (no
+ * `publish:` key would mean the preset's).
+ */
+export function writeBookTargets(doc: Document, ids: string[]): void {
+  const wanted = [...new Set(ids.map(canonicalTargetId))];
+  if (!isMap(doc.get("publish", true))) doc.set("publish", doc.createNode({}));
+  const keys = Object.keys(settingsKeysOf(doc));
+  for (const key of keys) {
+    if (!wanted.includes(canonicalTargetId(key))) {
+      doc.deleteIn(["publish", key]);
+      continue;
+    }
+    const section = doc.getIn(["publish", key], true);
+    if (isMap(section)) section.delete("enabled");
+    if (!isMap(section) || section.items.length === 0) doc.setIn(["publish", key], bareTarget());
+  }
+  for (const id of wanted) {
+    if (!keys.some((key) => canonicalTargetId(key) === id)) doc.setIn(["publish", id], bareTarget());
+  }
+  doc.delete("targets");
 }
 
 /** `dir` as the manifest records a folder inside the book (relative, `/`); null when it lies outside. */
@@ -94,6 +165,7 @@ function insideBook(projectDir: string, dir: string): string | null {
  * an older book kept it there:
  *
  * - `credential`: which of their saved accounts the book publishes with.
+ * - `send`: `off` when they are not sending the book to this target this time.
  * - the local output folder `dir`, when it lies outside the book (a personal
  *   override). A folder inside the book is shared, and is written relative to
  *   it (an absolute in-book path is rewritten) so it means the same thing on
@@ -111,10 +183,12 @@ function insideBook(projectDir: string, dir: string): string | null {
  */
 export async function savePublishSettings(
   projectDir: string,
-  providerId: string,
+  target: string,
   values: Record<string, unknown>,
   selections: Pick<PublishSelectionsStore, "settings" | "setSettings">,
 ): Promise<Record<string, Record<string, unknown>>> {
+  // One name per target, in the manifest and in the private store alike.
+  const providerId = canonicalTargetId(target);
   const shared: Record<string, unknown> = {};
   const mine: Record<string, string> = {};
   for (const [key, value] of Object.entries(values)) {
@@ -124,7 +198,7 @@ export async function savePublishSettings(
     if (inside !== null) {
       shared[key] = inside;
       mine[key] = "";
-    } else if (isDir || key === "credential" || (providerId === "gdrive" && key.startsWith("myFolder"))) {
+    } else if (isDir || key === "credential" || key === "send" || (providerId === "gdrive" && key.startsWith("myFolder"))) {
       mine[key] = isDir && text ? path.resolve(projectDir, text) : text;
       shared[key] = "";
     } else {

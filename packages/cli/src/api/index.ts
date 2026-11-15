@@ -123,7 +123,18 @@ export type {
 // wizard's preset choice, target selectors) and for CLI flag validation.
 export { PRESET_IDS, PRESETS } from "../lib/presets.ts";
 export type { PresetId, VendorPreset } from "../lib/presets.ts";
-export { TARGETS, TARGET_IDS, publishTargetFor } from "../lib/targets.ts";
+export {
+  TARGETS,
+  TARGET_IDS,
+  bookTargets,
+  canonicalTargetId,
+  hasOwnRules,
+  isOldPublishForm,
+  publishTargetFor,
+  ruleTargets,
+  targetFormat,
+} from "../lib/targets.ts";
+export type { TargetFileFormat } from "../lib/targets.ts";
 export type { PublishTarget, TargetOverlay } from "../lib/targets.ts";
 
 // ── Project templates (#29) ───────────────────────────────────────────────────
@@ -345,9 +356,13 @@ export {
 
 export type {
   HostCredential,
+  RedactedCredential,
   TokenStore,
   UrlCredentialExtraction,
 } from "../lib/remote-auth/token-store.ts";
+
+export { moveAppStores } from "../lib/remote-auth/move-app-stores.ts";
+export type { MovedAppStores } from "../lib/remote-auth/move-app-stores.ts";
 
 export {
   GitHubAuthProvider,
@@ -379,6 +394,7 @@ export type {
 } from "../lib/publish/google-auth.ts";
 
 export { connectGoogleDrive } from "../lib/publish/connect-google.ts";
+export { driveFolderForRun } from "../lib/publish/providers/gdrive.ts";
 export type {
   ConnectGoogleDriveOptions,
   ConnectGoogleDriveResult,
@@ -505,11 +521,29 @@ export {
   runPublish,
   resolvePublishRequest,
   resolvePublishFormat,
+  checkTargetSetup,
 } from "../lib/publish/run-publish.ts";
 export type {
   RunPublishOptions,
   RunPublishResult,
 } from "../lib/publish/run-publish.ts";
+
+// ── The one publish run (ADR 0012): both views call this and show its progress.
+export { publishBook, publishPlan, renderPhases } from "../lib/publish/publish-book.ts";
+export { localPublishDir } from "../lib/publish/providers/local-folder.ts";
+export type {
+  PublishStep,
+  PublishProgress,
+  CheckFinding,
+  PublishedFile,
+  TargetStatus,
+  TargetResult,
+  PublishBookResult,
+  PublishBookOptions,
+  PublishBookDeps,
+} from "../lib/publish/publish-book.ts";
+export { explainBuildFailure, explainSendFailure, isCanceled } from "../lib/publish/explain.ts";
+export type { Failure, FailureCode } from "../lib/publish/explain.ts";
 
 export {
   listPublishProviders,
@@ -542,6 +576,7 @@ export type { PublishAccountSelection } from "../lib/publish/selections.ts";
 export {
   readPublishSettings,
   savePublishSettings,
+  setBookTarget,
   setPublishProviderConfig,
 } from "../lib/publish/manifest-publish.ts";
 

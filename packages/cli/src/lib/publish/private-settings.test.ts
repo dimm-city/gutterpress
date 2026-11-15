@@ -148,7 +148,8 @@ describe("savePublishSettings — what is shared and what is private", () => {
       itch: { enabled: true, target: "me/book", channel: "pdf" },
       shopify: { shop: "s.myshopify.com", productId: "1", apiVersion: "2026-04" },
       "azure-swa": { env: "preview" },
-      drivethrurpg: { productUrl: "https://example.com/p" },
+      // Saved under the older name, recorded under the registry's own.
+      "drivethrurpg-print": { productUrl: "https://example.com/p" },
       gdrive: { enabled: true, folderId: "F1", folder: "My Books", format: "html" },
     });
     expect(await store.settings(book)).toEqual({});

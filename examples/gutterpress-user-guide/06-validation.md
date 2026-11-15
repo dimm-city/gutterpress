@@ -34,11 +34,13 @@ both formats.
 ## Publish Targets
 
 Where you *publish* is a separate decision from how your book is *designed*
-(the `preset:` --- see Chapter 1). A **target** is a destination's validation
-policy: what its platform demands of the finished PDF. Targets never change
-how the book renders --- only what the validator checks.
+(the `preset:` --- see Chapter 1). A **target** is a place the book goes, and
+it says which file it gets and what its platform demands of that file. A
+target never changes how the book is laid out --- only which file is made
+from the layout and what that file is checked against.
 
-- `dtrpg` --- DriveThruRPG print-on-demand: PDF/X markers and metadata,
+- `drivethrurpg-print` (or `dtrpg`) --- DriveThruRPG print-on-demand, which
+  gets the PDF/X: PDF/X markers and metadata,
   CMYK/Grayscale art, the 240% ink limit at each page's heaviest spot,
   the bleed on the top, bottom and outside edges, embedded fonts, a page count
   that fits the signature, text kept at least 0.5in inside the trim and
@@ -48,35 +50,37 @@ how the book renders --- only what the validator checks.
   [Chapter 1](#print-overlays)). It also
   warns when text at 24pt and under is printed in a dark four-colour mix,
   black or a dark colour, since small four-colour text can look fuzzy.
-- `itch` --- itch.io digital release: a well-formed PDF with embedded fonts;
-  print-only rules (PDF/X, ink limits, CMYK-only art) don't apply.
+- `itch` and `drivethrurpg-digital` --- digital releases, which get the PDF:
+  a well-formed PDF with embedded fonts; print-only rules (PDF/X, ink limits,
+  CMYK-only art) don't apply.
+- The other targets (a folder, Google Drive, KDP, Shopify, a website) add no
+  rules of their own: their file is checked against your book's own settings.
 
-List them in your manifest to validate every destination in one run:
+Your book's targets are the entries under `publish:` in its manifest
+(Chapter 8), and publishing checks each file against each target it goes to:
 
 ```yaml
-targets:
-  - dtrpg
-  - itch
+publish:
+  drivethrurpg-print:
+  itch:
 ```
 
-The report labels each destination's findings (`[dtrpg]`, `[itch]`), so one
-source can be checked for print and digital at the same time. Projects
-created with `gutterpress new` or the desktop app always carry an explicit
-`targets:` list --- you choose the destinations at creation time (and can
-uncheck them all, recorded as `targets: []`). In the desktop app you can
-change them whenever you like under **Book setup &rarr; Details &rarr;
-Check the PDF against**. In a hand-written manifest
-with no `targets:` line, the preset's default applies (the `dtrpg` preset
-validates for DriveThruRPG; `book` and `custom` validate for no
-destination). An explicit empty list (`targets: []`) opts out entirely.
+The report labels each target's findings (`[drivethrurpg-print]`, `[itch]`),
+so one source can be checked for print and digital at the same time. A new
+book starts with its template's targets, or its preset's (the `dtrpg` preset
+starts with DriveThruRPG print; `book` and `custom` with none), written under
+`publish:`. In the desktop app you change them in **Publish &rarr; Targets**.
+In a hand-written manifest with no `publish:` key, the preset's default
+applies; `publish: {}` means none. An older book's `targets:` list still
+works.
 Your own manifest settings always win over a target's policy --- a target
 only fills in what you haven't set.
 
-The `dtrpg` target's checks need qpdf and Ghostscript installed (Chapter
+The DriveThruRPG print target's checks need qpdf and Ghostscript installed (Chapter
 7). With the target selected but the tools missing, validation reports the
 required checks as errors rather than silently skipping them --- that's
 deliberate: "validated for DriveThruRPG" must mean the checks actually ran.
-If you're not ready to install them, set `targets: []` until you are. The
+If you're not ready to install them, remove the target until you are. The
 `itch` target needs no external tools.
 
 ## CLI Usage
@@ -153,7 +157,7 @@ gutterpress validate --pdf dist/my-book/my-book-pdf.pdf --format json
 | `--skip` | Skip these check IDs |
 | `--format` | Output format: `text` (default) or `json` |
 | `--phase` | Override phase: `pre` \| `post` \| `all` \| `pre-build` \| `post-build` (default: `all`) |
-| `--target` | Publish targets to validate against (comma-separated: `dtrpg`, `itch`), overriding the manifest's `targets:` |
+| `--target` | Targets to validate against (comma-separated: `drivethrurpg-print` or `dtrpg`, `itch`, …), overriding the book's `publish:` list |
 | `--fix` | Rewrite the source markdown in place with markdownlint's auto-fixes (`source.markdownlint` only) |
 
 @end-section
@@ -226,7 +230,7 @@ Run it like any other PDF check:
 gutterpress validate --pdf dist/my-book/my-book-pdfx.pdf --target dtrpg
 ```
 
-`gutterpress preflight` runs it too, and so does the last step of a `--format pdfx` build. It reads the PDF itself and needs no extra tool, but the PDF/X lines in the same run need **qpdf** and **Ghostscript** installed ([Chapter 7](#ch-system)). To turn it off or change its severity, use `checks` like any other check (see Manifest Configuration below). The desktop app runs it on every PDF export and lists what it finds in the Problems list; the **Safe area** layers draw the same lines while you write.
+`gutterpress preflight` runs it too, and so does the last step of a `--format pdfx` build. It reads the PDF itself and needs no extra tool, but the PDF/X lines in the same run need **qpdf** and **Ghostscript** installed ([Chapter 7](#ch-system)). To turn it off or change its severity, use `checks` like any other check (see Manifest Configuration below). The desktop app runs it when you tick **Check my book before saving** in Publish and lists what it finds in the Problems list; the **Safe area** layers draw the same lines while you write.
 
 ### Asset checks (pre-build)
 
@@ -426,7 +430,7 @@ Before final print submission:
 - [ ] No unexpected blank pages (the blank pages at the end of a `dtrpg` book are intentional)
 - [ ] Running headers are correct on all pages
 - [ ] Page numbers start at the right page and run correctly
-- [ ] Validate passes for every destination you publish to (`--target dtrpg,itch`, or your manifest's `targets:` list)
+- [ ] Validate passes for every destination you publish to (`--target dtrpg,itch`, or your book's `publish:` list --- `gutterpress publish --dry-run` checks them all)
 
 @end-section
 

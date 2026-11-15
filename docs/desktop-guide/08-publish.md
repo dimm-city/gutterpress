@@ -5,47 +5,53 @@ description: Send your book to itch.io, DriveThruRPG, Amazon KDP, Shopify, Googl
 
 # Publish your book
 
-Click **Publish** in the toolbar to open **Publish your book**. It walks through **Format**,
-**Choose**, a step for each destination, **Preflight** and **Publish**.
+Click **Publish** in the toolbar to open **Publish your book**. It has three steps: **Targets**,
+**Set up** and **Publish**.
 
-## 1. Format
+## 1. Targets
 
-Choose **PDF** (a print-ready PDF) or **Website** (a folder with a standalone `book.html`).
+A target is a place the book goes. The book's targets are saved with it, so everyone who has the
+book sees the same ones; where a book is published is the team's decision, and each person only
+connects their own accounts. A new book starts with its template's targets, or its size's
+(DriveThruRPG print starts with DriveThruRPG).
 
-## 2. Choose where it goes
+Each target says which file it gets. A target with a choice has a **File** menu: PDF, PDF/X for
+print, or Website. The choice is saved with the book.
 
-**A folder on this computer** is always included. Tick any other destinations. The list shows
-the ones that take the format you chose: Azure Static Web Apps appears for **Website**, and
-Google Drive for both.
+| Target | File | How it publishes |
+| --- | --- | --- |
+| A folder on this computer | PDF, PDF/X or website | Saves it in a folder (`dist` inside your book by default) |
+| itch.io | PDF | Uploads it directly |
+| DriveThruRPG (print) | PDF/X | Guided: Gutterpress prepares the file and opens the upload page |
+| DriveThruRPG (digital) | PDF | Guided |
+| Amazon KDP | PDF or PDF/X | Guided |
+| Shopify | PDF or PDF/X | Uploads it directly |
+| Google Drive | PDF, PDF/X or website (zipped) | Uploads it directly |
+| Azure Static Web Apps | Website | Uploads it (needs Microsoft's SWA CLI) |
 
-| Destination | How it publishes |
-| --- | --- |
-| itch.io | Uploads the PDF directly |
-| DriveThruRPG | Guided: Gutterpress prepares the file and opens the upload page |
-| Amazon KDP | Guided |
-| Shopify | Uploads the PDF directly |
-| Google Drive | Uploads the PDF, or the website as a zip |
-| Azure Static Web Apps | Uploads the website (needs Microsoft's SWA CLI) |
+Each target shows whether it is **Connected**, or **Needs a key** (**Needs sign-in** for Google
+Drive). **Add a target** lists the others; **Remove from book** takes one out. Untick a target to
+skip it this time without removing it; that choice is yours alone, saved on this computer.
 
-Each destination shows whether it is **Connected**, **Needs a key**, or needs **No account**.
+**Check the files before sending (recommended)** is ticked unless you untick it. Ticked, your book
+is checked first, then each file against the rules of each target it goes to.
 
-The places you tick are saved with the book, so everyone who opens it sees the same ones
-ticked. Where a book is published is the team's decision; each person only connects their own
-accounts.
+A book can also add targets of its own with a **publishing plugin** (experimental: it may change
+or be removed). Add one under **Book setup** → **Extensions** like any extension; its row there
+says **Publish destination**, and it shows under **Add a target**, marked **Experimental**.
 
-A book can also add destinations of its own with a **publishing plugin** (experimental: it may
-change or be removed). Add one under **Book setup** → **Extensions** like any extension; its row
-there says **Publish destination**, and it shows in this list after the built-in destinations,
-marked **Experimental**.
+![The Targets step](images/publish-targets.jpg)
 
-![The Choose step for a PDF: a folder on this computer is always included](images/publish-choose.jpg)
+## 2. Set up
 
-## 3. Set up each destination
+Each target you send that has settings or needs an account is listed here. Its settings are
+shared with everyone who has the book, so a teammate finds them already filled in, and they are
+saved with your book when you go on. Your account is yours: it stays on your computer.
 
-Each destination you ticked has its own step. Its settings are shared with everyone who has the
-book, so a teammate finds them already filled in. Your account is yours: it stays on your
-computer.
-
+- **A folder on this computer:** the **Folder** (`dist` by default); **Choose…** picks another. A
+  folder inside the book is saved with the book, so everyone saves to the same place. A folder
+  outside it is yours alone, saved on this computer only, and Gutterpress asks you to confirm it
+  each time you publish.
 - **itch.io:** enter the **Project (user/game)** and **Channel**.
 - **Shopify:** enter the **Store domain** (and optionally a product ID).
 - **DriveThruRPG:** optionally paste an **Existing product URL**.
@@ -54,13 +60,11 @@ computer.
   with **New folder…**. The folder is where the whole team publishes, so it is saved with the
   book. Changing it later asks first: "This changes the folder for everyone who publishes this
   book." See [The book's Drive folder and your own](#the-books-drive-folder-and-your-own).
-- **Folder:** choose where the file goes on your computer. A folder inside the book (`dist` by
-  default) is saved with the book, so everyone saves to the same place. A folder outside the
-  book is yours alone: it is saved on this computer only, never in the book.
-- **A publishing plugin:** there is nothing to enter here yet. The step says where its settings go
-  in your book's `manifest.yaml`; the plugin handles its own sign-in.
+- **A publishing plugin:** there is nothing to enter here yet. It says where its settings go in
+  your book's `manifest.yaml`; the plugin handles its own sign-in.
 
-Click **Save settings** to keep a destination's settings with your book.
+A target you send without an account is marked with a warning on **Set up** in the steps along
+the top. Its file is still made, but it is not sent.
 
 ### Your account
 
@@ -96,18 +100,26 @@ for you only, on this computer; the book keeps its folder for everyone else.
 - A book that names its folder only by name publishes to a folder of that name in each person's
   own Drive. If several of yours have that name, the step asks you to choose one, for you only.
 
-## Preflight
+## 3. Publish
 
-Preflight checks the book before anything is sent. It reports **All clear — ready to publish.**,
-things to review, or problems to fix; **Go to** takes you to each one, and **Re-run** checks
-again. You can still **Publish anyway**. The PDF itself is checked once it is built — see
-[Save a PDF](07-export-pdf.md).
+Click **Publish**. Your book is laid out once, each file is made from that layout, checked
+against the rules of each target it goes to, and sent. The step shows what it is doing, with
+**Stop**. **Check only** does everything but send.
 
-## 4. Publish
+Each target then reports back:
 
-Click **Publish** (or **Save** if only the folder is ticked). Each destination reports back:
-**Show in folder** for your copy, **View it online** for an upload, and for guided destinations
-**Open upload page** with a checklist of what to do there.
+- **Sent**, with **View it online** for an upload.
+- For a guided target, the package folder (with **Show in folder**) and **Open upload page**,
+  with a checklist of what to do there.
+- **Held back**, when its file breaks that target's rules. The other targets still go. The
+  problems are listed, with **Go to**; **Send anyway** sends it once you have decided it's fine.
+- **Not sent** without an account, with **Set it up**.
+- A failure, in plain words, with **Show details** and **Try again**.
+
+Each target shows the file it got, with **Show in folder**. Problems in the book itself (content,
+images, fonts) stop the run before anything is made, and are listed under **Your book** with
+**Review all in Problems**. When it is done, **Done** closes the view; **Publish again** runs it
+again.
 
 The [privacy policy](https://gutterpress.dimm.city/privacy/) explains what Google Drive
 publishing can access.

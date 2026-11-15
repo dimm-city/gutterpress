@@ -432,28 +432,23 @@ try {
     log(`screenshot: ${file}`);
   };
 
-  // ── 7. Book: what each print check does ────────────────────────────────────
+  // ── 7. Book: targets are chosen in Publish, not here (ADR 0012) ───────────
   await page.locator("#project-settings-tab-book").click();
-  const targetRows = await waitUntil(
+  const legends = await waitUntil(
     () =>
       page.evaluate(() => {
-        const set = [...document.querySelectorAll("#project-settings-panel fieldset")].find((f) => f.querySelector("legend")?.textContent.includes("Check the PDF against"));
-        const rows = set ? [...set.querySelectorAll("label.choice")].map((l) => [l.querySelector(".choice-label")?.textContent.trim(), l.querySelector(".choice-desc")?.textContent.trim() ?? null]) : [];
-        return rows.length ? rows : null;
+        if (!document.querySelector("#project-settings-panel #details-title")) return null;
+        return [...document.querySelectorAll("#project-settings-panel fieldset legend")].map((l) => l.textContent.trim());
       }),
     10_000,
-    "the Book tab's print checks",
+    "the Book tab",
   );
   check(
-    JSON.stringify(targetRows) ===
-      JSON.stringify([
-        ["DriveThruRPG (print)", "Checks the finished PDF against DriveThruRPG's print rules."],
-        ["itch.io (digital)", "Checks the finished PDF is well-formed with embedded fonts."],
-      ]),
-    "each print check says what it does, in the new-book wizard's words",
-    targetRows,
+    legends.includes("Page size") && !legends.some((l) => /check|target|publish/i.test(l)),
+    "the Book tab has the page size and no list of targets: they are chosen in Publish",
+    legends,
   );
-  await shot("book-tab-targets");
+  await shot("book-tab");
 
   // ── 8. Look: author, a color as a reference, an editable copy, the sample ──
   await page.locator("#project-settings-tab-look").click();

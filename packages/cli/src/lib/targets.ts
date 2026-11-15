@@ -3,13 +3,18 @@ import { DTRPG_PRESET, type VendorPreset } from "./presets";
 import { UsageError } from "./cli-args";
 
 /**
- * Publish targets — WHERE THE BOOK IS PUBLISHED (ADR 0008).
+ * Publish targets — WHERE THE BOOK IS PUBLISHED (ADR 0008, ADR 0012).
  *
- * A target is a named validation-policy overlay: the requirements a
- * destination (DriveThruRPG, itch.io, …) places on the built PDF. Targets
- * never change how the book renders — they change what the validator
- * demands of the output — so one source can be validated against several
- * destinations (`targets: [dtrpg, itch]` in the manifest).
+ * A target is a place the book goes: DriveThruRPG print, itch.io, a Drive
+ * folder, a folder on this computer. This registry says what each one IS:
+ * the FILE it receives (fixed, or a pick the person makes) and the RULES that
+ * file is held to (a validation-policy overlay; none for a target that
+ * leaves the file to the book's own rules). How a file is delivered is the
+ * target's publish provider (`publish/providers/`), which takes its label and
+ * file from here. Targets never change how the book is laid out — only which
+ * file is made and what the validator demands of it — so one source can go
+ * to several places (`publish: { drivethrurpg-print:, itch: }` in the
+ * manifest).
  *
  * A target's overlay is DATA merged between the preset and the manifest,
  * giving one precedence chain everywhere: cli > manifest > target > preset.
@@ -32,11 +37,27 @@ export type TargetOverlay = {
   };
 };
 
+/** A file a book can be made into: a PDF, a print-ready PDF/X, or the website. */
+export type TargetFileFormat = "pdf" | "pdfx" | "html";
+
 export interface PublishTarget {
   id: string;
   /** Display name for reports and pickers. */
   label: string;
-  /** Policy defaults merged between the preset and the manifest. */
+  /**
+   * The file this target receives. Fixed when {@link formats} is absent
+   * (DriveThruRPG print is PDF/X); otherwise the pick made when none is saved.
+   */
+  format: TargetFileFormat;
+  /**
+   * Present when the target does not define its file: the formats the person
+   * picks from. The pick is saved as `publish.<id>.format` and reused.
+   */
+  formats?: readonly TargetFileFormat[];
+  /**
+   * Policy defaults merged between the preset and the manifest. Empty for a
+   * target with no rules of its own: its file is checked against the book's.
+   */
   overlay: TargetOverlay;
   /**
    * Check ids that must actually RUN for this target: when tool
@@ -65,9 +86,11 @@ export interface PublishTarget {
  * print-ready with zero further configuration), so there is exactly one
  * place the numbers live.
  */
-const DTRPG_TARGET: PublishTarget = {
-  id: "dtrpg",
-  label: "DriveThruRPG",
+const DTRPG_PRINT_TARGET: PublishTarget = {
+  id: "drivethrurpg-print",
+  label: "DriveThruRPG (print)",
+  // The whole point of the target: print-on-demand takes PDF/X, nothing else.
+  format: "pdfx",
   overlay: {
     pdfx: { flavor: DTRPG_PRESET.pdfx.flavor },
     ink: {
@@ -106,13 +129,12 @@ const DTRPG_TARGET: PublishTarget = {
 };
 
 /**
- * itch.io — a DIGITAL release. Print-only constraints (PDF/X, press ink
- * limits, bleed, CMYK-only art) do not apply; a well-formed PDF with
- * embedded fonts does.
+ * A DIGITAL release. Print-only constraints (PDF/X, press ink limits, bleed,
+ * CMYK-only art) do not apply; a well-formed PDF with embedded fonts does.
+ * Shared by every target that sells or hosts a PDF to read on screen.
  */
-const ITCH_TARGET: PublishTarget = {
-  id: "itch",
-  label: "itch.io",
+const DIGITAL_RULES: Pick<PublishTarget, "format" | "overlay" | "requiredChecks" | "requiredTools"> = {
+  format: "pdf",
   overlay: {
     checks: {
       "pdf.structure.qpdf": "error",
@@ -143,17 +165,69 @@ const ITCH_TARGET: PublishTarget = {
   requiredTools: [],
 };
 
+/** A target that defines neither a file nor rules: the person picks the file,
+ *  and it is checked against the book's own rules. */
+const openTarget = (
+  id: string,
+  label: string,
+  formats: readonly TargetFileFormat[],
+): PublishTarget => ({ id, label, format: formats[0]!, formats, overlay: {}, requiredChecks: [], requiredTools: [] });
+
+/** Every place a book can go, in the order pickers offer them. */
 export const TARGETS: Record<string, PublishTarget> = {
-  dtrpg: DTRPG_TARGET,
-  itch: ITCH_TARGET,
+  local: openTarget("local", "A folder on this computer", ["pdf", "pdfx", "html"]),
+  itch: { id: "itch", label: "itch.io", ...DIGITAL_RULES },
+  "drivethrurpg-print": DTRPG_PRINT_TARGET,
+  "drivethrurpg-digital": { id: "drivethrurpg-digital", label: "DriveThruRPG (digital)", ...DIGITAL_RULES },
+  kdp: openTarget("kdp", "Amazon KDP", ["pdf", "pdfx"]),
+  // The one target that takes only the website: nothing to pick.
+  "azure-swa": {
+    id: "azure-swa",
+    label: "Azure Static Web Apps",
+    format: "html",
+    overlay: {},
+    requiredChecks: [],
+    requiredTools: [],
+  },
+  shopify: openTarget("shopify", "Shopify", ["pdf", "pdfx"]),
+  gdrive: openTarget("gdrive", "Google Drive", ["pdf", "pdfx", "html"]),
 };
+
+/**
+ * Names older books and scripts use. DriveThruRPG had two: `dtrpg` in
+ * `targets:` (what to check against) and `drivethrurpg` in `publish:` (where
+ * to send). Both meant print.
+ */
+const TARGET_ALIASES: Record<string, string> = {
+  dtrpg: "drivethrurpg-print",
+  drivethrurpg: "drivethrurpg-print",
+};
+
+/** The registry's name for a target id, old name or new. Unknown ids come back unchanged. */
+export function canonicalTargetId(id: string): string {
+  return TARGET_ALIASES[id] ?? id;
+}
+
+/** True when the target holds its file to rules of its own (vs the book's). */
+export function hasOwnRules(target: PublishTarget): boolean {
+  return target.requiredChecks.length > 0 || Object.keys(target.overlay).length > 0;
+}
+
+/**
+ * The file a target receives, given the pick saved for it (`publish.<id>.format`).
+ * A target that defines its file ignores the pick; one that offers a choice
+ * takes it when it is on offer, else its first format.
+ */
+export function targetFormat(target: PublishTarget, saved: unknown): TargetFileFormat {
+  return target.formats?.includes(saved as TargetFileFormat) ? (saved as TargetFileFormat) : target.format;
+}
 
 /** The registered target ids, in the order pickers should offer them. */
 export const TARGET_IDS = Object.keys(TARGETS);
 
-/** Look up a target id; unknown ids are a usage error naming the registry. */
+/** Look up a target id (old name or new); unknown ids are a usage error naming the registry. */
 export function publishTargetFor(id: string): PublishTarget {
-  const target = TARGETS[id];
+  const target = TARGETS[canonicalTargetId(id)];
   if (!target) {
     throw new UsageError(
       `Unknown publish target "${id}". Known targets: ${TARGET_IDS.join(", ")}.`
@@ -174,14 +248,80 @@ export function resolveTargets(
   const ids = requested ?? fallback;
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const id of ids) {
-    publishTargetFor(id);
+  for (const given of ids) {
+    const id = publishTargetFor(given).id;
     if (!seen.has(id)) {
       seen.add(id);
       out.push(id);
     }
   }
   return out;
+}
+
+/**
+ * Of a book's targets, the ones that hold their file to rules of their own,
+ * in order. The rest (a Drive folder, a local folder, an extension's target)
+ * add none: their file is checked against the book's own rules.
+ */
+export function ruleTargets(ids: readonly string[]): string[] {
+  return ids.filter((id) => {
+    const target = TARGETS[canonicalTargetId(id)];
+    return target !== undefined && hasOwnRules(target);
+  });
+}
+
+/** The parts of a manifest that say where the book goes. */
+interface PublishPlanSource {
+  targets?: unknown;
+  publish?: unknown;
+}
+
+const publishSections = (manifest: PublishPlanSource): Array<[string, unknown]> =>
+  manifest.publish && typeof manifest.publish === "object" && !Array.isArray(manifest.publish)
+    ? Object.entries(manifest.publish as Record<string, unknown>)
+    : [];
+
+const sectionEnabled = (section: unknown): unknown =>
+  section && typeof section === "object" ? (section as { enabled?: unknown }).enabled : undefined;
+
+/**
+ * True for a manifest written before ADR 0012: one with a top-level
+ * `targets:` list (what to check against) or a `publish.<id>.enabled` tick
+ * (where to send). Such a book keeps its old meaning until its targets are
+ * changed in the app.
+ */
+export function isOldPublishForm(manifest: PublishPlanSource): boolean {
+  return (
+    manifest.targets !== undefined ||
+    publishSections(manifest).some(([, section]) => sectionEnabled(section) !== undefined)
+  );
+}
+
+/**
+ * The targets a book names (ADR 0012), under their registry names.
+ *
+ * `publish:` is the list: a target is on because it is there. No `publish:`
+ * key means the preset's targets; an empty one means none. A name the
+ * registry does not know is an extension's target and is kept as written.
+ *
+ * An older book ({@link isOldPublishForm}) is read with its old meaning: its
+ * `targets:` list (else the preset's), plus the sections ticked `enabled`.
+ */
+export function bookTargets(manifest: PublishPlanSource, presetDefaults: readonly string[]): string[] {
+  const sections = publishSections(manifest);
+  let ids: string[];
+  if (isOldPublishForm(manifest)) {
+    const listed = Array.isArray(manifest.targets) ? (manifest.targets as string[]) : undefined;
+    ids = [
+      ...resolveTargets(listed, presetDefaults),
+      ...sections.filter(([, section]) => sectionEnabled(section) === true).map(([id]) => id),
+    ];
+  } else if (manifest.publish !== undefined) {
+    ids = sections.map(([id]) => id);
+  } else {
+    ids = [...presetDefaults];
+  }
+  return [...new Set(ids.map(canonicalTargetId))];
 }
 
 /**
@@ -203,6 +343,22 @@ export function overlayPreset(preset: VendorPreset, target: PublishTarget): Vend
     },
   };
 }
+
+/**
+ * The checks only a PDF/X file can pass: they measure what the conversion to
+ * print colours makes (its PDF/X structure, colour spaces and ink, flattened
+ * transparency, black text on the black plate). The publish run holds only the
+ * PDF/X to them, so a book's plain PDF is never held back for lacking what
+ * only its PDF/X has (ADR 0012 §5).
+ */
+export const PDFX_FILE_CHECKS = [
+  "pdf.print.pdfx-markers",
+  "pdf.print.pdfx-metadata",
+  "pdf.print.color-spaces",
+  "pdf.print.ink-coverage",
+  "pdf.print.transparency",
+  "pdf.print.black-text",
+] as const;
 
 /**
  * The strict-PDF fill-ins applied to EVERY post-build PDF validation

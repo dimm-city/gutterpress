@@ -242,37 +242,61 @@ plus the PDF from the second — the pdf build never overwrites `book.html`.
 
 ### `gutterpress publish`
 
-Push a built PDF/HTML artifact to a publishing platform (itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify, Google Drive) or copy it to a local folder (`local`, the desktop's default first destination), headlessly and CI-safely. Credentials live in a 0600 user-config store (never in the project); provider env vars override it for CI. Most providers connect with a pasted API key; Google Drive connects through your browser instead (`--connect` opens the sign-in page — nothing to paste).
+Make, check and send the book to its targets: the targets listed under `publish:` in
+`manifest.yaml`, or the ones you name. One run makes each file once (the PDF and the
+print-ready PDF/X come from one render), checks it against each target's own rules, and
+sends it. A target whose file breaks its rules is held, alone; the others still go. This
+is the same run the desktop app's Publish button starts. Accounts are saved in your own
+settings folder, shared with the app (never in the book); provider env vars override them
+for CI. Most targets connect with a pasted API key; Google Drive connects through your
+browser instead (`--connect gdrive` opens the sign-in page — nothing to paste).
 
 ```sh
-gutterpress publish [project] [options]
+gutterpress publish [targets...] [project] [options]
 
-  --provider <id>     local | itch | drivethrurpg | kdp | azure-swa | shopify | gdrive
-  --list               List providers and connection status
-  --connect            Store an API key for --provider (from --token, the provider's env var, or piped stdin) — or, for gdrive, open the browser to connect
-  --disconnect         Forget the stored key for --provider
-  --account <label>    Named-credential label for --connect/--disconnect (keep several accounts per provider); omit for the default
+  --provider <id>     local | itch | drivethrurpg-print | drivethrurpg-digital | kdp | azure-swa | shopify | gdrive
+  --list               List targets and connection status
+  --connect            Save an account for the named target (an API key from --token, its env var, or piped stdin) — or, for gdrive, open the browser to connect
+  --disconnect         Forget the saved account for the named target
+  --account <label>    Named account for --connect/--disconnect (keep several per target); omit for the default
   --token <key>        API key for --connect (prefer stdin/env var to keep it out of shell history)
-  --file <path>        Artifact to publish (PDF path, or HTML export dir). Default: the manifest's output location
-  --folder-id <id>     Google Drive: publish to this folder for this run only (the manifest is not changed)
-  --folder <name>      Google Drive: publish to the folder with this name in your own Drive, for this run only
+  --folder-id <id>     Google Drive: send to this folder for this run only (the manifest is not changed)
+  --folder <name>      Google Drive: send to the folder with this name in your own Drive, for this run only
   --manifest <path>    Path to manifest.yaml
-  --dry-run            Preflight only; don't contact the platform
-  --json               Machine-readable JSON output (CI)
-  --open               Open the result page / guided upload page in the browser
+  --dry-run            Make and check the files; send nothing
+  --skip-checks        Run no checks
+  --send-anyway        Send targets whose file failed their checks
+  --allow-shrink       Build anyway when content is wider than the page (the whole book scales down to fit)
+  --json               Machine-readable JSON output (CI); log lines go to stderr
+  --open               Open each result page / guided upload page in the browser
 ```
 
+A positional that is a folder (`.`, `./my-book`, an absolute path) is the book; the others
+are targets. `--provider <id>` names one target, as in earlier versions.
+
+Each target is sent the file it needs. `drivethrurpg-print` takes the print-ready PDF/X
+(`<slug>-pdfx.pdf`); `drivethrurpg-digital` and `itch` take the PDF; `azure-swa` takes the
+website. `local`, `gdrive`, `kdp` and `shopify` take the file named by `publish.<id>.format`
+in the manifest (`pdf`, the default, or `pdfx`; `local` and `gdrive` also take `html`). The
+older name `drivethrurpg` still works and means `drivethrurpg-print`.
+
+Exit codes: 0 every target was sent (or, with `--dry-run`, checked); 1 a target was held,
+not connected, or failed to send; 2 an unknown target or an unreadable manifest; 3 a tool
+needed to make the files is missing or failed.
+
 ```sh
-# List providers and connection status
+# List targets and connection status
 gutterpress publish --list
 
-# Store an API key for itch.io, then publish
-gutterpress publish --provider itch --connect
-gutterpress publish --provider itch ./my-book
+# Save an API key for itch.io, then publish everything the book lists
+gutterpress publish --connect itch
+gutterpress publish ./my-book
+
+# Only some targets, checked but not sent
+gutterpress publish itch gdrive --dry-run
 
 # Google Drive connects via your browser, not a pasted key
-gutterpress publish --provider gdrive --connect
-gutterpress publish --provider gdrive ./my-book
+gutterpress publish --connect gdrive
 ```
 
 **Publishing plugins (experimental — may change or be removed).** `--provider`
@@ -280,7 +304,7 @@ also takes the package name of a publishing plugin listed in the book's
 `extensions:`. `--list` shows those plugins after the built-ins with the status
 `experimental` (`experimental: true` in `--json`). A plugin whose downloaded
 copy is missing is downloaded first, as for `build` (a failed download exits 3
-with the reason); publishing to a built-in never loads plugins. See
+with the reason). See
 [User Guide: Chapter 8 — Publishing](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/08-publishing.md)
 for authors and
 [Chapter 5 — Plugins](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/05-plugins.md)

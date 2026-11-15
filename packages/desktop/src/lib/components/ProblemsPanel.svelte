@@ -332,6 +332,7 @@
     align-items: baseline;
     gap: 8px;
     width: 100%;
+    box-sizing: border-box;
     text-align: left;
     background: transparent;
     border: none;

@@ -22,17 +22,10 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 /** Reversible fake "encryption" — proves round-trip plumbing without an OS keyring. */
-let fakeSelectedStorageBackend = "gnome_libsecret";
-
-export function setFakeSelectedStorageBackend(backend: string): void {
-  fakeSelectedStorageBackend = backend;
-}
-
 export const fakeSafeStorage = {
   isEncryptionAvailable: () => true,
   encryptString: (s: string) => Buffer.from(s, "utf8"),
   decryptString: (b: Buffer) => Buffer.from(b).toString("utf8"),
-  getSelectedStorageBackend: () => fakeSelectedStorageBackend,
 };
 
 export interface ElectronMockOverrides {

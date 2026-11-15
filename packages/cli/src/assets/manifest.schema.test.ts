@@ -2,6 +2,7 @@ import { test, expect } from "bun:test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
+import { TARGETS, TARGET_IDS } from "../lib/targets.ts";
 
 // A10: every publish provider (itch, drivethrurpg, kdp, azure-swa, shopify)
 // has a "publish.<id>" entry in this hand-maintained JSON Schema so authors
@@ -18,7 +19,7 @@ import { parse as parseYaml } from "yaml";
 const SCHEMA_PATH = path.join(import.meta.dirname, "manifest.schema.json");
 
 interface JsonSchemaNode {
-  type?: string;
+  type?: string | string[];
   description?: string;
   minimum?: number;
   properties?: Record<string, JsonSchemaNode>;
@@ -29,6 +30,10 @@ interface JsonSchemaNode {
  * $ref/oneOf/anyOf here) — not a general JSON Schema implementation. */
 function validate(node: JsonSchemaNode, value: unknown, at: string): string[] {
   const errors: string[] = [];
+  if (Array.isArray(node.type)) {
+    if (value === null && node.type.includes("null")) return errors;
+    return validate({ ...node, type: node.type.find((t) => t !== "null") }, value, at);
+  }
   if (node.type === "object") {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
       errors.push(`${at}: expected object`);
@@ -51,22 +56,15 @@ function validate(node: JsonSchemaNode, value: unknown, at: string): string[] {
   return errors;
 }
 
-test("manifest.schema.json is valid JSON with a gdrive publish entry matching the other providers' style", async () => {
+test("manifest.schema.json is valid JSON with a gdrive publish entry", async () => {
   const raw = await readFile(SCHEMA_PATH, "utf8");
   const schema = JSON.parse(raw) as { properties: { publish: JsonSchemaNode } };
 
-  const publishProps = schema.properties.publish.properties!;
-  for (const id of ["local", "itch", "drivethrurpg", "kdp", "azure-swa", "shopify", "gdrive"]) {
-    expect(publishProps[id]).toBeDefined();
-    expect(publishProps[id]!.type).toBe("object");
-  }
-
-  const gdrive = publishProps.gdrive!;
+  const gdrive = schema.properties.publish.properties!.gdrive!;
   expect(gdrive.properties?.folder?.type).toBe("string");
   expect(gdrive.properties?.folderId?.type).toBe("string");
   expect(gdrive.properties?.credential?.type).toBe("string");
   expect(gdrive.properties?.format?.type).toBe("string");
-  expect(gdrive.properties?.format?.enum).toEqual(["pdf", "html"]);
 });
 
 test("a manifest.yaml with publish.gdrive.* fields validates cleanly against the updated schema", async () => {
@@ -136,4 +134,20 @@ test("page.safe is the text rule and page.artSafe the art rule, and each descrip
   expect(errors({ artSafe: 0 })).toEqual([]);
   expect(errors({ artSafe: "wide" })).toEqual(["page.artSafe: expected number"]);
   expect(errors({ artSafe: -1 })).toEqual(["page.artSafe: below 0"]);
+});
+
+test("every target the registry knows has a publish entry: a bare name and each file it offers validate", async () => {
+  const schema = JSON.parse(await readFile(SCHEMA_PATH, "utf8")) as { properties: { publish: JsonSchemaNode } };
+  const publish = schema.properties.publish;
+  for (const id of TARGET_IDS) expect(publish.properties?.[id], id).toBeDefined();
+
+  // A new book lists a target with nothing to set as just its name (ADR 0012).
+  const bare = parseYaml(`publish:\n${TARGET_IDS.map((id) => `  ${id}:`).join("\n")}\n`) as { publish: unknown };
+  expect(validate(publish, bare.publish, "publish")).toEqual([]);
+
+  for (const id of TARGET_IDS) {
+    for (const format of TARGETS[id]!.formats ?? []) {
+      expect(validate(publish, { [id]: { format } }, "publish")).toEqual([]);
+    }
+  }
 });

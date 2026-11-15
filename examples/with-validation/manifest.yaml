@@ -13,12 +13,12 @@ chapters:
 # How the book is designed: the DriveThruRPG print-on-demand preset.
 preset: dtrpg
 
-# Where it will be published: each target is a destination's validation
-# policy, so one source can be checked for several destinations in one run
-# (e.g. [dtrpg, itch] validates print AND digital). `--target` on the CLI
-# overrides this list for a single run.
-targets:
-  - dtrpg
+# Where it will be published: each target gets its own file (PDF/X for
+# DriveThruRPG print) and is checked against its own rules, so one source can
+# be checked for several places in one run (add `itch:` to check the digital
+# PDF too). `gutterpress publish --dry-run` makes and checks them all.
+publish:
+  drivethrurpg-print:
 
 # Page validation bounds (DTRPG standard letter-with-bleed). These match the
 # preset default — kept explicit here for demonstration; your own values

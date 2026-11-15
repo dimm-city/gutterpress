@@ -70,3 +70,59 @@ testIf(
   },
   120_000
 );
+
+testIf(
+  "withPlainPdf: one Chromium render makes both the plain PDF and the PDF/X, side by side in dist",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-pdfx-both-"));
+    dirs.push(dir);
+    await writeFile(join(dir, "manifest.yaml"), "title: Both Files\nauthors: [F]\npreset: dtrpg\n", "utf8");
+    await writeFile(join(dir, "book.md"), "# Both\n\nOne page of text.\n", "utf8");
+
+    // Count the renders: every PDF Chromium writes is one printToPDF.
+    const { launchChromium } = await import("../engine/shared/cdp.ts");
+    let renders = 0;
+    const engineBrowser = async () => {
+      const browser = await launchChromium();
+      const newPage = browser.newPage.bind(browser);
+      browser.newPage = async () => {
+        const page = await newPage();
+        const print = page.printToPDF.bind(page);
+        page.printToPDF = async (o) => {
+          renders++;
+          return print(o);
+        };
+        return page;
+      };
+      return browser;
+    };
+    const steps: string[] = [];
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    let result;
+    try {
+      result = await runBuild({
+        inputDir: dir,
+        format: "pdfx",
+        withPlainPdf: true,
+        skipLint: true,
+        skipPreValidate: true,
+        skipPostValidate: true,
+        engineBrowser,
+        onStep: (s) => steps.push(s),
+        rawArgs: {},
+      });
+    } finally {
+      warn.mockRestore();
+    }
+    expect(renders).toBe(1);
+    expect(steps).toEqual(["converting"]);
+    expect(result.pdfPath).toBe(join(dir, "dist", "both-files", "both-files-pdfx.pdf"));
+    expect(result.plainPdfPath).toBe(join(dir, "dist", "both-files", "both-files-pdf.pdf"));
+    const plain = await PDFDocument.load(await readFile(result.plainPdfPath!), { updateMetadata: false });
+    const pdfx = await PDFDocument.load(await readFile(result.pdfPath!), { updateMetadata: false });
+    expect(plain.getProducer() ?? "").not.toMatch(/Ghostscript/);
+    expect(pdfx.getProducer()).toMatch(/Ghostscript/);
+    expect(plain.getPageCount()).toBe(pdfx.getPageCount());
+  },
+  180_000
+);

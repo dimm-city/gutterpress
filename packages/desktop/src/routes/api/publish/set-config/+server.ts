@@ -17,7 +17,7 @@ export const POST: RequestHandler = defineRoute<{
     providerId?: string;
     values?: Record<string, unknown>;
   }>({
-  // In `validate`, not `call` — see publish/run's note on handlePublishErrors.
+  // In `validate`, not `call` — see handlePublishErrors.
   validate: async (raw) => {
     const body = raw as { projectDir?: unknown; providerId?: unknown; values?: unknown };
     return {

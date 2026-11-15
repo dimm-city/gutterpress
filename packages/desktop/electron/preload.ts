@@ -14,7 +14,10 @@ import type {
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
   MarkdownFileLaunchEvent,
+  PublishRunArgs,
 } from "../src/lib/platform/shared-types";
+import type { PublishBookResult, PublishProgress } from "gutterpress";
+import type { IpcResult } from "../src/lib/platform/ipc-result";
 
 /**
  * Bridge exposed to the SvelteKit renderer as window.electron.
@@ -167,13 +170,22 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("api:stopPreview"),
   cancelExport: (exportId: string): Promise<{ canceled: boolean }> =>
     ipcRenderer.invoke("api:cancelExport", exportId),
-  build: (args: RawBuildArgs): Promise<BuildResult> =>
+  // An IpcResult, not a rejection: the adapter turns a failure back into an
+  // Error with its code (custom Error properties do not cross this bridge).
+  build: (args: RawBuildArgs): Promise<IpcResult<BuildResult>> =>
     ipcRenderer.invoke("api:build", args),
 
   // Live PDF-build progress (main → renderer). Returns an unsubscribe fn.
   onBuildProgress: (
     cb: (data: ExportProgressEvent) => void
   ): (() => void) => forwardPush("build:progress", cb),
+
+  // The one publish run (ADR 0012): an IpcResult, like build.
+  publish: (args: PublishRunArgs): Promise<IpcResult<PublishBookResult>> =>
+    ipcRenderer.invoke("api:publish", args),
+  cancelPublish: (): Promise<{ canceled: boolean }> => ipcRenderer.invoke("api:cancelPublish"),
+  onPublishProgress: (cb: (data: PublishProgress) => void): (() => void) =>
+    forwardPush("publish:progress", cb),
 
   onUrlPreviewBlocked: (
     cb: (data: UrlPreviewBlockedEvent) => void

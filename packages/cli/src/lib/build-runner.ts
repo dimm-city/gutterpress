@@ -90,6 +90,14 @@ export interface BuildRunnerOptions {
    * obtains and closes it when the build ends.
    */
   engineBrowser?: () => Promise<EngineBrowser>;
+  /**
+   * For a `pdfx` build into the book's own `dist/<slug>/`: also deliver the
+   * plain PDF (`<slug>-pdf.pdf`), copied from the same Chromium render before
+   * any PDF/X step changes it. One render makes both files (ADR 0012 §5).
+   */
+  withPlainPdf?: boolean;
+  /** Told when the build reaches a long step it can name (the PDF/X conversion). */
+  onStep?: (step: "converting") => void;
 }
 
 export interface BuildRunnerResult {
@@ -104,6 +112,8 @@ export interface BuildRunnerResult {
    */
   htmlPath: string | null;
   pdfPath: string | null;
+  /** The plain PDF a `withPlainPdf` pdfx build delivered beside the PDF/X. */
+  plainPdfPath?: string;
   /** As {@link htmlPath}: `null` when nothing but the artifact was published. */
   fingerprintPath: string | null;
   /**
@@ -271,11 +281,12 @@ export async function resolveBuildContext(
     { explicit: opts.manifestPath !== undefined }
   );
   if (manifestPath === null) {
-    throw new UsageError(
+    const err = new UsageError(
       `No book manifest found in ${inputDir}. Looked for ${MANIFEST_FILENAMES.join(" or ")}. ` +
         "Run from your book folder or pass that folder with `gutterpress build <book-dir>`. " +
         "For a custom manifest filename, pass `--manifest <path>`."
     );
+    throw Object.assign(err, { code: "NO_MANIFEST" });
   }
 
   const pdfxConfigOverride =
@@ -441,7 +452,7 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
       }
     }
     if (!result.ok) {
-      throw new BuildError("Pre-build validation failed", 1);
+      throw new BuildError("Pre-build validation failed", 1, { code: "SOURCE_PROBLEMS" });
     }
   }
 }
@@ -695,8 +706,10 @@ async function publishBuild(ctx: BuildContext, artifactName: string | null): Pro
 
   // Our own dist/<slug>/: replaced wholesale, which is what makes stale files
   // vanish with no bookkeeping. Other formats' PDFs are carried across first so
-  // building pdf and html accumulates both.
-  for (const name of await listPdfs(target.dir)) {
+  // building pdf and html accumulates both, and so are the upload packages a
+  // publish staged (`publish/<target>/`), which a later build must not delete.
+  const carried = [...(await listPdfs(target.dir)), ...(fs.existsSync(path.join(target.dir, "publish")) ? ["publish"] : [])];
+  for (const name of carried) {
     if (!fs.existsSync(path.join(workDir, name))) {
       await fsp.rename(path.join(target.dir, name), path.join(workDir, name));
     }
@@ -852,6 +865,18 @@ class PdfOutput implements OutputStrategy {
         );
       }
 
+      // The plain PDF from this same render, before any PDF/X step rewrites
+      // the raw file.
+      let plainPdfPath: string | undefined;
+      if (pdfxMode && opts.withPlainPdf) {
+        if (ctx.target.kind !== "project") {
+          throw new BuildError("withPlainPdf builds into the book's own output folder only", 1);
+        }
+        const plainName = artifactName(config.title, "pdf");
+        await fsp.copyFile(rawPdf, path.join(workDir, plainName));
+        plainPdfPath = path.join(outDir, plainName);
+      }
+
       let effectiveIccPath: string | null = null;
       let shouldStripAnnotations: boolean | null = null;
 
@@ -968,6 +993,7 @@ class PdfOutput implements OutputStrategy {
         }
 
         log.info(`Converting to CMYK PDF/X (${pdfxMode})`);
+        opts.onStep?.("converting");
         await convertToPdfxCmyk(rawPdf, path.resolve(pdfFile), {
           iccPath: effectiveIccPath,
           pdfx: pdfxMode,
@@ -995,7 +1021,7 @@ class PdfOutput implements OutputStrategy {
         }
       }
 
-      return await finalizeBuild(
+      const result = await finalizeBuild(
         ctx,
         {
           command: "build",
@@ -1018,6 +1044,7 @@ class PdfOutput implements OutputStrategy {
         pdfName,
         engineDiagnostics
       );
+      return plainPdfPath ? { ...result, plainPdfPath } : result;
     } finally {
       await fsp.rm(stage, { recursive: true, force: true });
     }

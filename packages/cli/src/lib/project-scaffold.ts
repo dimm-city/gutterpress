@@ -31,9 +31,10 @@ import path from "node:path";
 import { getAssetPath } from "./embedded-assets.ts";
 import { MANIFEST_FILENAMES } from "./manifest.ts";
 import { loadManifestDoc, writeManifestDoc } from "./manifest-doc.ts";
+import { writeBookTargets } from "./publish/manifest-publish.ts";
 import { PRESET_IDS, PRESETS, type PresetId } from "./presets.ts";
 import { deletePageBounds, isPositivePoints, writePageBounds, type CustomPageOptions } from "./page-size.ts";
-import { TARGETS, TARGET_IDS } from "./targets.ts";
+import { TARGETS, TARGET_IDS, canonicalTargetId } from "./targets.ts";
 import { ensureProjectGitignore } from "./project-gitignore.ts";
 import { slugify } from "./slug.ts";
 
@@ -104,13 +105,10 @@ export interface CreateProjectOptions {
    */
   preset?: PresetId;
   /**
-   * Publish-target ids written into the generated manifest as an explicit
-   * `targets:` list (ADR 0008). Defaults to the chosen preset's
-   * `defaultTargets`; pass `[]` to opt out of every destination policy
-   * (e.g. when the tools a destination's checks need aren't installed).
-   * Like `preset`, the creation flow always records the choice explicitly —
-   * the preset-derived fallback exists for hand-written manifests only.
-   * Ignored with `templateDir` (the saved template's manifest is kept).
+   * Publish-target ids written into the generated manifest as its explicit
+   * `publish:` list (ADR 0012), with `preset`. Left out, a template that
+   * names its own targets keeps them, and one that names none gets the
+   * preset's `defaultTargets`; `[]` means none.
    */
   targets?: string[];
   /**
@@ -247,7 +245,8 @@ function resolveScaffoldTargets(
   requested: string[] | undefined,
   preset: PresetId,
 ): string[] {
-  const ids = requested ?? [...PRESETS[preset].defaultTargets];
+  // Recorded under the registry's own names (an older name is accepted).
+  const ids = (requested ?? [...PRESETS[preset].defaultTargets]).map(canonicalTargetId);
   const unknown = ids.filter((id) => !TARGETS[id]);
   if (unknown.length > 0) {
     throw new CreateProjectErrorImpl(
@@ -400,14 +399,19 @@ export async function scaffoldProject(
     await fillTemplateFile(manifestPath, substitutions);
     if (preset || options.customPage) {
       // Overwrite the template's `preset:` with the author's choice, via the
-      // comment-preserving YAML document helpers. The target list is written
-      // with it — an explicit `targets: []` is the visible, editable record
-      // of "no destination policies", not an accident of omission. A trim
-      // the author gave is written whether or not a preset was.
+      // comment-preserving YAML document helpers. The book's targets are
+      // written with it as its `publish:` list (ADR 0012) — an explicit
+      // `publish: {}` is the visible, editable record of "no targets", not an
+      // accident of omission. A trim the author gave is written whether or
+      // not a preset was.
       const { doc, file } = await loadManifestDoc(projectDir);
       if (preset) {
         doc.set("preset", preset);
-        doc.set("targets", doc.createNode(targets ?? []));
+        // A template that names its own targets keeps them unless the caller
+        // chose others; one that names none gets the preset's.
+        if (options.targets !== undefined || !(doc.has("publish") || doc.has("targets"))) {
+          writeBookTargets(doc, targets ?? []);
+        }
         // A template's own `page:` size must not shadow the chosen preset's.
         if (preset !== "custom") deletePageBounds(doc);
       }
@@ -556,7 +560,7 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
     // `output:` block: output location is a convention (lib/output-paths.ts —
     // `dist/<title-slug>/`), and resolveConfig THROWS a UsageError if a
     // manifest still carries one.
-    // Explicit `preset:` and `targets:` (ADR 0008): adoption is a one-click
+    // Explicit `preset:` and targets (ADR 0008, 0012): adoption is a one-click
     // rescue affordance, so it takes the product default — but written out,
     // visible and editable, never implicit.
     const filesYaml = mdFiles.map((f) => `  - "${escapeYamlScalar(f)}"`).join("\n");
@@ -564,7 +568,7 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
       `title: "${escapeYamlScalar(title)}"\n` +
       `authors:\n  - "${escapeYamlScalar(author)}"\n` +
       `preset: dtrpg\n` +
-      `targets:\n  - dtrpg\n` +
+      `publish:\n  drivethrurpg-print:\n` +
       `chapters:\n${filesYaml}\n` +
       `styles:\n  - styles/book.css\n`;
     await writeFile(path.join(dir, MANIFEST_FILENAMES[0]), manifest, "utf8");

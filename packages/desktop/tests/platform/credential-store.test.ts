@@ -1,243 +1,84 @@
 /**
- * Unit tests for electron/credential-store.ts.
- *
- * credential-store.ts talks to `node:fs/promises` directly (not
- * dependency-injected like prefs-store.ts/settings-store.ts), so these tests
- * use a REAL temp directory as `app.getPath("userData")` and drive the store
- * through its public `electronTokenStore` API — verifying end-to-end that:
- *   - a credential set/get round-trips (and the token never appears in
- *     plaintext on disk — safeStorage "encrypts" it),
- *   - writes are atomic: no `.tmp` file is left behind after a successful
- *     write,
- *   - a corrupt `credentials.json` is preserved as `<path>.corrupt-<ts>`
- *     instead of silently resetting to empty (which would silently
- *     disconnect every stored Git/GitHub credential).
- *
- * `electron`'s real package throws outside an actual Electron process (see
- * tests/updater/electron-updater.test.ts's note on the same hazard), so it is
- * mocked before the dynamic import below — with the SAME superset of keys as
- * every other electron-mocking suite in this run (see the NOTE there).
+ * The app's account and publishing-choice stores are the lib's, shared with
+ * the terminal (ADR 0012): what older versions kept in the app's own folder is
+ * moved there before anything is read, and a failed move never stops the
+ * stores from working.
  */
-import { test, expect, mock } from "bun:test";
-import {
-  electronMock,
-  setFakeSelectedStorageBackend,
-} from "../support/electron-mock";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { afterEach, beforeEach, expect, test } from "bun:test";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createUserStores } from "../../electron/credential-store";
 
-let currentUserDataDir = "";
+let root: string;
+let appDir: string;
+let savedConfigDir: string | undefined;
+const logged: string[] = [];
 
-// NOTE: `bun test --isolate` does not fully sandbox `mock.module("electron", …)`
-// registrations between files that all touch the "electron" specifier — other
-// electron-mocking suites in this run (tests/updater/electron-updater.test.ts,
-// tests/platform/pdf-export.test.ts, tests/platform/sveltekit-host.test.ts)
-// can end up "winning" the shared registration for this specifier. So every
-// such suite mocks the SAME superset of keys every electron/*.ts production
-// module statically imports from "electron" (app.getPath, protocol,
-// BrowserWindow, safeStorage) — whichever file's registration is actually
-// live, every other suite's named imports still resolve. Keep this superset
-// in sync with any new `from "electron"` import added to electron/*.ts.
-//
-// `app.getPath` reads a mutable module-level variable (`currentUserDataDir`)
-// so each test can point it at its own fresh temp dir even though the mock
-// factory itself only runs once.
-mock.module("electron", () =>
-  // getPath reads a mutable module-level var so each test points it at its own
-  // fresh temp dir even though the factory runs once. safeStorage's reversible
-  // fake "encryption" (shared) proves the store's read/write/round-trip plumbing
-  // without depending on a real OS keyring.
-  electronMock({ app: { getPath: () => currentUserDataDir } }),
-);
-
-const {
-  electronTokenStore,
-  isLinuxBasicTextStorage,
-  markLinuxBasicTextStorageNoticeShown,
-  shouldShowLinuxBasicTextStorageNotice,
-} = await import("../../electron/credential-store");
-
-async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
-  const dir = await mkdtemp(path.join(tmpdir(), "Gutterpress-credstore-"));
-  currentUserDataDir = dir;
-  try {
-    await fn(dir);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-}
-
-const STORE_FILE = "credentials.json";
-
-test("set() then get() round-trips a credential", async () => {
-  await withTempDir(async () => {
-    await electronTokenStore.set("github.com", {
-      host: "github.com",
-      kind: "token",
-      token: "secret-abc-123",
-      username: "octocat",
-      createdAt: 1000,
-    });
-
-    const got = await electronTokenStore.get("github.com");
-    expect(got?.token).toBe("secret-abc-123");
-    expect(got?.username).toBe("octocat");
+const decrypt = (cipher: string) => Buffer.from(cipher, "base64").toString().replace(/^enc:/, "");
+const stores = () =>
+  createUserStores({
+    loadLib: () => import("gutterpress"),
+    whenReady: async () => {},
+    appDir: () => appDir,
+    decrypt,
+    log: { event: (l: string) => logged.push(l), error: (l: string) => logged.push(l) },
   });
+
+beforeEach(async () => {
+  root = await mkdtemp(path.join(tmpdir(), "gutterpress-user-stores-"));
+  appDir = path.join(root, "app");
+  await mkdir(appDir);
+  savedConfigDir = process.env.GUTTERPRESS_CONFIG_DIR;
+  process.env.GUTTERPRESS_CONFIG_DIR = path.join(root, "shared");
+  logged.length = 0;
 });
 
-test("the token never appears in plaintext on disk", async () => {
-  await withTempDir(async (dir) => {
-    await electronTokenStore.set("github.com", {
-      host: "github.com",
-      kind: "token",
-      token: "super-secret-value",
-      createdAt: 1000,
-    });
-    const raw = await readFile(path.join(dir, STORE_FILE), "utf8");
-    expect(raw).not.toContain("super-secret-value");
-  });
+afterEach(async () => {
+  if (savedConfigDir === undefined) delete process.env.GUTTERPRESS_CONFIG_DIR;
+  else process.env.GUTTERPRESS_CONFIG_DIR = savedConfigDir;
+  await rm(root, { recursive: true, force: true });
 });
 
-test("host is normalized (case/whitespace-insensitive) across set/get/delete", async () => {
-  await withTempDir(async () => {
-    await electronTokenStore.set(" GitHub.com ", {
-      host: "GitHub.com",
-      kind: "token",
-      token: "t1",
-      createdAt: 1,
-    });
-    expect((await electronTokenStore.get("github.com"))?.token).toBe("t1");
-    await electronTokenStore.delete("GITHUB.COM");
-    expect(await electronTokenStore.get("github.com")).toBeNull();
-  });
+test("an account an older version saved is moved before the first read", async () => {
+  await writeFile(
+    path.join(appDir, "credentials.json"),
+    JSON.stringify({
+      version: 1,
+      credentials: {
+        "github.com": {
+          host: "github.com",
+          kind: "github-oauth",
+          tokenCipher: Buffer.from("enc:gho_app").toString("base64"),
+          username: "ada",
+          createdAt: 1,
+        },
+      },
+    }),
+  );
+  const { tokenStore } = stores();
+  expect((await tokenStore.get("github.com"))?.token).toBe("gho_app");
+  expect(await tokenStore.status("github.com")).toEqual({ connected: true, username: "ada" });
+  expect(await readdir(path.join(root, "shared"))).toContain("credentials.json");
+  expect(await readdir(appDir)).toEqual(["credentials.json.moved"]);
+  expect(logged.join("\n")).toContain("1 account(s)");
 });
 
-test("listRedacted never includes the token value or ciphertext", async () => {
-  await withTempDir(async () => {
-    await electronTokenStore.set("example.com", {
-      host: "example.com",
-      kind: "token",
-      token: "should-not-leak",
-      label: "My server",
-      createdAt: 5,
-    });
-    const redacted = await electronTokenStore.listRedacted();
-    const json = JSON.stringify(redacted);
-    expect(json).not.toContain("should-not-leak");
-    expect(redacted).toEqual([
-      { host: "example.com", kind: "token", label: "My server", createdAt: 5 },
-    ]);
-  });
+test("a move that fails is logged, and the stores still work", async () => {
+  await mkdir(path.join(appDir, "credentials.json")); // unreadable as a file
+  const { tokenStore, selections } = stores();
+  await tokenStore.set("itch.io", { host: "itch.io", kind: "token", token: "k", createdAt: 1 });
+  expect((await tokenStore.get("itch.io"))?.token).toBe("k");
+  await (await selections()).setGlobal("itch", "Studio");
+  expect(await (await selections()).resolve("itch")).toBe("Studio");
+  expect(logged.join("\n")).toContain("could not move");
 });
 
-test("listRedacted lists a named publishing account under its REAL host, its name in `username` (the Accounts page relies on it)", async () => {
-  await withTempDir(async () => {
-    // How connectPublishProvider stores them: the compound key is the store's, the credential keeps the real host.
-    await electronTokenStore.set("itch.io", { host: "itch.io", kind: "token", token: "t1", createdAt: 1 });
-    await electronTokenStore.set("itch.io#Studio", { host: "itch.io", kind: "token", token: "t2", username: "Studio", createdAt: 2 });
-    expect((await electronTokenStore.listRedacted()).map((e) => [e.host, e.username])).toEqual([
-      ["itch.io", undefined],
-      ["itch.io", "Studio"],
-    ]);
-  });
-});
-
-// ── Atomic write (#34) ──────────────────────────────────────────────────────
-
-test("writeStore is atomic: no <file>.tmp is left behind after a successful set()", async () => {
-  await withTempDir(async (dir) => {
-    await electronTokenStore.set("github.com", {
-      host: "github.com",
-      kind: "token",
-      token: "t",
-      createdAt: 1,
-    });
-    const entries = await readdir(dir);
-    expect(entries).toContain(STORE_FILE);
-    expect(entries.some((f) => f.startsWith(`${STORE_FILE}.tmp`))).toBe(false);
-  });
-});
-
-// ── Corrupt-file preservation (#34) ─────────────────────────────────────────
-
-test("a corrupt credentials.json is preserved as <path>.corrupt-<ts>, not silently discarded", async () => {
-  await withTempDir(async (dir) => {
-    const storePath = path.join(dir, STORE_FILE);
-    await writeFile(storePath, "{ not valid json ]", "utf8");
-
-    // Reading through the store must not throw, and must not lose the
-    // original corrupt content — it gets preserved for inspection instead of
-    // silently disconnecting every stored credential.
-    const list = await electronTokenStore.list();
-    expect(list).toEqual([]);
-
-    const entries = await readdir(dir);
-    const corrupt = entries.find((f) => f.startsWith(`${STORE_FILE}.corrupt-`));
-    expect(corrupt).toBeDefined();
-    const preserved = await readFile(path.join(dir, corrupt!), "utf8");
-    expect(preserved).toBe("{ not valid json ]");
-  });
-});
-
-test("after a corrupt read, a subsequent set() recreates a valid store (recovery, not data loss on top of data loss)", async () => {
-  await withTempDir(async (dir) => {
-    const storePath = path.join(dir, STORE_FILE);
-    await writeFile(storePath, "not even an object", "utf8");
-
-    await electronTokenStore.set("github.com", {
-      host: "github.com",
-      kind: "token",
-      token: "recovered-token",
-      createdAt: 2,
-    });
-
-    const got = await electronTokenStore.get("github.com");
-    expect(got?.token).toBe("recovered-token");
-
-    const entries = await readdir(dir);
-    expect(entries.filter((f) => f.startsWith(`${STORE_FILE}.corrupt-`))).toHaveLength(1);
-  });
-});
-
-test("a non-ENOENT credential-store read error is propagated instead of treated as empty", async () => {
-  await withTempDir(async (dir) => {
-    // A directory at the file path produces EISDIR on the supported Linux test
-    // host and models an existing store that cannot be read as a file.
-    await mkdir(path.join(dir, STORE_FILE));
-
-    await expect(electronTokenStore.list()).rejects.toMatchObject({ code: "EISDIR" });
-  });
-});
-
-test("basic_text is classified as weaker storage only on Linux", () => {
-  expect(isLinuxBasicTextStorage("linux", "basic_text")).toBe(true);
-  expect(isLinuxBasicTextStorage("linux", "gnome_libsecret")).toBe(false);
-  expect(isLinuxBasicTextStorage("darwin", "basic_text")).toBe(false);
-  expect(isLinuxBasicTextStorage("win32", "basic_text")).toBe(false);
-});
-
-test("the Linux basic_text notice is persisted only when explicitly marked after display", async () => {
-  if (process.platform !== "linux") return;
-  setFakeSelectedStorageBackend("basic_text");
-  try {
-    await withTempDir(async (dir) => {
-      expect(await shouldShowLinuxBasicTextStorageNotice()).toBe(true);
-      await expect(readFile(path.join(dir, STORE_FILE), "utf8")).rejects.toMatchObject({
-        code: "ENOENT",
-      });
-
-      await markLinuxBasicTextStorageNoticeShown();
-      expect(await shouldShowLinuxBasicTextStorageNotice()).toBe(false);
-
-      const raw = await readFile(path.join(dir, STORE_FILE), "utf8");
-      expect(JSON.parse(raw)).toEqual({
-        version: 1,
-        credentials: {},
-        notices: { linuxBasicTextStorageShown: true },
-      });
-    });
-  } finally {
-    setFakeSelectedStorageBackend("gnome_libsecret");
-  }
+test("a saved or removed account is announced by its key", async () => {
+  const user = stores();
+  const heard: string[] = [];
+  user.onCredentialChange((key) => heard.push(key));
+  await user.tokenStore.set("GitHub.com", { host: "github.com", kind: "token", token: "t", createdAt: 1 });
+  await user.tokenStore.delete("github.com");
+  expect(heard).toEqual(["github.com", "github.com"]);
 });

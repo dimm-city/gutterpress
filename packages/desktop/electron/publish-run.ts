@@ -1,0 +1,128 @@
+/**
+ * The app's side of the one publish run (ADR 0012 §5). The lib's `publishBook`
+ * does the work, the same run the terminal's `gutterpress publish` does; this
+ * gives it Electron's own Chromium, forwards its progress to the window, lets
+ * the person stop it, and lets it write outside the book only to a folder a
+ * native dialog just returned (the renderer can never name one). It names no
+ * target: a target's folder setting says it is one (`kind: "folder"`).
+ */
+import path from "node:path";
+import type {
+  EngineBrowser,
+  PublishBookResult,
+  PublishProgress,
+  PublishSelectionsStore,
+  TokenStore,
+} from "gutterpress";
+
+import type { PublishRunArgs } from "../src/lib/platform/shared-types";
+import { redactUrlCredentials } from "./server-bridge/friendly-errors";
+
+type LibModule = typeof import("gutterpress");
+
+export type { PublishRunArgs };
+
+export interface PublishRunnerDeps {
+  loadLib: () => Promise<LibModule>;
+  engineBrowser: () => Promise<EngineBrowser>;
+  tokenStore: TokenStore;
+  selections: () => Promise<PublishSelectionsStore>;
+  identity: () => Promise<{ authorName?: string; authorEmail?: string }>;
+  sendProgress: (progress: PublishProgress) => void;
+  isWithinProject: (absPath: string) => Promise<boolean>;
+  /** The native folder dialog, opened at `defaultPath`; null when closed. */
+  pickFolder: (defaultPath: string) => Promise<string | null>;
+  /** Lets "Show in folder" open a path outside the book. */
+  registerPickedPath: (absPath: string) => void;
+  log: { event: (line: string) => void; error: (line: string) => void };
+}
+
+const canceled = (): PublishBookResult => ({
+  ok: false,
+  failure: { code: "CANCELED", message: "" },
+  files: [],
+  targets: [],
+  sourceFindings: [],
+  diagnostics: [],
+});
+
+export class PublishRunner {
+  private active: { abort: AbortController; browsers: EngineBrowser[] } | null = null;
+
+  constructor(private readonly deps: PublishRunnerDeps) {}
+
+  async run(args: PublishRunArgs): Promise<PublishBookResult> {
+    if (this.active) throw new Error("The app is already publishing a book.");
+    if (!(await this.deps.isWithinProject(args.projectDir))) throw new Error("That book is not open in the app.");
+    const run = { abort: new AbortController(), browsers: [] as EngineBrowser[] };
+    this.active = run;
+    try {
+      const lib = await this.deps.loadLib();
+      const publishDeps = { tokenStore: this.deps.tokenStore, selections: await this.deps.selections() };
+
+      // A folder setting outside the book is written to only once the person
+      // confirms it in the folder dialog, for this run (the renderer can never
+      // name a path to write to).
+      let runSettings: Record<string, Record<string, string>> | undefined;
+      const settings = await lib.readPublishSettings(args.projectDir, publishDeps.selections);
+      for (const info of await lib.listBookPublishProviders({ projectDir: args.projectDir })) {
+        if (!args.targets.includes(info.id)) continue;
+        for (const field of info.configFields) {
+          const value = String(settings[info.id]?.[field.key] ?? "").trim();
+          if (field.kind !== "folder" || !value) continue;
+          const dir = path.resolve(args.projectDir, value);
+          if (await this.deps.isWithinProject(dir)) continue;
+          const picked = await this.deps.pickFolder(dir);
+          if (!picked) return canceled();
+          runSettings = { ...runSettings, [info.id]: { ...runSettings?.[info.id], [field.key]: picked } };
+          this.deps.registerPickedPath(picked);
+        }
+      }
+
+      this.deps.log.event(`[publish] ${args.targets.join(", ")} started`);
+      const result = await lib.publishBook(
+        {
+          projectDir: args.projectDir,
+          targets: args.targets,
+          ...(args.checkOnly ? { checkOnly: true } : {}),
+          ...(args.skipChecks ? { skipChecks: true } : {}),
+          ...(args.sendAnyway ? { sendAnyway: args.sendAnyway } : {}),
+          ...(args.allowShrink ? { allowShrink: true } : {}),
+          ...(runSettings ? { runSettings } : {}),
+          engineBrowser: async () => {
+            const browser = await this.deps.engineBrowser();
+            run.browsers.push(browser);
+            return browser;
+          },
+          onProgress: (p) => this.deps.sendProgress(p),
+          signal: run.abort.signal,
+        },
+        { ...publishDeps, identity: await this.deps.identity() },
+      );
+
+      for (const file of result.files) this.deps.registerPickedPath(file.path);
+      for (const t of result.targets) {
+        if (t.outcome?.kind === "guided") this.deps.registerPickedPath(t.outcome.packageDir);
+        const f = t.failure;
+        const why = f ? ` (${f.code}) ${f.message}${f.detail ? ` ${f.detail}` : ""}` : "";
+        (f ? this.deps.log.error : this.deps.log.event)(redactUrlCredentials(`[publish] ${t.id}: ${t.status}${why}`));
+      }
+      if (result.failure) {
+        const f = result.failure;
+        this.deps.log.error(redactUrlCredentials(`[publish] stopped (${f.code}) ${f.message}${f.detail ? ` ${f.detail}` : ""}`));
+      }
+      return result;
+    } finally {
+      this.active = null;
+    }
+  }
+
+  /** Stop the run: abort it and close the windows it renders in. */
+  cancel(): { canceled: boolean } {
+    const run = this.active;
+    if (!run) return { canceled: false };
+    run.abort.abort();
+    for (const browser of run.browsers) void browser.close();
+    return { canceled: true };
+  }
+}

@@ -20,7 +20,6 @@ const GITHUB_HOST = "github.com";
 export interface ServerAccount {
   host: string;
   username: string;
-  unreadable: boolean;
 }
 
 /** A saved key (or Google sign-in) for one publishing provider. */
@@ -32,7 +31,6 @@ export interface PublishAccount {
   account: string;
   /** What the row shows for the account. */
   label: string;
-  unreadable: boolean;
 }
 
 export interface AccountGroups {
@@ -68,10 +66,9 @@ export function groupAccounts(entries: HostConnectionInfo[], providers: PublishP
         provider,
         account,
         label: accountLabel(e),
-        unreadable: !!e.unreadable,
       });
     } else {
-      servers.push({ host: e.host, username: e.username ?? "", unreadable: !!e.unreadable });
+      servers.push({ host: e.host, username: e.username ?? "" });
     }
   }
   // A provider's accounts sit together, in the providers' order, the default first.
@@ -90,6 +87,8 @@ export interface KeyFormProvider {
   tokenUrl?: string | null;
   hint?: string | null;
   connectKind?: "token" | "oauth" | null;
+  /** The setting the key check needs with no book open (Shopify's store), as its field. */
+  checkField?: { key: string; label: string; placeholder?: string } | null;
 }
 
 /** What to tell the author above the form that replaces a saved key or sign-in (a saved key is never shown). */

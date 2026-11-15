@@ -8,6 +8,7 @@ import * as execMod from "./exec";
 import * as toolProbe from "./tool-probe";
 import { log } from "../utils/logger";
 import { getAssetPath } from "./embedded-assets";
+import { BuildError } from "./build-error";
 import {
   convertToPdfxCmyk,
   ghostscriptOlderThan,
@@ -159,6 +160,33 @@ test("convertToPdfxCmyk uses resolved Ghostscript and stages its definition file
     expect(existsSync(join(stagingDir, "pdfx-def.ps"))).toBe(false);
   } finally {
     await rm(outputDir, { recursive: true, force: true });
+    await rm(stagingDir, { recursive: true, force: true });
+  }
+});
+
+test("a write Ghostscript cannot finish is named a full disk, with the free space and the original output", async () => {
+  const stagingDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-full-"));
+  try {
+    const executable = join(stagingDir, "custom-gs");
+    await writeFile(executable, "");
+    process.env.GHOSTSCRIPT_PATH = executable;
+    spyOn(execMod, "spawnCapture").mockResolvedValue({
+      code: 1,
+      signal: null,
+      stdout: "Page 237\n   **** Error: Page drawing error occurred.\n",
+      stderr: "GPL Ghostscript 10.06.0: ERROR: ioerror (-12) on closing pdfwrite device.\n",
+    });
+    const failure = await convertToPdfxCmyk(join(stagingDir, "raw.pdf"), join(stagingDir, "out.pdf"), {
+      iccPath: join(stagingDir, "p.icc"),
+      pdfx: "x1a",
+      stagingDir,
+    }).then(() => null, (e: unknown) => e as BuildError);
+    expect(failure).toBeInstanceOf(BuildError);
+    expect(failure?.code).toBe("DISK_FULL");
+    expect(failure?.message).toMatch(/GB free in /);
+    expect(failure?.message).toContain("TMPDIR");
+    expect(failure?.message).toContain("ioerror (-12)");
+  } finally {
     await rm(stagingDir, { recursive: true, force: true });
   }
 });

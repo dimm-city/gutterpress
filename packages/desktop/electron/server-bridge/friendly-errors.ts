@@ -31,7 +31,7 @@ import { getHostServices } from "./host-services";
  * Logging must never throw, so
  * before registration (`bun test`) this stays console-only.
  */
-function logFailure(line: string): void {
+export function logFailure(line: string): void {
   console.error(line);
   try {
     getHostServices().app.logFailure?.(line);
@@ -149,6 +149,11 @@ const PUBLISH_FRIENDLY_ERROR =
  * Wrap a publish operation with the shared error-sanitization logic:
  * author-friendly lib messages pass through verbatim; anything else is logged
  * in full (with credentials redacted) and replaced with a terse safe message.
+ *
+ * Routes check their input in `validate`, not inside this wrapper: it maps any
+ * non-`Error` throwable to a generic message, and a SvelteKit `HttpError` is a
+ * plain object, so a 403/400 raised in here would reach the person as
+ * "Publishing could not be completed."
  */
 export async function handlePublishErrors<T>(
   channel: string,

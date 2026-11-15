@@ -85,9 +85,6 @@ export type {
   SyncOutcome,
   PublishProviderCard,
   PublishDestination,
-  PublishIssue,
-  PublishOutcomeInfo,
-  PublishRunResult,
   DesktopPrefs,
   LastFlushFailure,
   ProjectState,
@@ -121,7 +118,6 @@ import type {
   PublishProviderCard,
   PublishDestination,
   PublishDestinationStatus,
-  PublishRunResult,
   DesktopPrefs,
   LastFlushFailure,
   ProjectState,
@@ -186,11 +182,6 @@ import type {
   DoctorInstallResult,
 } from './platform/dtos';
 
-// Publish-preflight row DTO (#105). Pure `#lib` module — type-only here so the
-// client bundle still never value-imports it through the api client.
-export type { PreflightRow } from './preflight';
-import type { PreflightRow } from './preflight';
-
 // ── Genuinely api-local shapes (no canonical twin in the contract) ───────────
 
 export interface TemplateInfo {
@@ -202,8 +193,6 @@ export interface TemplateInfo {
   /** The `preset:` this template's manifest declares — the starting point
    *  the new-book wizard seeds its preset choice from (ADR 0008). */
   preset?: string;
-  /** The `targets:` this template's manifest declares, if any. */
-  targets?: string[];
   /** The `page:` size (points) a `custom`-preset template is designed for, if any. */
   page?: { width: number; height: number };
 }
@@ -303,6 +292,8 @@ export interface PublishProviderStaticInfo {
   /** #221 — "oauth" = the browser consent flow (gdrive); null/absent = the
    *  existing paste-an-API-key flow. Drives Connections' add-a-key branch. */
   connectKind: 'token' | 'oauth' | null;
+  /** The setting the key check needs with no book open (Shopify's store), as its field. */
+  checkField: { key: string; label: string; placeholder?: string } | null;
 }
 
 // ── Project configuration view — author-facing manifest subset ─────────────
@@ -314,9 +305,6 @@ export interface ProjectConfigFields {
   authors?: string[];
   /** The manifest's `chapters` — null is the deliberate "all chapter files" sentinel. */
   sourceFiles?: string[] | null;
-  /** `targets:` — the publish destinations this book is validated against
-   *  (ADR 0008). `[]` is the explicit "no destination policies" opt-out. */
-  targets?: string[];
 }
 
 /**
@@ -348,20 +336,10 @@ export const api = {
   dialog: {
     /** Open native directory picker. Resolves null when cancelled. */
     openDirectory: () => post<string | null>('/api/dialog/open-directory'),
-    /**
-     * Open native PDF save dialog, optionally opening in `defaultDir`.
-     * Resolves null when cancelled.
-     */
-    savePdf: (defaultName?: string, defaultDir?: string) =>
-      post<string | null>('/api/dialog/save-pdf', {
-        ...(defaultName !== undefined ? { defaultName } : {}),
-        ...(defaultDir !== undefined ? { defaultDir } : {}),
-      }),
-    /**
-     * Native folder picker for a build's output folder (may create one). The
-     * chosen folder becomes a valid `api:build` `out` and publish artifact.
-     * Resolves null when cancelled.
-     */
+    /** Open native PDF save dialog. Resolves null when cancelled. */
+    savePdf: (defaultName?: string) =>
+      post<string | null>('/api/dialog/save-pdf', defaultName !== undefined ? { defaultName } : {}),
+    /** Native folder picker for a target's folder setting (may create one). Resolves null when cancelled. */
     pickOutputFolder: (defaultPath?: string) =>
       post<string | null>(
         '/api/dialog/pick-output-folder',
@@ -977,16 +955,16 @@ export const api = {
      * host; the response is redacted and the key never comes back. An optional
      * `account` label stores a NAMED credential (a user can keep several per
      * provider); empty stores the default. `projectDir` is null with no book
-     * (the Accounts page): the check then reads no manifest settings, so
-     * Shopify's check takes its store address as `shop` (not stored).
+     * (the Accounts page): the check then reads no manifest settings, so the
+     * setting it needs (`checkField`) comes as `checkValue` (not stored).
      */
-    connect: (projectDir: string | null, providerId: string, token: string, account?: string, shop?: string) =>
+    connect: (projectDir: string | null, providerId: string, token: string, account?: string, checkValue?: string) =>
       post<{ connected: boolean; providerId: string }>('/api/publish/connect', {
         ...(projectDir ? { projectDir } : {}),
         providerId,
         token,
         ...(account ? { account } : {}),
-        ...(shop ? { shop } : {}),
+        ...(checkValue ? { checkValue } : {}),
       }),
 
     /** Forget a stored key for a provider (the default, or a named `account`). */
@@ -997,10 +975,11 @@ export const api = {
       }),
 
     /**
-     * Save NON-SECRET provider settings. The host files each where it belongs:
-     * the team's (destinations ticked as `enabled: true`, targets, folders) in
-     * the manifest's publish section, only the person's own (their account, a
-     * folder outside the book) in their private settings. An empty string clears.
+     * Save NON-SECRET target settings. The host files each where it belongs:
+     * the team's (each target's settings, its folders) in the manifest's
+     * publish section, only the person's own (their account, a folder outside
+     * the book, `send: "off"` for a target they don't send) in their private
+     * settings. An empty string clears.
      */
     setConfig: (projectDir: string, providerId: string, values: Record<string, string | boolean>) =>
       post<Record<string, Record<string, unknown>>>('/api/publish/set-config', {
@@ -1010,25 +989,12 @@ export const api = {
       }),
 
     /**
-     * Pre-build publish preflight (#105): run the SOURCE + ASSET checks (no PDF
-     * build) for a project, scoped to the selected destinations. Returns the
-     * plain-language rows the wizard's Preflight step renders + gates on.
+     * Add one target to the book or take it out (`publish:` in the manifest,
+     * shared with the team); its other targets stay. Resolves with the book's
+     * targets and the ones this person sends.
      */
-    preflight: (projectDir: string, providerIds: string[]) =>
-      post<PreflightRow[]>('/api/publish/preflight', { projectDir, providerIds }),
-
-    /** Publish (or preflight with dryRun). Long-running; resolves with the result. */
-    run: (
-      projectDir: string,
-      providerId: string,
-      options?: { dryRun?: boolean; artifactPath?: string },
-    ) =>
-      post<PublishRunResult>('/api/publish/run', {
-        projectDir,
-        providerId,
-        ...(options?.dryRun ? { dryRun: true } : {}),
-        ...(options?.artifactPath ? { artifactPath: options.artifactPath } : {}),
-      }),
+    setTarget: (projectDir: string, target: string, inBook: boolean) =>
+      post<{ targets: string[]; sending: string[] }>('/api/publish/targets', { projectDir, target, inBook }),
 
     /**
      * Existing places a provider can publish into (#221, gdrive: Drive

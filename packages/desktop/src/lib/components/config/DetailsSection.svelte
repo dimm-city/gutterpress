@@ -24,11 +24,6 @@
     type DetailsSectionController,
     type MarginEdge,
   } from "#lib/routes/details-section-controller.svelte.ts";
-  import {
-    PUBLISH_TARGET_CHOICES,
-    missingToolsForTargets,
-    toolGapMessage,
-  } from "#lib/publish-targets.ts";
 
   let {
     controller,
@@ -38,14 +33,6 @@
     /** Open the Save-as-template dialog (owned by ProjectSettingsView). */
     onSaveAsTemplate?: (triggerEl: HTMLButtonElement) => void;
   } = $props();
-
-  // The tool-gap explanation for the CHECKED destinations (null when nothing
-  // checked needs a tool this computer lacks).
-  const targetToolGap = $derived(
-    toolGapMessage(
-      missingToolsForTargets(controller.targetsDraft, controller.missingTools),
-    ),
-  );
 
   // The margin fields, in reading order; "Inside" is the binding edge.
   const MARGIN_LABELS: Record<MarginEdge, string> = {
@@ -225,28 +212,6 @@
     </fieldset>
   {/if}
 
-  <!-- Publish targets (ADR 0008): each one is a destination's validation
-       policy. Same choices and wording as the new-book wizard (shared
-       #lib/publish-targets) — its label and what checking against it does — so
-       the two surfaces never describe a destination differently. -->
-  <fieldset class="group">
-    <legend class="lbl">Check the PDF against</legend>
-    {#each PUBLISH_TARGET_CHOICES as choice (choice.id)}
-      <label class="choice">
-        <input
-          type="checkbox"
-          checked={controller.targetsDraft.includes(choice.id)}
-          onchange={() => controller.toggleTarget(choice.id)}
-        />
-        <span class="choice-label">{choice.label}</span>
-        <span class="choice-desc">{choice.description}</span>
-      </label>
-    {/each}
-    {#if targetToolGap}
-      <p class="tool-note" role="note">{targetToolGap}</p>
-    {/if}
-    <span class="hint">The general print checks always run.</span>
-  </fieldset>
 
   <fieldset class="group" bind:this={chaptersEl}>
     <legend class="lbl">Chapters</legend>
@@ -333,7 +298,6 @@
   .choice input { margin: 0; flex-shrink: 0; align-self: center; }
   .choice-label { color: var(--app-text); min-width: 150px; }
   .choice-desc { font-size: 12px; color: var(--app-text-muted); }
-  .tool-note { margin: 2px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--app-warning-text); }
   .hint.warn { color: var(--app-warning-text); }
   .fit { align-self: flex-start; }
 

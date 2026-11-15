@@ -24,6 +24,7 @@ export const POST: RequestHandler = defineRoute<Record<string, never>>({
         // #221 — "oauth" swaps Connections' add-a-key form for a Connect
         // button; null/absent is every provider's existing paste-a-key path.
         connectKind: info.credential.connect === 'oauth' ? 'oauth' : null,
+        checkField: info.configFields.find((f) => f.key === info.credential.checkSetting) ?? null,
       }));
     }),
 });

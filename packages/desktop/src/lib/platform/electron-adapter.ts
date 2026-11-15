@@ -28,8 +28,12 @@ import type {
   CloneRepositoryArgs,
   SyncStatus,
   MarkdownFileLaunchEvent,
+  PublishRunArgs,
+  PublishBookResult,
+  PublishProgress,
 } from "./contract";
 import { api } from "#lib/api.ts";
+import { fromIpcResult } from "./ipc-result";
 
 function bridge(): ElectronBridge {
   const b = window.electron;
@@ -147,7 +151,19 @@ export class ElectronAdapter implements Platform {
   // #49: unwrap FolderRef.key → the string `input` the existing IPC expects.
   build(args: BuildArgs): Promise<BuildResult> {
     const { input, ...rest } = args;
-    return bridge().build({ ...rest, input: input.key });
+    return bridge().build({ ...rest, input: input.key }).then(fromIpcResult);
+  }
+
+  publish(args: PublishRunArgs): Promise<PublishBookResult> {
+    return bridge().publish(args).then(fromIpcResult);
+  }
+
+  cancelPublish(): Promise<{ canceled: boolean }> {
+    return bridge().cancelPublish();
+  }
+
+  onPublishProgress(cb: (data: PublishProgress) => void): () => void {
+    return bridge().onPublishProgress(cb);
   }
 
   onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void {

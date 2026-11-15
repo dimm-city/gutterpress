@@ -114,7 +114,7 @@ test("lists built-ins first, then the book's enabled publishers, marked experime
     label: "gp-demo",
     description: "gp-demo destination",
     kind: "plugin",
-    formats: ["pdf", "html"],
+    formats: ["pdf", "pdfx", "html"],
     credential: { required: false },
     experimental: true,
   });

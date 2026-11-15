@@ -20,6 +20,7 @@
  */
 import type { HostCredential, TokenStore } from "../remote-auth/token-store.ts";
 import type { PublishSelectionsStore } from "./selections.ts";
+import type { TargetFileFormat } from "../targets.ts";
 
 /**
  * One author-editable, NON-SECRET settings field (stored in the manifest's
@@ -32,6 +33,12 @@ export interface PublishConfigField {
   /** Author-facing label ("Project (user/game)"). */
   label: string;
   placeholder?: string;
+  /**
+   * "folder": a folder on this computer, relative to the book or absolute.
+   * The app offers its folder dialog, and writes to one outside the book
+   * only after the person confirms it in that dialog.
+   */
+  kind?: "folder";
 }
 
 /** Stable provider identifiers: the `--provider` values AND the manifest
@@ -39,7 +46,8 @@ export interface PublishConfigField {
 export type PublishProviderId =
   | "local"
   | "itch"
-  | "drivethrurpg"
+  | "drivethrurpg-print"
+  | "drivethrurpg-digital"
   | "kdp"
   | "azure-swa"
   | "shopify"
@@ -55,8 +63,9 @@ export type PublishProviderId =
  */
 export type PublishProviderKind = "api" | "guided" | "plugin";
 
-/** Which build output the provider consumes. */
-export type PublishArtifactFormat = "pdf" | "html";
+/** Which build output the provider consumes: a PDF, a print-ready PDF/X, or the
+ *  website export (a directory). The same formats the target registry names. */
+export type PublishArtifactFormat = TargetFileFormat;
 
 /** Static, UI-facing description of a provider. */
 export interface PublishProviderInfo {
@@ -66,18 +75,14 @@ export interface PublishProviderInfo {
   /** Human name ("itch.io"). */
   label: string;
   kind: PublishProviderKind;
-  /** The artifact format this provider publishes BY DEFAULT — and, for every
-   * provider except those declaring {@link formats}, the ONLY one it ever
-   * publishes. */
+  /** The file this target receives: fixed when {@link formats} is absent
+   * (DriveThruRPG print is PDF/X), else the pick when none is saved. Taken
+   * from the target registry (`target-info.ts`). */
   format: PublishArtifactFormat;
   /**
-   * Formats this provider can ALSO publish, when it supports more than one
-   * (#221 phase 3, D8 — currently only gdrive: `["pdf", "html"]`). Absent for
-   * every other provider, which keeps them on the single fixed `format`
-   * above with no behavior change. When present, the author's manifest
-   * `publish.<id>.format` (validated against this list) picks the EFFECTIVE
-   * format for one publish request — see `run-publish.ts`'s
-   * `resolvePublishFormat`.
+   * Present when the target does not define its file: the formats the person
+   * picks from. The manifest's `publish.<id>.format` (validated against this
+   * list) is the saved pick — see `run-publish.ts`'s `resolvePublishFormat`.
    */
   formats?: PublishArtifactFormat[];
   /** One-line author-facing description of what publishing here does. */
@@ -110,6 +115,12 @@ export interface PublishProviderInfo {
      * unverifiable credential for one (#221).
      */
     connect?: "token" | "oauth";
+    /**
+     * The setting (a {@link PublishProviderInfo.configFields} key) the key
+     * check needs, which a book's manifest otherwise supplies: with no book
+     * open, a connect UI asks for it beside the key (Shopify: its store).
+     */
+    checkSetting?: string;
   };
   /**
    * Present when the provider has a notion of "existing places to publish

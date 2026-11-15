@@ -8,7 +8,7 @@ import type { RequestHandler } from './$types';
  * route's header.
  */
 export const POST: RequestHandler = defineRoute<{ projectDir: string; providerId?: string; name?: string }>({
-  // In `validate`, not `call` — see publish/run's note on handlePublishErrors.
+  // In `validate`, not `call` — see handlePublishErrors.
   validate: async (raw) => {
     const body = raw as { projectDir?: unknown; providerId?: unknown; name?: unknown };
     return {
