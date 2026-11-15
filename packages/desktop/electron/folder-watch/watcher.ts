@@ -4,13 +4,14 @@
  *
  * WHY THIS EXISTS
  * ---------------
- * The open project is watched by ONE recursive `fs.watch`. `fs.watch` is
- * coarse (fires rename + change per save), so a change is debounced before the
+ * The open project is watched by ONE recursive watch (`watchProject`: native
+ * `fs.watch` on macOS/Windows, chokidar on Linux). Watch events are
+ * coarse (a save can fire rename + change), so a change is debounced before the
  * renderer is notified, and non-source subtrees (`.git` from automatic
  * snapshots, build output, vendored plugins) are filtered so they never
  * re-trigger preview reloads / re-arm timers.
  *
- * Every external touch-point — the `fs.watch` factory, path normalization, the
+ * Every external touch-point — the watch factory, path normalization, the
  * folder-changed notification, the per-edit signal (auto-snapshot + auto-sync),
  * the stop-flush, and the clock — is INJECTED via `deps`, so tests drive the
  * single-watcher / same-dir short-circuit / debounce / ignore filter /
@@ -116,6 +117,8 @@ export function watchProject(
   if (process.platform !== "linux") return fsWatch(dir, options, cb);
   const watcher = chokidarWatch(dir, {
     ignoreInitial: true,
+    // Node's recursive fs.watch does not follow symlinks (a symlinked art library stays unwatched).
+    followSymlinks: false,
     ignored: (candidate) => isIgnoredWatchEntry(path.relative(dir, candidate)),
   });
   watcher.on("all", (event, changed) => cb(event, path.relative(dir, changed)));

@@ -5,9 +5,9 @@ import { Readable } from 'node:stream';
 import { requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-// The Media panel's thumbnails: the original image, streamed to an <img> that the
-// renderer decodes and scales off the host's main thread (a host-side decode
-// froze the whole app on large art). Confined to the open project.
+// The Media panel's source for thumbnails and the detail preview: the original
+// image, streamed. The renderer decodes and scales it (a host-side decode froze
+// the whole app on large art). Confined to the open project.
 const MEDIA_MIME: Record<string, string> = {
   png: 'image/png',
   jpg: 'image/jpeg',
@@ -34,6 +34,6 @@ export const GET: RequestHandler = async ({ url }) => {
     error(404, 'media:image: no such image');
   }
   return new Response(Readable.toWeb(createReadStream(filePath)) as ReadableStream, {
-    headers: { 'Content-Type': mime, 'Cache-Control': 'no-cache' },
+    headers: { 'Content-Type': mime, 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' },
   });
 };

@@ -338,7 +338,7 @@ test("fs/list-project-files: a sibling-prefix dir is rejected (403)", async () =
   expect(status).toBe(403);
 });
 
-// ── media routes (code-review: thumbnail/inspect/list-images read arbitrary
+// ── media routes (code-review: image/inspect/list-images read arbitrary
 //    image bytes/trees without the #37 guard) ───────────────────────────────
 
 test("media/list-images: an in-project dir is allowed", async () => {
@@ -380,6 +380,7 @@ test("media/image: an in-project image is streamed with its type; a non-image is
   await writeFile(path.join(projectDir, "plate.png"), "png-bytes", "utf8");
   const res = (await imageRoute(imageRequest(path.join(projectDir, "plate.png")))) as Response;
   expect(res.headers.get("content-type")).toBe("image/png");
+  expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   expect(await res.text()).toBe("png-bytes");
   await writeFile(path.join(projectDir, "notes.md"), "x", "utf8");
   const { status } = await caught(Promise.resolve(imageRoute(imageRequest(path.join(projectDir, "notes.md")))));

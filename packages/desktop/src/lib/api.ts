@@ -511,8 +511,9 @@ export const api = {
     /** List all image files under a project directory (recursive, bounded). */
     listImages: (projectDir: string) =>
       post<MediaImageEntry[]>('/api/media/list-images', { projectDir }),
-    /** URL of an image file's bytes, for an <img> (the browser decodes and scales it off the host's main thread). */
-    imageUrl: (imagePath: string) => `/api/media/image?path=${encodeURIComponent(imagePath)}`,
+    /** URL of an image file's bytes. `mtimeMs` makes an edited file a new URL, so it is fetched again. */
+    imageUrl: (imagePath: string, mtimeMs: number) =>
+      `/api/media/image?path=${encodeURIComponent(imagePath)}&v=${mtimeMs}`,
     /** Inspect an image file — returns file size + header metadata (dimensions, DPI, alpha, color space). */
     inspect: (imagePath: string) =>
       post<MediaImageDetails | null>('/api/media/inspect', { imagePath }),

@@ -341,7 +341,7 @@ const operationLogPathForDir = (dir: string): string =>
     ),
   );
 
-// A single RECURSIVE folder watcher for the open project. fs.watch is coarse and
+// A single RECURSIVE folder watcher for the open project (`watchProject`). Watch events are coarse and
 // fires multiple times per save, so changes are debounced before notifying the
 // renderer. Only one project is open at a time, so a single watcher suffices.
 // The watcher/debounce/normalized-dir state + control logic lives in the
@@ -790,10 +790,20 @@ function createWindow() {
     if (details.reason === "clean-exit" || win.isDestroyed()) return;
     const now = Date.now();
     if (now - lastRendererReloadAt < RENDERER_RELOAD_COOLDOWN_MS) {
-      dialog.showErrorBox(
-        "Gutterpress stopped working",
-        "The window crashed again right after reloading. Quit and reopen Gutterpress. Your unsaved changes are offered back when you reopen the book.",
-      );
+      // Async: a blocking error box would freeze the preview, watcher and IPC until dismissed.
+      void dialog
+        .showMessageBox({
+          type: "error",
+          title: "Gutterpress stopped working",
+          message: "The window crashed again right after reloading.",
+          detail: "Quit and reopen Gutterpress. Your unsaved changes are offered back when you reopen the book.",
+          buttons: ["Quit", "Keep open"],
+          defaultId: 0,
+          cancelId: 1,
+        })
+        .then(({ response }) => {
+          if (response === 0) app.quit();
+        });
       return;
     }
     lastRendererReloadAt = now;
@@ -1031,7 +1041,7 @@ function secureHandle<Args extends unknown[], R>(
 }
 
 // ── Folder watching (PlatformAdapter.watchFolder, #44) ──────────────────────
-// Backs external-edit detection: a recursive fs.watch on the open project whose
+// Backs external-edit detection: a recursive watch (`watchProject`) on the open project whose
 // debounced changes are pushed to the renderer as `fs:folderChanged`. Only one
 // project is open at a time, so subscribing replaces any prior watch.
 secureHandle("fs:watchFolder", async (_e, dirPath: string): Promise<void> => {

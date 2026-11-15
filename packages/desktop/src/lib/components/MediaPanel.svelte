@@ -10,9 +10,9 @@
    * Host work — listing, inspection, and file copies — goes through `api.media.*`/`api.dialog.*`/`api.shell.*` server routes, the
    * default seam (CLAUDE.md §8); `getPlatform().onFolderChanged` is used only
    * for the live folder-changed push stream, one of the seam's narrower
-   * classes. Thumbnails are plain lazy `<img>`s of the original
-   * (`api.media.imageUrl`): the renderer decodes and scales them off the host's
-   * main thread, only for tiles near the viewport.
+   * classes. Thumbnails are made in the renderer (`ThumbCache`), off the host's
+   * main thread: only tiles near the viewport are loaded, two at a time, each
+   * scaled down on decode so a big book's plates never sit in memory full-size.
    */
   import { onMount } from "svelte";
   import { getPlatform } from "#lib/platform/index.ts";
@@ -27,6 +27,7 @@
     type MediaWarning,
   } from "#lib/media.ts";
   import Icon from "#lib/components/Icon.svelte";
+  import { ThumbCache } from "#lib/media-thumbs.svelte.ts";
 
   let {
     projectDir,
@@ -40,6 +41,35 @@
     onInsert?: (payload: { src: string; alt: string }) => void;
     sidebarEmbedded?: boolean;
   } = $props();
+
+  const thumbs = new ThumbCache();
+  /** relPath of the selected image whose full-size preview failed to load. */
+  let detailBroken = $state<string | null>(null);
+
+  /** Load a tile's thumbnail once it is near the viewport (and again if its file changes). */
+  function tile(node: HTMLElement, entry: MediaImageEntry) {
+    let current = entry;
+    const seen = new IntersectionObserver(
+      (hits) => {
+        if (hits.some((h) => h.isIntersecting)) {
+          thumbs.want(current.relPath, api.media.imageUrl(current.path, current.mtimeMs));
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    seen.observe(node);
+    return {
+      update(next: MediaImageEntry) {
+        current = next;
+        seen.unobserve(node);
+        seen.observe(node); // re-reports, so a changed file reloads
+      },
+      destroy() {
+        seen.disconnect();
+        thumbs.drop(current.relPath);
+      },
+    };
+  }
 
   let images = $state<MediaImageEntry[]>([]);
   let loading = $state(false);
@@ -111,9 +141,9 @@
   // Rapid tile clicks each kick off an `api.media.inspect` call; without
   // a sequence guard an earlier click's response can resolve AFTER a later
   // click's and overwrite `details`/`selected` with the wrong image's
-  // DPI/print-readiness data. Same pattern `refresh()`'s `loadSeq` already
-  // uses for thumbnail loads — a dedicated counter here since selection and
-  // thumbnail-loading are independent concerns.
+  // DPI/print-readiness data. Same pattern `refresh()`'s `loadSeq` uses for
+  // the image list — a dedicated counter here since selection and listing are
+  // independent concerns.
   let selectSeq = 0;
 
   async function select(entry: MediaImageEntry): Promise<void> {
@@ -195,7 +225,16 @@
     </div>
     <div class="media-detail">
       <div class="detail-thumb">
-        <img src={api.media.imageUrl(sel.path)} alt={sel.name} decoding="async" />
+        {#if detailBroken !== sel.relPath}
+          <img
+            src={api.media.imageUrl(sel.path, sel.mtimeMs)}
+            alt={sel.name}
+            decoding="async"
+            onerror={() => (detailBroken = sel.relPath)}
+          />
+        {:else}
+          <Icon name="image" size={40} />
+        {/if}
       </div>
       <h3 class="detail-name" title={sel.relPath}>{sel.name}</h3>
       <p class="detail-path">{sel.relPath}</p>
@@ -293,8 +332,12 @@
               draggable="true"
               ondragstart={(e) => onDragStart(e, entry)}
             >
-              <span class="tile-thumb">
-                <img src={api.media.imageUrl(entry.path)} alt={entry.name} loading="lazy" decoding="async" />
+              <span class="tile-thumb" use:tile={entry}>
+                {#if thumbs.src(entry.relPath)}
+                  <img src={thumbs.src(entry.relPath)} alt={entry.name} />
+                {:else}
+                  <Icon name="image" size={22} />
+                {/if}
               </span>
               <span class="tile-name">{entry.name}</span>
             </button>
