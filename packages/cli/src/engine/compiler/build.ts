@@ -328,7 +328,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     if ((await page.waitForReady()) === false) {
       diagnose(
         "engine.ready.timeout",
-        "The book's fonts or a stylesheet or extension that signals when it is ready (gp:ready) had not finished after 15 seconds, so the PDF was made without waiting any longer. Text may be in a fallback font or an extension's changes may be missing; check that every font and extension loads from a local file.",
+        "The book's fonts or a stylesheet or extension that signals when it is ready (gp:ready) had not finished within 15 seconds each, so the PDF was made without waiting any longer. Text may be in a fallback font or an extension's changes may be missing; check that every font and extension loads from a local file.",
       );
     }
 

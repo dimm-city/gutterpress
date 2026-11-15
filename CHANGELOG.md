@@ -8,8 +8,9 @@ This project follows [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - **A build whose Chromium dies now stops instead of hanging.** If Chromium ran out of memory and
-  was killed, or one page of it crashed, a PDF build used to wait forever or quit with no PDF and
-  no message. It now fails within seconds, says Chromium closed (it may have run out of memory),
+  was killed, or one page of it crashed (while loading, printing or starting up), a PDF build used
+  to wait forever or quit with no PDF and no message. It now fails within seconds,
+  says Chromium closed (it may have run out of memory),
   and cleans up its work folder.
 - **An image from the web in your Markdown is now an error before the build starts.** That
   covers `![](https://...)` and a raw `<img src="https://...">`. An image that never answered

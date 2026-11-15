@@ -139,9 +139,9 @@ export interface Session {
   /**
    * Wait for fonts + optional `gp:ready`, per §6 of the proposal. Resolves
    * `false` when the wait ran out (the build goes on without saying so
-   * unless the caller reports it); a host that cannot tell resolves void.
+   * unless the caller reports it).
    */
-  waitForReady(timeoutMs?: number): Promise<boolean | void>;
+  waitForReady(timeoutMs?: number): Promise<boolean>;
   printToPDF(opts?: Record<string, unknown>): Promise<Uint8Array>;
   close(): Promise<void>;
 }
@@ -193,8 +193,22 @@ export async function launchChromium(
     "about:blank",
   ];
   const proc = spawn(bin, args, { stdio: ["ignore", "ignore", "pipe"] });
-  const { wsUrl, stderrTail } = await readDevToolsUrl(proc);
-  const conn = await Connection.open(wsUrl, stderrTail);
+  // Any failure before a Browser exists (it died while starting, never
+  // answered, was too old) must not leave the process or its profile behind.
+  let conn: Connection | undefined;
+  let wsUrl: string;
+  let version: { product: string };
+  try {
+    const found = await readDevToolsUrl(proc);
+    wsUrl = found.wsUrl;
+    conn = await Connection.open(wsUrl, found.stderrTail);
+    version = await conn.send<{ product: string }>("Browser.getVersion", {});
+  } catch (e) {
+    conn?.close();
+    await removeProfile(proc, userDataDir);
+    throw e;
+  }
+  const connection = conn;
 
   /**
    * Shut the browser down, then remove its user-data dir.
@@ -207,26 +221,20 @@ export async function launchChromium(
    * One implementation, used by both the version-reject path and close().
    */
   const teardown = async () => {
-    // A browser that already died (crash, OOM kill) has no 'exit' left to wait for.
-    const exited = new Promise<void>((r) =>
-      proc.exitCode !== null || proc.signalCode !== null ? r() : proc.once("exit", () => r()),
-    );
     try {
       await Promise.race([
-        conn.send("Browser.close").then(() => exited),
+        connection.send("Browser.close").then(() => processExited(proc)),
         new Promise<void>((_, rej) =>
           setTimeout(() => rej(new Error("Browser.close timed out")), 5_000),
         ),
       ]);
     } catch {
-      proc.kill("SIGKILL");
-      await exited;
+      // fall through: killed below
     }
-    conn.close();
-    rmSync(userDataDir, { recursive: true, force: true });
+    connection.close();
+    await removeProfile(proc, userDataDir);
   };
 
-  const version = await conn.send<{ product: string }>("Browser.getVersion", {});
   try {
     assertMilestone(
       version.product,
@@ -244,15 +252,15 @@ export async function launchChromium(
     version: version.product,
     milestone,
     async newPage() {
-      const { targetId } = await conn.send<{ targetId: string }>(
+      const { targetId } = await connection.send<{ targetId: string }>(
         "Target.createTarget",
         { url: "about:blank" },
       );
-      const { sessionId } = await conn.send<{ sessionId: string }>(
+      const { sessionId } = await connection.send<{ sessionId: string }>(
         "Target.attachToTarget",
         { targetId, flatten: true },
       );
-      const s = new SessionImpl(conn, sessionId, targetId);
+      const s = new SessionImpl(connection, sessionId, targetId);
       await s.send("Inspector.enable");
       await s.send("Page.enable");
       await s.send("Runtime.enable");
@@ -260,6 +268,21 @@ export async function launchChromium(
     },
     close: teardown,
   };
+}
+
+/** Resolves when the process is gone (at once if it already is: a crash leaves no 'exit' to wait for). */
+function processExited(proc: ChildProcess): Promise<void> {
+  return new Promise((r) =>
+    proc.exitCode !== null || proc.signalCode !== null ? r() : proc.once("exit", () => r()),
+  );
+}
+
+/** Make sure the process is gone (SIGKILL if not), then remove its profile directory. */
+async function removeProfile(proc: ChildProcess, userDataDir: string) {
+  const exited = processExited(proc);
+  proc.kill("SIGKILL");
+  await exited;
+  rmSync(userDataDir, { recursive: true, force: true });
 }
 
 /** How much of Chromium's error output is kept once it is listening. */
@@ -325,6 +348,8 @@ class Connection {
   private closedBecause?: Error;
   /** Sessions whose page crashed or detached, and why; later calls on them reject with it. */
   private deadSessions = new Map<string, Error>();
+  /** Waiters on something other than a call (a load event), told when a session is lost. */
+  private lostWaiters = new Set<{ sessionId: string; fn: (e: Error) => void }>();
 
   private constructor(
     ws: WebSocket,
@@ -346,7 +371,7 @@ class Connection {
     const ws = new WebSocket(url, { maxPayload: 512 * 1024 * 1024 });
     await new Promise<void>((res, rej) => {
       ws.once("open", () => res());
-      ws.once("error", rej);
+      ws.on("error", rej); // a dying browser emits it more than once
     });
     return new Connection(ws, stderrTail);
   }
@@ -358,6 +383,7 @@ class Connection {
 
   private failAll(err: Error) {
     this.closedBecause ??= err;
+    for (const w of this.lostWaiters) w.fn(this.closedBecause);
     for (const [id, p] of this.pending) {
       this.pending.delete(id);
       p.reject(err);
@@ -368,11 +394,34 @@ class Connection {
   failSession(sessionId: string, err: Error) {
     if (this.deadSessions.has(sessionId)) return;
     this.deadSessions.set(sessionId, err);
+    for (const w of this.lostWaiters) if (w.sessionId === sessionId) w.fn(err);
     for (const [id, p] of this.pending) {
       if (p.sessionId !== sessionId) continue;
       this.pending.delete(id);
       p.reject(err);
     }
+  }
+
+  /** Why this session (or the whole browser) is gone, if it is. */
+  lostError(sessionId: string): Error | undefined {
+    return this.closedBecause ?? this.deadSessions.get(sessionId);
+  }
+
+  /**
+   * A promise that rejects when the session or browser is lost. For waits on
+   * an event rather than a call: a call is rejected by the loss itself, an
+   * event that will now never come is not.
+   */
+  lost(sessionId: string): { promise: Promise<never>; stop: () => void } {
+    let waiter!: { sessionId: string; fn: (e: Error) => void };
+    const promise = new Promise<never>((_, reject) => {
+      waiter = { sessionId, fn: reject };
+      const already = this.lostError(sessionId);
+      if (already) reject(already);
+      else this.lostWaiters.add(waiter);
+    });
+    promise.catch(() => {}); // only the racing caller reports it
+    return { promise, stop: () => void this.lostWaiters.delete(waiter) };
   }
 
   get isClosed() {
@@ -395,7 +444,7 @@ class Connection {
   }
 
   send<T>(method: string, params: object = {}, sessionId?: string): Promise<T> {
-    const dead = this.closedBecause ?? (sessionId && this.deadSessions.get(sessionId));
+    const dead = this.closedBecause ?? (sessionId ? this.deadSessions.get(sessionId) : undefined);
     if (dead) return Promise.reject(dead);
     const id = ++this.id;
     const payload: any = { id, method, params };
@@ -426,6 +475,8 @@ class Connection {
 const DEFAULT_LOAD_TIMEOUT_MS = 5 * 60_000;
 
 class SessionImpl implements Session {
+  private offs: Array<() => void> = [];
+
   constructor(
     private conn: Connection,
     private sessionId: string,
@@ -434,16 +485,27 @@ class SessionImpl implements Session {
     // A page whose renderer dies answers nothing again; fail its calls now
     // rather than leaving the build waiting.
     const lost = (why: string) => conn.failSession(sessionId, conn.chromiumError(why));
-    conn.on(`${sessionId}:Inspector.targetCrashed`, () =>
-      lost("Chromium's renderer for this page crashed (it may have run out of memory)"),
+    this.offs.push(
+      conn.on(`${sessionId}:Inspector.targetCrashed`, () =>
+        lost("Chromium's renderer for this page crashed (it may have run out of memory)"),
+      ),
+      conn.on("Target.detachedFromTarget", (p) => {
+        if (p?.sessionId === sessionId)
+          lost("Chromium closed this page while building (it may have run out of memory)");
+      }),
     );
-    conn.on("Target.detachedFromTarget", (p) => {
-      if (p?.sessionId === sessionId) lost("Chromium closed this page while building (it may have run out of memory)");
-    });
   }
 
-  send<T = any>(method: string, params: object = {}): Promise<T> {
-    return this.conn.send<T>(method, params, this.sessionId);
+  async send<T = any>(method: string, params: object = {}): Promise<T> {
+    try {
+      return await this.conn.send<T>(method, params, this.sessionId);
+    } catch (e) {
+      // A renderer that dies mid-call can answer the call with its own error
+      // ("Printing failed") a moment before the crash event arrives. The crash
+      // is the cause, so give it a moment to arrive and report it instead.
+      if (!this.conn.lostError(this.sessionId)) await new Promise((r) => setTimeout(r, 100));
+      throw this.conn.lostError(this.sessionId) ?? e;
+    }
   }
 
   on(event: string, fn: (p: any) => void) {
@@ -468,6 +530,7 @@ class SessionImpl implements Session {
   private async waitForLoad(fn: () => Promise<void>, loadTimeoutMs: number) {
     let off = () => {};
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const lost = this.conn.lost(this.sessionId);
     const done = new Promise<void>((resolve, reject) => {
       off = this.on("Page.loadEventFired", () => resolve());
       // A load that never finishes (an image whose server never answers) is
@@ -483,18 +546,20 @@ class SessionImpl implements Session {
         reject(
           new BuildError(
             `The page had not finished loading after ${Math.round(loadTimeoutMs / 1000)} s` +
-              (pending.length ? `; still waiting for: ${pending.slice(0, 10).join(", ")}` : "") +
-              ". A remote image or file that never answers keeps a build waiting; use local files.",
+              (pending.length
+                ? `; still waiting for: ${pending.slice(0, 10).join(", ")}. A remote image or file that never answers keeps a build waiting; use local files.`
+                : "."),
           ),
         );
       }, loadTimeoutMs);
     });
     done.catch(() => {}); // the deadline may fire while `fn` is still running
     try {
-      await fn();
-      await done;
+      await Promise.race([fn(), lost.promise]);
+      await Promise.race([done, lost.promise]);
     } finally {
       off();
+      lost.stop();
       clearTimeout(timer);
     }
   }
@@ -512,7 +577,9 @@ class SessionImpl implements Session {
 
   async navigate(url: string, loadTimeoutMs = DEFAULT_LOAD_TIMEOUT_MS) {
     await this.waitForLoad(async () => {
-      await this.send("Page.navigate", { url });
+      // A navigation that fails (bad URL, unreachable file) never fires a load event.
+      const { errorText } = await this.send<{ errorText?: string }>("Page.navigate", { url });
+      if (errorText) throw new BuildError(`Could not load ${url}: ${errorText}`);
     }, loadTimeoutMs);
   }
 
@@ -565,6 +632,7 @@ class SessionImpl implements Session {
   }
 
   async close() {
+    for (const off of this.offs.splice(0)) off();
     // Nothing to close on a browser that is already gone.
     await this.conn.send("Target.closeTarget", { targetId: this.targetId }).catch((e) => {
       if (!this.conn.isClosed) throw e;

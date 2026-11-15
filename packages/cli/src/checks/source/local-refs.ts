@@ -14,7 +14,8 @@ import { renderedLocalRefs, type RenderedRefKind } from "./local-ref-parser";
 const check: Check = {
   id: "source.links.local-refs",
   name: "Local Markdown References",
-  description: "Checks local markdown links and image refs resolve on disk",
+  description:
+    "Checks local markdown links and image refs resolve on disk, and that no image comes from the web",
   category: "source",
   phase: "pre-build",
   async run(ctx: CheckContext): Promise<CheckResult[]> {

@@ -12,13 +12,21 @@ import type { CheckContext, CheckResult } from "../types";
 /**
  * `src` of every raw-HTML `<img>` in `html` that points at the web. Only those
  * are reported: a raw `<img>` to a local file is the author's own markup and
- * stays outside the local-ref checks.
+ * stays outside the local-ref checks. Comments are skipped, and `src` counts
+ * only as an attribute of the tag itself (not `data-src`, not text inside
+ * another attribute's value).
  */
-const HTML_IMG_SRC = /<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+const HTML_IMG_TAG = /<img\b[^>]*>/gi;
+const HTML_ATTR = /\s([^\s"'=<>/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
 function* remoteHtmlImgSrcs(html: string): Generator<{ src: string; index: number }> {
-  for (const m of html.matchAll(HTML_IMG_SRC)) {
-    const src = m[1] ?? m[2] ?? m[3] ?? "";
-    if (isRemoteUrl(src)) yield { src, index: m.index };
+  // Blank comments out in place, so offsets (and so line numbers) stay put.
+  const live = html.replace(/<!--[\s\S]*?-->/g, (c) => c.replace(/[^\n]/g, " "));
+  for (const tag of live.matchAll(HTML_IMG_TAG)) {
+    for (const attr of tag[0].slice(4).matchAll(HTML_ATTR)) {
+      if (attr[1]!.toLowerCase() !== "src") continue;
+      const src = attr[2] ?? attr[3] ?? attr[4] ?? "";
+      if (isRemoteUrl(src)) yield { src, index: tag.index };
+    }
   }
 }
 

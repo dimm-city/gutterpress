@@ -1042,6 +1042,33 @@ describe("Local markdown refs check", () => {
     expect(results[2]!.message).toContain("//example.com/c.png");
   });
 
+  test("raw HTML that only looks like a remote image is not one", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-img-lookalike-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(
+      mainFile,
+      [
+        '<!-- <img src="https://example.com/commented.png"> -->',
+        "",
+        'Text <img data-src="https://example.com/lazy.png" alt="x"> inline.',
+        "",
+        '<img alt="src=https://example.com/alt.png" src="local.png">',
+        "",
+        "<!--",
+        '<img src="https://example.com/multi.png">',
+        "-->",
+        "",
+        '<img alt="real" src="https://example.com/real.png">',
+      ].join("\n"),
+    );
+
+    const check = getCheckById("source.links.local-refs")!;
+    const results = await check.run(makeCtx({ inputDir: dir, markdownFiles: [mainFile] }));
+
+    expect(results.map((r) => [r.line, r.severity])).toEqual([[11, "error"]]);
+    expect(results[0]!.message).toContain("https://example.com/real.png");
+  });
+
   test("masks inline HTML attributes and comments but checks same-line Markdown", async () => {
     const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-inline-html-"));
     const mainFile = join(dir, "main.md");

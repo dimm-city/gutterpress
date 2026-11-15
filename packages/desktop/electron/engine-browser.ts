@@ -109,8 +109,8 @@ class ElectronEngineSession implements EngineSession {
     await this.win.loadURL(url);
   }
 
-  async waitForReady(timeoutMs = 15_000): Promise<void> {
-    await this.evaluate(readyProbeExpr(timeoutMs));
+  async waitForReady(timeoutMs = 15_000): Promise<boolean> {
+    return this.evaluate<boolean>(readyProbeExpr(timeoutMs));
   }
 
   async printToPDF(opts: Record<string, unknown> = {}): Promise<Uint8Array> {
