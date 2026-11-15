@@ -4,6 +4,7 @@ import { fstatSync } from "node:fs";
 import {
   log,
   FileTokenStore,
+  PublishSelectionsStore,
   connectPublishProvider,
   connectGoogleDrive,
   disconnectPublishCredential,
@@ -182,6 +183,9 @@ export default defineCommand({
     const store = new FileTokenStore();
     const deps: PublishDeps = {
       tokenStore: store,
+      // The person's own choices for each book (their account, their folder),
+      // the same file the app keeps them in (ADR 0012).
+      selections: new PublishSelectionsStore(),
       onProgress: json ? undefined : (line) => log.info(line),
     };
 

@@ -9,6 +9,7 @@ import {
   net,
   powerMonitor,
   protocol,
+  safeStorage,
   session,
   shell,
 } from "electron";
@@ -60,12 +61,7 @@ import {
 import type { MarkdownFileLaunchEvent, UpdaterEventPayload } from "../src/lib/platform/shared-types";
 import { removeRecentFolder, toggleFavoriteFolder } from "./recent-folders";
 import { clearProjectStateField, readProjectState, writeProjectState } from "./project-state";
-import {
-  electronTokenStore,
-  markLinuxBasicTextStorageNoticeShown,
-  onCredentialChange,
-  shouldShowLinuxBasicTextStorageNotice,
-} from "./credential-store";
+import { createUserStores } from "./credential-store";
 import {
   AutoSyncOrchestrator,
   type LastKnownBackup,
@@ -216,6 +212,17 @@ function loadLib(): Promise<LibModule> {
   }
   return libPromise;
 }
+
+// Saved accounts and publishing choices: one store per person, shared with the
+// terminal (ADR 0012). Older versions' copies in userData are moved there once.
+const userStores = createUserStores({
+  loadLib,
+  whenReady: () => app.whenReady(),
+  appDir: () => app.getPath("userData"),
+  decrypt: (cipher) => safeStorage.decryptString(Buffer.from(cipher, "base64")),
+  log: { event: logAppEvent, error: logAppError },
+});
+const electronTokenStore = userStores.tokenStore;
 
 /**
  * Resolve once no git operation (snapshot, backup, merge, restore, clone) is
@@ -536,7 +543,7 @@ function startFolderWatch(dirPath: string): void {
 // host, re-diagnose the OPEN project and either start syncing right away
 // (connect → the pill flips to "Saving changes…" within seconds) or
 // re-emit the honest not-syncing state (disconnect → "connect"/"local").
-onCredentialChange((host) => {
+userStores.onCredentialChange((host) => {
   void (async () => {
     try {
       const dir = folderWatch.getWatchedDir();
@@ -1301,7 +1308,7 @@ const vcsHooksImpl: VcsHooks = {
 // ── Managed GitHub integration (#15) ───────────────────────────────
 // Auth (device flow), connection status, repo/branch discovery, clone-and-open.
 // All real work lives in the lib (CLAUDE.md §7: isomorphic-git + plain fetch —
-// never system git/gh); credentials live in the safeStorage-backed store and
+// never system git/gh); credentials live in the shared account store and
 // NEVER cross the IPC boundary (remote:getConnection is redacted status only).
 
 const GITHUB_HOST = "github.com";
@@ -1318,6 +1325,7 @@ const GITHUB_HOST = "github.com";
 // these hooks are the raw operation.
 const remoteHooksImpl: RemoteHooks = {
   tokenStore: electronTokenStore,
+  publishSelections: userStores.selections,
   GITHUB_HOST,
   defaultCloneParent: () => path.join(app.getPath("documents"), "Gutterpress"),
   cloneRepository: async (args) => {
@@ -1377,43 +1385,8 @@ const githubDeviceFlow = new GitHubDeviceFlow({
   clientId: () => process.env.GUTTERPRESS_GITHUB_CLIENT_ID ?? "",
 });
 
-async function showLinuxCredentialStorageNoticeOnce(): Promise<void> {
-  if (!(await shouldShowLinuxBasicTextStorageNotice())) return;
-  const options: Electron.MessageBoxOptions = {
-    type: "warning",
-    title: "GitHub sign-in protection",
-    message: "Your Linux desktop keyring isn't available",
-    detail:
-      "Gutterpress can still connect to GitHub, but this computer can only lightly protect the saved sign-in. " +
-      "The credentials file is private to your user account, but anyone with access to that account could recover it. " +
-      "Set up or unlock your desktop keyring for stronger protection.",
-    buttons: ["Continue"],
-    defaultId: 0,
-  };
-  try {
-    if (mainWindow) await dialog.showMessageBox(mainWindow, options);
-    else await dialog.showMessageBox(options);
-  } catch (e) {
-    // A notification failure must never block or cancel the device flow.
-    console.warn("[credential-store] could not show the Linux protection notice:", e);
-    return;
-  }
-  try {
-    await markLinuxBasicTextStorageNoticeShown();
-  } catch (e) {
-    console.warn(
-      "[credential-store] could not remember the Linux credential-protection notice; it may be shown again:",
-      e,
-    );
-  }
-}
-
 secureHandle("remote:connectGitHubStart", () =>
-  handleRemoteErrors("remote:connectGitHubStart", async () => {
-    const info = await githubDeviceFlow.start();
-    await showLinuxCredentialStorageNoticeOnce();
-    return info;
-  }),
+  handleRemoteErrors("remote:connectGitHubStart", () => githubDeviceFlow.start()),
 );
 
 secureHandle("remote:connectGitHubWait", () =>

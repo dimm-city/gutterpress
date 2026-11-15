@@ -1,35 +1,31 @@
 /**
  * Shared helpers for the publish routes (#35).
  *
- * Publishing needs what the remote:* routes need — the lib and the
- * safeStorage-backed credential store (`getHostServices().remote.tokenStore`)
- * — plus the person's private per-book settings ({@link publishDeps}).
+ * Publishing needs what the remote:* routes need — the lib and the person's
+ * account store (`getHostServices().remote.tokenStore`) — plus their private
+ * per-book settings ({@link publishDeps}). Both are shared with the terminal.
  *
  * SECURITY: token values never appear in responses. Connect passes the raw
  * token to the lib (which verifies BEFORE storing); every read path returns
  * redacted status only.
  */
-import path from 'node:path';
 import { getHostServices, loadLib, type LibModule } from '../_lib/route';
 
 export { handlePublishErrors, logPublishOutcome } from '../../../../electron/server-bridge/friendly-errors';
 
-let selections: { file: string; store: InstanceType<LibModule['PublishSelectionsStore']> } | null = null;
-
 /**
- * The deps every publish route hands the lib: the credential store, and this
- * person's PRIVATE publish settings for each book (`userData/publish-selections.json`,
- * `0600`): the saved account a book publishes with, an output folder outside
- * the book, and their own Drive folder when the book's is out of their reach
- * (#452). They are read over the manifest's values and
- * never written into the manifest (see the lib's `savePublishSettings`). One
- * store for the process, so its writes queue behind one another.
+ * The deps every publish route hands the lib: the account store, and this
+ * person's PRIVATE publish settings for each book (the lib's
+ * `PublishSelectionsStore`, shared with the terminal): the saved account a
+ * book publishes with, an output folder outside the book, and their own Drive
+ * folder when the book's is out of their reach (#452). They are read over the
+ * manifest's values and never written into the manifest (see the lib's
+ * `savePublishSettings`). One store for the process, so its writes queue
+ * behind one another.
  */
 export async function publishDeps() {
-  const lib = await loadLib();
-  const file = path.join(getHostServices().desktop.getUserDataPath(), 'publish-selections.json');
-  if (selections?.file !== file) selections = { file, store: new lib.PublishSelectionsStore(file) };
-  return { tokenStore: getHostServices().remote.tokenStore, selections: selections.store };
+  const { tokenStore, publishSelections } = getHostServices().remote;
+  return { tokenStore, selections: await publishSelections() };
 }
 
 /**

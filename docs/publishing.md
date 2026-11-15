@@ -130,9 +130,10 @@ edits publishing settings to start publishing.
 the same Git repository counts as outside: it is a personal choice, not the
 team's.)
 
-The private values are one JSON file per computer, keyed by the book's path:
-`publish-selections.json` (`0600`) in the desktop app's user-data folder. It
-holds labels and paths only, never a key. When the
+The private values are one JSON file per person, keyed by the book's path:
+`publish-selections.json` (`0600`) in the Gutterpress user config folder (see
+below), read by `gutterpress publish` and the desktop app alike. It holds
+labels and paths only, never a key. When the
 desktop app next saves one of these values it moves an older book's
 `credential` out of the manifest into that file and rewrites an absolute
 in-book `dir` as a relative path; opening the wizard rewrites nothing.
@@ -198,13 +199,16 @@ and `enabled`. Plugins declare no `configFields`, so the desktop shows no
 settings form for them.
 
 **Secrets never live in the project.** API keys (and Google Drive's refresh
-token — the same store, `kind: "google-oauth"`) are stored:
-
-- **CLI** — `credentials.json` (`0600`) under the Gutterpress user config dir
-  (`$GUTTERPRESS_CONFIG_DIR` → `%APPDATA%/gutterpress` → `~/.config/gutterpress`), the
-  same `FileTokenStore` the Git remote features use.
-- **Desktop app** — Electron `safeStorage` (OS keychain: DPAPI / Keychain /
-  libsecret), the same store as GitHub sync credentials.
+token — the same store, `kind: "google-oauth"`) are stored in
+`credentials.json` (`0600`) in the Gutterpress user config folder
+(`$GUTTERPRESS_CONFIG_DIR` → `%APPDATA%/gutterpress` → `$XDG_CONFIG_HOME/gutterpress` →
+`~/.config/gutterpress`): one `FileTokenStore` per person, shared by the CLI and the desktop
+app and by the Git remote features, so an account connected in either works in the other. It
+is readable only by your user account and is not encrypted at rest (the `gh` model; ADR 0012).
+Earlier desktop versions kept their accounts encrypted by the OS keychain in the app's own
+folder; the app moves them here once, on first use, and keeps the old file beside as
+`credentials.json.moved` (likewise `publish-selections.json.moved`). An account the keychain
+can no longer read is left behind and needs signing in again.
 
 Token values are never logged, never echoed in errors or host responses, and
 never passed on a child-process command line (butler and the SWA CLI receive
@@ -465,17 +469,16 @@ interface PublishProvider {
 }
 ```
 
-Every side effect enters through `PublishDeps` — `tokenStore` (the host's
-credential store), `fetch`, `runCommand`, `env`, `configDir`, `onProgress` —
+Every side effect enters through `PublishDeps` — `tokenStore` (the shared
+credential store), `selections` (the person's own choices), `fetch`, `runCommand`, `env`, `configDir`, `onProgress` —
 which is what makes providers unit-testable (`publish.test.ts` runs the whole
-pipeline with fakes) and keeps the lib free of host concerns: the lib never
-touches the OS keychain (docs/architecture-rules.md §7-style host injection).
+pipeline with fakes) and keeps the lib free of host concerns.
 
 The desktop app reaches the same code through `/api/publish/*` SvelteKit server
 routes (`list`, `connect`, `disconnect`, `set-config`, `run`) that share the
 remote-hooks host bridge; the renderer stays PWA-clean (§8) and only ever sees
-redacted credential status; they pass the lib the credential store and the
-private store (`userData/publish-selections.json`, `PublishDeps.selections`),
+redacted credential status; they pass the lib the shared credential store and
+the shared private store (`PublishDeps.selections`),
 and `set-config` is where each value is filed as shared or private. `list` and
 `set-config` use the book's providers
 (`listBookPublishProviders`: the built-ins, then its publishing plugins);

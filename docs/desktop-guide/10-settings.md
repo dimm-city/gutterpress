@@ -78,8 +78,9 @@ asks once more before it deletes an account.
   publishes with is picked there and remembered on this computer only; the book itself never names
   your account.
 
-An account that says **Needs signing in again** can no longer be read (this happens when the computer's
-keychain changes): **Edit** it, or **Sign in again…** for Google Drive, to save it again.
+Your accounts are kept in your Gutterpress folder (`~/.config/gutterpress`, or
+`%APPDATA%\gutterpress` on Windows), in a file only your user account can read. The `gutterpress`
+terminal command uses the same accounts, so one you add here works there too, and the other way round.
 
 ## Updates
 

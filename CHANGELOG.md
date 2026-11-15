@@ -20,6 +20,16 @@ This project follows [Semantic Versioning](https://semver.org/).
   names `dtrpg` and `drivethrurpg` both mean `drivethrurpg-print`, including for
   `validate --target` and `new --targets`. Check results for that target are now labelled
   `[drivethrurpg-print]`.
+- **One place for your accounts, shared by the app and the terminal** (ADR 0012). Saved
+  accounts and your own publishing choices for each book (which account it uses, an output
+  folder outside the book, your own Drive folder) now live in the Gutterpress folder
+  (`~/.config/gutterpress`, `%APPDATA%\gutterpress`), so an account connected in the app works
+  for `gutterpress publish` and the other way round, and `gutterpress publish` now uses your
+  choices for the book. The app moves the accounts it kept in its own folder there the first
+  time it needs them, keeping the old file beside as `credentials.json.moved`; an account the
+  OS keychain can no longer read needs signing in again. Accounts are no longer encrypted by
+  the OS keychain: the file is readable only by your user account, as the terminal's always
+  was. The one-time notice about a missing Linux keyring is gone.
 
 ### Fixed
 

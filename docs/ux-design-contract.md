@@ -799,7 +799,7 @@ navigation UI and a Problems-panel entry with the page number.
 **Status: SHIPPED baseline (#35, closed 2026-07-06)** — normative provider
 detail lives in `docs/publishing.md`. Shipped: toolbar **Publish** button →
 `PublishWizard` (choose destinations → one setup step per destination →
-publish), five built-in providers, saved named credentials (`safeStorage`) with
+publish), five built-in providers, saved named credentials (shared with the CLI) with
 an account picker, the **Accounts** page.
 
 **Shared vs private (binding):** the team decides where a book is published,
@@ -811,8 +811,8 @@ and the output folder when it is **inside the book** (saved relative to it,
 `dist` by default). A teammate who opens the book finds the same destinations
 ticked and the settings filled in; the only thing they do is connect their own
 account. What is one person's own stays on their computer, in private settings
-keyed to the book (`publish-selections.json` in the app's user-data folder,
-never in the manifest): **which of their saved accounts the book publishes
+keyed to the book (`publish-selections.json` in the Gutterpress user config
+folder, shared with the CLI, never in the manifest): **which of their saved accounts the book publishes
 with**, and an **output folder outside the book** (a personal override; an
 absolute path is never written to the manifest). Precedence when publishing:
 the private value, then the manifest, then the default. The host files each

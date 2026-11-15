@@ -356,9 +356,13 @@ export {
 
 export type {
   HostCredential,
+  RedactedCredential,
   TokenStore,
   UrlCredentialExtraction,
 } from "../lib/remote-auth/token-store.ts";
+
+export { moveAppStores } from "../lib/remote-auth/move-app-stores.ts";
+export type { MovedAppStores } from "../lib/remote-auth/move-app-stores.ts";
 
 export {
   GitHubAuthProvider,
