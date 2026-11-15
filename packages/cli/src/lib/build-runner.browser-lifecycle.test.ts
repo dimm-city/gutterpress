@@ -18,7 +18,10 @@
 import { test, expect, spyOn, afterEach } from "bun:test";
 import { mkdtemp, readdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readdirSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import * as fingerprint from "./build-fingerprint.ts";
+import { log } from "../utils/logger";
 import * as cdp from "../engine/shared/cdp.ts";
 import * as chromium from "./chromium.ts";
 import * as engine from "./engine.ts";
@@ -213,6 +216,13 @@ test("the browser is closed as soon as the PDF is made, before anything after it
   }
 });
 
+/** A project build's work dir sits beside its output folder: `dist/.<slug>-build-<hex>`. */
+const workDirsSync = (dir: string): string[] =>
+  readdirSync(join(dir, "dist")).filter((n) => n.startsWith(".") && n.includes("-build-"));
+const workDirs = async (dir: string): Promise<string[]> => workDirsSync(dir);
+
+const settle = (ms = 400) => new Promise((r) => setTimeout(r, ms));
+
 test("aborting the signal mid-render stops the build at once: CANCELED, browser closed once, no work dir left", async () => {
   const launched = fakeBrowser();
   installMocks(launched.browser);
@@ -223,17 +233,15 @@ test("aborting the signal mid-render stops the build at once: CANCELED, browser 
     setTimeout(() => ctl.abort(), 50);
     return new Promise(() => {});
   });
-  const buildDirs = async () =>
-    (await Promise.all([dir, outDir].map((d) => readdir(d, { recursive: true })))).flat().filter((n) => n.includes("-build-"));
   try {
     const started = Date.now();
-    const failure = await runBuild({ inputDir: dir, format: "pdf", outDir, skipPreValidate: true, signal: ctl.signal, rawArgs: {} })
+    const failure = await runBuild({ inputDir: dir, format: "pdf", skipPreValidate: true, signal: ctl.signal, rawArgs: {} })
       .then(() => undefined, (e: unknown) => e as { code?: string; exitCode?: number });
     expect(failure?.code).toBe("CANCELED");
     expect(failure?.exitCode).toBe(130);
     expect(Date.now() - started).toBeLessThan(5_000);
     expect(launched.closes()).toBe(1);
-    expect(await buildDirs()).toEqual([]);
+    expect(await workDirs(dir)).toEqual([]);
   } finally {
     render.mockRestore();
     await rm(dir, { recursive: true, force: true });
@@ -247,13 +255,135 @@ test("a signal that is already aborted never starts the render", async () => {
   const { dir, outDir } = await makeValidProject("gutterpress-browser-precancel");
   const render = spyOn(engine, "buildNativePdf");
   try {
-    const failure = await runBuild({ inputDir: dir, format: "pdf", outDir, signal: AbortSignal.abort(), rawArgs: {} })
+    const failure = await runBuild({ inputDir: dir, format: "pdf", signal: AbortSignal.abort(), rawArgs: {} })
       .then(() => undefined, (e: unknown) => e as { code?: string });
     expect(failure?.code).toBe("CANCELED");
     expect(render).not.toHaveBeenCalled();
     expect(launchMock).not.toHaveBeenCalled();
   } finally {
     render.mockRestore();
+    await rm(dir, { recursive: true, force: true });
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
+test("a cancel during the markdown render leaves no work dir, not even once the abandoned work would have finished", async () => {
+  const launched = fakeBrowser();
+  installMocks(launched.browser);
+  const { dir, outDir } = await makeValidProject("gutterpress-cancel-render");
+  // Staging an image is what used to put the work dir back after the cancel.
+  await writeFile(join(dir, "chapter-01.md"), "# Hello\n\n![pic](pic.png)\n", "utf-8");
+  await writeFile(join(dir, "pic.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==", "base64"));
+  const ctl = new AbortController();
+  let existedAtAbort: string[] = [];
+  // renderChaptersToFile has just written book.html; asset staging is next.
+  const success = spyOn(log, "success").mockImplementation((message: string) => {
+    if (message.startsWith("Wrote ") && !ctl.signal.aborted) {
+      existedAtAbort = workDirsSync(dir);
+      ctl.abort();
+    }
+  });
+  try {
+    const failure = await runBuild({ inputDir: dir, format: "pdf", skipPreValidate: true, signal: ctl.signal, rawArgs: {} })
+      .then(() => undefined, (e: unknown) => e as { code?: string });
+    expect(failure?.code).toBe("CANCELED");
+    expect(existedAtAbort.length).toBe(1);
+    // runBuild has settled: nothing may come back afterwards.
+    expect(await workDirs(dir)).toEqual([]);
+    await settle();
+    expect(await workDirs(dir)).toEqual([]);
+    expect(launched.closes()).toBe(1);
+  } finally {
+    success.mockRestore();
+    await rm(dir, { recursive: true, force: true });
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
+test("a cancel after the PDF is made leaves the previous output exactly as it was", async () => {
+  const launched = fakeBrowser();
+  installMocks(launched.browser);
+  const { dir, outDir } = await makeValidProject("gutterpress-cancel-keep");
+  const render = spyOn(engine, "buildNativePdf").mockImplementation(async (_html, outPdf) => {
+    const doc = await PDFDocument.create();
+    doc.addPage([100, 100]);
+    await writeFile(outPdf, await doc.save());
+    return [];
+  });
+  const ctl = new AbortController();
+  try {
+    await runBuild({ inputDir: dir, format: "pdf", skipPreValidate: true, rawArgs: {} });
+    const before = (await readdir(join(dir, "dist"), { recursive: true })).sort();
+    expect(before.some((n) => n.endsWith(".pdf"))).toBe(true);
+    await writeFile(join(dir, "dist", "previous-marker.txt"), "keep me");
+    const withMarker = (await readdir(join(dir, "dist"), { recursive: true })).sort();
+
+    // The second build is stopped right after its PDF exists, before it publishes.
+    const stamp = spyOn(ghostscript, "stampCreator").mockImplementation(async () => ctl.abort());
+    const failure = await runBuild({ inputDir: dir, format: "pdf", skipPreValidate: true, signal: ctl.signal, rawArgs: {} })
+      .then(() => undefined, (e: unknown) => e as { code?: string });
+    stamp.mockRestore();
+    expect(failure?.code).toBe("CANCELED");
+    await settle();
+    expect((await readdir(join(dir, "dist"), { recursive: true })).sort()).toEqual(withMarker);
+    expect(await workDirs(dir)).toEqual([]);
+  } finally {
+    render.mockRestore();
+    await rm(dir, { recursive: true, force: true });
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
+test("a cancel that arrives once publishing has begun does not undo it: the output is complete and the build succeeds", async () => {
+  const launched = fakeBrowser();
+  installMocks(launched.browser);
+  const { dir, outDir } = await makeValidProject("gutterpress-cancel-late");
+  const render = spyOn(engine, "buildNativePdf").mockImplementation(async (_html, outPdf) => {
+    const doc = await PDFDocument.create();
+    doc.addPage([100, 100]);
+    await writeFile(outPdf, await doc.save());
+    return [];
+  });
+  const ctl = new AbortController();
+  const realFingerprint = fingerprint.writeBuildFingerprint;
+  // finalizeBuild is writing the fingerprint: the output is being published.
+  const fp = spyOn(fingerprint, "writeBuildFingerprint").mockImplementation(async (input) => {
+    ctl.abort();
+    return realFingerprint(input);
+  });
+  try {
+    const result = await runBuild({ inputDir: dir, format: "pdf", skipPreValidate: true, signal: ctl.signal, rawArgs: {} });
+    expect(result).toBeDefined();
+    const names = await readdir(join(dir, "dist", "launch-test"));
+    expect(names.some((n) => n.endsWith(".pdf"))).toBe(true);
+    expect(names).toContain("build-fingerprint.json");
+    expect(await workDirs(dir)).toEqual([]);
+  } finally {
+    fp.mockRestore();
+    render.mockRestore();
+    await rm(dir, { recursive: true, force: true });
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
+test("an abort during preflight is a CANCELED BuildError, not a raw AbortError, and launches nothing", async () => {
+  const launched = fakeBrowser();
+  installMocks(launched.browser);
+  const { dir, outDir } = await makeValidProject("gutterpress-cancel-preflight");
+  const ctl = new AbortController();
+  // Preflight probes for Chromium: the abort lands there, after runBuild's first check.
+  resolveChromiumMock.mockImplementation(async () => {
+    ctl.abort();
+    return "/fake/chromium";
+  });
+  try {
+    const failure = await runBuild({ inputDir: dir, format: "pdf", signal: ctl.signal, rawArgs: {} })
+      .then(() => undefined, (e: unknown) => e as Error & { code?: string; exitCode?: number });
+    expect(failure?.name).toBe("BuildError");
+    expect(failure?.code).toBe("CANCELED");
+    expect(failure?.exitCode).toBe(130);
+    expect(launchMock).not.toHaveBeenCalled();
+  } finally {
     await rm(dir, { recursive: true, force: true });
     await rm(outDir, { recursive: true, force: true });
   }

@@ -264,6 +264,12 @@ export async function findPostScriptShadingPages(pdfBytes: Uint8Array): Promise<
   return pagesWithVisibleShadingPaints(pdfBytes, pages).catch(() => pages);
 }
 
+/** What qpdf or Ghostscript printed on success (warnings), which `run` used to leave on the terminal. */
+function reportToolOutput({ stdout, stderr }: { stdout: string; stderr: string }): void {
+  const text = `${stdout}${stderr}`.trim();
+  if (text) log.warn(text);
+}
+
 /**
  * Strip all annotations from a PDF.
  *
@@ -291,10 +297,7 @@ export async function stripAnnotations(
 ): Promise<void> {
   const tmp = join(stagingDir, "annotations-stripped.pdf");
   try {
-    await execCapture("qpdf", [pdfPath, tmp, "--flatten-annotations=all"], {
-      timeoutMs: TOOL_IDLE_TIMEOUT_MS,
-      signal,
-    });
+    reportToolOutput(await execCapture("qpdf", [pdfPath, tmp, "--flatten-annotations=all"], { signal }));
     await rename(tmp, pdfPath);
   } finally {
     await unlink(tmp).catch(() => {});
@@ -398,15 +401,17 @@ export async function flattenTransparentPages(
   // original page objects and are not wanted in the scratch files (and
   // -dNO_PDFMARK_OUTLINES stops Ghostscript logging "pdfmark destination page N
   // points beyond the last page" for them).
-  const gs = (...args: string[]) =>
-    execCapture(
-      ghostscript,
-      [
-        "-q", "-dBATCH", "-dNOPAUSE", "-dSAFER",
-        "-dPreserveAnnots=false", "-dNO_PDFMARK_OUTLINES",
-        ...args,
-      ],
-      { timeoutMs: TOOL_IDLE_TIMEOUT_MS, signal }
+  const gs = async (...args: string[]) =>
+    reportToolOutput(
+      await execCapture(
+        ghostscript,
+        [
+          "-q", "-dBATCH", "-dNOPAUSE", "-dSAFER",
+          "-dPreserveAnnots=false", "-dNO_PDFMARK_OUTLINES",
+          ...args,
+        ],
+        { signal }
+      )
     );
 
   try {
@@ -593,7 +598,7 @@ async function freeSpace(dir: string): Promise<string> {
 }
 
 /** Ghostscript output kept per stream; its warnings and errors come last. */
-const GS_CAPTURE_LIMIT = 1_000_000;
+const GS_CAPTURE_LIMIT = 64_000;
 /** At most one "page N" progress line per this long. */
 const GS_PROGRESS_INTERVAL_MS = 10_000;
 

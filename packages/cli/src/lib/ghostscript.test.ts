@@ -115,8 +115,8 @@ test("stripAnnotations keeps its qpdf scratch file in staging, and deletes lefto
     expect(run).toHaveBeenCalledWith(
       "qpdf",
       [pdfPath, join(stagingDir, "annotations-stripped.pdf"), "--flatten-annotations=all"],
-      // qpdf can be stopped (cancel) and cannot hang the build forever.
-      { timeoutMs: execMod.TOOL_IDLE_TIMEOUT_MS, signal: ctl.signal }
+      // qpdf can be stopped (cancel); it has no deadline of its own.
+      { signal: ctl.signal }
     );
     const result = await PDFDocument.load(await readFile(pdfPath));
     expect(result.getPage(0).node.has(PDFName.of("Annots"))).toBe(false);
@@ -199,10 +199,27 @@ test("the PDF/X conversion can be canceled, is stopped when silent, keeps bounde
     expect(seen?.signal).toBe(ctl.signal);
     expect(seen?.timeoutMode).toBe("idle");
     expect(seen?.timeoutMs).toBe(execMod.TOOL_IDLE_TIMEOUT_MS);
-    expect(seen?.captureLimit).toBeGreaterThan(0);
+    expect(seen?.captureLimit).toBe(64_000);
     expect(info.mock.calls.map(([m]) => m)).toContain("Converting to PDF/X: page 2");
   } finally {
     await rm(stagingDir, { recursive: true, force: true });
+  }
+});
+
+test("what qpdf prints on success still reaches the log", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-qpdf-warn-"));
+  try {
+    const pdfPath = join(dir, "book.pdf");
+    await writeFile(pdfPath, "x");
+    spyOn(execMod, "execCapture").mockImplementation(async (_cmd, args) => {
+      await writeFile(args[1]!, "y");
+      return { stdout: "", stderr: "qpdf: warning: something recoverable" };
+    });
+    const warn = spyOn(log, "warn").mockImplementation(() => {});
+    await stripAnnotations(pdfPath, dir).catch(() => {});
+    expect(warn.mock.calls.map(([m]) => m)).toContain("qpdf: warning: something recoverable");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });
 

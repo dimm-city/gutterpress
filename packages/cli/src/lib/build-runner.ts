@@ -99,10 +99,13 @@ export interface BuildRunnerOptions {
   /** Told when the build reaches a long step it can name (the PDF/X conversion). */
   onStep?: (step: "converting") => void;
   /**
-   * Aborting stops the build promptly: the browser is closed, Ghostscript and
-   * qpdf are killed, the work dir is removed, and `runBuild` rejects with a
-   * {@link BuildError} whose `code` is "CANCELED" (what publish/explain.ts
-   * already reports as a cancel). Nothing is written to the destination.
+   * Aborting cancels the build: the render is abandoned at once, Ghostscript
+   * and qpdf are killed, and every other stage ends at its next boundary. By
+   * the time `runBuild` settles, the browser is closed and the work dir is
+   * removed, and it has rejected with a {@link BuildError} whose `code` is
+   * "CANCELED" (what publish/explain.ts already reports as a cancel). Nothing
+   * is written to the destination, unless the abort comes after the output
+   * has started to be published: that finishes, and the build succeeds.
    */
   signal?: AbortSignal;
 }
@@ -527,6 +530,7 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
     },
   });
   log.success(`Wrote ${htmlFile}`);
+  throwIfCanceled(opts.signal);
 
   const { missing } = await stageBookAssets({
     renderDir,
@@ -846,23 +850,26 @@ class PdfOutput implements OutputStrategy {
       // see engine.ts's module doc for detail.
       log.info("Rendering HTML to PDF via the Gutterpress engine (native Chromium pagination)");
       const { buildNativePdf } = await import("./engine");
-      const engineDiagnostics = await buildNativePdf(
-        htmlFile,
-        rawPdf,
-        {
-          title: config.title,
-          author: config.authors.length > 0 ? config.authors.join(", ") : undefined,
-          signature: config.print.signature,
-          lastPage: lastPageMode(config.print),
-          allowShrink: opts.allowShrink,
-        },
-        browser
+      const engineDiagnostics = await cancelable(
+        buildNativePdf(
+          htmlFile,
+          rawPdf,
+          {
+            title: config.title,
+            author: config.authors.length > 0 ? config.authors.join(", ") : undefined,
+            signature: config.print.signature,
+            lastPage: lastPageMode(config.print),
+            allowShrink: opts.allowShrink,
+          },
+          browser
+        ),
+        opts.signal
       );
       for (const d of engineDiagnostics) log.warn(d.message);
       // The PDF is made. Chromium holds hundreds of MB the PDF/X conversion
       // and validation below do not need, so give them back now.
       await closeBrowser();
-      opts.signal?.throwIfAborted();
+      throwIfCanceled(opts.signal);
 
       // stampCreator writes /Creator (gutterpress) into the PDF's Info dict using
       // pdf-lib (in-process, no system tool). For pdfx it runs on the raw PDF
@@ -1037,7 +1044,7 @@ class PdfOutput implements OutputStrategy {
       }
 
       // A canceled build's abandoned pipeline must not publish anything.
-      opts.signal?.throwIfAborted();
+      throwIfCanceled(opts.signal);
       const result = await finalizeBuild(
         ctx,
         {
@@ -1105,7 +1112,7 @@ export async function runBuild(
     throw err;
   }
 
-  if (opts.signal?.aborted) throw canceledError();
+  throwIfCanceled(opts.signal);
 
   const ctx = await resolveBuildContext(opts);
 
@@ -1131,6 +1138,7 @@ export async function runBuild(
   if (ctx.format !== "html") {
     await preflightBuildTools(ctx.format, opts, ctx.config);
   }
+  throwIfCanceled(opts.signal);
 
   // Start the engine browser NOW, un-awaited, so the ~1–2s Chromium cold start
   // overlaps lint + validation + markdown render + asset staging below instead
@@ -1153,14 +1161,14 @@ export async function runBuild(
   const closeBrowser = (): Promise<void> =>
     (closing ??= browserPromise ? browserPromise.then((b) => b.close(), () => {}) : Promise.resolve());
 
-  const pipeline = async (): Promise<BuildRunnerResult> => {
+  try {
     // Created INSIDE the try so the finally below always reclaims it. Creating
     // it earlier leaked a `.slug-build-*` directory on every build whose
     // preflight threw — e.g. every attempt with Ghostscript missing.
     await fsp.mkdir(ctx.workDir, { recursive: true });
 
     await runQualityGates(ctx);
-    opts.signal?.throwIfAborted();
+    throwIfCanceled(opts.signal);
 
     // Await the browser BEFORE rendering: a missing or too-old Chromium fails
     // here, with the launcher's own install/override message, rather than
@@ -1181,22 +1189,19 @@ export async function runBuild(
         );
       }
     }
+    throwIfCanceled(opts.signal);
 
     const htmlFile = await renderBook(ctx);
-    opts.signal?.throwIfAborted();
+    throwIfCanceled(opts.signal);
 
     const strategy: OutputStrategy =
       ctx.format === "html" ? new HtmlOutput() : new PdfOutput();
     return await strategy.finish(ctx, htmlFile, browser, closeBrowser);
-  };
-
-  try {
-    // Cancel is a race, not a poll: the render may be deep in one Chromium
-    // call that only returns when the page is done. The abandoned pipeline
-    // fails on its own once the `finally` has closed its browser and removed
-    // its work dir (and any Ghostscript or qpdf it started is killed by the
-    // same signal).
-    return await raceCancel(pipeline(), opts.signal);
+  } catch (err) {
+    // Whatever stopped the build after the abort (a killed Ghostscript, a
+    // closed browser) is the cancel, not a failure of its own.
+    if (opts.signal?.aborted) throw canceledError();
+    throw err;
   } finally {
     // Close whatever the launch produced, even if this build threw before
     // awaiting it (the launch may still be in flight when a gate fails).
@@ -1207,18 +1212,33 @@ export async function runBuild(
   }
 }
 
-/** Settles with `work`, or rejects with CANCELED as soon as `signal` aborts. */
-function raceCancel<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+function canceledError(): BuildError {
+  return new BuildError("The build was canceled", EXIT_CODES.CANCELED, { code: "CANCELED" });
+}
+
+/**
+ * Cancel is checked at stage boundaries, never inside one: every stage runs to
+ * its end, so every `finally` runs before `runBuild` settles and nothing keeps
+ * writing after the work dir is gone. Once publishing the output has begun it
+ * finishes (the previous output is only replaced by a complete one).
+ */
+function throwIfCanceled(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw canceledError();
+}
+
+/**
+ * The one stage that cannot be left to finish: the render is a single Chromium
+ * call, minutes long on a big book, and with the browser closed it never
+ * returns. Cancel rejects at once; the abandoned call dies with its browser.
+ */
+function cancelable<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
   if (!signal) return work;
   return new Promise<T>((resolve, reject) => {
     const canceled = () => reject(canceledError());
-    signal.addEventListener("abort", canceled, { once: true });
     work.then(resolve, reject).finally(() => signal.removeEventListener("abort", canceled));
+    if (signal.aborted) canceled();
+    else signal.addEventListener("abort", canceled, { once: true });
   });
-}
-
-function canceledError(): BuildError {
-  return new BuildError("The build was canceled", EXIT_CODES.CANCELED, { code: "CANCELED" });
 }
 
 /** One line per fallback cause, each with the change that fixes it: the causes need different author changes. */

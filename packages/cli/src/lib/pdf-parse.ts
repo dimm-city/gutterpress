@@ -135,6 +135,8 @@ export async function getPerPageInkCoverage(
     const pages: InkCoveragePage[] = [];
     for (let first = 1; first <= pageCount; first += TAC_PAGES_PER_RUN) {
       const last = Math.min(first + TAC_PAGES_PER_RUN - 1, pageCount);
+      // -q makes Ghostscript silent, so this is a deadline for one chunk of
+      // pages (not an idle watch, and not for the whole book).
       const { stderr } = await execCapture(ghostscript, [
         "-q",
         "-dSAFER",

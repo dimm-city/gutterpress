@@ -20,9 +20,10 @@ export const localBin = resolvePath(join(import.meta.dirname, "..", "..", "node_
 
 /**
  * PATH with `localBin` prepended, correctly delimiter-joined. Single source
- * of truth for every spawn in the lib — `execCapture` below uses it, and tool-probe.ts's `isToolAvailable`/`findTool` get it for free by
- * calling `execCapture` instead of keeping their own copy. Joined with
- * `delimiter`, never a literal `:` (which corrupts PATH on Windows).
+ * of truth for every spawn in the lib — `execCapture` below uses it, and
+ * tool-probe.ts's `isToolAvailable`/`findTool` get it for free by calling
+ * `execCapture` instead of keeping their own copy. Joined with `delimiter`,
+ * never a literal `:` (which corrupts PATH on Windows).
  */
 export const enhancedPath = buildEnhancedPath(localBin, process.env.PATH ?? "");
 
@@ -55,7 +56,8 @@ export interface SpawnCaptureOptions {
   /** Raw chunk tap, called per stream as data arrives. */
   onChunk?: (stream: "stdout" | "stderr", text: string) => void;
   /** Keep only the trailing N chars of each captured stream (unbounded when
-   * unset) — bounds memory for hours-long progress streams. */
+   * unset), marked with a leading "[…output truncated]" line once anything
+   * was dropped — bounds memory for hours-long progress streams. */
   captureLimit?: number;
   /** Override {@link EXIT_FLUSH_GRACE_MS} (tests). */
   exitGraceMs?: number;
@@ -75,9 +77,13 @@ function canceled(cmd: string): Error {
   return Object.assign(new Error(`${cmd} was canceled`), { name: "AbortError", code: "CANCELED" });
 }
 
+const TRUNCATED = "[…output truncated]\n";
+
 function keepTail(buffer: string, chunk: string, limit: number | undefined): string {
-  const joined = buffer + chunk;
-  return limit !== undefined && joined.length > limit ? joined.slice(-limit) : joined;
+  const cut = buffer.startsWith(TRUNCATED);
+  const joined = (cut ? buffer.slice(TRUNCATED.length) : buffer) + chunk;
+  if (limit === undefined || (!cut && joined.length <= limit)) return joined;
+  return TRUNCATED + joined.slice(-limit);
 }
 
 /**

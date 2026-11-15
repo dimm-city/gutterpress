@@ -16,8 +16,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   minutes of memory nothing needed.
 - **The PDF/X conversion shows its progress and cannot hang forever.** It prints the page it
   has reached every ten seconds or so, and is stopped if Ghostscript goes ten minutes without
-  output (the same limit now covers the other Ghostscript and qpdf steps of a build). Its
-  captured output is capped, so a very long conversion no longer grows without bound.
+  printing anything, however long the book. Each step of the colour check that measures ink
+  coverage (32 pages at a time) is also stopped after ten minutes. The output it keeps is
+  capped, so a very long conversion no longer grows without bound, and what Ghostscript and
+  qpdf report on a successful step still shows in the log.
 
 ## [0.11.28] - 2026-11-15
 

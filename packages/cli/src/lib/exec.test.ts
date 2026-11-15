@@ -233,7 +233,7 @@ test("spawnCapture aborted by its signal kills the child and rejects with CANCEL
   setTimeout(() => ctl.abort(), 50);
   let err: (Error & { code?: string }) | undefined;
   try {
-    await spawnCapture("sh", ["-c", "sleep 30"], { signal: ctl.signal });
+    await spawnCapture("sh", ["-c", "exec sleep 30"], { signal: ctl.signal });
   } catch (e) {
     err = e as Error;
   }
@@ -256,4 +256,41 @@ test("spawnCapture with an already-aborted signal never starts the child", async
   await Bun.sleep(200);
   expect(err?.code).toBe("CANCELED");
   expect(existsSync(marker)).toBe(false);
+});
+
+test("aborting kills the child process itself, not just its parent shell", async () => {
+  const ctl = new AbortController();
+  let pid = 0;
+  // `exec` makes the shell become `sleep`, so the pid it prints is the child's.
+  const pending = spawnCapture("sh", ["-c", "echo $$; exec sleep 30"], {
+    signal: ctl.signal,
+    onChunk: (_stream, text) => {
+      pid = Number(text.trim());
+      ctl.abort();
+    },
+  }).catch(() => {});
+  await pending;
+  expect(pid).toBeGreaterThan(0);
+  const alive = () => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  for (let i = 0; i < 50 && alive(); i++) await Bun.sleep(20);
+  expect(alive()).toBe(false);
+});
+
+test("captureLimit keeps the tail, marks the cut, and does not grow past the limit", async () => {
+  const { stdout } = await spawnCapture(
+    "sh",
+    ["-c", "for i in 1 2 3 4 5 6 7 8 9 10; do echo line$i-xxxxxxxxxx; sleep 0.02; done"],
+    { captureLimit: 40 }
+  );
+  expect(stdout.startsWith("[…output truncated]\n")).toBe(true);
+  expect(stdout).toContain("line10-");
+  expect(stdout).not.toContain("line1-");
+  expect(stdout.length).toBeLessThanOrEqual(40 + "[…output truncated]\n".length);
 });

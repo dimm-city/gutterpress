@@ -9,6 +9,7 @@
  */
 
 import { expect, test } from "bun:test";
+import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -23,7 +24,7 @@ const chromium = await resolveChromiumExecutable();
 const testIfChromium = chromium ? test : test.skip;
 
 for (const [signal, exitCode] of [["SIGINT", 130], ["SIGTERM", 143]] as const) {
-  testIfChromium(`${signal} mid-render exits ${exitCode} and leaves no work folder or Chromium profile`, async () => {
+  testIfChromium(`${signal} mid-render exits ${exitCode} and leaves no work folder, stage folder or Chromium profile`, async () => {
     const root = await makeTempDir("gutterpress-interrupt-");
     const book = path.join(root, "book");
     // Short path: Chromium refuses a profile socket path over ~100 characters.
@@ -32,35 +33,44 @@ for (const [signal, exitCode] of [["SIGINT", 130], ["SIGTERM", 143]] as const) {
     await writeFile(path.join(book, "manifest.yaml"), "title: Interrupt Test\n");
     // Enough pages that the render is still running when the signal arrives.
     await writeFile(path.join(book, "chapter-01.md"), "# One\n\n" + "A paragraph of body text. ".repeat(40).concat("\n\n").repeat(150));
+    let group: number | undefined;
     try {
-      const proc = Bun.spawn({
-        cmd: ["bun", "run", CLI_ENTRY, "build", book, "--format", "pdf", "--skip-post-validate"],
-        stdout: "pipe",
-        stderr: "pipe",
+      // Its own process group, so a failing test can kill Chromium along with the CLI.
+      const proc = spawn("bun", ["run", CLI_ENTRY, "build", book, "--format", "pdf", "--skip-post-validate"], {
+        detached: true,
+        stdio: ["ignore", "pipe", "pipe"],
         // Chromium's profile folder goes in the temp dir; look for it in ours.
         env: { ...process.env, TMPDIR: scratch },
       });
+      group = proc.pid;
+      const exited = new Promise<number | null>((resolve) => proc.on("exit", (code) => resolve(code)));
+      proc.stderr.resume();
       // Wait for the render stage: by then the browser is up and the work folder exists.
       let log = "";
-      const decoder = new TextDecoder();
-      const reader = proc.stdout.getReader();
-      while (!log.includes("Rendering HTML to PDF")) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        log += decoder.decode(value);
-      }
+      await new Promise<void>((resolve) => {
+        proc.stdout.on("data", (chunk: Buffer) => {
+          log += chunk.toString();
+          if (log.includes("Rendering HTML to PDF")) resolve();
+        });
+        proc.stdout.on("end", () => resolve());
+      });
       expect(log).toContain("Rendering HTML to PDF");
       proc.kill(signal);
-      reader.releaseLock();
-      expect(await proc.exited).toBe(exitCode);
+      expect(await exited).toBe(exitCode);
 
       const dist = path.join(book, "dist");
       const left = [
         ...(await readdir(dist).catch(() => [] as string[])).filter((n) => n.includes("-build-")),
-        ...(await readdir(scratch)).filter((n) => n.startsWith("gp-cdp-")),
+        ...(await readdir(scratch)).filter((n) => n.startsWith("gp-cdp-") || n.startsWith("gutterpress-stage-")),
       ];
       expect(left).toEqual([]);
     } finally {
+      // Normally empty by now; after a failure this stops an orphaned Chromium.
+      if (group) {
+        try {
+          process.kill(-group, "SIGKILL");
+        } catch {}
+      }
       await rm(root, { recursive: true, force: true });
       await rm(scratch, { recursive: true, force: true });
     }
