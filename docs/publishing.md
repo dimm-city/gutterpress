@@ -7,7 +7,8 @@ app's toolbar.
 Both run the same publish ([ADR 0012](adr/0012-one-publishing-system.md)):
 it gets the latest changes, checks the book's source, lays the book out once,
 makes each file a target needs once (the PDF and the PDF/X come from the
-same layout), checks each file against the rules of each target it goes to,
+same layout), checks each file against the rules of each target it goes to
+(a plain PDF is never held to the checks only a PDF/X can pass),
 and sends it. A target whose file breaks its rules is held back alone until
 you send it anyway. Checks are on by default; one switch turns them off.
 

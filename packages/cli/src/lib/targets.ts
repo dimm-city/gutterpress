@@ -345,6 +345,22 @@ export function overlayPreset(preset: VendorPreset, target: PublishTarget): Vend
 }
 
 /**
+ * The checks only a PDF/X file can pass: they measure what the conversion to
+ * print colours makes (its PDF/X structure, colour spaces and ink, flattened
+ * transparency, black text on the black plate). The publish run holds only the
+ * PDF/X to them, so a book's plain PDF is never held back for lacking what
+ * only its PDF/X has (ADR 0012 §5).
+ */
+export const PDFX_FILE_CHECKS = [
+  "pdf.print.pdfx-markers",
+  "pdf.print.pdfx-metadata",
+  "pdf.print.color-spaces",
+  "pdf.print.ink-coverage",
+  "pdf.print.transparency",
+  "pdf.print.black-text",
+] as const;
+
+/**
  * The strict-PDF fill-ins applied to EVERY post-build PDF validation
  * regardless of preset/target: any of these the config leaves unset reports
  * at error severity, without overwriting an author's explicit level

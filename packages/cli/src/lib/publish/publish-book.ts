@@ -22,7 +22,7 @@ import path from "node:path";
 import type { BuildDiagnostic } from "../../engine/compiler/build.ts";
 import { loadManifestWithPath, resolveConfig } from "../manifest.ts";
 import { artifactName, resolveOutputDir } from "../output-paths.ts";
-import { canonicalTargetId, hasOwnRules, TARGETS, type TargetFileFormat } from "../targets.ts";
+import { canonicalTargetId, hasOwnRules, PDFX_FILE_CHECKS, TARGETS, type TargetFileFormat } from "../targets.ts";
 import { explainBuildFailure, explainSendFailure, type Failure } from "./explain.ts";
 import { resolvePublishProvider } from "./plugin-provider.ts";
 import { UsageError } from "../cli-args.ts";
@@ -344,6 +344,8 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
                 ...(options.manifestPath ? { manifest: options.manifestPath } : {}),
                 phase: "post-build",
                 target: group.map((p) => p.result.id).filter((id) => checkedIds.includes(id)).join(","),
+                // Only the PDF/X is held to what only a PDF/X can pass.
+                ...(format === "pdfx" ? {} : { skip: PDFX_FILE_CHECKS.join(",") }),
                 pluginStylePaths: [],
               }),
             );

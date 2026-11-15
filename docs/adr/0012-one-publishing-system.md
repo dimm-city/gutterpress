@@ -137,7 +137,10 @@ The lib has one publish run. Both views start it and show what it reports.
 5. **Make each file once**, into `dist/<slug>/`, named as the CLI names them
    (`<slug>-pdf.pdf`, `<slug>-pdfx.pdf`). A book has one PDF/X: every target
    that takes PDF/X gets the same file, checked against its own rules.
-6. **Check each file against each target that receives it.**
+6. **Check each file against each target that receives it.** A plain PDF
+   is not held to the checks only a PDF/X can pass (PDF/X structure, print
+   colours, ink, flattened transparency, black text on the black plate),
+   even when the book's preset makes them errors.
 7. **Send.** A target whose file fails its rules is held, alone, until the
    person says to send it anyway.
 

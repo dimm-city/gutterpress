@@ -13,6 +13,7 @@ import { FileTokenStore } from "../remote-auth/token-store.ts";
 import { PublishSelectionsStore } from "./selections.ts";
 import { publishBook, publishPlan, type PublishBookDeps, type PublishProgress } from "./publish-book.ts";
 import type { BuildRunnerOptions } from "../build-runner.ts";
+import { PDFX_FILE_CHECKS } from "../targets.ts";
 import type { ValidationExecutionArgs, ValidationExecutionResult } from "../validation-exec.ts";
 
 let root: string;
@@ -105,6 +106,17 @@ describe("making the files", () => {
     expect(local).toMatchObject({ id: "local", format: "pdf", status: "sent" });
     expect(await readdir(path.join(book, "out"))).toEqual(["field-guide-pdf.pdf"]);
     expect(result.ok).toBe(true);
+  });
+
+  test("only the PDF/X is held to the checks only a PDF/X can pass; the plain PDF is checked for the rest", async () => {
+    await writeBook("publish:\n  drivethrurpg-print:\n  local:\n    dir: out\n");
+    await publishBook({ projectDir: book, checkOnly: true }, deps());
+    const post = checks.filter((c) => c.phase === "post-build");
+    const pdfx = post.find((c) => String(c.pdf).endsWith("-pdfx.pdf"));
+    const plain = post.find((c) => String(c.pdf).endsWith("-pdf.pdf"));
+    expect(pdfx?.skip).toBeUndefined();
+    expect(String(plain?.skip).split(",").sort()).toEqual([...PDFX_FILE_CHECKS].sort());
+    expect(PDFX_FILE_CHECKS).toContain("pdf.print.pdfx-markers");
   });
 
   test("a website target gets its own build, after the PDFs", async () => {

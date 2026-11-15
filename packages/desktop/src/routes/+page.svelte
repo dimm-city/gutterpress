@@ -2580,6 +2580,10 @@
     if (lifecycle.sourceMode !== "folder" || !lifecycle.currentDir) {
       return "Open a book before saving a PDF.";
     }
+    // A preview that failed is not still loading: say what the build would.
+    if (lifecycle.previewError) {
+      return "The book has problems to fix before the PDF can be made. The preview shows what they are.";
+    }
     if (lifecycle.rendering || !lifecycle.previewUrl) {
       return "Your document is still loading. Wait a moment and try again.";
     }

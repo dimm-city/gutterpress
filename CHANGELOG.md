@@ -33,7 +33,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **`gutterpress publish` makes, checks and sends the book in one run** (ADR 0012). With no
   targets named it publishes every target under `publish:`; name some to send only those
   (`gutterpress publish itch gdrive`). It builds the files itself, once each (the PDF and the
-  PDF/X come from one render), checks each against its target's own rules, and holds back
+  PDF/X come from one render), checks each against its target's own rules (the plain PDF is
+  not held to the checks only a PDF/X can pass, even on a `dtrpg` book), and holds back
   only a target whose file breaks them; `--send-anyway` sends it, `--skip-checks` runs no
   checks, and `--dry-run` now makes and checks the files without sending. `--connect itch`
   and `--disconnect itch` take the target by name (`--provider` still works). **`--file` is
