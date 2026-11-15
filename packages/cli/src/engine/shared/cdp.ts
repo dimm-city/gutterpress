@@ -112,6 +112,9 @@ export function readyProbeExpr(timeoutMs: number): string {
  * them back) + CSS page size + backgrounds. ONE object, spread by both
  * `SessionImpl.printToPDF` and the Electron host's `printToPDF`.
  */
+/** What a page whose renderer died is called. The desktop's Electron host says it the same way. */
+export const RENDERER_CRASHED = "Chromium's renderer for this page crashed (it may have run out of memory)";
+
 export const DEFAULT_PRINT_OPTS = {
   printBackground: true,
   preferCSSPageSize: true,
@@ -494,7 +497,7 @@ class SessionImpl implements Session {
     const lost = (why: string) => conn.failSession(sessionId, conn.chromiumError(why));
     this.offs.push(
       conn.on(`${sessionId}:Inspector.targetCrashed`, () =>
-        lost("Chromium's renderer for this page crashed (it may have run out of memory)"),
+        lost(RENDERER_CRASHED),
       ),
       conn.on("Target.detachedFromTarget", (p) => {
         if (p?.sessionId === sessionId)

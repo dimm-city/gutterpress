@@ -117,6 +117,7 @@ import { logMainProcessFaults } from "./fault-log";
 import { toIpcResult } from "../src/lib/platform/ipc-result";
 import {
   ExportCanceledError,
+  cancelExportSession,
   getActiveExportSession,
   initPdfExport,
   sendExportProgress,
@@ -922,6 +923,10 @@ function createWindow() {
     if (activeRendererFlush?.session === flushSession) activeRendererFlush = null;
     stopFolderWatch();
     if (mainWindow === win) mainWindow = null;
+    // The hidden export windows would keep the app alive until the export
+    // finished; nobody is left to see it.
+    const exporting = getActiveExportSession();
+    if (exporting) cancelExportSession(exporting);
   });
   return win;
 }
@@ -1600,11 +1605,7 @@ secureHandle("api:cancelExport", async (_e, exportId: string) => {
   if (!session || session.id !== exportId) {
     return { canceled: false };
   }
-  session.canceled = true;
-  const exportWin = session.win;
-  if (exportWin && !exportWin.isDestroyed()) {
-    exportWin.destroy();
-  }
+  cancelExportSession(session);
   return { canceled: true };
 });
 
@@ -1958,10 +1959,7 @@ app.whenReady().then(async () => {
 app.on("window-all-closed", async () => {
   const exportSession = getActiveExportSession();
   if (exportSession) {
-    exportSession.canceled = true;
-    if (exportSession.win && !exportSession.win.isDestroyed()) {
-      exportSession.win.destroy();
-    }
+    cancelExportSession(exportSession);
     if (exportSession.tempOutPath) {
       await rm(exportSession.tempOutPath, { force: true }).catch(() => {});
     }

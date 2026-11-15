@@ -1,14 +1,20 @@
-import { describe, expect, it, spyOn } from "bun:test";
-import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
+import { afterAll, describe, expect, it, spyOn } from "bun:test";
+import { mkdtempSync, writeFileSync, chmodSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { EXIT_FLUSH_GRACE_MS } from "../exec.ts";
 import { defaultCommandRunner, PUBLISH_IDLE_TIMEOUT_MS } from "./command-runner.ts";
 
+const scriptDirs: string[] = [];
+afterAll(() => {
+  for (const dir of scriptDirs) rmSync(dir, { recursive: true, force: true });
+});
+
 // A tiny helper to write an executable shell script into a temp dir.
 function writeScript(body: string): string {
   const dir = mkdtempSync(join(tmpdir(), "gutterpress-cmdrun-"));
+  scriptDirs.push(dir);
   const p = join(dir, "script.sh");
   writeFileSync(p, `#!/bin/sh\n${body}\n`);
   chmodSync(p, 0o755);
@@ -209,5 +215,22 @@ describe("defaultCommandRunner stdio flush (exit vs close)", () => {
     // the grandchild would make us wait if we hung until 'close'.
     expect(elapsed).toBeGreaterThanOrEqual(EXIT_FLUSH_GRACE_MS - 500);
     expect(elapsed).toBeLessThan(8000);
+  });
+});
+
+describe("defaultCommandRunner cancel", () => {
+  it("kills the child and rejects as canceled when the signal aborts", async () => {
+    const script = writeScript("sleep 30");
+    const stop = new AbortController();
+    setTimeout(() => stop.abort(), 100);
+    const start = Date.now();
+    let err: unknown;
+    try {
+      await defaultCommandRunner("/bin/sh", [script], { signal: stop.signal });
+    } catch (e) {
+      err = e;
+    }
+    expect((err as { code?: string } | undefined)?.code).toBe("CANCELED");
+    expect(Date.now() - start).toBeLessThan(5000);
   });
 });

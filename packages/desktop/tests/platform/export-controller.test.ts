@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { explainBuildFailure, renderPhases, type EngineBrowser } from "gutterpress";
 import { ExportController, type ExportControllerDeps } from "../../electron/export/controller";
-import type { ExportProgressEvent, ExportSession } from "../../electron/pdf-export";
+import { cancelExportSession, type ExportProgressEvent, type ExportSession } from "../../electron/pdf-export";
 import type { SyncStatusPayload } from "../../electron/auto-sync/orchestrator";
 
 type LibModule = typeof import("gutterpress");
@@ -16,7 +16,7 @@ interface HarnessOpts {
   /** Return value (or thrown value) of the fake syncProject during the export gate. */
   syncProject?: () => unknown;
   /** Return value (or thrown value) of the fake runBuild; given the browser factory it was handed. */
-  runBuild?: (engineBrowser: () => Promise<EngineBrowser>) => unknown;
+  runBuild?: (engineBrowser: () => Promise<EngineBrowser>, buildOpts: BuildCall) => unknown;
   /** Pre-set active export session (simulates an in-progress export). */
   activeSession?: ExportSession | null;
   /** conflictLatched flag returned by sync.getState. */
@@ -53,6 +53,7 @@ type BuildCall = {
   skipPreValidate?: boolean;
   skipPostValidate?: boolean;
   engineBrowser: () => Promise<EngineBrowser>;
+  signal?: AbortSignal;
 };
 
 interface Harness {
@@ -92,13 +93,13 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     syncProject: async (args: unknown) => {
       counters.sync += 1;
       syncArgs.push(args);
-      if (opts.cancelDuringSync && session) session.canceled = true;
+      if (opts.cancelDuringSync && session) session.abort.abort();
       return opts.syncProject ? opts.syncProject() : { status: "up-to-date" };
     },
     runBuild: async (buildOpts: BuildCall) => {
       counters.build += 1;
       buildArgs.push(buildOpts);
-      return opts.runBuild ? opts.runBuild(buildOpts.engineBrowser) : { outDir: "/out", diagnostics: [] };
+      return opts.runBuild ? opts.runBuild(buildOpts.engineBrowser, buildOpts) : { outDir: "/out", diagnostics: [] };
     },
     // The lib's own: what a failure is called, and the render's phases.
     explainBuildFailure,
@@ -120,7 +121,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
       progress.push(e);
     },
     throwIfCanceled: (s) => {
-      if (s.canceled) throw new Error("canceled");
+      if (s.abort.signal.aborted) throw new Error("canceled");
     },
     isExportCanceledError: (e) =>
       e instanceof Error && (e as Error & { code?: string }).code === "EXPORT_CANCELED",
@@ -315,10 +316,9 @@ test("a FAILED export registers nothing (no reveal capability for a PDF never wr
 test("a second concurrent export is rejected while one is active", async () => {
   const active: ExportSession = {
     id: "x",
-    canceled: false,
     outPath: "/o",
     tempOutPath: "/o.tmp",
-    win: null,
+    abort: new AbortController(),
   };
   const h = makeHarness({ activeSession: active });
   await expect(
@@ -477,3 +477,39 @@ test("Cancel during the pre-export sync gate aborts before runBuild (M28)", asyn
   // Session cleaned up so a subsequent export isn't blocked.
   expect(h.getSession()).toBeNull();
 });
+
+/** A render that stops, as the lib's runBuild does, when its signal aborts. */
+const renderUntilCanceled = (_browser: unknown, buildOpts: BuildCall) =>
+  new Promise((_resolve, reject) => {
+    buildOpts.signal?.addEventListener("abort", () =>
+      reject(Object.assign(new Error("The build was canceled"), { code: "CANCELED" })),
+    );
+  });
+
+async function until(what: string, ready: () => boolean): Promise<void> {
+  const deadline = Date.now() + 2000;
+  while (!ready()) {
+    if (Date.now() > deadline) throw new Error(`never happened: ${what}`);
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
+test("Cancel during the render stops the render, settles as canceled, and the next export is accepted", async () => {
+  const h = makeHarness({ runBuild: renderUntilCanceled });
+  const first = h.controller.build({ input: "/book", out: "/out/book.pdf" }).catch((e) => e);
+  await until("the render starts", () => h.runBuildCalls === 1);
+
+  const started = Date.now();
+  cancelExportSession(h.getSession()!);
+  const err = await first;
+  expect((err as Error & { code?: string }).code).toBe("EXPORT_CANCELED");
+  expect(Date.now() - started).toBeLessThan(2000);
+  expect(h.progress.some((p) => p.state === "canceled")).toBe(true);
+  expect(h.renamed).toEqual([]);
+  // The slot is free: a second export starts instead of being refused.
+  expect(h.getSession()).toBeNull();
+  const second = h.controller.build({ input: "/book", out: "/out/book.pdf" }).catch((e) => e);
+  await until("the second render starts", () => h.runBuildCalls === 2);
+  cancelExportSession(h.getSession()!);
+  expect(((await second) as Error & { code?: string }).code).toBe("EXPORT_CANCELED");
+}, 8000);

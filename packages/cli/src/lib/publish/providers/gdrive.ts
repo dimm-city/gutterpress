@@ -359,6 +359,7 @@ export const gdriveProvider: PublishProvider = {
         filePath: source.filePath,
         totalBytes: artifactStat.size,
         mimeType: source.mimeType,
+        signal: req.deps.signal,
         onProgress: (uploaded, total) => {
           // Throttle to whole percent so a fast connection doesn't spam
           // onProgress once per chunk boundary at 100% granularity.
