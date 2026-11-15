@@ -298,7 +298,11 @@ function readDevToolsUrl(proc: ChildProcess): Promise<{ wsUrl: string; stderrTai
       if (m) {
         listening = true;
         clearTimeout(timer);
-        resolve({ wsUrl: m[0], stderrTail: () => buf.trim() });
+        resolve({
+          wsUrl: m[0],
+          // The "DevTools listening" banner says nothing about why it died.
+          stderrTail: () => buf.replace(/^DevTools listening.*$/m, "").trim(),
+        });
       }
     });
     proc.once("exit", (code) => {
