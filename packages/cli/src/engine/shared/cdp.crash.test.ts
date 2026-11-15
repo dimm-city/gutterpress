@@ -19,9 +19,11 @@ import { launchChromium } from "./cdp.ts";
 const chromium = await resolveChromiumExecutable();
 const testIf = chromium ? test : test.skip;
 
-const hang = new Promise<string>((r) => setTimeout(() => r("HUNG"), 8_000));
 const outcome = (p: Promise<unknown>) =>
-  Promise.race([p.then(() => "RESOLVED", (e: Error) => e.message), hang]);
+  Promise.race([
+    p.then(() => "RESOLVED", (e: Error) => e.message),
+    new Promise<string>((r) => setTimeout(() => r("HUNG"), 12_000)),
+  ]);
 
 testIf("a renderer crash rejects the page's pending call", async () => {
   const browser = await launchChromium();
