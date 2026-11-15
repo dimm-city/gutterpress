@@ -1,6 +1,7 @@
 import path from "node:path";
 import os from "node:os";
 import fsp from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
 import { getAssetPath } from "./embedded-assets";
 import { inlineShapeUrls, planImageCopies, type AssetCopy } from "./asset-inline";
 import {
@@ -135,10 +136,13 @@ export async function stageBookAssets(options: {
   return { missing: [...missingPlaceholders.keys()].sort() };
 }
 
+const MAX_CONCURRENT_COPIES = 8;
+
 /**
  * Copy the planned assets into `outDir`, preserving each one's output-relative
- * path. Parallel because these are independent file copies and a book's image
- * set is routinely in the hundreds.
+ * path. A book's image set is routinely in the hundreds, so copies run in
+ * parallel, but at most {@link MAX_CONCURRENT_COPIES} at a time (hundreds at
+ * once thrash a spinning disk), and as a reflink where the filesystem has one.
  */
 async function copyReferencedAssets(
   copies: AssetCopy[],
@@ -155,11 +159,12 @@ async function copyReferencedAssets(
   // throws: those are environment faults the author cannot fix by editing
   // their markdown, and silently papering over them would hide real damage.
   const missing = new Map<string, string>();
-  await Promise.all(
-    copies.map(async (c) => {
+  const queue = copies.values();
+  const worker = async (): Promise<void> => {
+    for (const c of queue) {
       const dest = path.resolve(outDir, c.to);
       try {
-        await fsp.copyFile(c.from, dest);
+        await fsp.copyFile(c.from, dest, fsConstants.COPYFILE_FICLONE);
       } catch (err) {
         if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
           const placeholder = placeholderOutputPath(c.to);
@@ -167,7 +172,7 @@ async function copyReferencedAssets(
           await fsp.mkdir(path.dirname(placeholderDest), { recursive: true });
           await fsp.writeFile(placeholderDest, placeholderPng());
           missing.set(c.to, placeholder);
-          return;
+          continue;
         }
         throw new BuildError(
           `Could not copy asset ${c.from} → ${c.to}: ` +
@@ -175,8 +180,9 @@ async function copyReferencedAssets(
           1
         );
       }
-    })
-  );
+    }
+  };
+  await Promise.all(Array.from({ length: MAX_CONCURRENT_COPIES }, worker));
 
   return missing;
 }

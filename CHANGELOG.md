@@ -5,6 +5,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A build no longer copies every image at once.** Copying a book's images into the build folder
+  now runs at most 8 copies at a time, and uses an instant copy on filesystems that support it, so
+  a book with a lot of art puts far less load on a slow or spinning disk.
+- **The preview no longer reads every asset to check whether it changed.** It now uses the file's
+  size and modified times, so reloading a book with large images is lighter, and a changed file
+  still always reloads.
+
 ## [0.11.28] - 2026-11-15
 
 ### Changed
