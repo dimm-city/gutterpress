@@ -8,6 +8,7 @@ import {
   isNonFilesystemRef,
   proseImageRefError,
 } from "../../lib/asset-inline";
+import { isRemoteUrl } from "../../lib/printsafe";
 import { renderedLocalRefs, type RenderedRefKind } from "./local-ref-parser";
 
 const check: Check = {
@@ -19,6 +20,20 @@ const check: Check = {
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     const results: CheckResult[] = [];
     for await (const { ref, kind, line, file } of renderedLocalRefs(ctx, check.id, results)) {
+      // A remote image is fetched while the PDF renders; one that never
+      // answers would hold the build forever. Remote CSS URLs are already an
+      // error for the same reason (source.stylelint).
+      if (kind === "image" && isRemoteUrl(ref)) {
+        results.push(
+          finding(check.id, {
+            severity: "error",
+            message: `Remote image is not allowed — a PDF build waits for it and cannot finish if it never loads. Save the image in your book and reference that file: ${ref}`,
+            file,
+            line,
+          })
+        );
+        continue;
+      }
       // The parser deliberately returns every rendered link/image. Only
       // filesystem-backed destinations belong to this check: page-local
       // fragments and URLs are resolved by the reader, not on disk.

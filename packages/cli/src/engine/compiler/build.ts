@@ -202,7 +202,8 @@ export type BuildDiagnosticCode =
   | "engine.pin.margin-box"
   | "engine.pin.page-span"
   | "engine.page-background.unreferenced"
-  | "engine.hyphenation.unsupported";
+  | "engine.hyphenation.unsupported"
+  | "engine.ready.timeout";
 
 export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.width.overflow",
@@ -217,6 +218,7 @@ export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.pin.page-span",
   "engine.page-background.unreferenced",
   "engine.hyphenation.unsupported",
+  "engine.ready.timeout",
 ];
 
 export interface BuildDiagnostic {
@@ -323,7 +325,12 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       : pathToFileURL(resolve(opts.input)).href;
     await page.navigate(url);
     await page.evaluate(AGENT);
-    await page.waitForReady();
+    if ((await page.waitForReady()) === false) {
+      diagnose(
+        "engine.ready.timeout",
+        "The book's fonts or a stylesheet or extension that signals when it is ready (gp:ready) had not finished after 15 seconds, so the PDF was made without waiting any longer. Text may be in a fallback font or an extension's changes may be missing; check that every font and extension loads from a local file.",
+      );
+    }
 
     // ---- read the author's CSS (never rewrite it) -----------------------
     const cssText = await page.evaluate<string>(`window.__gp.collectCss()`);

@@ -5,8 +5,22 @@ import type Token from "markdown-it/lib/token.mjs";
 import { createMarkdownRenderer } from "../../lib/markdown/renderer";
 import type { LoadedPlugin } from "../../lib/markdown/renderer";
 import { loadPlugins } from "../../lib/markdown/plugins";
+import { isRemoteUrl } from "../../lib/printsafe";
 import { inspectionFailed } from "../policy";
 import type { CheckContext, CheckResult } from "../types";
+
+/**
+ * `src` of every raw-HTML `<img>` in `html` that points at the web. Only those
+ * are reported: a raw `<img>` to a local file is the author's own markup and
+ * stays outside the local-ref checks.
+ */
+const HTML_IMG_SRC = /<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+function* remoteHtmlImgSrcs(html: string): Generator<{ src: string; index: number }> {
+  for (const m of html.matchAll(HTML_IMG_SRC)) {
+    const src = m[1] ?? m[2] ?? m[3] ?? "";
+    if (isRemoteUrl(src)) yield { src, index: m.index };
+  }
+}
 
 export type RenderedRefKind = "image" | "link";
 
@@ -88,9 +102,26 @@ export function createRenderedLocalRefCollector(
     const refs: RenderedLocalRef[] = [];
 
     for (const block of tokens) {
+      if (block.type === "html_block" && block.map) {
+        const newlines = newlineOffsets(block.content);
+        for (const { src, index } of remoteHtmlImgSrcs(block.content)) {
+          refs.push({ ref: src, kind: "image", line: block.map[0] + lineWithinInline(newlines, index) + 1 });
+        }
+      }
       if (block.type !== "inline" || !block.children || !block.map) continue;
       const newlines = newlineOffsets(block.content);
       for (const child of block.children) {
+        if (child.type === "html_inline") {
+          const offset = tokenOffsets.get(child);
+          for (const { src } of remoteHtmlImgSrcs(child.content)) {
+            refs.push({
+              ref: src,
+              kind: "image",
+              line: block.map[0] + (offset === undefined ? 0 : lineWithinInline(newlines, offset)) + 1,
+            });
+          }
+          continue;
+        }
         const kind: RenderedRefKind | undefined =
           child.type === "image" ? "image" : child.type === "link_open" ? "link" : undefined;
         if (!kind) continue;

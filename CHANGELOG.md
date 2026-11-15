@@ -5,6 +5,23 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A build whose Chromium dies now stops instead of hanging.** If Chromium ran out of memory and
+  was killed, or one page of it crashed, a PDF build used to wait forever or quit with no PDF and
+  no message. It now fails within seconds, says Chromium closed (it may have run out of memory),
+  and cleans up its work folder.
+- **An image from the web in your Markdown is now an error before the build starts.** That
+  covers `![](https://...)` and a raw `<img src="https://...">`. An image that never answered
+  used to leave the build waiting for ever; save the image in your book instead. As a safety
+  net, a page that has not finished loading after five minutes now fails and names what it is
+  still waiting for.
+- **A build that stops waiting for fonts or an extension now tells you.** After 15 seconds the
+  build goes on without them; it now reports that as a warning instead of staying silent.
+- `gutterpress doctor` waits 10 seconds, not 2, for a tool to report its version, so a slow cold
+  start is no longer shown as broken. Chromium's error output is no longer kept without limit
+  during a long build.
+
 ## [0.11.28] - 2026-11-15
 
 ### Changed

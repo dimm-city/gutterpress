@@ -95,8 +95,10 @@ const TOOLS_TO_PROBE: Array<{
   },
 ];
 
-// Hard 2s ceiling — a broken binary that hangs shouldn't block the dialog.
-const GET_VERSION_TIMEOUT_MS = 2000;
+// Hard 10s ceiling — a broken binary that hangs shouldn't block the dialog,
+// but a healthy Chrome or Ghostscript can take several seconds to start cold
+// on a slow machine and must not be reported as broken.
+const GET_VERSION_TIMEOUT_MS = 10_000;
 
 // Delegates to exec.ts's shared execCapture. Requires a zero exit code to
 // report a version string — gs/qpdf both exit 0 on `--version` — so stderr
