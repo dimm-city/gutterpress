@@ -1012,6 +1012,63 @@ describe("Local markdown refs check", () => {
     expect(results.some((r) => r.message.includes("missing-four.png"))).toBe(false);
   });
 
+  test("a remote image, in markdown or raw HTML, is an error; a remote link is not", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-remote-img-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(
+      mainFile,
+      [
+        "![pic](https://example.com/a.png)",
+        "[link](https://example.com)",
+        "",
+        '<img alt="raw" src="http://example.com/b.png">',
+        "",
+        "Text <img src='//example.com/c.png'> inline.",
+        "",
+        "`<img src=\"https://example.com/code.png\">`",
+      ].join("\n"),
+    );
+
+    const check = getCheckById("source.links.local-refs")!;
+    const results = await check.run(makeCtx({ inputDir: dir, markdownFiles: [mainFile] }));
+
+    expect(results.map((r) => [r.line, r.severity])).toEqual([
+      [1, "error"],
+      [4, "error"],
+      [6, "error"],
+    ]);
+    expect(results[0]!.message).toContain("https://example.com/a.png");
+    expect(results[1]!.message).toContain("http://example.com/b.png");
+    expect(results[2]!.message).toContain("//example.com/c.png");
+  });
+
+  test("raw HTML that only looks like a remote image is not one", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-img-lookalike-"));
+    const mainFile = join(dir, "main.md");
+    await writeFile(
+      mainFile,
+      [
+        '<!-- <img src="https://example.com/commented.png"> -->',
+        "",
+        'Text <img data-src="https://example.com/lazy.png" alt="x"> inline.',
+        "",
+        '<img alt="src=https://example.com/alt.png" src="local.png">',
+        "",
+        "<!--",
+        '<img src="https://example.com/multi.png">',
+        "-->",
+        "",
+        '<img alt="real" src="https://example.com/real.png">',
+      ].join("\n"),
+    );
+
+    const check = getCheckById("source.links.local-refs")!;
+    const results = await check.run(makeCtx({ inputDir: dir, markdownFiles: [mainFile] }));
+
+    expect(results.map((r) => [r.line, r.severity])).toEqual([[11, "error"]]);
+    expect(results[0]!.message).toContain("https://example.com/real.png");
+  });
+
   test("masks inline HTML attributes and comments but checks same-line Markdown", async () => {
     const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-inline-html-"));
     const mainFile = join(dir, "main.md");
@@ -2080,6 +2137,40 @@ describe("In-process source/PDF checks (no external tools)", () => {
       const ctx = makeCtx({ pdfPath: pdfFile });
       const results = await check.run(ctx);
       expect(results.some((r) => r.message.includes("Lab color space"))).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("color-spaces and transparency report an unreadable PDF as inspect-failed", async () => {
+    const missing = join(tmpdir(), "gutterpress-no-such-dir", "missing.pdf");
+    for (const id of ["pdf.print.color-spaces", "pdf.print.transparency"]) {
+      const results = await getCheckById(id)!.run(makeCtx({ pdfPath: missing }));
+      expect(results).toHaveLength(1);
+      expect(results[0]!.code).toBe("inspect-failed");
+      expect(results[0]!.severity).toBe("warning");
+    }
+  });
+
+  test("a marker split across a read boundary is found, and /Label there is not /Lab", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-pdf-"));
+    try {
+      const CHUNK = 4 * 1024 * 1024; // pdf-parse's read size
+      const at = (marker: string, offset: number) => {
+        const b = Buffer.alloc(CHUNK + 4096, 0x20);
+        b.write(marker, offset, "latin1");
+        return b;
+      };
+      const rgb = join(dir, "rgb.pdf");
+      await writeFile(rgb, at("/DeviceRGB", CHUNK - 4));
+      const lab = join(dir, "lab.pdf");
+      await writeFile(lab, at("/Lab ", CHUNK - 4)); // "/Lab" ends exactly at the cut
+      const label = join(dir, "label.pdf");
+      await writeFile(label, at("/Label", CHUNK - 4));
+      const run = (pdfPath: string) => getCheckById("pdf.print.color-spaces")!.run(makeCtx({ pdfPath }));
+      expect((await run(rgb)).some((r) => r.message.includes("DeviceRGB"))).toBe(true);
+      expect((await run(lab)).some((r) => r.message.includes("Lab color space"))).toBe(true);
+      expect((await run(label)).some((r) => r.message.includes("Lab color space"))).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

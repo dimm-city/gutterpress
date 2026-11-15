@@ -12,7 +12,11 @@
  * updates it in place (D6), so a shared `webViewLink` stays valid across
  * republishes.
  */
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
+import { once } from "node:events";
+import { finished } from "node:stream/promises";
+import type { Writable } from "node:stream";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Zip, ZipDeflate, type DeflateOptions, type FlateError } from "fflate";
@@ -117,7 +121,7 @@ interface UploadSource {
 }
 
 /** Bytes pushed into fflate's streaming `ZipDeflate` per `push()` call (see
- * `zipEntriesNonBlocking` below) — small enough that no single push blocks
+ * `zipFilesToStream` below) — small enough that no single push blocks
  * the event loop for long, large enough not to dominate runtime with
  * per-chunk overhead. */
 const ZIP_CHUNK_BYTES = 64 * 1024;
@@ -131,87 +135,56 @@ function yieldToEventLoop(): Promise<void> {
 }
 
 /**
- * Build a ZIP archive from `entries` without blocking the event loop for the
- * archive's whole build time — and WITHOUT ever touching fflate's
- * worker-based async API.
+ * Stream a ZIP archive of `files` (`[entry name, source path]`) into `out`
+ * without blocking the event loop and without holding the site in memory:
+ * each file is read in `ZIP_CHUNK_BYTES` pieces only when it is added, and
+ * the archive's output goes straight to the write stream (pausing for
+ * `drain` when the disk is slower than the compressor).
  *
- * Not fflate's async `zip()` (#221): that API is non-blocking only because
- * it hands any entry >= ~156 KB (`size < 160000` in fflate's own source) off
- * to a `worker_threads` Worker running an eval'd copy of fflate's source
- * (fflate's `wrk()`/`astrmify`, `node-worker.cjs`). That works under plain
- * Node, but under both `bun` and a `bun build --compile` binary — this
- * project's actual shipped artifact, see CLAUDE.md "What Gutterpress ships"
- * — the eval'd worker throws `TypeError: undefined is not an object
- * (evaluating 'dat.length')` for any such entry. Every real book's
- * `book.html` exceeds that threshold, so gdrive's HTML publish would break in
- * the shipped CLI binary. `zipSync()` doesn't
- * hit this — it never spawns a worker — but it blocks the event loop for the
- * archive's whole build, which is what non-blocking exists to avoid in the
- * first place (Electron MAIN process, desktop publish: a synchronous zip of
- * a large website export freezes the app UI and stalls the `onProgress`
- * stream for as long as the archive takes to build).
- *
- * Instead, each entry streams through fflate's fully SYNCHRONOUS `ZipDeflate`
- * (backed by fflate's in-thread `Deflate` stream — no worker, ever, at any
- * size) in `ZIP_CHUNK_BYTES` pieces, yielding one event-loop turn between
- * chunks. That keeps the event loop responsive — the same goal the worker
- * API existed for — using only fflate code paths that run in-thread and are
- * therefore correct under `bun build --compile`.
+ * Not fflate's async `zip()` (#221): that API hands any entry >= ~156 KB off
+ * to a `worker_threads` Worker running an eval'd copy of fflate's source,
+ * which throws under both `bun` and a `bun build --compile` binary (this
+ * project's shipped artifact). `ZipDeflate` is fully synchronous and
+ * in-thread at any size; yielding one event-loop turn per chunk keeps the
+ * Electron main process responsive (and `onProgress` flowing).
  */
-function zipEntriesNonBlocking(
-  entries: Record<string, Uint8Array>,
+async function zipFilesToStream(
+  files: Array<[string, string]>,
+  out: Writable,
   opts: DeflateOptions,
-): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    let settled = false;
-
-    const archive = new Zip((err: FlateError | null, chunk: Uint8Array | null, final: boolean | undefined) => {
-      if (settled) return;
-      if (err) {
-        settled = true;
-        reject(err);
-        return;
-      }
-      if (chunk) {
-        chunks.push(chunk);
-        total += chunk.length;
-      }
-      if (final) {
-        settled = true;
-        const out = new Uint8Array(total);
-        let offset = 0;
-        for (const c of chunks) {
-          out.set(c, offset);
-          offset += c.length;
-        }
-        resolve(out);
-      }
-    });
-
-    (async () => {
-      for (const [name, data] of Object.entries(entries)) {
-        const stream = new ZipDeflate(name, opts);
-        archive.add(stream);
-        if (data.length === 0) {
-          stream.push(new Uint8Array(0), true);
-          continue;
-        }
-        for (let offset = 0; offset < data.length; offset += ZIP_CHUNK_BYTES) {
-          const end = Math.min(offset + ZIP_CHUNK_BYTES, data.length);
-          stream.push(data.subarray(offset, end), end >= data.length);
-          await yieldToEventLoop();
-        }
-      }
-      archive.end();
-    })().catch((e) => {
-      if (!settled) {
-        settled = true;
-        reject(e instanceof Error ? e : new Error(String(e)));
-      }
-    });
+): Promise<void> {
+  let failure: Error | null = null;
+  out.on("error", (e) => (failure ??= e));
+  const archive = new Zip((err: FlateError | null, chunk: Uint8Array | null) => {
+    if (err) failure ??= err;
+    else if (chunk) out.write(chunk);
   });
+  try {
+    for (const [name, source] of files) {
+      const stream = new ZipDeflate(name, opts);
+      archive.add(stream);
+      let pending: Uint8Array | null = null;
+      // One chunk of lookahead so the LAST push can carry `final = true`.
+      for await (const chunk of createReadStream(source, { highWaterMark: ZIP_CHUNK_BYTES })) {
+        if (pending) stream.push(pending, false);
+        pending = chunk as Uint8Array;
+        if (failure) throw failure;
+        // The property, not a flag set at write time: the buffer may have
+        // drained (and emitted 'drain') while we awaited the next read.
+        if (out.writableNeedDrain) await once(out, "drain");
+        await yieldToEventLoop();
+      }
+      stream.push(pending ?? new Uint8Array(0), true);
+    }
+    archive.end();
+    if (failure) throw failure;
+    await finished(out.end());
+  } catch (e) {
+    // A failed read must not leave the output file open (a leaked fd per
+    // failed publish, and an undeletable temp dir on Windows).
+    out.destroy();
+    throw e;
+  }
 }
 
 /** Recursively collect every FILE under `dir` into `out`, keyed by its path
@@ -225,7 +198,7 @@ function zipEntriesNonBlocking(
 async function collectZipEntries(
   root: string,
   dir: string,
-  out: Record<string, Uint8Array>,
+  out: Array<[string, string]>,
   onWarn?: (message: string) => void,
 ): Promise<void> {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -235,12 +208,12 @@ async function collectZipEntries(
       await collectZipEntries(root, full, out, onWarn);
     } else if (entry.isFile()) {
       const rel = path.relative(root, full).split(path.sep).join("/");
-      out[rel] = await readFile(full);
+      out.push([rel, full]);
     } else if (entry.isSymbolicLink()) {
       const resolved = await stat(full).catch(() => null);
       if (resolved?.isFile()) {
         const rel = path.relative(root, full).split(path.sep).join("/");
-        out[rel] = await readFile(full);
+        out.push([rel, full]);
       } else if (resolved?.isDirectory()) {
         await collectZipEntries(root, full, out, onWarn);
       } else {
@@ -255,13 +228,11 @@ async function collectZipEntries(
 /**
  * Package the HTML export directory into a single ZIP (D8: Drive is file
  * delivery, not web hosting — no N-file folder mirroring). Built via
- * `zipEntriesNonBlocking` (fflate is already a dependency, see
- * extension-import.ts for the sibling unzip-side usage) so building the archive
- * doesn't block the event loop, then written to a temp file so the existing
- * file-based `resumableUpload` (google-drive.ts) can read it incrementally
- * like any other artifact. Note this is true only of the UPLOAD step — the
- * ZIP-BUILD step above necessarily holds the whole compressed archive in
- * memory before it's written out below.
+ * `zipFilesToStream` (fflate is already a dependency, see extension-import.ts
+ * for the sibling unzip-side usage), which reads each file only as it is added
+ * and writes straight to a temp file, so memory stays flat however big the
+ * site is. The existing file-based `resumableUpload` (google-drive.ts) then
+ * reads that file chunk by chunk like any other artifact.
  */
 export async function zipHtmlExport(
   exportDir: string,
@@ -270,16 +241,15 @@ export async function zipHtmlExport(
   // Test-only seam (same DI convention as google-drive.ts's fetchImpl/
   // sleepImpl): lets a test force a failure in the write step, after
   // mkdtemp, without touching the real filesystem's failure modes.
-  writeArchiveImpl: (filePath: string, data: Uint8Array) => Promise<void> = writeFile,
+  openOutput: (filePath: string) => Writable = createWriteStream,
 ): Promise<UploadSource> {
-  const entries: Record<string, Uint8Array> = {};
+  const entries: Array<[string, string]> = [];
   await collectZipEntries(exportDir, exportDir, entries, onWarn);
   const fileName = `${bookSlug(title)}-website.zip`;
   const tmpRoot = await mkdtemp(path.join(tmpdir(), "gutterpress-gdrive-"));
   try {
     const filePath = path.join(tmpRoot, fileName);
-    const zipped = await zipEntriesNonBlocking(entries, { level: 6 });
-    await writeArchiveImpl(filePath, zipped);
+    await zipFilesToStream(entries, openOutput(filePath), { level: 6 });
     return {
       filePath,
       fileName,
@@ -389,9 +359,10 @@ export const gdriveProvider: PublishProvider = {
         filePath: source.filePath,
         totalBytes: artifactStat.size,
         mimeType: source.mimeType,
+        signal: req.deps.signal,
         onProgress: (uploaded, total) => {
           // Throttle to whole percent so a fast connection doesn't spam
-          // onProgress once per 8 MiB chunk boundary at 100% granularity.
+          // onProgress once per chunk boundary at 100% granularity.
           const pct = total > 0 ? Math.floor((uploaded / total) * 100) : 100;
           if (pct !== lastReported) {
             lastReported = pct;

@@ -76,6 +76,7 @@ export const defaultCommandRunner: CommandRunner = async (
       env: { ...process.env, ...options.env },
       timeoutMs: options.timeoutMs ?? PUBLISH_IDLE_TIMEOUT_MS,
       timeoutMode: "idle",
+      signal: options.signal,
       captureLimit: CAPTURE_LIMIT,
       onChunk: options.onOutput
         ? (stream, text) => (stream === "stdout" ? outLines : errLines).push(text)

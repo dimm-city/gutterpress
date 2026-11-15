@@ -158,3 +158,39 @@ test("stageBookAssets drops relative link hrefs only when asked", async () => {
     `<html><body><a>x</a> <a href="#a">a</a></body></html>`,
   );
 });
+
+test("asset copies run at most 8 at a time, as reflink-or-copy", async () => {
+  const fsp = (await import("node:fs/promises")).default;
+  const { constants } = await import("node:fs");
+  const { spyOn } = await import("bun:test");
+  const names = Array.from({ length: 40 }, (_, i) => `images/a${i}.png`);
+  const { renderDir, outDir, htmlFile } = await book(
+    `<html><body>${names.map((n) => `<img src="${n}">`).join("")}</body></html>`,
+  );
+  await mkdir(join(renderDir, "images"));
+  await Promise.all(names.map((n) => writeFile(join(renderDir, n), "x")));
+
+  const real = fsp.copyFile.bind(fsp);
+  let inFlight = 0;
+  let peak = 0;
+  const flagsSeen = new Set<unknown>();
+  const spy = spyOn(fsp, "copyFile").mockImplementation(async (from, to, mode) => {
+    flagsSeen.add(mode);
+    peak = Math.max(peak, ++inFlight);
+    await new Promise((r) => setTimeout(r, 5));
+    try {
+      return await real(from, to, mode);
+    } finally {
+      inFlight--;
+    }
+  });
+  try {
+    await stageBookAssets({ renderDir, outDir, htmlFile, imageRefs: names, cssAssets: [] });
+  } finally {
+    spy.mockRestore();
+  }
+
+  expect(peak).toBeLessThanOrEqual(8);
+  expect([...flagsSeen]).toEqual([constants.COPYFILE_FICLONE]);
+  for (const n of names) expect(existsSync(join(outDir, n))).toBe(true);
+});

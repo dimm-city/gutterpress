@@ -60,6 +60,7 @@ const SOURCE_LABELS: Record<string, string> = {
   "engine.pin.page-span": "Bottom pin not at the page foot",
   "engine.page-background.unreferenced": "Page background image not printed",
   "engine.hyphenation.unsupported": "Hyphenation not available",
+  "engine.ready.timeout": "Fonts or extension not ready",
   // The post-build PDF checks, run on the exported file (#399) — the lib's
   // `pdf` and `heuristic` categories, covered by the same registry-keyed test.
   "pdf.structure.qpdf": "PDF structure",

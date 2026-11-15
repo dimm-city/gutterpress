@@ -282,6 +282,9 @@ export async function resolveGitAuthor(dir: string, name?: string, email?: strin
   return gitAuthor(name || existing.name, email || existing.email);
 }
 
+/** Files modified this close to the index write are re-read (racy-git rule). */
+const RACY_MARGIN_MS = 2000;
+
 /** Workdir-vs-index differences, as `git add -A` staging lists. */
 export interface WorkdirChanges {
   /** New or modified files to `git.add`. */
@@ -304,6 +307,12 @@ export async function listWorkdirChanges(
 ): Promise<WorkdirChanges> {
   const adds: string[] = [];
   const removes: string[] = [];
+  const racy: { filepath: string; oid: string; mode: number }[] = [];
+  // When the index file was last written; unknown (no index) rehashes everything.
+  const indexMtimeMs = await fs.promises.stat(path.join(gitDirFor(dir), "index")).then(
+    (st) => st.mtimeMs,
+    () => undefined,
+  );
   await git.walk({
     fs,
     dir,
@@ -340,30 +349,53 @@ export async function listWorkdirChanges(
       } else if (!wType && sType === "blob") {
         removes.push(filepath); // deleted file
       } else if (wType === "blob" && sType === "blob") {
-        // Two-phase change detection:
-        //   Phase 1 (fast path): the WORKDIR walker reuses the index oid when
-        //   stats match, so a stat mismatch (different size or mtime) means
-        //   the file definitely changed — no file read needed.
-        //   Phase 2 (racy-index guard): when stats match, the walker returns
-        //   the cached index oid without rehashing, so a same-byte-length edit
-        //   within the same second is invisible. Read and hash the actual file
-        //   content to catch it. This only runs for files whose stats match,
-        //   so unchanged files with drifted stats (the common "definitely
-        //   changed" case) stay on the fast path.
+        // Stat-based change detection, with git's racy-git rule:
+        //   The WORKDIR walker reuses the index oid when the entry's stats
+        //   match, and rehashes when they differ — so a stat mismatch already
+        //   yields the true oid with no extra work here.
+        //   A stat MATCH is trusted unless the file is "racily clean": a
+        //   same-byte-length edit made in the same timestamp tick as the
+        //   staging leaves identical stats, so any file whose mtime is not
+        //   clearly older than the index file is read and hashed to be sure.
+        //   (Documentation/technical/racy-git.txt; the margin covers
+        //   filesystems with 2 s timestamps.) Everything older keeps its
+        //   cached oid, so an unchanged book is not read back at all.
         const workdirOid = await workdir!.oid();
         const stageOid = await stage!.oid();
         if (workdirOid !== stageOid) {
           adds.push(filepath);
         } else {
-          const fileBytes = await fs.promises.readFile(path.join(dir, filepath as string));
-          const { oid: actualOid } = await git.hashBlob({ object: fileBytes });
-          if (actualOid !== stageOid) adds.push(filepath);
+          // Settled only when the mtime is positively older than the index
+          // write; with no index mtime, or an unreadable file mtime, rehash.
+          const { mtimeSeconds, mtimeNanoseconds } = await workdir!.stat();
+          const mtimeMs = mtimeSeconds * 1000 + mtimeNanoseconds / 1e6;
+          const settled =
+            indexMtimeMs !== undefined &&
+            Number.isFinite(mtimeMs) &&
+            mtimeMs < indexMtimeMs - RACY_MARGIN_MS;
+          if (!settled) {
+            const fileBytes = await fs.promises.readFile(path.join(dir, filepath as string));
+            const { oid: actualOid } = await git.hashBlob({ object: fileBytes });
+            if (actualOid !== stageOid) {
+              adds.push(filepath);
+              racy.push({ filepath: filepath as string, oid: stageOid, mode: await stage!.mode() });
+            }
+          }
         }
       }
       // "special"/"commit" entries (sockets, submodules) are skipped.
       return;
     },
   });
+  // Smudge what the guard caught (git's ce_smudge_racily_clean_entry): the
+  // entry still matches the file's stats but holds the old content, and the
+  // walk above may have rewritten the index, moving its mtime past the file's
+  // so the next walk would trust the stale entry and miss the edit. Zeroed
+  // stats (updateIndex with an oid keeps oid and mode) make every later walk
+  // rehash the file until it is staged. Runs only when a racy change is found.
+  for (const { filepath, oid, mode } of racy) {
+    await git.updateIndex({ fs, dir, cache, filepath, oid, mode });
+  }
   return { adds, removes };
 }
 

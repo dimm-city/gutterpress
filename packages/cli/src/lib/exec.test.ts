@@ -1,10 +1,9 @@
 import { test, expect, spyOn } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import {
   execCapture,
-  run,
   spawnCapture,
   buildEnhancedPath,
   localBin,
@@ -24,18 +23,6 @@ test("execCapture rejects with a signal-named message when child is killed by a 
   expect(err).toBeDefined();
   expect(err!.message).not.toContain("exited null");
   expect(err!.message).toContain("SIGTERM");
-});
-
-test("run rejects with the signal name, not 'exited null', when the child is killed", async () => {
-  let err: (Error & { signal?: string }) | undefined;
-  try {
-    await run("sh", ["-c", "kill -SEGV $$"]);
-  } catch (e) {
-    err = e as Error;
-  }
-  expect(err!.message).toContain("was killed by signal SIGSEGV");
-  expect(err!.message).not.toContain("exited null");
-  expect(err!.signal).toBe("SIGSEGV");
 });
 
 // --- exact error message formats (pins for the spawn-consolidation claim
@@ -238,4 +225,72 @@ test("execCapture respects the cwd option", async () => {
   const dir = fs.realpathSync(os.tmpdir());
   const { stdout } = await execCapture("pwd", [], { cwd: dir });
   expect(stdout.trim()).toBe(dir);
+});
+
+test("spawnCapture aborted by its signal kills the child and rejects with CANCELED", async () => {
+  const ctl = new AbortController();
+  const started = Date.now();
+  setTimeout(() => ctl.abort(), 50);
+  let err: (Error & { code?: string }) | undefined;
+  try {
+    await spawnCapture("sh", ["-c", "exec sleep 30"], { signal: ctl.signal });
+  } catch (e) {
+    err = e as Error;
+  }
+  expect(err?.code).toBe("CANCELED");
+  expect(err?.name).toBe("AbortError");
+  expect(Date.now() - started).toBeLessThan(5_000);
+});
+
+test("spawnCapture with an already-aborted signal never starts the child", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "gp-exec-abort-"));
+  const marker = join(dir, "ran");
+  const ctl = new AbortController();
+  ctl.abort();
+  let err: (Error & { code?: string }) | undefined;
+  try {
+    await spawnCapture("sh", ["-c", `touch ${marker}`], { signal: ctl.signal });
+  } catch (e) {
+    err = e as Error;
+  }
+  await Bun.sleep(200);
+  expect(err?.code).toBe("CANCELED");
+  expect(existsSync(marker)).toBe(false);
+});
+
+test("aborting kills the child process itself, not just its parent shell", async () => {
+  const ctl = new AbortController();
+  let pid = 0;
+  // `exec` makes the shell become `sleep`, so the pid it prints is the child's.
+  const pending = spawnCapture("sh", ["-c", "echo $$; exec sleep 30"], {
+    signal: ctl.signal,
+    onChunk: (_stream, text) => {
+      pid = Number(text.trim());
+      ctl.abort();
+    },
+  }).catch(() => {});
+  await pending;
+  expect(pid).toBeGreaterThan(0);
+  const alive = () => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  for (let i = 0; i < 50 && alive(); i++) await Bun.sleep(20);
+  expect(alive()).toBe(false);
+});
+
+test("captureLimit keeps the tail, marks the cut, and does not grow past the limit", async () => {
+  const { stdout } = await spawnCapture(
+    "sh",
+    ["-c", "for i in 1 2 3 4 5 6 7 8 9 10; do echo line$i-xxxxxxxxxx; sleep 0.02; done"],
+    { captureLimit: 40 }
+  );
+  expect(stdout.startsWith("[…output truncated]\n")).toBe(true);
+  expect(stdout).toContain("line10-");
+  expect(stdout).not.toContain("line1-");
+  expect(stdout.length).toBeLessThanOrEqual(40 + "[…output truncated]\n".length);
 });

@@ -1,8 +1,12 @@
 import { expect, test } from "bun:test";
-import type { FSWatcher } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
   FolderWatcher,
+  watchProject,
   type FolderWatcherDeps,
+  type WatchHandle,
 } from "../../electron/folder-watch/watcher";
 
 const DIR = "/book";
@@ -48,6 +52,9 @@ class FakeClock {
 interface FakeWatcher {
   close: () => void;
   closed: number;
+  /** The 'error' listener the folder watcher registered, or null. */
+  errorListener: ((err: Error) => void) | null;
+  on: (event: "error", listener: (err: Error) => void) => void;
 }
 
 interface HarnessOptions {
@@ -94,8 +101,12 @@ function makeHarness(opts: HarnessOptions = {}): Harness {
       if (opts.watchThrows) throw new Error("EACCES: watch failed");
       const w: FakeWatcher = {
         closed: 0,
+        errorListener: null,
         close() {
           this.closed += 1;
+        },
+        on(_event, listener) {
+          this.errorListener = listener;
         },
       };
       currentWatcher = w;
@@ -103,7 +114,7 @@ function makeHarness(opts: HarnessOptions = {}): Harness {
         event: string,
         filename: string | Buffer | null,
       ) => void;
-      return w as unknown as FSWatcher;
+      return w as WatchHandle;
     },
     resolve: opts.resolve ?? ((p: string) => p),
     onFolderChanged: (name) => events.folderChanged.push(name),
@@ -317,4 +328,62 @@ test("a source file whose name merely STARTS with an ignored segment is not igno
   expect(h.events.editSignal).toEqual([DIR]);
   h.clock.fireOnly();
   expect(h.events.folderChanged).toEqual(["distribution.md"]);
+});
+
+// ── An OS watch error must not crash the main process ───────────────────────────
+
+test("an 'error' from the OS watch (e.g. the system watch limit) is handled, not thrown", () => {
+  const h = makeHarness();
+  h.fw.start(DIR);
+  const listener = h.getWatcher()!.errorListener;
+  expect(listener).not.toBeNull();
+  const logged = console.error;
+  console.error = () => {};
+  try {
+    expect(() => listener!(new Error("ENOSPC: System limit for number of file watchers reached"))).not.toThrow();
+  } finally {
+    console.error = logged;
+  }
+});
+
+// ── Linux: pruned folders are never watched (real watcher, real inotify) ─────────
+
+/** inotify watches this process holds, read from /proc (Linux only). */
+function inotifyWatchCount(): number {
+  let n = 0;
+  for (const fd of readdirSync("/proc/self/fdinfo")) {
+    try {
+      n += (readFileSync(`/proc/self/fdinfo/${fd}`, "utf8").match(/^inotify wd:/gm) || []).length;
+    } catch {}
+  }
+  return n;
+}
+
+const linuxTest = process.platform === "linux" ? test : test.skip;
+
+linuxTest("watchProject does not put watches under .git, dist or node_modules, yet still reports source edits", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "gp-watch-"));
+  try {
+    mkdirSync(path.join(dir, "chapters"));
+    writeFileSync(path.join(dir, "chapters", "a.md"), "a");
+    for (const ignored of [".git/objects", "dist", "node_modules/x"]) {
+      mkdirSync(path.join(dir, ignored), { recursive: true });
+      for (let i = 0; i < 300; i++) writeFileSync(path.join(dir, ignored, `f${i}`), "x");
+    }
+    const seen: string[] = [];
+    const before = inotifyWatchCount();
+    const w = watchProject(dir, { recursive: true }, (_e, f) => seen.push(String(f)));
+    await new Promise((r) => setTimeout(r, 1000));
+    const watches = inotifyWatchCount() - before;
+    writeFileSync(path.join(dir, "chapters", "a.md"), "edited");
+    writeFileSync(path.join(dir, "dist", "f1"), "rebuilt");
+    await new Promise((r) => setTimeout(r, 1000));
+    await w.close();
+    // 900 ignored files exist; only the few source entries may be watched.
+    expect(watches).toBeLessThan(20);
+    expect(seen).toContain(path.join("chapters", "a.md"));
+    expect(seen.some((f) => f.startsWith("dist"))).toBe(false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

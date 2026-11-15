@@ -9,9 +9,12 @@ import * as toolProbe from "./tool-probe";
 import { log } from "../utils/logger";
 import { getAssetPath } from "./embedded-assets";
 import { BuildError } from "./build-error";
+import { getPerPageInkCoverage } from "./pdf-parse";
 import {
   convertToPdfxCmyk,
+  findPostScriptShadingPages,
   ghostscriptOlderThan,
+  loadScanDoc,
   planTransparentPages,
   transparentPages,
   resolveGhostscript,
@@ -21,7 +24,8 @@ import {
 const originalGhostscriptPath = process.env.GHOSTSCRIPT_PATH;
 
 afterEach(() => {
-  (execMod.run as unknown as { mockRestore?: () => void }).mockRestore?.();
+  (execMod.execCapture as unknown as { mockRestore?: () => void }).mockRestore?.();
+  (log.info as unknown as { mockRestore?: () => void }).mockRestore?.();
   (execMod.spawnCapture as unknown as { mockRestore?: () => void }).mockRestore?.();
   (log.warn as unknown as { mockRestore?: () => void }).mockRestore?.();
   (toolProbe.findTool as unknown as { mockRestore?: () => void }).mockRestore?.();
@@ -101,18 +105,21 @@ test("stripAnnotations keeps its qpdf scratch file in staging, and deletes lefto
     (page.node.Annots() as any).push(annotRef);
     const withAnnot = await doc.save();
 
-    const run = spyOn(execMod, "run").mockImplementation(async (_cmd, args) => {
+    const ctl = new AbortController();
+    const run = spyOn(execMod, "execCapture").mockImplementation(async (_cmd, args) => {
       expect(args[1]).toBe(join(stagingDir, "annotations-stripped.pdf"));
       await writeFile(args[1]!, withAnnot);
+      return { stdout: "", stderr: "" };
     });
 
-    await stripAnnotations(pdfPath, stagingDir);
+    await stripAnnotations(pdfPath, stagingDir, ctl.signal);
 
-    expect(run).toHaveBeenCalledWith("qpdf", [
-      pdfPath,
-      join(stagingDir, "annotations-stripped.pdf"),
-      "--flatten-annotations=all",
-    ]);
+    expect(run).toHaveBeenCalledWith(
+      "qpdf",
+      [pdfPath, join(stagingDir, "annotations-stripped.pdf"), "--flatten-annotations=all"],
+      // qpdf can be stopped (cancel); it has no deadline of its own.
+      { signal: ctl.signal }
+    );
     const result = await PDFDocument.load(await readFile(pdfPath));
     expect(result.getPage(0).node.has(PDFName.of("Annots"))).toBe(false);
     expect(await readdir(outputDir)).toEqual(["book.pdf"]);
@@ -161,6 +168,81 @@ test("convertToPdfxCmyk uses resolved Ghostscript and stages its definition file
   } finally {
     await rm(outputDir, { recursive: true, force: true });
     await rm(stagingDir, { recursive: true, force: true });
+  }
+});
+
+test("the PDF/X conversion can be canceled, is stopped when silent, keeps bounded output, and reports its pages", async () => {
+  const stagingDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-bounded-"));
+  try {
+    const executable = join(stagingDir, "custom-gs");
+    const iccPath = join(stagingDir, "profile.icc");
+    await writeFile(executable, "");
+    await writeFile(iccPath, "not-a-real-icc");
+    await writeFile(join(stagingDir, "raw.pdf"), "not-a-real-pdf");
+    process.env.GHOSTSCRIPT_PATH = executable;
+
+    const ctl = new AbortController();
+    let seen: execMod.SpawnCaptureOptions | undefined;
+    spyOn(execMod, "spawnCapture").mockImplementation(async (_cmd, _args, opts) => {
+      seen = opts;
+      // What Ghostscript prints as it goes: the banner, then a line per page.
+      opts?.onChunk?.("stdout", "Processing pages 1 through 300.\nPage 1\nPage 2\n");
+      return { code: 0, signal: null, stdout: "", stderr: "" };
+    });
+    const info = spyOn(log, "info").mockImplementation(() => {});
+
+    await convertToPdfxCmyk(join(stagingDir, "raw.pdf"), join(stagingDir, "out.pdf"), {
+      iccPath,
+      pdfx: "x3",
+      stagingDir,
+      signal: ctl.signal,
+    });
+
+    expect(seen?.signal).toBe(ctl.signal);
+    expect(seen?.timeoutMode).toBe("idle");
+    expect(seen?.timeoutMs).toBe(execMod.TOOL_IDLE_TIMEOUT_MS);
+    expect(seen?.captureLimit).toBe(64_000);
+    expect(info.mock.calls.map(([m]) => m)).toContain("Converting to PDF/X: page 2");
+  } finally {
+    await rm(stagingDir, { recursive: true, force: true });
+  }
+});
+
+test("what qpdf prints on success still reaches the log", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-qpdf-warn-"));
+  try {
+    const pdfPath = join(dir, "book.pdf");
+    await writeFile(pdfPath, "x");
+    spyOn(execMod, "execCapture").mockImplementation(async (_cmd, args) => {
+      await writeFile(args[1]!, "y");
+      return { stdout: "", stderr: "qpdf: warning: something recoverable" };
+    });
+    const warn = spyOn(log, "warn").mockImplementation(() => {});
+    await stripAnnotations(pdfPath, dir).catch(() => {});
+    expect(warn.mock.calls.map(([m]) => m)).toContain("qpdf: warning: something recoverable");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("the ink-coverage Ghostscript run cannot hang the validation forever", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-gs-ink-"));
+  try {
+    const executable = join(dir, "custom-gs");
+    await writeFile(executable, "");
+    process.env.GHOSTSCRIPT_PATH = executable;
+    const { PDFDocument } = await import("pdf-lib");
+    const doc = await PDFDocument.create();
+    doc.addPage([100, 100]);
+    const pdf = join(dir, "one.pdf");
+    await writeFile(pdf, await doc.save());
+    const capture = spyOn(execMod, "execCapture").mockResolvedValue({ stdout: "", stderr: "" });
+
+    await getPerPageInkCoverage(pdf);
+
+    expect(capture.mock.calls[0]?.[2]).toEqual({ timeoutMs: execMod.TOOL_IDLE_TIMEOUT_MS });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });
 
@@ -570,5 +652,22 @@ describe("planTransparentPages", () => {
 
   test("listed or gradient pages without transparency are ignored", () => {
     expect(planTransparentPages([2], new Map(), [1, 9], [3])).toEqual({ split: [2], artOnly: [], kept: new Map() });
+  });
+});
+
+describe("one parse shared by the PDF/X page scans", () => {
+  test("transparentPages and findPostScriptShadingPages use the parse they are given, not the bytes", async () => {
+    const { PDFDocument, PDFName } = await import("pdf-lib");
+    const source = await PDFDocument.create();
+    const page = source.addPage([100, 100]);
+    page.node.set(PDFName.of("Group"), source.context.obj({ S: "Transparency" }));
+    const bytes = await source.save();
+
+    const parsed = await loadScanDoc(bytes);
+    // Bytes that cannot be parsed: only a reused parse can find the page.
+    const junk = new Uint8Array([1, 2, 3]);
+    expect(await transparentPages(junk, parsed!)).toEqual([1]);
+    expect(await findPostScriptShadingPages(junk, parsed!)).toEqual([]);
+    expect(await transparentPages(junk)).toEqual([]);
   });
 });

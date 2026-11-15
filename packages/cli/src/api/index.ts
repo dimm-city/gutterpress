@@ -29,7 +29,7 @@ export {
 // own CDP sessions — one definition of "document ready", one print-quality
 // contract, and one milestone floor (every Browser producer asserts it at
 // construction), so the hosts cannot drift.
-export { DEFAULT_PRINT_OPTS, readyProbeExpr, assertMilestone } from "../engine/shared/cdp";
+export { DEFAULT_PRINT_OPTS, RENDERER_CRASHED, readyProbeExpr, assertMilestone } from "../engine/shared/cdp";
 
 export {
   startPreviewServer,

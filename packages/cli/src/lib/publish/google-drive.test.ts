@@ -320,6 +320,73 @@ test("resumableUpload updates an existing file in place (PATCH, fileId set)", as
   }
 });
 
+test("resumableUpload stops when the run is canceled: the chunk in flight is abandoned and nothing more is sent", async () => {
+  const chunkSize = 300;
+  const total = chunkSize * 3;
+  const { dir, filePath } = await tempFile(total);
+  try {
+    const stop = new AbortController();
+    const calls: string[] = [];
+    // Like a real fetch: a request in flight rejects when its signal aborts.
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      const u = String(url);
+      calls.push(`${init?.method ?? "GET"} ${u}`);
+      if (u.includes("uploadType=resumable")) {
+        return new Response(null, { status: 200, headers: { Location: "https://upload.example/session-c" } });
+      }
+      const puts = calls.filter((c) => c.startsWith("PUT")).length;
+      if (puts === 1) {
+        return new Response(null, { status: 308, headers: { Range: `bytes=0-${chunkSize - 1}` } });
+      }
+      // Second chunk hangs until canceled.
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
+        setTimeout(() => stop.abort(), 20);
+      });
+    }) as unknown as typeof fetch;
+
+    const started = Date.now();
+    let error: unknown;
+    try {
+      await resumableUpload(fetchImpl, "at", {
+        name: "book.pdf",
+        filePath,
+        totalBytes: total,
+        chunkSize,
+        signal: stop.signal,
+        sleepImpl: async () => {},
+      });
+    } catch (e) {
+      error = e;
+    }
+    expect((error as Error | undefined)?.name).toBe("AbortError");
+    expect(Date.now() - started).toBeLessThan(3000);
+    // Session start + two chunk PUTs, and no status query or retry afterwards.
+    expect(calls).toHaveLength(3);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}, 8000);
+
+test("resumableUpload does not start when the run was already canceled", async () => {
+  const { dir, filePath } = await tempFile(300);
+  try {
+    const stop = new AbortController();
+    stop.abort();
+    let called = false;
+    const fetchImpl = (async () => {
+      called = true;
+      return new Response(null, { status: 500 });
+    }) as unknown as typeof fetch;
+    await expect(
+      resumableUpload(fetchImpl, "at", { name: "book.pdf", filePath, totalBytes: 300, signal: stop.signal }),
+    ).rejects.toThrow();
+    expect(called).toBe(false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("resumableUpload follows a simulated 308 + Range resume across multiple chunks", async () => {
   const totalBytes = RESUMABLE_CHUNK_SIZE * 2 + 100; // forces 3 chunks at the real chunk size
   // Use a small override chunk size so the test doesn't need to write tens of
@@ -410,6 +477,36 @@ test("resumableUpload retries a chunk on 5xx up to the retry limit, honoring Ret
     // First retry honors Retry-After (1s = 1000ms); second is exponential backoff.
     expect(sleeps[0]).toBe(1000);
     expect(sleeps.length).toBe(2);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("resumableUpload caps a huge Retry-After at 60 s", async () => {
+  const chunkSize = 200;
+  const { dir, filePath } = await tempFile(chunkSize);
+  try {
+    let attempts = 0;
+    const sleeps: number[] = [];
+    const fetchImpl = (async (url: string | URL | Request) => {
+      if (String(url).includes("uploadType=resumable")) {
+        return new Response(null, { status: 200, headers: { Location: "https://upload.example/s" } });
+      }
+      attempts++;
+      if (attempts === 1) return new Response("busy", { status: 503, headers: { "Retry-After": "3600" } });
+      return jsonResponse({ id: "f", name: "book.pdf" });
+    }) as unknown as typeof fetch;
+    await resumableUpload(fetchImpl, "at", {
+      name: "book.pdf",
+      parentFolderId: "f1",
+      filePath,
+      totalBytes: chunkSize,
+      chunkSize,
+      sleepImpl: async (ms) => {
+        sleeps.push(ms);
+      },
+    });
+    expect(sleeps).toEqual([60_000]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

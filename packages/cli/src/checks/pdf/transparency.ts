@@ -1,6 +1,7 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { readPdfBytes } from "../../lib/pdf-parse";
+import { inspectionFailed } from "../policy";
+import { findPdfMarkers } from "../../lib/pdf-parse";
 
 const check: Check = {
   id: "pdf.print.transparency",
@@ -12,13 +13,19 @@ const check: Check = {
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
     // Raw byte scan — in-process replacement for the previous `grep -ao` usage
-    // (same uncompressed-bytes-only behavior). Unreadable file → no findings.
-    const bytes = await readPdfBytes(ctx.pdfPath).catch(() => "");
-
-    const found: string[] = [];
-    if (bytes.includes("/Transparency")) found.push("Transparency group");
-    if (bytes.includes("/SMask")) found.push("Soft mask (SMask)");
-    if (bytes.includes("/BM /")) found.push("Blend mode");
+    // (same uncompressed-bytes-only behavior).
+    const markers = {
+      "Transparency group": /\/Transparency/,
+      "Soft mask (SMask)": /\/SMask/,
+      "Blend mode": /\/BM \//,
+    };
+    let hits;
+    try {
+      hits = await findPdfMarkers(ctx.pdfPath, markers);
+    } catch {
+      return [inspectionFailed(check.id, "Could not read the PDF to scan for transparency.", { file: ctx.pdfPath })];
+    }
+    const found = Object.keys(markers).filter((name) => hits.has(name as keyof typeof markers));
 
     if (found.length > 0) {
       return [

@@ -189,10 +189,9 @@ export class ExportController {
     const workspaceDir = await fsp.mkdtemp(path.join(os.tmpdir(), "Gutterpress-export-"));
     const exportSession: ExportSession = {
       id: randomUUID(),
-      canceled: false,
       outPath: requestedOutPath,
       tempOutPath,
-      win: null,
+      abort: new AbortController(),
     };
     this.deps.setActiveExportSession(exportSession);
     this.deps.sendProgress({ exportId: exportSession.id, state: "started" });
@@ -241,7 +240,7 @@ export class ExportController {
         // early, so Cancel can fire mid-sync. Honour it the same way the
         // post-build cancel path does, rather than falling into the "swallow
         // non-fatal gate errors" branch below.
-        if (exportSession.canceled || this.deps.isExportCanceledError(gateErr)) {
+        if (exportSession.abort.signal.aborted || this.deps.isExportCanceledError(gateErr)) {
           this.deps.setActiveExportSession(null);
           this.deps.sendProgress({ exportId: exportSession.id, state: "canceled" });
           const err = new Error("PDF export canceled");
@@ -262,6 +261,8 @@ export class ExportController {
           format: "pdf",
           outDir: workspaceDir,
           pdfFileOverride: path.resolve(tempOutPath),
+          // Cancel aborts this: the render stops, not just the wait for it.
+          signal: exportSession.abort.signal,
           // A plain PDF, as `gutterpress build` makes one: the book's
           // source is checked first, and a problem to fix stops it
           // (SOURCE_PROBLEMS). The publish run checks each target's file.
@@ -291,7 +292,7 @@ export class ExportController {
           diagnostics: result.diagnostics,
         };
       } catch (e: unknown) {
-        if (exportSession.canceled || this.deps.isExportCanceledError(e)) {
+        if (exportSession.abort.signal.aborted || this.deps.isExportCanceledError(e)) {
           this.deps.sendProgress({ exportId: exportSession.id, state: "canceled" });
           const err = new Error("PDF export canceled");
           (err as Error & { code?: string }).code = "EXPORT_CANCELED";

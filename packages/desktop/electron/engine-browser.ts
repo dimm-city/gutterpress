@@ -64,7 +64,7 @@
  * the switches — don't assume the container result generalizes to every host.
  */
 import { BrowserWindow } from "electron";
-import { DEFAULT_PRINT_OPTS, readyProbeExpr, assertMilestone } from "gutterpress";
+import { DEFAULT_PRINT_OPTS, RENDERER_CRASHED, readyProbeExpr, assertMilestone } from "gutterpress";
 import type { EngineBrowser, EngineSession } from "gutterpress";
 
 function milestoneFromChromeVersion(v: string): number {
@@ -74,14 +74,41 @@ function milestoneFromChromeVersion(v: string): number {
 class ElectronEngineSession implements EngineSession {
   private closed = false;
 
-  constructor(private win: BrowserWindow) {}
+  /**
+   * `gone` rejects when this window's renderer process dies. A pending
+   * `executeJavaScript` is never answered when that happens, so every call
+   * below races against it: a crash fails the export with a sentence instead
+   * of leaving "Preparing PDF…" up forever. `printToPDF` and `loadURL` do
+   * reject on their own, but with a bare "Printing failed" or ERR_FAILED, and
+   * (for a load) possibly before or without `render-process-gone`: a call
+   * that fails is given a moment for the crash to show, and a renderer found
+   * dead then is reported as the crash.
+   *
+   * Only a dead renderer fails the call. `unresponsive` is deliberately NOT
+   * treated as failure: a renderer paginating a big book on a slow machine is
+   * busy, not broken, and Chromium flags it unresponsive after a few seconds
+   * of work. A renderer that really hangs is ended by Cancel, which aborts
+   * the build and closes this window.
+   */
+  constructor(private win: BrowserWindow, private gone: Promise<never>) {}
+
+  private async guard<T>(work: Promise<T>): Promise<T> {
+    try {
+      return await Promise.race([work, this.gone]);
+    } catch (e) {
+      await Promise.race([this.gone, new Promise((r) => setTimeout(r, 100))]);
+      // Cancel may already have destroyed the window.
+      if (!this.win.isDestroyed() && this.wc.isCrashed()) throw new Error(RENDERER_CRASHED);
+      throw e;
+    }
+  }
 
   private get wc() {
     return this.win.webContents;
   }
 
   send<T = any>(method: string, params: object = {}): Promise<T> {
-    return this.wc.debugger.sendCommand(method, params) as Promise<T>;
+    return this.guard(this.wc.debugger.sendCommand(method, params) as Promise<T>);
   }
 
   on(event: string, fn: (params: any) => void): () => void {
@@ -93,7 +120,7 @@ class ElectronEngineSession implements EngineSession {
   }
 
   async evaluate<T = any>(expression: string): Promise<T> {
-    return (await this.wc.executeJavaScript(expression)) as T;
+    return (await this.guard(this.wc.executeJavaScript(expression))) as T;
   }
 
   /** Reuses the already-attached debugger — same CDP call cdp.ts's own
@@ -106,11 +133,11 @@ class ElectronEngineSession implements EngineSession {
   }
 
   async navigate(url: string): Promise<void> {
-    await this.win.loadURL(url);
+    await this.guard(this.win.loadURL(url));
   }
 
-  async waitForReady(timeoutMs = 15_000): Promise<void> {
-    await this.evaluate(readyProbeExpr(timeoutMs));
+  async waitForReady(timeoutMs = 15_000): Promise<boolean> {
+    return this.evaluate<boolean>(readyProbeExpr(timeoutMs));
   }
 
   async printToPDF(opts: Record<string, unknown> = {}): Promise<Uint8Array> {
@@ -118,7 +145,7 @@ class ElectronEngineSession implements EngineSession {
     // doc) — meaningless against `webContents.printToPDF`, which returns an
     // in-process Buffer with no serialization step to stream around.
     const { transferMode: _drop, ...rest } = opts;
-    const buf = await this.wc.printToPDF({ ...DEFAULT_PRINT_OPTS, ...rest });
+    const buf = await this.guard(this.wc.printToPDF({ ...DEFAULT_PRINT_OPTS, ...rest }));
     return new Uint8Array(buf);
   }
 
@@ -168,7 +195,7 @@ export async function createElectronEngineBrowser(): Promise<EngineBrowser> {
   assertMilestone(version, "(Electron's bundled Chromium)");
   const windows: BrowserWindow[] = [];
 
-  function newWindow(): BrowserWindow {
+  function newWindow(): { win: BrowserWindow; gone: Promise<never> } {
     const win = new BrowserWindow({
       show: false,
       // A hidden window is throttled by Chromium unless told otherwise,
@@ -185,7 +212,11 @@ export async function createElectronEngineBrowser(): Promise<EngineBrowser> {
       },
     });
     windows.push(win);
-    return win;
+    let crashed!: (reason: Error) => void;
+    const gone = new Promise<never>((_resolve, reject) => (crashed = reject));
+    gone.catch(() => {}); // the calls racing it handle it; a window nobody is waiting on must not raise an unhandled rejection
+    win.webContents.on("render-process-gone", () => crashed(new Error(RENDERER_CRASHED)));
+    return { win, gone };
   }
 
   return {
@@ -193,7 +224,8 @@ export async function createElectronEngineBrowser(): Promise<EngineBrowser> {
     version,
     milestone: milestoneFromChromeVersion(process.versions.chrome),
     async newPage() {
-      const win = newWindow();
+      const { win, gone } = newWindow();
+      const session = new ElectronEngineSession(win, gone);
       // A freshly constructed BrowserWindow has no committed navigation entry
       // yet, and its webContents target isn't ready to answer CDP commands in
       // that state — measured: attaching the debugger and sending
@@ -204,9 +236,8 @@ export async function createElectronEngineBrowser(): Promise<EngineBrowser> {
       // `Target.createTarget` hands back a target that already committed
       // `about:blank`; a bare `new BrowserWindow()` has not. So do that
       // navigation explicitly, before attaching, to reach the same state.
-      await win.loadURL("about:blank");
+      await session.navigate("about:blank");
       win.webContents.debugger.attach();
-      const session = new ElectronEngineSession(win);
       await Promise.all([session.send("Page.enable"), session.send("Runtime.enable")]);
       return session;
     },

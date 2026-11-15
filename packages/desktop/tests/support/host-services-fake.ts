@@ -72,7 +72,6 @@ export function makeHostServices(overrides: HostServicesOverrides = {}): HostSer
     },
     doctor: { getDesktopVersion: () => "0.0.0-test" },
     fsGuard: { projectRoots: () => [] as string[], readOnlyRoots: () => [] as string[] },
-    media: { createThumbnail: async () => null },
     pickedFiles: { register: noop, consume: () => false },
     prefs: {
       readPrefs: async () => ({}),

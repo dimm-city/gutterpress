@@ -74,6 +74,88 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Cancel now really stops a PDF export or a publish.** Cancel used to only hide the progress
+  while the hidden pages kept laying out and Ghostscript and uploads kept running, and you could
+  not start another export until the cancelled one finished. Cancel now stops the work within
+  seconds, closes the hidden pages and frees you to export again at once; for a publish it also
+  stops the Google Drive upload and the itch.io and Azure uploaders that are running. Closing
+  the window during an export now stops it too, so the app quits at once instead of finishing the
+  export first.
+- **A build no longer copies every image at once.** Copying a book's images into the build folder
+  now runs at most 8 copies at a time, and uses an instant copy on filesystems that support it, so
+  a book with a lot of art puts far less load on a slow or spinning disk.
+- **The preview no longer reads every asset to check whether it changed.** It now uses the file's
+  size and modified times, so reloading a book with large images is lighter, and a changed file
+  still always reloads.
+- **Checking for unsaved changes no longer reads your whole book.** Every automatic version,
+  Save version and backup check used to read and re-hash every tracked file, including all your
+  art, even when nothing had changed. A file is now read again only when its saved details no
+  longer match, or when it was edited right around the moment the version history was last
+  written, which is where a same-length edit could otherwise be missed. In our test book a
+  check no longer rereads the whole book (150 MB before, under 1 MB now).
+- **The image-resolution check now checks art that appears on more than one page.** A logo,
+  ornament or background used on several pages was only checked on the first page and skipped
+  everywhere else, after a two-second wait for each skipped image, so a low-resolution image
+  could pass. Every use is now checked, so you may see new low-resolution warnings for repeated
+  art. The check also reads each image's size from the PDF and releases each page once it has
+  been read, so a book full of large images uses much less memory to check.
+- **The colour-space and transparency checks work on very large PDFs.** They read the whole PDF
+  into one block of memory, which fails on a file over about 540 MB, and then treated the
+  failure as "nothing found". They now read the file in pieces, and a PDF they cannot read is
+  reported as a warning instead of passing.
+- **Builds copy and parse the PDF fewer times.** The `Creator` is now written when the PDF is
+  made instead of in a separate load-and-save, which saves that pass in every PDF and PDF/X
+  build. A PDF/X build also shares one parse between its transparency and gradient checks and
+  lets go of the raw PDF before Ghostscript runs. The finished files are unchanged.
+- **Publishing a website to Google Drive no longer loads the whole site into memory.** The zip is
+  now written to disk file by file as it is built, so a few hundred MB of images no longer needs
+  several times that in RAM (a 300 MB site went from about 1 GB to about 80 MB at peak).
+- **Google Drive uploads cope better with slow connections.** Files are sent in 2 MiB pieces
+  instead of 8 MiB, so each piece fits its time limit at much lower speeds, and a long wait
+  requested by Google is capped at one minute.
+- **Stopping a build with Ctrl-C no longer leaves a mess behind.** `gutterpress build` used to
+  die with Chromium still running and its work folder (`dist/.<book>-build-…`) and browser profile
+  left on disk, a few hundred MB each time. It now closes the browser, removes both and exits
+  with 130 (Ctrl-C) or 143 (SIGTERM).
+- **A PDF build gives back Chromium's memory as soon as the PDF is made.** The browser used to
+  stay open through the whole PDF/X conversion and the checks after it, which on a long book is
+  minutes of memory nothing needed.
+- **The PDF/X conversion shows its progress and cannot hang forever.** It prints the page it
+  has reached every ten seconds or so, and is stopped if Ghostscript goes ten minutes without
+  printing anything, however long the book. Each step of the colour check that measures ink
+  coverage (32 pages at a time) is also stopped after ten minutes. The output it keeps is
+  capped, so a very long conversion no longer grows without bound, and what Ghostscript and
+  qpdf report on a successful step still shows in the log.
+- **A build whose Chromium dies now stops instead of hanging.** If Chromium ran out of memory and
+  was killed, or the page that lays out your book crashed (while loading, laying out, printing or
+  starting up), a PDF build in the terminal or an export in the app used to wait forever, quit
+  with no PDF and no message, or fail with a bare "Printing failed". It now stops within seconds,
+  says what happened (Chromium closed, or the page's renderer crashed; it may have run out of
+  memory), and cleans up.
+- **An image from the web in your Markdown is now an error before the build starts.** That
+  covers `![](https://...)` and a raw `<img src="https://...">`. An image that never answered
+  used to leave the build waiting for ever; save the image in your book instead. As a safety
+  net, a page that has not finished loading after five minutes now fails and names what it is
+  still waiting for.
+- **A build that stops waiting for fonts or an extension now tells you.** After 15 seconds the
+  build goes on without them; it now reports that as a warning instead of staying silent.
+- `gutterpress doctor` waits 10 seconds, not 2, for a tool to report its version, so a slow cold
+  start is no longer shown as broken. Chromium's error output is no longer kept without limit
+  during a long build.
+- **Opening a book on Linux no longer watches every file in `.git`, `dist` and `node_modules`.**
+  The desktop app's folder watcher put one watch on each of those files, which took thousands
+  of watches on a book with history, froze the app for a moment while it set them up, and could
+  use up the system's watch limit. It now skips those folders, and if the watch limit is
+  reached anyway the app keeps running instead of crashing.
+- **The Media panel no longer freezes the desktop app on large images.** Thumbnails were made
+  inside the app's main process, one full-size image at a time. The panel now makes them in the
+  window instead, a few at a time and only for the tiles in view, keeping just the small
+  picture so a book with hundreds of plates stays light. A picture the app cannot read (such
+  as a TIFF) shows the placeholder, and an edited image refreshes.
+- **A crashed desktop window now reloads itself.** If the window ran out of memory or crashed,
+  it stayed blank until you restarted the app. It now reloads; text you had not saved is
+  offered back when you reopen the book. If it crashes again right after reloading, the app
+  tells you instead of looping.
 - **A book with a `.htmlhintrc` builds again after its first build.** The HTML check reads the
   last build's `book.html`, and Gutterpress wrote its own page-size tag there with single quotes,
   so a rule asking for double quotes (as in the `with-validation` example) stopped every rebuild

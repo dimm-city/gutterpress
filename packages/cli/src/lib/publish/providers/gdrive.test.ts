@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { Writable } from "node:stream";
+import { createWriteStream, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { unzipSync } from "fflate";
@@ -244,6 +247,35 @@ test("upload UPDATES the existing file in place when one with the same name is f
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("upload stops when the run is canceled: the signal reaches the resumable upload", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const artifactPath = await fakeArtifact(dir);
+    const stop = new AbortController();
+    const deps = await depsFor(dir, { signal: stop.signal });
+    await deps.tokenStore.set("gdrive", { host: "gdrive", kind: "google-oauth", token: "rt", createdAt: 1 });
+    const { fetchImpl } = fakeFetch({ folders: [{ id: "f1", name: "Gutterpress" }] });
+    // The chunk PUT hangs until the run is canceled, as a real request would.
+    deps.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://upload.example/session" && init?.method === "PUT") {
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
+          setTimeout(() => stop.abort(), 20);
+        });
+      }
+      return fetchImpl(url, init);
+    }) as typeof fetch;
+    const req = await requestFor(dir, deps, artifactPath);
+    req.config = {};
+
+    const started = Date.now();
+    await expect(gdriveProvider.upload(req)).rejects.toThrow();
+    expect(Date.now() - started).toBeLessThan(3000);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}, 8000);
 
 test("upload CREATES a new file when none with that name exists in the folder", async () => {
   const dir = await tempProject(MANIFEST);
@@ -720,9 +752,13 @@ test("zipHtmlExport (A8) removes the temp directory it created when the write st
     );
 
     await expect(
-      zipHtmlExport(exportDir, "Failing Book", undefined, async () => {
-        throw new Error("simulated disk-full write failure");
-      }),
+      zipHtmlExport(exportDir, "Failing Book", undefined, () =>
+        new Writable({
+          write(_chunk, _enc, cb) {
+            cb(new Error("simulated disk-full write failure"));
+          },
+        }),
+      ),
     ).rejects.toThrow(/simulated disk-full write failure/);
 
     const after = new Set(
@@ -730,6 +766,89 @@ test("zipHtmlExport (A8) removes the temp directory it created when the write st
     );
     // No new gutterpress-gdrive-* temp directory survives the failure.
     const leaked = [...after].filter((n) => !before.has(n));
+    expect(leaked).toEqual([]);
+  } finally {
+    await rm(exportDir, { recursive: true, force: true });
+  }
+});
+
+test("zipHtmlExport streams: a large incompressible site does not sit in memory", async () => {
+  const exportDir = await mkdtemp(path.join(tmpdir(), "gutterpress-gdrive-src-"));
+  try {
+    // 32 MB of random (incompressible) bytes: the old build held the file AND
+    // the compressed archive in memory, about 130 MB of buffers at once.
+    const MB = 1024 * 1024;
+    const handle = await open(path.join(exportDir, "photo.bin"), "w");
+    for (let i = 0; i < 32; i++) await handle.write(randomBytes(MB));
+    await handle.close();
+    await writeFile(path.join(exportDir, BOOK_HTML), "<html></html>");
+
+    // A fresh process: inside the shared test process other tests' garbage
+    // makes buffer counts too noisy to bound.
+    const script = `
+      import { zipHtmlExport } from ${JSON.stringify(path.join(import.meta.dir, "gdrive.ts"))};
+      const base = process.memoryUsage().arrayBuffers;
+      let peak = base;
+      const t = setInterval(() => { peak = Math.max(peak, process.memoryUsage().arrayBuffers); }, 2);
+      const s = await zipHtmlExport(${JSON.stringify(exportDir)}, "Big Photo Book");
+      clearInterval(t);
+      console.log(JSON.stringify({ file: s.filePath, growth: peak - base }));
+    `;
+    const proc = Bun.spawn([process.execPath, "-e", script], { stdout: "pipe", stderr: "inherit" });
+    const { file, growth } = JSON.parse(await new Response(proc.stdout).text());
+    try {
+      expect((await stat(file)).size).toBeGreaterThan(30 * MB);
+      // One file in flight plus a short output backlog: under 40 MB locally and
+      // 56 MB on a slow CI disk. The old build measures about 130 MB.
+      expect(growth).toBeLessThan(80 * MB);
+    } finally {
+      await rm(path.dirname(file), { recursive: true, force: true });
+    }
+  } finally {
+    await rm(exportDir, { recursive: true, force: true });
+  }
+}, 60_000);
+
+test("zipHtmlExport does not hang when the output backs up between two files", async () => {
+  // A file whose last piece fills the write buffer, followed by another file,
+  // used to leave the zip waiting for a 'drain' that had already fired.
+  const exportDir = await mkdtemp(path.join(tmpdir(), "gutterpress-gdrive-src-"));
+  try {
+    // Whole 64 KiB read pieces of incompressible data: the last piece of each
+    // file compresses to more than the write buffer holds.
+    await writeFile(path.join(exportDir, "a.bin"), randomBytes(128 * 1024));
+    await writeFile(path.join(exportDir, "b.bin"), randomBytes(64 * 1024));
+    // The hang is timing-dependent, so zip it several times.
+    for (let n = 0; n < 5; n++) {
+      const source = await zipHtmlExport(exportDir, "Backed Up Book");
+      try {
+        expect(Object.keys(unzipSync(await readFile(source.filePath))).length).toBe(2);
+      } finally {
+        await source.cleanup();
+      }
+    }
+  } finally {
+    await rm(exportDir, { recursive: true, force: true });
+  }
+}, 10_000);
+
+test("zipHtmlExport closes its output and removes the temp dir when a source read fails", async () => {
+  const exportDir = await mkdtemp(path.join(tmpdir(), "gutterpress-gdrive-src-"));
+  try {
+    await writeFile(path.join(exportDir, BOOK_HTML), "<html></html>");
+    // A file that vanishes after collection: the output seam deletes it.
+    await writeFile(path.join(exportDir, "late.bin"), "x");
+    let out: Writable | undefined;
+    const before = new Set((await readdir(tmpdir())).filter((n) => n.startsWith("gutterpress-gdrive-")));
+    await expect(
+      zipHtmlExport(exportDir, "Failing Read", undefined, (p) => {
+        rmSync(path.join(exportDir, "late.bin"));
+        out = createWriteStream(p);
+        return out;
+      }),
+    ).rejects.toThrow(/ENOENT/);
+    expect(out!.destroyed).toBe(true);
+    const leaked = (await readdir(tmpdir())).filter((n) => n.startsWith("gutterpress-gdrive-") && !before.has(n));
     expect(leaked).toEqual([]);
   } finally {
     await rm(exportDir, { recursive: true, force: true });

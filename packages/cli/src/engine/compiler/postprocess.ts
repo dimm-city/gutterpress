@@ -113,7 +113,10 @@ export async function postprocess(
   }
 
   // Preserve-unless-provided: only fields the caller passed are written;
-  // Producer/Creator stay whatever the renderer put there.
+  // Producer stays whatever the renderer put there. Creator is always
+  // Gutterpress, not Chromium's user-agent string: Ghostscript's pdfwrite keeps
+  // the input's Info entries, so a PDF/X file carries it too (#497).
+  doc.setCreator("gutterpress");
   if (opts.title) doc.setTitle(opts.title);
   if (opts.author) doc.setAuthor(opts.author);
   if (opts.subject) doc.setSubject(opts.subject);

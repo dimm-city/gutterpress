@@ -1,6 +1,7 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { readPdfBytes } from "../../lib/pdf-parse";
+import { inspectionFailed } from "../policy";
+import { findPdfMarkers } from "../../lib/pdf-parse";
 
 const check: Check = {
   id: "pdf.print.color-spaces",
@@ -14,11 +15,21 @@ const check: Check = {
 
     // Raw byte scan. /Lab uses a \b boundary so the "/Label" key and similar
     // do not false-positive as the Lab color space.
-    const bytes = await readPdfBytes(ctx.pdfPath).catch(() => "");
+    let found;
+    try {
+      found = await findPdfMarkers(ctx.pdfPath, {
+        rgb: /\/DeviceRGB/,
+        lab: /\/Lab\b/,
+        separation: /\/Separation/,
+        deviceN: /\/DeviceN/,
+      });
+    } catch {
+      return [inspectionFailed(check.id, "Could not read the PDF to scan its color spaces.", { file: ctx.pdfPath })];
+    }
 
     const results: CheckResult[] = [];
 
-    if (/\/DeviceRGB/.test(bytes)) {
+    if (found.has("rgb")) {
       results.push({
         checkId: check.id,
         severity: "error",
@@ -27,7 +38,7 @@ const check: Check = {
         file: ctx.pdfPath,
       });
     }
-    if (/\/Lab\b/.test(bytes)) {
+    if (found.has("lab")) {
       results.push({
         checkId: check.id,
         severity: "error",
@@ -35,7 +46,7 @@ const check: Check = {
         file: ctx.pdfPath,
       });
     }
-    if (/\/Separation/.test(bytes)) {
+    if (found.has("separation")) {
       results.push({
         checkId: check.id,
         severity: "error",
@@ -43,7 +54,7 @@ const check: Check = {
         file: ctx.pdfPath,
       });
     }
-    if (/\/DeviceN/.test(bytes)) {
+    if (found.has("deviceN")) {
       results.push({
         checkId: check.id,
         severity: "error",

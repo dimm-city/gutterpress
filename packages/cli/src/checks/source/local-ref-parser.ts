@@ -5,8 +5,30 @@ import type Token from "markdown-it/lib/token.mjs";
 import { createMarkdownRenderer } from "../../lib/markdown/renderer";
 import type { LoadedPlugin } from "../../lib/markdown/renderer";
 import { loadPlugins } from "../../lib/markdown/plugins";
+import { isRemoteUrl } from "../../lib/printsafe";
 import { inspectionFailed } from "../policy";
 import type { CheckContext, CheckResult } from "../types";
+
+/**
+ * `src` of every raw-HTML `<img>` in `html` that points at the web. Only those
+ * are reported: a raw `<img>` to a local file is the author's own markup and
+ * stays outside the local-ref checks. Comments are skipped, and `src` counts
+ * only as an attribute of the tag itself (not `data-src`, not text inside
+ * another attribute's value).
+ */
+const HTML_IMG_TAG = /<img\b[^>]*>/gi;
+const HTML_ATTR = /\s([^\s"'=<>/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
+function* remoteHtmlImgSrcs(html: string): Generator<{ src: string; index: number }> {
+  // Blank comments out in place, so offsets (and so line numbers) stay put.
+  const live = html.replace(/<!--[\s\S]*?-->/g, (c) => c.replace(/[^\n]/g, " "));
+  for (const tag of live.matchAll(HTML_IMG_TAG)) {
+    for (const attr of tag[0].slice(4).matchAll(HTML_ATTR)) {
+      if (attr[1]!.toLowerCase() !== "src") continue;
+      const src = attr[2] ?? attr[3] ?? attr[4] ?? "";
+      if (isRemoteUrl(src)) yield { src, index: tag.index };
+    }
+  }
+}
 
 export type RenderedRefKind = "image" | "link";
 
@@ -88,9 +110,26 @@ export function createRenderedLocalRefCollector(
     const refs: RenderedLocalRef[] = [];
 
     for (const block of tokens) {
+      if (block.type === "html_block" && block.map) {
+        const newlines = newlineOffsets(block.content);
+        for (const { src, index } of remoteHtmlImgSrcs(block.content)) {
+          refs.push({ ref: src, kind: "image", line: block.map[0] + lineWithinInline(newlines, index) + 1 });
+        }
+      }
       if (block.type !== "inline" || !block.children || !block.map) continue;
       const newlines = newlineOffsets(block.content);
       for (const child of block.children) {
+        if (child.type === "html_inline") {
+          const offset = tokenOffsets.get(child);
+          for (const { src } of remoteHtmlImgSrcs(child.content)) {
+            refs.push({
+              ref: src,
+              kind: "image",
+              line: block.map[0] + (offset === undefined ? 0 : lineWithinInline(newlines, offset)) + 1,
+            });
+          }
+          continue;
+        }
         const kind: RenderedRefKind | undefined =
           child.type === "image" ? "image" : child.type === "link_open" ? "link" : undefined;
         if (!kind) continue;

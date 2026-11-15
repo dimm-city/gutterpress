@@ -364,6 +364,13 @@ export function getTextPass(doc: PDFDocumentProxy): Promise<TextPass> {
 export interface ImageRef {
   /** XObject resource name (or "(inline)" for inline images). */
   name: string;
+  /**
+   * The image's pixel size, from its XObject's /Width and /Height as the
+   * operator list reports them — no decoding. 0 for an inline image or a mask,
+   * whose operator carries no such pair.
+   */
+  pxW: number;
+  pxH: number;
   /** Rendered width/height on the page, in points (from the CTM). */
   placedW: number;
   placedH: number;
@@ -496,6 +503,8 @@ export function getOpPass(doc: PDFDocumentProxy): Promise<OpPass> {
             const y0 = Math.min(...ys);
             pageImages.push({
               name,
+              pxW: name === "(inline)" ? 0 : (args[1] as number),
+              pxH: name === "(inline)" ? 0 : (args[2] as number),
               placedW: Math.hypot(a, b),
               placedH: Math.hypot(c, d),
               x: e,
@@ -527,6 +536,9 @@ export function getOpPass(doc: PDFDocumentProxy): Promise<OpPass> {
           }
         }
         if (pageImages.length > 0) imagesByPage.set(i, pageImages);
+        // Free the page's decoded images and fonts now; a book of art would
+        // otherwise hold every page's pixels until the document is destroyed.
+        page.cleanup();
       }
       return { imagesByPage, fonts };
     })();
@@ -757,40 +769,6 @@ export async function pagesWithVisibleShadingPaints(
   return out;
 }
 
-/**
- * Await an image XObject's pixel dimensions (requires PDF.js to decode it).
- * Bounded by a timeout so a slow/broken image can't hang validation.
- */
-function getImagePixelSize(
-  page: PDFPageProxy,
-  name: string,
-  timeoutMs = 2000
-): Promise<{ width: number; height: number } | null> {
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = (v: { width: number; height: number } | null) => {
-      if (!done) {
-        done = true;
-        resolve(v);
-      }
-    };
-    const t = setTimeout(() => finish(null), timeoutMs);
-    try {
-      page.objs.get(name, (obj: { width?: number; height?: number } | null) => {
-        clearTimeout(t);
-        finish(
-          obj && obj.width && obj.height
-            ? { width: obj.width, height: obj.height }
-            : null
-        );
-      });
-    } catch {
-      clearTimeout(t);
-      finish(null);
-    }
-  });
-}
-
 // Operators that put ink (or a pixel) on the page. Clips, paths that end in
 // `n`, state changes and colour setters do not.
 const PAINT_OPS = new Set<number>(
@@ -821,8 +799,8 @@ export async function pageHasMarks(doc: PDFDocumentProxy, pageNum: number): Prom
 }
 
 /**
- * Per-image effective DPI = pixel dimension ÷ placed size in inches. Decodes
- * each image (best-effort). Used only by the opt-in image-resolution check.
+ * Per-image effective DPI = pixel dimension ÷ placed size in inches, from the
+ * pixel size each XObject declares. Used only by the opt-in image-resolution check.
  */
 export async function getImageResolutions(
   doc: PDFDocumentProxy
@@ -830,24 +808,12 @@ export async function getImageResolutions(
   const { imagesByPage } = await getOpPass(doc);
   const out: Array<{ page: number; xDpi: number; yDpi: number }> = [];
   for (const [pageNum, imgs] of imagesByPage) {
-    let page: PDFPageProxy;
-    try {
-      page = await doc.getPage(pageNum);
-    } catch {
-      continue;
-    }
     for (const img of imgs) {
-      if (img.name === "(inline)") continue;
-      const px = await getImagePixelSize(page, img.name);
-      if (!px) continue;
+      if (!(img.pxW > 0 && img.pxH > 0)) continue;
       const placedWin = img.placedW / 72;
       const placedHin = img.placedH / 72;
       if (placedWin <= 0 || placedHin <= 0) continue;
-      out.push({
-        page: pageNum,
-        xDpi: px.width / placedWin,
-        yDpi: px.height / placedHin,
-      });
+      out.push({ page: pageNum, xDpi: img.pxW / placedWin, yDpi: img.pxH / placedHin });
     }
   }
   return out;
