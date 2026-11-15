@@ -66,7 +66,6 @@
   import ProjectConnectionsSection from "#lib/components/ProjectConnectionsSection.svelte";
   import type { LastBackup } from "#lib/backup-state.ts";
   import SaveTemplateDialog from "#lib/components/SaveTemplateDialog.svelte";
-  import { PRINT_TOOL_IDS } from "#lib/publish-targets.ts";
 
   let {
     projectDir,
@@ -173,16 +172,6 @@
         .then((entries) => entries.filter((e) => !e.isDir && /\.md$/i.test(e.name)).map((e) => e.name)),
     // A chapter is named by its first heading.
     readFirstHeading: (dir, path) => api.fs.readFile(joinPath(dir, path)).then(firstHeading),
-    // Which print tools are absent, for the publish-targets note — the same
-    // /api/doctor data Troubleshooting → Diagnostics shows.
-    listMissingPrintTools: () =>
-      api
-        .doctor()
-        .then((d) =>
-          (d.tools ?? [])
-            .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
-            .map((t) => t.id),
-        ),
     onError: (msg) => toast?.error?.(msg),
   });
 

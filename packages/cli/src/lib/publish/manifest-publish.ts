@@ -15,7 +15,7 @@ import { canonicalTargetId } from "../targets.ts";
 import { targetSettings } from "./run-publish.ts";
 
 /** The raw `publish:` map, as written. */
-function settingsKeysOf(doc: Document.Parsed): Record<string, unknown> {
+function settingsKeysOf(doc: Document): Record<string, unknown> {
   const node = doc.get("publish", true);
   return isMap(node) ? (node.toJSON() as Record<string, unknown>) : {};
 }
@@ -118,6 +118,12 @@ function bareTarget(): Scalar {
  */
 export async function setBookTargets(projectDir: string, ids: string[]): Promise<void> {
   const { doc, file } = await loadManifestDoc(projectDir);
+  writeBookTargets(doc, ids);
+  await writeManifestDoc(file, doc);
+}
+
+/** {@link setBookTargets} on a document already in hand (a new book's, say). */
+export function writeBookTargets(doc: Document, ids: string[]): void {
   const wanted = [...new Set(ids.map(canonicalTargetId))];
   if (!isMap(doc.get("publish", true))) doc.set("publish", doc.createNode({}));
   const keys = Object.keys(settingsKeysOf(doc));
@@ -134,7 +140,6 @@ export async function setBookTargets(projectDir: string, ids: string[]): Promise
     if (!keys.some((key) => canonicalTargetId(key) === id)) doc.setIn(["publish", id], bareTarget());
   }
   doc.delete("targets");
-  await writeManifestDoc(file, doc);
 }
 
 /** `dir` as the manifest records a folder inside the book (relative, `/`); null when it lies outside. */

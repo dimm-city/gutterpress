@@ -320,12 +320,12 @@ test("scaffoldProject writes the chosen preset into the manifest (overwriting th
     });
     const manifest = await readFile(result.manifestPath, "utf8");
     expect(manifest).toContain("preset: dtrpg");
-    // The preset's default target list is recorded EXPLICITLY, like the
-    // preset itself — the preset-derived fallback is for hand-written
-    // manifests only.
-    expect(manifest).toContain("targets:");
+    // The preset's default targets are recorded EXPLICITLY, like the preset
+    // itself, as the book's `publish:` list (ADR 0012) — the preset-derived
+    // fallback is for hand-written manifests only.
+    expect(manifest).toContain("publish:\n  drivethrurpg-print:");
     const parsed = await loadManifest(result.projectDir);
-    expect(parsed.targets).toEqual(["drivethrurpg-print"]);
+    expect(parsed.targets).toBeUndefined();
     const config = resolveConfig({}, parsed);
     expect(config.page.width).toBe(621);
     expect(config.targets).toEqual(["drivethrurpg-print"]);
@@ -344,9 +344,9 @@ test("scaffoldProject records an explicit empty targets list for the book preset
       versionHistory: "none",
     });
     const parsed = await loadManifest(result.projectDir);
-    // Explicit `targets: []` — the visible record of "no destination
-    // policies", not an accident of omission.
-    expect(parsed.targets).toEqual([]);
+    // Explicit `publish: {}` — the visible record of "no targets", not an
+    // accident of omission.
+    expect(parsed.publish).toEqual({});
     expect(resolveConfig({}, parsed).targets).toEqual([]);
   } finally {
     await rm(parent, { recursive: true, force: true });
@@ -368,7 +368,7 @@ test("scaffoldProject targets: [] opts a dtrpg book out of destination checks", 
     });
     const parsed = await loadManifest(result.projectDir);
     expect(parsed.preset).toBe("dtrpg");
-    expect(parsed.targets).toEqual([]);
+    expect(parsed.publish).toEqual({});
     expect(resolveConfig({}, parsed).targets).toEqual([]);
   } finally {
     await rm(parent, { recursive: true, force: true });
@@ -386,7 +386,8 @@ test("scaffoldProject accepts an explicit targets override (deduped)", async () 
       versionHistory: "none",
     });
     const parsed = await loadManifest(result.projectDir);
-    expect(parsed.targets).toEqual(["drivethrurpg-print", "itch"]);
+    expect(parsed.targets).toBeUndefined();
+    expect(resolveConfig({}, parsed).targets).toEqual(["drivethrurpg-print", "itch"]);
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
@@ -596,7 +597,8 @@ test("adoptFolder: uses existing markdown + scaffolds manifest/book.css in place
   // ADR 0008: adoption writes the product defaults explicitly — visible and
   // editable, never implicit.
   expect(manifest).toContain("preset: dtrpg");
-  expect(manifest).toContain("targets:\n  - dtrpg");
+  expect(manifest).toContain("publish:\n  drivethrurpg-print:");
+  expect(manifest).not.toContain("targets:");
   // No chapter-01.md scaffolded when the folder already has markdown.
   expect(existsSync(path.join(dir, "chapter-01.md"))).toBe(false);
 

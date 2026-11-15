@@ -72,14 +72,13 @@
   /** The trim in points the manifest will record, or null while incomplete. */
   const customPagePoints = $derived(trimPoints(sizeChoice, widthIn, heightIn));
 
-  // Publish targets (ADR 0008): WHERE the book will be published — each one
-  // is a destination's validation policy, recorded explicitly in the new
-  // manifest (an unchecked-everything selection is written as `targets: []`,
-  // a visible opt-out, never an accident of omission). Seeded from the
-  // template/preset and freely uncheckable — a writer without qpdf/
-  // Ghostscript can opt out of print checks knowingly instead of hitting
-  // required-check errors later. Choices + copy are shared with project
-  // settings (#lib/publish-targets).
+  // Publish targets (ADR 0008, 0012): WHERE the book will be published,
+  // recorded explicitly as the new manifest's `publish:` list (an
+  // unchecked-everything selection is written as `publish: {}`, a visible
+  // opt-out, never an accident of omission). Seeded from the template/preset
+  // and freely uncheckable — a writer without qpdf/Ghostscript can opt out of
+  // print checks knowingly instead of hitting required-check errors later.
+  // Changed afterwards in Publish → Targets (#lib/publish-targets).
   const TARGET_CHOICES = PUBLISH_TARGET_CHOICES;
   // Defaults follow the template/preset until the writer touches a checkbox;
   // after that their selection is theirs (no $effect — the derived falls
@@ -112,7 +111,7 @@
     }
   }
   // The explanation for tools a CHECKED destination needs but this computer
-  // lacks — shared verbatim with book settings.
+  // lacks.
   let targetToolGap = $derived(
     toolGapMessage(missingToolsForTargets(effectiveTargets, missingTools))
   );

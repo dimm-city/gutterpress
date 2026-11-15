@@ -271,7 +271,7 @@ export function ruleTargets(ids: readonly string[]): string[] {
 }
 
 /** The parts of a manifest that say where the book goes. */
-interface PublishPlanSource {
+export interface PublishPlanSource {
   targets?: unknown;
   publish?: unknown;
 }

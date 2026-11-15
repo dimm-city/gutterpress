@@ -1,16 +1,15 @@
 /**
- * Publish-target choices for the UI (ADR 0008) — the destinations a book is
- * validated against, and what each one needs installed.
+ * The new-book wizard's starting targets (ADR 0008), like `gutterpress new
+ * --targets`: the stores a new book can start with, and what each one needs
+ * installed. A book's targets are changed afterwards in Publish → Targets,
+ * which lists every target the lib knows (ADR 0012).
  *
  * PWA-clean (§8): a plain data + pure-function module, no lib value import.
  * It deliberately MIRRORS `packages/cli/src/lib/targets.ts`'s registry
  * (`TARGETS[id].label` / `.requiredTools`); the lib stays the authority —
- * an id typo is rejected host-side by `setManifestFields`, and
+ * an id typo is rejected host-side by `scaffoldProject`, and
  * `publish-targets.contract.test.ts` pins these ids/tools against the real
  * registry so the two can't drift.
- *
- * Shared by the new-book wizard and book settings so both surfaces
- * describe a destination the same way.
  */
 
 export interface PublishTargetChoice {
@@ -47,7 +46,6 @@ export const PUBLISH_TARGET_CHOICES: PublishTargetChoice[] = [
 /**
  * The targets a book designed for a preset validates against by default
  * (mirrors the lib presets' `defaultTargets`: dtrpg → [drivethrurpg-print]; else none).
- * Shared by the new-book wizard and Book setup > Book.
  */
 export function defaultTargetsFor(preset: string | null): string[] {
   return preset === "dtrpg" ? ["drivethrurpg-print"] : [];
@@ -78,8 +76,7 @@ export function missingToolsForTargets(
 
 /**
  * The "you can't produce a compliant file yet" explanation, or null when
- * nothing is missing. One sentence pair, shared verbatim by both surfaces so
- * the app never says this two different ways.
+ * nothing is missing.
  */
 export function toolGapMessage(missingNeeded: readonly string[]): string | null {
   if (missingNeeded.length === 0) return null;

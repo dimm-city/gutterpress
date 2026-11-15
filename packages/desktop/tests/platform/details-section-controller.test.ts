@@ -387,60 +387,6 @@ test("a flush during an in-flight save runs after it and sees its result (no los
   expect(h.ctrl.fields.title).toBe("Second");
 });
 
-// ── Publish targets (ADR 0008) ────────────────────────────────────────────
-
-test("loadDetails seeds the target draft from the manifest", async () => {
-  const h = make({ fields: { targets: ["dtrpg"] } });
-  await h.ctrl.loadDetails();
-  expect(h.ctrl.targetsDraft).toEqual(["dtrpg"]);
-});
-
-test("toggling a target writes only { targets }, empty included", async () => {
-  const h = make({ fields: { title: "T", targets: ["dtrpg"] } });
-  await h.ctrl.loadDetails();
-  h.ctrl.toggleTarget("itch");
-  await settle();
-  expect(h.ctrl.targetsDraft).toEqual(["dtrpg", "itch"]);
-  h.ctrl.toggleTarget("dtrpg");
-  h.ctrl.toggleTarget("itch");
-  await settle();
-  expect(h.ctrl.targetsDraft).toEqual([]);
-  expect(h.writeCalls.map((w) => w.updates)).toEqual([{ targets: ["dtrpg", "itch"] }, { targets: [] }]);
-});
-
-test("a book with no targets: key and preset dtrpg shows DriveThruRPG checked, and a title change writes no targets", async () => {
-  const h = make({
-    fields: { title: "T" },
-    pageSetup: { preset: "dtrpg", bounds: { width: 621, height: 810, tolerance: 0.5 }, margins: INCH, marginsFrom: "default" },
-  });
-  await h.ctrl.loadDetails();
-  expect(h.ctrl.targetsDraft).toEqual(["drivethrurpg-print"]);
-  h.ctrl.titleDraft = "Renamed";
-  await h.ctrl.flushPendingSave();
-  expect(h.writeCalls.map((w) => w.updates)).toEqual([{ title: "Renamed" }]);
-});
-
-test("changing the preset on a book with no targets: key reseeds the default targets; once touched they are the author's", async () => {
-  const h = make({ fields: { title: "T" } }); // BOOK_SETUP: preset book, no targets
-  await h.ctrl.loadDetails();
-  expect(h.ctrl.targetsDraft).toEqual([]);
-  h.ctrl.setPreset("dtrpg");
-  await settle();
-  expect(h.ctrl.targetsDraft).toEqual(["drivethrurpg-print"]);
-  // The preset change wrote the page size, never the (still implicit) targets.
-  expect(h.pageWrites).toEqual([{ size: { preset: "dtrpg" } }]);
-  expect(h.writeCalls).toEqual([]);
-  h.ctrl.toggleTarget("drivethrurpg-print");
-  await settle();
-  expect(h.writeCalls.map((w) => w.updates)).toEqual([{ targets: [] }]);
-  h.ctrl.setPreset("book");
-  await settle();
-  expect(h.ctrl.targetsDraft).toEqual([]);
-  h.ctrl.setPreset("dtrpg");
-  await settle();
-  expect(h.ctrl.targetsDraft).toEqual([]); // explicit now: the preset no longer reseeds
-});
-
 // ── Page size (#357) ─────────────────────────────────────────────────────────
 
 test("loadDetails reads the page size and the margins (in inches) back into the drafts", async () => {
@@ -748,8 +694,6 @@ test("a book whose manifest overrides its preset's size shows Another size, at t
   h.ctrl.touchPage();
   await h.ctrl.flushPendingSave();
   expect(h.pageWrites).toEqual([]);
-  // The book's targets still follow its preset (book: none).
-  expect(h.ctrl.targetsDraft).toEqual([]);
 });
 
 test("on an overridden size, choosing the preset goes back to the preset's own size", async () => {

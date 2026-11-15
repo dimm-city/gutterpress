@@ -5,13 +5,13 @@
  * here). Nothing is contacted.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { FileTokenStore } from "../remote-auth/token-store.ts";
 import { PublishSelectionsStore } from "./selections.ts";
-import { publishBook, type PublishBookDeps, type PublishProgress } from "./publish-book.ts";
+import { publishBook, publishPlan, type PublishBookDeps, type PublishProgress } from "./publish-book.ts";
 import type { BuildRunnerOptions } from "../build-runner.ts";
 import type { ValidationExecutionArgs, ValidationExecutionResult } from "../validation-exec.ts";
 
@@ -208,6 +208,47 @@ describe("checks", () => {
 });
 
 describe("sending", () => {
+  // A target is a target, built in or an extension's (ADR 0012): an extension
+  // flagged `"gutterpress": { "publish": true }` adds one by being in the
+  // book's extensions, and the one run plans, makes, checks and sends it
+  // exactly like a built-in.
+  test("an extension's target is planned, made and sent by the same run as a built-in", async () => {
+    const pub = path.join(book, "pub");
+    await mkdir(pub);
+    await writeFile(
+      path.join(pub, "package.json"),
+      JSON.stringify({ name: "gp-shelf", type: "module", main: "index.js", gutterpress: { publish: true } }),
+    );
+    await writeFile(
+      path.join(pub, "index.js"),
+      `import { writeFile } from "node:fs/promises";
+       import path from "node:path";
+       export async function publish(outputDir, context) {
+         await writeFile(path.join(context.project.dir, "received.json"), JSON.stringify({ artifact: context.artifact, settings: context.settings }));
+         return { url: "https://shelf.example/field-guide", detail: "On the shelf" };
+       }`,
+    );
+    await writeBook("extensions:\n  - ./pub\npublish:\n  gp-shelf:\n    shelf: top\n  local:\n    dir: out\n");
+
+    expect(await publishPlan({ projectDir: book })).toEqual({ targets: ["gp-shelf", "local"], sending: ["gp-shelf", "local"] });
+    const result = await publishBook({ projectDir: book }, deps());
+
+    expect(builds).toHaveLength(1);
+    expect(result.targets.map((t) => [t.id, t.status])).toEqual([
+      ["gp-shelf", "sent"],
+      ["local", "sent"],
+    ]);
+    const shelf = result.targets[0]!;
+    expect(shelf.outcome).toMatchObject({ kind: "published", url: "https://shelf.example/field-guide", detail: "On the shelf" });
+    const received = JSON.parse(await readFile(path.join(book, "received.json"), "utf8"));
+    expect(received).toEqual({
+      artifact: { format: "pdf", path: path.join(dist(), "field-guide-pdf.pdf") },
+      settings: { shelf: "top" },
+    });
+    // Its file was checked against the book's own rules, like any target's.
+    expect(checks.some((c) => c.phase === "post-build" && c.pdf === path.join(dist(), "field-guide-pdf.pdf"))).toBe(true);
+  });
+
   test("check only makes and checks the files and sends nothing", async () => {
     await writeBook("publish:\n  local:\n    dir: out\n");
     const result = await publishBook({ projectDir: book, checkOnly: true }, deps());

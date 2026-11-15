@@ -305,9 +305,6 @@ export interface ProjectConfigFields {
   authors?: string[];
   /** The manifest's `chapters` — null is the deliberate "all chapter files" sentinel. */
   sourceFiles?: string[] | null;
-  /** `targets:` — the publish destinations this book is validated against
-   *  (ADR 0008). `[]` is the explicit "no destination policies" opt-out. */
-  targets?: string[];
 }
 
 /**

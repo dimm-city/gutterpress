@@ -28,7 +28,7 @@ import type { Document } from "yaml";
 import type { ProjectTemplateId } from "./project-scaffold.ts";
 import { getAssetPath } from "./embedded-assets.ts";
 import { MANIFEST_FILENAMES } from "./manifest.ts";
-import { canonicalTargetId } from "./targets.ts";
+import { bookTargets, type PublishPlanSource } from "./targets.ts";
 import { loadManifestDoc, writeManifestDoc, scalarString } from "./manifest-doc.ts";
 import { collectStyleDependencies, escapesProjectRoot } from "./asset-inline.ts";
 import { toPosixPath } from "./plugin-vendor.ts";
@@ -62,7 +62,7 @@ export interface TemplateInfo {
    * everything under it.
    */
   preset?: string;
-  /** The `targets:` this template's manifest declares, when it has one. */
+  /** The targets this template's manifest names, when it names any. */
   targets?: string[];
   /**
    * The `page:` size (points) this template's manifest declares, when it has
@@ -73,7 +73,7 @@ export interface TemplateInfo {
 }
 
 /**
- * Read the `preset:`/`targets:`/`page:` a template's manifest declares.
+ * Read the `preset:`, targets and `page:` a template's manifest declares.
  * Best-effort and never throws: a template with no (or an unreadable)
  * manifest simply carries no starting point, and the caller falls back to
  * its own defaults.
@@ -87,13 +87,9 @@ async function readTemplateChoices(
     const out: Pick<TemplateInfo, "preset" | "targets" | "page"> = {};
     const preset = doc.get("preset");
     if (typeof preset === "string" && preset) out.preset = preset;
-    const targets = doc.get("targets", true);
-    if (isSeq(targets)) {
-      out.targets = (targets.items as unknown[])
-        .map((i) => scalarString(i))
-        .filter((s): s is string => s !== null)
-        .map(canonicalTargetId);
-    }
+    // The targets it names, in either form (`publish:`, or an older `targets:`).
+    const manifest = (doc.toJSON() ?? {}) as PublishPlanSource;
+    if (manifest.publish !== undefined || manifest.targets !== undefined) out.targets = bookTargets(manifest, []);
     const width = numberAt(doc, ["page", "width"]);
     const height = numberAt(doc, ["page", "height"]);
     if (width !== undefined && height !== undefined) out.page = { width, height };
