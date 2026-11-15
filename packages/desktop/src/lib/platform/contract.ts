@@ -347,18 +347,10 @@ export interface PreviewStartArgs {
   input: FolderRef;
 }
 
+/** The quick PDF export: a draft saved where the person chose. */
 export interface BuildArgs {
   input: FolderRef;
-  format: "pdf" | "html" | "pdfx";
   out?: string;
-  title?: string;
-  pdfxFlavor?: string;
-  icc?: string;
-  manifest?: string;
-  stripAnnotations?: boolean;
-  skipLint?: boolean;
-  skipPreValidate?: boolean;
-  skipPostValidate?: boolean;
   /**
    * Proceed past the engine's over-wide-content check, which is otherwise a
    * hard error (#163). The host accepted this all along; without it here the

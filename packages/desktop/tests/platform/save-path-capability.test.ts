@@ -87,45 +87,26 @@ test("a cancelled Save dialog registers nothing", async () => {
   expect(savePaths.consume("/home/author/book.pdf")).toBe(false);
 });
 
-test("dialog/save-pdf opens in defaultDir when one is given", async () => {
-  await savePdfRoute({
-    request: request({ defaultName: "MyBook.pdf", defaultDir: "/home/author/book/dist" }),
-  } as Parameters<typeof savePdfRoute>[0]);
-  expect(lastSaveOptions?.defaultPath).toBe("/home/author/book/dist/MyBook.pdf");
+// ── dialog/pick-output-folder: a folder to remember, nothing more ─────────
 
-  await savePdfRoute({ request: request({ defaultDir: "/home/author/book/dist" }) } as Parameters<typeof savePdfRoute>[0]);
-  expect(lastSaveOptions?.defaultPath).toBe("/home/author/book/dist/book.pdf");
-
-  await savePdfRoute({ request: request({}) } as Parameters<typeof savePdfRoute>[0]);
-  expect(lastSaveOptions?.defaultPath).toBe("book.pdf");
-});
-
-// ── dialog/pick-output-folder: a chosen save DESTINATION folder ────────────
-
-test("dialog/pick-output-folder registers the chosen folder in BOTH the save-path and picked-file pools", async () => {
+test("dialog/pick-output-folder returns the chosen folder and authorizes nothing", async () => {
   const chosen = "/home/author/Exports";
   nextOpenResult = { canceled: false, filePaths: [chosen] };
-
   const res = await pickOutputFolderRoute({
     request: request({ defaultPath: "/home/author/book/dist" }),
   } as Parameters<typeof pickOutputFolderRoute>[0]);
   expect(await res.json()).toBe(chosen);
   expect(lastOpenOptions?.properties).toEqual(["openDirectory", "createDirectory"]);
   expect(lastOpenOptions?.defaultPath).toBe("/home/author/book/dist");
-
-  // Write capability: api:build may use it as `out`, once.
-  expect(savePaths.consume(chosen)).toBe(true);
+  // The publish run asks main's own dialog before writing outside the book.
   expect(savePaths.consume(chosen)).toBe(false);
-  // Read capability: publish:run may read the artifact built there.
-  expect(pickedFiles.consume(chosen)).toBe(true);
+  expect(pickedFiles.consume(chosen)).toBe(false);
 });
 
-test("a cancelled output-folder dialog registers nothing and resolves null", async () => {
+test("a cancelled output-folder dialog resolves null", async () => {
   nextOpenResult = { canceled: true, filePaths: [] };
   const res = await pickOutputFolderRoute({ request: request({}) } as Parameters<typeof pickOutputFolderRoute>[0]);
   expect(await res.json()).toBeNull();
-  expect(savePaths.consume("/home/author/Exports")).toBe(false);
-  expect(pickedFiles.consume("/home/author/Exports")).toBe(false);
 });
 
 // ── ExportController.build: the actual bypass, wired to the real capability ─
@@ -138,9 +119,8 @@ function makeController(): ExportController {
     detectProjectSource: async () => ({ type: "local-folder" }),
     diagnoseProjectRemote: async () => ({ canSync: false }),
     syncProject: async () => ({ status: "up-to-date" }),
-    splitOutPath: (tempOutPath: string) => ({ outDir: `${tempOutPath}.dir` }),
-    runBuild: async () => ({ outDir: "/out", htmlPath: "/out/x.html", fingerprintPath: "/out/fp.json" }),
-    BuildError: class extends Error {},
+    runBuild: async () => ({ outDir: "/out", diagnostics: [] }),
+    renderPhases: (factory: unknown) => factory,
   } as unknown as LibModule;
 
   let session: Awaited<ReturnType<ExportControllerDeps["getActiveExportSession"]>> = null;
@@ -193,15 +173,4 @@ test("api:build with an 'out' registered by the save-pdf route is accepted, and 
   // out path, with no fresh Save dialog round-trip, must be rejected.
   const err = await controller.build({ input: "/book", out: chosen }).catch((e) => e);
   expect((err as Error & { code?: string }).code).toBe("OUT_NOT_AUTHORIZED");
-});
-
-test("api:build accepts a folder from pick-output-folder as an html 'out'", async () => {
-  const chosen = "/home/author/Exports";
-  nextOpenResult = { canceled: false, filePaths: [chosen] };
-  await pickOutputFolderRoute({ request: request({}) } as Parameters<typeof pickOutputFolderRoute>[0]);
-
-  const controller = makeController();
-  const res = await controller.build({ input: "/book", format: "html", out: chosen });
-  expect(res.outDir).toBe(chosen);
-  expect(res.pdfPath).toBeUndefined();
 });

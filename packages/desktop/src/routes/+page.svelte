@@ -21,7 +21,7 @@
   import type { ToastController } from "#lib/components/Toast.svelte";
   import type { MarkdownFileLaunchEvent } from "#lib/platform/contract.ts";
   import type { ProblemEntry } from "#lib/platform/dtos.ts";
-  import { buildProblems, checkProblems, exportProblems, problemCounts } from "#lib/problems.ts";
+  import { buildProblems, checkProblems, problemCounts } from "#lib/problems.ts";
   import { NOTHING_NEW_NOTICE, saveFailureReason } from "#lib/save-status.ts";
   import StatusBar from "#lib/components/StatusBar.svelte";
   import ProblemsPanel from "#lib/components/ProblemsPanel.svelte";
@@ -104,7 +104,6 @@
   import WelcomeLanding from "#lib/components/WelcomeLanding.svelte";
   import { continueStatus, shouldReshowLanding } from "#lib/routes/startup-landing.ts";
   import {
-    explainPdfError,
     friendlyFolderError,
     friendlyHostError,
     friendlyPreviewError,
@@ -156,7 +155,7 @@
   // PDF export runs in a separate render window, so the UI stays usable — track
   // it separately with a NON-blocking status pill instead of the modal overlay.
   // The whole export FSM (state + 1s ticker + progress label) AND the
-  // savePdf/buildTo/cancelExport intents live in the ExportController; the view
+  // savePdf/cancelExport intents live in the ExportController; the view
   // drives it via intent methods and reads its rune getters. Host coupling
   // injected (§8): forward-references to page-local functions/state declared
   // further down (lifecycle, toast, getSaveReadinessWarning, …) are safe
@@ -170,40 +169,25 @@
     displayName: () => lifecycle.currentFolderDisplayName,
     isBusy: () => lifecycle.busy,
     sourceMode: () => lifecycle.sourceMode,
-    chooseSavePath: (defaultName, defaultDir) => api.dialog.savePdf(defaultName, defaultDir),
-    pickOutputFolder: (defaultPath) => api.dialog.pickOutputFolder(defaultPath),
+    chooseSavePath: (defaultName) => api.dialog.savePdf(defaultName),
     onBuildProgress: (cb) => getPlatform().onBuildProgress(cb),
     buildPdf: (input, outPath, opts) =>
       getPlatform()
         .build({
-        input,
-        format: "pdf",
-        out: outPath,
-        // #163: opt-in per export, offered by the failure itself (see
-        // ExportController.savePdf) — never a stored setting.
-        allowShrink: opts?.allowShrink,
-        // Validation is skipped by default (the quick Ctrl+Shift+E export and
-        // the Publish wizard's default) — it's a fast RGB export, not the full
-        // preflight. The wizard's "Check my book before saving" box opts back
-        // in, and also runs the checks on the saved PDF. Lint stays ON either way — the in-process PostCSS
-        // print-safety checks catch real CSS problems before PDF gen.
-        skipPreValidate: !opts?.validate,
-        skipPostValidate: !opts?.validate,
+          input,
+          out: outPath,
+          // #163: opt-in per export, offered by the failure itself (see
+          // ExportController.savePdf) — never a stored setting.
+          allowShrink: opts?.allowShrink,
         })
         // Print-quality findings are only knowable once the book paginates,
         // so they arrive from the export rather than the source lint that
-        // fills the panel — the render's own diagnostics and what the
-        // post-build PDF checks found on the saved file (#399). Held
-        // separately (see `buildProblems`) so the next lint refresh — any
-        // file save — does not wipe them.
+        // fills the panel. Held separately (see `buildProblems`) so the next
+        // lint refresh — any file save — does not wipe them.
         .then((result) => {
-          buildProblemEntries = [
-            ...buildProblems(result.diagnostics ?? []),
-            ...exportProblems(result.findings ?? []),
-          ];
+          buildProblemEntries = buildProblems(result.diagnostics ?? []);
           return result;
         }),
-    buildHtml: (input, out) => getPlatform().build({ input, format: "html", ...(out ? { out } : {}) }),
     cancelExportHost: (exportId) => getPlatform().cancelExport(exportId),
     showInFolder: (path) => api.shell.showInFolder(path),
     toastSuccess: (message, durationMs, action) => toast?.success(message, durationMs, action),
@@ -211,10 +195,6 @@
     // needs a duration and an action button, which `error()` does not take.
     toastError: (message, durationMs, action) =>
       toast?.show(message, "error", durationMs, action),
-    toastWarning: (message, durationMs, action) =>
-      toast?.show(message, "warning", durationMs, action),
-    showProblems: () => openProblemsList(),
-    explainPdfError: (e, what) => explainPdfError(e, what),
     wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   });
   let diagnosticsTools = $state<DiagnosticsTool[] | null>(null);

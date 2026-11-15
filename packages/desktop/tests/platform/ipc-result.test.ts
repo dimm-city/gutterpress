@@ -38,3 +38,18 @@ test("a success hands its value through unchanged", async () => {
   const wire = overTheWire(await toIpcResult(Promise.resolve({ pdfPath: "/book/dist/book.pdf" })));
   expect(fromIpcResult(wire)).toEqual({ pdfPath: "/book/dist/book.pdf" });
 });
+
+test("a failure's original text, kept as its detail, arrives too", async () => {
+  const failure = Object.assign(new Error("The PDF could not be made."), {
+    code: "BUILD_FAILED",
+    detail: "gs exited with code 1",
+  });
+  const wire = overTheWire(await toIpcResult(Promise.reject(failure)));
+  let caught: (Error & { detail?: string }) | undefined;
+  try {
+    fromIpcResult(wire);
+  } catch (e) {
+    caught = e as Error & { detail?: string };
+  }
+  expect(caught!.detail).toBe("gs exited with code 1");
+});

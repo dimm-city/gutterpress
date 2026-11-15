@@ -1,39 +1,37 @@
 #!/usr/bin/env node
 /**
- * Real-Electron acceptance check for #399: the post-build PDF checks run on
- * the desktop's export path, and what they find reaches the Problems panel.
+ * Real-Electron acceptance check for #399: the publish run checks each
+ * target's file, and what the checks find reaches the wizard and the Problems
+ * panel.
  *
- * A purpose-built book targets DriveThruRPG (`preset: dtrpg`, `targets:
- * [dtrpg]`) and pushes its body text to 0.15in from the trim, inside the
- * target's 0.5in text safe area. Saving it from the Publish wizard with
- * "Check my book before saving" ticked (the checks run only when asked; the
- * default folder is `dist` inside the book, so no native dialog is involved
- * and the whole SPA hop runs: wizard → ExportController → host build →
- * checks → findings → wizard → Problems) must:
+ * A purpose-built book publishes to DriveThruRPG print (`publish:
+ * drivethrurpg-print:`) and pushes its body text to 0.15in from the trim,
+ * inside the target's 0.5in text safe area. "Check only" from the Publish
+ * wizard (checks are on by default; the whole hop runs: wizard → main's
+ * publish run → the lib's checks → result → wizard → Problems) must:
  *
  *   1. report `pdf.print.safe-margins`'s finding — the page, the words and the
  *      edge — under its writer-facing label "Safe margins", file-less (no
  *      source jump), counted on the badge as an error;
  *   2. report the target's required PDF/X check as an ERROR either way: the
  *      lib's synthetic "requires check … skipped because required tools are
- *      not available" when qpdf is absent (this container), or the check's
- *      own non-conformance findings on a plain PDF when it is present. Never
- *      a silent pass;
- *   3. tell the author in the wizard how many problems the checks found, whose
- *      "Review problems" button opens the Problems list.
+ *      not available" when qpdf is absent, or the check's own findings when
+ *      it is present. Never a silent pass;
+ *   3. show the target held back in the wizard, with the safe-margins finding.
  *
  * No fixture or preference mutation survives the run. Every panel entry is
- * logged, and `EXPORT_PDF_CHECKS_SHOT=<png path>` saves a screenshot of the
+ * logged, and `PUBLISH_CHECKS_SHOT=<png path>` saves a screenshot of the
  * panel at the end for a reviewer.
  *
  * Usage:
- *   node tests/integration/export-pdf-checks.pw.mjs <exe-or-main-js>
+ *   node tests/integration/publish-checks.pw.mjs <exe-or-main-js>
  */
 import { _electron as electron } from "playwright-core";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { waitForAppWindow } from "./app-window.mjs";
 
@@ -47,26 +45,11 @@ function fail(message) {
 }
 
 function log(message) {
-  console.log(`[export-pdf-checks] ${message}`);
-}
-
-async function waitUntil(check, timeoutMs, description) {
-  const deadline = Date.now() + timeoutMs;
-  let lastError;
-  while (Date.now() < deadline) {
-    try {
-      if (await check()) return;
-    } catch (error) {
-      lastError = error;
-    }
-    await new Promise((done) => setTimeout(done, 250));
-  }
-  const label = typeof description === "function" ? description() : description;
-  fail(`${label} (${timeoutMs}ms)${lastError ? `: ${lastError.message}` : ""}`);
+  console.log(`[publish-checks] ${message}`);
 }
 
 if (!targetArg) {
-  console.error("usage: export-pdf-checks.pw.mjs <packaged-exe-or-out/main/main.js>");
+  console.error("usage: publish-checks.pw.mjs <packaged-exe-or-out/main/main.js>");
   process.exit(1);
 }
 
@@ -79,7 +62,6 @@ const executablePath = isMainJs ? require_("electron") : target;
 let electronApp;
 let projectDir;
 let userDataDir;
-let outputPath;
 let exitCode = 0;
 let shuttingDown = false;
 
@@ -111,12 +93,8 @@ process.once("SIGINT", () => void handleSignal(130));
 process.once("SIGTERM", () => void handleSignal(143));
 
 try {
-  projectDir = mkdtempSync(join(tmpdir(), "gutterpress-export-pdf-checks-project-"));
-  userDataDir = mkdtempSync(join(tmpdir(), "gutterpress-export-pdf-checks-home-"));
-  // The wizard's default folder, inside the book.
-  mkdirSync(join(projectDir, "dist"), { recursive: true });
-  outputPath = join(projectDir, "dist", `${basename(projectDir)}.pdf`);
-
+  projectDir = mkdtempSync(join(tmpdir(), "gutterpress-publish-checks-project-"));
+  userDataDir = mkdtempSync(join(tmpdir(), "gutterpress-publish-checks-home-"));
   writeFileSync(
     join(projectDir, "01-edge.md"),
     [
@@ -134,10 +112,9 @@ try {
   writeFileSync(
     join(projectDir, "manifest.yaml"),
     [
-      'title: "Export PDF checks fixture"',
-      "preset: dtrpg",
-      "targets:",
-      "  - dtrpg",
+      'title: "Publish checks fixture"',
+      "publish:",
+      "  drivethrurpg-print:",
       "source:",
       "  files:",
       "    - 01-edge.md",
@@ -175,45 +152,30 @@ try {
   await page.locator(".toc-item").first().waitFor({ state: "visible", timeout: 120_000 });
   log("throwaway dtrpg project opened and preview rendered");
 
-  // Format (PDF, checks ticked) → Choose (the local folder, always on) →
-  // Check (the readiness check) → Save.
+  // Targets (the book's one, sending, checks on) → Set up → Publish: Check only.
   await page.locator("button.publish-btn").click();
   const wizard = page.locator(".app-view.wizard");
   await wizard.waitFor({ state: "visible", timeout: 5_000 });
+  if (!(await wizard.locator(".setting input").isChecked())) fail("checks were not on by default");
   const nextStep = async (label) => {
     await wizard.locator(".steps li.current").filter({ hasText: label }).waitFor({ timeout: 10_000 });
     await wizard.locator(".view-actions .app-btn-primary").click();
   };
-  await wizard.getByLabel(/Check my book before saving/).check();
-  await nextStep("Format");
-  await nextStep("Choose");
-  await nextStep("Check");
-  await wizard.locator(".steps li.current").filter({ hasText: "Save" }).waitFor({ timeout: 10_000 });
-  // The readiness check may block on this deliberately bad book: publish past
-  // it the way an author would, with the two-click override.
-  const save = wizard.locator(".view-actions .app-btn-primary");
-  if (await save.isDisabled()) {
-    const anyway = wizard.locator("button.link", { hasText: /publish anyway/i });
-    await anyway.click();
-    await anyway.click();
-  }
-  await save.click();
-  await waitUntil(
-    () => existsSync(outputPath) && statSync(outputPath).size > 1_000,
-    120_000,
-    "PDF export did not finish",
-  );
-  log(`PDF exported (${statSync(outputPath).size} bytes)`);
+  await nextStep("Targets");
+  await nextStep("Set up");
+  await wizard.locator(".steps li.current").filter({ hasText: "Publish" }).waitFor({ timeout: 10_000 });
+  await wizard.locator(".view-actions button", { hasText: "Check only" }).click();
 
-  // 3. The wizard says what the checks found, and Review problems opens the list.
-  const findingsLine = wizard.locator(".pub-row .warn").filter({ hasText: "The PDF checks found" });
-  await findingsLine.waitFor({ state: "visible", timeout: 30_000 });
-  const findingsText = (await findingsLine.textContent())?.replace(/\s+/g, " ").trim();
-  if (!/The PDF checks found \d+ problems?\./.test(findingsText ?? "")) {
-    fail(`wizard findings line read "${findingsText}"`);
-  }
-  await findingsLine.locator("button.link", { hasText: "Review problems" }).click();
-  log(`wizard reported the findings and Review problems was pressed: "${findingsText}"`);
+  // 3. The target is held back, with the safe-margins finding.
+  const row = wizard.locator(".pub-row").filter({ hasText: "DriveThruRPG" });
+  const held = row.locator(".warn").filter({ hasText: "Held back" });
+  await held.waitFor({ state: "visible", timeout: 180_000 });
+  const rowText = (await row.textContent())?.replace(/\s+/g, " ").trim() ?? "";
+  if (!/too close to the/.test(rowText)) fail(`the held target did not show the safe-margins finding: "${rowText}"`);
+  log(`wizard: ${rowText}`);
+  await wizard.locator(".view-actions button", { hasText: "Done" }).click();
+  await wizard.waitFor({ state: "hidden", timeout: 5_000 });
+  await page.locator(".toggle-strip").click();
 
   // 1. Safe margins, with its page, words and edge, under its label.
   const marginEntry = page
@@ -247,25 +209,26 @@ try {
   }
   log(`safe-margins finding arrived: ${JSON.stringify(marginEvidence)}`);
 
-  // 2. The target's required PDF/X check has an error verdict, with or
-  //    without qpdf on this computer.
+  // 2. The print target's file is the PDF/X itself, checked against its PDF/X
+  //    rule: it passes where qpdf can read it, and is an error, never a silent
+  //    pass, where qpdf is missing.
+  const hasQpdf = spawnSync("qpdf", ["--version"]).status === 0;
   const pdfxEntries = page
     .locator(".problems-panel .entry")
     .filter({ has: page.locator(".entry-source", { hasText: /^PDF\/X markers$/ }) });
-  await pdfxEntries.first().waitFor({ state: "visible", timeout: 15_000 });
-  const pdfxEvidence = await pdfxEntries.first().evaluate((entry) => ({
-    message: entry.querySelector(".entry-message")?.textContent?.trim() ?? null,
-    severity: entry.querySelector(".entry-severity")?.className ?? null,
-  }));
-  if (!/sev-error/.test(pdfxEvidence.severity ?? "")) {
-    fail(`PDF/X markers verdict was not an error: ${JSON.stringify(pdfxEvidence)}`);
+  if (hasQpdf) {
+    if ((await pdfxEntries.count()) > 0) {
+      fail(`the PDF/X failed its PDF/X markers check: ${await pdfxEntries.first().textContent()}`);
+    }
+    log("qpdf present: the PDF/X passed its PDF/X markers check");
+  } else {
+    await pdfxEntries.first().waitFor({ state: "visible", timeout: 15_000 });
+    const message = await pdfxEntries.first().locator(".entry-message").textContent();
+    if (!/requires check pdf\.print\.pdfx-markers, but it was skipped/.test(message ?? "")) {
+      fail(`qpdf absent, but the PDF/X markers entry read: ${message}`);
+    }
+    log(`qpdf absent: the required check reported its skip as an error: ${message}`);
   }
-  const syntheticSkip = /requires check pdf\.print\.pdfx-markers, but it was skipped because required tools are not available/.test(
-    pdfxEvidence.message ?? "",
-  );
-  log(
-    `required PDF/X check reported an error (${syntheticSkip ? "qpdf absent: the lib's synthetic error" : "qpdf present: the check's own finding"}): ${pdfxEvidence.message}`,
-  );
 
   const allEntries = await page.locator(".problems-panel .entry").evaluateAll((entries) =>
     entries.map((entry) => ({
@@ -275,9 +238,9 @@ try {
     })),
   );
   for (const entry of allEntries) log(`panel entry: ${JSON.stringify(entry)}`);
-  if (process.env.EXPORT_PDF_CHECKS_SHOT) {
-    await page.screenshot({ path: process.env.EXPORT_PDF_CHECKS_SHOT });
-    log(`screenshot saved to ${process.env.EXPORT_PDF_CHECKS_SHOT}`);
+  if (process.env.PUBLISH_CHECKS_SHOT) {
+    await page.screenshot({ path: process.env.PUBLISH_CHECKS_SHOT });
+    log(`screenshot saved to ${process.env.PUBLISH_CHECKS_SHOT}`);
   }
 
   // The badge counts these as errors, like any source error.
@@ -286,9 +249,9 @@ try {
     fail(`Problems badge did not count the PDF-check errors: ${badgeLabel}`);
   }
   log(`badge: ${badgeLabel}`);
-  log("PASS: the post-build PDF checks ran on the exported file and their findings reached the real Problems panel");
+  log("PASS: the publish run checked the target's file and its findings reached the wizard and the real Problems panel");
 } catch (error) {
-  console.error(`[export-pdf-checks] FAIL: ${error.stack ?? error.message}`);
+  console.error(`[publish-checks] FAIL: ${error.stack ?? error.message}`);
   exitCode = 1;
 } finally {
   await electronApp?.close().catch(() => {});

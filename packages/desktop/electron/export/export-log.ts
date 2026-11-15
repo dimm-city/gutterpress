@@ -25,12 +25,11 @@ function elapsed(ms: number): string {
 
 /** Run one export, logging its start and its outcome. The outcome itself is untouched. */
 export async function loggedExport<T>(
-  format: string,
   run: () => Promise<T>,
   log: ExportLog,
   now: () => number = Date.now,
 ): Promise<T> {
-  const what = `[export] ${format} build`;
+  const what = "[export] pdf build";
   const startedAt = now();
   log.event(`${what} started`);
   try {
@@ -44,7 +43,8 @@ export async function loggedExport<T>(
       log.event(`${what} canceled after ${took}`);
       throw e;
     }
-    const message = e instanceof Error ? e.message : String(e);
+    const detail = (e as { detail?: unknown } | null)?.detail;
+    const message = `${e instanceof Error ? e.message : String(e)}${typeof detail === "string" ? ` ${detail}` : ""}`;
     log.error(
       `${what} failed after ${took}${typeof code === "string" ? ` (${code})` : ""}: ${redactUrlCredentials(message)}`,
     );

@@ -4,7 +4,6 @@
  */
 import type { ProblemEntry } from "#lib/platform/dtos.ts";
 import { joinPath } from "#lib/platform/paths.ts";
-import type { ExportFindingDto } from "#lib/platform/shared-types.ts";
 
 /** One file's worth of problems, ready to render as a panel group. */
 export interface ProblemGroup {
@@ -106,23 +105,6 @@ export function buildProblems(
     severity: d.severity,
     message: d.message,
     source: d.code,
-  }));
-}
-
-/**
- * The post-build PDF checks' findings (#399), held with `buildProblems`'s
- * entries for the same reason: they come from an export, not the source lint.
- * No file or line either — a finding is about the finished PDF, and its
- * message already names the page where it has one ("Page 3: …"). The check's
- * rule (`detail`) follows the message so the author reads what the limit is,
- * and a finding produced for one publish target carries that target's tag the
- * way the CLI prints it (`[dtrpg] …`).
- */
-export function exportProblems(findings: ExportFindingDto[]): ProblemEntry[] {
-  return findings.map((f) => ({
-    severity: f.severity,
-    message: `${f.target ? `[${f.target}] ` : ""}${f.message}${f.detail ? ` ${f.detail}` : ""}`,
-    source: f.source,
   }));
 }
 

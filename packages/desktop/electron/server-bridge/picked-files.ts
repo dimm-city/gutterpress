@@ -27,7 +27,7 @@
  *     (one-time) a `src` from that set before copying anything from OUTSIDE
  *     the project — a `src` that wasn't registered by a recent pick (or was
  *     already consumed) is rejected with 403.
- *   - `dialog:savePdf` / `dialog:pickOutputFolder` REGISTER the absolute
+ *   - `dialog:savePdf` REGISTERS the absolute
  *     path the native dialog itself just returned; `api:build`'s export controller must CONSUME
  *     that path as `out` before writing/renaming anything onto it — an
  *     `out` the Save dialog never returned (or one already consumed) is

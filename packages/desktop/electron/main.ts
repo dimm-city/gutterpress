@@ -1643,7 +1643,7 @@ const exportController = new ExportController({
 // export is logged (export-log.ts), since the author sees one line of a failure.
 secureHandle("api:build", (_e, args: ExportBuildArgs) =>
   toIpcResult(
-    loggedExport(args?.format ?? "pdf", () => exportController.build(args), {
+    loggedExport(() => exportController.build(args), {
       event: (line) => void logAppEvent(line),
       error: (line) => void logAppError(line),
     }),

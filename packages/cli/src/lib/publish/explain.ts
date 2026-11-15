@@ -66,6 +66,9 @@ export function explainBuildFailure(e: unknown, what = "PDF"): Failure {
       raw,
     );
   }
+  if (code === "NO_MANIFEST") {
+    return failure("NO_MANIFEST", "This folder is not set up as a book yet: it has no manifest.yaml.", raw);
+  }
   if (code === "TOO_WIDE") {
     const { offenders = [], scale = null } = e as { offenders?: string[]; scale?: number | null };
     const named = offenders.slice(0, 3).join(", ");

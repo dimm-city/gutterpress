@@ -7,30 +7,32 @@
  * method …": the `code` is gone. Custom properties are dropped again at the
  * preload's context bridge. So a failure is returned as data (`toIpcResult` in
  * the main process) and turned back into an Error with its code in the
- * renderer's adapter (`fromIpcResult`).
+ * renderer's adapter (`fromIpcResult`), with its `detail` (the original text
+ * behind a plain sentence) when it has one.
  */
 export type IpcResult<T> =
   | { ok: true; value: T }
-  | { ok: false; error: { message: string; code?: string } };
+  | { ok: false; error: { message: string; code?: string; detail?: string } };
 
 export async function toIpcResult<T>(work: Promise<T>): Promise<IpcResult<T>> {
   try {
     return { ok: true, value: await work };
   } catch (e) {
-    const code = (e as { code?: unknown } | null)?.code;
+    const { code, detail } = (e ?? {}) as { code?: unknown; detail?: unknown };
     return {
       ok: false,
       error: {
         message: e instanceof Error ? e.message : String(e),
         ...(typeof code === "string" ? { code } : {}),
+        ...(typeof detail === "string" ? { detail } : {}),
       },
     };
   }
 }
 
-/** The value, or the failure rethrown as an Error carrying its `code`. */
+/** The value, or the failure rethrown as an Error carrying its `code` and `detail`. */
 export function fromIpcResult<T>(result: IpcResult<T>): T {
   if (result.ok) return result.value;
-  const { message, code } = result.error;
-  throw Object.assign(new Error(message), code ? { code } : {});
+  const { message, code, detail } = result.error;
+  throw Object.assign(new Error(message), code ? { code } : {}, detail ? { detail } : {});
 }

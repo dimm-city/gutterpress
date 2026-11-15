@@ -3,7 +3,6 @@ import {
   canExpandProblems,
   closesPanelOnEscape,
   buildProblems,
-  exportProblems,
   friendlySource,
   groupProblems,
   problemCounts,
@@ -182,39 +181,4 @@ test("buildProblems maps diagnostics to panel entries without inventing a source
   // A pagination finding names a rendered element, not a source line — the
   // panel's "jump to line" must not send the author somewhere arbitrary.
   expect(entries.every((e) => e.file === undefined && e.line === undefined)).toBe(true);
-});
-
-// #399: what the post-build PDF checks found, as panel entries. Like the
-// engine's diagnostics they are about the exported file, never a source line;
-// the message names the page itself, the check's rule follows it, and a
-// finding made for one publish target carries the CLI's `[target]` tag.
-test("exportProblems maps PDF-check findings to file-less entries, keeping errors and appending the rule", () => {
-  const entries = exportProblems([
-    {
-      source: "pdf.print.safe-margins",
-      severity: "error",
-      message: 'Page 3: "Too close" is 0.12in too close to the outside edge.',
-      detail: "page.safe: text must stay at least 0.5in inside the trim on every edge.",
-      target: "dtrpg",
-      page: 3,
-      edge: "outside",
-    },
-    { source: "pdf.print.page-size", severity: "error", message: "Page size mismatch: expected ~621x810 pts, got 612x792 pts." },
-    { source: "pdf.print.ink-coverage", severity: "info", message: "Skipped: gs is not installed on this computer." },
-  ]);
-  expect(entries).toEqual([
-    {
-      severity: "error",
-      message:
-        '[dtrpg] Page 3: "Too close" is 0.12in too close to the outside edge. page.safe: text must stay at least 0.5in inside the trim on every edge.',
-      source: "pdf.print.safe-margins",
-    },
-    { severity: "error", message: "Page size mismatch: expected ~621x810 pts, got 612x792 pts.", source: "pdf.print.page-size" },
-    { severity: "info", message: "Skipped: gs is not installed on this computer.", source: "pdf.print.ink-coverage" },
-  ]);
-  expect(entries.every((e) => e.file === undefined && e.filePath === undefined && e.line === undefined)).toBe(true);
-  // Errors count on the badge, the way a source error does.
-  expect(problemCounts(entries)).toEqual({ errors: 2, warnings: 0, infos: 1, badge: 2 });
-  // File-less, so the panel lists them under the book, after any file group.
-  expect(groupProblems(entries).map((g) => g.file)).toEqual(["Book"]);
 });

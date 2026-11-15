@@ -927,16 +927,7 @@ export type PreviewStartResult = PreviewStartSuccess | PreviewStartFailure;
 
 export interface RawBuildArgs {
   input: string;
-  format: "pdf" | "html" | "pdfx";
   out?: string;
-  title?: string;
-  pdfxFlavor?: string;
-  icc?: string;
-  manifest?: string;
-  stripAnnotations?: boolean;
-  skipLint?: boolean;
-  skipPreValidate?: boolean;
-  skipPostValidate?: boolean;
   /** See `BuildArgs.allowShrink` (#163) — the host's `ExportBuildArgs` half. */
   allowShrink?: boolean;
 }
@@ -944,24 +935,13 @@ export interface RawBuildArgs {
 export interface BuildResult {
   exportId?: string;
   outDir: string;
-  htmlPath?: string;
   pdfPath?: string;
-  fingerprintPath?: string;
   /**
    * Print-quality findings the render produced (native engine only). Defined
    * locally, decoupled from the lib (§8) — the renderer never value-imports
    * `gutterpress`. Maps into the Problems panel.
    */
   diagnostics?: BuildDiagnosticDto[];
-  /**
-   * What the post-build PDF checks found on the delivered PDF (#399): the
-   * same registry and policy as `gutterpress validate --pdf`, run by the host
-   * on the exported file, so the required checks of the book's publish
-   * targets (safe margins, page size, embedded fonts, PDF/X when qpdf and gs
-   * are installed) have a verdict in the desktop too. Absent for an html
-   * export. Maps into the Problems panel beside `diagnostics`.
-   */
-  findings?: ExportFindingDto[];
 }
 
 /** One print-quality finding, mirrored from the lib's `BuildDiagnostic`. */
@@ -970,30 +950,6 @@ export interface BuildDiagnosticDto {
   code: string;
   severity: "warning" | "info";
   message: string;
-}
-
-/**
- * One finding of the post-build PDF checks, mirrored from the lib's
- * `CheckResult` minus its `file`: every PDF check reports the PDF itself as
- * its file, and a Problems entry with a file is a jump to a source line, which
- * a finding about the finished PDF cannot offer. Defined locally (§8).
- */
-export interface ExportFindingDto {
-  /**
-   * The check id, e.g. "pdf.print.safe-margins"; "desktop.export.checks" when
-   * the checks themselves could not run.
-   */
-  source: string;
-  severity: "error" | "warning" | "info";
-  message: string;
-  /** The check's longer explanation (the rule the finding breaks), when any. */
-  detail?: string;
-  /** The publish target the finding was produced for, on a targeted run. */
-  target?: string;
-  /** The PDF page the finding is about, when the check says. */
-  page?: number;
-  /** The page edge the finding is about ("top", "outside", …), when the check says. */
-  edge?: string;
 }
 
 export interface ExportProgressEvent {

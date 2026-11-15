@@ -281,11 +281,12 @@ export async function resolveBuildContext(
     { explicit: opts.manifestPath !== undefined }
   );
   if (manifestPath === null) {
-    throw new UsageError(
+    const err = new UsageError(
       `No book manifest found in ${inputDir}. Looked for ${MANIFEST_FILENAMES.join(" or ")}. ` +
         "Run from your book folder or pass that folder with `gutterpress build <book-dir>`. " +
         "For a custom manifest filename, pass `--manifest <path>`."
     );
+    throw Object.assign(err, { code: "NO_MANIFEST" });
   }
 
   const pdfxConfigOverride =

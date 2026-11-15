@@ -356,6 +356,13 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
               },
             ];
           }
+          // A finding about the file itself names no file: the target's result
+          // already names it, and a PDF has no line for either view to go to.
+          findings = findings.map((f) => {
+            if (!f.file || path.resolve(options.projectDir, f.file) !== path.resolve(file)) return f;
+            const { file: _madeFile, ...rest } = f;
+            return rest;
+          });
           for (const p of group) {
             p.result.findings = findings.filter((f) => !f.target || f.target === p.result.id);
           }

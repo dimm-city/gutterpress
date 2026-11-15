@@ -1,5 +1,10 @@
 import { expect, spyOn, test } from "bun:test";
 
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { runBuild } from "../build-runner.ts";
 import * as chromium from "../chromium.ts";
 import { explainBuildFailure, explainSendFailure, isCanceled } from "./explain.ts";
 
@@ -93,4 +98,20 @@ test("a one-line error is not repeated as its own detail", () => {
     code: "BUILD_FAILED",
     message: "Making the PDF failed: No markdown files found",
   });
+});
+
+test("a folder that is not a book says so, with the build's own advice as detail", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "gp-no-manifest-"));
+  try {
+    const e = await runBuild({ inputDir: dir, format: "pdf", outDir: path.join(dir, "out"), rawArgs: {} }).then(
+      () => null,
+      (err: unknown) => err,
+    );
+    const f = explainBuildFailure(e);
+    expect(f.code).toBe("NO_MANIFEST");
+    expect(f.message).toBe("This folder is not set up as a book yet: it has no manifest.yaml.");
+    expect(f.detail).toContain("No book manifest found");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

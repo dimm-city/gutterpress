@@ -1,10 +1,8 @@
 import { test, expect } from "bun:test";
 import {
-  explainPdfError,
   friendlyFolderError,
   friendlyHostError,
   friendlyPreviewError,
-  overWideExportMessage,
 } from "../../src/lib/errors";
 import { relativeTime } from "../../src/lib/format";
 
@@ -70,22 +68,6 @@ test("friendlyPreviewError preserves missing-file details for the repair view", 
   expect(result.details).toContain("/books/example/css/missing.css");
 });
 
-test("explainPdfError still falls back to the generic message for unrelated errors", () => {
-  expect(explainPdfError(new Error("spawn ENOENT")).summary).toBe(
-    "Could not find a required program. Open Help (?) > System tools to check what needs to be installed.",
-  );
-});
-
-test("explainPdfError directs a loose preview folder to the existing setup action", () => {
-  expect(
-    explainPdfError(
-      new Error("No manifest.yaml found in /books/example."),
-    ).summary,
-  ).toBe(
-    'PDF export needs manifest.yaml. Choose "Set up as a book" first, then try again.',
-  );
-});
-
 // relativeTime renders a coarse "time ago" string for snapshot timestamps.
 test("relativeTime returns 'just now' under a minute", () => {
   expect(relativeTime(Date.now())).toBe("just now");
@@ -107,146 +89,4 @@ test("relativeTime pluralizes days up to two weeks", () => {
 test("relativeTime falls back to a locale date past two weeks", () => {
   const ms = Date.now() - 30 * 24 * 60 * 60_000;
   expect(relativeTime(ms)).toBe(new Date(ms).toLocaleDateString());
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// overWideExportMessage (#163) — the engine's over-wide-content error tells the
-// author to "pass allowShrink", which no desktop author can do. This is the
-// parser behind the in-place "Build anyway" offer: it recognizes that one
-// failure, names the offenders, and states the whole-document consequence.
-// The fixture is a REAL message, verbatim from a failing 208-page build,
-// wrapped exactly as the desktop receives it (engine prefix + Electron's IPC
-// prefix, `code` stripped by the ipcMain boundary).
-//
-// But it is a COPY, and a copy cannot notice the engine rewording itself. The
-// producer-side counterpart that can is
-// `packages/cli/src/engine/compiler/build.over-wide-message.test.ts`: it runs a
-// real build and asserts a mirror of this parser's patterns still matches. The
-// tests below own the sentence assembled from the captures; that one owns the
-// captures still being there.
-// ─────────────────────────────────────────────────────────────────────────────
-
-const OVER_WIDE_MESSAGE =
-  "Error invoking remote method 'api:build': Error: PDF build failed: " +
-  "content wider than the page content box: Chromium print shrink-to-fit scales " +
-  "the WHOLE document — every page, every measurement — to about 0.69x its " +
-  "declared size (12pt type prints at 8.3pt). The page size and page count do " +
-  "not change, so the shrink is invisible in the PDF:\n" +
-  "  div.dc-sidebar.inset — 842px > 828px content box (give it an explicit width)\n" +
-  "  h1.dc-chevron — 850px > 828px content box (give it an explicit width)\n" +
-  "Fix the offending widths, or pass allowShrink to build anyway.";
-
-test("overWideExportMessage names the offenders and the whole-document scale", () => {
-  const msg = overWideExportMessage(
-    Object.assign(new Error(OVER_WIDE_MESSAGE), { code: "BUILD_ERROR" }),
-  );
-  expect(msg).not.toBeNull();
-  expect(msg).toContain("div.dc-sidebar.inset");
-  expect(msg).toContain("h1.dc-chevron");
-  // The consequence the author is agreeing to, in their units.
-  expect(msg).toContain("whole book");
-  expect(msg).toContain("0.69");
-  expect(msg).toContain("12pt type prints at 8.3pt");
-  expect(msg).toContain("page size and page count");
-  // Never the unreachable advice.
-  expect(msg).not.toContain("allowShrink");
-});
-
-test("overWideExportMessage lists at most three offenders and counts the rest", () => {
-  const many = OVER_WIDE_MESSAGE.replace(
-    "Fix the offending widths",
-    "  div.a — 900px > 828px content box (give it an explicit width)\n" +
-      "  div.b — 900px > 828px content box (give it an explicit width)\n" +
-      "Fix the offending widths",
-  );
-  const msg = overWideExportMessage(new Error(many))!;
-  expect(msg).toContain("div.dc-sidebar.inset, h1.dc-chevron, div.a");
-  expect(msg).toContain("1 more");
-  expect(msg).not.toContain("div.b —");
-});
-
-test("overWideExportMessage returns null for every other export failure", () => {
-  expect(overWideExportMessage(new Error("disk full"))).toBeNull();
-  expect(overWideExportMessage(new Error("spawn ENOENT"))).toBeNull();
-  expect(overWideExportMessage(null)).toBeNull();
-});
-
-test("explainPdfError stops telling desktop authors to pass allowShrink", () => {
-  const shown = explainPdfError(
-    Object.assign(new Error(OVER_WIDE_MESSAGE), { code: "BUILD_ERROR" }),
-  ).summary;
-  expect(shown).not.toContain("allowShrink");
-  expect(shown).toContain("div.dc-sidebar.inset");
-});
-
-test("explainPdfError explains an export refused during an unfinished draft switch", () => {
-  // The real IPC-wrapped, code-less form (Electron flattens the error to its message).
-  const err = new Error(
-    "Error invoking remote method 'api:build': Error: This book is part-way through switching revisions, so its files may be a mix of two revisions and it can't be built or saved yet.",
-  );
-  const shown = explainPdfError(err).summary;
-  expect(shown).toContain("part-way through switching drafts");
-  expect(shown).toContain("Online → Drafts");
-  expect(shown).not.toContain("System tools");
-});
-
-test("explainPdfError still honours the UNFINISHED_SWITCH code when it survives", () => {
-  const err = Object.assign(new Error("anything the engine said"), { code: "UNFINISHED_SWITCH" });
-  expect(explainPdfError(err).summary).toContain("part-way through switching drafts");
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// A failed export says why. The reason used to be dropped: Electron stripped
-// the host's error `code`, so every branch keyed on it was dead in the real
-// app, and anything the phrase-matching didn't know became "PDF export
-// failed. Open Help…" with the cause thrown away. The build now crosses as
-// data (platform/ipc-result.ts), so the code and the whole message arrive.
-// ─────────────────────────────────────────────────────────────────────────────
-
-test("a build failure the app has no special words for still says its reason", () => {
-  const shown = explainPdfError(
-    Object.assign(new Error("Missing ICC profile at press.icc. Place the ICC profile or specify --icc <path>"), {
-      code: "BUILD_ERROR",
-    }),
-  );
-  expect(shown.summary).toBe(
-    "PDF export failed: Missing ICC profile at press.icc. Place the ICC profile or specify --icc <path>",
-  );
-  expect(shown.details).toBeUndefined(); // nothing more to show than the line itself
-});
-
-test("a failure with no code at all still says its reason", () => {
-  const shown = explainPdfError(new Error("gs exited with code 1"));
-  expect(shown.summary).toBe("PDF export failed: gs exited with code 1");
-  expect(shown.summary).not.toContain("System tools to check for issues");
-});
-
-test("a long failure shows its first line, and keeps the rest as details", () => {
-  const raw = "Ghostscript failed (exit 1)\nGPL Ghostscript 10.06: Unrecoverable error, exit code 1\n  in pdfwrite";
-  const shown = explainPdfError(new Error(raw));
-  expect(shown.summary).toBe("PDF export failed: Ghostscript failed (exit 1)");
-  expect(shown.details).toBe(raw);
-});
-
-test("Electron's own wrapper around a host error is never shown", () => {
-  const shown = explainPdfError(new Error("Error invoking remote method 'api:build': Error: disk full"));
-  expect(shown.summary).toBe("PDF export failed: disk full");
-});
-
-test("a failure the app rewords keeps the original as details", () => {
-  const raw = "spawn gs ENOENT";
-  const shown = explainPdfError(new Error(raw));
-  expect(shown.summary).toContain("Could not find a required program");
-  expect(shown.details).toBe(raw);
-});
-
-test("only a failure that says nothing gets the generic line", () => {
-  expect(explainPdfError(new Error("")).summary).toBe(
-    "PDF export failed. Open Help (?) > System tools to check for issues.",
-  );
-});
-
-test("a cancel is not a failure: nothing to show", () => {
-  const shown = explainPdfError(Object.assign(new Error("PDF export canceled"), { code: "EXPORT_CANCELED" }));
-  expect(shown.summary).toBe("");
 });

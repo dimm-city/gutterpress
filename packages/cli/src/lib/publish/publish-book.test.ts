@@ -189,6 +189,15 @@ describe("checks", () => {
     ]);
   });
 
+  test("a finding about the made file names no file: the target's result names it, and there is no line to go to", async () => {
+    await writeBook("publish:\n  drivethrurpg-print:\n");
+    findings["post-build"].push({ ...PRINT_ERROR, file: path.join(dist(), "field-guide-pdfx.pdf"), page: 1 });
+    const result = await publishBook({ projectDir: book, checkOnly: true }, deps());
+    expect(result.targets[0]?.findings).toEqual([
+      { checkId: "pdf.print.bleed", severity: "error", message: "No bleed.", target: "drivethrurpg-print" },
+    ]);
+  });
+
   test("skipping checks runs none", async () => {
     await writeBook("publish:\n  drivethrurpg-print:\n");
     findings["post-build"].push(PRINT_ERROR);

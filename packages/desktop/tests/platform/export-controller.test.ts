@@ -2,19 +2,12 @@ import { expect, test } from "bun:test";
 import { existsSync, readdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  ExportController,
-  EXPORT_CHECKS_SOURCE,
-  findingsFromValidation,
-  reportRenderPhases,
-  type ExportControllerDeps,
-} from "../../electron/export/controller";
+import { explainBuildFailure, renderPhases, type EngineBrowser } from "gutterpress";
+import { ExportController, type ExportControllerDeps } from "../../electron/export/controller";
 import type { ExportProgressEvent, ExportSession } from "../../electron/pdf-export";
 import type { SyncStatusPayload } from "../../electron/auto-sync/orchestrator";
 
 type LibModule = typeof import("gutterpress");
-
-class FakeBuildError extends Error {}
 
 interface HarnessOpts {
   sourceType?: string;
@@ -22,8 +15,8 @@ interface HarnessOpts {
   isOnline?: boolean;
   /** Return value (or thrown value) of the fake syncProject during the export gate. */
   syncProject?: () => unknown;
-  /** Return value (or thrown value) of the fake runBuild. */
-  runBuild?: () => unknown;
+  /** Return value (or thrown value) of the fake runBuild; given the browser factory it was handed. */
+  runBuild?: (engineBrowser: () => Promise<EngineBrowser>) => unknown;
   /** Pre-set active export session (simulates an in-progress export). */
   activeSession?: ExportSession | null;
   /** conflictLatched flag returned by sync.getState. */
@@ -48,15 +41,19 @@ interface HarnessOpts {
   cancelDuringSync?: boolean;
   /** The author's configured commit identity the pre-export sync gate must pass on. */
   gitIdentity?: { authorName?: string; authorEmail?: string };
-  /** Return value (or thrown value) of the fake executeValidation (the post-build PDF checks, #399). */
-  executeValidation?: () => unknown;
+  /** The window the render opens. */
+  engineBrowser?: () => Promise<EngineBrowser>;
 }
 
-/** An empty post-build validation: no findings, no tools missing. */
-const cleanValidation = () => ({
-  report: { results: [] },
-  tools: { available: [], missing: [], skippedChecks: [], toolToChecks: new Map<string, string[]>() },
-});
+type BuildCall = {
+  outDir?: string;
+  pdfFileOverride?: string | null;
+  allowShrink?: boolean;
+  format?: string;
+  skipPreValidate?: boolean;
+  skipPostValidate?: boolean;
+  engineBrowser: () => Promise<EngineBrowser>;
+};
 
 interface Harness {
   controller: ExportController;
@@ -72,13 +69,9 @@ interface Harness {
   syncArgs: unknown[];
   /** Args of every fake runBuild() call, in order — lets tests assert on the
    * resolved `outDir`/`pdfFileOverride` (the workspace/destination split). */
-  buildArgs: Array<{ outDir?: string; pdfFileOverride?: string | null; allowShrink?: boolean; format?: string }>;
+  buildArgs: BuildCall[];
   /** Paths handed to `registerPickedPath`, in order (the reveal capability). */
   registeredPicks: string[];
-  /** Args of every fake executeValidation() call, in order (the post-build PDF checks). */
-  validationArgs: Array<{ input?: string; pdf?: string; phase?: string; manifest?: string; pluginStylePaths?: string[] }>;
-  /** Every host touch-point in the order it happened, to assert the checks' place in the pipeline. */
-  timeline: string[];
 }
 
 function makeHarness(opts: HarnessOpts = {}): Harness {
@@ -88,10 +81,8 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
   const removed: string[] = [];
   const latched = new Set<string>();
   const syncArgs: unknown[] = [];
-  const buildArgs: Array<{ outDir?: string; pdfFileOverride?: string | null; allowShrink?: boolean; format?: string }> = [];
+  const buildArgs: BuildCall[] = [];
   const registeredPicks: string[] = [];
-  const validationArgs: Harness["validationArgs"] = [];
-  const timeline: string[] = [];
   const counters = { sync: 0, build: 0 };
   let session: ExportSession | null = opts.activeSession ?? null;
 
@@ -104,19 +95,14 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
       if (opts.cancelDuringSync && session) session.canceled = true;
       return opts.syncProject ? opts.syncProject() : { status: "up-to-date" };
     },
-    runBuild: async (buildOpts: { outDir?: string; pdfFileOverride?: string | null; allowShrink?: boolean; format?: string }) => {
+    runBuild: async (buildOpts: BuildCall) => {
       counters.build += 1;
-      timeline.push("build");
       buildArgs.push(buildOpts);
-      const r = opts.runBuild ? opts.runBuild() : { outDir: "/out", htmlPath: "/out/x.html", fingerprintPath: "/out/fp.json" };
-      return r;
+      return opts.runBuild ? opts.runBuild(buildOpts.engineBrowser) : { outDir: "/out", diagnostics: [] };
     },
-    executeValidation: async (args: Harness["validationArgs"][number]) => {
-      timeline.push("validate");
-      validationArgs.push(args);
-      return opts.executeValidation ? opts.executeValidation() : cleanValidation();
-    },
-    BuildError: FakeBuildError,
+    // The lib's own: what a failure is called, and the render's phases.
+    explainBuildFailure,
+    renderPhases,
   } as unknown as LibModule;
 
   const deps: ExportControllerDeps = {
@@ -125,13 +111,12 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     gitIdentity: async () => opts.gitIdentity ?? {},
     isOnline: () => opts.isOnline ?? true,
     pdfRenderer: (async () => {}) as ExportControllerDeps["pdfRenderer"],
-    engineBrowser: (async () => ({}) as never) as ExportControllerDeps["engineBrowser"],
+    engineBrowser: opts.engineBrowser ?? ((async () => ({}) as never) as ExportControllerDeps["engineBrowser"]),
     getActiveExportSession: () => session,
     setActiveExportSession: (s) => {
       session = s;
     },
     sendProgress: (e) => {
-      timeline.push(`progress:${e.state}${e.message ? `:${e.message}` : ""}`);
       progress.push(e);
     },
     throwIfCanceled: (s) => {
@@ -140,7 +125,6 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     isExportCanceledError: (e) =>
       e instanceof Error && (e as Error & { code?: string }).code === "EXPORT_CANCELED",
     rename: async (from, to) => {
-      timeline.push("rename");
       renamed.push([from, to]);
     },
     rm: async (p) => {
@@ -149,7 +133,6 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     consumeSavePath: opts.consumeSavePath ?? (() => true),
     isWithinProject: opts.isWithinProject ?? (async () => false),
     registerPickedPath: (absPath: string) => {
-      timeline.push("register");
       registeredPicks.push(absPath);
     },
   };
@@ -171,14 +154,14 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     getSession: () => session,
     syncArgs,
     buildArgs,
-    validationArgs,
-    timeline,
   };
 }
 
 test("happy path builds, renames temp→out, emits started+success, clears session", async () => {
   const h = makeHarness();
-  const res = await h.controller.build({ input: "/book", format: "pdf", out: "/out/book.pdf" });
+  const res = await h.controller.build({ input: "/book", out: "/out/book.pdf" });
+  // A draft PDF, as `gutterpress build` makes one: the checks are the publish run's.
+  expect(h.buildArgs[0]).toMatchObject({ format: "pdf", skipPreValidate: true, skipPostValidate: true });
 
   expect(res.pdfPath).toBe("/out/book.pdf");
   expect(res.outDir).toBe("/out");
@@ -202,7 +185,7 @@ test("happy path builds, renames temp→out, emits started+success, clears sessi
 // atomic same-filesystem rename) may end up in the folder the user picked.
 test("the build workspace is a temp dir decoupled from the Save folder, and is cleaned up", async () => {
   const h = makeHarness();
-  await h.controller.build({ input: "/book", format: "pdf", out: "/Users/author/Desktop/MyBook.pdf" });
+  await h.controller.build({ input: "/book", out: "/Users/author/Desktop/MyBook.pdf" });
 
   expect(h.buildArgs.length).toBe(1);
   const { outDir, pdfFileOverride } = h.buildArgs[0]!;
@@ -223,11 +206,11 @@ test("the build workspace is a temp dir decoupled from the Save folder, and is c
 // way the export it is retrying did.
 test("allowShrink reaches the lib build, and stays off unless asked for", async () => {
   const h = makeHarness();
-  await h.controller.build({ input: "/book", format: "pdf", out: "/out/book.pdf", allowShrink: true });
+  await h.controller.build({ input: "/book", out: "/out/book.pdf", allowShrink: true });
   expect(h.buildArgs[0]!.allowShrink).toBe(true);
 
   const h2 = makeHarness();
-  await h2.controller.build({ input: "/book", format: "pdf", out: "/out/book.pdf" });
+  await h2.controller.build({ input: "/book", out: "/out/book.pdf" });
   expect(h2.buildArgs[0]!.allowShrink).toBeFalsy();
 });
 
@@ -285,7 +268,7 @@ test("an 'out' inside the open book builds without any save-path grant", async (
     consumeSavePath: () => false,
     isWithinProject: async (p) => p.startsWith("/book/"),
   });
-  const res = await h.controller.build({ input: "/book", format: "pdf", out: "/book/dist/book.pdf" });
+  const res = await h.controller.build({ input: "/book", out: "/book/dist/book.pdf" });
   expect(res.pdfPath).toBe("/book/dist/book.pdf");
   expect(h.runBuildCalls).toBe(1);
 });
@@ -296,53 +279,12 @@ test("an 'out' outside the open book with no grant is refused with OUT_NOT_AUTHO
     isWithinProject: async (p) => p.startsWith("/book/"),
   });
   const err = await h.controller
-    .build({ input: "/book", format: "html", out: "/home/author/elsewhere" })
+    .build({ input: "/book", out: "/home/author/elsewhere/book.pdf" })
     .catch((e) => e);
   expect((err as Error & { code?: string }).code).toBe("OUT_NOT_AUTHORIZED");
   expect(h.getSession()).toBeNull();
   expect(h.progress.length).toBe(0);
   expect(h.runBuildCalls).toBe(0);
-});
-
-// ── format: "html" — `out` is a directory the lib delivers the bundle into ──
-
-test("an html build targets the out directory directly: no temp PDF, no rename, folder registered", async () => {
-  const h = makeHarness({
-    runBuild: () => ({
-      outDir: "/book/dist",
-      htmlPath: "/book/dist/book.html",
-      pdfPath: null,
-      fingerprintPath: "/book/dist/build-fingerprint.json",
-    }),
-  });
-  const res = await h.controller.build({ input: "/book", format: "html", out: "/book/dist" });
-
-  expect(h.buildArgs.length).toBe(1);
-  expect(h.buildArgs[0]!.format).toBe("html");
-  expect(h.buildArgs[0]!.outDir).toBe("/book/dist");
-  expect(h.buildArgs[0]!.pdfFileOverride).toBeUndefined();
-  expect(h.renamed).toEqual([]);
-  expect(h.removed).toEqual([]);
-  // The folder is what was written — reveal/publish may use it.
-  expect(h.registeredPicks).toEqual(["/book/dist"]);
-  expect(res.outDir).toBe("/book/dist");
-  expect(res.htmlPath).toBe("/book/dist/book.html");
-  expect(res.fingerprintPath).toBe("/book/dist/build-fingerprint.json");
-  expect(res.pdfPath).toBeUndefined();
-  expect(res.exportId).toBeTruthy();
-  expect(h.progress.some((p) => p.state === "success" && p.message === "/book/dist")).toBe(true);
-  expect(h.getSession()).toBeNull();
-});
-
-test("a failed html build registers nothing", async () => {
-  const h = makeHarness({
-    runBuild: () => {
-      throw new Error("render blew up");
-    },
-  });
-  await h.controller.build({ input: "/book", format: "html", out: "/book/dist" }).catch(() => {});
-  expect(h.registeredPicks).toEqual([]);
-  expect(h.progress.some((p) => p.state === "error")).toBe(true);
 });
 
 // ── the reveal capability for the written PDF ────────────
@@ -366,13 +308,6 @@ test("a FAILED export registers nothing (no reveal capability for a PDF never wr
   });
   await h.controller.build({ input: "/book", out: "/home/author/Desktop/book.pdf" }).catch(() => {});
   expect(h.registeredPicks).toEqual([]);
-});
-
-test("pdfx without icc is rejected", async () => {
-  const h = makeHarness();
-  await expect(
-    h.controller.build({ input: "/book", format: "pdfx", out: "/out/book.pdf" }),
-  ).rejects.toThrow(/PDF\/X/);
 });
 
 test("a second concurrent export is rejected while one is active", async () => {
@@ -410,19 +345,67 @@ test("the pre-export sync gate commits with the configured name + email", async 
   });
 });
 
-test("a BuildError from runBuild surfaces as a BUILD_ERROR", async () => {
+// A failure crosses with the lib's code, its plain sentence and the original
+// text (ADR 0012): the app acts on the code (TOO_WIDE offers "Build anyway")
+// and never reads the message to decide what it means.
+test("a failed build says why in the lib's words, with its code and the original text", async () => {
   const h = makeHarness({
     runBuild: () => {
-      throw new FakeBuildError("missing tool X");
+      throw Object.assign(new Error("content wider than the page content box"), {
+        code: "TOO_WIDE",
+        offenders: ["div.wide"],
+        scale: 0.69,
+      });
     },
   });
-  const err = await h.controller
-    .build({ input: "/book", out: "/out/book.pdf" })
-    .catch((e) => e);
-  expect((err as Error & { code?: string }).code).toBe("BUILD_ERROR");
-  expect((err as Error).message).toBe("missing tool X");
+  const err = (await h.controller.build({ input: "/book", out: "/out/book.pdf" }).catch((e) => e)) as Error & {
+    code?: string;
+    detail?: string;
+  };
+  expect(err.code).toBe("TOO_WIDE");
+  expect(err.message).toStartWith("Too wide for the page: div.wide.");
+  expect(err.detail).toBe("content wider than the page content box");
+  expect(h.progress.at(-1)).toMatchObject({ state: "error", message: err.message });
   // session cleaned up even on failure
   expect(h.getSession()).toBeNull();
+});
+
+test("a failure the lib has no words of its own for still says the build's reason", async () => {
+  const h = makeHarness({
+    runBuild: () => {
+      throw new Error("gs exited with code 1");
+    },
+  });
+  const err = (await h.controller.build({ input: "/book", out: "/out/book.pdf" }).catch((e) => e)) as Error & {
+    code?: string;
+  };
+  expect(err.code).toBe("BUILD_FAILED");
+  expect(err.message).toBe("Making the PDF failed: gs exited with code 1");
+});
+
+// The pill says more than a ticking clock: the render's phases, as the lib
+// reports them, reach it as the export's own wire states.
+test("the render's phases reach the window as rendering, then finalizing, once each", async () => {
+  const page = () => ({ navigate: async () => {}, printToPDF: async () => new Uint8Array() });
+  const h = makeHarness({
+    runBuild: async (engineBrowser) => {
+      const browser = await engineBrowser();
+      const main = await browser.newPage();
+      await main.navigate("file:///book.html");
+      // A second page laid out before the main one prints.
+      const predict = await browser.newPage();
+      await predict.navigate("file:///book.html");
+      await main.printToPDF({} as never);
+      await predict.navigate("file:///book.html");
+      return { outDir: "/out", diagnostics: [] };
+    },
+    engineBrowser: async () => ({ newPage: async () => page() }) as never,
+  });
+  await h.controller.build({ input: "/book", out: "/out/book.pdf" });
+  expect(h.progress.map((p) => p.state).filter((s) => s === "rendering" || s === "finalizing")).toEqual([
+    "rendering",
+    "finalizing",
+  ]);
 });
 
 // ── M28: the exportId is minted and the session registered as active BEFORE
@@ -491,208 +474,4 @@ test("Cancel during the pre-export sync gate aborts before runBuild (M28)", asyn
   expect(h.progress.some((p) => p.state === "canceled")).toBe(true);
   // Session cleaned up so a subsequent export isn't blocked.
   expect(h.getSession()).toBeNull();
-});
-
-// ── the post-build PDF checks on the delivered file (#399) ──────────────────
-// The desktop exports plain `pdf` and never ran the lib's post-build checks,
-// so a `dtrpg` book's required checks (safe margins, PDF/X, …) had no verdict
-// here. The controller now runs `executeValidation` — the same function the
-// CLI's `validate --pdf` and pdfx build use — on the final PDF, after the
-// rename and before the export is reported done.
-
-test("a PDF export runs the post-build checks on the FINAL path, after the rename and before success", async () => {
-  const h = makeHarness();
-  const res = await h.controller.build({
-    input: "/book",
-    format: "pdf",
-    out: "/out/book.pdf",
-    manifest: "/book/manifest.yaml",
-  });
-
-  expect(h.validationArgs.length).toBe(1);
-  const args = h.validationArgs[0]!;
-  // The delivered file, not the temp sibling the build wrote.
-  expect(args.pdf).toBe("/out/book.pdf");
-  expect(args.phase).toBe("post-build");
-  expect(args.input).toBe(path.resolve("/book"));
-  expect(args.manifest).toBe("/book/manifest.yaml");
-  // The build already restored/loaded the book's extensions; the checks read the PDF.
-  expect(args.pluginStylePaths).toEqual([]);
-  // Order: build → rename → register → "Checking the PDF…" → checks → success.
-  const at = (step: string) => h.timeline.indexOf(step);
-  expect(at("rename")).toBeGreaterThan(at("build"));
-  expect(at("progress:started:Checking the PDF…")).toBeGreaterThan(at("register"));
-  expect(at("validate")).toBeGreaterThan(at("progress:started:Checking the PDF…"));
-  expect(at("progress:success:/out/book.pdf")).toBeGreaterThan(at("validate"));
-  expect(res.findings).toEqual([]);
-  expect(res.pdfPath).toBe("/out/book.pdf");
-});
-
-test("the checks' findings ride back on the export result", async () => {
-  const h = makeHarness({
-    executeValidation: () => ({
-      report: {
-        results: [
-          {
-            checkId: "pdf.print.safe-margins",
-            target: "dtrpg",
-            severity: "error",
-            message: 'Page 3: "Too close" is 0.12in too close to the outside edge.',
-            file: "/out/book.pdf",
-            detail: "page.safe: text must stay at least 0.5in inside the trim on every edge.",
-            code: "text-outside-safe-margin",
-            data: { page: 3, edge: "outside", shortfallPt: 8.64 },
-          },
-        ],
-      },
-      tools: { available: [], missing: [], skippedChecks: [], toolToChecks: new Map() },
-    }),
-  });
-  const res = await h.controller.build({ input: "/book", format: "pdf", out: "/out/book.pdf" });
-  expect(res.findings).toEqual([
-    {
-      source: "pdf.print.safe-margins",
-      severity: "error",
-      message: 'Page 3: "Too close" is 0.12in too close to the outside edge.',
-      detail: "page.safe: text must stay at least 0.5in inside the trim on every edge.",
-      target: "dtrpg",
-      page: 3,
-      edge: "outside",
-    },
-  ]);
-  // A finding never fails the export: the file has already landed.
-  expect(res.pdfPath).toBe("/out/book.pdf");
-  expect(h.progress.some((p) => p.state === "success")).toBe(true);
-});
-
-test("a check run that cannot complete is one error finding, not a swallowed silence and not a failed export", async () => {
-  const h = makeHarness({
-    executeValidation: () => {
-      throw new Error("File not found: /out/book.pdf");
-    },
-  });
-  const res = await h.controller.build({ input: "/book", format: "pdf", out: "/out/book.pdf" });
-  expect(res.pdfPath).toBe("/out/book.pdf");
-  expect(h.progress.some((p) => p.state === "success")).toBe(true);
-  expect(h.progress.some((p) => p.state === "error")).toBe(false);
-  expect(res.findings).toEqual([
-    {
-      source: EXPORT_CHECKS_SOURCE,
-      severity: "error",
-      message: "The PDF was saved, but its checks could not run: File not found: /out/book.pdf",
-    },
-  ]);
-});
-
-test("a PDF export the author did not ask to check runs no PDF checks", async () => {
-  const h = makeHarness();
-  const res = await h.controller.build({ input: "/book", format: "pdf", out: "/out/book.pdf", skipPostValidate: true });
-  expect(h.validationArgs).toEqual([]);
-  expect(h.progress.some((p) => p.message === "Checking the PDF…")).toBe(false);
-  expect(res.findings).toEqual([]);
-  expect(res.pdfPath).toBe("/out/book.pdf");
-});
-
-test("reportRenderPhases reports layout then writing, once each and only forward", async () => {
-  const phases: string[] = [];
-  const page = () => ({ navigate: async () => {}, printToPDF: async () => new Uint8Array() });
-  const factory = reportRenderPhases(async () => ({ newPage: async () => page() }) as never, (s) => phases.push(s));
-  const browser = await factory();
-  const main = await browser.newPage();
-  await main.navigate("file:///book.html");
-  // The lib's predict pass loads a second page before the main one prints.
-  const predict = await browser.newPage();
-  await predict.navigate("file:///book.html");
-  await main.printToPDF({});
-  await predict.navigate("file:///book.html");
-  expect(phases).toEqual(["rendering", "finalizing"]);
-});
-
-test("an html export runs no PDF checks and carries no findings", async () => {
-  const h = makeHarness({
-    runBuild: () => ({ outDir: "/book/dist", htmlPath: "/book/dist/book.html", pdfPath: null, fingerprintPath: null }),
-  });
-  const res = await h.controller.build({ input: "/book", format: "html", out: "/book/dist" });
-  expect(h.validationArgs).toEqual([]);
-  expect(res.findings).toBeUndefined();
-});
-
-test("findingsFromValidation: drops the PDF's own file, keeps page/edge/detail/target, and reports skipped checks", () => {
-  const findings = findingsFromValidation({
-    report: {
-      results: [
-        {
-          checkId: "pdf.print.page-size",
-          severity: "error",
-          message: "Page size mismatch: expected ~621x810 pts, got 612x792 pts.",
-          file: "/out/book.pdf",
-        },
-        {
-          checkId: "pdf.print.safe-margins",
-          severity: "error",
-          target: "dtrpg",
-          message: 'Page 1: "Edge" is 0.3in too close to the top edge.',
-          file: "/out/book.pdf",
-          detail: "page.safe: text must stay at least 0.5in inside the trim on every edge.",
-          data: { page: 1, edge: "top", shortfallPt: 21.6 },
-        },
-        // The lib's own synthetic error for a required check skipped for a
-        // missing tool (validation-exec.ts) — passes through as is.
-        {
-          checkId: "pdf.print.pdfx-markers",
-          severity: "error",
-          target: "dtrpg",
-          message:
-            "Target dtrpg requires check pdf.print.pdfx-markers, but it was skipped because required tools are not available.",
-        },
-      ],
-    },
-    tools: {
-      available: [],
-      missing: ["qpdf", "gs"],
-      skippedChecks: ["pdf.print.pdfx-markers", "pdf.print.pdfx-metadata", "pdf.print.ink-coverage"],
-      toolToChecks: new Map([
-        ["qpdf", ["pdf.print.pdfx-markers", "pdf.print.pdfx-metadata"]],
-        ["gs", ["pdf.print.ink-coverage"]],
-      ]),
-    },
-  } as never);
-
-  expect(findings).toEqual([
-    {
-      source: "pdf.print.page-size",
-      severity: "error",
-      message: "Page size mismatch: expected ~621x810 pts, got 612x792 pts.",
-    },
-    {
-      source: "pdf.print.safe-margins",
-      severity: "error",
-      message: 'Page 1: "Edge" is 0.3in too close to the top edge.',
-      detail: "page.safe: text must stay at least 0.5in inside the trim on every edge.",
-      target: "dtrpg",
-      page: 1,
-      edge: "top",
-    },
-    {
-      source: "pdf.print.pdfx-markers",
-      severity: "error",
-      message:
-        "Target dtrpg requires check pdf.print.pdfx-markers, but it was skipped because required tools are not available.",
-      target: "dtrpg",
-    },
-    // Skipped checks nobody else reported: one info row each, naming the tool.
-    // pdfx-markers already has the synthetic error above, so no second row.
-    {
-      source: "pdf.print.pdfx-metadata",
-      severity: "info",
-      message: "Skipped: qpdf is not installed on this computer.",
-    },
-    {
-      source: "pdf.print.ink-coverage",
-      severity: "info",
-      message: "Skipped: gs is not installed on this computer.",
-    },
-  ]);
-  // No finding may point at a file: the panel would offer a source jump to the PDF.
-  expect(findings.every((f) => !("file" in f))).toBe(true);
 });
