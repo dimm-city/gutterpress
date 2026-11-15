@@ -223,26 +223,13 @@ export function explainPdfError(e: unknown, what = "PDF export"): PdfErrorExplan
 }
 
 /**
- * A publish error mapped for display: `summary` is always safe to show by
- * default; `details` (present only when there's something worth hiding) is
- * the original raw text, meant to sit behind a "Show details" disclosure
- * rather than disappear — publish failures (a butler/swa exit code, a
- * provider's raw HTTP/GraphQL response) are exactly the kind of thing a
- * technical author wants to see, just not as the FIRST thing they see.
- */
-export interface FriendlyPublishError {
-  summary: string;
-  details?: string;
-}
-
-/**
  * SvelteKit's `error(status, message)` serializes a thrown route error as
  * `{"message": "…"}` JSON (see routes/api/_lib/handler.ts's `jsonRoute`).
  * `#lib/api.ts`'s `post`/`get` helpers read a non-OK response body with
  * `r.text()` and throw `new Error(text)` verbatim — they never JSON.parse
  * it — so a `catch (e)` on any `api.*` call sees this raw `{"message": "…"}`
  * envelope as `e.message` instead of the message itself. Peel it back before
- * showing it (publish errors below; Book setup → Online copy) so an author is
+ * showing it (the Publish view; Book setup → Online copy) so an author is
  * never shown a bare JSON blob.
  */
 export function unwrapRouteError(text: string): string {
@@ -256,98 +243,4 @@ export function unwrapRouteError(text: string): string {
     // Not JSON (or not the expected shape) — treat the original text as the message.
   }
   return text;
-}
-
-/**
- * Map a raw publish error (from a publish route's thrown/rejected message, or
- * a `PublishRunResult.error` string) to plain-language guidance, mirroring
- * `explainPdfError`'s approach: recognized technical shapes get a short
- * author-facing summary with the raw text preserved as `details`; messages
- * the host/lib already wrote in plain language (see `PUBLISH_FRIENDLY_ERROR`
- * in electron/server-bridge/friendly-errors.ts — e.g. "No itch.io API key
- * found…", "Install the Azure SWA CLI first…", manifest-key guidance) pass
- * through unchanged with no details to hide.
- */
-export function friendlyPublishError(e: unknown): FriendlyPublishError {
-  const raw = e instanceof Error ? e.message : String(e ?? "");
-  const msg = unwrapRouteError(raw).trim();
-  if (!msg) {
-    return { summary: "Publishing failed for an unknown reason." };
-  }
-
-  // butler (itch.io's upload CLI) failures append its own stderr tail
-  // (packages/cli/src/lib/publish/providers/itch.ts) — useful to a
-  // technical author, noise to everyone else.
-  if (/^butler push failed \(exit \d+\)/i.test(msg)) {
-    return {
-      summary: "Uploading to itch.io failed. See the details for what butler reported.",
-      details: msg,
-    };
-  }
-
-  // The Azure SWA CLI's own failure + stdout/stderr tail
-  // (packages/cli/src/lib/publish/providers/azure-swa.ts).
-  if (/^swa deploy failed \(exit \d+\)/i.test(msg)) {
-    return {
-      summary:
-        "Deploying to Azure Static Web Apps failed. See the details for what the SWA CLI reported.",
-      details: msg,
-    };
-  }
-
-  // Shopify's raw HTTP/GraphQL failures (packages/cli/src/lib/publish/providers/shopify.ts).
-  if (/^shopify api request failed \(http \d+\)/i.test(msg)) {
-    return {
-      summary: "Shopify's server had a problem answering the request. Try again in a moment.",
-      details: msg,
-    };
-  }
-  if (
-    /^shopify api error:/i.test(msg) ||
-    /^shopify couldn't (create|update) the product/i.test(msg)
-  ) {
-    return { summary: "Shopify rejected the publish request.", details: msg };
-  }
-
-  // Google Drive (#221): the OAuth connection expired or was revoked.
-  // google-auth.ts's RECONNECT_MESSAGE / google-drive.ts's invalid_grant
-  // mapping already write this exact author-facing sentence before it ever
-  // reaches here — matched explicitly (not left to the generic passthrough
-  // below) so a bare `invalid_grant` from any path that bypasses that lib
-  // mapping still gets the same friendly copy instead of raw OAuth-error text.
-  if (/invalid_grant/i.test(msg)) {
-    return {
-      summary: "Your Google Drive connection expired or was revoked. Connect Google Drive again.",
-    };
-  }
-
-  // Google Drive (#221): out of storage. providers/gdrive.ts's upload()
-  // already fails fast with a specific "needs X but only Y is free" sentence
-  // before any bytes move — passed through as-is. Also catches the raw
-  // Drive API's `storageQuotaExceeded` reason in case it ever reaches here
-  // unmapped (e.g. a future call site that skips the provider's own check).
-  if (/your google drive is full/i.test(msg)) {
-    return { summary: msg };
-  }
-  if (/storageQuotaExceeded/i.test(msg)) {
-    return {
-      summary: "Your Google Drive is full — free up space (or choose a different folder) and try again.",
-      details: msg,
-    };
-  }
-
-  // A request that never reached (or never returned from) the publish route
-  // at all — the renderer's own `fetch()` failing, not a host response.
-  if (/failed to fetch|networkerror|econnrefused|enotfound|fetch failed/i.test(msg)) {
-    return {
-      summary: "Couldn't reach the publishing service. Check your internet connection and try again.",
-      details: msg,
-    };
-  }
-
-  // Everything else is either the host's own curated author-plain-language
-  // message (an unfulfilled key, a missing manifest field, install guidance —
-  // see PUBLISH_FRIENDLY_ERROR) or its terse safe fallback ("Publishing could
-  // not be completed. See the app log for details.") — show as-is.
-  return { summary: msg };
 }

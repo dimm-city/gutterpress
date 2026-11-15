@@ -6,7 +6,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { error } from "@sveltejs/kit";
 import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
-import { logPublishOutcome } from "../../electron/server-bridge/friendly-errors";
 import { jsonRoute } from "../../src/routes/api/_lib/handler";
 
 let logged: string[];
@@ -43,34 +42,4 @@ test("a refusal the route chose itself is not a fault, and is not logged", async
   });
   await expect(route(event("/api/manifest/read"))).rejects.toMatchObject({ status: 400 });
   expect(logged).toEqual([]);
-});
-
-test("a publish that ran but failed is logged with the destination and the reason", () => {
-  logPublishOutcome("itch", { ok: false, error: "butler push failed (exit 1)\nstderr: invalid API key" });
-  expect(logged).toEqual(["[publish] itch failed: butler push failed (exit 1)\nstderr: invalid API key"]);
-});
-
-test("a publish blocked by its own checks is logged with each blocking problem", () => {
-  logPublishOutcome("itch", {
-    ok: false,
-    error: "Preflight found problems that block publishing.",
-    issues: [
-      { severity: "error", id: "itch/target-missing", message: "Set publish.itch.target to user/game." },
-      { severity: "info", id: "itch/tip", message: "A tip, not a problem." },
-    ],
-  });
-  expect(logged).toEqual([
-    "[publish] itch failed: Preflight found problems that block publishing.",
-    "  itch/target-missing: Set publish.itch.target to user/game.",
-  ]);
-});
-
-test("a publish that worked logs nothing", () => {
-  logPublishOutcome("itch", { ok: true });
-  expect(logged).toEqual([]);
-});
-
-test("a sign-in carried in a URL never reaches the log", () => {
-  logPublishOutcome("gdrive", { ok: false, error: "GET https://me:tok3n@www.googleapis.com/x failed" });
-  expect(logged.join("\n")).not.toContain("tok3n");
 });

@@ -3,11 +3,10 @@
  * against the REAL lib: `publish/list` offers a book's publishing plugin as a
  * `kind: "plugin"` card marked `experimental` (after the built-ins),
  * `publish/set-config` accepts its id — the wizard's format step writes
- * `publish.<id>.format` through it, and an unknown id is still refused — and
- * `publish/run` runs the plugin in this (host) process. The fixture is a
- * local-folder publisher whose entry throws if imported, so listing and
- * settings writes prove they never load it; only the run test swaps in an
- * entry that publishes. Nothing here uses the network.
+ * `publish.<id>.format` through it, and an unknown id is still refused. The
+ * fixture is a local-folder publisher whose entry throws if imported, so
+ * listing and settings writes prove they never load it. Running it is the
+ * lib's (plugin-provider.test.ts). Nothing here uses the network.
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -16,7 +15,6 @@ import path from "node:path";
 import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
 import { makeHostServices } from "../support/host-services-fake";
 import { POST as publishList } from "../../src/routes/api/publish/list/+server";
-import { POST as publishRun } from "../../src/routes/api/publish/run/+server";
 import { POST as publishSetConfig } from "../../src/routes/api/publish/set-config/+server";
 
 let book: string;
@@ -80,39 +78,6 @@ test("publish/set-config writes a plugin's settings under its id", async () => {
   } as never);
 
   expect(await readFile(path.join(book, "manifest.yaml"), "utf8")).toMatch(/publish:\n\s+pub-demo:\n\s+format: html/);
-});
-
-test("publish/run publishes through the plugin, in this process, with its log lines captured", async () => {
-  await writeFile(
-    path.join(book, "pub", "index.js"),
-    `import { writeFile } from "node:fs/promises";
-import path from "node:path";
-export async function publish(outputDir, context) {
-  context.log("uploading");
-  await writeFile(path.join(context.project.dir, "received.json"), JSON.stringify({ outputDir, artifact: context.artifact, settings: context.settings }));
-  return { url: "https://example.com/field-guide", detail: "Sent" };
-}
-`,
-  );
-  await mkdir(path.join(book, "dist"), { recursive: true });
-  await writeFile(path.join(book, "dist", "book.pdf"), "%PDF-1.4 fake");
-
-  const res = await publishRun({
-    request: request({ projectDir: book, providerId: "pub-demo", artifactPath: "dist/book.pdf" }),
-  } as never);
-  const result = (await res.json()) as { ok: boolean; issues: Array<{ id: string }>; outcome?: unknown; log: string[] };
-
-  expect(result).toMatchObject({
-    ok: true,
-    outcome: { kind: "published", url: "https://example.com/field-guide", detail: "Sent" },
-    log: ["uploading"],
-  });
-  expect(result.issues.map((i) => i.id)).toEqual(["plugin/experimental"]);
-  expect(JSON.parse(await readFile(path.join(book, "received.json"), "utf8"))).toEqual({
-    outputDir: path.join(book, "dist"),
-    artifact: { format: "pdf", path: path.join(book, "dist", "book.pdf") },
-    settings: {},
-  });
 });
 
 test("publish/set-config still refuses an id the book does not have", async () => {

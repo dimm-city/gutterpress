@@ -42,8 +42,11 @@ function harness(opts: {
       h.calls.push(o);
       return opts.publishBook ? opts.publishBook(o) : result();
     },
-    resolvePublishRequest: async () => ({ project: { projectDir: BOOK }, config: {} }),
-    localPublishDir: () => opts.localDir ?? `${BOOK}/dist`,
+    readPublishSettings: async () => (opts.localDir ? { local: { dir: opts.localDir } } : {}),
+    listBookPublishProviders: async () => [
+      { id: "local", configFields: [{ key: "dir", label: "Folder", kind: "folder" }] },
+      { id: "itch", configFields: [{ key: "target", label: "Project" }] },
+    ],
   };
   const deps: PublishRunnerDeps = {
     loadLib: async () => lib as never,
@@ -89,7 +92,7 @@ test("progress reaches the window as the lib words it", async () => {
   expect(h.progress).toEqual([{ step: "render", message: "Laying out the pages…" }]);
 });
 
-test("a local folder outside the book is confirmed in a dialog, and the folder picked is used for this run only", async () => {
+test("a folder setting outside the book is confirmed in a dialog, and the folder picked is used for this run only", async () => {
   const h = harness({ localDir: "/home/ada/Desktop/out" });
   await h.runner.run({ projectDir: BOOK, targets: ["local"] });
   expect(h.folderAsks).toEqual(["/home/ada/Desktop/out"]);
@@ -104,9 +107,16 @@ test("closing that dialog stops the run before anything is made", async () => {
   expect(h.calls).toHaveLength(0);
 });
 
-test("a local folder inside the book needs no dialog", async () => {
-  const h = harness();
+test("a folder setting inside the book needs no dialog", async () => {
+  const h = harness({ localDir: "out" });
   await h.runner.run({ projectDir: BOOK, targets: ["local"] });
+  expect(h.folderAsks).toEqual([]);
+  expect(h.calls[0]!.runSettings).toBeUndefined();
+});
+
+test("a target not sent this time is not asked about", async () => {
+  const h = harness({ localDir: "/home/ada/Desktop/out" });
+  await h.runner.run({ projectDir: BOOK, targets: ["itch"] });
   expect(h.folderAsks).toEqual([]);
 });
 
@@ -194,4 +204,17 @@ test("the app log records the run and each target's outcome, with the reason for
   expect(h.logged[0]).toBe("[publish] local, itch started");
   expect(h.logged).toContain("[publish] local: sent");
   expect(h.logged).toContain("[publish] itch: failed (SEND_FAILED) Uploading failed. butler push failed (exit 1)");
+});
+
+test("a sign-in carried in a URL never reaches the log", async () => {
+  const h = harness({
+    publishBook: async () =>
+      result({
+        ok: false,
+        failure: { code: "SEND_FAILED", message: "Uploading failed.", detail: "GET https://me:tok3n@www.googleapis.com/x failed" },
+      }),
+  });
+  await h.runner.run({ projectDir: BOOK, targets: ["gdrive"] });
+  expect(h.logged.join("\n")).toContain("[publish] stopped (SEND_FAILED)");
+  expect(h.logged.join("\n")).not.toContain("tok3n");
 });

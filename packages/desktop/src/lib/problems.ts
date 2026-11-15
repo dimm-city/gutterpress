@@ -3,6 +3,7 @@
  * grouping/labeling logic is unit-testable outside Svelte.
  */
 import type { ProblemEntry } from "#lib/platform/dtos.ts";
+import { joinPath } from "#lib/platform/paths.ts";
 import type { ExportFindingDto } from "#lib/platform/shared-types.ts";
 
 /** One file's worth of problems, ready to render as a panel group. */
@@ -122,6 +123,27 @@ export function exportProblems(findings: ExportFindingDto[]): ProblemEntry[] {
     severity: f.severity,
     message: `${f.target ? `[${f.target}] ` : ""}${f.message}${f.detail ? ` ${f.detail}` : ""}`,
     source: f.source,
+  }));
+}
+
+/**
+ * The publish run's findings as Problems entries (the lib's `CheckFinding`):
+ * the book's own, and each target's, tagged with the target as the terminal
+ * prints them (`[itch] …`). A finding with a file can be gone to.
+ */
+export function checkProblems(
+  findings: Array<{ checkId: string; severity: ProblemEntry["severity"]; message: string; detail?: string; target?: string; file?: string; line?: number; column?: number }>,
+  projectDir: string,
+): ProblemEntry[] {
+  return findings.map((f) => ({
+    severity: f.severity,
+    message: `${f.target ? `[${f.target}] ` : ""}${f.message}${f.detail ? ` ${f.detail}` : ""}`,
+    source: f.checkId,
+    ...(f.file
+      ? { filePath: /^(\/|[A-Za-z]:[\\/]|\\\\)/.test(f.file) ? f.file : joinPath(projectDir, f.file), file: f.file }
+      : {}),
+    ...(f.line ? { line: f.line } : {}),
+    ...(f.column ? { column: f.column } : {}),
   }));
 }
 

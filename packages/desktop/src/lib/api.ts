@@ -85,9 +85,6 @@ export type {
   SyncOutcome,
   PublishProviderCard,
   PublishDestination,
-  PublishIssue,
-  PublishOutcomeInfo,
-  PublishRunResult,
   DesktopPrefs,
   LastFlushFailure,
   ProjectState,
@@ -121,7 +118,6 @@ import type {
   PublishProviderCard,
   PublishDestination,
   PublishDestinationStatus,
-  PublishRunResult,
   DesktopPrefs,
   LastFlushFailure,
   ProjectState,
@@ -185,11 +181,6 @@ import type {
   ProblemReport,
   DoctorInstallResult,
 } from './platform/dtos';
-
-// Publish-preflight row DTO (#105). Pure `#lib` module — type-only here so the
-// client bundle still never value-imports it through the api client.
-export type { PreflightRow } from './preflight';
-import type { PreflightRow } from './preflight';
 
 // ── Genuinely api-local shapes (no canonical twin in the contract) ───────────
 
@@ -997,10 +988,11 @@ export const api = {
       }),
 
     /**
-     * Save NON-SECRET provider settings. The host files each where it belongs:
-     * the team's (destinations ticked as `enabled: true`, targets, folders) in
-     * the manifest's publish section, only the person's own (their account, a
-     * folder outside the book) in their private settings. An empty string clears.
+     * Save NON-SECRET target settings. The host files each where it belongs:
+     * the team's (each target's settings, its folders) in the manifest's
+     * publish section, only the person's own (their account, a folder outside
+     * the book, `send: "off"` for a target they don't send) in their private
+     * settings. An empty string clears.
      */
     setConfig: (projectDir: string, providerId: string, values: Record<string, string | boolean>) =>
       post<Record<string, Record<string, unknown>>>('/api/publish/set-config', {
@@ -1010,25 +1002,11 @@ export const api = {
       }),
 
     /**
-     * Pre-build publish preflight (#105): run the SOURCE + ASSET checks (no PDF
-     * build) for a project, scoped to the selected destinations. Returns the
-     * plain-language rows the wizard's Preflight step renders + gates on.
+     * Change the book's targets (`publish:` in the manifest, shared with the
+     * team). Resolves with the book's targets and the ones this person sends.
      */
-    preflight: (projectDir: string, providerIds: string[]) =>
-      post<PreflightRow[]>('/api/publish/preflight', { projectDir, providerIds }),
-
-    /** Publish (or preflight with dryRun). Long-running; resolves with the result. */
-    run: (
-      projectDir: string,
-      providerId: string,
-      options?: { dryRun?: boolean; artifactPath?: string },
-    ) =>
-      post<PublishRunResult>('/api/publish/run', {
-        projectDir,
-        providerId,
-        ...(options?.dryRun ? { dryRun: true } : {}),
-        ...(options?.artifactPath ? { artifactPath: options.artifactPath } : {}),
-      }),
+    setTargets: (projectDir: string, targets: string[]) =>
+      post<{ targets: string[]; sending: string[] }>('/api/publish/targets', { projectDir, targets }),
 
     /**
      * Existing places a provider can publish into (#221, gdrive: Drive

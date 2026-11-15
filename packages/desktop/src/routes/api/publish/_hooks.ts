@@ -11,7 +11,7 @@
  */
 import { getHostServices, loadLib, type LibModule } from '../_lib/route';
 
-export { handlePublishErrors, logPublishOutcome } from '../../../../electron/server-bridge/friendly-errors';
+export { handlePublishErrors } from '../../../../electron/server-bridge/friendly-errors';
 
 /**
  * The deps every publish route hands the lib: the account store, and this

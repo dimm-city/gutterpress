@@ -78,6 +78,10 @@ export async function setPublishProviderConfig(
     ? targetId
     : (Object.keys(settingsKeysOf(doc)).find((key) => canonicalTargetId(key) === targetId) ?? targetId);
 
+  // A target written as just its name (`itch:`) takes settings as a block.
+  if (doc.hasIn(["publish", sectionKey]) && !isMap(doc.getIn(["publish", sectionKey], true))) {
+    doc.setIn(["publish", sectionKey], doc.createNode({}));
+  }
   for (const [key, value] of Object.entries(values)) {
     if (value === undefined || value === null || value === "") {
       doc.deleteIn(["publish", sectionKey, key]);
@@ -122,8 +126,8 @@ export async function setBookTargets(projectDir: string, ids: string[]): Promise
       doc.deleteIn(["publish", key]);
       continue;
     }
-    doc.deleteIn(["publish", key, "enabled"]);
     const section = doc.getIn(["publish", key], true);
+    if (isMap(section)) section.delete("enabled");
     if (!isMap(section) || section.items.length === 0) doc.setIn(["publish", key], bareTarget());
   }
   for (const id of wanted) {

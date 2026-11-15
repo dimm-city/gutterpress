@@ -18,9 +18,8 @@ import path from "node:path";
 import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
 import { makeHostServices } from "../support/host-services-fake";
 import { POST as publishList } from "../../src/routes/api/publish/list/+server";
-import { POST as publishRun } from "../../src/routes/api/publish/run/+server";
 import { POST as publishSetConfig } from "../../src/routes/api/publish/set-config/+server";
-import { POST as publishDestinationStatus } from "../../src/routes/api/publish/destinations/status/+server";
+import { POST as publishTargets } from "../../src/routes/api/publish/targets/+server";
 
 let root: string;
 let book: string;
@@ -44,6 +43,8 @@ const setConfig = (providerId: string, values: Record<string, unknown>) =>
 
 interface Card {
   id: string;
+  inBook: boolean;
+  sending: boolean;
   config: Record<string, string>;
   selectedAccount: string;
   connected: boolean;
@@ -144,17 +145,31 @@ test("where the book is published is the team's: the Drive folder and format sta
   expect((await card("gdrive")).config).toEqual({ format: "html", folderId: "F1", folder: "My Books" });
 });
 
-test("ticking a destination is saved in the manifest, so a teammate sees it ticked", async () => {
-  await setConfig("itch", { enabled: true });
+test("the book's targets are saved in its manifest, so a teammate sees them; not sending one is the person's own", async () => {
+  const setTargets = (targets: string[]) => publishTargets({ request: request({ projectDir: book, targets }) } as never);
+  await setTargets(["itch", "shopify"]);
   await setConfig("itch", { target: "me/book" });
-  await setConfig("shopify", { enabled: true });
-  await setConfig("shopify", { enabled: "" });
+  await setTargets(["itch"]);
 
-  expect(await manifest()).toMatch(/itch:\n\s+enabled: true\n\s+target: me\/book/);
+  expect(await manifest()).toMatch(/publish:\n\s+itch:\n\s+target: me\/book/);
   expect(await manifest()).not.toContain("shopify");
-  expect((await card("itch")).config).toEqual({ enabled: "true", target: "me/book" });
-  expect((await card("shopify")).config).toEqual({});
+  expect(await card("itch")).toMatchObject({ inBook: true, sending: true, config: { target: "me/book" } });
+  expect(await card("shopify")).toMatchObject({ inBook: false, sending: false, config: {} });
   await expect(stat(privateFile())).rejects.toThrow();
+
+  const before = await manifest();
+  await setConfig("itch", { send: "off" });
+  expect(await manifest()).toBe(before);
+  expect(await privateSettings()).toEqual({ itch: { send: "off" } });
+  expect(await card("itch")).toMatchObject({ inBook: true, sending: false, config: { target: "me/book" } });
+});
+
+test("a target the book does not offer is refused, and the manifest is untouched", async () => {
+  const before = await manifest();
+  await expect(
+    publishTargets({ request: request({ projectDir: book, targets: ["nope"] }) } as never),
+  ).rejects.toThrow();
+  expect(await manifest()).toBe(before);
 });
 
 test("an output folder inside the book is saved relative to it, in the manifest", async () => {
@@ -183,22 +198,6 @@ test("an older book's absolute in-book folder still works, and is rewritten rela
   await setConfig("local", { dir: path.join(book, "dist") });
   expect(await manifest()).toContain("dir: dist");
   expect(await manifest()).not.toContain(book);
-});
-
-test("publishing copies the PDF to the private folder outside the book", async () => {
-  const outside = path.join(root, "Dropbox");
-  await setConfig("local", { dir: outside });
-  const dist = path.join(book, "dist", "field-guide");
-  await mkdir(dist, { recursive: true });
-  await writeFile(path.join(dist, "field-guide-pdf.pdf"), "%PDF-1.4 fake");
-
-  const res = await publishRun({
-    request: request({ projectDir: book, providerId: "local", artifactPath: "dist/field-guide/field-guide-pdf.pdf" }),
-  } as never);
-  const result = (await res.json()) as { ok: boolean };
-
-  expect(result.ok).toBe(true);
-  expect(await readFile(path.join(outside, "field-guide-pdf.pdf"), "utf8")).toBe("%PDF-1.4 fake");
 });
 
 test("another book's private settings do not apply to this one", async () => {
@@ -233,63 +232,3 @@ test("a Drive folder of one's own is private: the manifest is byte-identical, an
   expect(await privateSettings()).toBeUndefined();
 });
 
-test("a teammate whose Google account can't reach the book's folder publishes to their own, and the manifest is untouched", async () => {
-  // Ada set up the book's folder F1. Ben's Google account sees only his own B1:
-  // Drive answers 404 for anything else, as it does under the drive.file scope.
-  await writeManifest("publish:\n  gdrive:\n    folderId: F1\n    folder: Harbor Books\n");
-  const before = await manifest();
-  const ben = { host: "gdrive", kind: "google-oauth", token: "ben", createdAt: 1, label: "ben@example.com" };
-  registerHostServices(
-    makeHostServices({
-      fsGuard: { projectRoots: () => [book], readOnlyRoots: () => [] as string[] },
-      desktop: { getUserDataPath: () => userData },
-      remote: { tokenStore: { get: async (key: string) => (key === "gdrive" ? ben : null), list: async () => [ben] } as never },
-    }),
-  );
-  const uploads: Array<{ parents?: string[] }> = [];
-  const realFetch = globalThis.fetch;
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = String(input);
-    const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
-    if (url.includes("oauth2.googleapis.com/token")) return json({ access_token: "at", expires_in: 3599 });
-    if (url.includes("/drive/v3/about")) return json({ storageQuota: { usage: "0" } });
-    if (/\/files\/B1\?fields=id,name,trashed,mimeType/.test(url)) {
-      return json({ id: "B1", name: "Ben's Books", trashed: false, mimeType: "application/vnd.google-apps.folder" });
-    }
-    if (/\/files\/[^?]+\?fields=id,name,trashed,mimeType/.test(url)) return json({ error: { code: 404 } }, 404);
-    if (url.includes("/drive/v3/files?q=")) return json({ files: [] });
-    if (url.includes("uploadType=resumable")) {
-      uploads.push(JSON.parse(String(init?.body)) as { parents?: string[] });
-      return new Response(null, { status: 200, headers: { Location: "https://upload.test/s" } });
-    }
-    if (url === "https://upload.test/s") return json({ id: "f", name: "x", webViewLink: "https://drive.google.com/file/d/f/view" });
-    throw new Error(`unexpected fetch ${url}`);
-  }) as typeof fetch;
-  process.env.GUTTERPRESS_GOOGLE_CLIENT_ID = "test-client-id";
-  process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET = "test-client-secret";
-  const status = async () =>
-    (await publishDestinationStatus({ request: request({ projectDir: book, providerId: "gdrive" }) } as never)).json();
-  try {
-    expect(await status()).toEqual({ state: "unreachable", book: { title: "Harbor Books", reachable: false } });
-
-    await setConfig("gdrive", { myFolderId: "B1", myFolder: "Ben's Books" });
-    expect(await status()).toMatchObject({ state: "mine", destination: { id: "B1" }, book: { reachable: false } });
-
-    const dist = path.join(book, "dist");
-    await mkdir(dist, { recursive: true });
-    await writeFile(path.join(dist, "field-guide-pdf.pdf"), "%PDF-1.4 fake");
-    const res = await publishRun({
-      request: request({ projectDir: book, providerId: "gdrive", artifactPath: "dist/field-guide-pdf.pdf" }),
-    } as never);
-    const ran = (await res.json()) as { ok: boolean; error?: string; issues?: unknown };
-    expect(ran).toMatchObject({ ok: true });
-    expect(uploads).toEqual([{ name: "field-guide-pdf.pdf", parents: ["B1"] }]);
-
-    expect(await manifest()).toBe(before);
-    expect(await privateSettings()).toEqual({ gdrive: { myFolderId: "B1", myFolder: "Ben's Books", myFolderFor: "F1" } });
-  } finally {
-    globalThis.fetch = realFetch;
-    delete process.env.GUTTERPRESS_GOOGLE_CLIENT_ID;
-    delete process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET;
-  }
-});

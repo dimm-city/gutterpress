@@ -635,6 +635,8 @@ export interface PublishConfigFieldInfo {
   key: string;
   label: string;
   placeholder?: string;
+  /** "folder": offer the folder dialog (one outside the book is the person's own). */
+  kind?: "folder";
 }
 
 /** What the window asks the one publish run for (ADR 0012 §5); main adds the rest. */
@@ -658,16 +660,11 @@ export interface PublishProviderCard {
    *  one of the book's publishing plugins (experimental, #381), which runs
    *  the upload and handles its own sign-in. */
   kind: "api" | "guided" | "plugin";
-  /** Which build output the provider publishes BY DEFAULT (and, absent
-   *  `formats` below, the only one it ever publishes). */
-  format: "pdf" | "html";
-  /**
-   * Present only for a provider that supports more than one format (#221 —
-   * currently only gdrive: `["pdf", "html"]`). The wizard
-   * renders a PDF/Website choice for the card only when this is set; every
-   * other provider stays fixed on `format` above.
-   */
-  formats?: Array<"pdf" | "html">;
+  /** The file this target receives: fixed when `formats` is absent, else the
+   *  pick when none is saved (`config.format` holds the saved pick). */
+  format: "pdf" | "pdfx" | "html";
+  /** Present when the target does not fix its file: the formats to pick from. */
+  formats?: Array<"pdf" | "pdfx" | "html">;
   description: string;
   /** The provider's declared settings fields — the panel renders these. */
   fields: PublishConfigFieldInfo[];
@@ -713,6 +710,10 @@ export interface PublishProviderCard {
     label: string;
     canCreate: boolean;
   };
+  /** One of the book's targets (`publish:` in the manifest, shared with the team). */
+  inBook: boolean;
+  /** This person sends it (one of the book's targets they have not turned off). */
+  sending: boolean;
 }
 
 /** One existing place a provider can publish into (#221) — a Drive folder
@@ -742,43 +743,6 @@ export interface PublishSavedAccountInfo {
   /** Display name. */
   label: string;
   createdAt: number;
-}
-
-/** One publish preflight finding. */
-export interface PublishIssue {
-  severity: "error" | "warning" | "info";
-  id: string;
-  message: string;
-}
-
-/**
- * What a publish produced (mirrors the lib's PublishOutcome union — the
- * discriminant keeps the panel's rendering type-narrowed, no `!` assertions).
- */
-export type PublishOutcomeInfo =
-  | {
-      kind: "published";
-      url?: string;
-      detail?: string;
-      followUp?: string[];
-    }
-  | {
-      kind: "guided";
-      packageDir: string;
-      openUrl: string;
-      checklist: string[];
-      detail?: string;
-    };
-
-/** Structured result of a publish run (or dry run). */
-export interface PublishRunResult {
-  ok: boolean;
-  providerId: string;
-  issues: PublishIssue[];
-  outcome?: PublishOutcomeInfo;
-  error?: string;
-  /** Progress lines captured during the run (butler/swa output etc.). */
-  log?: string[];
 }
 
 // ── Local version history (#13) ───────────────────────────────────────────

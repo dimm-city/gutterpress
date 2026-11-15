@@ -3,8 +3,10 @@
  * does the work, the same run the terminal's `gutterpress publish` does; this
  * gives it Electron's own Chromium, forwards its progress to the window, lets
  * the person stop it, and lets it write outside the book only to a folder a
- * native dialog just returned (the renderer can never name one).
+ * native dialog just returned (the renderer can never name one). It names no
+ * target: a target's folder setting says it is one (`kind: "folder"`).
  */
+import path from "node:path";
 import type {
   EngineBrowser,
   PublishBookResult,
@@ -14,6 +16,7 @@ import type {
 } from "gutterpress";
 
 import type { PublishRunArgs } from "../src/lib/platform/shared-types";
+import { redactUrlCredentials } from "./server-bridge/friendly-errors";
 
 type LibModule = typeof import("gutterpress");
 
@@ -57,17 +60,23 @@ export class PublishRunner {
       const lib = await this.deps.loadLib();
       const publishDeps = { tokenStore: this.deps.tokenStore, selections: await this.deps.selections() };
 
+      // A folder setting outside the book is written to only once the person
+      // confirms it in the folder dialog, for this run (the renderer can never
+      // name a path to write to).
       let runSettings: Record<string, Record<string, string>> | undefined;
-      if (args.targets.includes("local")) {
-        const req = await lib.resolvePublishRequest({ projectDir: args.projectDir, providerId: "local" }, publishDeps);
-        let dir = lib.localPublishDir(req);
-        if (!(await this.deps.isWithinProject(dir))) {
+      const settings = await lib.readPublishSettings(args.projectDir, publishDeps.selections);
+      for (const info of await lib.listBookPublishProviders({ projectDir: args.projectDir })) {
+        if (!args.targets.includes(info.id)) continue;
+        for (const field of info.configFields) {
+          const value = String(settings[info.id]?.[field.key] ?? "").trim();
+          if (field.kind !== "folder" || !value) continue;
+          const dir = path.resolve(args.projectDir, value);
+          if (await this.deps.isWithinProject(dir)) continue;
           const picked = await this.deps.pickFolder(dir);
           if (!picked) return canceled();
-          dir = picked;
-          runSettings = { local: { dir } };
+          runSettings = { ...runSettings, [info.id]: { ...runSettings?.[info.id], [field.key]: picked } };
+          this.deps.registerPickedPath(picked);
         }
-        this.deps.registerPickedPath(dir);
       }
 
       this.deps.log.event(`[publish] ${args.targets.join(", ")} started`);
@@ -96,11 +105,11 @@ export class PublishRunner {
         if (t.outcome?.kind === "guided") this.deps.registerPickedPath(t.outcome.packageDir);
         const f = t.failure;
         const why = f ? ` (${f.code}) ${f.message}${f.detail ? ` ${f.detail}` : ""}` : "";
-        (f ? this.deps.log.error : this.deps.log.event)(`[publish] ${t.id}: ${t.status}${why}`);
+        (f ? this.deps.log.error : this.deps.log.event)(redactUrlCredentials(`[publish] ${t.id}: ${t.status}${why}`));
       }
       if (result.failure) {
         const f = result.failure;
-        this.deps.log.error(`[publish] stopped (${f.code}) ${f.message}${f.detail ? ` ${f.detail}` : ""}`);
+        this.deps.log.error(redactUrlCredentials(`[publish] stopped (${f.code}) ${f.message}${f.detail ? ` ${f.detail}` : ""}`));
       }
       return result;
     } finally {

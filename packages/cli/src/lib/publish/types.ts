@@ -33,6 +33,12 @@ export interface PublishConfigField {
   /** Author-facing label ("Project (user/game)"). */
   label: string;
   placeholder?: string;
+  /**
+   * "folder": a folder on this computer, relative to the book or absolute.
+   * The app offers its folder dialog, and writes to one outside the book
+   * only after the person confirms it in that dialog.
+   */
+  kind?: "folder";
 }
 
 /** Stable provider identifiers: the `--provider` values AND the manifest

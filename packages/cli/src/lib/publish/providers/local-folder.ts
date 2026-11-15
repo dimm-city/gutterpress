@@ -1,17 +1,10 @@
 /**
- * Local folder "publish" provider — a folder on this computer.
+ * Local folder target — a folder on this computer.
  *
- * The first destination the desktop's Publish wizard offers, and the one it
- * BUILDS INTO: the wizard renders the book straight into the configured
- * folder and then hands that artifact to every other selected destination.
- * It is listed here, beside the online providers, so its one setting
- * (`publish.local.dir`, relative to the book or absolute) rides the same
- * manifest section, the same settings route and the same provider cards as
- * everything else — no special case anywhere downstream.
- *
- * `upload` is what the CLI uses (`gutterpress publish --provider local`): copy
- * the built artifact into the folder. The desktop never calls it for a folder
- * it just built into.
+ * Its one setting (`publish.local.dir`, relative to the book or absolute)
+ * rides the same manifest section and settings as every other target.
+ * `upload` copies the book's file into the folder, in the terminal and the
+ * app alike.
  */
 import { cp, mkdir, stat } from "node:fs/promises";
 import path from "node:path";
@@ -32,7 +25,7 @@ const info: PublishProviderInfo = {
   kind: "api",
   description: "Save the finished file to a folder you choose.",
   configFields: [
-    { key: "dir", label: "Folder", placeholder: LOCAL_PUBLISH_DEFAULT_DIR },
+    { key: "dir", label: "Folder", placeholder: LOCAL_PUBLISH_DEFAULT_DIR, kind: "folder" },
   ],
   credential: { required: false, host: "" },
 };

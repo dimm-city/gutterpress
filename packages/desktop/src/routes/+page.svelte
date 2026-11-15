@@ -21,7 +21,7 @@
   import type { ToastController } from "#lib/components/Toast.svelte";
   import type { MarkdownFileLaunchEvent } from "#lib/platform/contract.ts";
   import type { ProblemEntry } from "#lib/platform/dtos.ts";
-  import { buildProblems, exportProblems, problemCounts } from "#lib/problems.ts";
+  import { buildProblems, checkProblems, exportProblems, problemCounts } from "#lib/problems.ts";
   import { NOTHING_NEW_NOTICE, saveFailureReason } from "#lib/save-status.ts";
   import StatusBar from "#lib/components/StatusBar.svelte";
   import ProblemsPanel from "#lib/components/ProblemsPanel.svelte";
@@ -226,17 +226,26 @@
   const publishController = new PublishSectionController({
     projectDir: () => lifecycle.currentDir,
     listProviders: (dir) => api.publish.listProviders(dir),
-    preflight: (dir, providerIds) => api.publish.preflight(dir, providerIds),
+    setTargets: (dir, targets) => api.publish.setTargets(dir, targets),
     setConfig: (dir, providerId, values) => api.publish.setConfig(dir, providerId, values),
     // #221 — provider-neutral destinations picker.
     listDestinations: (dir, providerId) => api.publish.listDestinations(dir, providerId),
     createDestination: (dir, providerId, name) => api.publish.createDestination(dir, providerId, name),
     destinationStatus: (dir, providerId) => api.publish.destinationStatus(dir, providerId),
-    run: (dir, providerId, options) => api.publish.run(dir, providerId, options),
+    // The one publish run (ADR 0012), in main.
+    publish: (args) => getPlatform().publish(args),
+    cancelPublish: () => getPlatform().cancelPublish(),
+    onProgress: (cb) => getPlatform().onPublishProgress(cb),
     openExternal: (url) => api.shell.openExternal(url),
     onSaved: () => toast?.success?.("Publish settings saved."),
-    onPublished: (guided) =>
-      toast?.success?.(guided ? "Upload package ready — follow the checklist to finish." : "Published!"),
+    // The run's findings join the Problems list, held apart from the source
+    // lint like an export's (see `buildProblems`).
+    onResult: (result) => {
+      buildProblemEntries = [
+        ...buildProblems(result.diagnostics ?? []),
+        ...checkProblems([...result.sourceFindings, ...result.targets.flatMap((t) => t.findings)], lifecycle.currentDir ?? ""),
+      ];
+    },
   });
   let publishOpen = $state(false);
 
@@ -3598,12 +3607,6 @@
   <PublishWizard
     controller={publishController}
     projectDir={lifecycle.currentDir ?? ""}
-    buildArtifact={(opts) => exportController.buildTo(opts)}
-    progress={exportController.pdfProgress}
-    onCancelBuild={() => exportController.cancelExport()}
-    canCancelBuild={!!exportController.activeExportId}
-    saveWarning={lifecycle.saveWarning}
-    buildFailure={exportController.failure}
     onReviewProblems={() => {
       publishOpen = false;
       openProblemsList();
@@ -3614,8 +3617,8 @@
     onClose={() => (publishOpen = false)}
     onManageAccounts={() => (accountsOpen = true)}
     onNavigate={(entry) => {
-      // A preflight "Go to" — close the wizard, then reveal the finding
-      // in the editor via the shared Problems-panel navigation affordance.
+      // A finding's "Go to" — close the view, then reveal the finding in the
+      // editor via the shared Problems-panel navigation affordance.
       publishOpen = false;
       openProblem(entry);
     }}

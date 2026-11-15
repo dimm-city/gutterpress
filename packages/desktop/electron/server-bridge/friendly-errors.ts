@@ -149,6 +149,11 @@ const PUBLISH_FRIENDLY_ERROR =
  * Wrap a publish operation with the shared error-sanitization logic:
  * author-friendly lib messages pass through verbatim; anything else is logged
  * in full (with credentials redacted) and replaced with a terse safe message.
+ *
+ * Routes check their input in `validate`, not inside this wrapper: it maps any
+ * non-`Error` throwable to a generic message, and a SvelteKit `HttpError` is a
+ * plain object, so a 403/400 raised in here would reach the person as
+ * "Publishing could not be completed."
  */
 export async function handlePublishErrors<T>(
   channel: string,
@@ -164,22 +169,6 @@ export async function handlePublishErrors<T>(
     throw new Error(
       "Publishing could not be completed. See the app log for details.",
     );
-  }
-}
-
-/**
- * Record a publish that ran but did not succeed. Its reason comes back to the
- * author as a result, not a thrown error, so {@link handlePublishErrors} never
- * sees it; without this the log says nothing about a failed upload.
- */
-export function logPublishOutcome(
-  providerId: string,
-  result: { ok: boolean; error?: string; issues?: Array<{ severity: string; id: string; message: string }> },
-): void {
-  if (result.ok) return;
-  logFailure(`[publish] ${providerId} failed: ${redactUrlCredentials(result.error ?? "no reason given")}`);
-  for (const issue of result.issues ?? []) {
-    if (issue.severity === "error") logFailure(`  ${issue.id}: ${redactUrlCredentials(issue.message)}`);
   }
 }
 

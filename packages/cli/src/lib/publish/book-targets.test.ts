@@ -64,10 +64,24 @@ describe("setBookTargets", () => {
     expect((await plan()).targets).toEqual([]);
   });
 
+  test("a target written bare is kept as it is when another is added", async () => {
+    await writeBook("publish:\n  local:\n");
+    await setBookTargets(book, ["local", "itch"]);
+    expect((await manifest()).publish).toEqual({ local: null, itch: null });
+  });
+
   test("an old name is read as its target", async () => {
     await writeBook("publish:\n  drivethrurpg:\n    productUrl: https://example.com/p\n");
     await setBookTargets(book, ["drivethrurpg-print"]);
     expect((await plan()).targets).toEqual(["drivethrurpg-print"]);
+  });
+});
+
+describe("a target written bare takes its first setting", () => {
+  test("setting itch's page on a bare `itch:` writes it under itch", async () => {
+    await writeBook("publish:\n  itch:\n");
+    await setPublishProviderConfig(book, "itch", { target: "ada/guide" });
+    expect((await manifest()).publish).toEqual({ itch: { target: "ada/guide" } });
   });
 });
 

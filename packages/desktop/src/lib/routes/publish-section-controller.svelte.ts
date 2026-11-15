@@ -1,35 +1,30 @@
 /**
- * PublishSectionController — the single owner of the Publish section's (#35)
- * provider-card state + logic.
+ * PublishSectionController — the single owner of the Publish view's state
+ * (ADR 0012 §6): the target cards, their settings drafts, the book's targets
+ * and the ones this person sends, and the one publish run.
  *
- * Centralises the provider cards, the per-provider settings drafts, the
- * busy/error flags, and the run results. Accounts are managed in one place, the
- * Accounts page: the wizard shows PublishKeyForm (the same form and routes) to
- * add or replace one, and this controller only records which saved account the
- * book uses. It writes non-secret settings through `setConfig`; the host sorts
- * each value into the manifest (shared) or this person's private settings (their
- * account, their own Drive folder, an output folder outside the book). Runs are
- * long (butler/swa uploads) — one provider at a time (`publishBusyId`).
- *
- * Single-owner discipline mirrors `DesignSectionController`
- * (`design-section-controller.svelte.ts`): the component reads the public
- * rune fields and calls the intent methods.
+ * The run is the lib's `publishBook`, the same one `gutterpress publish`
+ * runs: the app starts it (`publish`) and shows what it reports, it does not
+ * build, check or send anything itself. Accounts are managed on the Accounts
+ * page; the view adds or replaces one with the same form, and this controller
+ * only records which saved account the book uses. Settings are written
+ * through `setConfig`; the host sorts each value into the manifest (shared)
+ * or this person's private settings (their account, their own Drive folder, a
+ * folder outside the book, a target they don't send).
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
- * (§8): the reactive `projectDir` accessor, the `api.publish.*` /
- * `api.dialog.*` / `api.shell.*` host calls, and the `onSaved` / `onPublished`
- * callbacks (the panel wires these to toasts).
- * `PublishProviderCard` / `PublishRunResult` are type-only imports — ZERO
- * `node:*` / lib value imports.
+ * (§8). Lib shapes are type-only imports — ZERO `node:*` / lib value imports.
  */
 
 import type {
   PublishProviderCard,
-  PublishRunResult,
   PublishDestination,
   PublishDestinationStatus,
+  PublishRunArgs,
+  PublishBookResult,
+  PublishProgress,
 } from "#lib/platform/contract.ts";
-import type { PreflightRow } from "#lib/preflight.ts";
+import { friendlyHostError, unwrapRouteError } from "#lib/errors.ts";
 import {
   bookValues,
   hasOwnFolder,
@@ -39,15 +34,16 @@ import {
   type DestinationPrompt,
 } from "#lib/routes/destination-prompt.ts";
 
+/** A thrown host/route error as one plain line. */
+const messageOf = (e: unknown): string =>
+  friendlyHostError(unwrapRouteError(e instanceof Error ? e.message : String(e)));
+
 export interface PublishSectionDeps {
   /** The open project directory (reactive prop), or null when none is open. */
   projectDir: () => string | null;
   listProviders: (projectDir: string) => Promise<PublishProviderCard[]>;
-  /**
-   * Publish preflight (#105) — run the pre-build SOURCE + ASSET checks (no PDF
-   * build), scoped to the selected destinations.
-   */
-  preflight: (projectDir: string, providerIds: string[]) => Promise<PreflightRow[]>;
+  /** Change the book's targets (`publish:` in the manifest). */
+  setTargets: (projectDir: string, targets: string[]) => Promise<unknown>;
   setConfig: (
     projectDir: string,
     providerId: string,
@@ -62,16 +58,26 @@ export interface PublishSectionDeps {
   ) => Promise<PublishDestination>;
   /** #452 — where this person publishes among the destinations, and whether they must choose. */
   destinationStatus: (projectDir: string, providerId: string) => Promise<PublishDestinationStatus>;
-  run: (
-    projectDir: string,
-    providerId: string,
-    options?: { dryRun?: boolean; artifactPath?: string },
-  ) => Promise<PublishRunResult>;
+  /** The one publish run (main's `PublishRunner`). */
+  publish: (args: PublishRunArgs) => Promise<PublishBookResult>;
+  cancelPublish: () => Promise<unknown>;
+  /** Subscribe to the run's progress; returns an unsubscribe fn. */
+  onProgress: (cb: (progress: PublishProgress) => void) => () => void;
   openExternal: (url: string) => Promise<unknown>;
   /** Fired after Save settings succeeds (the panel wires this to a toast). */
   onSaved?: () => void;
-  /** Fired after a non-dry-run Publish succeeds; `guided` selects the copy. */
-  onPublished?: (guided: boolean) => void;
+  /** Fired with each run's result (the page lists its findings in Problems). */
+  onResult?: (result: PublishBookResult) => void;
+}
+
+/** What a Publish (or Check only) asks the run for. */
+export interface PublishIntent {
+  /** Make and check the files; send nothing. */
+  checkOnly?: boolean;
+  /** Just these targets (default: the ones this person sends); the result is merged into the last one. */
+  targets?: string[];
+  sendAnyway?: string[];
+  allowShrink?: boolean;
 }
 
 export class PublishSectionController {
@@ -79,7 +85,6 @@ export class PublishSectionController {
   publishCards = $state<PublishProviderCard[]>([]);
   publishError = $state<string | null>(null);
   publishBusyId = $state<string | null>(null);
-  publishResults = $state<Record<string, PublishRunResult>>({});
   publishConfigDrafts = $state<Record<string, Record<string, string>>>({});
 
   // ── Destinations picker (#221) — provider-neutral (gdrive: folders) ──────
@@ -99,12 +104,14 @@ export class PublishSectionController {
   /** #452 — a pick that would change the book's folder for everyone, awaiting confirmation. */
   pendingDestination = $state<Record<string, PublishDestination | undefined>>({});
 
-  // ── Preflight (#105) — the wizard's readiness step reads these ──────────────
-  preflightRows = $state<PreflightRow[]>([]);
-  /** True once a preflight run has completed (the gate needs "ran vs not-run"). */
-  preflightRan = $state(false);
-  preflightBusy = $state(false);
-  preflightError = $state<string | null>(null);
+  // ── The run ───────────────────────────────────────────────────────────────
+  /** Checks are on unless the person turns them off (ADR 0012 §5). */
+  skipChecks = $state(false);
+  running = $state(false);
+  /** What the run said so far, in order. */
+  progress = $state<PublishProgress[]>([]);
+  /** The last run's result (merged, when a run was for some targets only). */
+  result = $state<PublishBookResult | null>(null);
 
   private readonly deps: PublishSectionDeps;
 
@@ -120,7 +127,7 @@ export class PublishSectionController {
     try {
       this.publishCards = await this.deps.listProviders(projectDir);
     } catch (e) {
-      this.publishError = e instanceof Error ? e.message : String(e);
+      this.publishError = messageOf(e);
     }
   };
 
@@ -139,14 +146,13 @@ export class PublishSectionController {
    * the wizard can never show/act on a choice the lib itself wouldn't honor.
    * Returns `card.format` unchanged for every provider without `formats`.
    */
-  effectiveFormat = (card: PublishProviderCard): "pdf" | "html" => {
+  effectiveFormat = (card: PublishProviderCard): PublishProviderCard["format"] => {
     const allowed = card.formats;
     if (!allowed || allowed.length === 0) return card.format;
-    const draft = this.publishConfigDrafts[card.id]?.format;
-    if (draft && (allowed as string[]).includes(draft)) return draft as "pdf" | "html";
-    const saved = card.config.format;
-    if (saved && (allowed as string[]).includes(saved)) return saved as "pdf" | "html";
-    return card.format;
+    const pick = [this.publishConfigDrafts[card.id]?.format, card.config.format].find(
+      (f): f is PublishProviderCard["format"] => !!f && (allowed as string[]).includes(f),
+    );
+    return pick ?? card.format;
   };
 
   /**
@@ -162,54 +168,56 @@ export class PublishSectionController {
       await this.deps.setConfig(projectDir, providerId, values);
       await this.loadPublish();
     } catch (e) {
-      this.publishError = e instanceof Error ? e.message : String(e);
+      this.publishError = messageOf(e);
     } finally {
       this.publishBusyId = null;
     }
   };
 
   /**
-   * Choose which format this book publishes to a multi-format provider
-   * (#221 — gdrive only), written immediately to `publish.<id>.format` (a
-   * choice the whole team shares), so the wizard's other format-dependent UI
-   * (the folder picker step, the artifact picker) sees it right away.
+   * Choose the file a target receives when the target does not fix it,
+   * written immediately to `publish.<id>.format` (a choice the whole team
+   * shares).
    */
-  selectFormat = (providerId: string, format: "pdf" | "html"): Promise<void> =>
+  selectFormat = (providerId: string, format: PublishProviderCard["format"]): Promise<void> =>
     this.applyConfig(providerId, { format });
 
-  /** The destinations the team ticked for this book, as the cards report them (`publish.<id>.enabled` in the manifest). */
-  get tickedDestinations(): string[] {
-    return this.publishCards.filter((c) => c.config.enabled === "true").map((c) => c.id);
+  /** The book's targets, as the cards report them (`publish:` in the manifest). */
+  get bookTargets(): PublishProviderCard[] {
+    return this.publishCards.filter((c) => c.inBook);
+  }
+
+  /** The targets this person sends: the book's, less the ones they turned off. */
+  get sendingTargets(): PublishProviderCard[] {
+    return this.publishCards.filter((c) => c.inBook && c.sending);
   }
 
   /**
-   * Remember which destinations this book publishes to. Where a book is
-   * published is the team's decision, so each tick is saved in the manifest
-   * (`publish.<id>.enabled`) and a teammate who opens the book finds the same
-   * destinations ticked, needing only their own accounts. `chosen` maps a
-   * provider id to ticked or not; only the ones that differ from what the
-   * cards say are written, so nothing is rewritten when nothing changed.
-   * Resolves false (the reason is on `publishError`) when a write fails.
+   * Add a target to the book, or take one out. The book's targets are the
+   * team's, saved in its manifest, so everyone who has the book sees the
+   * change. Resolves false (the reason is on `publishError`) when it fails.
    */
-  saveDestinations = async (chosen: Record<string, boolean>): Promise<boolean> => {
+  setInBook = async (providerId: string, inBook: boolean): Promise<boolean> => {
     const projectDir = this.deps.projectDir();
     if (!projectDir || this.publishBusyId) return false;
-    const ticked = this.tickedDestinations;
-    const changed = Object.entries(chosen).filter(([id, on]) => ticked.includes(id) !== on);
-    if (changed.length === 0) return true;
-    this.publishBusyId = "destinations";
+    const ids = this.bookTargets.map((c) => c.id).filter((id) => id !== providerId);
+    this.publishBusyId = providerId;
     this.publishError = null;
     try {
-      for (const [id, on] of changed) await this.deps.setConfig(projectDir, id, { enabled: on ? true : "" });
+      await this.deps.setTargets(projectDir, inBook ? [...ids, providerId] : ids);
       await this.loadPublish();
       return true;
     } catch (e) {
-      this.publishError = e instanceof Error ? e.message : String(e);
+      this.publishError = messageOf(e);
       return false;
     } finally {
       this.publishBusyId = null;
     }
   };
+
+  /** Send one of the book's targets or not. This person's own choice, kept on this computer. */
+  setSending = (providerId: string, sending: boolean): Promise<void> =>
+    this.applyConfig(providerId, { send: sending ? "" : "off" });
 
   /**
    * Choose which SAVED account this book publishes with. The choice is this
@@ -233,7 +241,7 @@ export class PublishSectionController {
       // showing until the wizard step is re-entered.
       await this.loadDestinationsIfPickerAvailable(providerId);
     } catch (e) {
-      this.publishError = e instanceof Error ? e.message : String(e);
+      this.publishError = messageOf(e);
     } finally {
       this.publishBusyId = null;
     }
@@ -265,7 +273,7 @@ export class PublishSectionController {
       await this.loadPublish();
       this.deps.onSaved?.();
     } catch (e) {
-      this.publishError = e instanceof Error ? e.message : String(e);
+      this.publishError = messageOf(e);
     } finally {
       this.publishBusyId = null;
     }
@@ -299,7 +307,7 @@ export class PublishSectionController {
     } catch (e) {
       this.destinationsError = {
         ...this.destinationsError,
-        [providerId]: e instanceof Error ? e.message : String(e),
+        [providerId]: messageOf(e),
       };
     } finally {
       this.destinationsBusyId = { ...this.destinationsBusyId, [providerId]: false };
@@ -385,7 +393,7 @@ export class PublishSectionController {
     try {
       destination = await this.deps.createDestination(projectDir, providerId, name);
     } catch (e) {
-      this.publishError = e instanceof Error ? e.message : String(e);
+      this.publishError = messageOf(e);
       return;
     } finally {
       this.publishBusyId = null;
@@ -398,61 +406,70 @@ export class PublishSectionController {
     await this.selectDestination(providerId, destination);
   };
 
-  /** Run one provider. `artifactPath` is the file/folder the wizard just
-   *  built (the lib's manifest-default location is used when absent). */
-  runPublish = async (providerId: string, dryRun: boolean, artifactPath = ""): Promise<void> => {
+  /** Save every settings draft, so the run uses what the person sees. */
+  private async flushAllDrafts(): Promise<void> {
+    for (const id of Object.keys(this.publishConfigDrafts)) await this.flushPublishDraft(id);
+  }
+
+  /**
+   * Publish (or Check only) through the one run. Every target the person
+   * sends, unless `intent.targets` names some (Send anyway, Try again): then
+   * their results replace theirs in the last result. A failure is part of the
+   * result; `publishError` is only for a run that could not start.
+   */
+  publish = async (intent: PublishIntent = {}): Promise<void> => {
     const projectDir = this.deps.projectDir();
-    if (!projectDir || this.publishBusyId) return;
-    this.publishBusyId = providerId;
+    if (!projectDir || this.running || this.publishBusyId) return;
+    const targets = intent.targets ?? this.sendingTargets.map((c) => c.id);
+    this.running = true;
     this.publishError = null;
+    this.progress = [];
+    const off = this.deps.onProgress((p) => {
+      this.progress = [...this.progress, p];
+    });
     try {
-      // Publishing saves pending settings so the run uses what the author
-      // sees; a dry run ("Check readiness") must have NO side effects, so it
-      // checks what's on disk.
-      if (!dryRun) await this.flushPublishDraft(providerId);
-      const result = await this.deps.run(projectDir, providerId, {
-        dryRun,
-        ...(artifactPath ? { artifactPath } : {}),
+      await this.flushAllDrafts();
+      const result = await this.deps.publish({
+        projectDir,
+        targets,
+        ...(intent.checkOnly ? { checkOnly: true } : {}),
+        ...(this.skipChecks ? { skipChecks: true } : {}),
+        ...(intent.sendAnyway ? { sendAnyway: intent.sendAnyway } : {}),
+        ...(intent.allowShrink ? { allowShrink: true } : {}),
       });
-      this.publishResults = { ...this.publishResults, [providerId]: result };
-      if (result.ok && !dryRun) {
-        this.deps.onPublished?.(result.outcome?.kind === "guided");
-      }
+      this.result = intent.targets && this.result ? merge(this.result, result) : result;
+      this.deps.onResult?.(this.result);
     } catch (e) {
-      this.publishError = e instanceof Error ? e.message : String(e);
+      this.publishError = messageOf(e);
     } finally {
-      this.publishBusyId = null;
+      off();
+      this.running = false;
     }
   };
 
-  /**
-   * Run the pre-build publish preflight (#105) for the selected destinations.
-   * Called on ENTERING the wizard's Preflight step and on manual Re-run — each
-   * call is a fresh run (checks the current on-disk content). Errors surface on
-   * `preflightError` and leave `preflightRan` true so the gate still evaluates.
-   */
-  runPreflight = async (providerIds: string[]): Promise<void> => {
-    const projectDir = this.deps.projectDir();
-    if (!projectDir || this.preflightBusy) return;
-    this.preflightBusy = true;
-    this.preflightError = null;
-    try {
-      this.preflightRows = await this.deps.preflight(projectDir, providerIds);
-      this.preflightRan = true;
-    } catch (e) {
-      this.preflightError = e instanceof Error ? e.message : String(e);
-      // A failed run must not read as "checked, all clear" — keep any prior
-      // rows cleared so the gate treats it as unresolved.
-      this.preflightRows = [];
-      this.preflightRan = true;
-    } finally {
-      this.preflightBusy = false;
-    }
+  /** Stop the run (it ends as stopped, with nothing sent after the stop). */
+  cancel = (): void => {
+    void this.deps.cancelPublish().catch(() => {});
   };
 
   openPublishUrl = (url: string): void => {
     void this.deps.openExternal(url).catch((e) => {
-      this.publishError = e instanceof Error ? e.message : String(e);
+      this.publishError = messageOf(e);
     });
+  };
+}
+
+/** A run for some targets laid over the last run's result, each target in its place. */
+function merge(last: PublishBookResult, next: PublishBookResult): PublishBookResult {
+  const paths = new Set(next.files.map((f) => f.path));
+  const targets = [
+    ...last.targets.map((t) => next.targets.find((n) => n.id === t.id) ?? t),
+    ...next.targets.filter((n) => !last.targets.some((t) => t.id === n.id)),
+  ];
+  return {
+    ...next,
+    ok: !next.failure && targets.every((t) => t.status === "sent" || t.status === "prepared" || t.status === "checked"),
+    files: [...last.files.filter((f) => !paths.has(f.path)), ...next.files],
+    targets,
   };
 }
