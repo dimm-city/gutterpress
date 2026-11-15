@@ -14,7 +14,7 @@
    * main thread: only tiles near the viewport are loaded, two at a time, each
    * scaled down on decode so a big book's plates never sit in memory full-size.
    */
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { getPlatform } from "#lib/platform/index.ts";
   import { api } from "#lib/api.ts";
   import type { MediaImageEntry, MediaImageDetails } from "#lib/platform/dtos.ts";
@@ -46,16 +46,27 @@
   /** relPath of the selected image whose full-size preview failed to load. */
   let detailBroken = $state<string | null>(null);
 
-  /** Load a tile's thumbnail once it is near the viewport (and again if its file changes). */
+  /** The nearest ancestor that scrolls (the grid's panel), so the observer's margin applies to it. */
+  function scrollParent(node: HTMLElement): HTMLElement | null {
+    for (let el = node.parentElement; el; el = el.parentElement) {
+      if (/(auto|scroll)/.test(getComputedStyle(el).overflowY)) return el;
+    }
+    return null;
+  }
+
+  /** Load a tile's thumbnail when it is near the viewport (and again if its file changes); stop waiting if it scrolls away first. */
   function tile(node: HTMLElement, entry: MediaImageEntry) {
     let current = entry;
     const seen = new IntersectionObserver(
       (hits) => {
-        if (hits.some((h) => h.isIntersecting)) {
+        const last = hits[hits.length - 1]!;
+        if (last.isIntersecting) {
           thumbs.want(current.relPath, api.media.imageUrl(current.path, current.mtimeMs));
+        } else {
+          thumbs.unwant(current.relPath);
         }
       },
-      { rootMargin: "200px" },
+      { root: scrollParent(node), rootMargin: "200px" },
     );
     seen.observe(node);
     return {
@@ -64,12 +75,16 @@
         seen.unobserve(node);
         seen.observe(node); // re-reports, so a changed file reloads
       },
+      // Not dropped here: opening the detail view removes every tile, and going back
+      // should not decode them all again. `refresh` frees thumbnails of images that left the list.
       destroy() {
         seen.disconnect();
-        thumbs.drop(current.relPath);
+        thumbs.unwant(current.relPath);
       },
     };
   }
+
+  onDestroy(() => thumbs.retainOnly(new Set()));
 
   let images = $state<MediaImageEntry[]>([]);
   let loading = $state(false);
@@ -95,6 +110,7 @@
       const list = await api.media.listImages(dir);
       if (seq !== loadSeq) return;
       images = list;
+      thumbs.retainOnly(new Set(list.map((e) => e.relPath)));
       // Keep the detail view alive across a refresh when the file still exists.
       if (selected) {
         const still = list.find((e) => e.relPath === selected!.relPath);

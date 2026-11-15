@@ -11,31 +11,48 @@
 /** Longest edge a kept thumbnail is scaled to (tiles are about 90 px wide). */
 const THUMB_PX = 192;
 
-/** Fetch an image and return a small object URL of it, or the URL itself for SVG (already small). Rejects when the image cannot be decoded (e.g. TIFF). */
-export async function loadThumbnail(url: string): Promise<string> {
+/**
+ * Load a small version of an image: an object URL of it, the URL itself for SVG
+ * (already small), or null for a type the window cannot decode (TIFF), which is
+ * not worth fetching. Rejects when the load or decode fails, so the caller can
+ * try again later.
+ *
+ * It decodes through an <img>, not `response.blob()`: blob() on this streamed
+ * route failed intermittently (net::ERR_FAILED, nearly always under load) and
+ * parks the bytes in Electron's main process (a ~1-2 GB peak there).
+ */
+export async function loadThumbnail(url: string): Promise<string | null> {
   const path = new URL(url, "http://local").searchParams.get("path") ?? "";
+  if (/\.tiff?$/i.test(path)) return null;
   if (/\.svg$/i.test(path)) return url;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`thumbnail: ${response.status}`);
-  // One dimension only: the other follows the aspect ratio.
-  const bitmap = await createImageBitmap(await response.blob(), { resizeWidth: THUMB_PX, resizeQuality: "medium" });
+  const img = new Image();
+  img.src = url;
   try {
-    const canvas = document.createElement("canvas");
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.8));
-    if (!blob) throw new Error("thumbnail: could not encode");
-    return URL.createObjectURL(blob);
+    await img.decode();
+    // One dimension only: the other follows the aspect ratio.
+    const bitmap = await createImageBitmap(img, { resizeWidth: THUMB_PX, resizeQuality: "medium" });
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.8));
+      if (!blob) throw new Error("thumbnail: could not encode");
+      return URL.createObjectURL(blob);
+    } finally {
+      bitmap.close();
+    }
   } finally {
-    bitmap.close();
+    img.src = ""; // let go of the full-size decode
   }
 }
 
 interface Kept {
   url: string;
-  /** The thumbnail's `src`, or null when the image could not be loaded. */
+  /** The thumbnail's `src`, or null when there is none. */
   src: string | null;
+  /** The load failed (as opposed to there being nothing to show); the next `want()` tries again. */
+  failed: boolean;
 }
 
 export class ThumbCache {
@@ -46,7 +63,7 @@ export class ThumbCache {
   #running = 0;
 
   constructor(
-    private readonly load: (url: string) => Promise<string> = loadThumbnail,
+    private readonly load: (url: string) => Promise<string | null> = loadThumbnail,
     private readonly concurrency = 2,
   ) {}
 
@@ -57,11 +74,27 @@ export class ThumbCache {
 
   /** Ask for `key`'s thumbnail of the file at `url` (a new URL means the file changed). Safe to repeat. */
   want(key: string, url: string): void {
-    if (this.#kept[key]?.url === url || this.#wanted.get(key) === url) return;
+    const kept = this.#kept[key];
+    if ((kept?.url === url && !kept.failed) || this.#wanted.get(key) === url) return;
     this.#queue = this.#queue.filter((q) => q.key !== key);
     this.#wanted.set(key, url);
     this.#queue.push({ key, url });
     this.#pump();
+  }
+
+  /** Stop waiting for a tile that scrolled away before its turn. A load already running finishes and is kept. */
+  unwant(key: string): void {
+    if (this.#queue.some((q) => q.key === key)) {
+      this.#queue = this.#queue.filter((q) => q.key !== key);
+      this.#wanted.delete(key);
+    }
+  }
+
+  /** Keep thumbnails only for `keys` (the images still in the list); free the rest. */
+  retainOnly(keys: ReadonlySet<string>): void {
+    for (const key of [...Object.keys(this.#kept), ...this.#wanted.keys()]) {
+      if (!keys.has(key)) this.drop(key);
+    }
   }
 
   /** Forget a tile (it left the list or the panel closed) and free its thumbnail. */
@@ -81,18 +114,18 @@ export class ThumbCache {
       const { key, url } = this.#queue.shift()!;
       this.#running++;
       this.load(url).then(
-        (src) => this.#done(key, url, src),
-        () => this.#done(key, url, null),
+        (src) => this.#done(key, url, src, false),
+        () => this.#done(key, url, null, true),
       );
     }
   }
 
-  #done(key: string, url: string, src: string | null): void {
+  #done(key: string, url: string, src: string | null, failed: boolean): void {
     this.#running--;
     if (this.#wanted.get(key) === url) {
       this.#wanted.delete(key);
       this.#release(this.#kept[key]?.src);
-      this.#kept[key] = { url, src };
+      this.#kept[key] = { url, src, failed };
     } else {
       this.#release(src); // dropped or superseded while loading
     }

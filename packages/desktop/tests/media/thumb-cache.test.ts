@@ -92,3 +92,64 @@ test("dropping a tile frees its thumbnail, and a load finishing after the drop i
     URL.revokeObjectURL = realRevoke;
   }
 });
+
+test("a tile that scrolls away while still waiting is dequeued, so visible tiles are not stuck behind it; one already loading finishes", async () => {
+  const l = manualLoader();
+  const cache = new ThumbCache(l.load, 1);
+  cache.want("loading", "u0"); // starts at once
+  cache.want("gone", "u1");
+  cache.want("visible", "u2");
+  cache.unwant("gone");
+  cache.unwant("loading"); // already running: not cancelled
+  l.pending.shift()!.ok("data:0");
+  await tick();
+  expect(l.pending.map((p) => p.url)).toEqual(["u2"]); // u1 was never loaded
+  l.pending.shift()!.ok("data:2");
+  await tick();
+  expect(cache.src("loading")).toBe("data:0");
+  expect(cache.src("visible")).toBe("data:2");
+  expect(cache.src("gone")).toBeUndefined();
+});
+
+test("a failed load is tried again on the next want(); a deliberate 'no thumbnail' (null) is not", async () => {
+  const l = manualLoader();
+  const cache = new ThumbCache(l.load, 2);
+  cache.want("a", "ua");
+  l.pending.shift()!.fail();
+  await tick();
+  expect(cache.src("a")).toBeNull();
+  cache.want("a", "ua");
+  expect(l.pending.length).toBe(1);
+  l.pending.shift()!.ok("data:a");
+  await tick();
+  expect(cache.src("a")).toBe("data:a");
+
+  let calls = 0;
+  const counting = new ThumbCache(async () => (calls++, null), 2);
+  counting.want("t", "ut");
+  await tick();
+  counting.want("t", "ut");
+  await tick();
+  expect(calls).toBe(1);
+});
+
+test("retainOnly keeps thumbnails of images still in the list and frees the rest", async () => {
+  const revoked: string[] = [];
+  const realRevoke = URL.revokeObjectURL;
+  URL.revokeObjectURL = (u: string) => void revoked.push(u);
+  try {
+    const l = manualLoader();
+    const cache = new ThumbCache(l.load, 2);
+    cache.want("keep", "uk");
+    cache.want("gone", "ug");
+    l.pending.shift()!.ok("blob:keep");
+    l.pending.shift()!.ok("blob:gone");
+    await tick();
+    cache.retainOnly(new Set(["keep"]));
+    expect(cache.src("keep")).toBe("blob:keep");
+    expect(cache.src("gone")).toBeUndefined();
+    expect(revoked).toEqual(["blob:gone"]);
+  } finally {
+    URL.revokeObjectURL = realRevoke;
+  }
+});

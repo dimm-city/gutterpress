@@ -796,13 +796,14 @@ function createWindow() {
           type: "error",
           title: "Gutterpress stopped working",
           message: "The window crashed again right after reloading.",
-          detail: "Quit and reopen Gutterpress. Your unsaved changes are offered back when you reopen the book.",
-          buttons: ["Quit", "Keep open"],
+          detail: "Your unsaved changes are offered back when you reopen the book.",
+          buttons: ["Reload", "Quit"],
           defaultId: 0,
           cancelId: 1,
         })
         .then(({ response }) => {
-          if (response === 0) app.quit();
+          if (response === 1) app.quit();
+          else if (!win.isDestroyed()) win.webContents.reload();
         });
       return;
     }
