@@ -183,7 +183,9 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
       });
     }
     const config = resolveConfig({}, manifest);
-    const ids = options.targets?.length ? options.targets : await sendingTargets(options.projectDir, config.targets, deps);
+    const ids = options.targets?.length
+      ? options.targets
+      : (await publishPlan({ projectDir: options.projectDir, ...(options.manifestPath ? { manifestPath: options.manifestPath } : {}) }, deps.selections)).sending;
     if (ids.length === 0) {
       throw new Stopped({
         code: "NO_TARGETS",
@@ -421,13 +423,20 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
 }
 
 /**
- * The book's targets, less those the person turned off for themselves: their
- * own settings for the book hold `send: off` for a target they are not
- * sending this time.
+ * The book's plan as one person sees it: the book's targets (`publish:`, the
+ * team's), and the ones they are sending this time — all but those their own
+ * settings for the book turn off (`send: off`).
  */
-async function sendingTargets(projectDir: string, bookTargets: string[], deps: PublishDeps): Promise<string[]> {
-  const mine = (await deps.selections?.settings(projectDir)) ?? {};
-  return bookTargets.filter((id) => mine[id]?.send !== "off");
+export async function publishPlan(
+  book: { projectDir: string; manifestPath?: string },
+  selections?: PublishDeps["selections"],
+): Promise<{ targets: string[]; sending: string[] }> {
+  const { manifest } = await loadManifestWithPath(book.manifestPath ?? book.projectDir, {
+    explicit: book.manifestPath !== undefined,
+  });
+  const targets = resolveConfig({}, manifest).targets;
+  const mine = (await selections?.settings(book.projectDir)) ?? {};
+  return { targets, sending: targets.filter((id) => mine[id]?.send !== "off") };
 }
 
 /** Targets that are checked by the same rules, together. */

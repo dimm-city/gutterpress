@@ -528,7 +528,8 @@ export type {
 } from "../lib/publish/run-publish.ts";
 
 // ── The one publish run (ADR 0012): both views call this and show its progress.
-export { publishBook, renderPhases } from "../lib/publish/publish-book.ts";
+export { publishBook, publishPlan, renderPhases } from "../lib/publish/publish-book.ts";
+export { localPublishDir } from "../lib/publish/providers/local-folder.ts";
 export type {
   PublishStep,
   PublishProgress,
@@ -574,6 +575,7 @@ export type { PublishAccountSelection } from "../lib/publish/selections.ts";
 export {
   readPublishSettings,
   savePublishSettings,
+  setBookTargets,
   setPublishProviderConfig,
 } from "../lib/publish/manifest-publish.ts";
 

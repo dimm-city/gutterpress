@@ -1242,7 +1242,7 @@ test("setPublishProviderConfig round-trips yaml and preserves other sections", a
     expect(settings.itch?.target).toBe("someone/book");
     expect(settings.shopify?.shop).toBe("x.myshopify.com");
 
-    // Clearing every key removes the section (and eventually `publish:`).
+    // Clearing every key leaves the target's bare name: it stays in the book (ADR 0012).
     settings = await setPublishProviderConfig(dir, "shopify", { shop: "" });
     expect(settings.shopify).toBeUndefined();
     settings = await setPublishProviderConfig(dir, "itch", {
@@ -1254,7 +1254,7 @@ test("setPublishProviderConfig round-trips yaml and preserves other sections", a
     const raw = await readFile(path.join(dir, "manifest.yaml"), "utf8");
     expect(raw).toContain("title: Keep Me");
     expect(raw).toContain("# a comment");
-    expect(raw).not.toContain("publish:");
+    expect(raw).toMatch(/publish:\n {2}itch:\n {2}shopify:\n/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

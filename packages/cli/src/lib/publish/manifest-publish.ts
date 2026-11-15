@@ -7,7 +7,7 @@
  * {@link savePublishSettings} keeps those in the private store (selections.ts).
  */
 import path from "node:path";
-import { isMap } from "yaml";
+import { isMap, Scalar } from "yaml";
 import type { Document } from "yaml";
 import { loadManifestDoc, writeManifestDoc } from "../manifest-doc.ts";
 import type { PublishSelectionsStore } from "./selections.ts";
@@ -60,8 +60,8 @@ export async function readPublishSettings(
 
 /**
  * Merge `values` into the target's `publish:` section. A value of `undefined`, `null`
- * or `""` deletes that key; emptied sections (and an emptied `publish:` map)
- * are removed rather than left dangling. Returns the updated settings straight
+ * or `""` deletes that key; a section left empty becomes the target's bare
+ * name, so the target stays in the book. Returns the updated settings straight
  * from the in-memory document — no re-read.
  */
 export async function setPublishProviderConfig(
@@ -86,17 +86,51 @@ export async function setPublishProviderConfig(
     }
   }
 
+  // A target is in the book because its entry is there (ADR 0012): clearing
+  // its last setting leaves just its name.
   const section = doc.getIn(["publish", sectionKey], true);
   if (isMap(section) && section.items.length === 0) {
-    doc.deleteIn(["publish", sectionKey]);
-  }
-  const publish = doc.get("publish", true);
-  if (isMap(publish) && publish.items.length === 0) {
-    doc.delete("publish");
+    doc.setIn(["publish", sectionKey], bareTarget());
   }
 
   await writeManifestDoc(file, doc);
   return settingsFromDoc(doc);
+}
+
+/** A target with nothing to set, written as just its name (`itch:`). */
+function bareTarget(): Scalar {
+  const node = new Scalar(null);
+  node.source = "";
+  return node;
+}
+
+/**
+ * Make the book's targets exactly `ids` (ADR 0012 §3), in the new form: one
+ * `publish:` entry per target, a target with nothing to set written as just
+ * its name. A kept target keeps its settings; a removed one goes, settings
+ * and all. An older book's `targets:` list and `enabled:` ticks are dropped,
+ * since the list now says it all. No targets is `publish: {}`, which means
+ * none (no `publish:` key would mean the preset's).
+ */
+export async function setBookTargets(projectDir: string, ids: string[]): Promise<void> {
+  const { doc, file } = await loadManifestDoc(projectDir);
+  const wanted = [...new Set(ids.map(canonicalTargetId))];
+  if (!isMap(doc.get("publish", true))) doc.set("publish", doc.createNode({}));
+  const keys = Object.keys(settingsKeysOf(doc));
+  for (const key of keys) {
+    if (!wanted.includes(canonicalTargetId(key))) {
+      doc.deleteIn(["publish", key]);
+      continue;
+    }
+    doc.deleteIn(["publish", key, "enabled"]);
+    const section = doc.getIn(["publish", key], true);
+    if (!isMap(section) || section.items.length === 0) doc.setIn(["publish", key], bareTarget());
+  }
+  for (const id of wanted) {
+    if (!keys.some((key) => canonicalTargetId(key) === id)) doc.setIn(["publish", id], bareTarget());
+  }
+  doc.delete("targets");
+  await writeManifestDoc(file, doc);
 }
 
 /** `dir` as the manifest records a folder inside the book (relative, `/`); null when it lies outside. */
@@ -115,6 +149,7 @@ function insideBook(projectDir: string, dir: string): string | null {
  * an older book kept it there:
  *
  * - `credential`: which of their saved accounts the book publishes with.
+ * - `send`: `off` when they are not sending the book to this target this time.
  * - the local output folder `dir`, when it lies outside the book (a personal
  *   override). A folder inside the book is shared, and is written relative to
  *   it (an absolute in-book path is rewritten) so it means the same thing on
@@ -147,7 +182,7 @@ export async function savePublishSettings(
     if (inside !== null) {
       shared[key] = inside;
       mine[key] = "";
-    } else if (isDir || key === "credential" || (providerId === "gdrive" && key.startsWith("myFolder"))) {
+    } else if (isDir || key === "credential" || key === "send" || (providerId === "gdrive" && key.startsWith("myFolder"))) {
       mine[key] = isDir && text ? path.resolve(projectDir, text) : text;
       shared[key] = "";
     } else {
