@@ -1,5 +1,6 @@
 import { defineCommand } from "citty";
 import path from "node:path";
+import { constants as osConstants } from "node:os";
 import {
   log,
   runBuild,
@@ -29,6 +30,31 @@ const commandArgs = {
   "allow-shrink": { type: "boolean", description: "Build anyway when content is wider than the page content box, instead of failing. Chromium then scales the WHOLE book down to fit; each offender is reported as a warning." },
 } as const;
 
+/**
+ * Ctrl-C and SIGTERM stop the build through `runBuild`'s signal, so the
+ * browser is closed and the work dir removed instead of being left behind;
+ * the process then exits 128 + the signal number, as a shell expects. Only the
+ * first signal is handled: a second one takes the default action and ends
+ * the process at once.
+ */
+function abortOnSignals(): { signal: AbortSignal; exitCode: () => number; stop: () => void } {
+  const ctl = new AbortController();
+  let received: NodeJS.Signals | undefined;
+  const listeners = (["SIGINT", "SIGTERM"] as const).map((name) => {
+    const listener = () => {
+      received = name;
+      ctl.abort();
+    };
+    process.once(name, listener);
+    return [name, listener] as const;
+  });
+  return {
+    signal: ctl.signal,
+    exitCode: () => 128 + (received ? osConstants.signals[received] : 0),
+    stop: () => listeners.forEach(([name, listener]) => process.off(name, listener)),
+  };
+}
+
 export default defineCommand({
   meta: {
     name: "build",
@@ -37,6 +63,7 @@ export default defineCommand({
   },
   args: commandArgs,
   async run({ args, rawArgs }) {
+    const interrupt = abortOnSignals();
     try {
       rejectUnknownFlags(rawArgs, commandArgs, "build");
       rejectExtraPositionals((args as { _: unknown[] })._, 1, "build");
@@ -65,13 +92,16 @@ export default defineCommand({
         skipPostValidate: !!args["skip-post-validate"],
         allowShrink: !!args["allow-shrink"],
         rawArgs: args as Record<string, unknown>,
+        signal: interrupt.signal,
       });
     } catch (error) {
       if (error instanceof UsageError || error instanceof BuildError) {
         log.error(error.message);
-        process.exit(error.exitCode);
+        process.exit(interrupt.signal.aborted ? interrupt.exitCode() : error.exitCode);
       }
       throw error;
+    } finally {
+      interrupt.stop();
     }
   },
 });

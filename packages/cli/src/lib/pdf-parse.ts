@@ -3,7 +3,7 @@ import { mkdtemp, open, readFile, rm, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PDFDocument, PDFName } from "pdf-lib";
-import { execCapture } from "./exec";
+import { execCapture, TOOL_IDLE_TIMEOUT_MS } from "./exec";
 import { resolveGhostscript } from "./ghostscript";
 
 /** Bytes read per step of the marker scan. */
@@ -169,6 +169,8 @@ export async function getPerPageInkCoverage(
     const pages: InkCoveragePage[] = [];
     for (let first = 1; first <= pageCount; first += TAC_PAGES_PER_RUN) {
       const last = Math.min(first + TAC_PAGES_PER_RUN - 1, pageCount);
+      // -q makes Ghostscript silent, so this is a deadline for one chunk of
+      // pages (not an idle watch, and not for the whole book).
       const { stderr } = await execCapture(ghostscript, [
         "-q",
         "-dSAFER",
@@ -180,7 +182,7 @@ export async function getPerPageInkCoverage(
         `-dLastPage=${last}`,
         `-sOutputFile=${join(dir, "page-%d.pam")}`,
         pdfPath,
-      ]);
+      ], { timeoutMs: TOOL_IDLE_TIMEOUT_MS });
       // Ghostscript numbers the files from 1 within each run.
       for (let page = first; page <= last; page++) {
         const file = join(dir, `page-${page - first + 1}.pam`);

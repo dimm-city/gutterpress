@@ -39,6 +39,19 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **Google Drive uploads cope better with slow connections.** Files are sent in 2 MiB pieces
   instead of 8 MiB, so each piece fits its time limit at much lower speeds, and a long wait
   requested by Google is capped at one minute.
+- **Stopping a build with Ctrl-C no longer leaves a mess behind.** `gutterpress build` used to
+  die with Chromium still running and its work folder (`dist/.<book>-build-…`) and browser profile
+  left on disk, a few hundred MB each time. It now closes the browser, removes both and exits
+  with 130 (Ctrl-C) or 143 (SIGTERM).
+- **A PDF build gives back Chromium's memory as soon as the PDF is made.** The browser used to
+  stay open through the whole PDF/X conversion and the checks after it, which on a long book is
+  minutes of memory nothing needed.
+- **The PDF/X conversion shows its progress and cannot hang forever.** It prints the page it
+  has reached every ten seconds or so, and is stopped if Ghostscript goes ten minutes without
+  printing anything, however long the book. Each step of the colour check that measures ink
+  coverage (32 pages at a time) is also stopped after ten minutes. The output it keeps is
+  capped, so a very long conversion no longer grows without bound, and what Ghostscript and
+  qpdf report on a successful step still shows in the log.
 
 ## [0.11.28] - 2026-11-15
 
