@@ -177,6 +177,20 @@ describe("executeValidation publish-target handling", () => {
     }
   });
 
+  test("an empty target list means the book's own rules only, not the book's targets", async () => {
+    const dir = await makeDir("gutterpress-vexec-no-targets-");
+    try {
+      await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
+      stubCheckExecution();
+
+      const execution = await executeValidation({ input: dir, target: "" });
+
+      expect(execution.targets).toEqual([]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("the target-dependent run gets the target's overlaid config; the base run keeps the preset's", async () => {
     const dir = await makeDir("gutterpress-vexec-target-overlay-");
     try {

@@ -106,14 +106,17 @@ describe("a failed restore stops the command with the pipeline exit code", () =>
     ).rejects.toThrow(exitsWithPipeline);
     expectRestoreFailure();
   });
+
+  // ADR 0012: publishing makes the book's files, so it restores like a build.
+  test("publish to a built-in target", async () => {
+    await expect(
+      runCommand(publishCommand, { rawArgs: [book, "local", "--dry-run"] }),
+    ).rejects.toThrow(exitsWithPipeline);
+    expectRestoreFailure();
+  });
 });
 
 describe("nothing is downloaded when there is nothing to restore", () => {
-  test("publish to a built-in never restores, even when the book's copies are missing", async () => {
-    await runCommand(publishCommand, { rawArgs: [book, "--provider", "itch", "--dry-run"] }).catch(() => {});
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
   test("validate of a book with only local, bundled and unpinned extensions never touches the network", async () => {
     await writeFile(
       path.join(book, "manifest.yaml"),

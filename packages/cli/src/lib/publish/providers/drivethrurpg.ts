@@ -73,11 +73,6 @@ function drivethrurpgProvider(edition: DriveThruRpgEdition): PublishProvider {
             "The manifest has no title — DriveThruRPG's listing form will need one.",
         });
       }
-      issues.push({
-        severity: "info",
-        id: "drivethrurpg/validate-target",
-        message: `Tip: run \`gutterpress validate --target ${info.id}\` for DriveThruRPG's ${edition} checks before uploading.`,
-      });
       return issues;
     },
 

@@ -87,3 +87,10 @@ test.each([
   expect(f.code).toBe(code as never);
   expect(f.message).toContain(words);
 });
+
+test("a one-line error is not repeated as its own detail", () => {
+  expect(explainBuildFailure(new Error("No markdown files found"))).toEqual({
+    code: "BUILD_FAILED",
+    message: "Making the PDF failed: No markdown files found",
+  });
+});

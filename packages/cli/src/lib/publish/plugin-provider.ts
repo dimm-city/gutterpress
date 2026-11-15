@@ -25,6 +25,7 @@ import path from "node:path";
 
 import type { ResolvedExtensionConfig } from "../../schema/manifest.types.ts";
 import { log } from "../../utils/logger.ts";
+import { UsageError } from "../cli-args.ts";
 import { readExtensionMeta } from "../extension-manifest.ts";
 import { loadManifestWithPath, resolveConfig } from "../manifest.ts";
 import type { PublishPluginLocation } from "../markdown/plugins.ts";
@@ -139,13 +140,13 @@ export async function resolvePublishProvider(id: string, book: PublishBook): Pro
   const publisher = publishers.find((p) => p.id === id);
   if (publisher) return pluginProvider(publisher);
   if (npmEntry) {
-    throw new Error(
+    throw new UsageError(
       `"${id}" is in this book's extensions but is not a publishing plugin ` +
         `(its package.json has no "gutterpress": { "publish": true }).`,
     );
   }
   const known = [...listPublishProviders().map((p) => p.id), ...publishers.map((p) => p.id)].join(", ");
-  throw new Error(`Unknown publish provider "${id}". Available: ${known}.`);
+  throw new UsageError(`Unknown publish provider "${id}". Available: ${known}.`);
 }
 
 /** An http(s) URL, normalised; anything else is dropped — `--open` hands it

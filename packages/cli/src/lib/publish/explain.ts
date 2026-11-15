@@ -43,9 +43,9 @@ function textOf(e: unknown): string {
   return (e instanceof Error ? e.message : String(e ?? "")).trim();
 }
 
-/** The error as raised, kept as the detail unless the message already is it. */
+/** The error as raised, kept as the detail unless the message already shows it. */
 function failure(code: FailureCode, message: string, raw: string): Failure {
-  return raw && raw !== message ? { code, message, detail: raw } : { code, message };
+  return raw && !message.includes(raw) ? { code, message, detail: raw } : { code, message };
 }
 
 /**

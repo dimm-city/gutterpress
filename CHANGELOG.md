@@ -30,6 +30,16 @@ This project follows [Semantic Versioning](https://semver.org/).
   OS keychain can no longer read needs signing in again. Accounts are no longer encrypted by
   the OS keychain: the file is readable only by your user account, as the terminal's always
   was. The one-time notice about a missing Linux keyring is gone.
+- **`gutterpress publish` makes, checks and sends the book in one run** (ADR 0012). With no
+  targets named it publishes every target under `publish:`; name some to send only those
+  (`gutterpress publish itch gdrive`). It builds the files itself, once each (the PDF and the
+  PDF/X come from one render), checks each against its target's own rules, and holds back
+  only a target whose file breaks them; `--send-anyway` sends it, `--skip-checks` runs no
+  checks, and `--dry-run` now makes and checks the files without sending. `--connect itch`
+  and `--disconnect itch` take the target by name (`--provider` still works). **`--file` is
+  removed**: publish no longer sends a file built earlier, so a book published from CI needs
+  the same tools as `gutterpress build`. `--json` prints the run's result (each target's
+  status, file and findings) and keeps log lines on stderr.
 
 ### Fixed
 

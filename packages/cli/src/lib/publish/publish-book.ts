@@ -22,9 +22,10 @@ import path from "node:path";
 import type { BuildDiagnostic } from "../../engine/compiler/build.ts";
 import { loadManifestWithPath, resolveConfig } from "../manifest.ts";
 import { artifactName, resolveOutputDir } from "../output-paths.ts";
-import { hasOwnRules, publishTargetFor, type TargetFileFormat } from "../targets.ts";
+import { canonicalTargetId, hasOwnRules, TARGETS, type TargetFileFormat } from "../targets.ts";
 import { explainBuildFailure, explainSendFailure, type Failure } from "./explain.ts";
 import { resolvePublishProvider } from "./plugin-provider.ts";
+import { UsageError } from "../cli-args.ts";
 import { checkTargetSetup, runPublish } from "./run-publish.ts";
 import type { PreflightIssue, PublishDeps, PublishOutcome, PublishProvider } from "./types.ts";
 import type { ValidationExecutionArgs, ValidationExecutionResult } from "../validation-exec.ts";
@@ -119,8 +120,13 @@ export interface PublishBookOptions {
   checkOnly?: boolean;
   /** Run no checks (the one switch). */
   skipChecks?: boolean;
-  /** Send these targets even when their file broke their rules. */
-  sendAnyway?: string[];
+  /** Send these targets (`true`: every target) even when their file broke their rules. */
+  sendAnyway?: string[] | true;
+  /**
+   * Settings for this run only, by target (a Drive folder, a `local` folder),
+   * laid over the saved ones and never saved.
+   */
+  runSettings?: Record<string, Record<string, string>>;
   /** Build past the too-wide-content check (the whole book shrinks to fit). */
   allowShrink?: boolean;
   /** The app's own Chromium; the terminal launches one. */
@@ -147,6 +153,8 @@ class Stopped extends Error {
 }
 
 interface Planned {
+  /** The name the target was asked for by (an old id resolves to its target). */
+  asked: string;
   provider: PublishProvider;
   result: TargetResult;
 }
@@ -165,7 +173,9 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
     const { manifest, manifestPath, manifestDir } = await loadManifestWithPath(
       options.manifestPath ?? options.projectDir,
       { explicit: options.manifestPath !== undefined },
-    );
+    ).catch((e: unknown) => {
+      throw new Stopped({ code: "NO_MANIFEST", message: e instanceof Error ? e.message : String(e) });
+    });
     if (!manifestPath) {
       throw new Stopped({
         code: "NO_MANIFEST",
@@ -187,10 +197,24 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
       try {
         provider = await resolvePublishProvider(id, book);
       } catch (e) {
-        throw new Stopped({ code: "UNKNOWN_TARGET", message: e instanceof Error ? e.message : String(e) });
+        // An unknown name is the person's to fix; a plugin that could not be
+        // restored is the book failing to load.
+        if (e instanceof UsageError) throw new Stopped({ code: "UNKNOWN_TARGET", message: e.message });
+        throw new Stopped({ ...explainBuildFailure(e), message: e instanceof Error ? e.message : String(e) });
       }
-      const setup = await checkTargetSetup(provider, { projectDir: options.projectDir, providerId: provider.info.id, ...(options.manifestPath ? { manifestPath: options.manifestPath } : {}) }, deps);
+      const settings = options.runSettings?.[provider.info.id];
+      const setup = await checkTargetSetup(
+        provider,
+        {
+          projectDir: options.projectDir,
+          providerId: provider.info.id,
+          ...(options.manifestPath ? { manifestPath: options.manifestPath } : {}),
+          ...(settings ? { settings } : {}),
+        },
+        deps,
+      );
       planned.push({
+        asked: id,
         provider,
         result: {
           id: provider.info.id,
@@ -227,6 +251,8 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
 
     const validate = deps.executeValidation ?? (await import("../validation-exec.ts")).executeValidation;
     const targetIds = planned.map((p) => p.result.id);
+    // The checks know the built-in targets; an extension's target adds no rules.
+    const checkedIds = targetIds.filter((id) => TARGETS[canonicalTargetId(id)]);
 
     // ── 3. Check the source ─────────────────────────────────────────────────
     if (!options.skipChecks) {
@@ -236,7 +262,7 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
         input: options.projectDir,
         ...(options.manifestPath ? { manifest: options.manifestPath } : {}),
         phase: "pre-build",
-        target: targetIds.join(","),
+        target: checkedIds.join(","),
       });
       result.sourceFindings = findingsOf(execution);
       const blocking = result.sourceFindings.filter((f) => f.severity === "error");
@@ -315,7 +341,7 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
                 pdf: file,
                 ...(options.manifestPath ? { manifest: options.manifestPath } : {}),
                 phase: "post-build",
-                target: group.map((p) => p.result.id).join(","),
+                target: group.map((p) => p.result.id).filter((id) => checkedIds.includes(id)).join(","),
                 pluginStylePaths: [],
               }),
             );
@@ -336,12 +362,12 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
     }
 
     // ── 7. Send ─────────────────────────────────────────────────────────────
-    const anyway = new Set(options.sendAnyway ?? []);
+    const anyway = new Set(options.sendAnyway === true ? planned.map((p) => p.result.id) : (options.sendAnyway ?? []));
     for (const p of planned) {
       const r = p.result;
       if (r.status === "failed") continue;
       const broken = r.findings.filter((f) => f.severity === "error");
-      if (broken.length > 0 && !anyway.has(r.id)) {
+      if (broken.length > 0 && !anyway.has(r.id) && !anyway.has(p.asked)) {
         r.status = "held";
         r.failure = {
           code: "CHECKS_FAILED",
@@ -370,6 +396,7 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
           provider: p.provider,
           ...(options.manifestPath ? { manifestPath: options.manifestPath } : {}),
           ...(r.file ? { artifactPath: r.file } : {}),
+          ...(options.runSettings?.[r.id] ? { settings: options.runSettings[r.id] } : {}),
         },
         deps,
       );
@@ -407,7 +434,7 @@ async function sendingTargets(projectDir: string, bookTargets: string[], deps: P
 function byRules(planned: Planned[]): Planned[][] {
   const groups = new Map<string, Planned[]>();
   for (const p of planned) {
-    const target = publishTargetFor(p.result.id);
+    const target = TARGETS[canonicalTargetId(p.result.id)];
     const key = target && hasOwnRules(target) ? JSON.stringify([target.overlay, target.requiredChecks]) : "book";
     groups.set(key, [...(groups.get(key) ?? []), p]);
   }

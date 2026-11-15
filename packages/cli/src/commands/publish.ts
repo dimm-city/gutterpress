@@ -1,6 +1,7 @@
 import { defineCommand } from "citty";
 import path from "node:path";
 import { fstatSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import {
   log,
   FileTokenStore,
@@ -13,39 +14,42 @@ import {
   publishConnectionStatus,
   publishCredentialKey,
   listPublishAccounts,
-  runPublish,
+  publishBook,
   openPath,
   loadManifestWithPath,
   resolvePublishFormat,
+  isPathSpecifier,
   BuildError,
+  type FailureCode,
+  type PublishBookResult,
   type PublishDeps,
-  type RunPublishResult,
+  type TargetResult,
 } from "../index.ts";
-import {
-  EXIT_CODES,
-  UsageError,
-  rejectExtraPositionals,
-  rejectUnknownFlags,
-} from "../lib/cli-args.ts";
+import { EXIT_CODES, UsageError, rejectUnknownFlags } from "../lib/cli-args.ts";
 
 /**
- * `gutterpress publish` (#35) — push a built artifact to a publishing platform,
- * headlessly (CI-safe). One command, four modes:
+ * `gutterpress publish` — the terminal's view of the one publish run
+ * (ADR 0012). The run, its checks and its words live in the lib
+ * (`publishBook`); this file reads flags and prints what the run reports.
  *
- *   gutterpress publish --list                         # providers + connection status
- *   gutterpress publish --provider itch --connect      # store an API key (token via
- *                                                   #   --token, env var, or piped stdin)
- *   gutterpress publish --provider gdrive --connect    # oauth providers: opens the
- *                                                   #   browser instead — nothing to paste
- *   gutterpress publish --provider itch --disconnect   # forget the stored key
- *   gutterpress publish --provider itch [dir]          # publish (add --dry-run / --json)
- *   gutterpress publish --provider gdrive --folder-id <id>  # this run only: another
- *                                                   #   Drive folder (or --folder <name>)
- *   gutterpress publish --provider <package> [dir]     # via a book's publishing plugin
- *                                                   #   (experimental, #381)
+ *   gutterpress publish                      # make, check and send every target
+ *   gutterpress publish itch gdrive          # only these targets
+ *   gutterpress publish --dry-run            # make and check; send nothing
+ *   gutterpress publish --skip-checks        # run no checks
+ *   gutterpress publish --send-anyway        # send targets whose checks failed
+ *   gutterpress publish --list               # targets and connection status
+ *   gutterpress publish --connect itch       # save an API key (--token, env var
+ *                                            #   or piped stdin); gdrive opens the
+ *                                            #   browser instead
+ *   gutterpress publish --disconnect itch    # forget the saved key
+ *   gutterpress publish gdrive --folder-id <id>   # this run only: another Drive
+ *                                            #   folder (or --folder <name>)
  *
- * Credentials live in the 0600 user-config credential store (never in the
- * project); provider env vars (BUTLER_API_KEY, SWA_CLI_DEPLOYMENT_TOKEN,
+ * A positional that is a folder (`.`, `./book`, `/path`) is the book; the
+ * rest are targets. `--provider <id>` names one target, as before.
+ *
+ * Accounts live in the one per-person store the app shares (never in the
+ * book); provider env vars (BUTLER_API_KEY, SWA_CLI_DEPLOYMENT_TOKEN,
  * SHOPIFY_ADMIN_TOKEN, GDRIVE_REFRESH_TOKEN) override it for CI.
  */
 
@@ -76,87 +80,157 @@ function stdinLooksPiped(): boolean {
   }
 }
 
-function emitResult(result: RunPublishResult, json: boolean): void {
-  if (json) {
-    process.stdout.write(JSON.stringify(result, null, 2) + "\n"); // not console.log: see checks/formatter.ts
-    return;
+/** The book's folder and the targets, from the positionals and `--provider`. */
+async function readPositionals(
+  positionals: string[],
+  provider: string,
+): Promise<{ projectDir: string; targets: string[] }> {
+  let projectDir: string | undefined;
+  const targets: string[] = [];
+  for (const p of positionals) {
+    const isDir =
+      p === "." ||
+      p === ".." ||
+      path.isAbsolute(p) ||
+      isPathSpecifier(p) ||
+      (await stat(path.resolve(p)).then((s) => s.isDirectory()).catch(() => false));
+    if (isDir && projectDir === undefined) projectDir = p;
+    else if (isDir) throw new UsageError(`gutterpress publish: two book folders given: ${projectDir} and ${p}`);
+    else targets.push(p);
   }
-  for (const issue of result.issues) {
-    const line = `[${issue.id}] ${issue.message}`;
-    if (issue.severity === "error") log.error(line);
-    else if (issue.severity === "warning") log.warn(line);
-    else log.info(line);
+  if (provider) targets.push(provider);
+  return { projectDir: path.resolve(projectDir ?? "."), targets };
+}
+
+/** Failures that mean the command was asked for something it cannot do. */
+const USAGE_FAILURES: ReadonlySet<FailureCode> = new Set(["NO_MANIFEST", "UNKNOWN_TARGET"]);
+/** Failures of the tools that make the files. */
+const PIPELINE_FAILURES: ReadonlySet<FailureCode> = new Set(["TOOL_MISSING", "DISK_FULL", "PERMISSION", "BUILD_FAILED"]);
+
+function exitCodeFor(result: PublishBookResult): number {
+  if (result.ok) return EXIT_CODES.OK;
+  const code = result.failure?.code;
+  if (code && USAGE_FAILURES.has(code)) return EXIT_CODES.USAGE;
+  if (code && PIPELINE_FAILURES.has(code)) return EXIT_CODES.PIPELINE;
+  return EXIT_CODES.FINDINGS;
+}
+
+function where(f: { file?: string; line?: number; page?: number }): string {
+  if (f.file) return ` (${f.file}${f.line ? `:${f.line}` : ""})`;
+  return f.page ? ` (page ${f.page})` : "";
+}
+
+function printTarget(t: TargetResult): void {
+  for (const issue of t.issues.filter((i) => i.severity !== "error")) {
+    (issue.severity === "warning" ? log.warn : log.info)(`${t.label}: ${issue.message}`);
   }
-  if (!result.ok) {
-    log.error(result.error ?? "Publish failed.");
-    return;
+  // A held target lists its errors below; any target's warnings are worth reading.
+  for (const f of t.findings.filter((x) => x.severity === "warning")) {
+    log.warn(`${t.label}: [${f.checkId}] ${f.message}${where(f)}`);
   }
-  const outcome = result.outcome;
-  if (!outcome) {
-    log.success("Preflight passed — ready to publish.");
-    return;
+  switch (t.status) {
+    case "sent": {
+      const outcome = t.outcome?.kind === "published" ? t.outcome : undefined;
+      log.success(`${t.label}: ${outcome?.detail ?? "sent."}`);
+      if (outcome?.url) log.info(`  View it at: ${outcome.url}`);
+      for (const step of outcome?.followUp ?? []) log.info(`  Next: ${step}`);
+      return;
+    }
+    case "prepared": {
+      const outcome = t.outcome?.kind === "guided" ? t.outcome : undefined;
+      log.success(`${t.label}: ${outcome?.detail ?? "upload package ready."}`);
+      if (outcome) {
+        log.info(`  Package folder: ${outcome.packageDir}`);
+        log.info(`  Upload page:    ${outcome.openUrl}`);
+        outcome.checklist.forEach((step, i) => log.info(`    ${i + 1}. ${step}`));
+      }
+      return;
+    }
+    case "checked":
+      log.success(`${t.label}: checked; ready to send.${t.file ? ` ${t.file}` : ""}`);
+      return;
+    case "held":
+      log.error(`${t.label}: ${t.failure?.message}`);
+      for (const f of t.findings.filter((x) => x.severity === "error")) {
+        log.error(`  [${f.checkId}] ${f.message}${where(f)}`);
+      }
+      log.info(`  To send it anyway: gutterpress publish ${t.id} --send-anyway`);
+      return;
+    case "not-connected":
+      log.warn(`${t.label}: ${t.failure?.message}`);
+      log.info(`  Connect an account: gutterpress publish --connect ${t.id}`);
+      return;
+    case "failed":
+      log.error(`${t.label}: ${t.failure?.message}`);
+      if (t.failure?.detail) log.error(t.failure.detail);
+      return;
+    case "waiting":
+      log.info(`${t.label}: not reached.`);
   }
-  if (outcome.kind === "published") {
-    log.success(outcome.detail ?? "Published.");
-    if (outcome.url) log.info(`View it at: ${outcome.url}`);
-    for (const step of outcome.followUp ?? []) log.info(`Next: ${step}`);
-  } else {
-    log.success(outcome.detail ?? "Upload package prepared.");
-    log.info(`Package folder: ${outcome.packageDir}`);
-    log.info(`Upload page:    ${outcome.openUrl}`);
-    outcome.checklist.forEach((step, i) => log.info(`  ${i + 1}. ${step}`));
+}
+
+function printResult(result: PublishBookResult): void {
+  // The render's own notes were logged as it ran.
+  for (const f of result.sourceFindings.filter((x) => x.severity !== "info")) {
+    (f.severity === "error" ? log.error : log.warn)(`[${f.checkId}] ${f.message}${where(f)}`);
+  }
+  for (const t of result.targets) printTarget(t);
+  const failure = result.failure;
+  if (failure && failure.code !== "CANCELED") {
+    log.error(failure.message);
+    if (failure.detail) log.error(failure.detail);
+    if (failure.code === "TOO_WIDE") log.info("To build anyway: gutterpress publish --allow-shrink");
   }
 }
 
 const commandArgs = {
-  project: {
+  targets: {
     type: "positional",
-    description: "Project directory (default: cwd)",
+    description: "Targets to publish (default: the book's), and the book's folder (default: cwd)",
     required: false,
   },
   provider: {
     type: "string",
-    description:
-      "Provider id: itch | drivethrurpg | kdp | azure-swa | shopify | gdrive, or a publishing plugin's package name (experimental)",
+    description: "One target to publish, connect or disconnect (the same as naming it)",
   },
-  list: { type: "boolean", description: "List providers and connection status" },
+  list: { type: "boolean", description: "List targets and connection status" },
   connect: {
     type: "boolean",
     description:
-      "Store an API key for --provider (from --token, the provider's env var, or piped stdin)",
+      "Save an account for the named target (an API key from --token, its env var, or piped stdin; gdrive opens the browser)",
   },
-  disconnect: { type: "boolean", description: "Forget the stored key for --provider" },
+  disconnect: { type: "boolean", description: "Forget the saved account for the named target" },
   account: {
     type: "string",
     description:
-      "Named-credential label for --connect/--disconnect, so you can keep several accounts per provider (e.g. --account studio). Omit for the default account.",
+      "Named account for --connect/--disconnect, so you can keep several per target (e.g. --account studio). Omit for the default account.",
   },
   token: {
     type: "string",
     description:
-      "API key for --connect (prefer piping via stdin or the provider env var to keep it out of shell history)",
-  },
-  file: {
-    type: "string",
-    description:
-      "Artifact to publish (PDF path, or HTML export dir). Default: the manifest's output location",
+      "API key for --connect (prefer piping via stdin or the target's env var to keep it out of shell history)",
   },
   "folder-id": {
     type: "string",
-    description:
-      "Google Drive: publish to this folder id for this run only (the manifest is not changed)",
+    description: "Google Drive: send to this folder id for this run only (the manifest is not changed)",
   },
   folder: {
     type: "string",
     description:
-      "Google Drive: publish to the folder with this name in your own Drive, found or created, for this run only (the manifest is not changed)",
+      "Google Drive: send to the folder with this name in your own Drive, found or created, for this run only (the manifest is not changed)",
   },
   manifest: { type: "string", description: "Path to manifest.yaml" },
-  "dry-run": { type: "boolean", description: "Preflight only; don't contact the platform" },
+  "dry-run": { type: "boolean", description: "Make and check the files; send nothing" },
+  "skip-checks": { type: "boolean", description: "Run no checks" },
+  "send-anyway": { type: "boolean", description: "Send targets whose file failed their checks" },
+  "allow-shrink": {
+    type: "boolean",
+    description: "Build anyway when content is wider than the page; Chromium scales the whole book down to fit",
+  },
   json: { type: "boolean", description: "Machine-readable JSON output (CI)" },
   open: {
     type: "boolean",
-    description: "Open the result page / guided upload page in the browser",
+    description: "Open each result page / guided upload page in the browser",
   },
 } as const;
 
@@ -164,13 +238,18 @@ export default defineCommand({
   meta: {
     name: "publish",
     description:
-      "Publish the built PDF/HTML to a platform (itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify, Google Drive)",
+      "Make, check and send the book to its targets (a folder, Google Drive, itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify)",
   },
   args: commandArgs,
   async run({ args, rawArgs }) {
+    let projectDir: string;
+    let targets: string[];
     try {
       rejectUnknownFlags(rawArgs, commandArgs, "publish");
-      rejectExtraPositionals((args as { _: unknown[] })._, 1, "publish");
+      ({ projectDir, targets } = await readPositionals(
+        ((args as { _?: unknown[] })._ ?? []).map(String),
+        typeof args.provider === "string" ? args.provider.trim() : "",
+      ));
     } catch (error) {
       if (error instanceof UsageError) {
         log.error(error.message);
@@ -180,26 +259,18 @@ export default defineCommand({
     }
 
     const json = !!args.json;
-    const store = new FileTokenStore();
+    const manifestArg = typeof args.manifest === "string" ? args.manifest : undefined;
     const deps: PublishDeps = {
-      tokenStore: store,
+      tokenStore: new FileTokenStore(),
       // The person's own choices for each book (their account, their folder),
       // the same file the app keeps them in (ADR 0012).
       selections: new PublishSelectionsStore(),
-      onProgress: json ? undefined : (line) => log.info(line),
     };
 
     if (args.list) {
-      // B2: a provider that declares a `formats` array (today, only gdrive)
-      // can have its EFFECTIVE format overridden per-project by the manifest
-      // (`publish.<id>.format`) — resolvePublishFormat (run-publish.ts) is
-      // the one place that logic lives, shared with the actual publish run.
-      // --list takes the same project-dir/--manifest inputs every other
-      // subcommand does, so that context IS available here; load the
-      // manifest best-effort (a missing/unreadable one just falls back to
-      // each provider's static default, same as before this fix).
-      const projectDir = path.resolve((args.project as string | undefined) ?? ".");
-      const manifestArg = typeof args.manifest === "string" ? args.manifest : undefined;
+      // A target's EFFECTIVE format can be set per book (`publish.<id>.format`);
+      // resolvePublishFormat is the one place that logic lives. A missing or
+      // unreadable manifest falls back to each target's own default.
       let publishSettings: Record<string, unknown> = {};
       try {
         const { manifest } = await loadManifestWithPath(manifestArg ?? projectDir, {
@@ -207,8 +278,7 @@ export default defineCommand({
         });
         publishSettings = (manifest.publish ?? {}) as Record<string, unknown>;
       } catch {
-        // No manifest, or an invalid --manifest path: fall back to each
-        // provider's static `format` below, exactly like before this fix.
+        // Each target's own default format, below.
       }
 
       const providers = await listBookPublishProviders({
@@ -218,10 +288,8 @@ export default defineCommand({
       const rows = await Promise.all(
         providers.map(async (p) => {
           const status = await publishConnectionStatus(p, deps);
-          // Saved named accounts (default + named) for a credentialed provider.
           const accounts = p.credential.required ? await listPublishAccounts(p, deps) : [];
-          const providerConfig =
-            (publishSettings[p.id] as Record<string, unknown> | undefined) ?? {};
+          const providerConfig = (publishSettings[p.id] as Record<string, unknown> | undefined) ?? {};
           return {
             id: p.id,
             label: p.label,
@@ -244,74 +312,51 @@ export default defineCommand({
               : r.connected
                 ? "connected"
                 : "not connected";
-          log.info(
-            `${r.id.padEnd(13)} ${r.label.padEnd(22)} ${r.kind.padEnd(6)} ${r.format.padEnd(4)} ${status}`,
-          );
-          // List saved accounts so the user can see/reuse named credentials.
-          for (const acc of r.accounts) {
-            log.info(`    • ${acc.account ? acc.account : "(default)"}`);
-          }
+          log.info(`${r.id.padEnd(18)} ${r.label.padEnd(30)} ${r.kind.padEnd(6)} ${r.format.padEnd(4)} ${status}`);
+          for (const acc of r.accounts) log.info(`    • ${acc.account ? acc.account : "(default)"}`);
         }
       }
       return;
     }
 
-    const providerId = typeof args.provider === "string" ? args.provider : "";
-    if (!providerId) {
-      log.error(
-        "Specify a provider: gutterpress publish --provider <itch|drivethrurpg|kdp|azure-swa|shopify|gdrive> " +
-          "or a publishing plugin's package name (or --list).",
-      );
-      process.exit(EXIT_CODES.USAGE);
-    }
-    const projectDir = path.resolve((args.project as string | undefined) ?? ".");
-    let provider;
-    try {
-      // A built-in resolves exactly as before; any other id is looked up
-      // among the book's publishing plugins, restored first if missing.
-      provider = await resolvePublishProvider(providerId, {
-        projectDir,
-        ...(typeof args.manifest === "string" ? { manifestPath: args.manifest } : {}),
-      });
-    } catch (e) {
-      log.error(e instanceof Error ? e.message : String(e));
-      process.exit(e instanceof BuildError ? e.exitCode : EXIT_CODES.USAGE);
-    }
+    if (args.connect || args.disconnect) {
+      if (targets.length !== 1) {
+        log.error(`Name one target to ${args.connect ? "connect" : "disconnect"}: gutterpress publish --${args.connect ? "connect" : "disconnect"} <target> (see --list).`);
+        process.exit(EXIT_CODES.USAGE);
+      }
+      let provider;
+      try {
+        provider = await resolvePublishProvider(targets[0]!, {
+          projectDir,
+          ...(manifestArg !== undefined ? { manifestPath: manifestArg } : {}),
+        });
+      } catch (e) {
+        log.error(e instanceof Error ? e.message : String(e));
+        process.exit(e instanceof BuildError ? e.exitCode : EXIT_CODES.USAGE);
+      }
+      const account = typeof args.account === "string" ? args.account.trim() : "";
 
-    const account = typeof args.account === "string" ? args.account.trim() : "";
+      if (args.disconnect) {
+        const key = publishCredentialKey(provider.info.credential.host, account);
+        // Best-effort revoke at Google before returning: a one-shot process
+        // can afford to wait for it before printing success.
+        await disconnectPublishCredential(key, deps, { awaitRevoke: true });
+        log.success(`Disconnected ${provider.info.label}${account ? ` (${account})` : ""}.`);
+        return;
+      }
 
-    if (args.disconnect) {
-      const key = publishCredentialKey(provider.info.credential.host, account);
-      // Best-effort revoke at Google before returning (D4/D6) — the CLI is a
-      // one-shot process, so unlike the desktop's disconnect routes it can
-      // afford to wait for the whole thing to finish before printing success.
-      await disconnectPublishCredential(key, deps, { awaitRevoke: true });
-      log.success(`Disconnected ${provider.info.label}${account ? ` (${account})` : ""}.`);
-      return;
-    }
-
-    if (args.connect) {
       if (!provider.info.credential.required) {
         log.info(
           provider.info.experimental
-            ? `${provider.info.label} is a publishing plugin — it manages its own credentials (see its documentation). Just run: gutterpress publish --provider ${provider.info.id}`
-            : `${provider.info.label} is a guided provider — no API key needed. Just run: gutterpress publish --provider ${provider.info.id}`,
+            ? `${provider.info.label} is a publishing plugin — it manages its own credentials (see its documentation). Just run: gutterpress publish ${provider.info.id}`
+            : `${provider.info.label} needs no account. Just run: gutterpress publish ${provider.info.id}`,
         );
         return;
       }
       if (provider.info.credential.connect === "oauth") {
-        // No key to paste — an interactive browser consent flow instead.
-        // Today gdrive is the only oauth provider; connectGoogleDrive() is
-        // the shared implementation (CLI here, and the desktop).
-        //
-        // An author who reaches for --token out of habit (it works for
-        // every other provider) — or who has the provider's env var set, or
-        // pipes a key via stdin — must get an explanation: this branch
-        // returns before connectPublishProvider's own oauth rejection could
-        // ever run. Catch the same three signals here and fail with the same
-        // guidance, WITHOUT starting the browser flow. When none of the three
-        // are present, fall through to the browser flow — no opt-out flag
-        // required for the common case.
+        // No key to paste — a browser consent flow instead. An author who
+        // reaches for --token out of habit, has the env var set, or pipes a
+        // key must get an explanation, not a silently started browser flow.
         const envVar = provider.info.credential.envVar;
         const tokenGiven = typeof args.token === "string" && args.token.trim().length > 0;
         const envGiven = !!(envVar && process.env[envVar]?.trim());
@@ -320,21 +365,17 @@ export default defineCommand({
           log.error(
             `${provider.info.label} connects through your browser, not a pasted key — ` +
               `drop --token${envVar ? ` and unset ${envVar}` : ""}${stdinGiven ? " and remove the piped input" : ""}, then run ` +
-              `"gutterpress publish --provider ${provider.info.id} --connect".`,
+              `"gutterpress publish --connect ${provider.info.id}".`,
           );
           process.exit(EXIT_CODES.USAGE);
         }
         try {
-          const result = await connectGoogleDrive(
-            { ...(account ? { account } : {}) },
-            deps,
-            {
-              onAuthUrl: (url) => {
-                log.info("Opening your browser to connect Google Drive…");
-                log.info(`If it didn't open, visit: ${url}`);
-              },
+          const result = await connectGoogleDrive({ ...(account ? { account } : {}) }, deps, {
+            onAuthUrl: (url) => {
+              log.info("Opening your browser to connect Google Drive…");
+              log.info(`If it didn't open, visit: ${url}`);
             },
-          );
+          });
           log.success(
             `Connected ${provider.info.label}${account ? ` (${account})` : ""}${result.email ? ` — ${result.email}` : ""}.`,
           );
@@ -352,14 +393,11 @@ export default defineCommand({
       if (!token) {
         log.error(
           `No API key given. Pass --token, set ${envVar ?? "the provider env var"}, or pipe the key via stdin.` +
-            (provider.info.credential.tokenUrl
-              ? `\nCreate one at: ${provider.info.credential.tokenUrl}`
-              : ""),
+            (provider.info.credential.tokenUrl ? `\nCreate one at: ${provider.info.credential.tokenUrl}` : ""),
         );
         process.exit(EXIT_CODES.USAGE);
       }
-      // Shared verify-before-store flow: the pasted key is checked with the
-      // platform first, so a bad paste can't clobber a working credential.
+      // Verify before storing, so a bad paste can't clobber a working account.
       try {
         await connectPublishProvider(
           {
@@ -367,7 +405,7 @@ export default defineCommand({
             providerId: provider.info.id,
             token,
             ...(account ? { account } : {}),
-            manifestPath: typeof args.manifest === "string" ? args.manifest : undefined,
+            manifestPath: manifestArg,
           },
           deps,
         );
@@ -376,7 +414,7 @@ export default defineCommand({
         process.exit(e instanceof UsageError ? e.exitCode : EXIT_CODES.FINDINGS);
       }
       log.success(
-        `Connected ${provider.info.label}${account ? ` (${account})` : ""}. The key is stored in your user config, not the book.`,
+        `Connected ${provider.info.label}${account ? ` (${account})` : ""}. The key is saved in your own settings, not the book.`,
       );
       return;
     }
@@ -386,41 +424,42 @@ export default defineCommand({
     // elsewhere without changing it for everyone.
     const folderId = typeof args["folder-id"] === "string" ? args["folder-id"].trim() : "";
     const folder = typeof args.folder === "string" ? args.folder.trim() : "";
-    if ((folderId || folder) && provider.info.id !== "gdrive") {
-      log.error("--folder-id and --folder are for --provider gdrive.");
+    if ((folderId || folder) && targets.length > 0 && !targets.includes("gdrive")) {
+      log.error("--folder-id and --folder are for the gdrive target.");
       process.exit(EXIT_CODES.USAGE);
     }
 
-    let result: RunPublishResult;
-    try {
-      result = await runPublish(
-        {
-          projectDir,
-          providerId: provider.info.id,
-          provider,
-          manifestPath: typeof args.manifest === "string" ? args.manifest : undefined,
-          artifactPath: typeof args.file === "string" ? args.file : undefined,
-          dryRun: !!args["dry-run"],
-          ...(folderId || folder ? { settings: { folderId, folder } } : {}),
-        },
-        deps,
-      );
-    } catch (e) {
-      if (e instanceof UsageError) {
-        log.error(e.message);
-        process.exit(e.exitCode);
-      }
-      throw e;
-    }
-    emitResult(result, json);
+    // With --json, stdout carries the result alone: the build's own log lines
+    // go to stderr while the run lasts.
+    const consoleLog = console.log;
+    if (json) console.log = console.error;
+    const result = await publishBook(
+      {
+        projectDir,
+        ...(manifestArg !== undefined ? { manifestPath: manifestArg } : {}),
+        ...(targets.length > 0 ? { targets } : {}),
+        checkOnly: !!args["dry-run"],
+        skipChecks: !!args["skip-checks"],
+        ...(args["send-anyway"] ? { sendAnyway: targets.length > 0 ? targets : true } : {}),
+        allowShrink: !!args["allow-shrink"],
+        ...(folderId || folder ? { runSettings: { gdrive: { folderId, folder } } } : {}),
+        ...(json ? {} : { onProgress: (p) => log.info(p.message) }),
+      },
+      { ...deps, ...(json ? {} : { onProgress: (line: string) => log.info(line) }) },
+    ).finally(() => {
+      console.log = consoleLog;
+    });
 
-    if (result.ok && args.open && result.outcome) {
-      const target =
-        result.outcome.kind === "guided"
-          ? result.outcome.openUrl
-          : result.outcome.url;
-      if (target) await openPath(target).catch(() => {});
+    if (json) process.stdout.write(JSON.stringify(result, null, 2) + "\n"); // not console.log: see checks/formatter.ts
+    else printResult(result);
+
+    if (args.open) {
+      for (const t of result.targets) {
+        const url = t.outcome?.kind === "guided" ? t.outcome.openUrl : t.outcome?.url;
+        if (url) await openPath(url).catch(() => {});
+      }
     }
-    if (!result.ok) process.exit(EXIT_CODES.FINDINGS);
+    const code = exitCodeFor(result);
+    if (code !== EXIT_CODES.OK) process.exit(code);
   },
 });

@@ -442,7 +442,10 @@ export async function executeValidation(
   // Explicit --target overrides the book's targets for this run, and an
   // unknown id there fails loudly. Only targets with rules of their own get a
   // run: the rest (a Drive folder, a local folder) add no rules to check.
-  const requestedTargets = parseCsv(typeof args.target === "string" ? args.target : undefined);
+  // An empty list (the publish run, for targets none of which is built in)
+  // means the book's own rules only.
+  const requestedTargets =
+    typeof args.target === "string" ? (parseCsv(args.target) ?? []) : undefined;
   const targetIds = ruleTargets(
     requestedTargets ? resolveTargets(requestedTargets, []) : config.targets
   );

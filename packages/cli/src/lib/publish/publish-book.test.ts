@@ -150,6 +150,15 @@ describe("checks", () => {
     expect(result.ok).toBe(true);
   });
 
+  test("send anyway takes a target by its old name, or every target", async () => {
+    await writeBook("publish:\n  drivethrurpg-print:\n");
+    findings["post-build"].push(PRINT_ERROR);
+    const byOldName = await publishBook({ projectDir: book, targets: ["drivethrurpg"], sendAnyway: ["drivethrurpg"] }, deps());
+    expect(byOldName.targets[0]?.status).toBe("prepared");
+    const every = await publishBook({ projectDir: book, sendAnyway: true }, deps());
+    expect(every.targets[0]?.status).toBe("prepared");
+  });
+
   test("problems in the source stop the run before the build", async () => {
     await writeBook("publish:\n  local:\n");
     findings["pre-build"].push({ checkId: "source.markdown", severity: "error", message: "Broken link.", file: "a.md", line: 3 });
@@ -231,6 +240,19 @@ describe("sending", () => {
     expect(result.targets.map((t) => t.id)).toEqual(["drivethrurpg-print"]);
   });
 
+  test("settings for this run only reach both the setup check and the send, and are never saved", async () => {
+    await writeBook("publish:\n  itch:\n  local:\n    dir: out\n");
+    const d = deps();
+    const result = await publishBook(
+      { projectDir: book, runSettings: { itch: { target: "ada/guide" }, local: { dir: "elsewhere" } } },
+      d,
+    );
+    expect(result.targets.map((t) => t.status)).toEqual(["not-connected", "sent"]);
+    expect(existsSync(path.join(book, "elsewhere"))).toBe(true);
+    expect(existsSync(path.join(book, "out"))).toBe(false);
+    expect(await d.selections!.settings(book)).toEqual({});
+  });
+
   test("an unknown target stops the run, naming it", async () => {
     await writeBook("publish:\n  local:\n");
     const result = await publishBook({ projectDir: book, targets: ["nowhere"] }, deps());
@@ -251,6 +273,17 @@ describe("the run as the person sees it", () => {
   test("a book without a manifest says what to do", async () => {
     const result = await publishBook({ projectDir: book }, deps());
     expect(result.failure?.code).toBe("NO_MANIFEST");
+  });
+
+  test("a manifest that cannot be read stops the run with the reader's own words", async () => {
+    await writeFile(path.join(book, "manifest.yaml"), "title: Broken\nchapters:\n\t- a.md\n");
+    const result = await publishBook({ projectDir: book }, deps());
+    expect(result.failure?.code).toBe("NO_MANIFEST");
+    expect(result.failure?.message).toContain("Invalid YAML");
+    const missing = path.join(book, "missing.yaml");
+    const named = await publishBook({ projectDir: book, manifestPath: missing }, deps());
+    expect(named.failure?.code).toBe("NO_MANIFEST");
+    expect(named.failure?.message).toContain(`manifest not found: ${missing}`);
   });
 
   test("a book with no targets says how to add one", async () => {
