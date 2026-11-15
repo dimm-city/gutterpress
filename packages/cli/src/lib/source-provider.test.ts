@@ -1,7 +1,9 @@
-import { test, expect } from "bun:test";
-import { mkdir, mkdtemp, writeFile, readFile, rm, stat, utimes } from "node:fs/promises";
+import { test, expect, spyOn } from "bun:test";
+import { gitFs } from "./git-fs";
+import { mkdir, mkdtemp, readdir, writeFile, readFile, rm, stat, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import git from "isomorphic-git";
 import { detectProjectSource } from "./project-source";
@@ -852,6 +854,78 @@ test("same-byte-length edits are detected (racy index) — issue #50", async () 
       filepath: "chapter-01.md",
     });
     expect(Buffer.from(blob.blob).toString()).toBe("bbb");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// The racy case itself, forged exactly: after a same-length edit the index
+// entry carries the file's CURRENT stats (ctime included — which a test cannot
+// set directly) but the OLD oid. Only the rehash of a file modified around the
+// time the index was written can see this; the utimes test above is also
+// caught by the changed ctime, so it cannot prove the guard on its own.
+test("a file edited in the same tick as the index write is rehashed (racy-git)", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    const file = path.join(dir, "chapter-01.md");
+    await writeFile(file, "aaa");
+    await provider.snapshot({ projectDir: dir, message: "First" });
+    const oldOid = (await git.hashBlob({ object: Buffer.from("aaa") })).oid;
+
+    // Stage the edit (real stats), then swap the entry's oid back to the old
+    // content in the index file itself and fix its trailing SHA-1 checksum.
+    await writeFile(file, "bbb");
+    await git.add({ fs, dir, filepath: "chapter-01.md" });
+    const newOid = (await git.hashBlob({ object: Buffer.from("bbb") })).oid;
+    const indexPath = path.join(gitDirFor(dir), "index");
+    const index = fs.readFileSync(indexPath);
+    const at = index.indexOf(Buffer.from(newOid, "hex"));
+    expect(at).toBeGreaterThan(0);
+    Buffer.from(oldOid, "hex").copy(index, at);
+    const body = index.subarray(0, index.length - 20);
+    createHash("sha1").update(body).digest().copy(index, index.length - 20);
+    fs.writeFileSync(indexPath, index);
+
+    const changes = await listWorkdirChanges(dir);
+    expect(changes.adds).toContain("chapter-01.md");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// An unchanged tree must not be read back: a status walk (run after every
+// automatic version, and by Save version) used to reread and hash every tracked
+// file whose stats matched the index. Files that settled well before the index
+// was written cannot be "racily clean", so their stat match is trusted.
+test("a walk over an unchanged tree reads no file contents", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    const longAgo = new Date(Date.now() - 60_000);
+    for (const name of ["chapter-01.md", "chapter-02.md", "chapter-03.md"]) {
+      const file = path.join(dir, name);
+      await writeFile(file, `# ${name}\n`);
+    }
+    // Age every tracked file (init also commits a .gitignore etc.) so none is racy.
+    for (const entry of await readdir(dir)) {
+      if (entry !== ".git") await utimes(path.join(dir, entry), longAgo, longAgo);
+    }
+    await provider.snapshot({ projectDir: dir, message: "Settled files" });
+
+    const readFile = spyOn(gitFs.promises, "readFile");
+    try {
+      const changes = await listWorkdirChanges(dir);
+      expect(changes).toEqual({ adds: [], removes: [] });
+      // Only tracked book files count: git's own bookkeeping (.git/index,
+      // .git/config) is read on every walk.
+      const bookReads = readFile.mock.calls
+        .map(([file]) => String(file))
+        .filter((file) => file.startsWith(dir) && !file.startsWith(path.join(dir, ".git")));
+      expect(bookReads).toEqual([]);
+    } finally {
+      readFile.mockRestore();
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
