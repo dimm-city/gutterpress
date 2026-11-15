@@ -10,7 +10,7 @@
 
 import http from 'node:http';
 import net from 'node:net';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'path';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -221,15 +221,12 @@ const EMBEDDED_ETAG = `"gutterpress-${PACKAGE_VERSION}"`;
 
 const PROJECT_ASSET_CACHE_CONTROL = 'private, no-cache';
 
-interface ProjectAssetValidator {
-  stamp: string;
-  etag: string;
-}
-
 /**
  * Let replacement preview frames reuse unchanged local assets. `no-cache`
- * still requires a request on every load; an exact content hash turns it into
- * a body-less 304 only when the bytes really are unchanged. HTML deliberately
+ * still requires a request on every load; an ETag built from the file's stat
+ * stamp (inode, size, mtime and ctime in nanoseconds) turns it into a
+ * body-less 304 only when the file really is unchanged. Any write moves ctime,
+ * even one that keeps the size and restores mtime. HTML deliberately
  * stays on `serveStatic`'s `no-store` path because it contains each render.
  * The desktop clears its previous random-origin preview cache before opening
  * a project, bounding storage to the active preview instead of accumulating a
@@ -239,7 +236,6 @@ async function serveRevalidatedStatic(
   req: http.IncomingMessage,
   absPath: string,
   res: http.ServerResponse,
-  validators: Map<string, ProjectAssetValidator>,
 ): Promise<void> {
   const extension = path.extname(absPath).toLowerCase();
   if (extension === '.html' || extension === '.htm') {
@@ -266,32 +262,13 @@ async function serveRevalidatedStatic(
     fileStat.mtimeNs,
     fileStat.ctimeNs,
   ].join(':');
-  let validator = validators.get(absPath);
-  let data: Buffer | undefined;
-  if (!validator || validator.stamp !== stamp) {
-    try {
-      data = await readFile(absPath);
-    } catch {
-      await serveStatic(absPath, res);
-      return;
-    }
-    const digest = createHash('sha256').update(data).digest('base64url');
-    validator = { stamp, etag: `"gutterpress-file-${digest}"` };
-    validators.set(absPath, validator);
-  }
-  const headers = { ETag: validator.etag, 'Cache-Control': PROJECT_ASSET_CACHE_CONTROL };
-  if (req.headers['if-none-match'] === validator.etag) {
-    res.writeHead(304, headers);
+  const etag = `"gutterpress-file-${stamp}"`;
+  if (req.headers['if-none-match'] === etag) {
+    res.writeHead(304, { ETag: etag, 'Cache-Control': PROJECT_ASSET_CACHE_CONTROL });
     res.end();
     return;
   }
-  if (data) {
-    const contentType = STATIC_MIME[extension] ?? 'application/octet-stream';
-    res.writeHead(200, { 'Content-Type': contentType, ...headers });
-    res.end(data);
-    return;
-  }
-  await serveStatic(absPath, res, PROJECT_ASSET_CACHE_CONTROL, { ETag: validator.etag });
+  await serveStatic(absPath, res, PROJECT_ASSET_CACHE_CONTROL, { ETag: etag });
 }
 
 /** The build's stand-in for a missing image (`build-staging.ts`), encoded once. */
@@ -343,7 +320,6 @@ export async function createPreviewServer(
   const ACK_RETRY_MS = 2000;
   const MAX_ACK_RETRIES = 95;
   const instanceId = randomUUID();
-  const projectAssetValidators = new Map<string, ProjectAssetValidator>();
   let reloadRevision = 0;
   const clients = new Map<WebSocket, {
     acknowledgedRevision: number;
@@ -533,7 +509,7 @@ export async function createPreviewServer(
     // that our own inliner put it there, not where it happens to live.
     const cssAssetSource = state.cssAssets.get(pathname.replace(/^\/+/, ''));
     if (cssAssetSource) {
-      await serveRevalidatedStatic(req, cssAssetSource, res, projectAssetValidators).catch((err: Error) => {
+      await serveRevalidatedStatic(req, cssAssetSource, res).catch((err: Error) => {
         if (!res.headersSent) {
           res.writeHead(500);
           res.end(`Internal Server Error: ${err.message}`);
@@ -560,7 +536,7 @@ export async function createPreviewServer(
       return;
     }
     const serve = servingProjectRoot
-      ? serveRevalidatedStatic(req, absPath, res, projectAssetValidators)
+      ? serveRevalidatedStatic(req, absPath, res)
       : serveStatic(absPath, res);
     await serve.catch((err: Error) => {
       if (!res.headersSent) {
