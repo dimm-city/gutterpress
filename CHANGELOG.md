@@ -5,6 +5,21 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Checking a book full of large images no longer eats memory.** The image-resolution check
+  used to decode every image a second time, keep each page's pictures in memory until the end,
+  and quietly skip any image that took more than two seconds, so a slow computer could pass a
+  low-resolution image. It now reads each image's size from the PDF and releases every page
+  once it has been read, so every image is checked.
+- **The colour-space and transparency checks work on very large PDFs.** They read the whole PDF
+  into one block of memory, which fails on a file over about 540 MB, and then treated the
+  failure as "nothing found". They now read the file in pieces, and a PDF they cannot read is
+  reported as a warning instead of passing.
+- **A PDF/X build copies and parses the PDF fewer times.** The `Creator` is now written when the
+  PDF is made instead of in a separate load-and-save, and the transparency and gradient checks
+  share one parse. The finished files are unchanged.
+
 ## [0.11.28] - 2026-11-15
 
 ### Changed
