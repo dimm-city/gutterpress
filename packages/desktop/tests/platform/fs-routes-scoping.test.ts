@@ -15,7 +15,7 @@ import { POST as copyFileRoute } from "../../src/routes/api/fs/copy-file/+server
 import { POST as listProjectFilesRoute } from "../../src/routes/api/fs/list-project-files/+server";
 import { POST as listImagesRoute } from "../../src/routes/api/media/list-images/+server";
 import { POST as inspectImageRoute } from "../../src/routes/api/media/inspect/+server";
-import { POST as thumbnailRoute } from "../../src/routes/api/media/thumbnail/+server";
+import { GET as imageRoute } from "../../src/routes/api/media/image/+server";
 import { POST as logReadRoute } from "../../src/routes/api/log/read/+server";
 
 // `/api/fs/{read-file,write-file,list-dir,stat-file,copy-file}` must not
@@ -364,12 +364,26 @@ test("media/inspect: an image path outside the open project is rejected (403)", 
   expect(message).toBe("media:inspect: path is outside the open book");
 });
 
-test("media/thumbnail: an image path outside the open project is rejected (403)", async () => {
+function imageRequest(imagePath: string): Parameters<typeof imageRoute>[0] {
+  return { url: new URL(`http://local.test/api/media/image?path=${encodeURIComponent(imagePath)}`) } as Parameters<typeof imageRoute>[0];
+}
+
+test("media/image: an image path outside the open project is rejected (403)", async () => {
   const { status, message } = await caught(
-    thumbnailRoute({ request: request({ imagePath: path.join(siblingDir, "secret.md") }) } as Parameters<typeof thumbnailRoute>[0]),
+    Promise.resolve(imageRoute(imageRequest(path.join(siblingDir, "secret.png")))),
   );
   expect(status).toBe(403);
-  expect(message).toBe("media:thumbnail: path is outside the open book");
+  expect(message).toBe("media:image: path is outside the open book");
+});
+
+test("media/image: an in-project image is streamed with its type; a non-image is refused", async () => {
+  await writeFile(path.join(projectDir, "plate.png"), "png-bytes", "utf8");
+  const res = (await imageRoute(imageRequest(path.join(projectDir, "plate.png")))) as Response;
+  expect(res.headers.get("content-type")).toBe("image/png");
+  expect(await res.text()).toBe("png-bytes");
+  await writeFile(path.join(projectDir, "notes.md"), "x", "utf8");
+  const { status } = await caught(Promise.resolve(imageRoute(imageRequest(path.join(projectDir, "notes.md")))));
+  expect(status).toBe(415);
 });
 
 // ── log/read (code-review: read any absolute path's full contents) ─────────

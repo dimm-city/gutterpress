@@ -4,7 +4,6 @@ import {
   dialog,
   ipcMain,
   Menu,
-  nativeImage,
   nativeTheme,
   net,
   powerMonitor,
@@ -18,7 +17,6 @@ import os from "node:os";
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import * as fs from "node:fs";
-import { watch } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { scanForProjects, type ScanDeps } from "./discover-projects";
 import { seedSamples } from "./seed-samples";
@@ -36,7 +34,6 @@ import type { RecoveryHooks } from "./server-bridge/recovery-hooks";
 import type { AppImageHooks, DesktopHooks, DoctorHooks, UnsavedChoice } from "./server-bridge/host-hooks";
 import { AppImageIntegration } from "./appimage-integration";
 import { VersionPreviewHost } from "./version-preview";
-import type { MediaHooks } from "./server-bridge/media-hooks";
 import type { VcsHooks } from "./server-bridge/vcs-hooks";
 import type { RemoteHooks } from "./server-bridge/remote-hooks";
 import type { SyncSettingsHooks } from "./server-bridge/sync-settings-hooks";
@@ -86,7 +83,7 @@ import { gitIdentityFrom } from "./git-identity";
 import { PublishRunner, type PublishRunArgs } from "./publish-run";
 import { RendererFlushSession, runCloseGate } from "./close-gate";
 import { createLastFlushFailure } from "../src/lib/persistence-failures";
-import { FolderWatcher } from "./folder-watch/watcher";
+import { FolderWatcher, watchProject } from "./folder-watch/watcher";
 import type {
   AdoptFolderOptions,
   CheckResult,
@@ -306,6 +303,9 @@ const { readSettings, updateSettings } = createSettingsStore({
 // ──────────────────────────────────────────────────────────────────────────
 
 let mainWindow: BrowserWindow | null = null;
+/** When the main window's crashed renderer was last reloaded (see `render-process-gone`). */
+let lastRendererReloadAt = 0;
+const RENDERER_RELOAD_COOLDOWN_MS = 10_000;
 let appShellReady = false;
 
 // ── Unsaved-changes infrastructure (#44) ────────────────────────────────────
@@ -491,7 +491,7 @@ const autoSync = new AutoSyncOrchestrator({
 let pendingExitSync: Promise<void> | null = null;
 
 const folderWatch = new FolderWatcher({
-  watch: (dir, options, cb) => watch(dir, options, cb),
+  watch: watchProject,
   resolve: (p) => path.resolve(p),
   onFolderChanged: (name) =>
     safeSend("fs:folderChanged", { filename: name }),
@@ -780,8 +780,24 @@ function createWindow() {
       );
     }
   );
+  // A dead renderer leaves the window blank until the app is restarted, so reload
+  // it. The editor's unsaved text is not lost: it is autosaved to disk and mirrored
+  // to a recovery file in the main process, and the book's recovery scan offers it
+  // back when the book is reopened. A renderer that dies again straight after a
+  // reload would loop, so that second time the author is told instead.
   mainWindow.webContents.on("render-process-gone", (_e, details) => {
     void logAppError(`[renderer] render-process-gone reason=${details.reason}`);
+    if (details.reason === "clean-exit" || win.isDestroyed()) return;
+    const now = Date.now();
+    if (now - lastRendererReloadAt < RENDERER_RELOAD_COOLDOWN_MS) {
+      dialog.showErrorBox(
+        "Gutterpress stopped working",
+        "The window crashed again right after reloading. Quit and reopen Gutterpress. Your unsaved changes are offered back when you reopen the book.",
+      );
+      return;
+    }
+    lastRendererReloadAt = now;
+    win.webContents.reload();
   });
   mainWindow.webContents.on(
     "console-message",
@@ -1138,41 +1154,6 @@ const desktopHooksImpl: DesktopHooks = {
   },
   getNativeTheme: () => ({ shouldUseDarkColors: nativeTheme.shouldUseDarkColors }),
   getUserDataPath: () => app.getPath('userData'),
-};
-
-// Media thumbnail generation is exposed through a hook instead of importing
-// `electron` from the SvelteKit server build. Packaged +server.ts routes run
-// in a different ESM context, and importing Electron there can fail.
-const mediaHooksImpl: MediaHooks = {
-  async createThumbnail(filePath: string, maxPx: number): Promise<string | null> {
-    const ext = filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase();
-    if (ext === 'svg') {
-      const s = await stat(filePath);
-      if (s.size > 512 * 1024) return null;
-      const buf = await readFile(filePath);
-      return `data:image/svg+xml;base64,${buf.toString('base64')}`;
-    }
-
-    let img = nativeImage.createFromPath(filePath);
-    if (img.isEmpty()) {
-      try {
-        const buf = await readFile(filePath);
-        img = nativeImage.createFromBuffer(buf);
-      } catch {
-        return null;
-      }
-    }
-    if (img.isEmpty()) return null;
-
-    const { width, height } = img.getSize();
-    const scaled =
-      width > maxPx || height > maxPx
-        ? width >= height
-          ? img.resize({ width: maxPx })
-          : img.resize({ height: maxPx })
-        : img;
-    return scaled.toDataURL();
-  },
 };
 
 // ── Project discovery (#27) ─────────────────────────────────────────────────
@@ -1555,7 +1536,6 @@ registerHostServices({
   desktop: desktopHooksImpl,
   doctor: doctorHooksImpl,
   fsGuard: fsGuardImpl,
-  media: mediaHooksImpl,
   pickedFiles: pickedFilesImpl,
   prefs: prefsHooksImpl,
   recovery: recoveryHooksImpl,

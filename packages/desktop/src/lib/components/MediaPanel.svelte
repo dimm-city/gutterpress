@@ -7,13 +7,12 @@
    * print-readiness notes), insert-at-cursor, drag-to-editor, and an
    * "Add images…" importer.
    *
-   * Host work — listing, thumbnails (generated AND cached host-side so
-   * multi-MB originals never reach the renderer), inspection, and file
-   * copies — goes through `api.media.*`/`api.dialog.*`/`api.shell.*` server routes, the
+   * Host work — listing, inspection, and file copies — goes through `api.media.*`/`api.dialog.*`/`api.shell.*` server routes, the
    * default seam (CLAUDE.md §8); `getPlatform().onFolderChanged` is used only
    * for the live folder-changed push stream, one of the seam's narrower
-   * classes. Renderer-side thumbnail state is bounded (THUMB_LIMIT) so a huge
-   * project can't balloon memory.
+   * classes. Thumbnails are plain lazy `<img>`s of the original
+   * (`api.media.imageUrl`): the renderer decodes and scales them off the host's
+   * main thread, only for tiles near the viewport.
    */
   import { onMount } from "svelte";
   import { getPlatform } from "#lib/platform/index.ts";
@@ -42,13 +41,7 @@
     sidebarEmbedded?: boolean;
   } = $props();
 
-  /** Max thumbnails held in renderer state (small host-generated data URLs). */
-  const THUMB_LIMIT = 400;
-  /** Parallel thumbnail requests in flight. */
-  const THUMB_CONCURRENCY = 4;
-
   let images = $state<MediaImageEntry[]>([]);
-  let thumbs = $state<Record<string, string | null>>({});
   let loading = $state(false);
   let error = $state<string | null>(null);
   let selected = $state<MediaImageEntry | null>(null);
@@ -59,32 +52,10 @@
 
   let loadSeq = 0;
 
-  async function loadThumbnails(list: MediaImageEntry[], seq: number): Promise<void> {
-    const queue = list.slice(0, THUMB_LIMIT);
-    let next = 0;
-    const worker = async () => {
-      while (next < queue.length && seq === loadSeq) {
-        const entry = queue[next++];
-        try {
-          const url = await api.media.thumbnail(entry.path);
-          if (seq !== loadSeq) return;
-          thumbs[entry.relPath] = url;
-        } catch {
-          if (seq !== loadSeq) return;
-          thumbs[entry.relPath] = null;
-        }
-      }
-    };
-    await Promise.all(
-      Array.from({ length: THUMB_CONCURRENCY }, () => worker()),
-    );
-  }
-
   async function refresh(): Promise<void> {
     const dir = projectDir;
     if (!dir) {
       images = [];
-      thumbs = {};
       return;
     }
     const seq = ++loadSeq;
@@ -94,19 +65,16 @@
       const list = await api.media.listImages(dir);
       if (seq !== loadSeq) return;
       images = list;
-      thumbs = {}; // bounded: rebuilt per load, never accumulates across loads
       // Keep the detail view alive across a refresh when the file still exists.
       if (selected) {
         const still = list.find((e) => e.relPath === selected!.relPath);
         selected = still ?? null;
         if (!still) details = null;
       }
-      void loadThumbnails(list, seq);
     } catch (e: unknown) {
       if (seq !== loadSeq) return;
       error = e instanceof Error ? e.message : String(e);
       images = [];
-      thumbs = {};
     } finally {
       if (seq === loadSeq) loading = false;
     }
@@ -227,11 +195,7 @@
     </div>
     <div class="media-detail">
       <div class="detail-thumb">
-        {#if thumbs[sel.relPath]}
-          <img src={thumbs[sel.relPath]} alt={sel.name} />
-        {:else}
-          <Icon name="image" size={40} />
-        {/if}
+        <img src={api.media.imageUrl(sel.path)} alt={sel.name} decoding="async" />
       </div>
       <h3 class="detail-name" title={sel.relPath}>{sel.name}</h3>
       <p class="detail-path">{sel.relPath}</p>
@@ -330,11 +294,7 @@
               ondragstart={(e) => onDragStart(e, entry)}
             >
               <span class="tile-thumb">
-                {#if thumbs[entry.relPath]}
-                  <img src={thumbs[entry.relPath]} alt={entry.name} loading="lazy" />
-                {:else}
-                  <Icon name="image" size={22} />
-                {/if}
+                <img src={api.media.imageUrl(entry.path)} alt={entry.name} loading="lazy" decoding="async" />
               </span>
               <span class="tile-name">{entry.name}</span>
             </button>

@@ -511,9 +511,8 @@ export const api = {
     /** List all image files under a project directory (recursive, bounded). */
     listImages: (projectDir: string) =>
       post<MediaImageEntry[]>('/api/media/list-images', { projectDir }),
-    /** Generate a small (≤192px) thumbnail data URL for an image. Returns null when unavailable. */
-    thumbnail: (imagePath: string, width?: number, height?: number) =>
-      post<string | null>('/api/media/thumbnail', { imagePath, width, height }),
+    /** URL of an image file's bytes, for an <img> (the browser decodes and scales it off the host's main thread). */
+    imageUrl: (imagePath: string) => `/api/media/image?path=${encodeURIComponent(imagePath)}`,
     /** Inspect an image file — returns file size + header metadata (dimensions, DPI, alpha, color space). */
     inspect: (imagePath: string) =>
       post<MediaImageDetails | null>('/api/media/inspect', { imagePath }),
