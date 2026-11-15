@@ -19,7 +19,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   manifest with a `targets:` list or `enabled:` ticks is read with its old meaning, and the
   names `dtrpg` and `drivethrurpg` both mean `drivethrurpg-print`, including for
   `validate --target` and `new --targets`. Check results for that target are now labelled
-  `[drivethrurpg-print]`.
+  `[drivethrurpg-print]`. **Check once after upgrading:** an older book with neither (its
+  `publish:` entries have settings but no `enabled:`) is read the new way, so every entry is a
+  target and the preset's own targets are not added. Open **Publish → Targets** to confirm the
+  list.
 - **One place for your accounts, shared by the app and the terminal** (ADR 0012). Saved
   accounts and your own publishing choices for each book (which account it uses, an output
   folder outside the book, your own Drive folder) now live in the Gutterpress folder
