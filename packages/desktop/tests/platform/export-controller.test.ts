@@ -93,7 +93,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     syncProject: async (args: unknown) => {
       counters.sync += 1;
       syncArgs.push(args);
-      if (opts.cancelDuringSync && session) session.canceled = true;
+      if (opts.cancelDuringSync && session) session.abort.abort();
       return opts.syncProject ? opts.syncProject() : { status: "up-to-date" };
     },
     runBuild: async (buildOpts: BuildCall) => {
@@ -121,7 +121,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
       progress.push(e);
     },
     throwIfCanceled: (s) => {
-      if (s.canceled) throw new Error("canceled");
+      if (s.abort.signal.aborted) throw new Error("canceled");
     },
     isExportCanceledError: (e) =>
       e instanceof Error && (e as Error & { code?: string }).code === "EXPORT_CANCELED",
@@ -316,7 +316,6 @@ test("a FAILED export registers nothing (no reveal capability for a PDF never wr
 test("a second concurrent export is rejected while one is active", async () => {
   const active: ExportSession = {
     id: "x",
-    canceled: false,
     outPath: "/o",
     tempOutPath: "/o.tmp",
     abort: new AbortController(),

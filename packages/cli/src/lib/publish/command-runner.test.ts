@@ -1,14 +1,20 @@
-import { describe, expect, it, spyOn } from "bun:test";
-import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
+import { afterAll, describe, expect, it, spyOn } from "bun:test";
+import { mkdtempSync, writeFileSync, chmodSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { EXIT_FLUSH_GRACE_MS } from "../exec.ts";
 import { defaultCommandRunner, PUBLISH_IDLE_TIMEOUT_MS } from "./command-runner.ts";
 
+const scriptDirs: string[] = [];
+afterAll(() => {
+  for (const dir of scriptDirs) rmSync(dir, { recursive: true, force: true });
+});
+
 // A tiny helper to write an executable shell script into a temp dir.
 function writeScript(body: string): string {
   const dir = mkdtempSync(join(tmpdir(), "gutterpress-cmdrun-"));
+  scriptDirs.push(dir);
   const p = join(dir, "script.sh");
   writeFileSync(p, `#!/bin/sh\n${body}\n`);
   chmodSync(p, 0o755);

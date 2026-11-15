@@ -64,24 +64,25 @@
  * the switches — don't assume the container result generalizes to every host.
  */
 import { BrowserWindow } from "electron";
-import { DEFAULT_PRINT_OPTS, readyProbeExpr, assertMilestone } from "gutterpress";
+import { DEFAULT_PRINT_OPTS, RENDERER_CRASHED, readyProbeExpr, assertMilestone } from "gutterpress";
 import type { EngineBrowser, EngineSession } from "gutterpress";
 
 function milestoneFromChromeVersion(v: string): number {
   return Number(/^(\d+)/.exec(v)?.[1] ?? 0);
 }
 
-/** The plain sentence for a page's renderer dying (the CLI's wording). */
-const RENDERER_CRASHED = "Chromium's renderer for this page crashed (it may have run out of memory)";
-
 class ElectronEngineSession implements EngineSession {
   private closed = false;
 
   /**
-   * `gone` rejects when this window's renderer process dies. Electron leaves a
-   * pending `executeJavaScript` / `printToPDF` / `loadURL` unanswered when that
-   * happens, so every call below races against it: a crash fails the export
-   * with a sentence instead of leaving "Preparing PDF…" up forever.
+   * `gone` rejects when this window's renderer process dies. A pending
+   * `executeJavaScript` is never answered when that happens, so every call
+   * below races against it: a crash fails the export with a sentence instead
+   * of leaving "Preparing PDF…" up forever. `printToPDF` and `loadURL` do
+   * reject on their own, but with a bare "Printing failed" or ERR_FAILED, and
+   * (for a load) possibly before or without `render-process-gone`: a call
+   * that fails is given a moment for the crash to show, and a renderer found
+   * dead then is reported as the crash.
    *
    * Only a dead renderer fails the call. `unresponsive` is deliberately NOT
    * treated as failure: a renderer paginating a big book on a slow machine is
@@ -91,8 +92,14 @@ class ElectronEngineSession implements EngineSession {
    */
   constructor(private win: BrowserWindow, private gone: Promise<never>) {}
 
-  private guard<T>(work: Promise<T>): Promise<T> {
-    return Promise.race([work, this.gone]);
+  private async guard<T>(work: Promise<T>): Promise<T> {
+    try {
+      return await Promise.race([work, this.gone]);
+    } catch (e) {
+      await Promise.race([this.gone, new Promise((r) => setTimeout(r, 100))]);
+      if (this.wc.isCrashed()) throw new Error(RENDERER_CRASHED);
+      throw e;
+    }
   }
 
   private get wc() {

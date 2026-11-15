@@ -12,10 +12,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   not start another export until the cancelled one finished. Cancel now stops the work within
   seconds, closes the hidden pages and frees you to export again at once; for a publish it also
   stops the Google Drive upload and the itch.io and Azure uploaders that are running.
-- **A crashed page no longer leaves "Preparing PDF…" up forever.** If the hidden page that lays
-  out your book ran out of memory or died during an export, the app waited for it indefinitely.
-  The export now stops and says Chromium's renderer for the page crashed (it may have run out of
-  memory).
 - **A build no longer copies every image at once.** Copying a book's images into the build folder
   now runs at most 8 copies at a time, and uses an instant copy on filesystems that support it, so
   a book with a lot of art puts far less load on a slow or spinning disk.
@@ -62,10 +58,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   capped, so a very long conversion no longer grows without bound, and what Ghostscript and
   qpdf report on a successful step still shows in the log.
 - **A build whose Chromium dies now stops instead of hanging.** If Chromium ran out of memory and
-  was killed, or one page of it crashed (while loading, printing or starting up), a PDF build used
-  to wait forever or quit with no PDF and no message. It now fails within seconds,
-  says Chromium closed (it may have run out of memory),
-  and cleans up its work folder.
+  was killed, or the page that lays out your book crashed (while loading, laying out, printing or
+  starting up), a PDF build in the terminal or an export in the app used to wait forever, quit
+  with no PDF and no message, or fail with a bare "Printing failed". It now stops within seconds,
+  says what happened (Chromium closed, or the page's renderer crashed; it may have run out of
+  memory), and cleans up.
 - **An image from the web in your Markdown is now an error before the build starts.** That
   covers `![](https://...)` and a raw `<img src="https://...">`. An image that never answered
   used to leave the build waiting for ever; save the image in your book instead. As a safety

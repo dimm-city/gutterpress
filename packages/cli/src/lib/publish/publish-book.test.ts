@@ -408,6 +408,60 @@ describe("the run as the person sees it", () => {
     expect(builds[0]?.signal).toBe(stop.signal);
   });
 
+  test("stopping the run while butler uploads is a cancel, not a failed send, and ends the upload", async () => {
+    await writeBook("publish:\n  itch:\n    target: ada/guide\n");
+    const butler = path.join(root, "butler.sh");
+    await writeFile(butler, "#!/bin/sh\nsleep 30\n", { mode: 0o755 });
+    const stop = new AbortController();
+    setTimeout(() => stop.abort(), 600);
+    const started = Date.now();
+    const result = await publishBook(
+      { projectDir: book, signal: stop.signal },
+      deps({
+        env: { BUTLER_PATH: butler, BUTLER_API_KEY: "key" },
+        fetch: (async () => new Response("{}", { status: 200 })) as unknown as typeof fetch,
+      }),
+    );
+    expect(result.failure).toEqual({ code: "CANCELED", message: "" });
+    expect(Date.now() - started).toBeLessThan(10_000);
+  }, 20_000);
+
+  test("stopping the run while a Drive upload is in flight is a cancel, not a failed send", async () => {
+    await writeBook("publish:\n  gdrive:\n");
+    await new FileTokenStore(path.join(root, "creds.json")).set("gdrive", {
+      host: "gdrive",
+      kind: "google-oauth",
+      token: "rt",
+      createdAt: 1,
+    });
+    process.env.GUTTERPRESS_GOOGLE_CLIENT_ID = "id";
+    process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET = "secret";
+    const stop = new AbortController();
+    const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { "content-type": "application/json" } });
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes("oauth2.googleapis.com/token")) return json({ access_token: "at", expires_in: 3599 });
+      if (u.includes("drive/v3/about")) return json({ user: { emailAddress: "a@b.c" }, storageQuota: { usage: "0" } });
+      if (u.includes("uploadType=resumable")) return new Response(null, { status: 200, headers: { Location: "https://upload.example/s" } });
+      if (u === "https://upload.example/s") {
+        // The chunk hangs until the run is stopped, as a real request would.
+        return new Promise<Response>((_res, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
+          setTimeout(() => stop.abort(), 20);
+        });
+      }
+      if (init?.method === "POST") return json({ id: "folder", name: "Gutterpress" });
+      return json({ files: [] });
+    }) as unknown as typeof fetch;
+    try {
+      const result = await publishBook({ projectDir: book, signal: stop.signal }, deps({ fetch: fetchImpl }));
+      expect(result.failure).toEqual({ code: "CANCELED", message: "" });
+    } finally {
+      delete process.env.GUTTERPRESS_GOOGLE_CLIENT_ID;
+      delete process.env.GUTTERPRESS_GOOGLE_CLIENT_SECRET;
+    }
+  }, 20_000);
+
   test("stopping the run is a cancel, not a failure to explain", async () => {
     await writeBook("publish:\n  local:\n");
     const stop = new AbortController();

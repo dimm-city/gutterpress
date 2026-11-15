@@ -12,6 +12,7 @@
  *   2. Cancel is pressed mid-render. The export must settle as canceled within
  *      seconds, close its hidden windows, and not wait for the render.
  *   3. The slot those two freed: a third export starts, and finishes with a PDF.
+ *   4. Closing the app window mid-export ends the app promptly.
  *
  * Usage:
  *   node tests/integration/export-cancel-and-crash.pw.mjs <exe-or-main-js>
@@ -126,23 +127,47 @@ try {
         })),
     );
 
-  // 1. The renderer dies mid-render.
-  await startExport("crash.pdf");
-  await rendering();
-  // Once the book has loaded, the engine is waiting on the page (laying it
-  // out): that wait is what a dead renderer used to leave unanswered.
-  const pids = await waitFor("a render window with the book loaded", async () => {
-    const found = (await renderWindows()).filter((w) => w.laidOut && w.pid > 0).map((w) => w.pid);
-    return found.length ? found : null;
-  }, 30_000);
-  for (const pid of pids) process.kill(pid, "SIGKILL");
-  log(`killed the render window's renderer (pid ${pids.join(", ")})`);
-  const crashed = await result(30_000);
-  const crashedText = JSON.stringify(crashed);
-  if (crashed.ok !== false || !/renderer for this page crashed/.test(crashedText)) {
-    fail(`a crashed renderer did not end the export with the crash sentence: ${crashedText}`);
-  }
-  log("the export failed with the crash sentence instead of hanging");
+  // 1. The renderer dies mid-render: while the book loads, while it is laid
+  //    out (the engine waiting on the page), and while it prints. Each must
+  //    end the export with the crash sentence.
+  await electronApp.evaluate(({ app }) => {
+    globalThis.__killDuring = null;
+    app.on("web-contents-created", (_event, wc) => {
+      const kill = () => process.kill(wc.getOSProcessId(), "SIGKILL");
+      wc.on("did-navigate", (_e, url) => {
+        if (globalThis.__killDuring === "load" && url.startsWith("file:")) kill();
+      });
+      const print = wc.printToPDF.bind(wc);
+      wc.printToPDF = (options) => {
+        const printing = print(options);
+        if (globalThis.__killDuring === "print") setTimeout(() => !wc.isDestroyed() && kill(), 150);
+        return printing;
+      };
+    });
+  });
+  const expectCrashSentence = async (during, name) => {
+    await electronApp.evaluate((_e, d) => (globalThis.__killDuring = d), during);
+    await startExport(name);
+    if (during === "layout") {
+      await rendering();
+      // Once the book has loaded the engine is waiting on the page.
+      const pids = await waitFor("a render window with the book loaded", async () => {
+        const found = (await renderWindows()).filter((w) => w.laidOut && w.pid > 0).map((w) => w.pid);
+        return found.length ? found : null;
+      }, 30_000);
+      for (const pid of pids) process.kill(pid, "SIGKILL");
+    }
+    const crashed = await result(30_000);
+    await electronApp.evaluate((_e) => (globalThis.__killDuring = null));
+    const text = JSON.stringify(crashed);
+    if (crashed.ok !== false || !/renderer for this page crashed/.test(text)) {
+      fail(`a renderer killed during ${during} did not end the export with the crash sentence: ${text}`);
+    }
+    log(`killed during ${during}: the export failed with the crash sentence`);
+  };
+  await expectCrashSentence("layout", "crash-layout.pdf");
+  await expectCrashSentence("print", "crash-print.pdf");
+  await expectCrashSentence("load", "crash-load.pdf");
 
   // 2. Cancel mid-render.
   await startExport("cancel.pdf");
@@ -167,6 +192,18 @@ try {
     fail(`the export after a cancel did not finish: ${JSON.stringify(done)}`);
   }
   log("the next export was accepted and finished");
+  // 4. Closing the app's window mid-export ends the export and the app, rather
+  //    than keeping the app alive behind the hidden windows until it finishes.
+  await startExport("close.pdf");
+  await rendering();
+  const proc = electronApp.process();
+  const exited = new Promise((resolve) => proc.once("exit", resolve));
+  const closedAt = Date.now();
+  await electronApp.evaluate(({ BrowserWindow }) => {
+    for (const w of BrowserWindow.getAllWindows()) if (w.webContents.getURL().startsWith("app://")) w.destroy();
+  });
+  await Promise.race([exited, new Promise((_, reject) => setTimeout(() => reject(new Error("the app was still running 8s after its window closed mid-export")), 8_000))]);
+  log(`closing the window mid-export ended the app in ${Date.now() - closedAt} ms`);
   log("PASS: a dead renderer and Cancel both end the export promptly and free it for the next");
 } catch (error) {
   console.error(`[export-cancel-and-crash] FAIL: ${error.stack ?? error.message}`);

@@ -896,6 +896,10 @@ function createWindow() {
     if (activeRendererFlush?.session === flushSession) activeRendererFlush = null;
     stopFolderWatch();
     if (mainWindow === win) mainWindow = null;
+    // The hidden export windows would keep the app alive until the export
+    // finished; nobody is left to see it.
+    const exporting = getActiveExportSession();
+    if (exporting) cancelExportSession(exporting);
   });
   return win;
 }

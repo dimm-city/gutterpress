@@ -18,11 +18,10 @@ export interface ExportProgressEvent {
 
 export interface ExportSession {
   id: string;
-  canceled: boolean;
   outPath: string;
   /** The PDF's temp sibling; absent for an html export (no temp file). */
   tempOutPath?: string;
-  /** Aborted by Cancel: the build stops, closes its windows and settles. */
+  /** Aborted by Cancel (`signal.aborted` is the one cancel state): the build stops, closes its windows and settles. */
   abort: AbortController;
 }
 
@@ -60,13 +59,12 @@ export function sendExportProgress(event: ExportProgressEvent): void {
 }
 
 export function throwIfExportCanceled(session: ExportSession): void {
-  if (session.canceled) {
+  if (session.abort.signal.aborted) {
     throw new ExportCanceledError();
   }
 }
 
-/** Cancel: mark the session, and stop the render and anything it runs. */
+/** Cancel: stop the render and anything it runs. */
 export function cancelExportSession(session: ExportSession): void {
-  session.canceled = true;
   session.abort.abort();
 }

@@ -446,6 +446,8 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
         },
         options.signal ? { ...deps, signal: options.signal } : deps,
       );
+      // A stopped upload fails, but it is the person's stop, not a failed send.
+      stopIfCanceled();
       r.issues = [...r.issues, ...sent.issues.filter((i) => !r.issues.some((j) => j.id === i.id))];
       if (sent.ok && sent.outcome) {
         r.outcome = sent.outcome;
