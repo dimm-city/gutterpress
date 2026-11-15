@@ -106,15 +106,15 @@ export function readyProbeExpr(timeoutMs: number): string {
     })()`;
 }
 
+/** What a page whose renderer died is called. The desktop's Electron host says it the same way. */
+export const RENDERER_CRASHED = "Chromium's renderer for this page crashed (it may have run out of memory)";
+
 /**
  * The print-quality contract both hosts pass to their print call: tagged PDF
  * + document outline (named destinations — Tier 3 and the parity gate read
  * them back) + CSS page size + backgrounds. ONE object, spread by both
  * `SessionImpl.printToPDF` and the Electron host's `printToPDF`.
  */
-/** What a page whose renderer died is called. The desktop's Electron host says it the same way. */
-export const RENDERER_CRASHED = "Chromium's renderer for this page crashed (it may have run out of memory)";
-
 export const DEFAULT_PRINT_OPTS = {
   printBackground: true,
   preferCSSPageSize: true,

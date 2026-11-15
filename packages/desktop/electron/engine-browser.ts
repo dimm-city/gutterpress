@@ -97,7 +97,8 @@ class ElectronEngineSession implements EngineSession {
       return await Promise.race([work, this.gone]);
     } catch (e) {
       await Promise.race([this.gone, new Promise((r) => setTimeout(r, 100))]);
-      if (this.wc.isCrashed()) throw new Error(RENDERER_CRASHED);
+      // Cancel may already have destroyed the window.
+      if (!this.win.isDestroyed() && this.wc.isCrashed()) throw new Error(RENDERER_CRASHED);
       throw e;
     }
   }

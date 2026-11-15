@@ -63,6 +63,8 @@
           if (!b) return;
           b.style.transition = "opacity .2s";
           b.style.opacity = "0";
+          // The app is ready: a click during the fade belongs to it.
+          b.style.pointerEvents = "none";
           setTimeout(function () {
             b.remove();
           }, 220);

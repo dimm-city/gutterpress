@@ -11,7 +11,9 @@ This project follows [Semantic Versioning](https://semver.org/).
   while the hidden pages kept laying out and Ghostscript and uploads kept running, and you could
   not start another export until the cancelled one finished. Cancel now stops the work within
   seconds, closes the hidden pages and frees you to export again at once; for a publish it also
-  stops the Google Drive upload and the itch.io and Azure uploaders that are running.
+  stops the Google Drive upload and the itch.io and Azure uploaders that are running. Closing
+  the window during an export now stops it too, so the app quits at once instead of finishing the
+  export first.
 - **A build no longer copies every image at once.** Copying a book's images into the build folder
   now runs at most 8 copies at a time, and uses an instant copy on filesystems that support it, so
   a book with a lot of art puts far less load on a slow or spinning disk.
