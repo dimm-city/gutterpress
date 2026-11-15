@@ -5,6 +5,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Publishing a website to Google Drive no longer loads the whole site into memory.** The zip is
+  now written to disk file by file as it is built, so a few hundred MB of images no longer needs
+  several times that in RAM (a 300 MB site went from about 1 GB to about 80 MB at peak).
+- **Google Drive uploads cope better with slow connections.** Files are sent in 2 MiB pieces
+  instead of 8 MiB, so each piece fits its time limit at much lower speeds, and a long wait
+  requested by Google is capped at one minute.
+
 ## [0.11.28] - 2026-11-15
 
 ### Changed

@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { Writable } from "node:stream";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { unzipSync } from "fflate";
@@ -720,9 +722,13 @@ test("zipHtmlExport (A8) removes the temp directory it created when the write st
     );
 
     await expect(
-      zipHtmlExport(exportDir, "Failing Book", undefined, async () => {
-        throw new Error("simulated disk-full write failure");
-      }),
+      zipHtmlExport(exportDir, "Failing Book", undefined, () =>
+        new Writable({
+          write(_chunk, _enc, cb) {
+            cb(new Error("simulated disk-full write failure"));
+          },
+        }),
+      ),
     ).rejects.toThrow(/simulated disk-full write failure/);
 
     const after = new Set(
@@ -735,6 +741,41 @@ test("zipHtmlExport (A8) removes the temp directory it created when the write st
     await rm(exportDir, { recursive: true, force: true });
   }
 });
+
+test("zipHtmlExport streams: a large incompressible site does not sit in memory", async () => {
+  const exportDir = await mkdtemp(path.join(tmpdir(), "gutterpress-gdrive-src-"));
+  try {
+    // 96 MB of random (incompressible) bytes: the old build held the file AND
+    // the compressed archive in memory, i.e. ~190 MB of buffers at once.
+    const MB = 1024 * 1024;
+    const handle = await open(path.join(exportDir, "photo.bin"), "w");
+    for (let i = 0; i < 96; i++) await handle.write(randomBytes(MB));
+    await handle.close();
+    await writeFile(path.join(exportDir, BOOK_HTML), "<html></html>");
+
+    // A fresh process: inside the shared test process other tests' garbage
+    // makes buffer counts too noisy to bound.
+    const script = `
+      import { zipHtmlExport } from ${JSON.stringify(path.join(import.meta.dir, "gdrive.ts"))};
+      const base = process.memoryUsage().arrayBuffers;
+      let peak = base;
+      const t = setInterval(() => { peak = Math.max(peak, process.memoryUsage().arrayBuffers); }, 2);
+      const s = await zipHtmlExport(${JSON.stringify(exportDir)}, "Big Photo Book");
+      clearInterval(t);
+      console.log(JSON.stringify({ file: s.filePath, growth: peak - base }));
+    `;
+    const proc = Bun.spawn([process.execPath, "-e", script], { stdout: "pipe", stderr: "inherit" });
+    const { file, growth } = JSON.parse(await new Response(proc.stdout).text());
+    try {
+      expect((await stat(file)).size).toBeGreaterThan(90 * MB);
+      expect(growth).toBeLessThan(40 * MB);
+    } finally {
+      await rm(path.dirname(file), { recursive: true, force: true });
+    }
+  } finally {
+    await rm(exportDir, { recursive: true, force: true });
+  }
+}, 60_000);
 
 test("zipHtmlExport (A9) follows a symlinked file in the export directory instead of silently dropping it", async () => {
   const exportDir = await mkdtemp(path.join(tmpdir(), "gutterpress-gdrive-src-"));
