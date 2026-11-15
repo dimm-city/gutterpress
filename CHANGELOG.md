@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.28] - 2026-11-15
+
 ### Changed
 
 - **A publish target now says which file it gets** (ADR 0012, first part). DriveThruRPG is two
