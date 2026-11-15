@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type MarkdownIt from "markdown-it";
 import postcss from "postcss";
+import htmlhint from "htmlhint";
 
 import { assembleBookHtml } from "./assemble";
 import { inlineStyles } from "../asset-inline";
@@ -176,6 +177,18 @@ test("assembleBookHtml prints the book's language: <html lang> and its quotation
   expect(html).toContain("Er sagt „ja“.");
 });
 
+// A book with a .htmlhintrc asking for double-quoted attributes linted the
+// previous build's book.html and failed to build again over this meta tag,
+// which the author never wrote and cannot change.
+test("the print area meta passes HTMLHint's attr-value-double-quotes rule", async () => {
+  const html = await assembleBookHtml({
+    files: ["a.md"],
+    readText: () => Promise.resolve("# A\n"),
+    printArea: { width: 621, height: 810, preset: "dtrpg", spec: { label: "Bob's & Co", url: "https://x" } },
+  });
+  expect(htmlhint.HTMLHint.verify(html, { "attr-value-double-quotes": true })).toEqual([]);
+});
+
 test("assembleBookHtml writes the project's print area into <head>, in every book it assembles", async () => {
   const readText = () => Promise.resolve("# A\n");
   const html = await assembleBookHtml({
@@ -185,7 +198,7 @@ test("assembleBookHtml writes the project's print area into <head>, in every boo
   });
   const head = html.slice(0, html.indexOf("</head>"));
   expect(head).toContain(
-    `<meta name="gp-print-area" content='{"width":621,"height":810,"bleed":9,"safe":36,"artSafe":18,"preset":"dtrpg"}'>`,
+    `<meta name="gp-print-area" content="{&quot;width&quot;:621,&quot;height&quot;:810,&quot;bleed&quot;:9,&quot;safe&quot;:36,&quot;artSafe&quot;:18,&quot;preset&quot;:&quot;dtrpg&quot;}">`,
   );
   // one meta, and none at all without a print area
   expect(html.match(/gp-print-area/g)).toHaveLength(1);

@@ -27,9 +27,9 @@ test("renderBook writes the resolved print area into book.html", async () => {
   dirs.push(ctx.workDir);
   const html = await readFile(await renderBook(ctx), "utf8");
 
-  const meta = html.match(/<meta name="gp-print-area" content='([^']*)'>/);
+  const meta = html.match(/<meta name="gp-print-area" content="([^"]*)">/);
   expect(meta).not.toBeNull();
-  expect(JSON.parse(meta![1]!.replace(/&#39;/g, "'").replace(/&amp;/g, "&"))).toMatchObject({
+  expect(JSON.parse(meta![1]!.replace(/&quot;/g, '"').replace(/&amp;/g, "&"))).toMatchObject({
     width: 621,
     height: 810,
     bleed: 9,
@@ -49,8 +49,8 @@ test("a manifest's page.gutter travels into book.html's print area beside the pr
   dirs.push(ctx.workDir);
   const html = await readFile(await renderBook(ctx), "utf8");
 
-  const meta = html.match(/<meta name="gp-print-area" content='([^']*)'>/);
-  expect(JSON.parse(meta![1]!.replace(/&#39;/g, "'").replace(/&amp;/g, "&"))).toMatchObject({
+  const meta = html.match(/<meta name="gp-print-area" content="([^"]*)">/);
+  expect(JSON.parse(meta![1]!.replace(/&quot;/g, '"').replace(/&amp;/g, "&"))).toMatchObject({
     safe: 36,
     artSafe: 18,
     gutter: 54,
