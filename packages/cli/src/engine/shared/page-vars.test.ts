@@ -14,7 +14,7 @@ import { printAreaFromMeta, type PrintAreaSource } from "./print-area.ts";
 async function varsFor(opts: { printArea: PrintAreaSource; pluginCss?: string; projectCss?: string }) {
   const html = await assembleBookHtml({ files: ["a.md"], readText: () => Promise.resolve("# A\n"), ...opts });
   const css = html.slice(html.indexOf("<style data-project-css>"), html.indexOf("</style>"));
-  const content = html.match(/<meta name="gp-print-area" content='([^']*)'>/)![1]!;
+  const content = html.match(/<meta name="gp-print-area" content="([^"]*)">/)![1]!.replace(/&quot;/g, '"');
   const doc = { querySelector: () => ({ getAttribute: () => content }) };
   return pageGeometryVarsCss(extract(css), printAreaFromMeta(doc)).split("\n");
 }

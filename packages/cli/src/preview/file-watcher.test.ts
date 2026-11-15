@@ -186,9 +186,9 @@ describe('generateAndWriteHtml', () => {
 
     await generateAndWriteHtml(testDir, tempDir, resolveConfig({ title: 'Test' }, {}), new Map());
     const meta = (await Bun.file(join(tempDir, 'book.html')).text()).match(
-      /<meta name="gp-print-area" content='([^']*)'>/,
+      /<meta name="gp-print-area" content="([^"]*)">/,
     );
-    expect(JSON.parse(meta![1]!.replace(/&#39;/g, "'").replace(/&amp;/g, '&'))).toEqual({
+    expect(JSON.parse(meta![1]!.replace(/&quot;/g, '"').replace(/&amp;/g, '&'))).toEqual({
       width: 621,
       height: 810,
       bleed: 9,
@@ -205,9 +205,9 @@ describe('generateAndWriteHtml', () => {
     // a preset that follows no printer's spec says only which preset it is, and an unset art rule stays unset
     await generateAndWriteHtml(testDir, tempDir, resolveConfig({ title: 'Test' }, { preset: 'book' }), new Map());
     const book = (await Bun.file(join(tempDir, 'book.html')).text()).match(
-      /<meta name="gp-print-area" content='([^']*)'>/,
+      /<meta name="gp-print-area" content="([^"]*)">/,
     );
-    expect(JSON.parse(book![1]!)).toEqual({ width: 432, height: 648, bleed: 0, safe: 18, preset: 'book' });
+    expect(JSON.parse(book![1]!.replace(/&quot;/g, '"'))).toEqual({ width: 432, height: 648, bleed: 0, safe: 18, preset: 'book' });
   }, 60000);
 
   test('handles multiple markdown files', async () => {

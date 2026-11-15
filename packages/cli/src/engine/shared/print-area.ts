@@ -106,8 +106,8 @@ export function printAreaMeta(page: PrintAreaSource): string {
     preset: page.preset,
     spec: page.spec,
   });
-  // single-quoted attribute: escape what could end it or read as an entity
-  return `<meta name="gp-print-area" content='${area.replace(/&/g, "&amp;").replace(/'/g, "&#39;")}'>`;
+  // escape what could end the attribute or read as an entity
+  return `<meta name="gp-print-area" content="${area.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}">`;
 }
 
 /** The one DOM call the reader makes: a `Document` satisfies it. */
