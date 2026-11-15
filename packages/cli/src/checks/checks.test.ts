@@ -2084,6 +2084,40 @@ describe("In-process source/PDF checks (no external tools)", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  test("color-spaces and transparency report an unreadable PDF as inspect-failed", async () => {
+    const missing = join(tmpdir(), "gutterpress-no-such-dir", "missing.pdf");
+    for (const id of ["pdf.print.color-spaces", "pdf.print.transparency"]) {
+      const results = await getCheckById(id)!.run(makeCtx({ pdfPath: missing }));
+      expect(results).toHaveLength(1);
+      expect(results[0]!.code).toBe("inspect-failed");
+      expect(results[0]!.severity).toBe("warning");
+    }
+  });
+
+  test("a marker split across a read boundary is found, and /Label there is not /Lab", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-pdf-"));
+    try {
+      const CHUNK = 4 * 1024 * 1024; // pdf-parse's read size
+      const at = (marker: string, offset: number) => {
+        const b = Buffer.alloc(CHUNK + 4096, 0x20);
+        b.write(marker, offset, "latin1");
+        return b;
+      };
+      const rgb = join(dir, "rgb.pdf");
+      await writeFile(rgb, at("/DeviceRGB", CHUNK - 4));
+      const lab = join(dir, "lab.pdf");
+      await writeFile(lab, at("/Lab ", CHUNK - 4)); // "/Lab" ends exactly at the cut
+      const label = join(dir, "label.pdf");
+      await writeFile(label, at("/Label", CHUNK - 4));
+      const run = (pdfPath: string) => getCheckById("pdf.print.color-spaces")!.run(makeCtx({ pdfPath }));
+      expect((await run(rgb)).some((r) => r.message.includes("DeviceRGB"))).toBe(true);
+      expect((await run(lab)).some((r) => r.message.includes("Lab color space"))).toBe(true);
+      expect((await run(label)).some((r) => r.message.includes("Lab color space"))).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

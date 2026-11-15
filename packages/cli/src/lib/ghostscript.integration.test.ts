@@ -16,7 +16,7 @@ import {
 } from "pdf-lib";
 import { execCapture } from "./exec";
 import { getAssetPath } from "./embedded-assets";
-import { convertToPdfxCmyk, resolveGhostscript, stampCreator } from "./ghostscript";
+import { convertToPdfxCmyk, resolveGhostscript } from "./ghostscript";
 import { getPerPageInkCoverage } from "./pdf-parse";
 
 const ghostscript = await resolveGhostscript();
@@ -163,11 +163,11 @@ testWithGhostscript(
       const outputPdf = join(stage, "creator-pdfx.pdf");
       // pdf-lib names itself as Creator, as Chromium names its user agent: an
       // Info entry pdfwrite carries into the output over the definition file's
-      // DOCINFO pdfmark. The build therefore stamps the raw PDF first.
+      // DOCINFO pdfmark. The engine therefore stamps the PDF it makes.
       const source = await PDFDocument.create();
       source.addPage([144, 144]);
+      source.setCreator("gutterpress");
       await writeFile(inputPdf, await source.save());
-      await stampCreator(inputPdf);
 
       await convertToPdfxCmyk(inputPdf, outputPdf, {
         iccPath: await getAssetPath("profiles/CGATS21_CRPC1.icc"),

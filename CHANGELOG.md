@@ -19,6 +19,20 @@ This project follows [Semantic Versioning](https://semver.org/).
   longer match, or when it was edited right around the moment the version history was last
   written, which is where a same-length edit could otherwise be missed. In our test book a
   check no longer rereads the whole book (150 MB before, under 1 MB now).
+- **The image-resolution check now checks art that appears on more than one page.** A logo,
+  ornament or background used on several pages was only checked on the first page and skipped
+  everywhere else, after a two-second wait for each skipped image, so a low-resolution image
+  could pass. Every use is now checked, so you may see new low-resolution warnings for repeated
+  art. The check also reads each image's size from the PDF and releases each page once it has
+  been read, so a book full of large images uses much less memory to check.
+- **The colour-space and transparency checks work on very large PDFs.** They read the whole PDF
+  into one block of memory, which fails on a file over about 540 MB, and then treated the
+  failure as "nothing found". They now read the file in pieces, and a PDF they cannot read is
+  reported as a warning instead of passing.
+- **Builds copy and parse the PDF fewer times.** The `Creator` is now written when the PDF is
+  made instead of in a separate load-and-save, which saves that pass in every PDF and PDF/X
+  build. A PDF/X build also shares one parse between its transparency and gradient checks and
+  lets go of the raw PDF before Ghostscript runs. The finished files are unchanged.
 
 ## [0.11.28] - 2026-11-15
 

@@ -1,26 +1,60 @@
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, unlink } from "node:fs/promises";
+import { mkdtemp, open, readFile, rm, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PDFDocument, PDFName } from "pdf-lib";
 import { execCapture } from "./exec";
 import { resolveGhostscript } from "./ghostscript";
 
+/** Bytes read per step of the marker scan. */
+const SCAN_CHUNK = 4 * 1024 * 1024;
+/** Bytes carried between steps: longer than any marker plus the character after it. */
+const SCAN_OVERLAP = 64;
+
 /**
- * Read a PDF as a latin1 string for literal ASCII-marker scanning.
+ * Which of `markers` appear in the raw bytes of a PDF.
  *
- * latin1 maps every byte 0x00–0xFF to exactly one char (lossless for binary
- * data) — never use utf8 here, which mangles non-text bytes. This is the
- * in-process replacement for the previous `grep -ao <marker> file.pdf` usage
- * and is a behavioral equivalent, including grep's one limitation: markers that
+ * The file is read in chunks, each decoded as latin1 (every byte 0x00–0xFF is
+ * exactly one char, lossless for binary data — never utf8, which mangles
+ * non-text bytes), so a book-sized PDF is never one string. Consecutive chunks
+ * overlap, so a marker split across a boundary is still found. Markers that
  * live inside FlateDecode-compressed streams are not visible to a raw byte
- * scan. grep had the identical blind spot, so callers see no behavior change.
+ * scan, the same blind spot the old `grep -ao` usage had.
  *
- * Used by the transparency and color-spaces checks. All other PDF
- * inspection now goes through the structured PDF.js reader in pdf-inspect.ts.
+ * Used by the transparency and color-spaces checks. All other PDF inspection
+ * goes through the structured PDF.js reader in pdf-inspect.ts. Rejects if the
+ * file cannot be read.
  */
-export async function readPdfBytes(pdfPath: string): Promise<string> {
-  return readFile(pdfPath, "latin1");
+export async function findPdfMarkers<K extends string>(
+  pdfPath: string,
+  markers: Record<K, RegExp>
+): Promise<Set<K>> {
+  const found = new Set<K>();
+  const pending = Object.entries(markers) as Array<[K, RegExp]>;
+  const file = await open(pdfPath, "r");
+  try {
+    const buf = Buffer.allocUnsafe(SCAN_CHUNK + SCAN_OVERLAP);
+    let carried = 0;
+    while (pending.length > 0) {
+      const { bytesRead } = await file.read(buf, carried, SCAN_CHUNK, null);
+      if (bytesRead === 0) break;
+      const end = carried + bytesRead;
+      // The "A" stops a word boundary (`\b`) from matching at the cut: a marker
+      // that ends there is tested again, with its real next byte, in the next step.
+      const text = buf.toString("latin1", 0, end) + (bytesRead === SCAN_CHUNK ? "A" : "");
+      for (let i = pending.length - 1; i >= 0; i--) {
+        if (pending[i]![1].test(text)) {
+          found.add(pending[i]![0]);
+          pending.splice(i, 1);
+        }
+      }
+      carried = Math.min(SCAN_OVERLAP, end);
+      buf.copyWithin(0, end - carried, end);
+    }
+  } finally {
+    await file.close();
+  }
+  return found;
 }
 
 /** One page's heaviest spot: the C, M, Y and K (percent) of its pixel with the most ink. */

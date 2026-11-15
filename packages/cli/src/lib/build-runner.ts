@@ -12,11 +12,11 @@ import { resolveOutputDir, artifactName, BOOK_HTML } from "./output-paths";
 import {
   convertToPdfxCmyk,
   findPostScriptShadingPages,
+  loadScanDoc,
   flattenTransparentPages,
   planTransparentPages,
   type FallbackCause,
   transparentPages,
-  stampCreator,
   stripAnnotations,
 } from "./ghostscript";
 import { writeBuildFingerprint, type BuildFingerprintInput } from "./build-fingerprint";
@@ -795,7 +795,7 @@ class HtmlOutput implements OutputStrategy {
 
 /**
  * `--format pdf` / `--format pdfx` — stage the rendered book, render it to PDF
- * via the Gutterpress engine's native Chromium pagination, stamp /Creator, then
+ * via the Gutterpress engine's native Chromium pagination, then
  * for pdfx resolve the ICC, optionally strip annotations, and convert to CMYK
  * PDF/X. Runs post-build validation for pdfx, then finalizes.
  * The staging scratch dir is removed in a finally so it never leaks.
@@ -850,21 +850,6 @@ class PdfOutput implements OutputStrategy {
       );
       for (const d of engineDiagnostics) log.warn(d.message);
 
-      // stampCreator writes /Creator (gutterpress) into the PDF's Info dict using
-      // pdf-lib (in-process, no system tool). For pdfx it runs on the raw PDF
-      // before the conversion: Ghostscript's pdfwrite keeps the input's Info
-      // entries over its own DOCINFO pdfmark, so this is also what the PDF/X
-      // file carries (#497). The information is cosmetic — if it fails for any
-      // reason, keep the raw Chromium output rather than failing the build.
-      // `rawPdf` equals the final `pdfFile` when !pdfxMode.
-      try {
-        await stampCreator(rawPdf);
-      } catch (err) {
-        log.warn(
-          `Skipping /Creator stamp: ${err instanceof Error ? err.message : String(err)}`
-        );
-      }
-
       // The plain PDF from this same render, before any PDF/X step rewrites
       // the raw file.
       let plainPdfPath: string | undefined;
@@ -884,7 +869,10 @@ class PdfOutput implements OutputStrategy {
         const icc = opts.iccPath ?? config.pdfx.icc;
         effectiveIccPath = await resolveIccProfile(icc, manifestDir, opts.iccPath);
 
-        const rawBytes = await fsp.readFile(rawPdf);
+        // The raw PDF is read once and parsed once; both detectors below share
+        // the parse, and the bytes are released before Ghostscript runs.
+        let rawBytes: Buffer | undefined = await fsp.readFile(rawPdf);
+        let scanDoc = (await loadScanDoc(rawBytes)) ?? undefined;
         // B.10: PDF/X-1a and PDF/X-3 are built at PDF 1.3 compatibility,
         // which cannot represent live transparency at all — an alpha-channel
         // image OR a CSS `opacity`/`mix-blend-mode` rule forces Ghostscript
@@ -897,7 +885,7 @@ class PdfOutput implements OutputStrategy {
         // opt-in alternative: flatten the artwork ourselves and keep the text
         // live, on the pages where that is faithful. Runs before annotation
         // stripping and the black-text rewrite so both see the merged pages.
-        const transparent = await transparentPages(rawBytes);
+        const transparent = await transparentPages(rawBytes, scanDoc);
 
         // #386: Ghostscript 10.x cannot convert the PostScript-function
         // shadings Chromium emits for repeating-*-gradient() and
@@ -906,7 +894,8 @@ class PdfOutput implements OutputStrategy {
         // is never split below) keeps the gradient in its page image instead,
         // at the cost of that page's live text. Checked on the raw PDF, before
         // the flatten below redraws any page.
-        const blankGradientPages = await findPostScriptShadingPages(rawBytes);
+        const blankGradientPages = await findPostScriptShadingPages(rawBytes, scanDoc);
+        scanDoc = undefined;
         const flattenedGradientPages = blankGradientPages.filter((n) => transparent.includes(n));
         const vectorGradientPages = blankGradientPages.filter((n) => !transparent.includes(n));
         const GRADIENT_FIX =
@@ -934,23 +923,25 @@ class PdfOutput implements OutputStrategy {
         }
 
         const flattenPages = config.pdfx.flattenPages;
-        if (transparent.length > 0 && config.pdfx.transparency === "preserve-text") {
-          const { unsplittableTextReasons } = await import("./pdf-inspect");
-          // Like the other checks here, a PDF the scanner cannot read must not
-          // fail the build: every page then keeps the default whole-page result.
-          const reasons = await unsplittableTextReasons(rawBytes, transparent).catch((err: unknown) => {
-            log.warn(
-              "pdfx.transparency: preserve-text could not inspect this PDF's text " +
-                `(${err instanceof Error ? err.message : String(err)}), so every page that uses ` +
-                "transparency is flattened whole, as with flatten-page."
-            );
-            return null;
-          });
-          if (reasons) {
-            const plan = planTransparentPages(transparent, reasons, flattenPages, blankGradientPages);
-            await flattenTransparentPages(rawPdf, plan.split, stage, config.pdfx.rasterDpi);
-            reportTransparentPlan(plan, pdfxMode, config.pdfx.rasterDpi ?? 300, pageList);
-          }
+        const preserveText = transparent.length > 0 && config.pdfx.transparency === "preserve-text";
+        const { unsplittableTextReasons } = await import("./pdf-inspect");
+        // Like the other checks here, a PDF the scanner cannot read must not
+        // fail the build: every page then keeps the default whole-page result.
+        const reasons = preserveText
+          ? await unsplittableTextReasons(rawBytes!, transparent).catch((err: unknown) => {
+              log.warn(
+                "pdfx.transparency: preserve-text could not inspect this PDF's text " +
+                  `(${err instanceof Error ? err.message : String(err)}), so every page that uses ` +
+                  "transparency is flattened whole, as with flatten-page."
+              );
+              return null;
+            })
+          : null;
+        rawBytes = undefined; // released before any Ghostscript run below
+        if (reasons) {
+          const plan = planTransparentPages(transparent, reasons, flattenPages, blankGradientPages);
+          await flattenTransparentPages(rawPdf, plan.split, stage, config.pdfx.rasterDpi);
+          reportTransparentPlan(plan, pdfxMode, config.pdfx.rasterDpi ?? 300, pageList);
         }
         const unused = flattenPages.filter((n) => !transparent.includes(n));
         if (flattenPages.length > 0 && config.pdfx.transparency !== "preserve-text") {
