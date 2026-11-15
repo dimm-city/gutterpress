@@ -416,7 +416,12 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
       : result.targets.every((t) => t.status === "sent" || t.status === "prepared");
     return result;
   } catch (e) {
-    result.failure = e instanceof Stopped ? e.failure : explainBuildFailure(e);
+    // Stopping a render closes its window, so the build fails: that is the cancel.
+    result.failure = options.signal?.aborted
+      ? { code: "CANCELED", message: "" }
+      : e instanceof Stopped
+        ? e.failure
+        : explainBuildFailure(e);
     result.ok = false;
     return result;
   }

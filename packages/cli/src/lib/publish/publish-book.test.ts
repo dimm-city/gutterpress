@@ -292,6 +292,21 @@ describe("the run as the person sees it", () => {
     expect(result.failure?.code).toBe("NO_TARGETS");
   });
 
+  test("stopping the run while the book renders is a cancel, though the render then fails", async () => {
+    await writeBook("publish:\n  local:\n");
+    const stop = new AbortController();
+    const result = await publishBook(
+      { projectDir: book, signal: stop.signal },
+      deps({
+        runBuild: async () => {
+          stop.abort();
+          throw new Error("Target closed");
+        },
+      }),
+    );
+    expect(result.failure).toEqual({ code: "CANCELED", message: "" });
+  });
+
   test("stopping the run is a cancel, not a failure to explain", async () => {
     await writeBook("publish:\n  local:\n");
     const stop = new AbortController();
