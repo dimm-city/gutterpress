@@ -285,19 +285,6 @@ export async function resolveGitAuthor(dir: string, name?: string, email?: strin
 /** Files modified this close to the index write are re-read (racy-git rule). */
 const RACY_MARGIN_MS = 2000;
 
-/**
- * True only when the file's mtime is positively older than the index write by
- * more than {@link RACY_MARGIN_MS}; anything unreadable counts as racy.
- */
-async function isSettled(
-  workdir: { stat(): Promise<{ mtimeSeconds: number; mtimeNanoseconds: number }> },
-  indexMtimeMs: number,
-): Promise<boolean> {
-  const { mtimeSeconds, mtimeNanoseconds } = await workdir.stat();
-  const mtimeMs = mtimeSeconds * 1000 + mtimeNanoseconds / 1e6;
-  return mtimeMs < indexMtimeMs - RACY_MARGIN_MS;
-}
-
 /** Workdir-vs-index differences, as `git add -A` staging lists. */
 export interface WorkdirChanges {
   /** New or modified files to `git.add`. */
@@ -320,6 +307,7 @@ export async function listWorkdirChanges(
 ): Promise<WorkdirChanges> {
   const adds: string[] = [];
   const removes: string[] = [];
+  const racy: { filepath: string; oid: string; mode: number }[] = [];
   // When the index file was last written; unknown (no index) rehashes everything.
   const indexMtimeMs = await fs.promises.stat(path.join(gitDirFor(dir), "index")).then(
     (st) => st.mtimeMs,
@@ -376,16 +364,38 @@ export async function listWorkdirChanges(
         const stageOid = await stage!.oid();
         if (workdirOid !== stageOid) {
           adds.push(filepath);
-        } else if (indexMtimeMs === undefined || !(await isSettled(workdir!, indexMtimeMs))) {
-          const fileBytes = await fs.promises.readFile(path.join(dir, filepath as string));
-          const { oid: actualOid } = await git.hashBlob({ object: fileBytes });
-          if (actualOid !== stageOid) adds.push(filepath);
+        } else {
+          // Settled only when the mtime is positively older than the index
+          // write; with no index mtime, or an unreadable file mtime, rehash.
+          const { mtimeSeconds, mtimeNanoseconds } = await workdir!.stat();
+          const mtimeMs = mtimeSeconds * 1000 + mtimeNanoseconds / 1e6;
+          const settled =
+            indexMtimeMs !== undefined &&
+            Number.isFinite(mtimeMs) &&
+            mtimeMs < indexMtimeMs - RACY_MARGIN_MS;
+          if (!settled) {
+            const fileBytes = await fs.promises.readFile(path.join(dir, filepath as string));
+            const { oid: actualOid } = await git.hashBlob({ object: fileBytes });
+            if (actualOid !== stageOid) {
+              adds.push(filepath);
+              racy.push({ filepath: filepath as string, oid: stageOid, mode: await stage!.mode() });
+            }
+          }
         }
       }
       // "special"/"commit" entries (sockets, submodules) are skipped.
       return;
     },
   });
+  // Smudge what the guard caught (git's ce_smudge_racily_clean_entry): the
+  // entry still matches the file's stats but holds the old content, and the
+  // walk above may have rewritten the index, moving its mtime past the file's
+  // so the next walk would trust the stale entry and miss the edit. Zeroed
+  // stats (updateIndex with an oid keeps oid and mode) make every later walk
+  // rehash the file until it is staged. Runs only when a racy change is found.
+  for (const { filepath, oid, mode } of racy) {
+    await git.updateIndex({ fs, dir, cache, filepath, oid, mode });
+  }
   return { adds, removes };
 }
 

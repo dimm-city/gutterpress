@@ -11,8 +11,8 @@ This project follows [Semantic Versioning](https://semver.org/).
   Save version and backup check used to read and re-hash every tracked file, including all your
   art, even when nothing had changed. A file is now read again only when its saved details no
   longer match, or when it was edited right around the moment the version history was last
-  written (git's "racy" case, which is where a same-length edit could otherwise be missed).
-  On a 150 MB test book a check went from reading about 450 MB to reading almost nothing.
+  written, which is where a same-length edit could otherwise be missed. In our test book a
+  check no longer rereads the whole book (150 MB before, under 1 MB now).
 
 ## [0.11.28] - 2026-11-15
 

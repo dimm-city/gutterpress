@@ -889,6 +889,12 @@ test("a file edited in the same tick as the index write is rehashed (racy-git)",
 
     const changes = await listWorkdirChanges(dir);
     expect(changes.adds).toContain("chapter-01.md");
+
+    // A later index write (the walk itself can rewrite the index) moves its
+    // mtime forward; the still-unstaged edit must not start to look settled.
+    const later = new Date(Date.now() + 10_000);
+    await utimes(indexPath, later, later);
+    expect((await listWorkdirChanges(dir)).adds).toContain("chapter-01.md");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
