@@ -28,6 +28,9 @@ import type {
   CloneRepositoryArgs,
   SyncStatus,
   MarkdownFileLaunchEvent,
+  PublishRunArgs,
+  PublishBookResult,
+  PublishProgress,
 } from "./contract";
 import { api } from "#lib/api.ts";
 import { fromIpcResult } from "./ipc-result";
@@ -149,6 +152,18 @@ export class ElectronAdapter implements Platform {
   build(args: BuildArgs): Promise<BuildResult> {
     const { input, ...rest } = args;
     return bridge().build({ ...rest, input: input.key }).then(fromIpcResult);
+  }
+
+  publish(args: PublishRunArgs): Promise<PublishBookResult> {
+    return bridge().publish(args).then(fromIpcResult);
+  }
+
+  cancelPublish(): Promise<{ canceled: boolean }> {
+    return bridge().cancelPublish();
+  }
+
+  onPublishProgress(cb: (data: PublishProgress) => void): () => void {
+    return bridge().onPublishProgress(cb);
   }
 
   onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void {

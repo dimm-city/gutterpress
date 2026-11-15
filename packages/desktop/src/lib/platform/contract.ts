@@ -32,6 +32,8 @@ import type {
   CreateProjectOptions,
   AdoptFolderOptions,
   CreateProjectResult,
+  PublishBookResult,
+  PublishProgress,
 } from "gutterpress";
 
 // Shared IPC payload types — imported from the single source of truth
@@ -90,6 +92,7 @@ import type {
   RestoreProgressEvent,
   UrlPreviewBlockedEvent,
   MarkdownFileLaunchEvent,
+  PublishRunArgs,
 } from "./shared-types";
 
 export type {
@@ -153,6 +156,9 @@ export type {
   RestoreProgressEvent,
   UrlPreviewBlockedEvent,
   MarkdownFileLaunchEvent,
+  PublishRunArgs,
+  PublishBookResult,
+  PublishProgress,
 };
 
 /**
@@ -457,6 +463,15 @@ export interface HostServices {
   cancelExport(exportId: string): Promise<{ canceled: boolean }>;
   build(args: BuildArgs): Promise<BuildResult>;
 
+  /**
+   * The one publish run (ADR 0012 §5), the same one `gutterpress publish`
+   * runs: makes each target's file once, checks it, sends it. A local folder
+   * outside the book is confirmed in a native dialog first. One run at a time.
+   */
+  publish(args: PublishRunArgs): Promise<PublishBookResult>;
+  cancelPublish(): Promise<{ canceled: boolean }>;
+  onPublishProgress(cb: (data: PublishProgress) => void): () => void;
+
   // Event subscriptions (return an unsubscribe fn)
   onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void;
   onUrlPreviewBlocked(cb: (data: UrlPreviewBlockedEvent) => void): () => void;
@@ -501,6 +516,7 @@ export interface ElectronBridge
     HostServices,
     | "startPreview"
     | "build"
+    | "publish"
     // These are server routes (api.sync.setAutoSync /
     // api.remote.cloneRepository) — the raw bridge doesn't expose them.
     // `updater` is narrowed below instead of omitted: applyNow/onEvent stay
@@ -515,6 +531,7 @@ export interface ElectronBridge
   startPreview(args: { input: string } & Omit<PreviewStartArgs, "input">): Promise<PreviewStartResult>;
   /** Resolves with the outcome as data, so a failure keeps its code (see `ipc-result.ts`). */
   build(args: { input: string } & Omit<BuildArgs, "input">): Promise<IpcResult<BuildResult>>;
+  publish(args: PublishRunArgs): Promise<IpcResult<PublishBookResult>>;
   /**
    * Raw folder-watch IPC behind `PlatformAdapter.watchFolder` (#44). Subscribes
    * to change events for `path` and returns an unsubscribe fn.

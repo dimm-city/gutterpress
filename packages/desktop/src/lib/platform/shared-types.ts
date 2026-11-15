@@ -637,6 +637,19 @@ export interface PublishConfigFieldInfo {
   placeholder?: string;
 }
 
+/** What the window asks the one publish run for (ADR 0012 §5); main adds the rest. */
+export interface PublishRunArgs {
+  projectDir: string;
+  targets: string[];
+  /** Make and check the files; send nothing. */
+  checkOnly?: boolean;
+  skipChecks?: boolean;
+  /** Send these targets (`true`: every one) even when their file broke their rules. */
+  sendAnyway?: string[] | true;
+  /** Build past the too-wide-content check (the whole book shrinks to fit). */
+  allowShrink?: boolean;
+}
+
 /** One provider card in the Publish panel — static info + redacted status. */
 export interface PublishProviderCard {
   id: string;

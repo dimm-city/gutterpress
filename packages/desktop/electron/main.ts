@@ -83,6 +83,7 @@ import {
 } from "./markdown-file-launch";
 import { AutoSnapshotScheduler } from "./auto-snapshot/scheduler";
 import { gitIdentityFrom } from "./git-identity";
+import { PublishRunner, type PublishRunArgs } from "./publish-run";
 import { RendererFlushSession, runCloseGate } from "./close-gate";
 import { createLastFlushFailure } from "../src/lib/persistence-failures";
 import { FolderWatcher } from "./folder-watch/watcher";
@@ -1648,6 +1649,35 @@ secureHandle("api:build", (_e, args: ExportBuildArgs) =>
     }),
   ),
 );
+
+// The one publish run (ADR 0012): the lib's `publishBook`, the same run the
+// terminal's `gutterpress publish` does, with Electron's own Chromium. On IPC
+// because it streams progress and drives BrowserWindows; the outcome crosses as
+// data (ipc-result.ts) so a failure keeps its code.
+const publishRunner = new PublishRunner({
+  loadLib,
+  engineBrowser: createElectronEngineBrowser,
+  tokenStore: electronTokenStore,
+  selections: userStores.selections,
+  identity: async () => gitIdentityFrom(await readSettings()),
+  sendProgress: (progress) => safeSend("publish:progress", progress),
+  isWithinProject: (absPath) => isWithinAnyRootCanonical(absPath, fsGuardImpl.projectRoots()),
+  pickFolder: async (defaultPath) => {
+    const options: Electron.OpenDialogOptions = {
+      title: "Save the files to this folder",
+      defaultPath,
+      properties: ["openDirectory", "createDirectory"],
+    };
+    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+    const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+    return picked.canceled ? null : (picked.filePaths[0] ?? null);
+  },
+  registerPickedPath: (absPath) => pickedFilesImpl.register([absPath]),
+  log: { event: (line) => void logAppEvent(line), error: (line) => void logAppError(line) },
+});
+
+secureHandle("api:publish", (_e, args: PublishRunArgs) => toIpcResult(publishRunner.run(args)));
+secureHandle("api:cancelPublish", () => publishRunner.cancel());
 
 // ──────────────────────────────────────────────────────────────────────────
 // Desktop updater wiring (electron-updater + macOS check-only notifier)
