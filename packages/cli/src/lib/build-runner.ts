@@ -872,7 +872,7 @@ class PdfOutput implements OutputStrategy {
         // The raw PDF is read once and parsed once; both detectors below share
         // the parse, and the bytes are released before Ghostscript runs.
         let rawBytes: Buffer | undefined = await fsp.readFile(rawPdf);
-        let scanDoc = await loadScanDoc(rawBytes);
+        let scanDoc = (await loadScanDoc(rawBytes)) ?? undefined;
         // B.10: PDF/X-1a and PDF/X-3 are built at PDF 1.3 compatibility,
         // which cannot represent live transparency at all — an alpha-channel
         // image OR a CSS `opacity`/`mix-blend-mode` rule forces Ghostscript
@@ -895,7 +895,7 @@ class PdfOutput implements OutputStrategy {
         // at the cost of that page's live text. Checked on the raw PDF, before
         // the flatten below redraws any page.
         const blankGradientPages = await findPostScriptShadingPages(rawBytes, scanDoc);
-        scanDoc = null;
+        scanDoc = undefined;
         const flattenedGradientPages = blankGradientPages.filter((n) => transparent.includes(n));
         const vectorGradientPages = blankGradientPages.filter((n) => !transparent.includes(n));
         const GRADIENT_FIX =
@@ -923,25 +923,26 @@ class PdfOutput implements OutputStrategy {
         }
 
         const flattenPages = config.pdfx.flattenPages;
-        if (transparent.length > 0 && config.pdfx.transparency === "preserve-text") {
-          const { unsplittableTextReasons } = await import("./pdf-inspect");
-          // Like the other checks here, a PDF the scanner cannot read must not
-          // fail the build: every page then keeps the default whole-page result.
-          const reasons = await unsplittableTextReasons(rawBytes!, transparent).catch((err: unknown) => {
-            log.warn(
-              "pdfx.transparency: preserve-text could not inspect this PDF's text " +
-                `(${err instanceof Error ? err.message : String(err)}), so every page that uses ` +
-                "transparency is flattened whole, as with flatten-page."
-            );
-            return null;
-          });
-          if (reasons) {
-            const plan = planTransparentPages(transparent, reasons, flattenPages, blankGradientPages);
-            await flattenTransparentPages(rawPdf, plan.split, stage, config.pdfx.rasterDpi);
-            reportTransparentPlan(plan, pdfxMode, config.pdfx.rasterDpi ?? 300, pageList);
-          }
+        const preserveText = transparent.length > 0 && config.pdfx.transparency === "preserve-text";
+        const { unsplittableTextReasons } = await import("./pdf-inspect");
+        // Like the other checks here, a PDF the scanner cannot read must not
+        // fail the build: every page then keeps the default whole-page result.
+        const reasons = preserveText
+          ? await unsplittableTextReasons(rawBytes!, transparent).catch((err: unknown) => {
+              log.warn(
+                "pdfx.transparency: preserve-text could not inspect this PDF's text " +
+                  `(${err instanceof Error ? err.message : String(err)}), so every page that uses ` +
+                  "transparency is flattened whole, as with flatten-page."
+              );
+              return null;
+            })
+          : null;
+        rawBytes = undefined; // released before any Ghostscript run below
+        if (reasons) {
+          const plan = planTransparentPages(transparent, reasons, flattenPages, blankGradientPages);
+          await flattenTransparentPages(rawPdf, plan.split, stage, config.pdfx.rasterDpi);
+          reportTransparentPlan(plan, pdfxMode, config.pdfx.rasterDpi ?? 300, pageList);
         }
-        rawBytes = undefined;
         const unused = flattenPages.filter((n) => !transparent.includes(n));
         if (flattenPages.length > 0 && config.pdfx.transparency !== "preserve-text") {
           log.warn("pdfx.flattenPages has no effect without pdfx.transparency: preserve-text.");

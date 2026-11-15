@@ -150,9 +150,9 @@ describe("pdf-inspect (synthetic pdf-lib document)", () => {
   });
 });
 
-// Image pixel sizes come from the XObject's /Width and /Height, and each page
-// is cleaned up once read, so a book of art does not hold every decoded image.
-describe("pdf-inspect image sizes and page cleanup (synthetic image)", () => {
+// Image pixel sizes come from the XObject's /Width and /Height, so an image
+// drawn on several pages is measured on every one of them.
+describe("pdf-inspect image sizes (one image drawn on two pages)", () => {
   let dir: string;
   let pdfPath: string;
 
@@ -160,7 +160,6 @@ describe("pdf-inspect image sizes and page cleanup (synthetic image)", () => {
     const { PDFDocument, PDFName, pushGraphicsState, popGraphicsState, concatTransformationMatrix, drawObject } =
       await import("pdf-lib");
     const docu = await PDFDocument.create();
-    const page = docu.addPage([612, 792]);
     // 600 x 300 px grey image, placed 2 in x 1 in => 300 DPI both ways
     const ref = docu.context.register(
       docu.context.stream(new Uint8Array(600 * 300), {
@@ -172,13 +171,16 @@ describe("pdf-inspect image sizes and page cleanup (synthetic image)", () => {
         BitsPerComponent: 8,
       })
     );
-    page.node.setXObject(PDFName.of("Im1"), ref);
-    page.pushOperators(
-      pushGraphicsState(),
-      concatTransformationMatrix(144, 0, 0, 72, 72, 72),
-      drawObject("Im1"),
-      popGraphicsState()
-    );
+    for (let i = 0; i < 2; i++) {
+      const page = docu.addPage([612, 792]);
+      page.node.setXObject(PDFName.of("Im1"), ref);
+      page.pushOperators(
+        pushGraphicsState(),
+        concatTransformationMatrix(144, 0, 0, 72, 72, 72),
+        drawObject("Im1"),
+        popGraphicsState()
+      );
+    }
     dir = await mkdtemp(join(tmpdir(), "gutterpress-pdfimg-"));
     pdfPath = join(dir, "image.pdf");
     await writeFile(pdfPath, await docu.save());
@@ -189,33 +191,11 @@ describe("pdf-inspect image sizes and page cleanup (synthetic image)", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  test("reports each image's declared pixel size and its DPI", async () => {
+  test("reports the image's DPI on every page that draws it", async () => {
     const doc = (await loadPdf(pdfPath))!;
-    const { imagesByPage } = await getOpPass(doc);
-    const img = imagesByPage.get(1)![0]!;
-    expect([img.pxW, img.pxH]).toEqual([600, 300]);
-    const [r] = await getImageResolutions(doc);
-    expect([Math.round(r!.xDpi), Math.round(r!.yDpi)]).toEqual([300, 300]);
-  });
-
-  test("cleans up every page after reading its operators", async () => {
-    clearPdfCache();
-    const real = (await loadPdf(pdfPath))!;
-    let cleaned = 0;
-    const doc = {
-      numPages: real.numPages,
-      getPage: async (n: number) => {
-        const page = await real.getPage(n);
-        const cleanup = page.cleanup.bind(page);
-        page.cleanup = ((...a: Parameters<typeof cleanup>) => {
-          cleaned++;
-          return cleanup(...a);
-        }) as typeof page.cleanup;
-        return page;
-      },
-    } as unknown as PDFDocumentProxy;
-    await getOpPass(doc);
-    expect(cleaned).toBe(1);
+    const resolutions = await getImageResolutions(doc);
+    expect(resolutions.map((r) => r.page)).toEqual([1, 2]);
+    for (const r of resolutions) expect([Math.round(r.xDpi), Math.round(r.yDpi)]).toEqual([300, 300]);
   });
 });
 

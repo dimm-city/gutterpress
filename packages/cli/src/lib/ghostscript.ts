@@ -87,15 +87,10 @@ export async function resolveGhostscript(
 
 /**
  * The PDF as a pdf-lib document for a read-only scan, or null when it cannot be
- * parsed. Pass the result of an earlier call as `parsed` and it is returned as
- * is, so one parse can serve {@link transparentPages} and
- * {@link findPostScriptShadingPages}.
+ * parsed. {@link transparentPages} and {@link findPostScriptShadingPages} accept
+ * its result, so one parse can serve both.
  */
-export async function loadScanDoc(
-  pdfBytes: Uint8Array,
-  parsed?: PDFDocument | null
-): Promise<PDFDocument | null> {
-  if (parsed !== undefined) return parsed;
+export async function loadScanDoc(pdfBytes: Uint8Array): Promise<PDFDocument | null> {
   const { PDFDocument } = await import("pdf-lib");
   try {
     return await PDFDocument.load(pdfBytes, { updateMetadata: false, throwOnInvalidObject: false });
@@ -139,13 +134,13 @@ export async function loadScanDoc(
  */
 export async function transparentPages(
   pdfBytes: Uint8Array,
-  parsed?: PDFDocument | null
+  parsed?: PDFDocument
 ): Promise<number[]> {
   const { PDFDict, PDFName, PDFNumber, PDFRawStream, PDFArray, PDFRef } = await import("pdf-lib");
   // Never let a detection heuristic fail a build: if the PDF can't be
   // parsed here, Ghostscript is still about to be handed it and will
   // report anything genuinely wrong. Skip the advisory step instead.
-  const doc = await loadScanDoc(pdfBytes, parsed);
+  const doc = parsed ?? (await loadScanDoc(pdfBytes));
   if (!doc) return [];
   const ctx = doc.context;
   const SKIP = new Set(["Parent", "Font", "Annots"]);
@@ -226,10 +221,10 @@ export async function transparentPages(
  */
 export async function findPostScriptShadingPages(
   pdfBytes: Uint8Array,
-  parsed?: PDFDocument | null
+  parsed?: PDFDocument
 ): Promise<number[]> {
   const { PDFDict, PDFName, PDFNumber, PDFRawStream, PDFRef } = await import("pdf-lib");
-  const doc = await loadScanDoc(pdfBytes, parsed);
+  const doc = parsed ?? (await loadScanDoc(pdfBytes));
   if (!doc) return [];
   const ctx = doc.context;
   const asDict = (obj: unknown) => {

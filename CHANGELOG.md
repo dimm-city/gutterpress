@@ -7,18 +7,20 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- **Checking a book full of large images no longer eats memory.** The image-resolution check
-  used to decode every image a second time, keep each page's pictures in memory until the end,
-  and quietly skip any image that took more than two seconds, so a slow computer could pass a
-  low-resolution image. It now reads each image's size from the PDF and releases every page
-  once it has been read, so every image is checked.
+- **The image-resolution check now checks art that appears on more than one page.** A logo,
+  ornament or background used on several pages was only checked on the first page and skipped
+  everywhere else, after a two-second wait for each skipped image, so a low-resolution image
+  could pass. Every use is now checked, so you may see new low-resolution warnings for repeated
+  art. The check also reads each image's size from the PDF and releases each page once it has
+  been read, so a book full of large images uses much less memory to check.
 - **The colour-space and transparency checks work on very large PDFs.** They read the whole PDF
   into one block of memory, which fails on a file over about 540 MB, and then treated the
   failure as "nothing found". They now read the file in pieces, and a PDF they cannot read is
   reported as a warning instead of passing.
-- **A PDF/X build copies and parses the PDF fewer times.** The `Creator` is now written when the
-  PDF is made instead of in a separate load-and-save, and the transparency and gradient checks
-  share one parse. The finished files are unchanged.
+- **Builds copy and parse the PDF fewer times.** The `Creator` is now written when the PDF is
+  made instead of in a separate load-and-save, which saves that pass in every PDF and PDF/X
+  build. A PDF/X build also shares one parse between its transparency and gradient checks and
+  lets go of the raw PDF before Ghostscript runs. The finished files are unchanged.
 
 ## [0.11.28] - 2026-11-15
 

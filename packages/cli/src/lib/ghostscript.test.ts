@@ -584,11 +584,10 @@ describe("one parse shared by the PDF/X page scans", () => {
     const bytes = await source.save();
 
     const parsed = await loadScanDoc(bytes);
-    expect(await loadScanDoc(bytes, parsed)).toBe(parsed);
     // Bytes that cannot be parsed: only a reused parse can find the page.
     const junk = new Uint8Array([1, 2, 3]);
-    expect(await transparentPages(junk, parsed)).toEqual([1]);
-    expect(await findPostScriptShadingPages(junk, parsed)).toEqual([]);
+    expect(await transparentPages(junk, parsed!)).toEqual([1]);
+    expect(await findPostScriptShadingPages(junk, parsed!)).toEqual([]);
     expect(await transparentPages(junk)).toEqual([]);
   });
 });
