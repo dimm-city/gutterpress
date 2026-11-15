@@ -776,7 +776,7 @@ test("zipHtmlExport streams: a large incompressible site does not sit in memory"
   const exportDir = await mkdtemp(path.join(tmpdir(), "gutterpress-gdrive-src-"));
   try {
     // 32 MB of random (incompressible) bytes: the old build held the file AND
-    // the compressed archive in memory, i.e. ~190 MB of buffers at once.
+    // the compressed archive in memory, about 130 MB of buffers at once.
     const MB = 1024 * 1024;
     const handle = await open(path.join(exportDir, "photo.bin"), "w");
     for (let i = 0; i < 32; i++) await handle.write(randomBytes(MB));
@@ -798,7 +798,9 @@ test("zipHtmlExport streams: a large incompressible site does not sit in memory"
     const { file, growth } = JSON.parse(await new Response(proc.stdout).text());
     try {
       expect((await stat(file)).size).toBeGreaterThan(30 * MB);
-      expect(growth).toBeLessThan(40 * MB);
+      // One file in flight plus a short output backlog: under 40 MB locally and
+      // 56 MB on a slow CI disk. The old build measures about 130 MB.
+      expect(growth).toBeLessThan(80 * MB);
     } finally {
       await rm(path.dirname(file), { recursive: true, force: true });
     }
