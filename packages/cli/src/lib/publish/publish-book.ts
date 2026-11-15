@@ -287,6 +287,7 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
       // The run does its own checks, against each target's rules.
       skipPreValidate: true,
       skipPostValidate: true,
+      signal: options.signal,
       ...(options.allowShrink ? { allowShrink: true } : {}),
       rawArgs: { command: "publish", targets: targetIds },
     };
@@ -443,7 +444,7 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
           ...(r.file ? { artifactPath: r.file } : {}),
           ...(options.runSettings?.[r.id] ? { settings: options.runSettings[r.id] } : {}),
         },
-        deps,
+        options.signal ? { ...deps, signal: options.signal } : deps,
       );
       r.issues = [...r.issues, ...sent.issues.filter((i) => !r.issues.some((j) => j.id === i.id))];
       if (sent.ok && sent.outcome) {

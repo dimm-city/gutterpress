@@ -7,6 +7,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Cancel now really stops a PDF export or a publish.** Cancel used to only hide the progress
+  while the hidden pages kept laying out and Ghostscript and uploads kept running, and you could
+  not start another export until the cancelled one finished. Cancel now stops the work within
+  seconds, closes the hidden pages and frees you to export again at once; for a publish it also
+  stops the Google Drive upload and the itch.io and Azure uploaders that are running.
+- **A crashed page no longer leaves "Preparing PDF…" up forever.** If the hidden page that lays
+  out your book ran out of memory or died during an export, the app waited for it indefinitely.
+  The export now stops and says Chromium's renderer for the page crashed (it may have run out of
+  memory).
 - **A build no longer copies every image at once.** Copying a book's images into the build folder
   now runs at most 8 copies at a time, and uses an instant copy on filesystems that support it, so
   a book with a lot of art puts far less load on a slow or spinning disk.

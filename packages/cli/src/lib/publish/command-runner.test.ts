@@ -211,3 +211,20 @@ describe("defaultCommandRunner stdio flush (exit vs close)", () => {
     expect(elapsed).toBeLessThan(8000);
   });
 });
+
+describe("defaultCommandRunner cancel", () => {
+  it("kills the child and rejects as canceled when the signal aborts", async () => {
+    const script = writeScript("sleep 30");
+    const stop = new AbortController();
+    setTimeout(() => stop.abort(), 100);
+    const start = Date.now();
+    let err: unknown;
+    try {
+      await defaultCommandRunner("/bin/sh", [script], { signal: stop.signal });
+    } catch (e) {
+      err = e;
+    }
+    expect((err as { code?: string } | undefined)?.code).toBe("CANCELED");
+    expect(Date.now() - start).toBeLessThan(5000);
+  });
+});

@@ -401,6 +401,13 @@ describe("the run as the person sees it", () => {
     expect(result.failure).toEqual({ code: "CANCELED", message: "" });
   });
 
+  test("the stop signal reaches the render, so stopping ends it instead of waiting for it", async () => {
+    await writeBook("publish:\n  local:\n");
+    const stop = new AbortController();
+    await publishBook({ projectDir: book, signal: stop.signal }, deps());
+    expect(builds[0]?.signal).toBe(stop.signal);
+  });
+
   test("stopping the run is a cancel, not a failure to explain", async () => {
     await writeBook("publish:\n  local:\n");
     const stop = new AbortController();

@@ -113,6 +113,7 @@ export const azureSwaProvider: PublishProvider = {
       {
         env: { SWA_CLI_DEPLOYMENT_TOKEN: resolved.credential.token },
         onOutput: req.deps.onProgress,
+        signal: req.deps.signal,
         // Idle timeout: the runner defaults timeoutMs to
         // PUBLISH_IDLE_TIMEOUT_MS — only total output silence kills the deploy.
       },

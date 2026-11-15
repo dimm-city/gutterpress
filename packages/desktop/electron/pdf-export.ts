@@ -9,8 +9,6 @@
  * `electron/engine-browser.ts` (`createElectronEngineBrowser`), injected into
  * `lib.runBuild` as `engineBrowser`.
  */
-import type { BrowserWindow } from "electron";
-
 export interface ExportProgressEvent {
   exportId: string;
   state: "started" | "rendering" | "finalizing" | "success" | "canceled" | "error";
@@ -24,7 +22,8 @@ export interface ExportSession {
   outPath: string;
   /** The PDF's temp sibling; absent for an html export (no temp file). */
   tempOutPath?: string;
-  win: BrowserWindow | null;
+  /** Aborted by Cancel: the build stops, closes its windows and settles. */
+  abort: AbortController;
 }
 
 export class ExportCanceledError extends Error {
@@ -64,4 +63,10 @@ export function throwIfExportCanceled(session: ExportSession): void {
   if (session.canceled) {
     throw new ExportCanceledError();
   }
+}
+
+/** Cancel: mark the session, and stop the render and anything it runs. */
+export function cancelExportSession(session: ExportSession): void {
+  session.canceled = true;
+  session.abort.abort();
 }

@@ -214,6 +214,8 @@ export type CommandRunner = (
      * PUBLISH_IDLE_TIMEOUT_MS); 0 = explicitly no timeout.
      */
     timeoutMs?: number;
+    /** Aborting kills the child; the run rejects with an error whose `code` is "CANCELED". */
+    signal?: AbortSignal;
   },
 ) => Promise<CommandResult>;
 
@@ -227,6 +229,8 @@ export interface PublishDeps {
   fetch?: typeof globalThis.fetch;
   /** Child-process seam (butler, swa). Defaults to node spawn. */
   runCommand?: CommandRunner;
+  /** Stops the send: the upload and any program it runs end at once. */
+  signal?: AbortSignal;
   /** Environment (CI credential overrides). Defaults to process.env. */
   env?: Record<string, string | undefined>;
   /** User config dir override (butler tool cache). Defaults to defaultConfigDir(). */

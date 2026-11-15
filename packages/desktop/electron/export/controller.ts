@@ -192,7 +192,7 @@ export class ExportController {
       canceled: false,
       outPath: requestedOutPath,
       tempOutPath,
-      win: null,
+      abort: new AbortController(),
     };
     this.deps.setActiveExportSession(exportSession);
     this.deps.sendProgress({ exportId: exportSession.id, state: "started" });
@@ -262,6 +262,8 @@ export class ExportController {
           format: "pdf",
           outDir: workspaceDir,
           pdfFileOverride: path.resolve(tempOutPath),
+          // Cancel aborts this: the render stops, not just the wait for it.
+          signal: exportSession.abort.signal,
           // A plain PDF, as `gutterpress build` makes one: the book's
           // source is checked first, and a problem to fix stops it
           // (SOURCE_PROBLEMS). The publish run checks each target's file.

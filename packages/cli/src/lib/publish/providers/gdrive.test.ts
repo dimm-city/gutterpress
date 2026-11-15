@@ -248,6 +248,35 @@ test("upload UPDATES the existing file in place when one with the same name is f
   }
 });
 
+test("upload stops when the run is canceled: the signal reaches the resumable upload", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const artifactPath = await fakeArtifact(dir);
+    const stop = new AbortController();
+    const deps = await depsFor(dir, { signal: stop.signal });
+    await deps.tokenStore.set("gdrive", { host: "gdrive", kind: "google-oauth", token: "rt", createdAt: 1 });
+    const { fetchImpl } = fakeFetch({ folders: [{ id: "f1", name: "Gutterpress" }] });
+    // The chunk PUT hangs until the run is canceled, as a real request would.
+    deps.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url) === "https://upload.example/session" && init?.method === "PUT") {
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
+          setTimeout(() => stop.abort(), 20);
+        });
+      }
+      return fetchImpl(url, init);
+    }) as typeof fetch;
+    const req = await requestFor(dir, deps, artifactPath);
+    req.config = {};
+
+    const started = Date.now();
+    await expect(gdriveProvider.upload(req)).rejects.toThrow();
+    expect(Date.now() - started).toBeLessThan(3000);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}, 8000);
+
 test("upload CREATES a new file when none with that name exists in the folder", async () => {
   const dir = await tempProject(MANIFEST);
   try {

@@ -35,7 +35,7 @@ async function driveFetch(
   timeoutMs = METADATA_TIMEOUT_MS,
 ): Promise<Response> {
   return withFetchTimeout(
-    { timeoutMs, offlineMessage: OFFLINE_MESSAGE },
+    { timeoutMs, offlineMessage: OFFLINE_MESSAGE, signal: init.signal ?? undefined },
     (signal) => fetchImpl(url, { ...init, signal }),
   );
 }
@@ -319,6 +319,8 @@ export interface ResumableUploadOptions {
   maxRetriesPerChunk?: number;
   /** Injectable sleep for tests (so backoff tests run instantly). */
   sleepImpl?: (ms: number) => Promise<void>;
+  /** Cancels the upload: the request in flight is abandoned and no more is sent. */
+  signal?: AbortSignal;
 }
 
 function defaultSleep(ms: number): Promise<void> {
@@ -335,6 +337,7 @@ async function startResumableSession(
     ? `${DRIVE_UPLOAD_BASE}/${encodeURIComponent(opts.fileId)}?uploadType=resumable&fields=id,name,webViewLink`
     : `${DRIVE_UPLOAD_BASE}?uploadType=resumable&fields=id,name,webViewLink`;
   const res = await driveFetch(fetchImpl, url, {
+    signal: opts.signal,
     method: opts.fileId ? "PATCH" : "POST",
     headers: {
       ...authHeaders(accessToken),
@@ -366,13 +369,14 @@ async function queryUploadStatus(
   fetchImpl: typeof fetch,
   sessionUrl: string,
   total: number,
+  signal?: AbortSignal,
 ): Promise<{ kind: "progress"; receivedBytes: number } | { kind: "done"; file: DriveFile } | null> {
   let res: Response;
   try {
     res = await driveFetch(
       fetchImpl,
       sessionUrl,
-      { method: "PUT", headers: { "Content-Range": `bytes */${total}` } },
+      { method: "PUT", headers: { "Content-Range": `bytes */${total}` }, signal },
       CHUNK_TIMEOUT_MS,
     );
   } catch {
@@ -400,6 +404,7 @@ async function putChunkWithRetry(
   total: number,
   maxRetries: number,
   sleep: (ms: number) => Promise<void>,
+  signal?: AbortSignal,
 ): Promise<{ done: false; nextOffset: number } | { done: true; file: DriveFile }> {
   let attempt = 0;
   for (;;) {
@@ -415,18 +420,20 @@ async function putChunkWithRetry(
             "Content-Length": String(buf.length),
           },
           body: buf,
+          signal,
         },
         CHUNK_TIMEOUT_MS,
       );
     } catch (e) {
-      if (attempt >= maxRetries) throw e;
+      // A cancel is not a dropped connection: do not ask Drive where it got to.
+      if (signal?.aborted || attempt >= maxRetries) throw e;
       attempt++;
       // A thrown exception (e.g. connection reset) means we don't know
       // whether Drive received this chunk before the connection dropped.
       // Query the session's real status instead of blindly re-sending the
       // same byte range — this is the protocol-correct resume the explicit
       // 308-response path below already implements.
-      const status = await queryUploadStatus(fetchImpl, sessionUrl, total);
+      const status = await queryUploadStatus(fetchImpl, sessionUrl, total, signal);
       if (status?.kind === "done") return { done: true, file: status.file };
       if (status?.kind === "progress" && status.receivedBytes > start) {
         const chunkEnd = start + buf.length;
@@ -476,12 +483,14 @@ export async function resumableUpload(
   const chunkSize = opts.chunkSize ?? RESUMABLE_CHUNK_SIZE;
   const maxRetries = opts.maxRetriesPerChunk ?? MAX_CHUNK_RETRIES;
   const sleep = opts.sleepImpl ?? defaultSleep;
+  opts.signal?.throwIfAborted();
   const sessionUrl = await startResumableSession(fetchImpl, accessToken, opts);
 
   const fh = await open(opts.filePath, "r");
   try {
     let offset = 0;
     for (;;) {
+      opts.signal?.throwIfAborted();
       const len = Math.min(chunkSize, opts.totalBytes - offset);
       // allocUnsafe, not alloc: the bytesRead !== len guard right below
       // throws before any byte of this buffer is ever sent, so there is no
@@ -502,6 +511,7 @@ export async function resumableUpload(
         opts.totalBytes,
         maxRetries,
         sleep,
+        opts.signal,
       );
       if (result.done) {
         opts.onProgress?.(opts.totalBytes, opts.totalBytes);
