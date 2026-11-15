@@ -989,11 +989,12 @@ export const api = {
       }),
 
     /**
-     * Change the book's targets (`publish:` in the manifest, shared with the
-     * team). Resolves with the book's targets and the ones this person sends.
+     * Add one target to the book or take it out (`publish:` in the manifest,
+     * shared with the team); its other targets stay. Resolves with the book's
+     * targets and the ones this person sends.
      */
-    setTargets: (projectDir: string, targets: string[]) =>
-      post<{ targets: string[]; sending: string[] }>('/api/publish/targets', { projectDir, targets }),
+    setTarget: (projectDir: string, target: string, inBook: boolean) =>
+      post<{ targets: string[]; sending: string[] }>('/api/publish/targets', { projectDir, target, inBook }),
 
     /**
      * Existing places a provider can publish into (#221, gdrive: Drive

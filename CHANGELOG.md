@@ -40,13 +40,18 @@ This project follows [Semantic Versioning](https://semver.org/).
   and `--disconnect itch` take the target by name (`--provider` still works). **`--file` is
   removed**: publish no longer sends a file built earlier, so a book published from CI needs
   the same tools as `gutterpress build`. `--json` prints the run's result (each target's
-  status, file and findings) and keeps log lines on stderr.
+  status, file and findings) and keeps log lines on stderr. The website is made in a folder
+  of its own (`dist/<slug>-website/`), so the book's PDFs, upload packages and build record
+  are never published with it; a later build keeps the upload packages; and a PDF/X that
+  cannot be made (no Ghostscript) fails only the targets that take it.
 - **Desktop: one Publish view over the same run** (ADR 0012). It has three steps: **Targets**
   (each target with the file it gets, or a choice of file), **Set up** (accounts and
   settings) and **Publish** (progress for each file, then a result for each target).
   **Check the files before sending (recommended)** is on by default; **Check only** makes and
   checks the files without sending. A target whose file breaks its rules is **Held back**
-  alone, with **Send anyway**; a failed one has **Try again** and **Show details**.
+  alone, with **Send anyway**; a failed one has **Try again** and **Show details**. A
+  warning from sending shows under its target, and adding or removing a target leaves the
+  book's others as written, even an extension's that is not downloaded yet.
 - **A book's targets are chosen in one place, Publish → Targets.** Book settings no longer
   lists them, and the new-book wizard no longer asks: a new book starts with its template's
   targets, else its preset's (`dtrpg` starts with DriveThruRPG print), written under

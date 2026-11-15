@@ -193,8 +193,7 @@ try {
   if (marginEvidence.source !== "Safe margins") {
     fail(`safe-margins finding label was ${marginEvidence.source}, expected Safe margins`);
   }
-  // The fixture names its target the older way (`targets: [dtrpg]`); findings
-  // are tagged with the registry's name for it.
+  // Findings are tagged with the target they were checked for.
   if (!/^\[drivethrurpg-print\] Page 1: ".+" is [\d.]+in too close to the (top|bottom|binding|outside) edge\./.test(marginEvidence.message ?? "")) {
     fail(`safe-margins finding did not name the page, words and edge: ${marginEvidence.message}`);
   }

@@ -19,6 +19,7 @@
  * explain.ts: a stable code, a plain sentence, the original text.
  */
 import path from "node:path";
+import { rm } from "node:fs/promises";
 import type { BuildDiagnostic } from "../../engine/compiler/build.ts";
 import { loadManifestWithPath, resolveConfig } from "../manifest.ts";
 import { artifactName, resolveOutputDir } from "../output-paths.ts";
@@ -289,41 +290,74 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
       ...(options.allowShrink ? { allowShrink: true } : {}),
       rawArgs: { command: "publish", targets: targetIds },
     };
+    const buildPdf = async (format: "pdf" | "pdfx", withPlainPdf: boolean, onConverting: () => void) => {
+      const built = await build({
+        ...common,
+        format,
+        ...(withPlainPdf ? { withPlainPdf: true } : {}),
+        engineBrowser: renderPhases(options.engineBrowser ?? launchOwnChromium, (phase) =>
+          say("render", phase === "layout" ? "Laying out the pages…" : "Writing the PDF…"),
+        ),
+        onStep: () => {
+          onConverting();
+          say("file", "Converting to print colours (PDF/X)…");
+        },
+      });
+      result.diagnostics.push(...built.diagnostics);
+      if (built.pdfPath) files.set(format, built.pdfPath);
+      if (built.plainPdfPath) files.set("pdf", built.plainPdfPath);
+    };
     const pdfFormat = formats.has("pdfx") ? "pdfx" : formats.has("pdf") ? "pdf" : null;
     if (pdfFormat) {
       stopIfCanceled();
       const what = pdfFormat === "pdfx" && formats.has("pdf") ? "PDF and PDF/X" : FORMAT_NAMES[pdfFormat];
+      let converting = false;
       try {
-        const built = await build({
-          ...common,
-          format: pdfFormat,
-          ...(pdfFormat === "pdfx" && formats.has("pdf") ? { withPlainPdf: true } : {}),
-          engineBrowser: renderPhases(options.engineBrowser ?? launchOwnChromium, (phase) =>
-            say("render", phase === "layout" ? "Laying out the pages…" : "Writing the PDF…"),
-          ),
-          onStep: () => say("file", "Converting to print colours (PDF/X)…"),
-        });
-        result.diagnostics.push(...built.diagnostics);
-        if (built.pdfPath) files.set(pdfFormat, built.pdfPath);
-        if (built.plainPdfPath) files.set("pdf", built.plainPdfPath);
+        await buildPdf(pdfFormat, pdfFormat === "pdfx" && formats.has("pdf"), () => (converting = true));
       } catch (e) {
-        throw new Stopped(explainBuildFailure(e, what));
+        const failure = explainBuildFailure(e, what);
+        // A problem only the PDF/X has (its conversion, or the programs only
+        // it needs) fails the targets that take the PDF/X, not the run.
+        if (pdfFormat !== "pdfx" || failure.code === "CANCELED" || !(converting || failure.code === "TOOL_MISSING")) {
+          throw new Stopped(failure);
+        }
+        const pdfxFailure = explainBuildFailure(e, "PDF/X");
+        for (const p of planned) {
+          if (p.result.format !== "pdfx") continue;
+          p.result.status = "failed";
+          p.result.failure = pdfxFailure;
+        }
+        if (formats.has("pdf")) {
+          stopIfCanceled();
+          try {
+            await buildPdf("pdf", false, () => {});
+          } catch (e2) {
+            throw new Stopped(explainBuildFailure(e2, "PDF"));
+          }
+        }
+        formats.delete("pdfx");
       }
     }
+    const outDir = resolveOutputDir(manifestDir, config.title);
+    // The website is sent as a whole folder, so it gets one of its own: the
+    // book's output folder also holds its PDFs and upload packages. The
+    // build's record of itself (paths on this computer) is left out too.
+    const siteDir = `${outDir}-website`;
     if (formats.has("html")) {
       stopIfCanceled();
       say("file", "Making the website…");
       try {
-        const built = await build({ ...common, format: "html" });
+        await rm(siteDir, { recursive: true, force: true });
+        const built = await build({ ...common, format: "html", outDir: siteDir });
+        await rm(path.join(built.outDir, "build-fingerprint.json"), { force: true });
         files.set("html", built.outDir);
       } catch (e) {
         throw new Stopped(explainBuildFailure(e, "website"));
       }
     }
     // Files the build placed by name, in case a build reports none.
-    const outDir = resolveOutputDir(manifestDir, config.title);
     for (const format of formats) {
-      if (!files.has(format)) files.set(format, format === "html" ? outDir : path.join(outDir, artifactName(config.title, format)));
+      if (!files.has(format)) files.set(format, format === "html" ? siteDir : path.join(outDir, artifactName(config.title, format)));
     }
     result.files = [...files].map(([format, file]) => ({ format, path: file }));
     for (const p of planned) p.result.file = files.get(p.result.format);
@@ -382,7 +416,7 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
         r.status = "held";
         r.failure = {
           code: "CHECKS_FAILED",
-          message: `Not sent: the ${FORMAT_NAMES[r.format]} breaks ${broken.length} of ${r.label}'s rule${broken.length === 1 ? "" : "s"}.`,
+          message: `Held back: the ${FORMAT_NAMES[r.format]} breaks ${broken.length} rule${broken.length === 1 ? "" : "s"} it was checked against.`,
         };
         continue;
       }

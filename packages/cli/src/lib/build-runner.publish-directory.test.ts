@@ -141,3 +141,18 @@ testIf(
   },
   60_000
 );
+
+testIf(
+  "a build into the book's own output folder keeps the upload packages a publish staged there (publish/<target>/)",
+  async () => {
+    const book = await makeBook();
+    const pkg = path.join(book, "dist", "shared-out-dir", "publish", "drivethrurpg-print");
+    await mkdir(pkg, { recursive: true });
+    await writeFile(path.join(pkg, "LISTING.md"), "# Shared Out Dir\n");
+
+    await runBuild({ inputDir: book, format: "html", rawArgs: {} });
+
+    expect(await readFile(path.join(pkg, "LISTING.md"), "utf-8")).toBe("# Shared Out Dir\n");
+  },
+  60_000,
+);

@@ -136,7 +136,11 @@ The lib has one publish run. Both views start it and show what it reports.
    PDF and the PDF/X are both made from it.
 5. **Make each file once**, into `dist/<slug>/`, named as the CLI names them
    (`<slug>-pdf.pdf`, `<slug>-pdfx.pdf`). A book has one PDF/X: every target
-   that takes PDF/X gets the same file, checked against its own rules.
+   that takes PDF/X gets the same file, checked against its own rules. The
+   website goes in a folder of its own, `dist/<slug>-website/`, since it is
+   sent as a whole folder: nothing else the book makes goes with it. A PDF/X
+   that cannot be made (no Ghostscript, a failed conversion) fails only the
+   targets that take it; the others still get their files.
 6. **Check each file against each target that receives it.** A plain PDF
    is not held to the checks only a PDF/X can pass (PDF/X structure, print
    colours, ink, flattened transparency, black text on the black plate),

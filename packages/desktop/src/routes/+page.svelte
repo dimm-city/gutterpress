@@ -206,7 +206,7 @@
   const publishController = new PublishSectionController({
     projectDir: () => lifecycle.currentDir,
     listProviders: (dir) => api.publish.listProviders(dir),
-    setTargets: (dir, targets) => api.publish.setTargets(dir, targets),
+    setTarget: (dir, target, inBook) => api.publish.setTarget(dir, target, inBook),
     setConfig: (dir, providerId, values) => api.publish.setConfig(dir, providerId, values),
     // #221 — provider-neutral destinations picker.
     listDestinations: (dir, providerId) => api.publish.listDestinations(dir, providerId),

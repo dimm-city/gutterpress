@@ -245,6 +245,8 @@ test("runPublish fails preflight when the artifact is missing", async () => {
     );
     expect(result.ok).toBe(false);
     expect(result.issues.some((i) => i.id === "publish/artifact-missing")).toBe(true);
+    // The failure says why, so a view that shows only the error still does.
+    expect(result.error).toBe(result.issues.find((i) => i.id === "publish/artifact-missing")?.message);
     expect(result.outcome).toBeUndefined();
   } finally {
     await rm(dir, { recursive: true, force: true });

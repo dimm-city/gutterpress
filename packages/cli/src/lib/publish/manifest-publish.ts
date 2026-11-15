@@ -10,6 +10,7 @@ import path from "node:path";
 import { isMap, Scalar } from "yaml";
 import type { Document } from "yaml";
 import { loadManifestDoc, writeManifestDoc } from "../manifest-doc.ts";
+import { loadManifestWithPath, resolveConfig } from "../manifest.ts";
 import type { PublishSelectionsStore } from "./selections.ts";
 import { canonicalTargetId } from "../targets.ts";
 import { targetSettings } from "./run-publish.ts";
@@ -109,20 +110,26 @@ function bareTarget(): Scalar {
 }
 
 /**
- * Make the book's targets exactly `ids` (ADR 0012 §3), in the new form: one
- * `publish:` entry per target, a target with nothing to set written as just
- * its name. A kept target keeps its settings; a removed one goes, settings
- * and all. An older book's `targets:` list and `enabled:` ticks are dropped,
- * since the list now says it all. No targets is `publish: {}`, which means
- * none (no `publish:` key would mean the preset's).
+ * Add one target to the book, or take it out (ADR 0012 §3). The book's other
+ * targets stay as they are, including ones this computer has nothing to show
+ * for (an extension's not downloaded yet, a misspelt name).
  */
-export async function setBookTargets(projectDir: string, ids: string[]): Promise<void> {
+export async function setBookTarget(projectDir: string, id: string, inBook: boolean): Promise<void> {
   const { doc, file } = await loadManifestDoc(projectDir);
-  writeBookTargets(doc, ids);
+  const { manifest } = await loadManifestWithPath(projectDir);
+  const others = resolveConfig({}, manifest).targets.filter((t) => t !== canonicalTargetId(id));
+  writeBookTargets(doc, inBook ? [...others, id] : others);
   await writeManifestDoc(file, doc);
 }
 
-/** {@link setBookTargets} on a document already in hand (a new book's, say). */
+/**
+ * Make the book's targets exactly `ids`, in the new form: one `publish:`
+ * entry per target, a target with nothing to set written as just its name. A
+ * kept target keeps its settings; a removed one goes, settings and all. An
+ * older book's `targets:` list and `enabled:` ticks are dropped, since the
+ * list now says it all. No targets is `publish: {}`, which means none (no
+ * `publish:` key would mean the preset's).
+ */
 export function writeBookTargets(doc: Document, ids: string[]): void {
   const wanted = [...new Set(ids.map(canonicalTargetId))];
   if (!isMap(doc.get("publish", true))) doc.set("publish", doc.createNode({}));

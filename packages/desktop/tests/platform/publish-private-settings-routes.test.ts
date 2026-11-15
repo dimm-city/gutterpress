@@ -146,10 +146,12 @@ test("where the book is published is the team's: the Drive folder and format sta
 });
 
 test("the book's targets are saved in its manifest, so a teammate sees them; not sending one is the person's own", async () => {
-  const setTargets = (targets: string[]) => publishTargets({ request: request({ projectDir: book, targets }) } as never);
-  await setTargets(["itch", "shopify"]);
+  const setTarget = (target: string, inBook: boolean) =>
+    publishTargets({ request: request({ projectDir: book, target, inBook }) } as never);
+  await setTarget("itch", true);
+  await setTarget("shopify", true);
   await setConfig("itch", { target: "me/book" });
-  await setTargets(["itch"]);
+  await setTarget("shopify", false);
 
   expect(await manifest()).toMatch(/publish:\n\s+itch:\n\s+target: me\/book/);
   expect(await manifest()).not.toContain("shopify");
@@ -167,7 +169,7 @@ test("the book's targets are saved in its manifest, so a teammate sees them; not
 test("a target the book does not offer is refused, and the manifest is untouched", async () => {
   const before = await manifest();
   await expect(
-    publishTargets({ request: request({ projectDir: book, targets: ["nope"] }) } as never),
+    publishTargets({ request: request({ projectDir: book, target: "nope", inBook: true }) } as never),
   ).rejects.toThrow();
   expect(await manifest()).toBe(before);
 });

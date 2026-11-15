@@ -706,8 +706,10 @@ async function publishBuild(ctx: BuildContext, artifactName: string | null): Pro
 
   // Our own dist/<slug>/: replaced wholesale, which is what makes stale files
   // vanish with no bookkeeping. Other formats' PDFs are carried across first so
-  // building pdf and html accumulates both.
-  for (const name of await listPdfs(target.dir)) {
+  // building pdf and html accumulates both, and so are the upload packages a
+  // publish staged (`publish/<target>/`), which a later build must not delete.
+  const carried = [...(await listPdfs(target.dir)), ...(fs.existsSync(path.join(target.dir, "publish")) ? ["publish"] : [])];
+  for (const name of carried) {
     if (!fs.existsSync(path.join(workDir, name))) {
       await fsp.rename(path.join(target.dir, name), path.join(workDir, name));
     }

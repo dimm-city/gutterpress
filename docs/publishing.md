@@ -7,9 +7,10 @@ app's toolbar.
 Both run the same publish ([ADR 0012](adr/0012-one-publishing-system.md)):
 it gets the latest changes, checks the book's source, lays the book out once,
 makes each file a target needs once (the PDF and the PDF/X come from the
-same layout), checks each file against the rules of each target it goes to
-(a plain PDF is never held to the checks only a PDF/X can pass),
-and sends it. A target whose file breaks its rules is held back alone until
+same layout; the website in a folder of its own, `dist/<slug>-website/`, so
+nothing else goes with it), checks each file against the rules of each
+target it goes to (a plain PDF is never held to the checks only a PDF/X can
+pass), and sends it. A target whose file breaks its rules is held back alone until
 you send it anyway. Checks are on by default; one switch turns them off.
 
 ## Targets
@@ -35,8 +36,8 @@ no other change.
 
 "Guided" providers still do real work: they validate the artifact, stage an
 upload package (`<output dir>/publish/<provider>/` with the PDF and a
-`LISTING.md` metadata sheet), and give the author the exact upload URL and
-steps. If a platform later ships an API the provider upgrades in place.
+`LISTING.md` metadata sheet; a later build keeps it), and give the author
+the exact upload URL and steps. If a platform later ships an API the provider upgrades in place.
 
 ### Publishing plugins (experimental, #381)
 

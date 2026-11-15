@@ -8,7 +8,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parse } from "yaml";
-import { savePublishSettings, setBookTargets, setPublishProviderConfig } from "./manifest-publish.ts";
+import { savePublishSettings, setBookTarget, setPublishProviderConfig } from "./manifest-publish.ts";
 import { publishPlan } from "./publish-book.ts";
 import { PublishSelectionsStore } from "./selections.ts";
 
@@ -35,12 +35,12 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-describe("setBookTargets", () => {
+describe("setBookTarget", () => {
   test("an older book is rewritten in the new form, keeping the settings of the targets it keeps", async () => {
     await writeBook(
       "targets: [dtrpg]\npublish:\n  itch:\n    target: ada/guide\n    enabled: true\n  gdrive:\n    folder: Books\n    enabled: false\n",
     );
-    await setBookTargets(book, ["drivethrurpg-print", "itch"]);
+    await setBookTarget(book, "gdrive", false);
     const m = await manifest();
     expect(m.targets).toBeUndefined();
     expect(m.publish).toEqual({ itch: { target: "ada/guide" }, "drivethrurpg-print": null });
@@ -49,7 +49,7 @@ describe("setBookTargets", () => {
 
   test("a target with nothing to set is written as just its name, and comments survive", async () => {
     await writeBook("# where it goes\npublish:\n  local:\n    dir: out\n");
-    await setBookTargets(book, ["local", "itch"]);
+    await setBookTarget(book, "itch", true);
     const text = await manifestText();
     expect(text).toContain("# where it goes");
     expect(text).toMatch(/^ {2}itch:\n?$/m);
@@ -59,20 +59,29 @@ describe("setBookTargets", () => {
   test("removing every target leaves `publish: {}`, which means none, not the preset's", async () => {
     // The dtrpg preset's own target would come back if `publish:` were dropped.
     await writeFile(path.join(book, "manifest.yaml"), "title: Field Guide\npreset: dtrpg\npublish:\n  local:\n");
-    await setBookTargets(book, []);
+    await setBookTarget(book, "local", false);
     expect((await manifest()).publish).toEqual({});
     expect((await plan()).targets).toEqual([]);
   });
 
   test("a target written bare is kept as it is when another is added", async () => {
     await writeBook("publish:\n  local:\n");
-    await setBookTargets(book, ["local", "itch"]);
+    await setBookTarget(book, "itch", true);
     expect((await manifest()).publish).toEqual({ local: null, itch: null });
+  });
+
+  test("the book's other targets are left as they are, even ones this computer cannot show", async () => {
+    // An extension's target not downloaded here yet, or a misspelt name: the
+    // app has no card for it, and changing another target must not drop it.
+    await writeBook('publish:\n  "@studio/publish-shelf":\n    shelf: top\n  local:\n');
+    await setBookTarget(book, "itch", true);
+    await setBookTarget(book, "local", false);
+    expect((await manifest()).publish).toEqual({ "@studio/publish-shelf": { shelf: "top" }, itch: null });
   });
 
   test("an old name is read as its target", async () => {
     await writeBook("publish:\n  drivethrurpg:\n    productUrl: https://example.com/p\n");
-    await setBookTargets(book, ["drivethrurpg-print"]);
+    await setBookTarget(book, "drivethrurpg-print", true);
     expect((await plan()).targets).toEqual(["drivethrurpg-print"]);
   });
 });

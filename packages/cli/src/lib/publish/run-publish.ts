@@ -355,7 +355,7 @@ export async function runPublish(
       providerId: provider.info.id,
       issues,
       ...(hasErrors
-        ? { error: "Preflight found problems that block publishing." }
+        ? { error: issues.filter((i) => i.severity === "error").map((i) => i.message).join(" ") }
         : {}),
     };
   }

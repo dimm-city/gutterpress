@@ -22,7 +22,7 @@
  * `PublishDeps.credentialAccount`, the fallback when neither the private store
  * nor the manifest names one.
  */
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { defaultConfigDir } from "../remote-auth/token-store.ts";
 
@@ -72,10 +72,15 @@ export class PublishSelectionsStore {
 
   private async write(data: SelectionsShape): Promise<void> {
     await mkdir(path.dirname(this.filePath), { recursive: true });
-    await writeFile(this.filePath, JSON.stringify(data, null, 2), {
+    // Replaced whole (tmp + rename), like the token store: the app and the
+    // terminal share this file, and a read part-way through an in-place write
+    // would see it as corrupt and the next write would save it empty.
+    const tmpPath = `${this.filePath}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+    await writeFile(tmpPath, JSON.stringify(data, null, 2), {
       encoding: "utf8",
       mode: 0o600,
     });
+    await rename(tmpPath, this.filePath);
     await chmod(this.filePath, 0o600);
   }
 

@@ -42,8 +42,8 @@ export interface PublishSectionDeps {
   /** The open project directory (reactive prop), or null when none is open. */
   projectDir: () => string | null;
   listProviders: (projectDir: string) => Promise<PublishProviderCard[]>;
-  /** Change the book's targets (`publish:` in the manifest). */
-  setTargets: (projectDir: string, targets: string[]) => Promise<unknown>;
+  /** Add one target to the book or take it out (`publish:` in the manifest). */
+  setTarget: (projectDir: string, target: string, inBook: boolean) => Promise<unknown>;
   setConfig: (
     projectDir: string,
     providerId: string,
@@ -121,14 +121,40 @@ export class PublishSectionController {
   }
 
   private readonly deps: PublishSectionDeps;
+  /** The book the state above belongs to. */
+  private book: string | null = null;
 
   constructor(deps: PublishSectionDeps) {
     this.deps = deps;
   }
 
+  /**
+   * The open book; when it is another than the state above was for, that
+   * state is dropped first, so nothing typed or sent for one book reaches the
+   * next.
+   */
+  private currentBook(): string | null {
+    const projectDir = this.deps.projectDir();
+    if (projectDir && this.book === null) this.book = projectDir;
+    if (projectDir && projectDir !== this.book) {
+      this.book = projectDir;
+      this.publishCards = [];
+      this.publishConfigDrafts = {};
+      this.publishDestinations = {};
+      this.destinationsError = {};
+      this.newDestinationDrafts = {};
+      this.publishDestinationStatus = {};
+      this.ownDestination = {};
+      this.pendingDestination = {};
+      this.progress = [];
+      this.result = null;
+    }
+    return projectDir;
+  }
+
   // ── Load ────────────────────────────────────────────────────────────────────
   loadPublish = async (): Promise<void> => {
-    const projectDir = this.deps.projectDir();
+    const projectDir = this.currentBook();
     if (!projectDir) return;
     this.publishError = null;
     try {
@@ -207,11 +233,10 @@ export class PublishSectionController {
   setInBook = async (providerId: string, inBook: boolean): Promise<boolean> => {
     const projectDir = this.deps.projectDir();
     if (!projectDir || this.publishBusyId) return false;
-    const ids = this.bookTargets.map((c) => c.id).filter((id) => id !== providerId);
     this.publishBusyId = providerId;
     this.publishError = null;
     try {
-      await this.deps.setTargets(projectDir, inBook ? [...ids, providerId] : ids);
+      await this.deps.setTarget(projectDir, providerId, inBook);
       await this.loadPublish();
       return true;
     } catch (e) {
@@ -425,7 +450,7 @@ export class PublishSectionController {
    * result; `publishError` is only for a run that could not start.
    */
   publish = async (intent: PublishIntent = {}): Promise<void> => {
-    const projectDir = this.deps.projectDir();
+    const projectDir = this.currentBook();
     if (!projectDir || this.running || this.publishBusyId) return;
     const targets = intent.targets ?? this.sendingTargets.map((c) => c.id);
     this.running = true;
@@ -475,7 +500,12 @@ function merge(last: PublishBookResult, next: PublishBookResult): PublishBookRes
   ];
   return {
     ...next,
-    ok: !next.failure && targets.every((t) => t.status === "sent" || t.status === "prepared" || t.status === "checked"),
+    // Finished when everything went, or, for a check, everything was checked:
+    // a target sent anyway after Check only leaves the others still to send.
+    ok:
+      !next.failure &&
+      (targets.every((t) => t.status === "sent" || t.status === "prepared") ||
+        targets.every((t) => t.status === "checked" || t.status === "not-connected")),
     files: [...last.files.filter((f) => !paths.has(f.path)), ...next.files],
     targets,
   };

@@ -54,7 +54,7 @@ interface Harness {
   projectDir: string | null;
   cards: PublishProviderCard[];
   setConfigCalls: Array<{ dir: string; providerId: string; values: Record<string, string> }>;
-  setTargetsCalls: string[][];
+  setTargetCalls: Array<[string, boolean]>;
   publishCalls: PublishRunArgs[];
   /** What the run reports while it runs, and what it resolves with (or rejects with). */
   progress: PublishProgress[];
@@ -74,7 +74,7 @@ function make(over: Partial<{ noProject: boolean; cards: PublishProviderCard[] }
     projectDir: over.noProject ? null : "/proj",
     cards: over.cards ?? [CARD],
     setConfigCalls: [],
-    setTargetsCalls: [],
+    setTargetCalls: [],
     publishCalls: [],
     progress: [],
     runResult: runResult(),
@@ -88,8 +88,8 @@ function make(over: Partial<{ noProject: boolean; cards: PublishProviderCard[] }
   h.ctrl = new PublishSectionController({
     projectDir: () => h.projectDir,
     listProviders: () => Promise.resolve(h.cards),
-    setTargets: (_dir, targets) => {
-      h.setTargetsCalls.push(targets);
+    setTarget: (_dir, target, inBook) => {
+      h.setTargetCalls.push([target, inBook]);
       return Promise.resolve({});
     },
     setConfig: (dir, providerId, values) => {
@@ -185,12 +185,12 @@ test("the book's targets and the ones this person sends come from the cards", as
   expect(h.ctrl.sendingTargets.map((c) => c.id)).toEqual(["itch"]);
 });
 
-test("adding a target writes the book's whole list with it; taking one out writes it without", async () => {
+test("adding or taking out a target changes that one only, so targets the app has no card for are kept", async () => {
   const h = make({ cards: book });
   await h.ctrl.loadPublish();
   expect(await h.ctrl.setInBook("kdp", true)).toBe(true);
   expect(await h.ctrl.setInBook("gdrive", false)).toBe(true);
-  expect(h.setTargetsCalls).toEqual([["itch", "gdrive", "kdp"], ["itch"]]);
+  expect(h.setTargetCalls).toEqual([["kdp", true], ["gdrive", false]]);
   expect(h.ctrl.publishBusyId).toBeNull();
 });
 
@@ -257,6 +257,33 @@ test("Send anyway runs that target alone and puts its result in its place", asyn
   ]);
   expect(h.ctrl.result?.files).toHaveLength(1);
   expect(h.ctrl.result?.ok).toBe(true);
+});
+
+test("after Check only, Send anyway sends that target, and with the others only checked the run is not finished", async () => {
+  const h = make({ cards: book });
+  await h.ctrl.loadPublish();
+  h.runResult = runResult({ ok: false, targets: [target("itch", "held"), target("gdrive", "checked")] });
+  await h.ctrl.publish({ checkOnly: true });
+  h.runResult = runResult({ targets: [target("itch", "sent")] });
+  await h.ctrl.publish({ targets: ["itch"], sendAnyway: ["itch"] });
+  expect(h.ctrl.result?.targets.map((t) => t.status)).toEqual(["sent", "checked"]);
+  expect(h.ctrl.result?.ok).toBe(false);
+});
+
+test("another book starts fresh: what was typed and the last result for one book never reach the next", async () => {
+  const h = make({ cards: book });
+  await h.ctrl.loadPublish();
+  h.runResult = runResult({ targets: [target("itch", "sent")] });
+  await h.ctrl.publish();
+  // Typed, then the view closed without saving, and another book opened.
+  h.ctrl.setPublishConfigDraft("itch", "project", "ada/guide");
+  h.projectDir = "/other";
+  await h.ctrl.loadPublish();
+  expect(h.ctrl.result).toBeNull();
+  expect(h.ctrl.publishConfigDrafts).toEqual({});
+  await h.ctrl.publish();
+  expect(h.setConfigCalls).toEqual([]);
+  expect(h.publishCalls.map((c) => c.projectDir)).toEqual(["/proj", "/other"]);
 });
 
 test("only a run that sent something is a publish to do again; after Check only, Publish is next", async () => {
@@ -398,7 +425,7 @@ test("selectCredential triggers a destinations reload for the newly selected acc
   const ctrl = new PublishSectionController({
     projectDir: () => "/proj",
     listProviders: () => Promise.resolve([{ ...GDRIVE_DEST_CARD, connected: true }]),
-    setTargets: () => Promise.resolve({}),
+    setTarget: () => Promise.resolve({}),
     setConfig: () => Promise.resolve({}),
     listDestinations: (dir, providerId) => {
       listDestinationsCalls.push({ dir, providerId });
@@ -426,7 +453,7 @@ test("selectCredential does not reload destinations for a provider without a pic
   h.ctrl = new PublishSectionController({
     projectDir: () => h.projectDir,
     listProviders: () => Promise.resolve(h.cards),
-    setTargets: () => Promise.resolve({}),
+    setTarget: () => Promise.resolve({}),
     setConfig: (dir, providerId, values) => {
       h.setConfigCalls.push({ dir, providerId, values });
       return Promise.resolve({});
@@ -453,7 +480,7 @@ test("destinationsError and destinationsBusyId are keyed PER PROVIDER — an err
   const ctrl = new PublishSectionController({
     projectDir: () => "/proj",
     listProviders: () => Promise.resolve([]),
-    setTargets: () => Promise.resolve({}),
+    setTarget: () => Promise.resolve({}),
     setConfig: () => Promise.resolve({}),
     listDestinations: (dir, providerId) => {
       if (providerId === "gdrive-a" && providerAShouldFail) {
@@ -489,7 +516,7 @@ test("destinationsBusyId's single-flight guard is per-provider, not global", asy
   const ctrl = new PublishSectionController({
     projectDir: () => "/proj",
     listProviders: () => Promise.resolve([]),
-    setTargets: () => Promise.resolve({}),
+    setTarget: () => Promise.resolve({}),
     setConfig: () => Promise.resolve({}),
     listDestinations: (dir, providerId) => {
       calls.push(providerId);

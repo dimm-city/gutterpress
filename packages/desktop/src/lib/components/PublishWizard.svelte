@@ -538,7 +538,7 @@
               {:else if t.status === "checked"}
                 <p class="success-line"><Icon name="circle-check" size={13} /> Checked: ready to send.</p>
               {:else if t.status === "held"}
-                <p class="warn"><Icon name="triangle-alert" size={13} /> Held back: its file breaks {t.label}'s rules.</p>
+                <p class="warn"><Icon name="triangle-alert" size={13} /> {t.failure?.message}</p>
                 {@render findingList(t.findings.filter((f) => f.severity === "error"))}
                 <button class="app-btn app-btn-ghost self-start" onclick={() => controller.publish({ targets: [t.id], sendAnyway: [t.id] })} disabled={busy}>Send anyway</button>
               {:else if t.status === "not-connected"}
@@ -552,6 +552,14 @@
               {/if}
               {#if t.status !== "held" && problems(t.findings).length > 0}
                 {@render findingList(problems(t.findings))}
+              {/if}
+              {#if t.issues.some((i) => i.severity !== "error")}
+                <!-- What sending noticed (an error is already in its failure). -->
+                <ul class="issues">
+                  {#each t.issues.filter((i) => i.severity !== "error") as issue (issue.id)}
+                    <li class={issue.severity}><Icon name="triangle-alert" size={12} /><span>{issue.message}</span></li>
+                  {/each}
+                </ul>
               {/if}
               {#if t.file}
                 {@const file = t.file}
@@ -591,7 +599,7 @@
     {#each found.slice(0, FINDINGS_SHOWN) as f, i (f.checkId + i)}
       <li class={f.severity}>
         <Icon name={f.severity === "error" ? "circle-x" : "triangle-alert"} size={12} />
-        <span>{f.message}{#if f.detail} <span class="muted">{f.detail}</span>{/if}{#if f.page} <span class="muted">(page {f.page})</span>{/if}</span>
+        <span>{f.message}{#if f.detail}{" "}<span class="muted">{f.detail}</span>{/if}{#if f.page}{" "}<span class="muted">(page {f.page})</span>{/if}</span>
         {#if f.file && f.line && onNavigate}<button class="link" onclick={() => goTo(f)}>Go to</button>{/if}
       </li>
     {/each}

@@ -41,8 +41,11 @@ function deps(over: Partial<PublishBookDeps> = {}): PublishBookDeps {
       if (buildFails) throw buildFails;
       await mkdir(dist(), { recursive: true });
       if (opts.format === "html") {
-        await writeFile(path.join(dist(), "book.html"), "<html></html>");
-        return { outDir: dist(), htmlPath: path.join(dist(), "book.html"), pdfPath: null, fingerprintPath: null, diagnostics: [] };
+        const out = opts.outDir ?? dist();
+        await mkdir(out, { recursive: true });
+        await writeFile(path.join(out, "book.html"), "<html></html>");
+        await writeFile(path.join(out, "build-fingerprint.json"), '{"root":"/home/ada/books"}');
+        return { outDir: out, htmlPath: path.join(out, "book.html"), pdfPath: null, fingerprintPath: null, diagnostics: [] };
       }
       const pdf = path.join(dist(), `field-guide-${opts.format}.pdf`);
       await writeFile(pdf, `%PDF ${opts.format}`);
@@ -119,10 +122,37 @@ describe("making the files", () => {
     expect(PDFX_FILE_CHECKS).toContain("pdf.print.pdfx-markers");
   });
 
+  test("the website is made in a folder of its own, so the PDFs, upload packages and build record are not published with it", async () => {
+    await writeBook("publish:\n  drivethrurpg-print:\n  local:\n    format: html\n    dir: site\n");
+    const result = await publishBook({ projectDir: book }, deps());
+    const site = path.join(book, "dist", "field-guide-website");
+    expect(builds.find((b) => b.format === "html")?.outDir).toBe(site);
+    expect(result.targets.find((t) => t.id === "local")?.file).toBe(site);
+    expect(await readdir(path.join(book, "site"))).toEqual(["book.html"]);
+  });
+
   test("a website target gets its own build, after the PDFs", async () => {
     await writeBook("publish:\n  local:\n  azure-swa:\n    environment: prod\n");
     await publishBook({ projectDir: book, checkOnly: true }, deps());
     expect(builds.map((b) => b.format)).toEqual(["pdf", "html"]);
+  });
+
+  test("a PDF/X that cannot be made fails only the targets that take it; the plain PDF is still made and sent", async () => {
+    await writeBook("publish:\n  drivethrurpg-print:\n  local:\n    dir: out\n");
+    const base = deps().runBuild!;
+    const noGs = Object.assign(new Error("Required system tools not found:\n\n  • gs (Ghostscript)"), { code: "TOOL_MISSING" });
+    const result = await publishBook(
+      { projectDir: book },
+      deps({ runBuild: async (opts) => (opts.format === "pdfx" ? (builds.push(opts), Promise.reject(noGs)) : base(opts)) }),
+    );
+    expect(builds.map((b) => b.format)).toEqual(["pdfx", "pdf"]);
+    const [print, local] = result.targets;
+    expect(print).toMatchObject({ status: "failed", failure: { code: "TOOL_MISSING" } });
+    expect(print?.failure?.message).toContain("PDF/X");
+    expect(local).toMatchObject({ status: "sent", file: path.join(dist(), "field-guide-pdf.pdf") });
+    expect(await readdir(path.join(book, "out"))).toEqual(["field-guide-pdf.pdf"]);
+    expect(result.failure).toBeUndefined();
+    expect(result.ok).toBe(false);
   });
 
   test("a failed build stops the run with the lib's own words, and nothing is sent", async () => {
@@ -148,6 +178,8 @@ describe("checks", () => {
     const [print, local] = result.targets;
     expect(print?.status).toBe("held");
     expect(print?.failure?.code).toBe("CHECKS_FAILED");
+    // Said the same in both views, and reads right whatever the target's name.
+    expect(print?.failure?.message).toBe("Held back: the PDF/X breaks 1 rule it was checked against.");
     expect(print?.findings).toEqual([PRINT_ERROR]);
     expect(local?.status).toBe("sent");
     expect(local?.findings).toEqual([]);
