@@ -40,6 +40,26 @@ This project follows [Semantic Versioning](https://semver.org/).
   removed**: publish no longer sends a file built earlier, so a book published from CI needs
   the same tools as `gutterpress build`. `--json` prints the run's result (each target's
   status, file and findings) and keeps log lines on stderr.
+- **Desktop: one Publish view over the same run** (ADR 0012). It has three steps: **Targets**
+  (each target with the file it gets, or a choice of file), **Set up** (accounts and
+  settings) and **Publish** (progress for each file, then a result for each target).
+  **Check the files before sending (recommended)** is on by default; **Check only** makes and
+  checks the files without sending. A target whose file breaks its rules is **Held back**
+  alone, with **Send anyway**; a failed one has **Try again** and **Show details**.
+- **A book's targets are chosen in one place, Publish → Targets.** Book settings no longer
+  lists them, and the new-book wizard no longer asks: a new book starts with its template's
+  targets, else its preset's (`dtrpg` starts with DriveThruRPG print), written under
+  `publish:`. `gutterpress new --targets` still chooses them at creation.
+- **An extension's publish target goes through the same run** as a built-in one: its file is
+  made, checked and sent with the others, and it appears in the app and `gutterpress publish
+  --list` without other changes.
+- **Desktop: the quick PDF (Ctrl+Shift+E) is the PDF `gutterpress build` makes.** It checks the
+  book's source first, as before, and no longer checks the saved PDF: Publish checks each
+  target's file against that target's rules. A problem to fix in the source stops it with
+  **The book has problems to fix before the PDF can be made.**
+- **Desktop: connecting Shopify from Accounts asks for the store domain** the key is checked
+  against, without a book open. The domain is not saved with the account; each book keeps its
+  own in its Publish settings.
 
 ### Fixed
 
@@ -54,25 +74,6 @@ This project follows [Semantic Versioning](https://semver.org/).
   failed), publishing that failed, an unexpected failure in any of the app's own requests,
   errors in the window, and errors the app itself did not catch. Sign-in details in web
   addresses are left out.
-
-- **Desktop: unticking the checks in Publish did not stop them.** The readiness check ran on
-  every publish and the saved PDF was checked after every export, whatever the box said. The
-  box is now **Check my book before saving**, offered for both formats: ticked, it adds a
-  **Check** step and checks the saved PDF; unticked, nothing is checked. The Ctrl+Shift+E quick
-  export no longer checks the PDF.
-- **Desktop: Publish gave little sign of progress.** The build now says **Opening your book…**
-  and then **Laying out and writing the PDF…** in the Publish view itself, with **Cancel**, and the result
-  (where it was saved, and what the checks found, with **Review problems**) appears there
-  rather than in toasts that arrived two seconds late.
-- **Desktop: rough spots in the Publish view.** The buttons stay in view on a long step; the
-  output folder is chosen on the Choose step instead of a step of its own; paths read relative
-  to the book; a destination's settings are saved when you leave its step; a destination with
-  no account is marked in the steps and reported as skipped, with **Set it up**; after a save
-  **Done** is the main button; Back is locked while building; long check results collapse to
-  five rows per group; Google Drive says **Needs sign-in** rather than **Needs a key**; the
-  DriveThruRPG step no longer talks about accounts it doesn't need or suggests a command-line
-  check; and a save that cannot start yet says why. Source labels in the Problems list are no
-  longer cut off.
 
 ## [0.11.27] - 2026-11-14
 

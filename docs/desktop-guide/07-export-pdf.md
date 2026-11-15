@@ -1,37 +1,29 @@
 ---
 title: Save a PDF
-description: Save a print-ready PDF of your book, from the Publish view or with a keyboard shortcut.
+description: Save a PDF of your book with a keyboard shortcut, or make every file your targets need from the Publish view.
 ---
 
 # Save a PDF
 
-PDFs are made from the **Publish** view, where a folder on your computer is always one of the
-destinations.
+**Ctrl+Shift+E** (Cmd+Shift+E on a Mac) saves a PDF of your book straight away: choose where in
+the save dialog. It uses your book's page size and design exactly as the preview shows it, the
+same PDF `gutterpress build` makes. While it works the app says **Laying out and writing the
+PDF…**; "PDF saved to …" tells you when it's done, with **Show in Folder**.
 
-1. Click **Publish** in the toolbar.
-2. Under **Format**, choose **PDF** ("Print-ready PDF using your book's page settings"). Tick
-   **Check my book before saving** to check it for printing problems; unticked, no checks run
-   and the PDF is saved sooner.
-3. On **Choose**, the PDF goes to the `dist` folder inside your book unless you pick another
-   folder with **Change…**.
-4. If you ticked the checks, **Check** looks over the book first (see
-   [Publish your book](08-publish.md#check)).
-5. Click **Save**. While it runs, the step shows **Opening your book…** and then **Laying out
-   and writing the PDF…**, with **Cancel**. When it finishes, **Show in folder** opens the folder with your PDF.
-   With checks ticked, the book's PDF checks (page size, safe margins, embedded fonts, and PDF/X
-   when qpdf and Ghostscript are installed) run on the saved file. The step says how many
-   problems they found, and **Review problems** opens the list.
+Your book's content is checked first, as every build does. If something must be fixed first, the
+PDF is not made and the message says **The book has problems to fix before the PDF can be
+made.**; the problems are listed under **Problems** in the status bar. Any other failure says why
+in a message that stays until you close it. The whole error is also in the app's log: on the
+start screen, **Troubleshooting → Logs**.
 
-If the save fails, the step says why and keeps saying it until you try again; **Show details**
-has the rest when there is more. The whole error is also in the app's log: on the start screen,
-**Troubleshooting → Logs**.
+If something on a page is too wide for it, the message names it and offers **Build anyway**,
+which scales the whole book down to fit.
 
-![Publish your book, Format step: PDF or Website](images/publish-format.jpg)
+## A PDF for print, or a folder of files
 
-**Shortcut:** Ctrl+Shift+E (Cmd+Shift+E on a Mac) saves a PDF straight away: choose where in the
-save dialog, and "PDF saved to …" tells you when it's done, with **Show in Folder**.
-
-The PDF uses your book's page size and design exactly as the preview shows it. To make a website
-of your book instead, choose **Website** under Format.
+To save a print-ready PDF/X, the website version, or a copy in a folder every time you publish,
+add **A folder on this computer** as a target in **Publish → Targets** and choose its **File**
+(PDF, PDF/X for print, or Website). Publishing checks each file against the rules of each target
+it goes to. See [Publish your book](08-publish.md).
 
 Next: [publish your book](08-publish.md).

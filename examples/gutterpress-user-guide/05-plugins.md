@@ -494,9 +494,9 @@ PublishPluginFunction } from "gutterpress"` (also `PublishPluginContext` and
 `PublishPluginResult`); like the markdown plugin types, these are types only.
 
 Try it on a book with `gutterpress ext add ./gutterpress-publish-example`,
-build the book, then run `gutterpress publish --provider
-gutterpress-publish-example --dry-run`: a dry run loads the plugin and checks
-that it exports `publish`, without calling it.
+then run `gutterpress publish gutterpress-publish-example --dry-run`: a dry
+run makes and checks the book's file, loads the plugin and checks that it
+exports `publish`, without calling it.
 
 ### Components: a marker, its snippet and its checks {#plugin-components}
 

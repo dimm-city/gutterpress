@@ -4,16 +4,33 @@ Gutterpress can push a finished book to distribution platforms — from the CLI
 (`gutterpress publish`, CI-safe) or by pressing **Publish** in the desktop
 app's toolbar.
 
-## Provider matrix
+Both run the same publish ([ADR 0012](adr/0012-one-publishing-system.md)):
+it gets the latest changes, checks the book's source, lays the book out once,
+makes each file a target needs once (the PDF and the PDF/X come from the
+same layout), checks each file against the rules of each target it goes to,
+and sends it. A target whose file breaks its rules is held back alone until
+you send it anyway. Checks are on by default; one switch turns them off.
 
-| Provider | id | Type | Artifact | How it works |
-|---|---|---|---|---|
-| itch.io | `itch` | **API** | PDF | Real upload via [butler](https://itch.io/docs/butler/), itch.io's official CLI. Auto-downloaded on first publish. |
-| DriveThruRPG | `drivethrurpg` | **Guided** | PDF | DTRPG has no publisher upload API. Gutterpress stages a validated package and opens the publisher hub with a checklist. |
-| Amazon KDP | `kdp` | **Guided** | PDF | Amazon has no KDP API (automation violates its ToS). Gutterpress stages a KDP-ready package and opens kdp.amazon.com with a checklist. |
-| Azure Static Web Apps | `azure-swa` | **API** | HTML | Deploys the static-site export via the [SWA CLI](https://learn.microsoft.com/azure/static-web-apps/static-web-apps-cli-deploy) (`swa deploy`). Requires the SWA CLI installed (`npm i -g @azure/static-web-apps-cli`). |
-| Shopify | `shopify` | **API** (partial) | PDF | Creates/updates the product via the Admin GraphQL API. File attachment is a follow-up step in the Shopify admin (digital delivery has no public API). |
-| Google Drive | `gdrive` | **API** | PDF or HTML (zipped) | Uploads to a Drive folder the app created (`drive.file` scope) via a plain-`fetch` resumable upload. Connects with browser OAuth, not a pasted key (#221, [ADR 0011](adr/0011-google-oauth-client-credentials.md)). Re-publishing updates the same file in place, so a shared link stays valid. |
+## Targets
+
+A target is a place the book goes. Each one says which file it gets: a fixed
+one, or a choice saved as `publish.<id>.format`.
+
+| Target | id | File | How it works |
+|---|---|---|---|
+| A folder on this computer | `local` | PDF, PDF/X or website | Copies the file to a folder (default: `dist` in the book). |
+| itch.io | `itch` | PDF | Real upload via [butler](https://itch.io/docs/butler/), itch.io's official CLI. Auto-downloaded on first publish. Held to the digital rules. |
+| DriveThruRPG (print) | `drivethrurpg-print` | PDF/X | **Guided**: DTRPG has no publisher upload API. Gutterpress stages a checked package and opens the publisher hub with a checklist. Held to DTRPG's print rules; needs qpdf and Ghostscript. |
+| DriveThruRPG (digital) | `drivethrurpg-digital` | PDF | **Guided**, as above. Held to the digital rules. |
+| Amazon KDP | `kdp` | PDF or PDF/X | **Guided**: Amazon has no KDP API (automation violates its ToS). Gutterpress stages a KDP-ready package and opens kdp.amazon.com with a checklist. |
+| Azure Static Web Apps | `azure-swa` | website | Deploys the static-site export via the [SWA CLI](https://learn.microsoft.com/azure/static-web-apps/static-web-apps-cli-deploy) (`swa deploy`). Requires the SWA CLI installed (`npm i -g @azure/static-web-apps-cli`). |
+| Shopify | `shopify` | PDF or PDF/X | Creates/updates the product via the Admin GraphQL API. File attachment is a follow-up step in the Shopify admin (digital delivery has no public API). |
+| Google Drive | `gdrive` | PDF, PDF/X or website (zipped) | Uploads to a Drive folder the app created (`drive.file` scope) via a plain-`fetch` resumable upload. Connects with browser OAuth, not a pasted key (#221, [ADR 0011](adr/0011-google-oauth-client-credentials.md)). Re-publishing updates the same file in place, so a shared link stays valid. |
+
+The older names `dtrpg` and `drivethrurpg` both mean `drivethrurpg-print`.
+A new target is one entry in the lib's registry (`packages/cli/src/lib/targets.ts`
+and its provider); the manifest, the app and the terminal then offer it with
+no other change.
 
 "Guided" providers still do real work: they validate the artifact, stage an
 upload package (`<output dir>/publish/<provider>/` with the PDF and a
@@ -22,7 +39,7 @@ steps. If a platform later ships an API the provider upgrades in place.
 
 ### Publishing plugins (experimental, #381)
 
-A book can add destinations of its own. A publishing plugin is an extension
+A book can add targets of its own. A publishing plugin is an extension
 package flagged `"gutterpress": { "publish": true }` whose entry exports a
 named `publish(outputDir, context)` function; it installs, pins and restores
 like any extension. Its id is its package name, built-in ids always win, and
@@ -33,7 +50,8 @@ components or snippets. The author's side is the user guide's
 [publishing plugins](../examples/gutterpress-user-guide/08-publishing.md)
 section; the contract is in
 [Chapter 5](../examples/gutterpress-user-guide/05-plugins.md). Experimental:
-it may change or be removed.
+it may change or be removed. Its file is chosen like `local`'s (PDF, PDF/X
+or website), and the same run makes, checks and sends it with the others.
 
 ## CLI
 
@@ -41,29 +59,38 @@ it may change or be removed.
 # What can I publish to, and what's connected?
 gutterpress publish --list
 
+# Publish to every target under publish:, or name some
+gutterpress publish
+gutterpress publish itch gdrive
+
+# Make and check the files without sending anything (CI)
+gutterpress publish --dry-run --json
+
+# Send a target whose file broke its rules; or run no checks at all
+gutterpress publish drivethrurpg-print --send-anyway
+gutterpress publish --skip-checks
+
 # Store an API key. The PASTED key is verified with the platform before it's
 # saved (env vars can't shadow it, and a rejected paste leaves any previously
 # working key untouched).
-gutterpress publish --provider itch --connect --token <key>
-echo "$KEY" | gutterpress publish --provider shopify --connect   # or via stdin
+gutterpress publish --connect itch --token <key>
+echo "$KEY" | gutterpress publish --connect shopify   # or via stdin
 
 # Google Drive has no key to paste — --connect opens the system browser for a
 # Google OAuth consent instead, and stores the refresh token it gets back.
-gutterpress publish --provider gdrive --connect
-
-# Publish (uses the manifest's output location by default)
-gutterpress build && gutterpress publish --provider itch
+gutterpress publish --connect gdrive
 
 # Google Drive: another folder for this run only, when the book's is out of
 # your reach (the manifest is not changed)
-gutterpress publish --provider gdrive --folder-id <id>   # or --folder "My Books"
-
-# Preflight only / CI
-gutterpress publish --provider itch --dry-run --json
+gutterpress publish gdrive --folder-id <id>   # or --folder "My Books"
 
 # Forget a stored key
-gutterpress publish --provider itch --disconnect
+gutterpress publish --disconnect itch
 ```
+
+`--provider <id>` still works as another way to name one target. There is no
+`--file`: publish always makes its own files, so publishing from CI needs the
+same tools as `gutterpress build`.
 
 Exit codes: `0` success, `1` publish/auth failure, `2` usage error — with
 `--json` emitting the structured result for CI.
@@ -82,20 +109,24 @@ credential file:
 
 ## Configuration
 
-Non-secret settings live in the manifest under `publish:` (see
-`manifest.schema.json`); the desktop app's Publish section edits the same
-fields:
+`publish:` in the manifest is the book's list of targets: a target is on
+because it is there, and one with nothing to set is just its name. Its
+non-secret settings sit under it (see `manifest.schema.json`); the desktop
+app's Publish view edits the same fields. No `publish:` key means the preset's
+targets (`dtrpg` means `drivethrurpg-print`); `publish: {}` means none. An
+older book's `targets:` list and `enabled:` ticks are still read with their
+old meaning.
 
 ```yaml
 publish:
   local:
     dir: dist                     # a folder inside the book, relative to it (default: dist)
   itch:
-    enabled: true                 # the desktop's Publish view ticks this destination for the book
     target: your-user/your-book   # butler push target
     channel: pdf                  # default: pdf
-  drivethrurpg:
+  drivethrurpg-print:
     productUrl: https://www.drivethrurpg.com/product/…   # optional, for updates
+  drivethrurpg-digital:           # nothing to set: just its name
   azure-swa:
     env: production               # default: production
   shopify:
@@ -105,7 +136,7 @@ publish:
   gdrive:
     folder: My Books              # display name; created at My Drive root if missing (default: "Gutterpress")
     folderId: 1AbC…               # stable id, takes precedence over `folder` — the team's folder (see below), picker-set or hand-recorded from the CLI's post-publish tip
-    format: pdf                   # pdf (default) | html — the zipped website export
+    format: pdf                   # pdf (default) | pdfx | html — the zipped website export
 ```
 
 ### What is shared and what is private
@@ -116,15 +147,17 @@ edits publishing settings to start publishing.
 
 | Setting | Where | Why |
 |---|---|---|
-| Destinations ticked (`publish.<id>.enabled`) | manifest | where the book goes is a team decision; a teammate opens the book and finds the same ones ticked |
+| Which targets (the entries under `publish:`) | manifest | where the book goes is a team decision; a teammate opens the book and finds the same ones |
+| A target's file, where it has a choice (`format`) | manifest | |
 | itch.io `target`, `channel` | manifest | |
 | Shopify `shop`, `productId`, `apiVersion` | manifest | |
 | Azure `env`; DriveThruRPG `productUrl` | manifest | |
-| Google Drive `folder`, `folderId`, and the `format` choice | manifest | the team's folder; each member reaches it through their own Google connection, or uses their own folder when they can't (below) |
+| Google Drive `folder`, `folderId` | manifest | the team's folder; each member reaches it through their own Google connection, or uses their own folder when they can't (below) |
 | Local output folder `dir`, when it is inside the book | manifest, **relative to the book** (`dist`, `exports`) | means the same on every computer |
 | Which of your saved accounts the book publishes with (`credential`) | **private** | accounts are yours; a label in the manifest would name an account teammates don't have |
 | Local output folder, when it is outside the book | **private** | a personal override; an absolute path is never written to the manifest |
 | Your own Google Drive folder, when the book's is out of your reach (`myFolderId`, `myFolder`) | **private** | a personal override; see [Google Drive: the book's folder and your own](#google-drive-the-books-folder-and-your-own) |
+| Not sending a target this time (`send: off`) | **private** | your choice for this run, not the team's |
 
 "Inside the book" means inside the book's own folder. (A folder elsewhere in
 the same Git repository counts as outside: it is a personal choice, not the
@@ -141,9 +174,8 @@ in-book `dir` as a relative path; opening the wizard rewrites nothing.
 **Precedence** when publishing, for each value: your private setting for the
 book, then the manifest, then the default. So a book whose manifest still
 carries a `credential` or an absolute `dir` keeps publishing, and your own
-choice wins over it. The CLI reads the manifest only (it has no private
-store yet), so `gutterpress publish` uses the manifest's `credential` and
-`dir`, or the defaults.
+choice wins over it. `gutterpress publish` and the app read the same private
+file, so they make the same choices.
 
 ### Google Drive: the book's folder and your own
 
@@ -182,20 +214,20 @@ belongs to another account. The rule (#452):
   zipped website go to whichever folder you publish to, and publishing again
   updates the file there, never the one in the team's folder.
 
-The CLI reads the manifest only and never writes it. When the book's folder is
+The CLI never writes the manifest when it publishes. When the book's folder is
 out of reach the error names it and how to publish elsewhere:
 `--folder-id <id>` or `--folder <name>` for that run, or the desktop's
 per-book choice.
 
-Sections are keyed by the provider id — the same spelling as
-`--provider <id>`. Each provider declares its editable fields
+Sections are keyed by the target id — the same spelling as on the command
+line. Each target declares its editable fields
 (`PublishProviderInfo.configFields`), which is what the desktop app's
-settings form renders — adding a provider needs no UI changes.
+settings form renders — adding a target needs no UI changes.
 
 A publishing plugin's section is keyed by its package name (a scoped name is
 quoted: `"@scope/pkg":`) and handed to the plugin as `context.settings`
-without the keys core reads from it: `format` (`pdf` | `html`), `credential`
-and `enabled`. Plugins declare no `configFields`, so the desktop shows no
+without the keys core reads from it: `format` (`pdf` | `pdfx` | `html`),
+`credential` and `enabled`. Plugins declare no `configFields`, so the desktop shows no
 settings form for them.
 
 **Secrets never live in the project.** API keys (and Google Drive's refresh
@@ -432,12 +464,16 @@ by two thin front-ends, mirroring the remote-auth subsystem (docs/architecture-r
 lib/publish/
   types.ts           PublishProvider contract + PublishDeps (injected seams)
   registry.ts        listPublishProviders() / publishProviderFor(id)
-  run-publish.ts     runPublish(): preflight → authenticate → upload
+  publish-book.ts    publishBook(): the one run both views start (plan → latest →
+                     source checks → one layout → each file once → checks per
+                     target → send), and publishPlan()
+  explain.ts         a failure's code, plain sentence and original text
+  run-publish.ts     runPublish(): preflight → authenticate → upload, for one target
   connect.ts         connectPublishProvider(): verify the pasted key, THEN store
                      (`projectDir` is optional: with no book, as from the desktop's
-                     Accounts page, the check reads no manifest settings; Shopify's
-                     needs its store domain, which is passed as `shop` for the check
-                     and never stored)
+                     Accounts page, the check reads no manifest settings; a target
+                     whose check needs one setting names it as `credential.checkSetting`
+                     (Shopify's store domain), passed as `checkValue` and never stored)
   manifest-publish.ts readPublishSettings/setPublishProviderConfig (yaml round-trip);
                      savePublishSettings files each value as shared (manifest) or private
   selections.ts      PublishSelectionsStore: one person's private values per book (account, outside folder, own Drive folder)

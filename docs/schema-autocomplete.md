@@ -239,13 +239,7 @@ preset: book
 ```
 
 #### `targets` (array of strings)
-Publish targets to record and validate against (ADR 0008): `gutterpress validate`/`gutterpress preflight` check the built PDF against each target's requirements, one target at a time, so one book can target several destinations. `--target`/`--targets` on the CLI override this at invocation time. One of `dtrpg`, `itch`. Omitting it uses the preset's default (`dtrpg` -> `["dtrpg"]`; `book`/`custom` -> `[]`).
-
-```yaml
-targets:
-  - dtrpg
-  - itch
-```
+The older form of a book's targets (ADR 0008), still read: a book that has it publishes to these, plus any `publish.<id>` with `enabled: true`. New books list their targets under [`publish`](#publish-object) instead (ADR 0012). `dtrpg` and `drivethrurpg` both mean `drivethrurpg-print`.
 
 #### `styles` (array of strings)
 CSS files to link into the rendered book, applied in order, relative to the manifest directory. If omitted, Gutterpress discovers one: `styles/book.css` (what `gutterpress new` scaffolds), then four **legacy** names kept so pre-existing projects keep working — `css/print.css`, `css/index.css`, `css/style.css`, `css/main.css`, in that order — then the first `.css` it finds in the project root, `styles/` or `css/`, then none. New projects should set `styles:` explicitly or use `styles/book.css`; the `css/*.css` fallback names are not a recommended convention.
@@ -393,7 +387,17 @@ checks:
 ```
 
 #### `publish` (object)
-Non-secret publish settings per provider (`itch`, `drivethrurpg`, `kdp`, `azure-swa`, `shopify`, `gdrive`), keyed by the same id `gutterpress publish --provider <id>` takes. API keys and tokens are **never** stored here — they live in the host credential store. Everything here is the team's: `enabled: true` marks a destination the book publishes to, and `local.dir` is a folder inside the book, relative to it. Which saved account you publish with, and an output folder outside the book, stay in your own settings on your computer. See [publishing.md](./publishing.md).
+The book's targets (ADR 0012). A target is published to because it is listed here; one with nothing to set is just its name. Keyed by the same id `gutterpress publish <id>` takes: `local`, `itch`, `drivethrurpg-print`, `drivethrurpg-digital`, `kdp`, `azure-swa`, `shopify`, `gdrive`, or a publishing plugin's package name. No `publish:` key means the preset's targets (`dtrpg` → `drivethrurpg-print`); `publish: {}` means none. `format` picks the file where a target offers a choice (`pdf`, `pdfx`, `html`). API keys and tokens are **never** stored here. Everything here is the team's, and `local.dir` is a folder inside the book, relative to it. Which saved account you publish with, an output folder outside the book, and which targets you skip this time stay in your own settings on your computer. See [publishing.md](./publishing.md).
+
+```yaml
+publish:
+  drivethrurpg-print:
+  itch:
+    target: your-user/your-book
+  gdrive:
+    format: pdfx
+    folder: My Books
+```
 
 ---
 

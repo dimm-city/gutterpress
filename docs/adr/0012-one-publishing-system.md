@@ -63,13 +63,16 @@ A target is a place the book goes. One definition says everything about it:
 - **tools**: what must be installed to make and check its file.
 - **deliver**: how the file gets there. A target with no way to upload, or
   no account connected, reports its file as ready to upload by hand.
+- A setting of kind `folder` that points outside the book is confirmed by
+  the person, in the app's own dialog, before the run writes there.
 
 The precedence chain is unchanged: **cli > manifest > target > preset**.
-Core targets and extension targets use the same definition and the same
-registry. An extension declares the data in its `package.json` (so listing
-targets never loads code) and exports `deliver` from its entry. Today's
-`"gutterpress": { "publish": true }` plugins keep working as targets whose
-file is picked.
+Core targets and extension targets use the same registry and the same run.
+An extension target is a package flagged `"gutterpress": { "publish": true }`
+that exports a `publish` function. Listing targets reads its `package.json`
+only, so it never loads code. Its file is picked, like `local`'s, and it is
+planned, made, checked and sent by the same run as a built-in. A new
+built-in target is one entry in the registry.
 
 ### 3. The manifest
 
@@ -132,8 +135,8 @@ The lib has one publish run. Both views start it and show what it reports.
 4. **Render once.** The Chromium render does not depend on the format; the
    PDF and the PDF/X are both made from it.
 5. **Make each file once**, into `dist/<slug>/`, named as the CLI names them
-   (`<slug>-pdf.pdf`, `<slug>-pdfx.pdf`). A target whose PDF/X spec differs
-   from the book's gets a file named for it.
+   (`<slug>-pdf.pdf`, `<slug>-pdfx.pdf`). A book has one PDF/X: every target
+   that takes PDF/X gets the same file, checked against its own rules.
 6. **Check each file against each target that receives it.**
 7. **Send.** A target whose file fails its rules is held, alone, until the
    person says to send it anyway.
@@ -143,11 +146,25 @@ everywhere. Step names, check names and error explanations come from the
 lib, with a stable code, a plain sentence and the original text, so both
 views say the same thing and neither matches on wording.
 
+Each target ends the run in one state: `sent`, `prepared` (its file is ready
+to upload by hand), `checked` (a check-only run), `held` (its file broke its
+rules), `not-connected`, `failed`, or `waiting` (the run stopped first). A
+failure carries one code: `CANCELED`, `NO_MANIFEST`, `NO_TARGETS`,
+`UNKNOWN_TARGET`, `UNFINISHED_SWITCH`, `TOO_WIDE`, `TOOL_MISSING`,
+`DISK_FULL`, `PERMISSION`, `SOURCE_PROBLEMS`, `BUILD_FAILED`,
+`CHECKS_FAILED`, `CHECKS_COULD_NOT_RUN`, `NOT_CONNECTED`,
+`SETUP_INCOMPLETE`, `ACCOUNT_EXPIRED`, `STORAGE_FULL`, `OFFLINE` or
+`SEND_FAILED`.
+
+The quick PDF (Ctrl+Shift+E, `gutterpress build`) is not a publish run. It
+checks the book's source, as every build does, and makes the plain PDF; no
+target's rules apply to it.
+
 ### 6. The two views
 
 | To do this | App | Terminal |
 | --- | --- | --- |
-| Quick draft PDF | Ctrl+Shift+E | `gutterpress build` |
+| Quick PDF | Ctrl+Shift+E | `gutterpress build` |
 | Check without sending | Publish, "Check only" | `gutterpress publish --dry-run` |
 | Publish everything | Publish | `gutterpress publish` |
 | Publish some targets | Tick them | `gutterpress publish itch gdrive` |
@@ -165,7 +182,9 @@ progress per file and a result per target). `gutterpress validate` and
   back the print target only.
 - A new target is one definition. It then appears in the manifest, the app,
   the terminal and the checks with no other change. A test asserts the two
-  views name no target, format or rule.
+  views name no target. A new book's targets come from its template, else
+  its preset, and are changed in Publish → Targets, the one place to choose
+  them.
 - Code goes away: the desktop's own export pipeline, account store, copied
   target and label tables, and its matching on error text; the CLI's
   separate preflight path and its lookup of a built file to publish.

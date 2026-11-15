@@ -17,39 +17,60 @@ so Gutterpress does everything it can: it checks your book, prepares an upload
 package (your PDF plus a `LISTING.md` sheet with your title, authors and
 notes), and opens the platform's upload page with a step-by-step checklist.
 
-## Setting Up a Provider
+## Publishing From the App
 
-1. Press **Publish** in the toolbar of the desktop app.
-2. Fill in the provider's settings (for itch.io that's your project as
-   `user/game`; for Shopify your store domain). These are saved in
-   `manifest.yaml` --- safe to commit, nothing secret.
-3. For direct-upload providers, click **Create an API key**, copy the key from
-   the platform, paste it and press **Connect**. The key is verified with the
-   platform and stored securely on your computer --- never in the project
-   folder.
+Press **Publish** in the toolbar. Publishing has three steps:
+
+1. **Targets** --- where this book goes. Each target says which file it gets:
+   DriveThruRPG (print) gets the print-ready PDF/X, itch.io gets the PDF, and
+   a target with a choice (a folder, Google Drive, KDP, Shopify) has a
+   **File** menu. Add a target from **Add a target**, or remove one with
+   **Remove from book**. The book's targets are saved in `manifest.yaml`, so
+   everyone who has the book sees the same ones; untick one to skip it this
+   time without removing it.
+2. **Set up** --- each target's settings (for itch.io that's your project as
+   `user/game`; for Shopify your store domain), saved in `manifest.yaml` ---
+   safe to commit, nothing secret --- and its account. For direct-upload
+   targets, click **Create a key on ...**, copy the key from the platform,
+   paste it and save it. The key is checked with the platform and kept on
+   your computer --- never in the book's folder.
+3. **Publish** --- Gutterpress lays your book out once, makes each file the
+   targets need, checks each one against the rules of each target it goes
+   to, and sends it. **Check only** does everything but send.
+
+**Check the files before sending** is on unless you turn it off. A target
+whose file breaks its rules is **Held back** --- the others still go --- and
+**Send anyway** sends it once you have decided it's fine. If sending fails,
+the step says why in plain words, with **Show details** and **Try again**.
 
 ```yaml
-# manifest.yaml -- the non-secret half lives with your project
+# manifest.yaml -- the book's targets, and their non-secret settings
 publish:
+  drivethrurpg-print:      # nothing to set: just its name
   itch:
     target: your-user/your-book
 ```
 
+A new book starts with its template's targets, or its preset's (a `dtrpg`
+book starts with DriveThruRPG print). Change them any time in **Publish**
+&rarr; **Targets**.
+
 ## Publishing to Google Drive
 
-Google Drive works a little differently from the other providers, because
+Google Drive works a little differently from the other targets, because
 there's no API key to create or paste.
 
-1. Press **Publish** in the toolbar and click **Connect Google Drive**. Your
+1. Press **Publish** in the toolbar, add **Google Drive** on the **Targets**
+   step, and on **Set up** click **Connect Google Drive**. Your
    browser opens to Google's own sign-in page --- choose your account and click
    **Allow**. That's it: nothing to copy, nothing to type back into
    Gutterpress.
 2. Once connected, pick a **Folder** from the dropdown, or choose **New
    folder...** and give it a name. Gutterpress only ever sees folders it
    created itself --- it can't browse the rest of your Drive.
-3. Choose **what to publish** --- your built PDF, or a zipped export of the
-   website version --- using the wizard's radio buttons. (From the CLI, set
-   `publish.gdrive.format` to `pdf` or `html` in `manifest.yaml` instead.)
+3. Choose **what to publish** --- the PDF, the PDF/X for print, or a zipped
+   website --- from Google Drive's **File** menu on the **Targets** step. (It
+   is saved as `publish.gdrive.format`: `pdf`, `pdfx` or `html`.)
 4. Press **Publish**. The file you chose lands in that folder.
 
 Publishing again **updates the same file** instead of creating a duplicate,
@@ -71,30 +92,34 @@ Drive's own **Share** button.
 publish:
   gdrive:
     folder: My Books
-    format: pdf   # or html, for the zipped website export
+    format: pdf   # or pdfx, or html for the zipped website export
 ```
 
 ```bash
-gutterpress publish --provider gdrive --connect     # opens your browser once
-gutterpress publish --provider gdrive               # uploads (or updates) the PDF
+gutterpress publish --connect gdrive     # opens your browser once
+gutterpress publish gdrive               # makes, checks and uploads (or updates) the file
 ```
 
-## Publishing
+## Publishing From the Terminal
 
-Build first (**Export PDF**, or `gutterpress build`), then press **Publish** on
-the provider's card. **Check readiness** runs the same checks without
-publishing anything.
-
-From the terminal (or CI):
+`gutterpress publish` does what the app's **Publish** does: it makes the
+files, checks them and sends them, to every target under `publish:`, or only
+the ones you name. There is nothing to build first.
 
 ```bash
-gutterpress build
-gutterpress publish --provider itch
+gutterpress publish                  # every target in manifest.yaml
+gutterpress publish itch gdrive      # just these
+gutterpress publish --dry-run        # make and check the files; send nothing
+gutterpress publish drivethrurpg-print --send-anyway   # send a held-back target
 ```
+
+Accounts you connected in the app work here too, and the other way round.
 
 @section .callout-tip
 
-**Tip:** DriveThruRPG has strict print requirements. Run `gutterpress validate
+**Tip:** DriveThruRPG has strict print requirements, and publishing to
+DriveThruRPG (print) checks the PDF/X against them for you. To check a file
+yourself, run `gutterpress validate
 --pdf dist/my-book/my-book-pdfx.pdf --target dtrpg` before uploading --- it checks
 bleed, ink density and more. Validate the `-pdfx.pdf` file from a `--format pdfx`
 build: the plain PDF is RGB, so it fails the colour and PDF/X checks by design. Without `--pdf`, there's no built PDF to inspect,
@@ -148,10 +173,10 @@ with neither build overwriting the other's files.
 
 ## Publishing From CI
 
-The `publish` command is fully headless. Set the provider's environment
+The `publish` command is fully headless. Set the target's environment
 variable instead of connecting interactively:
 
-| Provider | Environment variable |
+| Target | Environment variable |
 |----------|---------------------|
 | itch.io | `BUTLER_API_KEY` |
 | Azure Static Web Apps | `SWA_CLI_DEPLOYMENT_TOKEN` |
@@ -159,18 +184,19 @@ variable instead of connecting interactively:
 | Google Drive | `GDRIVE_REFRESH_TOKEN` (from an interactive connect on a workstation) |
 
 ```bash
-gutterpress publish --provider itch --json   # machine-readable result, exit 1 on failure
+gutterpress publish itch --json   # machine-readable result, exit 1 on failure
 ```
 
 ## Where Keys Are Stored
 
 API keys never live in your project folder, so they can't end up in Git or a
-shared ZIP. The desktop app keeps them in your operating system's secure
-storage; the CLI keeps them in a private file in your user configuration
-folder. Disconnecting a provider deletes the stored key.
+shared ZIP. The app and the terminal keep them in one private file in your
+user configuration folder (`~/.config/gutterpress`, or
+`%APPDATA%\gutterpress` on Windows) that only your user account can read, so
+a key saved in one works in the other. Disconnecting deletes the stored key.
 
 Google Drive is no different under the hood --- there's no key to paste, but
-the connection is stored just as securely, and **Disconnect** removes it just
+the connection is stored the same way, and **Disconnect** removes it just
 as completely.
 
 ## Publishing Plugins (Experimental) {#publishing-plugins}
@@ -193,13 +219,13 @@ gutterpress ext add <package-name>
 ```
 
 In the desktop app, add it from **Book setup** &rarr; **Extensions**, where its
-row shows a **Publish destination** badge. From then on it appears in the
-Publish wizard's list of destinations with an **Experimental** badge, and on
-the command line under its package name:
+row shows a **Publish destination** badge. From then on it appears under
+**Add a target** in **Publish** with an **Experimental** badge, and on the
+command line under its package name:
 
 ```bash
 gutterpress publish --list                      # plugins show as "experimental"
-gutterpress publish --provider <package-name>   # sends the book you already built
+gutterpress publish <package-name>              # makes, checks and sends its file
 ```
 
 **Its settings** live in `manifest.yaml`, under `publish:` and the plugin's
@@ -210,10 +236,10 @@ as the plugin's own instructions describe:
 publish:
   gutterpress-publish-example:
     site: my-book   # whatever the plugin asks for
-    format: html    # pdf (the default) or html: which build it receives
+    format: html    # pdf (the default), pdfx or html: which file it receives
 ```
 
-The wizard's **PDF**/**Website** choice sets `format` for you. A package name
+Its **File** menu on the **Targets** step sets `format` for you. A package name
 that starts with `@` must be in quotes: `"@studio/publish-site":`.
 
 **Keys and passwords never go in `manifest.yaml`** --- it travels with your book
@@ -225,5 +251,5 @@ environment.
 
 A plugin is code you choose to run, with the same access to your computer as
 any extension, so add only plugins you trust. If one fails, Gutterpress shows
-its message, prefixed with the plugin's name, and your built files stay where
-they are.
+its message, prefixed with the plugin's name, and the files it made stay
+where they are.

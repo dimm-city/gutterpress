@@ -22,9 +22,9 @@ of the status bar ("Books — open the start screen") to get back to it from a b
      **Trade paperback** (6 × 9 in), or **Another size** and then a size (US Letter, Trade
      paperback, Digest, A4, A5, or your own width and height). The Zine and Technical document
      templates start on their own size (Digest and US Letter).
-   - Under **Check the finished PDF against a print service's rules?** tick DriveThruRPG and/or
-     itch.io if you publish there. Gutterpress has no checks for other places you publish to; you
-     choose where to send the PDF when you publish.
+     Where the book is published starts from the template, or else the size you chose (DriveThruRPG
+     print starts with DriveThruRPG); change it any time in **Publish → Targets**
+     ([Publish your book](08-publish.md)).
    - Under **Where should we save it?** click **Choose folder…** (or leave it: **Create book**
      asks for a folder if none is chosen).
    - Leave **Keep version history** ticked. It keeps earlier versions of your book on your
