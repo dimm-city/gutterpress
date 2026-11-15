@@ -7,15 +7,14 @@
    * print-readiness notes), insert-at-cursor, drag-to-editor, and an
    * "Add images…" importer.
    *
-   * Host work — listing, thumbnails (generated AND cached host-side so
-   * multi-MB originals never reach the renderer), inspection, and file
-   * copies — goes through `api.media.*`/`api.dialog.*`/`api.shell.*` server routes, the
+   * Host work — listing, inspection, and file copies — goes through `api.media.*`/`api.dialog.*`/`api.shell.*` server routes, the
    * default seam (CLAUDE.md §8); `getPlatform().onFolderChanged` is used only
    * for the live folder-changed push stream, one of the seam's narrower
-   * classes. Renderer-side thumbnail state is bounded (THUMB_LIMIT) so a huge
-   * project can't balloon memory.
+   * classes. Thumbnails are made in the renderer (`ThumbCache`), off the host's
+   * main thread: only tiles near the viewport are loaded, two at a time, each
+   * scaled down on decode so a big book's plates never sit in memory full-size.
    */
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { getPlatform } from "#lib/platform/index.ts";
   import { api } from "#lib/api.ts";
   import type { MediaImageEntry, MediaImageDetails } from "#lib/platform/dtos.ts";
@@ -28,6 +27,7 @@
     type MediaWarning,
   } from "#lib/media.ts";
   import Icon from "#lib/components/Icon.svelte";
+  import { ThumbCache } from "#lib/media-thumbs.svelte.ts";
 
   let {
     projectDir,
@@ -42,13 +42,51 @@
     sidebarEmbedded?: boolean;
   } = $props();
 
-  /** Max thumbnails held in renderer state (small host-generated data URLs). */
-  const THUMB_LIMIT = 400;
-  /** Parallel thumbnail requests in flight. */
-  const THUMB_CONCURRENCY = 4;
+  const thumbs = new ThumbCache();
+  /** relPath of the selected image whose full-size preview failed to load. */
+  let detailBroken = $state<string | null>(null);
+
+  /** The nearest ancestor that scrolls (the grid's panel), so the observer's margin applies to it. */
+  function scrollParent(node: HTMLElement): HTMLElement | null {
+    for (let el = node.parentElement; el; el = el.parentElement) {
+      if (/(auto|scroll)/.test(getComputedStyle(el).overflowY)) return el;
+    }
+    return null;
+  }
+
+  /** Load a tile's thumbnail when it is near the viewport (and again if its file changes); stop waiting if it scrolls away first. */
+  function tile(node: HTMLElement, entry: MediaImageEntry) {
+    let current = entry;
+    const seen = new IntersectionObserver(
+      (hits) => {
+        const last = hits[hits.length - 1]!;
+        if (last.isIntersecting) {
+          thumbs.want(current.relPath, api.media.imageUrl(current.path, current.mtimeMs));
+        } else {
+          thumbs.unwant(current.relPath);
+        }
+      },
+      { root: scrollParent(node), rootMargin: "200px" },
+    );
+    seen.observe(node);
+    return {
+      update(next: MediaImageEntry) {
+        current = next;
+        seen.unobserve(node);
+        seen.observe(node); // re-reports, so a changed file reloads
+      },
+      // Not dropped here: opening the detail view removes every tile, and going back
+      // should not decode them all again. `refresh` frees thumbnails of images that left the list.
+      destroy() {
+        seen.disconnect();
+        thumbs.unwant(current.relPath);
+      },
+    };
+  }
+
+  onDestroy(() => thumbs.retainOnly(new Set()));
 
   let images = $state<MediaImageEntry[]>([]);
-  let thumbs = $state<Record<string, string | null>>({});
   let loading = $state(false);
   let error = $state<string | null>(null);
   let selected = $state<MediaImageEntry | null>(null);
@@ -59,32 +97,10 @@
 
   let loadSeq = 0;
 
-  async function loadThumbnails(list: MediaImageEntry[], seq: number): Promise<void> {
-    const queue = list.slice(0, THUMB_LIMIT);
-    let next = 0;
-    const worker = async () => {
-      while (next < queue.length && seq === loadSeq) {
-        const entry = queue[next++];
-        try {
-          const url = await api.media.thumbnail(entry.path);
-          if (seq !== loadSeq) return;
-          thumbs[entry.relPath] = url;
-        } catch {
-          if (seq !== loadSeq) return;
-          thumbs[entry.relPath] = null;
-        }
-      }
-    };
-    await Promise.all(
-      Array.from({ length: THUMB_CONCURRENCY }, () => worker()),
-    );
-  }
-
   async function refresh(): Promise<void> {
     const dir = projectDir;
     if (!dir) {
       images = [];
-      thumbs = {};
       return;
     }
     const seq = ++loadSeq;
@@ -94,19 +110,17 @@
       const list = await api.media.listImages(dir);
       if (seq !== loadSeq) return;
       images = list;
-      thumbs = {}; // bounded: rebuilt per load, never accumulates across loads
+      thumbs.retainOnly(new Set(list.map((e) => e.relPath)));
       // Keep the detail view alive across a refresh when the file still exists.
       if (selected) {
         const still = list.find((e) => e.relPath === selected!.relPath);
         selected = still ?? null;
         if (!still) details = null;
       }
-      void loadThumbnails(list, seq);
     } catch (e: unknown) {
       if (seq !== loadSeq) return;
       error = e instanceof Error ? e.message : String(e);
       images = [];
-      thumbs = {};
     } finally {
       if (seq === loadSeq) loading = false;
     }
@@ -143,9 +157,9 @@
   // Rapid tile clicks each kick off an `api.media.inspect` call; without
   // a sequence guard an earlier click's response can resolve AFTER a later
   // click's and overwrite `details`/`selected` with the wrong image's
-  // DPI/print-readiness data. Same pattern `refresh()`'s `loadSeq` already
-  // uses for thumbnail loads — a dedicated counter here since selection and
-  // thumbnail-loading are independent concerns.
+  // DPI/print-readiness data. Same pattern `refresh()`'s `loadSeq` uses for
+  // the image list — a dedicated counter here since selection and listing are
+  // independent concerns.
   let selectSeq = 0;
 
   async function select(entry: MediaImageEntry): Promise<void> {
@@ -227,8 +241,13 @@
     </div>
     <div class="media-detail">
       <div class="detail-thumb">
-        {#if thumbs[sel.relPath]}
-          <img src={thumbs[sel.relPath]} alt={sel.name} />
+        {#if detailBroken !== sel.relPath}
+          <img
+            src={api.media.imageUrl(sel.path, sel.mtimeMs)}
+            alt={sel.name}
+            decoding="async"
+            onerror={() => (detailBroken = sel.relPath)}
+          />
         {:else}
           <Icon name="image" size={40} />
         {/if}
@@ -329,9 +348,9 @@
               draggable="true"
               ondragstart={(e) => onDragStart(e, entry)}
             >
-              <span class="tile-thumb">
-                {#if thumbs[entry.relPath]}
-                  <img src={thumbs[entry.relPath]} alt={entry.name} loading="lazy" />
+              <span class="tile-thumb" use:tile={entry}>
+                {#if thumbs.src(entry.relPath)}
+                  <img src={thumbs.src(entry.relPath)} alt={entry.name} />
                 {:else}
                   <Icon name="image" size={22} />
                 {/if}

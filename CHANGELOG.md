@@ -73,6 +73,20 @@ This project follows [Semantic Versioning](https://semver.org/).
 - `gutterpress doctor` waits 10 seconds, not 2, for a tool to report its version, so a slow cold
   start is no longer shown as broken. Chromium's error output is no longer kept without limit
   during a long build.
+- **Opening a book on Linux no longer watches every file in `.git`, `dist` and `node_modules`.**
+  The desktop app's folder watcher put one watch on each of those files, which took thousands
+  of watches on a book with history, froze the app for a moment while it set them up, and could
+  use up the system's watch limit. It now skips those folders, and if the watch limit is
+  reached anyway the app keeps running instead of crashing.
+- **The Media panel no longer freezes the desktop app on large images.** Thumbnails were made
+  inside the app's main process, one full-size image at a time. The panel now makes them in the
+  window instead, a few at a time and only for the tiles in view, keeping just the small
+  picture so a book with hundreds of plates stays light. A picture the app cannot read (such
+  as a TIFF) shows the placeholder, and an edited image refreshes.
+- **A crashed desktop window now reloads itself.** If the window ran out of memory or crashed,
+  it stayed blank until you restarted the app. It now reloads; text you had not saved is
+  offered back when you reopen the book. If it crashes again right after reloading, the app
+  tells you instead of looping.
 
 ## [0.11.28] - 2026-11-15
 

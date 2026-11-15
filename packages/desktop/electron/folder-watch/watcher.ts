@@ -4,13 +4,14 @@
  *
  * WHY THIS EXISTS
  * ---------------
- * The open project is watched by ONE recursive `fs.watch`. `fs.watch` is
- * coarse (fires rename + change per save), so a change is debounced before the
+ * The open project is watched by ONE recursive watch (`watchProject`: native
+ * `fs.watch` on macOS/Windows, chokidar on Linux). Watch events are
+ * coarse (a save can fire rename + change), so a change is debounced before the
  * renderer is notified, and non-source subtrees (`.git` from automatic
  * snapshots, build output, vendored plugins) are filtered so they never
  * re-trigger preview reloads / re-arm timers.
  *
- * Every external touch-point — the `fs.watch` factory, path normalization, the
+ * Every external touch-point — the watch factory, path normalization, the
  * folder-changed notification, the per-edit signal (auto-snapshot + auto-sync),
  * the stop-flush, and the clock — is INJECTED via `deps`, so tests drive the
  * single-watcher / same-dir short-circuit / debounce / ignore filter /
@@ -21,16 +22,24 @@
  * Node/host-side ONLY — never imported by the renderer.
  */
 
-import type { FSWatcher } from "node:fs";
+import { watch as fsWatch } from "node:fs";
+import path from "node:path";
+import { watch as chokidarWatch } from "chokidar";
+
+/** What the folder watcher needs from an OS watcher: stop it, and hear its errors. */
+export interface WatchHandle {
+  close(): unknown;
+  on(event: "error", listener: (err: Error) => void): unknown;
+}
 
 /** External touch-points injected into the watcher (all faked in tests). */
 export interface FolderWatcherDeps {
-  /** Start an fs.watch on `dir`. Real code uses node:fs `watch`. */
+  /** Start a recursive watch on `dir`. Real code uses {@link watchProject}. */
   watch: (
     dir: string,
     options: { recursive: boolean },
     cb: (event: string, filename: string | Buffer | null) => void,
-  ) => FSWatcher;
+  ) => WatchHandle;
   /** Normalize a path to its canonical (resolved) form. Real code: path.resolve. */
   resolve: (p: string) => string;
   /** A debounced folder-change reached the renderer (`fs:folderChanged`). */
@@ -90,13 +99,39 @@ export function isIgnoredWatchEntry(relativePath: string): boolean {
   return false;
 }
 
+/**
+ * Start the recursive project watch.
+ *
+ * macOS and Windows have native recursive watching, so `fs.watch` is one cheap
+ * handle there. Linux has none: Node emulates it by putting an inotify watch on
+ * EVERY file and folder, `.git/objects`, `dist` and `node_modules` included
+ * (thousands of watches, a main-process stall while they are set up, and the
+ * system's watch limit used up). So on Linux chokidar does the walking, and it
+ * is told not to enter the ignored subtrees at all.
+ */
+export function watchProject(
+  dir: string,
+  options: { recursive: boolean },
+  cb: (event: string, filename: string | Buffer | null) => void,
+): WatchHandle {
+  if (process.platform !== "linux") return fsWatch(dir, options, cb);
+  const watcher = chokidarWatch(dir, {
+    ignoreInitial: true,
+    // Node's recursive fs.watch does not follow symlinks (a symlinked art library stays unwatched).
+    followSymlinks: false,
+    ignored: (candidate) => isIgnoredWatchEntry(path.relative(dir, candidate)),
+  });
+  watcher.on("all", (event, changed) => cb(event, path.relative(dir, changed)));
+  return watcher;
+}
+
 function defaultClearTimer(h: unknown): void {
   clearTimeout(h as NodeJS.Timeout);
 }
 
 export class FolderWatcher {
   /** The single OS watcher for the open project, or null when idle. */
-  private watcher: FSWatcher | null = null;
+  private watcher: WatchHandle | null = null;
   /** The normalized (resolved) directory currently watched, or null. */
   private watchedDir: string | null = null;
   /** The single armed folder-change debounce handle, or null. */
@@ -154,6 +189,12 @@ export class FolderWatcher {
         // Edit signal: external editors and in-app saves both land here.
         // Use normalizedDir (the resolved form) so the map key matches watchedDir.
         this.deps.onEditSignal(normalizedDir);
+      });
+      // Without a listener an OS watch error (the system's watch limit, a
+      // vanished folder) is an uncaught exception in the main process. The
+      // project stays open; it just stops hearing outside changes.
+      this.watcher.on("error", (e) => {
+        console.error(`[watch] watching ${dirPath} failed:`, e);
       });
     } catch (e) {
       console.error(`[watch] failed to watch ${dirPath}:`, e);
