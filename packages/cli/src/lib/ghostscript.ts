@@ -3,7 +3,7 @@ import { readFile, writeFile, unlink, rename, readdir, statfs } from "node:fs/pr
 import { tmpdir } from "node:os";
 import { join, basename, dirname, resolve } from "node:path";
 import { BuildError } from "./build-error";
-import { enhancedPath, execCapture, run, spawnCapture } from "./exec";
+import { enhancedPath, execCapture, spawnCapture, TOOL_IDLE_TIMEOUT_MS } from "./exec";
 import { log } from "../utils/logger";
 import { findTool } from "./tool-probe";
 import { pagesWithVisibleShadingPaints, type UnsplittableReason } from "./pdf-inspect";
@@ -286,11 +286,15 @@ export async function findPostScriptShadingPages(pdfBytes: Uint8Array): Promise<
  */
 export async function stripAnnotations(
   pdfPath: string,
-  stagingDir: string
+  stagingDir: string,
+  signal?: AbortSignal
 ): Promise<void> {
   const tmp = join(stagingDir, "annotations-stripped.pdf");
   try {
-    await run("qpdf", [pdfPath, tmp, "--flatten-annotations=all"]);
+    await execCapture("qpdf", [pdfPath, tmp, "--flatten-annotations=all"], {
+      timeoutMs: TOOL_IDLE_TIMEOUT_MS,
+      signal,
+    });
     await rename(tmp, pdfPath);
   } finally {
     await unlink(tmp).catch(() => {});
@@ -375,7 +379,8 @@ export async function flattenTransparentPages(
   pageNumbers: number[],
   stagingDir: string,
   /** artwork resolution (`pdfx.rasterDpi`) */
-  dpi = 300
+  dpi = 300,
+  signal?: AbortSignal
 ): Promise<void> {
   // The scratch files' pages are matched to these by index, in page order.
   const pages = [...new Set(pageNumbers)].sort((a, b) => a - b);
@@ -394,11 +399,15 @@ export async function flattenTransparentPages(
   // -dNO_PDFMARK_OUTLINES stops Ghostscript logging "pdfmark destination page N
   // points beyond the last page" for them).
   const gs = (...args: string[]) =>
-    run(ghostscript, [
-      "-q", "-dBATCH", "-dNOPAUSE", "-dSAFER",
-      "-dPreserveAnnots=false", "-dNO_PDFMARK_OUTLINES",
-      ...args,
-    ]);
+    execCapture(
+      ghostscript,
+      [
+        "-q", "-dBATCH", "-dNOPAUSE", "-dSAFER",
+        "-dPreserveAnnots=false", "-dNO_PDFMARK_OUTLINES",
+        ...args,
+      ],
+      { timeoutMs: TOOL_IDLE_TIMEOUT_MS, signal }
+    );
 
   try {
     await gs(pageList, "-sDEVICE=pdfimage24", "-dFILTERTEXT", `-r${dpi}`, `-sOutputFile=${art}`, pdfPath);
@@ -583,6 +592,11 @@ async function freeSpace(dir: string): Promise<string> {
   return s ? `${((s.bavail * s.bsize) / 1e9).toFixed(1)} GB free in ${dir}` : `free space in ${dir} unknown`;
 }
 
+/** Ghostscript output kept per stream; its warnings and errors come last. */
+const GS_CAPTURE_LIMIT = 1_000_000;
+/** At most one "page N" progress line per this long. */
+const GS_PROGRESS_INTERVAL_MS = 10_000;
+
 export async function convertToPdfxCmyk(
   inputPdf: string,
   outPdf: string,
@@ -598,6 +612,8 @@ export async function convertToPdfxCmyk(
      * flattening: vector content is unaffected.
      */
     rasterDpi?: number;
+    /** Aborting stops Ghostscript; the conversion then rejects with code "CANCELED". */
+    signal?: AbortSignal;
   }
 ): Promise<void> {
   const iccPath = resolve(config.iccPath);
@@ -693,10 +709,26 @@ export async function convertToPdfxCmyk(
           '13\'s or Ubuntu 25.10\'s package, Homebrew, winget, or the Docker image (docs/publishing.md, "PDF/X colour").'
       );
     }
-    // `run` inherits stdio, which would leave the warnings block on a terminal
-    // the desktop app never shows; capture it and log it through the logger.
+    // Capture the output and log it through the logger: the desktop app has no
+    // terminal to show it on. The conversion has no total deadline (a long book
+    // takes minutes), but it prints a "Page N" line per page, so silence for
+    // TOOL_IDLE_TIMEOUT_MS means it is hung. Those lines are also the progress
+    // report; only the tail of the output is kept, which is where its
+    // warnings block and any `ioerror` are.
+    let lastReport = 0;
     const { code, signal, stdout, stderr } = await spawnCapture(ghostscript, args, {
       env: { ...process.env, PATH: enhancedPath },
+      timeoutMs: TOOL_IDLE_TIMEOUT_MS,
+      timeoutMode: "idle",
+      captureLimit: GS_CAPTURE_LIMIT,
+      signal: config.signal,
+      onChunk: (_stream, text) => {
+        const page = [...text.matchAll(/^Page (\d+)/gm)].pop()?.[1];
+        if (page && Date.now() - lastReport >= GS_PROGRESS_INTERVAL_MS) {
+          lastReport = Date.now();
+          log.info(`Converting to PDF/X: page ${page}`);
+        }
+      },
     });
     if (signal) {
       throw new Error(

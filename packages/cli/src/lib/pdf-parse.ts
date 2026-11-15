@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PDFDocument, PDFName } from "pdf-lib";
-import { execCapture } from "./exec";
+import { execCapture, TOOL_IDLE_TIMEOUT_MS } from "./exec";
 import { resolveGhostscript } from "./ghostscript";
 
 /**
@@ -146,7 +146,7 @@ export async function getPerPageInkCoverage(
         `-dLastPage=${last}`,
         `-sOutputFile=${join(dir, "page-%d.pam")}`,
         pdfPath,
-      ]);
+      ], { timeoutMs: TOOL_IDLE_TIMEOUT_MS });
       // Ghostscript numbers the files from 1 within each run.
       for (let page = first; page <= last; page++) {
         const file = join(dir, `page-${page - first + 1}.pam`);

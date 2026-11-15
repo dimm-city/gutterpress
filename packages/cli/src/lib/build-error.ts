@@ -17,6 +17,8 @@
  *   3  PIPELINE  — the build/render/export pipeline failed for a reason
  *                  unrelated to CLI usage or findings (I/O error, missing
  *                  tool, renderer crash, timeout). See {@link BuildError}.
+ * 130  CANCELED — the build was stopped (Ctrl-C). `gutterpress build` exits
+ *                  143 on SIGTERM, the shell's 128 + signal number.
  *
  * Commands and error classes import from here instead of hardcoding exit-code
  * literals; `build-runner.ts` still passes an explicit code per gate (e.g.
@@ -28,6 +30,7 @@ export const EXIT_CODES = {
   FINDINGS: 1,
   USAGE: 2,
   PIPELINE: 3,
+  CANCELED: 130,
 } as const;
 
 

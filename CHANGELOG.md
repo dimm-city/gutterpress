@@ -5,6 +5,20 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Stopping a build with Ctrl-C no longer leaves a mess behind.** `gutterpress build` used to
+  die with Chromium still running and its work folder (`dist/.<book>-build-…`) and browser profile
+  left on disk, a few hundred MB each time. It now closes the browser, removes both and exits
+  with 130 (Ctrl-C) or 143 (SIGTERM).
+- **A PDF build gives back Chromium's memory as soon as the PDF is made.** The browser used to
+  stay open through the whole PDF/X conversion and the checks after it, which on a long book is
+  minutes of memory nothing needed.
+- **The PDF/X conversion shows its progress and cannot hang forever.** It prints the page it
+  has reached every ten seconds or so, and is stopped if Ghostscript goes ten minutes without
+  output (the same limit now covers the other Ghostscript and qpdf steps of a build). Its
+  captured output is capped, so a very long conversion no longer grows without bound.
+
 ## [0.11.28] - 2026-11-15
 
 ### Changed

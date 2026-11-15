@@ -1,10 +1,9 @@
 import { test, expect, spyOn } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import {
   execCapture,
-  run,
   spawnCapture,
   buildEnhancedPath,
   localBin,
@@ -24,18 +23,6 @@ test("execCapture rejects with a signal-named message when child is killed by a 
   expect(err).toBeDefined();
   expect(err!.message).not.toContain("exited null");
   expect(err!.message).toContain("SIGTERM");
-});
-
-test("run rejects with the signal name, not 'exited null', when the child is killed", async () => {
-  let err: (Error & { signal?: string }) | undefined;
-  try {
-    await run("sh", ["-c", "kill -SEGV $$"]);
-  } catch (e) {
-    err = e as Error;
-  }
-  expect(err!.message).toContain("was killed by signal SIGSEGV");
-  expect(err!.message).not.toContain("exited null");
-  expect(err!.signal).toBe("SIGSEGV");
 });
 
 // --- exact error message formats (pins for the spawn-consolidation claim
@@ -238,4 +225,35 @@ test("execCapture respects the cwd option", async () => {
   const dir = fs.realpathSync(os.tmpdir());
   const { stdout } = await execCapture("pwd", [], { cwd: dir });
   expect(stdout.trim()).toBe(dir);
+});
+
+test("spawnCapture aborted by its signal kills the child and rejects with CANCELED", async () => {
+  const ctl = new AbortController();
+  const started = Date.now();
+  setTimeout(() => ctl.abort(), 50);
+  let err: (Error & { code?: string }) | undefined;
+  try {
+    await spawnCapture("sh", ["-c", "sleep 30"], { signal: ctl.signal });
+  } catch (e) {
+    err = e as Error;
+  }
+  expect(err?.code).toBe("CANCELED");
+  expect(err?.name).toBe("AbortError");
+  expect(Date.now() - started).toBeLessThan(5_000);
+});
+
+test("spawnCapture with an already-aborted signal never starts the child", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "gp-exec-abort-"));
+  const marker = join(dir, "ran");
+  const ctl = new AbortController();
+  ctl.abort();
+  let err: (Error & { code?: string }) | undefined;
+  try {
+    await spawnCapture("sh", ["-c", `touch ${marker}`], { signal: ctl.signal });
+  } catch (e) {
+    err = e as Error;
+  }
+  await Bun.sleep(200);
+  expect(err?.code).toBe("CANCELED");
+  expect(existsSync(marker)).toBe(false);
 });

@@ -20,8 +20,7 @@ export const localBin = resolvePath(join(import.meta.dirname, "..", "..", "node_
 
 /**
  * PATH with `localBin` prepended, correctly delimiter-joined. Single source
- * of truth for every spawn in the lib — `run` and `execCapture` below use
- * it, and tool-probe.ts's `isToolAvailable`/`findTool` get it for free by
+ * of truth for every spawn in the lib — `execCapture` below uses it, and tool-probe.ts's `isToolAvailable`/`findTool` get it for free by
  * calling `execCapture` instead of keeping their own copy. Joined with
  * `delimiter`, never a literal `:` (which corrupts PATH on Windows).
  */
@@ -29,30 +28,6 @@ export const enhancedPath = buildEnhancedPath(localBin, process.env.PATH ?? "");
 
 function enhancedEnv(): NodeJS.ProcessEnv {
   return { ...process.env, PATH: enhancedPath };
-}
-
-/**
- * Spawn a child process, inherit stdio, reject on non-zero exit or death by
- * signal (the error's `signal` property is set in that case).
- */
-export function run(
-  cmd: string,
-  args: string[],
-  opts: { cwd?: string } = {}
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { stdio: "inherit", cwd: opts.cwd, env: enhancedEnv() });
-    p.on("error", reject);
-    p.on("exit", (code, signal) => {
-      if (code === 0) return resolve();
-      const cwd = opts.cwd ?? process.cwd();
-      const what = signal ? `was killed by signal ${signal}` : `exited ${code}`;
-      // `signal` rides on the error so callers can tell a crash from a failure.
-      reject(
-        Object.assign(new Error(`${cmd} ${args.join(" ")} (cwd=${cwd}) ${what}`), { signal })
-      );
-    });
-  });
 }
 
 /**
@@ -84,6 +59,20 @@ export interface SpawnCaptureOptions {
   captureLimit?: number;
   /** Override {@link EXIT_FLUSH_GRACE_MS} (tests). */
   exitGraceMs?: number;
+  /** Aborting kills the child (SIGKILL) and rejects with an AbortError whose
+   * `code` is "CANCELED". Already aborted: nothing is spawned. */
+  signal?: AbortSignal;
+}
+
+/**
+ * How long an external tool (Ghostscript, qpdf) may stay silent before it is
+ * taken for hung and stopped. An idle window, not a total: a conversion that
+ * is still printing "Page N" can run as long as it needs.
+ */
+export const TOOL_IDLE_TIMEOUT_MS = 10 * 60_000;
+
+function canceled(cmd: string): Error {
+  return Object.assign(new Error(`${cmd} was canceled`), { name: "AbortError", code: "CANCELED" });
 }
 
 function keepTail(buffer: string, chunk: string, limit: number | undefined): string {
@@ -106,6 +95,7 @@ export function spawnCapture(
   opts: SpawnCaptureOptions = {}
 ): Promise<{ code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
+    if (opts.signal?.aborted) return reject(canceled(cmd));
     const p = spawn(cmd, args, {
       stdio: ["ignore", "pipe", "pipe"],
       cwd: opts.cwd,
@@ -126,8 +116,16 @@ export function spawnCapture(
       settled = true;
       if (killTimer) clearTimeout(killTimer);
       if (graceTimer) clearTimeout(graceTimer);
+      opts.signal?.removeEventListener("abort", onAbort);
       fn();
     };
+
+    const onAbort = (): void =>
+      settle(() => {
+        p.kill("SIGKILL");
+        reject(canceled(cmd));
+      });
+    opts.signal?.addEventListener("abort", onAbort, { once: true });
 
     const armKill = (): void => {
       if (!opts.timeoutMs) return;
@@ -197,12 +195,11 @@ export function spawnCapture(
 export async function execCapture(
   cmd: string,
   args: string[],
-  opts: { timeoutMs?: number; cwd?: string } = {}
+  opts: Pick<SpawnCaptureOptions, "timeoutMs" | "timeoutMode" | "cwd" | "signal"> = {}
 ): Promise<{ stdout: string; stderr: string }> {
   const { code, signal, stdout, stderr } = await spawnCapture(cmd, args, {
-    cwd: opts.cwd,
+    ...opts,
     env: enhancedEnv(),
-    timeoutMs: opts.timeoutMs,
   });
   if (code === 0) return { stdout, stderr };
   throw new Error(

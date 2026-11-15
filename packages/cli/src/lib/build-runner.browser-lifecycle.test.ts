@@ -16,11 +16,14 @@
  * exactly as found for the next test file.
  */
 import { test, expect, spyOn, afterEach } from "bun:test";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as cdp from "../engine/shared/cdp.ts";
 import * as chromium from "./chromium.ts";
+import * as engine from "./engine.ts";
+import * as ghostscript from "./ghostscript.ts";
+import { PDFDocument } from "pdf-lib";
 import type { EngineBrowser } from "./build-runner.ts";
 
 const { runBuild } = await import("./build-runner.ts");
@@ -174,6 +177,83 @@ test("a launch failure surfaces as a BuildError after the gates, and nothing is 
     ).rejects.toThrow(/Could not launch a Chromium browser for the PDF build: .*requires Chromium 148\+/);
     expect(launchMock).toHaveBeenCalledTimes(1);
   } finally {
+    await rm(dir, { recursive: true, force: true });
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
+test("the browser is closed as soon as the PDF is made, before anything after it, and not closed twice", async () => {
+  const launched = fakeBrowser();
+  installMocks(launched.browser);
+  const { dir, outDir } = await makeValidProject("gutterpress-browser-early");
+  let closesWhenPdfMade = -1;
+  let closesAtNextStep = -1;
+  const render = spyOn(engine, "buildNativePdf").mockImplementation(async (_html, outPdf) => {
+    const doc = await PDFDocument.create();
+    doc.addPage([100, 100]);
+    await writeFile(outPdf, await doc.save());
+    closesWhenPdfMade = launched.closes();
+    return [];
+  });
+  // The first thing the build does with the finished PDF.
+  const stamp = spyOn(ghostscript, "stampCreator").mockImplementation(async () => {
+    closesAtNextStep = launched.closes();
+  });
+  try {
+    await runBuild({ inputDir: dir, format: "pdf", outDir, skipPreValidate: true, rawArgs: {} });
+    expect(closesWhenPdfMade).toBe(0);
+    expect(closesAtNextStep).toBe(1);
+    // The `finally` backstop must not close it a second time.
+    expect(launched.closes()).toBe(1);
+  } finally {
+    render.mockRestore();
+    stamp.mockRestore();
+    await rm(dir, { recursive: true, force: true });
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
+test("aborting the signal mid-render stops the build at once: CANCELED, browser closed once, no work dir left", async () => {
+  const launched = fakeBrowser();
+  installMocks(launched.browser);
+  const { dir, outDir } = await makeValidProject("gutterpress-browser-cancel");
+  const ctl = new AbortController();
+  // A render that never finishes, like a long book mid-pagination.
+  const render = spyOn(engine, "buildNativePdf").mockImplementation(() => {
+    setTimeout(() => ctl.abort(), 50);
+    return new Promise(() => {});
+  });
+  const buildDirs = async () =>
+    (await Promise.all([dir, outDir].map((d) => readdir(d, { recursive: true })))).flat().filter((n) => n.includes("-build-"));
+  try {
+    const started = Date.now();
+    const failure = await runBuild({ inputDir: dir, format: "pdf", outDir, skipPreValidate: true, signal: ctl.signal, rawArgs: {} })
+      .then(() => undefined, (e: unknown) => e as { code?: string; exitCode?: number });
+    expect(failure?.code).toBe("CANCELED");
+    expect(failure?.exitCode).toBe(130);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(launched.closes()).toBe(1);
+    expect(await buildDirs()).toEqual([]);
+  } finally {
+    render.mockRestore();
+    await rm(dir, { recursive: true, force: true });
+    await rm(outDir, { recursive: true, force: true });
+  }
+}, 15_000);
+
+test("a signal that is already aborted never starts the render", async () => {
+  const launched = fakeBrowser();
+  installMocks(launched.browser);
+  const { dir, outDir } = await makeValidProject("gutterpress-browser-precancel");
+  const render = spyOn(engine, "buildNativePdf");
+  try {
+    const failure = await runBuild({ inputDir: dir, format: "pdf", outDir, signal: AbortSignal.abort(), rawArgs: {} })
+      .then(() => undefined, (e: unknown) => e as { code?: string });
+    expect(failure?.code).toBe("CANCELED");
+    expect(render).not.toHaveBeenCalled();
+    expect(launchMock).not.toHaveBeenCalled();
+  } finally {
+    render.mockRestore();
     await rm(dir, { recursive: true, force: true });
     await rm(outDir, { recursive: true, force: true });
   }

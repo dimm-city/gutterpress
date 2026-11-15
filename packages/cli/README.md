@@ -543,6 +543,7 @@ Every command follows the same exit-code contract, so CI can branch on the resul
 | `1` | Findings — the command ran fine but reported findings/validation failures (`validate`/`preflight` findings, a `build` quality-gate rejection). |
 | `2` | Usage — the invocation itself was wrong: a bad flag, positional argument, preset, or value. |
 | `3` | Pipeline — the build/render/export pipeline itself failed for a reason unrelated to usage or findings (I/O error, missing tool, renderer crash). |
+| `130` / `143` | Stopped — `build` was interrupted with Ctrl-C (`130`) or SIGTERM (`143`); it closes the browser and removes its work folder first. |
 
 This applies uniformly across `build`, `preview`, `validate`, `preflight`, `publish`, `ext`, `new`, and `doctor`.
 
