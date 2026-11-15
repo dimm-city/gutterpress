@@ -371,7 +371,14 @@ class Connection {
     const ws = new WebSocket(url, { maxPayload: 512 * 1024 * 1024 });
     await new Promise<void>((res, rej) => {
       ws.once("open", () => res());
-      ws.on("error", rej); // a dying browser emits it more than once
+      // A dying browser emits "error" more than once, and not always as an Error.
+      ws.on("error", (e: unknown) =>
+        rej(
+          e instanceof Error
+            ? e
+            : new BuildError("Chromium closed while starting up (it may have run out of memory)"),
+        ),
+      );
     });
     return new Connection(ws, stderrTail);
   }
