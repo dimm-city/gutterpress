@@ -5,13 +5,6 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
-
-- **A book with a `.htmlhintrc` builds again after its first build.** The HTML check reads the
-  last build's `book.html`, and Gutterpress wrote its own page-size tag there with single quotes,
-  so a rule asking for double quotes (as in the `with-validation` example) stopped every rebuild
-  over markup the author never wrote. The tag is now double-quoted.
-
 ## [0.11.28] - 2026-11-15
 
 ### Changed
@@ -81,6 +74,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A book with a `.htmlhintrc` builds again after its first build.** The HTML check reads the
+  last build's `book.html`, and Gutterpress wrote its own page-size tag there with single quotes,
+  so a rule asking for double quotes (as in the `with-validation` example) stopped every rebuild
+  over markup the author never wrote. The tag is now double-quoted.
 - **Desktop: a failed PDF export did not say why.** The reason the build gave was dropped on
   the way to the screen, so most failures read "PDF export failed. Open Help (?) > System
   tools to check for issues." The Publish view now shows the build's own reason and keeps it
