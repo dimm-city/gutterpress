@@ -916,5 +916,5 @@ test("gdrive provider declares an oauth connect kind and a folder destination pi
   expect(gdriveProvider.info.credential.required).toBe(true);
   expect(gdriveProvider.info.destinations).toEqual({ label: "Folder", canCreate: true });
   expect(gdriveProvider.info.format).toBe("pdf");
-  expect(gdriveProvider.info.formats).toEqual(["pdf", "pdfx", "html"]);
+  expect(gdriveProvider.info.formats).toEqual(["pdf", "pdf-screen", "pdfx", "html"]);
 });

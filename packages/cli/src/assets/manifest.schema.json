@@ -467,7 +467,7 @@
           "description": "A folder on this computer — where the desktop's Publish builds the book before sending it anywhere else (default: `dist` inside the book)",
           "properties": {
             "dir": { "type": "string", "description": "Output folder inside the book, relative to it (default: dist). The desktop app keeps a folder outside the book in the person's own settings, not here; an absolute path written here still works." },
-            "format": { "type": "string", "enum": ["pdf", "pdfx", "html"], "description": "Which file to save: the PDF, the PDF/X for print, or the website (default: pdf)" }
+            "format": { "type": "string", "enum": ["pdf", "pdf-screen", "pdfx", "html"], "description": "Which file to save: the PDF, the smaller PDF for screens, the PDF/X for print, or the website (default: pdf)" }
           },
           "additionalProperties": true
         },
@@ -475,6 +475,7 @@
           "type": ["object", "null"],
           "description": "itch.io publishing (uploaded with butler)",
           "properties": {
+            "format": { "type": "string", "enum": ["pdf", "pdf-screen"], "description": "Which file to send: the PDF, or the smaller PDF for screens with its pictures kept at 200 ppi (default: pdf)" },
             "enabled": { "type": "boolean", "description": "Older form, still read: in a book with an `enabled:` key anywhere, only the targets with `enabled: true` (and those in `targets:`) are published to. New books list a target by its entry alone." },
             "target": {
               "type": "string",
@@ -507,6 +508,7 @@
           "type": ["object", "null"],
           "description": "DriveThruRPG digital (guided: a checked PDF package, then the publisher hub). Held to the digital rules.",
           "properties": {
+            "format": { "type": "string", "enum": ["pdf", "pdf-screen"], "description": "Which file to send: the PDF, or the smaller PDF for screens with its pictures kept at 200 ppi (default: pdf)" },
             "productUrl": {
               "type": "string",
               "description": "Existing product page URL, when updating a published title"
@@ -552,7 +554,7 @@
           "type": ["object", "null"],
           "description": "Shopify product publishing (Admin GraphQL API)",
           "properties": {
-            "format": { "type": "string", "enum": ["pdf", "pdfx"], "description": "Which file to send: the PDF or the PDF/X for print (default: pdf)" },
+            "format": { "type": "string", "enum": ["pdf", "pdf-screen", "pdfx"], "description": "Which file to send: the PDF, the smaller PDF for screens, or the PDF/X for print (default: pdf)" },
             "enabled": { "type": "boolean", "description": "Older form, still read: in a book with an `enabled:` key anywhere, only the targets with `enabled: true` (and those in `targets:`) are published to. New books list a target by its entry alone." },
             "shop": {
               "type": "string",
@@ -593,8 +595,8 @@
             },
             "format": {
               "type": "string",
-              "description": "Which file to upload: the PDF, the PDF/X for print, or the zipped website",
-              "enum": ["pdf", "pdfx", "html"],
+              "description": "Which file to upload: the PDF, the smaller PDF for screens, the PDF/X for print, or the zipped website",
+              "enum": ["pdf", "pdf-screen", "pdfx", "html"],
               "default": "pdf"
             }
           }

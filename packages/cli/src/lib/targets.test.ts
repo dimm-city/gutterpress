@@ -61,13 +61,14 @@ describe("target registry", () => {
       return t.formats ? { pick: [...t.formats], first: t.format } : { fixed: t.format };
     };
     expect(file("drivethrurpg-print")).toEqual({ fixed: "pdfx" });
-    expect(file("drivethrurpg-digital")).toEqual({ fixed: "pdf" });
-    expect(file("itch")).toEqual({ fixed: "pdf" });
+    expect(file("drivethrurpg-digital")).toEqual({ pick: ["pdf", "pdf-screen"], first: "pdf" });
+    expect(file("itch")).toEqual({ pick: ["pdf", "pdf-screen"], first: "pdf" });
     expect(file("azure-swa")).toEqual({ fixed: "html" });
+    // KDP is print: no PDF for screens.
     expect(file("kdp")).toEqual({ pick: ["pdf", "pdfx"], first: "pdf" });
-    expect(file("shopify")).toEqual({ pick: ["pdf", "pdfx"], first: "pdf" });
-    expect(file("local")).toEqual({ pick: ["pdf", "pdfx", "html"], first: "pdf" });
-    expect(file("gdrive")).toEqual({ pick: ["pdf", "pdfx", "html"], first: "pdf" });
+    expect(file("shopify")).toEqual({ pick: ["pdf", "pdf-screen", "pdfx"], first: "pdf" });
+    expect(file("local")).toEqual({ pick: ["pdf", "pdf-screen", "pdfx", "html"], first: "pdf" });
+    expect(file("gdrive")).toEqual({ pick: ["pdf", "pdf-screen", "pdfx", "html"], first: "pdf" });
   });
 
   test("targetFormat honours a saved pick the target offers, and nothing else", () => {

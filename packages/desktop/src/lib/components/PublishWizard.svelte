@@ -68,6 +68,7 @@
   let stepIndex = $state(0);
   const FORMAT_NAMES: Record<PublishProviderCard["format"], string> = {
     pdf: "PDF",
+    "pdf-screen": "Smaller PDF for screens",
     pdfx: "PDF/X for print",
     html: "Website",
   };

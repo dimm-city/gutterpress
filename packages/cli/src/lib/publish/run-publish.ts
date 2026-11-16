@@ -199,8 +199,20 @@ const PDFX_HINT =
 const HTML_HINT =
   "Build the website export first (gutterpress build --format html).";
 
-const ARTIFACT_HINTS: Record<PublishArtifactFormat, string> = { pdf: PDF_HINT, pdfx: PDFX_HINT, html: HTML_HINT };
-const ARTIFACT_NAMES: Record<PublishArtifactFormat, string> = { pdf: "PDF", pdfx: "PDF/X", html: "HTML export" };
+const SCREEN_HINT = "Publish the book to make it (gutterpress publish, or Publish in the app).";
+
+const ARTIFACT_HINTS: Record<PublishArtifactFormat, string> = {
+  pdf: PDF_HINT,
+  "pdf-screen": SCREEN_HINT,
+  pdfx: PDFX_HINT,
+  html: HTML_HINT,
+};
+const ARTIFACT_NAMES: Record<PublishArtifactFormat, string> = {
+  pdf: "PDF",
+  "pdf-screen": "PDF for screens",
+  pdfx: "PDF/X",
+  html: "HTML export",
+};
 
 /** Artifact-existence checks shared by every provider. */
 async function artifactIssues(artifact: PublishArtifact): Promise<PreflightIssue[]> {

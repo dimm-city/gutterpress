@@ -37,8 +37,12 @@ export type TargetOverlay = {
   };
 };
 
-/** A file a book can be made into: a PDF, a print-ready PDF/X, or the website. */
-export type TargetFileFormat = "pdf" | "pdfx" | "html";
+/**
+ * A file a book can be made into: a PDF, the same PDF with its pictures made
+ * small for reading on screen (`screen-pdf.ts`), a print-ready PDF/X, or the
+ * website.
+ */
+export type TargetFileFormat = "pdf" | "pdf-screen" | "pdfx" | "html";
 
 export interface PublishTarget {
   id: string;
@@ -133,8 +137,9 @@ const DTRPG_PRINT_TARGET: PublishTarget = {
  * CMYK-only art) do not apply; a well-formed PDF with embedded fonts does.
  * Shared by every target that sells or hosts a PDF to read on screen.
  */
-const DIGITAL_RULES: Pick<PublishTarget, "format" | "overlay" | "requiredChecks" | "requiredTools"> = {
+const DIGITAL_RULES: Pick<PublishTarget, "format" | "formats" | "overlay" | "requiredChecks" | "requiredTools"> = {
   format: "pdf",
+  formats: ["pdf", "pdf-screen"],
   overlay: {
     checks: {
       "pdf.structure.qpdf": "error",
@@ -165,6 +170,18 @@ const DIGITAL_RULES: Pick<PublishTarget, "format" | "overlay" | "requiredChecks"
   requiredTools: [],
 };
 
+/**
+ * Checks a PDF for screens is never held to, whatever the book's preset: the
+ * print checks the digital rules turn off (it is not trimmed or pressed), and
+ * the print resolution its pictures are made below on purpose.
+ */
+export const SCREEN_PDF_SKIPPED_CHECKS = [
+  ...Object.entries(DIGITAL_RULES.overlay.checks ?? {})
+    .filter(([id, level]) => level === "off" && id.startsWith("pdf."))
+    .map(([id]) => id),
+  "pdf.print.image-resolution",
+];
+
 /** A target that defines neither a file nor rules: the person picks the file,
  *  and it is checked against the book's own rules. */
 const openTarget = (
@@ -175,7 +192,7 @@ const openTarget = (
 
 /** Every place a book can go, in the order pickers offer them. */
 export const TARGETS: Record<string, PublishTarget> = {
-  local: openTarget("local", "A folder on this computer", ["pdf", "pdfx", "html"]),
+  local: openTarget("local", "A folder on this computer", ["pdf", "pdf-screen", "pdfx", "html"]),
   itch: { id: "itch", label: "itch.io", ...DIGITAL_RULES },
   "drivethrurpg-print": DTRPG_PRINT_TARGET,
   "drivethrurpg-digital": { id: "drivethrurpg-digital", label: "DriveThruRPG (digital)", ...DIGITAL_RULES },
@@ -189,8 +206,8 @@ export const TARGETS: Record<string, PublishTarget> = {
     requiredChecks: [],
     requiredTools: [],
   },
-  shopify: openTarget("shopify", "Shopify", ["pdf", "pdfx"]),
-  gdrive: openTarget("gdrive", "Google Drive", ["pdf", "pdfx", "html"]),
+  shopify: openTarget("shopify", "Shopify", ["pdf", "pdf-screen", "pdfx"]),
+  gdrive: openTarget("gdrive", "Google Drive", ["pdf", "pdf-screen", "pdfx", "html"]),
 };
 
 /**
