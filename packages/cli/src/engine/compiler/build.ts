@@ -911,9 +911,15 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       // inserted so far. Toggling them one pass at a time instead oscillates —
       // the spacer fixes the parity, the next pass sees it fixed and removes it.
       if (rectoSites.length) {
+        // Only page numbers are read from these prints, and Chromium spends
+        // seconds per large picture writing one into a PDF, so they leave the
+        // pictures out. Hiding a picture or a background changes no layout.
         const measure = async () => {
           prints++;
-          const facts = await inspectPdf(await printPdf(page));
+          await page.evaluate(`window.__gp.addCss("gp-measure-only", ${JSON.stringify(MEASURE_ONLY_CSS)})`);
+          const bytes = await printPdf(page);
+          await page.evaluate(`window.__gp.addCss("gp-measure-only", "")`);
+          const facts = await inspectPdf(bytes);
           return Object.fromEntries(
             Object.entries(facts.namedDests).map(([k, v]) => [k, v + 1]),
           ) as Record<string, number>;
@@ -1153,10 +1159,10 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       if (predicted) {
         log(
           `tier 3: predicted page map from the viewer in ${predicted.ms.toFixed(0)}ms ` +
-            `(${predicted.pageCount}pp, ${Object.keys(predicted.pageMap).length}/${targets.size} targets resolved)`,
+            `(${predicted.printedPages}pp, ${Object.keys(predicted.pageMap).length}/${targets.size} targets resolved)`,
         );
-        await applySynthesis(predicted.pageMap, predicted.pageCount);
-        previous = mapSignature(predicted.pageMap, predicted.pageCount);
+        await applySynthesis(predicted.pageMap, predicted.printedPages);
+        previous = mapSignature(predicted.pageMap, predicted.printedPages);
       }
 
       converged = false;
@@ -1695,6 +1701,11 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
   }
 }
 
+const MEASURE_ONLY_CSS =
+  "img, svg, video, canvas, picture, object, embed { visibility: hidden !important; }" +
+  " *, *::before, *::after { background-image: none !important; border-image: none !important; }" +
+  " @page { background-image: none !important; }";
+
 async function printPdf(page: Session): Promise<Uint8Array> {
   await page.waitForReady();
   return page.printToPDF();
@@ -2059,7 +2070,13 @@ export function mapSignature(map: Record<string, number>, pageCount: number): st
 
 interface PredictedPageMap {
   pageMap: Record<string, number>;
+  /** the pages the viewer shows, with the blank pages that pad the book to its signature */
   pageCount: number;
+  /**
+   * the pages the print lays out: the viewer's, less that padding, which
+   * postprocess adds to the PDF later. What the first print measures.
+   */
+  printedPages: number;
   ms: number;
 }
 
@@ -2133,6 +2150,7 @@ async function predictPageMap(
     const result = await page.evaluate<{
       pageMap: Record<string, number>;
       pageCount: number;
+      printedPages: number;
     }>(`(async () => {
       const api = await window.Gutterpress.fragmentDocument({});
       const pageMap = {};
@@ -2144,7 +2162,7 @@ async function predictPageMap(
         const target = el.tagName === "GP-ANCHOR" ? el.parentElement ?? el : el;
         pageMap[id] = api.pageOf(target) + 1;
       }
-      return { pageMap, pageCount: api.totalPages };
+      return { pageMap, pageCount: api.totalPages, printedPages: api.totalPages - api.paddedPageIndices.length };
     })()`);
     return { ...result, ms: performance.now() - t0 };
   } catch {
