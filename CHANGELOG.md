@@ -5,19 +5,6 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
-
-- **A book with pictures and left/right page breaks builds much faster.** To place a chapter
-  on a right-hand page, Gutterpress prints the book first to learn where each page falls, and
-  Chromium spends seconds writing each large picture into every print. Those extra prints now
-  leave the pictures out, so a picture is written only into the PDF you get. The PDF is
-  unchanged.
-- **A book padded to its print signature is printed once, not twice.** Gutterpress lays a
-  book out first so the first print can be the PDF you get. It counted the blank pages that
-  pad the book to its signature (DriveThruRPG pads to a multiple of 4) only on that side,
-  so for any book that needed padding the guess never matched and the whole book was
-  printed again. The preview/print parity check now fails if a guess stops matching.
-
 ## [0.11.28] - 2026-11-15
 
 ### Changed
@@ -87,6 +74,16 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A book with pictures and left/right page breaks builds much faster.** To place a chapter
+  on a right-hand page, Gutterpress prints the book first to learn where each page falls, and
+  Chromium spends seconds writing each large picture into every print. Those extra prints now
+  leave the pictures out, so a picture is written only into the PDF you get. The PDF is
+  unchanged.
+- **A book padded to its print signature is printed once, not twice.** Gutterpress lays a
+  book out first so the first print can be the PDF you get. It counted the blank pages that
+  pad the book to its signature (DriveThruRPG pads to a multiple of 4) only on that side,
+  so for any book that needed padding the guess never matched and the whole book was
+  printed again. The preview/print parity check now fails if a guess stops matching.
 - **Cancel now really stops a PDF export or a publish.** Cancel used to only hide the progress
   while the hidden pages kept laying out and Ghostscript and uploads kept running, and you could
   not start another export until the cancelled one finished. Cancel now stops the work within
