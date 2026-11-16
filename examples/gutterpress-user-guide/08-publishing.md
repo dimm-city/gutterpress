@@ -22,9 +22,11 @@ notes), and opens the platform's upload page with a step-by-step checklist.
 Press **Publish** in the toolbar. Publishing has three steps:
 
 1. **Targets** --- where this book goes. Each target says which file it gets:
-   DriveThruRPG (print) gets the print-ready PDF/X, itch.io gets the PDF, and
-   a target with a choice (a folder, Google Drive, KDP, Shopify) has a
-   **File** menu. Add a target from **Add a target**, or remove one with
+   DriveThruRPG (print) gets the print-ready PDF/X, and a target with a
+   choice (itch.io, DriveThruRPG digital, a folder, Google Drive, KDP,
+   Shopify) has a **File** menu. For a download, pick **Smaller PDF for
+   screens**: the same book with its pictures kept at 200 ppi, sharp on any
+   screen and a fraction of the size. Add a target from **Add a target**, or remove one with
    **Remove from book**. The book's targets are saved in `manifest.yaml`, so
    everyone who has the book sees the same ones; untick one to skip it this
    time without removing it.
@@ -68,9 +70,10 @@ there's no API key to create or paste.
 2. Once connected, pick a **Folder** from the dropdown, or choose **New
    folder...** and give it a name. Gutterpress only ever sees folders it
    created itself --- it can't browse the rest of your Drive.
-3. Choose **what to publish** --- the PDF, the PDF/X for print, or a zipped
-   website --- from Google Drive's **File** menu on the **Targets** step. (It
-   is saved as `publish.gdrive.format`: `pdf`, `pdfx` or `html`.)
+3. Choose **what to publish** --- the PDF, the smaller PDF for screens, the
+   PDF/X for print, or a zipped website --- from Google Drive's **File** menu
+   on the **Targets** step. (It is saved as `publish.gdrive.format`: `pdf`,
+   `pdf-screen`, `pdfx` or `html`.)
 4. Press **Publish**. The file you chose lands in that folder.
 
 Publishing again **updates the same file** instead of creating a duplicate,
@@ -92,7 +95,7 @@ Drive's own **Share** button.
 publish:
   gdrive:
     folder: My Books
-    format: pdf   # or pdfx, or html for the zipped website export
+    format: pdf   # or pdf-screen, pdfx, or html for the zipped website export
 ```
 
 ```bash

@@ -5,6 +5,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **A smaller PDF for screens.** itch.io, DriveThruRPG digital, Shopify, Google Drive and a
+  folder can now be sent a **Smaller PDF for screens** (`format: pdf-screen`): the book's
+  PDF with each picture kept at 200 ppi of the size it is printed at, colour pictures as
+  JPEG. It comes from the same render, so text, links, bookmarks and tags are unchanged.
+  A book with full-page art goes from hundreds of MB to tens. The print files are not
+  touched.
+
 ## [0.11.28] - 2026-11-15
 
 ### Changed

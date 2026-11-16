@@ -662,9 +662,9 @@ export interface PublishProviderCard {
   kind: "api" | "guided" | "plugin";
   /** The file this target receives: fixed when `formats` is absent, else the
    *  pick when none is saved (`config.format` holds the saved pick). */
-  format: "pdf" | "pdfx" | "html";
+  format: "pdf" | "pdf-screen" | "pdfx" | "html";
   /** Present when the target does not fix its file: the formats to pick from. */
-  formats?: Array<"pdf" | "pdfx" | "html">;
+  formats?: Array<"pdf" | "pdf-screen" | "pdfx" | "html">;
   description: string;
   /** The provider's declared settings fields — the panel renders these. */
   fields: PublishConfigFieldInfo[];

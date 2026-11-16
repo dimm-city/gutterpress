@@ -31,6 +31,6 @@ export function resolveOutputDir(manifestDir: string, title: string | undefined)
   return path.resolve(manifestDir, DIST_DIRNAME, bookSlug(title));
 }
 
-export function artifactName(title: string | undefined, format: "pdf" | "pdfx"): string {
+export function artifactName(title: string | undefined, format: "pdf" | "pdf-screen" | "pdfx"): string {
   return `${bookSlug(title)}-${format}.pdf`;
 }

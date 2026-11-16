@@ -19,11 +19,18 @@
  * explain.ts: a stable code, a plain sentence, the original text.
  */
 import path from "node:path";
-import { rm } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import type { BuildDiagnostic } from "../../engine/compiler/build.ts";
 import { loadManifestWithPath, resolveConfig } from "../manifest.ts";
 import { artifactName, resolveOutputDir } from "../output-paths.ts";
-import { canonicalTargetId, hasOwnRules, PDFX_FILE_CHECKS, TARGETS, type TargetFileFormat } from "../targets.ts";
+import {
+  canonicalTargetId,
+  hasOwnRules,
+  PDFX_FILE_CHECKS,
+  SCREEN_PDF_SKIPPED_CHECKS,
+  TARGETS,
+  type TargetFileFormat,
+} from "../targets.ts";
 import { explainBuildFailure, explainSendFailure, type Failure } from "./explain.ts";
 import { resolvePublishProvider } from "./plugin-provider.ts";
 import { UsageError } from "../cli-args.ts";
@@ -145,7 +152,12 @@ export interface PublishBookDeps extends PublishDeps {
   getLatest?: (projectDir: string) => Promise<void>;
 }
 
-const FORMAT_NAMES: Record<TargetFileFormat, string> = { pdf: "PDF", pdfx: "PDF/X", html: "website" };
+const FORMAT_NAMES: Record<TargetFileFormat, string> = {
+  pdf: "PDF",
+  "pdf-screen": "PDF for screens",
+  pdfx: "PDF/X",
+  html: "website",
+};
 
 class Stopped extends Error {
   constructor(readonly failure: Failure) {
@@ -308,13 +320,15 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
       if (built.pdfPath) files.set(format, built.pdfPath);
       if (built.plainPdfPath) files.set("pdf", built.plainPdfPath);
     };
-    const pdfFormat = formats.has("pdfx") ? "pdfx" : formats.has("pdf") ? "pdf" : null;
+    // The PDF for screens is made from the plain PDF, so it needs one too.
+    const wantsPdf = formats.has("pdf") || formats.has("pdf-screen");
+    const pdfFormat = formats.has("pdfx") ? "pdfx" : wantsPdf ? "pdf" : null;
     if (pdfFormat) {
       stopIfCanceled();
-      const what = pdfFormat === "pdfx" && formats.has("pdf") ? "PDF and PDF/X" : FORMAT_NAMES[pdfFormat];
+      const what = pdfFormat === "pdfx" && wantsPdf ? "PDF and PDF/X" : FORMAT_NAMES[pdfFormat];
       let converting = false;
       try {
-        await buildPdf(pdfFormat, pdfFormat === "pdfx" && formats.has("pdf"), () => (converting = true));
+        await buildPdf(pdfFormat, pdfFormat === "pdfx" && wantsPdf, () => (converting = true));
       } catch (e) {
         const failure = explainBuildFailure(e, what);
         // A problem only the PDF/X has (its conversion, or the programs only
@@ -328,7 +342,7 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
           p.result.status = "failed";
           p.result.failure = pdfxFailure;
         }
-        if (formats.has("pdf")) {
+        if (wantsPdf) {
           stopIfCanceled();
           try {
             await buildPdf("pdf", false, () => {});
@@ -338,6 +352,20 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
         }
         formats.delete("pdfx");
       }
+    }
+    const plainPdf = files.get("pdf");
+    if (formats.has("pdf-screen") && plainPdf) {
+      stopIfCanceled();
+      say("file", "Making the smaller PDF for screens…");
+      const screenPdf = path.join(path.dirname(plainPdf), artifactName(config.title, "pdf-screen"));
+      try {
+        const { shrinkForScreen } = await import("../screen-pdf.ts");
+        await writeFile(screenPdf, await shrinkForScreen(await readFile(plainPdf)));
+      } catch (e) {
+        throw new Stopped(explainBuildFailure(e, FORMAT_NAMES["pdf-screen"]));
+      }
+      files.set("pdf-screen", screenPdf);
+      if (!formats.has("pdf")) files.delete("pdf");
     }
     const outDir = resolveOutputDir(manifestDir, config.title);
     // The website is sent as a whole folder, so it gets one of its own: the
@@ -379,8 +407,13 @@ export async function publishBook(options: PublishBookOptions, deps: PublishBook
                 ...(options.manifestPath ? { manifest: options.manifestPath } : {}),
                 phase: "post-build",
                 target: group.map((p) => p.result.id).filter((id) => checkedIds.includes(id)).join(","),
-                // Only the PDF/X is held to what only a PDF/X can pass.
-                ...(format === "pdfx" ? {} : { skip: PDFX_FILE_CHECKS.join(",") }),
+                // Only the PDF/X is held to what only a PDF/X can pass, and
+                // the PDF for screens to no print-only rule.
+                ...(format === "pdfx"
+                  ? {}
+                  : {
+                      skip: [...new Set([...PDFX_FILE_CHECKS, ...(format === "pdf-screen" ? SCREEN_PDF_SKIPPED_CHECKS : [])])].join(","),
+                    }),
                 pluginStylePaths: [],
               }),
             );

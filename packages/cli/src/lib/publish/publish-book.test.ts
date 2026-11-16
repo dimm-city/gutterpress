@@ -13,6 +13,7 @@ import { FileTokenStore } from "../remote-auth/token-store.ts";
 import { PublishSelectionsStore } from "./selections.ts";
 import { publishBook, publishPlan, type PublishBookDeps, type PublishProgress } from "./publish-book.ts";
 import type { BuildRunnerOptions } from "../build-runner.ts";
+import { PDFDocument } from "pdf-lib";
 import { PDFX_FILE_CHECKS } from "../targets.ts";
 import type { ValidationExecutionArgs, ValidationExecutionResult } from "../validation-exec.ts";
 
@@ -129,6 +130,33 @@ describe("making the files", () => {
     expect(builds.find((b) => b.format === "html")?.outDir).toBe(site);
     expect(result.targets.find((t) => t.id === "local")?.file).toBe(site);
     expect(await readdir(path.join(book, "site"))).toEqual(["book.html"]);
+  });
+
+  test("the smaller PDF for screens is made from the book's one PDF and held to no print-only rule", async () => {
+    await writeBook("publish:\n  local:\n    format: pdf-screen\n    dir: out\n");
+    const base = deps().runBuild!;
+    const result = await publishBook(
+      { projectDir: book },
+      deps({
+        runBuild: async (opts) => {
+          const built = await base(opts);
+          await writeFile(built.pdfPath!, await (await PDFDocument.create()).save());
+          return built;
+        },
+      }),
+    );
+    const screen = path.join(dist(), "field-guide-pdf-screen.pdf");
+    expect(builds.map((b) => b.format)).toEqual(["pdf"]);
+    expect(result.files).toEqual([{ format: "pdf-screen", path: screen }]);
+    expect(result.targets[0]).toMatchObject({ format: "pdf-screen", status: "sent", file: screen });
+    expect(await readdir(path.join(book, "out"))).toEqual(["field-guide-pdf-screen.pdf"]);
+    const check = checks.find((c) => c.pdf === screen);
+    // A file for screens is never trimmed or pressed: the digital rules' print
+    // checks are off for it whatever the book's preset, and so is the print
+    // resolution its pictures are made below on purpose.
+    expect(String(check?.skip).split(",")).toEqual(
+      expect.arrayContaining(["pdf.print.image-resolution", "pdf.print.safe-margins", "pdf.print.bleed", "pdf.print.ink-coverage"]),
+    );
   });
 
   test("a website target gets its own build, after the PDFs", async () => {

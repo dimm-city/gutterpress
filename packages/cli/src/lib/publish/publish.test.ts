@@ -134,12 +134,7 @@ test("resolvePublishFormat keeps a target that defines its file on that file, wh
   // These targets declare no `formats` array at all: a mistake in
   // effective-format computation must not silently change what they resolve
   // to, no matter what a manifest sets.
-  for (const provider of [
-    itchProvider,
-    drivethrurpgPrintProvider,
-    drivethrurpgDigitalProvider,
-    azureSwaProvider,
-  ]) {
+  for (const provider of [drivethrurpgPrintProvider, azureSwaProvider]) {
     expect(provider.info.formats).toBeUndefined();
     expect(resolvePublishFormat(provider.info, {})).toBe(provider.info.format);
     expect(resolvePublishFormat(provider.info, { format: "html" })).toBe(provider.info.format);
@@ -149,8 +144,16 @@ test("resolvePublishFormat keeps a target that defines its file on that file, wh
 });
 
 test("resolvePublishFormat: gdrive defaults to pdf when publish.gdrive.format is unset", () => {
-  expect(gdriveProvider.info.formats).toEqual(["pdf", "pdfx", "html"]);
+  expect(gdriveProvider.info.formats).toEqual(["pdf", "pdf-screen", "pdfx", "html"]);
   expect(resolvePublishFormat(gdriveProvider.info, {})).toBe("pdf");
+});
+
+test("resolvePublishFormat: a digital store sends the PDF, or the PDF for screens when picked, never a print file", () => {
+  for (const provider of [itchProvider, drivethrurpgDigitalProvider]) {
+    expect(resolvePublishFormat(provider.info, {})).toBe("pdf");
+    expect(resolvePublishFormat(provider.info, { format: "pdf-screen" })).toBe("pdf-screen");
+    expect(resolvePublishFormat(provider.info, { format: "pdfx" })).toBe("pdf");
+  }
 });
 
 test("resolvePublishFormat: gdrive honors a valid publish.gdrive.format", () => {

@@ -18,16 +18,25 @@ you send it anyway. Checks are on by default; one switch turns them off.
 A target is a place the book goes. Each one says which file it gets: a fixed
 one, or a choice saved as `publish.<id>.format`.
 
+The **smaller PDF for screens** (`pdf-screen`) is the book's PDF with each
+picture kept at 200 ppi of the largest size it is printed at, and colour
+pictures stored as JPEG. It is made from the same render as the PDF, so its
+pages, text, links, bookmarks and tags are the same. Use it for a download:
+a book with full-page art can shrink from hundreds of MB to tens. Nothing
+trims or presses it, so it is held to no print-only check (safe margins,
+bleed, ink, transparency, print resolution) whatever the book's preset, and
+it is not offered where the file is printed (KDP, DriveThruRPG print).
+
 | Target | id | File | How it works |
 |---|---|---|---|
-| A folder on this computer | `local` | PDF, PDF/X or website | Copies the file to a folder (default: `dist` in the book). |
-| itch.io | `itch` | PDF | Real upload via [butler](https://itch.io/docs/butler/), itch.io's official CLI. Auto-downloaded on first publish. Held to the digital rules. |
+| A folder on this computer | `local` | PDF, PDF for screens, PDF/X or website | Copies the file to a folder (default: `dist` in the book). |
+| itch.io | `itch` | PDF or PDF for screens | Real upload via [butler](https://itch.io/docs/butler/), itch.io's official CLI. Auto-downloaded on first publish. Held to the digital rules. |
 | DriveThruRPG (print) | `drivethrurpg-print` | PDF/X | **Guided**: DTRPG has no publisher upload API. Gutterpress stages a checked package and opens the publisher hub with a checklist. Held to DTRPG's print rules; needs qpdf and Ghostscript. |
-| DriveThruRPG (digital) | `drivethrurpg-digital` | PDF | **Guided**, as above. Held to the digital rules. |
+| DriveThruRPG (digital) | `drivethrurpg-digital` | PDF or PDF for screens | **Guided**, as above. Held to the digital rules. |
 | Amazon KDP | `kdp` | PDF or PDF/X | **Guided**: Amazon has no KDP API (automation violates its ToS). Gutterpress stages a KDP-ready package and opens kdp.amazon.com with a checklist. |
 | Azure Static Web Apps | `azure-swa` | website | Deploys the static-site export via the [SWA CLI](https://learn.microsoft.com/azure/static-web-apps/static-web-apps-cli-deploy) (`swa deploy`). Requires the SWA CLI installed (`npm i -g @azure/static-web-apps-cli`). |
-| Shopify | `shopify` | PDF or PDF/X | Creates/updates the product via the Admin GraphQL API. File attachment is a follow-up step in the Shopify admin (digital delivery has no public API). |
-| Google Drive | `gdrive` | PDF, PDF/X or website (zipped) | Uploads to a Drive folder the app created (`drive.file` scope) via a plain-`fetch` resumable upload. Connects with browser OAuth, not a pasted key (#221, [ADR 0011](adr/0011-google-oauth-client-credentials.md)). Re-publishing updates the same file in place, so a shared link stays valid. |
+| Shopify | `shopify` | PDF, PDF for screens or PDF/X | Creates/updates the product via the Admin GraphQL API. File attachment is a follow-up step in the Shopify admin (digital delivery has no public API). |
+| Google Drive | `gdrive` | PDF, PDF for screens, PDF/X or website (zipped) | Uploads to a Drive folder the app created (`drive.file` scope) via a plain-`fetch` resumable upload. Connects with browser OAuth, not a pasted key (#221, [ADR 0011](adr/0011-google-oauth-client-credentials.md)). Re-publishing updates the same file in place, so a shared link stays valid. |
 
 The older names `dtrpg` and `drivethrurpg` both mean `drivethrurpg-print`.
 A new target is one entry in the lib's registry (`packages/cli/src/lib/targets.ts`
@@ -138,7 +147,7 @@ publish:
   gdrive:
     folder: My Books              # display name; created at My Drive root if missing (default: "Gutterpress")
     folderId: 1AbC…               # stable id, takes precedence over `folder` — the team's folder (see below), picker-set or hand-recorded from the CLI's post-publish tip
-    format: pdf                   # pdf (default) | pdfx | html — the zipped website export
+    format: pdf                   # pdf (default) | pdf-screen | pdfx | html — the zipped website export
 ```
 
 ### What is shared and what is private

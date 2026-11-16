@@ -89,7 +89,7 @@ interface Tok {
 }
 
 /** Minimal PDF content-stream tokenizer (operands are kept opaque). */
-function* tokenize(s: string): Generator<Tok> {
+export function* tokenize(s: string): Generator<Tok> {
   let i = 0;
   const n = s.length;
   while (i < n) {
