@@ -911,9 +911,15 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       // inserted so far. Toggling them one pass at a time instead oscillates —
       // the spacer fixes the parity, the next pass sees it fixed and removes it.
       if (rectoSites.length) {
+        // Only page numbers are read from these prints, and Chromium spends
+        // seconds per large picture writing one into a PDF, so they leave the
+        // pictures out. Hiding a picture or a background changes no layout.
         const measure = async () => {
           prints++;
-          const facts = await inspectPdf(await printPdf(page));
+          await page.evaluate(`window.__gp.addCss("gp-measure-only", ${JSON.stringify(MEASURE_ONLY_CSS)})`);
+          const bytes = await printPdf(page);
+          await page.evaluate(`window.__gp.addCss("gp-measure-only", "")`);
+          const facts = await inspectPdf(bytes);
           return Object.fromEntries(
             Object.entries(facts.namedDests).map(([k, v]) => [k, v + 1]),
           ) as Record<string, number>;
@@ -1694,6 +1700,11 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     if (ownsBrowser) await browser.close();
   }
 }
+
+const MEASURE_ONLY_CSS =
+  "img, svg, video, canvas, picture, object, embed { visibility: hidden !important; }" +
+  " *, *::before, *::after { background-image: none !important; border-image: none !important; }" +
+  " @page { background-image: none !important; }";
 
 async function printPdf(page: Session): Promise<Uint8Array> {
   await page.waitForReady();

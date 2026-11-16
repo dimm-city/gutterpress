@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A book with pictures and left/right page breaks builds much faster.** To place a chapter
+  on a right-hand page, Gutterpress prints the book first to learn where each page falls, and
+  Chromium spends seconds writing each large picture into every print. Those extra prints now
+  leave the pictures out, so a picture is written only into the PDF you get. The PDF is
+  unchanged.
+
 ## [0.11.28] - 2026-11-15
 
 ### Changed
