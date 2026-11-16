@@ -275,7 +275,7 @@ const DEFAULT_FIXTURES = [
   join(REPO, "docs", "fixtures", "overridden-recto-break", "book"),
 ];
 
-type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";
+type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap" | "prediction";
 
 export interface Divergence {
   fixture: string;
@@ -1441,6 +1441,18 @@ async function runFixture(
         });
       }
     }
+  }
+
+  // ---- the build's guess ships ------------------------------------------
+  // The build lays the book out in the viewer so its first print can ship. A
+  // guess the print does not confirm costs every build of the book a second
+  // full print, with no other sign of it.
+  if (result.predicted && result.passes > 1) {
+    divergences.push({
+      fixture: name,
+      kind: "prediction",
+      detail: `the viewer's page map did not survive the first print (${result.passes} passes)`,
+    });
   }
 
   // ---- (e) exact-fit boundary, only when (d) disagreed ------------------

@@ -12,6 +12,11 @@ This project follows [Semantic Versioning](https://semver.org/).
   Chromium spends seconds writing each large picture into every print. Those extra prints now
   leave the pictures out, so a picture is written only into the PDF you get. The PDF is
   unchanged.
+- **A book padded to its print signature is printed once, not twice.** Gutterpress lays a
+  book out first so the first print can be the PDF you get. It counted the blank pages that
+  pad the book to its signature (DriveThruRPG pads to a multiple of 4) only on that side,
+  so for any book that needed padding the guess never matched and the whole book was
+  printed again. The preview/print parity check now fails if a guess stops matching.
 
 ## [0.11.28] - 2026-11-15
 
