@@ -121,15 +121,9 @@ const WebSocketImpl = globalThis.WebSocket ?? require_("playwright-core/lib/util
 const ws = new WebSocketImpl(await getWsUrl());
 let msgId = 0;
 const pending = new Map();
-// The class catalog request, seen over the Network domain (app:// fetches are
-// not in the page's resource timing).
-const catalogRequests = new Set();
-let catalogLoaded = false;
 ws.onmessage = (ev) => {
   const m = JSON.parse(String(ev.data));
   if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
-  if (m.method === "Network.requestWillBeSent" && m.params.request.url.includes("/api/snip/classes")) catalogRequests.add(m.params.requestId);
-  if (m.method === "Network.loadingFinished" && catalogRequests.has(m.params.requestId)) catalogLoaded = true;
 };
 await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
 function send(method, params = {}) {
@@ -197,7 +191,6 @@ const ALT = 1;
 const CTRL = 2;
 
 await send("Page.bringToFront");
-await send("Network.enable");
 
 // ── 3. SPA + book ready ─────────────────────────────────────────────────────
 await waitFor(`!!document.querySelector('button[aria-label="Edit"]')`, 60000, "SPA never became interactive");
@@ -268,11 +261,6 @@ const setColumns = (v) =>
 const apply = () => evalJs(`(() => { document.querySelector('.block-properties button[type="submit"]').click(); return true; })()`);
 
 await settled();
-// The class catalog is fetched after the render, and the dialog reads it when it opens.
-for (let t = Date.now(); !catalogLoaded; await sleep(50)) {
-  if (Date.now() - t > 20000) fail("CONTROL: the class catalog was never fetched");
-}
-await sleep(100);
 
 // ── CHECK 1 — Alt+Enter in the source editor ────────────────────────────────
 const linePos = await evalJs(`(() => {
@@ -282,11 +270,22 @@ const linePos = await evalJs(`(() => {
   return { x: Math.round(r.left + 24), y: Math.round(r.top + r.height / 2) };
 })()`);
 if (!linePos) fail("CONTROL: the @card line is not in the editor");
-await send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, ...linePos });
-await send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", clickCount: 1, ...linePos });
-await key("Enter", { modifiers: ALT, vk: 13 });
-check(await waitFor(`!!document.querySelector('.block-properties')`, 8000), "Alt+Enter on a marker line opens Block properties");
-const d1 = await dialog();
+// The app fetches the class catalog after a render, and the dialog reads it
+// when it opens; that fetch may finish before or after this point. Reopen the
+// dialog until the catalog is in it (bounded), then check what it offers.
+let d1 = null;
+for (const t = Date.now(); ; ) {
+  await send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, ...linePos });
+  await send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", clickCount: 1, ...linePos });
+  await key("Enter", { modifiers: ALT, vk: 13 });
+  if (!(await waitFor(`!!document.querySelector('.block-properties')`, 8000))) break;
+  d1 = await dialog();
+  if (d1?.checks.some((c) => c.name === "class-hs-tight") || Date.now() - t > 20000) break;
+  await key("Escape", { vk: 27 });
+  await waitFor(`!document.querySelector('.block-properties')`, 5000, "CONTROL: Escape did not close the dialog");
+  await sleep(250);
+}
+check(!!d1, "Alt+Enter on a marker line opens Block properties");
 check(d1?.title?.includes("@card"), "the dialog names the marker (@card)", d1);
 check(d1?.checks.some((c) => c.name === "class-gp-no-break" && !c.checked && c.group === "Gutterpress"), "core's Keep together is offered, off", d1);
 check(d1?.checks.some((c) => c.name === "class-hs-tight" && !c.checked && c.group === "House"), "the plugin's catalog modifier .hs-tight is offered under the plugin's name, off", d1);
