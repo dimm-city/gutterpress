@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.29] - 2026-11-16
+
 ### Fixed
 
 - **Sending versions online after they were combined with the online copy's.** Sending
