@@ -80,6 +80,8 @@ describe("POST /api/remote/sync: Bring them in (#524)", () => {
     registerHostServices(makeHostServices({ fsGuard: { projectRoots: () => ["/abs/project"], readOnlyRoots: () => [] as string[] } }));
     let seen: Record<string, unknown> = {};
     setLibForTests({
+      detectProjectSource: async () => ({ type: "local-git-folder" }),
+      repoRootForSource: () => "/abs/project",
       syncProject: async (options: Record<string, unknown>) => {
         seen = options;
         return { status: "up-to-date", message: "" };
@@ -92,6 +94,26 @@ describe("POST /api/remote/sync: Bring them in (#524)", () => {
   test("bringInMainDraft: true reaches the lib's pass", async () => {
     const seen = await optionsFor({ push: false, bringInMainDraft: true });
     expect(seen).toMatchObject({ projectDir: "/abs/project", push: false, bringInMainDraft: true });
+  });
+
+  test("the pass writes the book's sync log, so a failed send can be read afterwards", async () => {
+    registerHostServices(
+      makeHostServices({
+        fsGuard: { projectRoots: () => ["/abs/project"], readOnlyRoots: () => [] as string[] },
+        vcs: { operationLogPath: (slug: string) => `/logs/${slug}.log` },
+      } as never),
+    );
+    let seen: Record<string, unknown> = {};
+    setLibForTests({
+      detectProjectSource: async () => ({ type: "local-git-folder" }),
+      repoRootForSource: () => "/abs/repo",
+      syncProject: async (options: Record<string, unknown>) => {
+        seen = options;
+        return { status: "error", message: "" };
+      },
+    } as unknown as Partial<LibModule>);
+    await remoteSyncRoute({ request: request({ projectDir: "/abs/project" }) } as never);
+    expect(seen.logFile).toBe("/logs/repo.log");
   });
 
   test("anything but true leaves it out, so an ordinary pass never combines the Main draft", async () => {

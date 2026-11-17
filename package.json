@@ -38,5 +38,8 @@
     "postcss-selector-parser": "^7.1.6",
     "katex": "^0.18.2",
     "source-map-js": "^1.2.2"
+  },
+  "patchedDependencies": {
+    "isomorphic-git@1.44.13": "patches/isomorphic-git@1.44.13.patch"
   }
 }

@@ -19,14 +19,14 @@
 // one writer, one file, one size cap. Nothing leaves the machine.
 // ──────────────────────────────────────────────────────────────────────────
 
-import { appendFile, mkdir, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 /**
- * Restart the file rather than grow past this. A diagnostic file that fills a
- * disk is a worse bug than the one it documents; the newest faults are the
- * ones worth keeping, so the cap discards history rather than truncating the
- * entry being written.
+ * Trim the file rather than grow past this. A diagnostic file that fills a
+ * disk is a worse bug than the one it documents; the newest lines are the
+ * ones worth keeping, so the cap drops the older half rather than truncating
+ * the entry being written.
  */
 export const APP_LOG_MAX_BYTES = 256 * 1024;
 
@@ -43,7 +43,7 @@ export function initAppLog(resolve: () => string): void {
 
 /**
  * Append one timestamped line to the app log (the file only — no console),
- * restarting the file at the cap instead of growing without bound. Never
+ * trimming the file at the cap instead of growing without bound. Never
  * rejects — a logging failure must not break the operation that was already
  * happening. Exported for a caller that has ALREADY printed the line to the
  * console itself (server-bridge/friendly-errors.ts, via `AppHooks.logFailure`);
@@ -64,8 +64,14 @@ export async function appendAppLog(message: string): Promise<void> {
     // Bytes, not characters: an error string can carry multibyte characters
     // (electron-updater's own messages contain them), and stat().size — the
     // thing the cap is about — counts bytes.
-    if (size + Buffer.byteLength(line) > APP_LOG_MAX_BYTES) await writeFile(file, line);
-    else await appendFile(file, line);
+    if (size + Buffer.byteLength(line) > APP_LOG_MAX_BYTES) {
+      // Keep the newest half, whole lines only: starting the file over threw
+      // away the lines just before whatever went wrong.
+      const old = await readFile(file);
+      const tail = old.subarray(old.length - Math.floor(APP_LOG_MAX_BYTES / 2));
+      const start = tail.indexOf(10) + 1;
+      await writeFile(file, Buffer.concat([start > 0 ? tail.subarray(start) : Buffer.alloc(0), Buffer.from(line)]));
+    } else await appendFile(file, line);
   } catch {
     // Console already has it (both callers below log there first).
   }

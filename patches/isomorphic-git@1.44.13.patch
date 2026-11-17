@@ -1,0 +1,178 @@
+diff --git a/index.cjs b/index.cjs
+index f1a34e7f0e99905c2b220fdf8433bc97d40a268e..eab936440d1470eaab5a8cd6554e1b84d69727cb 100644
+--- a/index.cjs
++++ b/index.cjs
+@@ -14742,35 +14742,63 @@ async function listCommitsAndTags({
+       finishingSet.add(oid);
+     } catch (err) {}
+   }
++  // Gutterpress patch: the commits (and tags) reachable from start that no
++  // finish commit reaches. Walked newest first, marking finish's ancestors as
++  // the remote's, so a history that forks BELOW a finish commit (a merge of
++  // the online tip into local work) stops at the shared history instead of
++  // walking all of it -- and sending every object it ever had.
+   const visited = new Set();
+-  // Because git commits are named by their hash, there is no
+-  // way to construct a cycle. Therefore we won't worry about
+-  // setting a default recursion limit.
+-  async function walk(oid) {
+-    visited.add(oid);
+-    const { type, object } = await _readObject({ fs, cache, gitdir, oid });
+-    // Recursively resolve annotated tags
+-    if (type === 'tag') {
+-      const tag = GitAnnotatedTag.from(object);
+-      const commit = tag.headers().object;
+-      return walk(commit)
++  const theirs = new Set();
++  const queue = [];
++  async function add(oid, remote) {
++    let { type, object } = await _readObject({ fs, cache, gitdir, oid });
++    while (type === 'tag') {
++      if (!remote) visited.add(oid);
++      oid = GitAnnotatedTag.from(object).headers().object;
++      ({ type, object } = await _readObject({ fs, cache, gitdir, oid }));
+     }
+     if (type !== 'commit') {
+       throw new ObjectTypeError(oid, type, 'commit')
+     }
+-    if (!shallows.has(oid)) {
+-      const commit = GitCommit.from(object);
+-      const parents = commit.headers().parent;
+-      for (oid of parents) {
+-        if (!finishingSet.has(oid) && !visited.has(oid)) {
+-          await walk(oid);
+-        }
+-      }
++    if (theirs.has(oid) || (!remote && visited.has(oid))) return
++    if (remote) {
++      theirs.add(oid);
++      visited.delete(oid);
++    } else {
++      visited.add(oid);
+     }
++    const headers = GitCommit.from(object).headers();
++    queue.push({
++      oid,
++      time: headers.committer.timestamp,
++      parents: shallows.has(oid) ? [] : headers.parent,
++    });
++  }
++  for (const oid of finishingSet) {
++    // The remote's commits may be missing here; then they mark nothing.
++    try {
++      await add(oid, true);
++    } catch (err) {}
+   }
+-  // Let's go walking!
+   for (const oid of startingSet) {
+-    await walk(oid);
++    await add(oid, false);
++  }
++  while (queue.some(entry => !theirs.has(entry.oid))) {
++    let newest = 0;
++    for (let i = 1; i < queue.length; i++) {
++      if (queue[i].time > queue[newest].time) newest = i;
++    }
++    const { oid, parents } = queue.splice(newest, 1)[0];
++    const remote = theirs.has(oid);
++    for (const parent of parents) {
++      if (!remote) {
++        await add(parent, false);
++        continue
++      }
++      try {
++        await add(parent, true);
++      } catch (err) {}
++    }
+   }
+   return visited
+ }
+diff --git a/index.js b/index.js
+index 57e6192cc57529a2a7e0cae8000c6abcbea545cf..4116a7f9f7017ccd510a0f15629c3737e98e00e3 100644
+--- a/index.js
++++ b/index.js
+@@ -14730,35 +14730,63 @@ async function listCommitsAndTags({
+       finishingSet.add(oid);
+     } catch (err) {}
+   }
++  // Gutterpress patch: the commits (and tags) reachable from start that no
++  // finish commit reaches. Walked newest first, marking finish's ancestors as
++  // the remote's, so a history that forks BELOW a finish commit (a merge of
++  // the online tip into local work) stops at the shared history instead of
++  // walking all of it -- and sending every object it ever had.
+   const visited = new Set();
+-  // Because git commits are named by their hash, there is no
+-  // way to construct a cycle. Therefore we won't worry about
+-  // setting a default recursion limit.
+-  async function walk(oid) {
+-    visited.add(oid);
+-    const { type, object } = await _readObject({ fs, cache, gitdir, oid });
+-    // Recursively resolve annotated tags
+-    if (type === 'tag') {
+-      const tag = GitAnnotatedTag.from(object);
+-      const commit = tag.headers().object;
+-      return walk(commit)
++  const theirs = new Set();
++  const queue = [];
++  async function add(oid, remote) {
++    let { type, object } = await _readObject({ fs, cache, gitdir, oid });
++    while (type === 'tag') {
++      if (!remote) visited.add(oid);
++      oid = GitAnnotatedTag.from(object).headers().object;
++      ({ type, object } = await _readObject({ fs, cache, gitdir, oid }));
+     }
+     if (type !== 'commit') {
+       throw new ObjectTypeError(oid, type, 'commit')
+     }
+-    if (!shallows.has(oid)) {
+-      const commit = GitCommit.from(object);
+-      const parents = commit.headers().parent;
+-      for (oid of parents) {
+-        if (!finishingSet.has(oid) && !visited.has(oid)) {
+-          await walk(oid);
+-        }
+-      }
++    if (theirs.has(oid) || (!remote && visited.has(oid))) return
++    if (remote) {
++      theirs.add(oid);
++      visited.delete(oid);
++    } else {
++      visited.add(oid);
+     }
++    const headers = GitCommit.from(object).headers();
++    queue.push({
++      oid,
++      time: headers.committer.timestamp,
++      parents: shallows.has(oid) ? [] : headers.parent,
++    });
++  }
++  for (const oid of finishingSet) {
++    // The remote's commits may be missing here; then they mark nothing.
++    try {
++      await add(oid, true);
++    } catch (err) {}
+   }
+-  // Let's go walking!
+   for (const oid of startingSet) {
+-    await walk(oid);
++    await add(oid, false);
++  }
++  while (queue.some(entry => !theirs.has(entry.oid))) {
++    let newest = 0;
++    for (let i = 1; i < queue.length; i++) {
++      if (queue[i].time > queue[newest].time) newest = i;
++    }
++    const { oid, parents } = queue.splice(newest, 1)[0];
++    const remote = theirs.has(oid);
++    for (const parent of parents) {
++      if (!remote) {
++        await add(parent, false);
++        continue
++      }
++      try {
++        await add(parent, true);
++      } catch (err) {}
++    }
+   }
+   return visited
+ }
