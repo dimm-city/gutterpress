@@ -1,7 +1,7 @@
 /**
  * Timeout wrapper for the isomorphic-git HTTP client.
  *
- * Every git transport call in this subsystem (`git.fetch`/`git.push`/
+ * Every git transport call in this subsystem (`git.fetch`/`pushRef`/
  * `git.clone`) is invoked with no timeout: if the TCP connection succeeds but
  * the remote stalls, the call never resolves or rejects — sync/pull/push/clone
  * hangs forever, and because the operation still holds the per-repo

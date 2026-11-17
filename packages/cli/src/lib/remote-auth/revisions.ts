@@ -27,13 +27,13 @@ import {
   type RevisionRefs,
 } from "../source-provider.ts";
 import { defaultGitHttp } from "./git-http.ts";
+import { pushRef } from "./push.ts";
 import { MSG_INSECURE_TRANSPORT, MSG_NOT_FOUND } from "./sync-messages.ts";
 import type { GitCache, RemoteTransport } from "./sync-types.ts";
 import type { HostCredential, TokenStore } from "./token-store.ts";
 import {
   classifyTransportFailure,
   forgetOnlineCheck,
-  onAuthFor,
   resolveTransport,
   serverTip,
   setupErrorMessage,
@@ -151,19 +151,7 @@ async function sendRef(
   remove = false,
 ): Promise<void> {
   forgetOnlineCheck(dir); // a fetch already in flight must not mark its refs fresh across this change
-  await git.push({
-    fs,
-    http,
-    dir,
-    remote: transport.remote,
-    ref,
-    remoteRef: `refs/heads/${remoteName}`,
-    delete: remove,
-    ...onAuthFor(transport.credential),
-  });
-  // The push forgets the tracking ref under a doubled slash, which a ref kept in
-  // packed-refs (as other Git tools leave them) never matches: name it properly.
-  if (remove) await git.deleteRef({ fs, dir, ref: `refs/remotes/${transport.remote}/${remoteName}` });
+  await pushRef({ dir, http, transport, cache: {}, ref, remoteRef: `refs/heads/${remoteName}`, remove });
   // The online copy's revisions just changed: the next check must be real.
   forgetOnlineCheck(dir);
 }
