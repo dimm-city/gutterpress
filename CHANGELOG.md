@@ -5,6 +5,17 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Sending versions online after they were combined with the online copy's.** Sending
+  re-uploaded every version of every file the book had ever had (945 MB for a two-line
+  edit in a large book), and failed. Gutterpress now does the send itself instead of
+  through isomorphic-git's `push`, and sends only what the online copy lacks (7 KB for
+  that edit). This covers renaming and removing revisions online too.
+- **A failed send leaves a record.** A send from the toolbar now writes the book's sync log
+  (Logs tab), as automatic backups always did. When the app log reaches its size limit it
+  now keeps its newest half instead of starting empty.
+
 ## [0.11.28] - 2026-11-16
 
 ### Added

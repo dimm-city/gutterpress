@@ -34,7 +34,7 @@ test("a logged fault lands in the file, timestamped, creating the log dir", asyn
   }
 });
 
-test("the log restarts at the cap instead of growing without bound", async () => {
+test("the log stays under the cap instead of growing without bound", async () => {
   const base = await mkdtemp(path.join(tmpdir(), "gutterpress-app-log-cap-"));
   const file = path.join(base, "Gutterpress app.log");
   initAppLog(() => file);
@@ -52,6 +52,31 @@ test("the log restarts at the cap instead of growing without bound", async () =>
     const text = await readFile(file, "utf8");
     expect(text).toContain("second ");
     expect(text).not.toContain("first ");
+  } finally {
+    console.error = realConsoleError;
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("at the cap the newest lines are kept, not wiped with the rest", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "gutterpress-app-log-keep-"));
+  const file = path.join(base, "logs", "Gutterpress app.log");
+  initAppLog(() => file);
+  const realConsoleError = console.error;
+  console.error = () => {};
+  try {
+    const filler = "x".repeat(1000);
+    const count = Math.ceil(APP_LOG_MAX_BYTES / 1000) + 5;
+    for (let i = 0; i < count; i++) await logAppError(`line ${i} ${filler}`);
+
+    const text = await readFile(file, "utf8");
+    expect((await stat(file)).size).toBeLessThanOrEqual(APP_LOG_MAX_BYTES);
+    // The lines just before the one that crossed the cap are still there.
+    expect(text).toContain(`line ${count - 2} `);
+    expect(text).toContain(`line ${count - 50} `);
+    expect(text).not.toContain("line 0 ");
+    // Whole lines only.
+    expect(text.split("\n")[0]).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z line /);
   } finally {
     console.error = realConsoleError;
     await rm(base, { recursive: true, force: true });

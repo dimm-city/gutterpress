@@ -16,6 +16,7 @@
  *    survives a deletion. Every version stays in history.
  */
 import { describe, expect, test, spyOn } from "bun:test";
+import { randomBytes } from "node:crypto";
 import * as fs from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -261,6 +262,42 @@ describe("syncProject", () => {
       expect(
         await readFile(path.join(h.projectDir, "chapter-02.md"), "utf8"),
       ).toBe("# Two\n\nWritten online.\n");
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("a combined push sends only the new work, not the history the online copy already has", async () => {
+    const h = await setupClone();
+    try {
+      // History the online copy has: a large picture, added and later removed.
+      const art = randomBytes(300_000).toString("base64");
+      await serverCommit(h.serverDir, { "old-art.txt": art }, "online: add art");
+      await serverCommit(h.serverDir, { "old-art.txt": null }, "online: remove art");
+      expect((await syncProject({ projectDir: h.projectDir })).status).toBe("up-to-date");
+      // Then both sides move: a combine is pushed, its local side starting
+      // below the online tip.
+      await serverCommit(h.serverDir, { "chapter-02.md": "# Two\n" }, "online: add chapter two");
+      await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nLocal edit.\n");
+
+      let pushed = 0;
+      const httpClient = {
+        async request(config: Parameters<typeof httpNode.request>[0]) {
+          if (config.method === "POST" && config.url.endsWith("/git-receive-pack") && config.body) {
+            const chunks: Uint8Array[] = [];
+            for await (const c of config.body) chunks.push(c);
+            pushed = chunks.reduce((n, c) => n + c.length, 0);
+            return httpNode.request({ ...config, body: (async function* () { yield* chunks; })() });
+          }
+          return httpNode.request(config);
+        },
+      } as typeof httpNode;
+
+      expect((await syncProject({ projectDir: h.projectDir, httpClient })).status).toBe("synced");
+      expect(await serverFile(h.serverDir, "chapter-01.md")).toBe("# One\n\nLocal edit.\n");
+      // Two small text files changed; the old picture must not go again.
+      expect(pushed).toBeGreaterThan(0);
+      expect(pushed).toBeLessThan(20_000);
     } finally {
       await h.cleanup();
     }

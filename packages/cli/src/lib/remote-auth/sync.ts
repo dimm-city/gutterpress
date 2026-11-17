@@ -3,7 +3,7 @@
  * 2026-08-14 — see converge-merge.ts).
  *
  * ONE operation: `syncProject` = snapshot-if-needed → `git.fetch` +
- * converge-merge + `git.checkout` → `git.push`, all inside a single repo
+ * converge-merge + `git.checkout` → `pushRef` (push.ts), all inside a single repo
  * lock. (Fetch and merge stay separate calls — NOT `git.pull` — because
  * `git.pull` negotiates the fetch with the LOCAL branch tip as the `have`,
  * which on a snapshot-heavy repo makes the server send the entire
@@ -47,6 +47,7 @@ import { defaultGitHttp } from "./git-http.ts";
 import { countUnversionedChanges, DEFAULT_BRANCH, isContained, readRevisionRefs, resolveGitAuthor, withRepoLock } from "../source-provider.ts";
 import { errorLogData, type LogData, resolveLogger } from "./operation-log.ts";
 import { convergeMerge } from "./converge-merge.ts";
+import { pushRef } from "./push.ts";
 import { gitReadCache } from "../git-read-cache.ts";
 import {
   MSG_BUSY,
@@ -519,20 +520,13 @@ export async function syncProject(
           // No pre-push "is the remote ahead?" history walk here: on a large
           // repository an isDescendent walk over old history loads entire
           // packfiles (gigabytes of RSS). The push rejection below is the
-          // authoritative guard — isomorphic-git refuses a non-fast-forward
+          // authoritative guard — pushRef refuses a non-fast-forward
           // client-side against the fresh ref advertisement, and the server
           // rejects any race after that.
           step("push", { branch, local: tip, fetched: remoteTip ?? "none" });
           try {
-            await git.push({
-              fs,
-              http,
-              dir,
-              cache,
-              remote: transport.remote,
-              ref: branch,
-              ...onAuthFor(transport.credential),
-            });
+            const sent = await pushRef({ dir, http, transport, cache, ref: branch, remoteRef: `refs/heads/${branch}` });
+            logger.info("push", "sent", { ...sent });
           } catch (e) {
             // Someone pushed between our fetch and our push. Re-run the pass:
             // the next fetch brings their commits down and the merge converges

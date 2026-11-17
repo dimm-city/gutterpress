@@ -1,3 +1,4 @@
+import { basename } from 'node:path';
 import { handleRemoteErrors } from '../../../../../electron/server-bridge/friendly-errors';
 import { gitIdentityArgs } from '#lib/server/settings.ts';
 import { defineRoute, getHostServices, loadLib, requireProjectDir } from '../../_lib/route';
@@ -23,9 +24,12 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; message?: 
     handleRemoteErrors('remote:sync', async () => {
       const lib = await loadLib();
       const identity = await gitIdentityArgs();
+      // The repo's sync log, the one automatic passes write: without it a failed send left no trace.
+      const repoRoot = lib.repoRootForSource(await lib.detectProjectSource(body.projectDir), body.projectDir);
       return lib.syncProject({
         projectDir: body.projectDir,
         tokenStore: getHostServices().remote.tokenStore,
+        logFile: getHostServices().vcs.operationLogPath(basename(repoRoot)),
         authorName: identity.authorName,
         authorEmail: identity.authorEmail,
         push: body.push,
