@@ -47,8 +47,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "build:library": "bun scripts/build-engine-bundles.mjs && rimraf dist && bun build src/index.ts src/api/index.ts --target=node --packages=external --splitting --outdir=dist && bun build src/render.ts --target=node --packages=external --outdir=dist && node scripts/check-render-pure.mjs && tsc -p tsconfig.build.json",
-    "build": "bun run build:library && bun build src/cli.ts --target=node --packages=external --splitting --outdir=dist",
+    "build:library": "bun scripts/build-engine-bundles.mjs && rimraf dist && bun scripts/bun-build.mjs src/index.ts src/api/index.ts --target=node --splitting --outdir=dist && bun scripts/bun-build.mjs src/render.ts --target=node --outdir=dist && node scripts/check-render-pure.mjs && tsc -p tsconfig.build.json",
+    "build": "bun run build:library && bun scripts/bun-build.mjs src/cli.ts --target=node --splitting --outdir=dist",
     "prepublishOnly": "bun run build",
     "test": "bun test",
     "typecheck": "tsc --noEmit",

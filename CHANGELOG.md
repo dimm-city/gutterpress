@@ -10,7 +10,8 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **Sending versions online after they were combined with the online copy's.** Sending
   re-uploaded every version of every file the book had ever had (945 MB for a two-line
   edit in a large book), and failed. It now sends only what the online copy lacks. Git
-  library fix: `patches/isomorphic-git@1.44.13.patch`.
+  library fix: `patches/isomorphic-git@1.44.13.patch`, compiled into the npm package so
+  npm installs get it too.
 - **A failed send leaves a record.** A send from the toolbar now writes the book's sync log
   (Logs tab), as automatic backups always did. When the app log reaches its size limit it
   now keeps its newest half instead of starting empty.
